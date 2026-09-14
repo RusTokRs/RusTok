@@ -6,6 +6,16 @@ This Core module owns the module platform control plane and artifact lifecycle.
 
 ## Responsibility Zone
 
+Maintenance object migration requires host-supplied storage and an explicit
+transaction-backed authorizer via `ModuleControlPlane::artifact_data_object_migration`.
+The owner freezes requests/inventory and reserves every opaque copy key durably
+before create-only byte publication, verifies SHA-256 and size, and atomically
+commits target references and terminal checkpoints. Pending namespace holds block
+purge, writes, and serving-reference changes; exact reconciliation retains keys and
+never age-deletes uncertain objects. Targets remain non-serving. Production fences,
+PostgreSQL/kill-matrix evidence, separate full-manifest cutover, and safe orphan
+collection remain open in the implementation and central rollback plans.
+
 It owns marketplace release identity, digest-pinned package admission,
 tenant-policy rules and the contracts for installation, activation, rollback,
 capability grants and static-promotion admission. Persistence adapters and
@@ -147,8 +157,9 @@ The production server registers this capability through
 checks the exact active installation and durable grant, and the policy repeats
 that check immediately before the binding read so a lifecycle or
 capability-revision change cannot leave a stale broker authorized. The repeated
-check derives the tenant/module/data-contract/policy scope from owner
-installation state; neither the guest nor a secret resolver supplies it.
+check derives installation-backed capability authority and the independently
+persisted opaque secret instance from owner installation state. Neither the
+guest nor a secret resolver supplies this identity; no data contract is required.
 
 `OciDistributionArtifactRegistry` resolves only digest-pinned references. It
 requires the returned manifest digest to match the requested reference, reads
@@ -620,17 +631,50 @@ metadata cannot be changed or deleted; verification evidence cannot be removed,
 and the instance cannot return to staging. Collection checks active holds at
 admission and resume. Missing copy parents remain unresolved, with no age-based
 orphan deletion. The focused real-storage test passes 1/1. Remaining callers,
-fixtures, independent secret scope/storage, actual migration-object copy, and
+fixtures, secret runtime/fence evidence, actual migration-object copy, and
 production recovery composition and lifecycle outbox facts are not yet closed. This worktree is
 not a production-ready post-purge recovery path.
+
+Secrets use independent installation-backed capability authority and the
+persisted opaque `secret_instance_id`, including stateless installations.
+Catalogs and immutable full-request-digest receipts are keyed by tenant, stable
+owner, and secret instance. Handle use pins both instance identity and revision.
+No data contract, artifact-data namespace, or slug/revision storage lookup is
+used. Secrets runtime fixtures pass 9/9, including the stateless same-slug
+owner-isolation route; the full owner library passes 308/308. Host management/revocation fences
+and production value-use authorization remain required.
 
 MCP now consumes the shared installation-backed `ArtifactCapabilityScope`,
 binding tenant, stable owner, exact release, installation, and grant revision.
 It does not require a data contract or namespace. Its broker and server invoker
 match the complete admitted subject instead of only the slug. The data broker
 uses that same immutable authority binding before adding its own persistence
-scope. Stateless MCP runtime verification remains pending. Secrets still use
-the persistence scope and require their independent secret-instance cutover.
+scope. Stateless MCP runtime verification remains pending. Secrets add only
+their independently persisted opaque secret instance to this authority; they
+do not require a data persistence scope.
+
+Owner maintenance commands share `ArtifactDataNamespace` facts and the same
+serialized root reader. Checked tenant/owner/instance/contract/revision facts
+are policy input, not a grant. The object-specific duplicate DTO/parser is
+removed; structured-copy authorization uses this owner-backed boundary.
+
+`ArtifactDataCopier` requires current transaction-backed authorization and exact
+source/target namespace revisions. It reads a sealed non-serving source under
+sorted root locks and copies records into a staging non-serving target. Target
+schema, create-only value/revision/size equality, declared index projections,
+quota, revision CAS, and immutable exact-response receipts commit in one database
+transaction after independently durable admission of the full request and frozen
+page. Preparing and latest non-terminal pages hold both namespaces through shared
+database guards; authorized continuation hands off that page hold atomically.
+`reserve_page` exposes admission without target writes. `reconcile_pending_pages`
+loads the original request and frozen evidence and rechecks current authorization,
+descriptor, schema, and quota. Failed receipt commit preserves preparing evidence
+and rolls back all target effects. Receipts record the actual commit policy revision.
+Replay preserves the original continuation before mutable checks; skipped
+continuations and terminal restarts are rejected. Revised file-backed SQLite
+runtime tests pass 11/11 with persisted fixture policy. Whole-operation source retention, production maintenance
+and fleet fences, PostgreSQL crash/race evidence, outbox composition, full
+snapshot verification, and separate serving CAS remain required.
 
 Final registry publication revalidates localized rows loaded from the database.
 Every locale must already be canonical, names and descriptions must satisfy the

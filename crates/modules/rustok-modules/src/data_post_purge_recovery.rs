@@ -443,6 +443,18 @@ impl<S: ArtifactDataSnapshotAuthorizer, A: ArtifactDataRecoveryAuthorizer>
         ensure_recovery_hold_on(&transaction, &operation).await?;
         let target = operation.target();
         let row = lock_verified_target_on(&transaction, &target).await?;
+        crate::data::ensure_namespace_not_migration_held_on(
+            &transaction,
+            target.tenant_id,
+            target.data_owner_id,
+            target.namespace_instance_id,
+            None,
+        )
+        .await
+        .map_err(|error| match error {
+            crate::ArtifactDataError::Storage(message) => PostPurgeRecoveryError::Storage(message),
+            _ => PostPurgeRecoveryError::CasCutoverConflict,
+        })?;
         let fingerprint: String = row
             .try_get("", "verified_manifest_digest")
             .map_err(storage_error)?;

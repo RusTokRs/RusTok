@@ -5,7 +5,8 @@ use rustok_core::ModuleRegistry;
 use rustok_secrets::SecretResolverRegistry;
 
 use crate::{
-    ArtifactBlobStore, ArtifactDataCrossRevisionCopier, ArtifactDataExportAuthorizer,
+    ArtifactBlobStore, ArtifactDataCopier, ArtifactDataCopyAuthorizer,
+    ArtifactDataExportAuthorizer, ArtifactDataObjectMigrationAuthorizer,
     ArtifactDataObjectMigrationService, ArtifactDataPostPurgeRecoveryService,
     ArtifactDataPurgeAuthorizer, ArtifactDataPurgePreviewService, ArtifactDataQuotaPolicy,
     ArtifactDataRecoveryReadinessService, ArtifactDataSnapshotAuthorizer,
@@ -355,9 +356,13 @@ impl ModuleControlPlane {
         ReleaseAdmissionIntentJournal
     }
 
-    /// Returns the crash-safe cross-revision artifact data copier for maintenance-only data evolution.
-    pub fn artifact_data_copier(&self) -> ArtifactDataCrossRevisionCopier {
-        ArtifactDataCrossRevisionCopier::new(self.db.clone())
+    /// Returns the owner record copier with mandatory current maintenance policy.
+    /// A page receipt does not authorize full-migration acceptance or serving CAS.
+    pub fn artifact_data_copier<A: ArtifactDataCopyAuthorizer>(
+        &self,
+        authorizer: A,
+    ) -> ArtifactDataCopier<A> {
+        ArtifactDataCopier::new(self.db.clone(), authorizer)
     }
 
     /// Returns the bounded drain service for predecessor-incompatible or decommissioned queues.
@@ -366,8 +371,15 @@ impl ModuleControlPlane {
     }
 
     /// Returns the broker-owned object migration service for persistence revision changes.
-    pub fn artifact_data_object_migration(&self) -> ArtifactDataObjectMigrationService {
-        ArtifactDataObjectMigrationService::new(self.db.clone())
+    pub fn artifact_data_object_migration<A>(
+        &self,
+        storage: rustok_storage::StorageRuntime,
+        authorizer: A,
+    ) -> ArtifactDataObjectMigrationService<A>
+    where
+        A: ArtifactDataObjectMigrationAuthorizer,
+    {
+        ArtifactDataObjectMigrationService::new(self.db.clone(), storage, authorizer)
     }
 
     /// Returns the recovery readiness evaluation and attestation service for bounded snapshot readiness

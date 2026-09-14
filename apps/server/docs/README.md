@@ -16,6 +16,13 @@ in `rustok-rbac`. Server adapters own authenticated request evidence, user-field
 persistence, caller transactions, outbox composition, cache invalidation after
 commit, and process telemetry.
 
+Request permission snapshots enter the owner `PermissionResolver` through an
+authenticated host adapter; single, any, and all decisions run the owner tenant
+policy engine and preserve the request permission ceiling. Persisted role-user
+membership queries delegate to `load_role_user_ids_on`. The server contains no
+independent permission-membership decision branch or role-membership SQL query
+in `RbacService`. These request snapshots do not establish a revocation fence.
+
 Artifact purge previews call `ModuleControlPlane` owner projections. Data purge
 accepts an exact installation, positive namespace revision, reason, and
 idempotency UUID; the authenticated server supplies tenant/actor command
@@ -25,7 +32,7 @@ without permission-cache/request snapshots. The policy has no separate database
 connection. Terminal replay after lifecycle serialization precedes mutable
 owner target reads.
 Preview/apply errors hide storage details and receipt integers are checked.
-Lifecycle retirement and same-slug collision checks do not prove terminal
+Lifecycle retirement and exact serving-instance collision checks do not prove terminal
 traffic/job/write or atomic revocation fences. The server settings recovery
 plaintext-tag cipher and permissive policy were deleted. Settings mutations
 require a host-composed owner service from `GraphqlRuntimeInputs` and return
@@ -36,6 +43,10 @@ relation reading and current tenant-policy evaluation are owned by `rustok-rbac`
 the server retains cache integration, authenticated adapters, and telemetry.
 Follow the owner plan and central rollback plan for these
 open completion gates.
+
+OAuth translation snapshots use the `rustok-auth` lifecycle enum directly.
+Its serialized `active` and `archived` values match persisted owner lifecycle
+spelling; server translation queries use SeaQuery's expression trait.
 
 ## Mandatory platform baseline
 
@@ -459,7 +470,9 @@ remain separate unfinished control-plane work.
 - health/runtime guardrails, build/release orchestration, and operator control-plane endpoints;
 - installer HTTP/CLI adapters on top of `rustok-installer`, install locks, and
   persisted installer session receipts;
-- RBAC enforcement, auth/session integration, and host-level observability.
+- composition of RBAC-owner decisions with auth/session context and host-level
+  observability. Permission resolution and persisted role/grant readers belong
+  to `rustok-rbac`.
 
 `apps/server` must not:
 
@@ -500,8 +513,20 @@ Artifact MCP calls consume the owner-issued `ArtifactCapabilityScope`; server
 identity checks use its exact installation/release matcher and audit stable
 owner/installation facts. MCP no longer carries a data-contract revision or
 data namespace. It remains subject to host alias/tool policy and durable audit.
-The independent logical-secret scope/storage cutover and stateless MCP runtime
-verification are still tracked in the module control-plane owner plan.
+Logical-secret scope/storage now uses independently persisted opaque secret
+instances and exact installation authority. Updated secret runtime fixtures,
+host management/use fences, and stateless MCP runtime verification are tracked
+in the module control-plane owner plan. The RBAC request-boundary fixture uses
+actual platform/RBAC migrations without unrelated PostgreSQL-only product
+migrations; its failed broad SQLite setup is not authorization evidence.
+
+Artifact data maintenance holds belong to `rustok-modules`. Structured pages
+reserve immutable request/frozen evidence before writes and retain source/target
+between pages through the same database guards used by object migration, purge,
+and recovery CAS. GraphQL maps `NamespaceHeld` to a sanitized precondition error;
+it does not expose storage details or implement a second hold policy. The purge
+host adapter binds operation context and delegates transaction-current permission
+resolution to `rustok-rbac`; that read alone is not a revocation or write fence.
 
 - [Health and runtime guardrails](./health.md)
 - [Backend module guides](../../../docs/backend/README.md)

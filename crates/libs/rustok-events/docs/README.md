@@ -4,6 +4,13 @@
 contracts. It owns root events, sealed module event families, typed envelope
 shapes, schema metadata, and validation rules.
 
+The canonical initial `module.artifact.secret_bound` fact identifies the exact
+installation, tenant, stable data owner, opaque secret instance, and binding
+revision. Its schema no longer borrows an artifact-data contract revision.
+Resolver aliases, resolver keys, and values remain private. The atomic
+repository-owned replacement is recorded in the
+[owner-boundary decision](../../../../DECISIONS/2026-07-01-port-contract-ownership-and-runtime-feature-boundary.md).
+
 ## Purpose
 
 - publish a unified event-contract layer for the platform;

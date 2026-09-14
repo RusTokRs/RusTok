@@ -17,6 +17,6 @@ The package calls Product Bundles owner contracts and shared UI transport librar
 
 - `src/lib.rs` — public admin package surface.
 - `src/transport.rs` — owner transport adapters.
-- `src/ui/leptos.rs` — Leptos UI components and `BundleAdmin` root view.
+- `src/ui/leptos.rs` — Leptos UI components and `ProductBundlesAdmin` root view.
 
 See the [Product Bundles documentation](../README.md) and the [module UI guide](../../../../docs/UI/module-package-implementation.md).

@@ -7,7 +7,7 @@ use rustok_outbox::{OutboxTransport, TransactionalEventBus, idempotency};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect, Set, TransactionTrait,
-    sea_query::{Expr, Query},
+    sea_query::{Expr, ExprTrait, Query},
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

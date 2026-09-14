@@ -4,7 +4,7 @@ use tracing::{debug, warn};
 
 use rustok_core::UserRole;
 
-use rustok_api::{Permission, has_effective_permission};
+use rustok_api::Permission;
 use rustok_rbac::PermissionResolver;
 use rustok_telemetry::metrics;
 
@@ -56,19 +56,6 @@ impl RbacService {
     ) -> Result<bool> {
         Self::record_authz_entrypoint_call("has_permission", "library");
 
-        if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
-            let allowed = has_effective_permission(&permissions, required_permission);
-            debug!(
-                tenant_id = %tenant_id,
-                user_id = %user_id,
-                required_permission = %required_permission,
-                permissions_count = permissions.len(),
-                allowed,
-                "rbac request-scoped decision (single permission check)"
-            );
-            return Ok(allowed);
-        }
-
         let outcome = authorize_rbac_request(
             db,
             tenant_id,
@@ -119,21 +106,6 @@ impl RbacService {
     ) -> Result<bool> {
         Self::record_authz_entrypoint_call("has_any_permission", "library");
 
-        if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
-            let allowed = required_permissions
-                .iter()
-                .any(|required| has_effective_permission(&permissions, required));
-            debug!(
-                tenant_id = %tenant_id,
-                user_id = %user_id,
-                required_permissions = ?required_permissions,
-                permissions_count = permissions.len(),
-                allowed,
-                "rbac request-scoped decision (any-permission check)"
-            );
-            return Ok(allowed);
-        }
-
         let outcome = authorize_rbac_request(
             db,
             tenant_id,
@@ -183,21 +155,6 @@ impl RbacService {
         required_permissions: &[Permission],
     ) -> Result<bool> {
         Self::record_authz_entrypoint_call("has_all_permissions", "library");
-
-        if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
-            let allowed = required_permissions
-                .iter()
-                .all(|required| has_effective_permission(&permissions, required));
-            debug!(
-                tenant_id = %tenant_id,
-                user_id = %user_id,
-                required_permissions = ?required_permissions,
-                permissions_count = permissions.len(),
-                allowed,
-                "rbac request-scoped decision (all-permissions check)"
-            );
-            return Ok(allowed);
-        }
 
         let outcome = authorize_rbac_request(
             db,
@@ -303,30 +260,8 @@ impl RbacService {
         tenant_id: &uuid::Uuid,
         role: UserRole,
     ) -> Result<Vec<uuid::Uuid>> {
-        use crate::models::_entities::{roles, user_roles};
-        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect};
-
         Self::record_authz_entrypoint_call("get_user_ids_for_role", "library");
-
-        let role_ids = roles::Entity::find()
-            .select_only()
-            .column(roles::Column::Id)
-            .filter(roles::Column::TenantId.eq(*tenant_id))
-            .filter(roles::Column::Slug.eq(role.to_string()))
-            .into_tuple::<uuid::Uuid>()
-            .all(db)
-            .await?;
-
-        if role_ids.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        user_roles::Entity::find()
-            .select_only()
-            .column(user_roles::Column::UserId)
-            .filter(user_roles::Column::RoleId.is_in(role_ids))
-            .into_tuple::<uuid::Uuid>()
-            .all(db)
+        rustok_rbac::load_role_user_ids_on(db, *tenant_id, role)
             .await
             .map_err(Into::into)
     }
@@ -342,10 +277,10 @@ impl RbacService {
         tenant_id: &uuid::Uuid,
         role: UserRole,
     ) -> Result<()> {
-        use super::rbac_persistence::assign_role_permissions_via_store;
-
         Self::record_authz_entrypoint_call("assign_role_permissions", "internal");
-        assign_role_permissions_via_store(db, user_id, tenant_id, role).await
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(db, *tenant_id, *user_id, role)
+            .await
+            .map_err(|error| crate::error::Error::Message(error.to_string()))
     }
 
     /// Assign the initial built-in role inside the caller-owned user-creation transaction.
@@ -371,10 +306,37 @@ mod tests {
     use chrono::Utc;
     use rustok_api::Permission;
     use rustok_core::{UserRole, UserStatus};
-    use rustok_migrations::SqliteTestMigrator as Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ConnectionTrait, EntityTrait, Set};
+    use sea_orm_migration::{MigrationTrait, MigratorTrait};
     use serial_test::serial;
+
+    /// Compose the real schemas exercised here; optional PostgreSQL-only
+    /// product migrations do not belong to this RBAC request-boundary fixture.
+    struct Migrator;
+
+    #[async_trait::async_trait]
+    impl MigratorTrait for Migrator {
+        fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+            let mut migrations: Vec<_> = rustok_migrations::Migrator::migrations()
+                .into_iter()
+                .filter(|migration| {
+                    matches!(
+                        migration.name(),
+                        "m20250101_000001_create_tenants"
+                            | "m20250101_000002_create_users"
+                            | "m20250101_000005_create_roles_and_permissions"
+                            | "m20250101_000006_add_metadata_to_tenants_and_users"
+                    )
+                })
+                .collect();
+            migrations.extend(rustok_core::MigrationSource::migrations(
+                &rustok_rbac::RbacModule,
+            ));
+            migrations.sort_by_key(|migration| migration.name().to_string());
+            migrations
+        }
+    }
 
     async fn insert_tenant_and_user(
         db: &impl ConnectionTrait,
@@ -580,6 +542,20 @@ mod tests {
             UserRole::Admin,
         );
         with_rbac_request_scope(Some(scope), async {
+            let outcome = crate::services::rbac_runtime::authorize_request(
+                &db,
+                &tenant_id,
+                &user_id,
+                crate::services::rbac_runtime::AuthorizationCheck::Single(&Permission::USERS_READ),
+            )
+            .await
+            .expect("scoped owner policy decision");
+            assert_eq!(outcome.decision.engine, rustok_rbac::AuthzEngine::Policy);
+            assert_eq!(
+                outcome.decision.resolved_permissions,
+                vec![Permission::USERS_READ]
+            );
+            assert!(outcome.decision.allowed);
             assert!(
                 RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::USERS_READ)
                     .await
@@ -594,6 +570,26 @@ mod tests {
                 )
                 .await
                 .expect("scoped manage check")
+            );
+            assert!(
+                RbacService::has_any_permission(
+                    &db,
+                    &tenant_id,
+                    &user_id,
+                    &[Permission::USERS_READ, Permission::SETTINGS_MANAGE],
+                )
+                .await
+                .expect("scoped any check")
+            );
+            assert!(
+                !RbacService::has_all_permissions(
+                    &db,
+                    &tenant_id,
+                    &user_id,
+                    &[Permission::USERS_READ, Permission::SETTINGS_MANAGE],
+                )
+                .await
+                .expect("scoped all check")
             );
             assert_eq!(
                 RbacService::get_user_permissions(&db, &tenant_id, &user_id)

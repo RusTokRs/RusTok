@@ -515,8 +515,9 @@ Freeze the vocabulary and public seams before moving the remaining write paths.
   digest of every command fact in the immutable admission receipt, and reject a
   changed trace, correlation, policy, evidence, scope, or target on idempotency
   reuse before an existing release lookup can return success.
-  Post-purge recovery binds the ready snapshot to the same tenant/module/data-
-  contract scope and records a canonical request digest beside the context, so
+  Post-purge recovery binds the ready snapshot to the exact tenant/stable-owner,
+  admitted data contract, and retired installation/tombstoned namespace evidence.
+  It records a canonical request digest beside the context, so
   a changed snapshot or context on idempotency reuse fails closed. Operations-tool
   start and predecessor-recovery authorization each use platform-scoped context,
   durable canonical request digests, exact replay checks, and one active fleet
@@ -685,19 +686,20 @@ and installed artifacts.
   and MCP server/tool names. The `platform.secrets` grant now accepts only a
   typed, exact logical reference allowlist plus exact operations; guest input
   cannot name a resolver, resolver key, or secret value. The data owner now
-  persists a revisioned/idempotent tenant/module/data-contract binding from
+  persists a revisioned/idempotent tenant/owner/secret-instance binding from
   that logical name to a host-authorized `SecretRef` and emits redacted outbox
   evidence. `RegistryArtifactSecretAuthorizer` validates that reference through
   the deployment `SecretResolverRegistry` without resolving it, while a host
   policy port owns lifecycle/RBAC checks. Its `acquire_handle` broker is injected
-  with the admitted artifact scope and returns only the logical name and revision
+  with independent installation capability authority and returns the logical
+  name, opaque instance identity, and revision
   after host authorization. Value consumption is deliberately not a sandbox
   `get_value` operation: `SeaOrmArtifactSecretUseService` requires a stronger
   use-specific host authorization, reloads the exact expected binding revision
   under tenant RLS, resolves the `SecretString` only after the transaction is
   closed, and lends it only to a host-composed fixed-purpose consumer. The
   consumer can return no arbitrary payload; callers receive only a redacted
-  logical-reference/revision/purpose receipt, and resolver failures are mapped
+  logical-reference/instance/revision/purpose receipt, and resolver failures are mapped
   to content-free owner errors.
   `platform.events` now requires exact or terminal-wildcard topic grants plus
   exact operations, and accepts only a topic with an optional payload.
@@ -1572,7 +1574,7 @@ migrations or arbitrary SQL.
   objects/files, indexes/query patterns supported by the platform, and
   secret-reference handles. The durable data owner provides bounded structured
   JSON values and a private object broker through a host-owned
-  tenant/module/revision namespace with optimistic revisions and durable
+  tenant/stable-owner/opaque-namespace identity with optimistic revisions and durable
   idempotency results. Structured `delete` requires an exact positive record
   revision and UUID idempotency key, removes matching materialized indexes in
   the same transaction, and stores a policy-revision-scoped replay receipt
@@ -1582,8 +1584,8 @@ migrations or arbitrary SQL.
   re-hashes every private read before returning bytes. Secret references now
   have a separate owner-owned scoped binding table with revision CAS,
   idempotency, actor/reason audit data, and a redacted transactional-outbox fact;
-  the injected `acquire_handle` broker returns only the logical handle and
-  revision after per-execution host authorization. `platform.data.objects` now
+  the injected `acquire_handle` broker returns an instance-bound logical handle
+  after per-execution host authorization. `platform.data.objects` now
   admits owner-scoped `get_metadata`, `read`, `put`, `delete`, and `list` calls
   only under separately declared object-prefix/operation grants. Logical delete
   requires an exact positive object revision plus a UUID idempotency key,
@@ -1680,7 +1682,7 @@ migrations or arbitrary SQL.
   payloads cannot provide or raise it. The platform hard ceilings are 10,000
   structured records and 64 MiB of canonical structured JSON, 1,024 logical
   objects and 256 MiB of live object bytes, sixteen active upload sessions,
-  and 64 MiB of staged chunks per tenant/module/data-contract namespace.
+  and 64 MiB of staged chunks per tenant/stable-owner/opaque-namespace instance.
   Production composition may only tighten those limits. Structured and object
   writes compute projected count/byte usage under the same namespace lock and
   transaction as their revision mutation; overwrites replace the prior byte
@@ -1724,9 +1726,11 @@ migrations or arbitrary SQL.
   idempotent, re-verifies the manifest and every object, and atomically restores
   values, object metadata, index projections, the index contract, namespace
   revision CAS, audit operation, and
-  `module.artifact.data_snapshot_restored`. It accepts only the same logical
-  tenant/module/data-contract namespace and an empty active target; it never
-  clears a purge tombstone or overwrites live data. Staging source references
+  `module.artifact.data_snapshot_restored`. It binds the exact tenant/data owner
+  and admitted contract and restores into a fresh empty staging namespace
+  instance, then seals it verified and non-serving. Serving requires a separate
+  authorized full-manifest reference CAS. Restore never clears the source purge
+  tombstone or overwrites live data. Staging source references
   also block retention GC under the namespace lifecycle lock. Snapshot
   retention is now independently revisioned: an authorized idempotent command
   may extend (never shorten) `retain_until` and may apply or release legal hold,
@@ -1743,6 +1747,31 @@ migrations or arbitrary SQL.
   resuming worker, and the final transaction
   deletes manifest-owned rows while preserving retention/restore/collection
   audit facts and emits `module.artifact.data_snapshot_collected`.
+
+  Maintenance object migration is a separate owner operation with an explicit
+  transaction-backed policy port and real storage. Its frozen parent request,
+  inventory, and every opaque copy key commit before create-only publication;
+  actual SHA-256/size verification precedes atomic target references and terminal
+  checkpoints. Exact terminal replay precedes mutable lifecycle facts, while
+  reconciliation revalidates current policy and preserves reserved keys. Pending
+  source/target holds block purge, writes, and serving-reference changes. Bounded
+  file-backed runtime fixtures pass 3/3; production maintenance/fleet fences, PostgreSQL
+  races and the full kill matrix remain open. Targets stay non-serving; migration
+  receipts do not authorize full-snapshot CAS or uncertain-object deletion.
+
+  Structured copying reserves the full request and frozen page durably before
+  target writes. Its mandatory
+  policy receives actual locked namespace facts and returns admitted target
+  descriptor/quota. Exact revisions, sealed/staging non-serving roots, contiguous
+  page continuation, create-only record revisions/values/sizes, schema/index/quota
+  checks, target CAS, and immutable exact-response receipts share the separate
+  owner commit transaction. Shared guards retain source/target during preparing
+  and between non-terminal pages. Reconciliation uses the original request and
+  current policy/quota; receipt commit failure retains the preparing page while
+  rolling back target effects. Exact replay precedes mutable facts. Revised
+  file-backed SQLite runtime tests pass 11/11; whole-operation source retention, production maintenance/fleet fences,
+  PostgreSQL crash/race and outbox evidence, full snapshot verification, and
+  authorized serving CAS remain open.
 - [x] Keep secret values outside settings and module data; store only brokered
   secret references. The secret-binding store persists only a host-authorized
   resolver reference in its separate owner table; structured data, sandbox
@@ -1750,7 +1779,7 @@ migrations or arbitrary SQL.
   Binding is a tenant-matched typed command: its immutable operation receipt
   retains actor, trace, correlation, and idempotency facts, rejects a changed
   replay, and its outbox envelope preserves the same evidence.
-  The sandbox handle-acquisition broker exposes only logical name and revision.
+  The sandbox handle-acquisition broker exposes logical name, opaque secret-instance identity, and revision.
   `SeaOrmArtifactSecretUseService` is the separate host-only value boundary: a
   caller must present the exact nonzero handle revision and immutable execution
   scope, `ArtifactSecretUseAuthorizer` is distinct from handle authorization,

@@ -1,3 +1,3 @@
 pub mod leptos;
 
-pub use leptos::ProductRelationsPanel;
+pub use leptos::{ProductRelationsAdmin, ProductRelationsPanel};

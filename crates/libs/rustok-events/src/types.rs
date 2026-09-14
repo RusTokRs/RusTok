@@ -782,7 +782,9 @@ pub enum DomainEvent {
     ModuleArtifactSecretBound {
         tenant_id: Uuid,
         module_slug: String,
-        data_contract_revision: u64,
+        installation_id: Uuid,
+        data_owner_id: Uuid,
+        secret_instance_id: Uuid,
         revision: u64,
     },
     ModuleBuildQueued {
@@ -2800,15 +2802,20 @@ impl ValidateEvent for DomainEvent {
             Self::ModuleArtifactSecretBound {
                 tenant_id,
                 module_slug,
-                data_contract_revision,
+                installation_id,
+                data_owner_id,
+                secret_instance_id,
                 revision,
             } => {
                 validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_nil_uuid("installation_id", installation_id)?;
+                validators::validate_not_nil_uuid("data_owner_id", data_owner_id)?;
+                validators::validate_not_nil_uuid("secret_instance_id", secret_instance_id)?;
                 validators::validate_not_empty("module_slug", module_slug)?;
                 validators::validate_max_length("module_slug", module_slug, 48)?;
-                if *data_contract_revision == 0 || *revision == 0 {
+                if *revision == 0 {
                     return Err(EventValidationError::InvalidValue(
-                        "data contract or binding revision",
+                        "binding revision",
                         "must be positive".to_string(),
                     ));
                 }

@@ -88,6 +88,16 @@ preserves the complete published base prefix and appends new migrations.
 Claims, presentation roles, caches, projections, and consumers are never permission or
 role-assignment authority.
 
+The server request-snapshot branches now resolve authenticated, exact tenant/actor
+evidence through the module `PermissionResolver` contract and canonical tenant
+policy engine for single, any, and all checks. `load_role_user_ids_on` owns role
+membership SQL and filters subjects by persisted tenant identity. The owner test
+covers malformed cross-tenant membership; the host ceiling test covers policy
+engine selection and denied permission restoration. On 2026-09-14, the complete
+owner lib test run passes 73/73, including the changed membership fixture.
+Fresh host compilation, ceiling-test execution, and scoped clippy remain pending;
+the owner test count does not prove those boundaries.
+
 The persisted `SeaOrmRelationPermissionStore` is now owned here and shared by
 cached runtime and current decisions. `authorize_current_permission` evaluates
 persisted grants through the canonical tenant policy engine without request or

@@ -737,9 +737,11 @@ pub(crate) fn map_artifact_settings_recovery_error(
 
 pub(crate) fn map_artifact_data_purge_error(err: ArtifactDataError) -> FieldError {
     match err {
-        ArtifactDataError::PurgePrecondition => <FieldError as GraphQLError>::bad_user_input(
-            "Data purge preconditions are not satisfied",
-        ),
+        ArtifactDataError::PurgePrecondition | ArtifactDataError::NamespaceHeld => {
+            <FieldError as GraphQLError>::bad_user_input(
+                "Data purge preconditions are not satisfied",
+            )
+        }
         ArtifactDataError::NamespacePurged => {
             <FieldError as GraphQLError>::bad_user_input("Data namespace has already been purged")
         }

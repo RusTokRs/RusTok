@@ -8,6 +8,9 @@ status: verified
 ---
 # RusTok: Documentation Map
 
+Product Relations and Product Bundles admin composition entrypoints and their
+bounded verification gates are recorded in the [module readiness board](./modules/registry.md#ffafba-readiness-board-module-owned-ui).
+
 This file is the canonical entry point for the repository documentation.
 Start here when following the rules in [AGENTS.md](../AGENTS.md).
 
@@ -50,6 +53,21 @@ Local documents for applications and crates live in `apps/*/docs/`,
 
 ### Module Control Plane and Workers
 
+The control-plane and rollback plans track canonical durable object-copy
+reservations, pending namespace holds, and their remaining runtime/fleet evidence
+separately from full-snapshot serving cutover and safe orphan collection.
+The owner plan also records independent opaque secret-instance storage and
+instance-bound handles, with runtime and host-fence evidence tracked separately.
+Maintenance namespace facts and root locking are shared by the data owner;
+their use does not establish maintenance or fleet authorization.
+Structured copying uses those owner locks and mandatory transaction-backed
+policy, durable frozen-page admission before writes, database-atomic
+record/index/revision/receipt effects, and exact continuation replay.
+Shared namespace guards retain source/target between structured pages;
+reconciliation rechecks current policy using the original persisted request.
+The owner and release-safety plans track current runtime verification separately
+from complete operation safety and retention through serving cutover.
+
 - [`rustok-modules` Control-Plane Documentation](../crates/modules/rustok-modules/docs/README.md)
 - [`rustok-runtime` Portable Instance and Deployment Primitives](../crates/libs/rustok-runtime/docs/README.md)
 - [Module Control-plane Consolidation Plan](./modules/module-control-plane-consolidation-plan.md)
@@ -90,6 +108,9 @@ Local documents for applications and crates live in `apps/*/docs/`,
 
 - [Auth Module Documentation](../crates/modules/rustok-auth/docs/README.md)
 - [RBAC Module Documentation](../crates/modules/rustok-rbac/docs/README.md) — canonical persisted relation reads/writes, transaction-backed role-mutation facts and administrator continuity, and uncached tenant-policy decisions used by owner-transaction purge authorization.
+- RBAC host request snapshots feed the module policy engine through its resolver
+  contract; persisted role-user queries remain module-owned. These boundaries
+  and their remaining verification gates are recorded in the RBAC local plan.
 - [MCP Capability Documentation](../crates/modules/rustok-mcp/docs/README.md)
 - [AI Capability Documentation](../crates/modules/rustok-ai/docs/README.md) — provider-neutral RAG ingestion and Athanor data plane
 - [Content Module Documentation](../crates/modules/rustok-content/docs/README.md)

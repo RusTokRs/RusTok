@@ -21,7 +21,7 @@ The cross-component sequence and completion rules are defined by the
 - Rollback eligibility: `AutomaticSingleAttempt`
 - N/N+1 compatibility: Durable intent journal before CAS mutations; CAS-protected receipts; inert release definitions keyed by `(release_digest, module_slug, permission_key)`; scoped install projects under `(scope, installation_id)`. Bounded migration plan digest verification.
 - External side effects & fences: Monotonic release-security epoch checks and owner operation locks (`derive_canonical_conflict_keys`, `fleet_operations_tool`) exist; terminal production traffic/job/write fences and fleet convergence evidence remain incomplete. Queue-drain contracts and retired-generation rejection do not by themselves prove production fencing.
-- Uncertain-outcome recovery: `DataBackfillCoordinator` with intermediate page checkpoints and payload digests; uncertain-outcome reconciliation before cursor advance; `ReleaseAdmissionIntentJournal` recovery scan; single-attempt predecessor recovery for operations tools.
+- Uncertain-outcome recovery: `DataBackfillCoordinator` remains a memory-store prototype without production persistence or verified uncertain-outcome reconciliation; `ReleaseAdmissionIntentJournal` recovery scan and single-attempt predecessor recovery for operations tools have separate owner evidence. Durable backfill integration remains required.
 - Responsible module owner: Platform Foundation Team
 
 ## Current state
@@ -34,6 +34,22 @@ module control plane. The repository verifier checks both this dependency
 boundary and the module-owned admin transport for backend write/build logic.
 
 ## Current verification evidence
+
+On 2026-09-14, the canonical structured-copy API and consolidated pending schema
+were replaced together with durable frozen-page admission, shared source/target
+holds between pages, and current-policy reconciliation. File-backed SQLite copy
+tests pass 11/11, including reservation without writes, receipt-commit rollback,
+reopen/reconciliation with current policy/quota, immutable frozen evidence, and
+between-page write/reference rejection through the actual hold guards.
+Owner library tests pass 308/308, object-migration tests 3/3, purge/recovery
+integration 1/1, and snapshot/post-purge recovery integration 1/1. Locked offline
+owner library check, scoped owner clippy with `-D warnings`, and server check all
+exit 0. The write-path verifier, locked no-dependency metadata, and
+`git diff --check` also pass. These checks cover the stated owner/adapter
+boundaries and bounded fixture behavior, not production traffic/job/write or
+complete-operation retention fences, PostgreSQL crash/race recovery, host recovery
+composition, or durable additive backfill. FFA remains `not_started`; FBA remains
+`boundary_ready`.
 
 On 2026-09-06, dynamic transition persistence was consolidated behind
 `SeaOrmModuleTransitionService`. Activation now aborts unless its checkpoint
@@ -238,23 +254,28 @@ On 2026-09-03, Data-Upgrade Phase, Irreversibility, and Point-of-No-Return Fence
   - `node scripts/verify/verify-module-control-plane-write-path.mjs` (passed).
   - `node scripts/verify/verify-module-build-worker-isolation.mjs` (passed).
 
-On 2026-09-03, Maintenance-Only Broker-Owned Object Migration and Live Object Guard were delivered per Section 4 of the Rollback Plan:
-- `crates/modules/rustok-modules/src/migrations/m20260903_000048_artifact_data_object_copy_operations.rs` added persistent table `module_artifact_data_object_copy_operations` with RLS tenant isolation to reserve per-copy intents (`status = 'intent'`) and reference checkpoints (`status = 'checkpointed'`).
-- `crates/modules/rustok-modules/src/data_object_migration.rs` implemented `ArtifactDataObjectMigrationService`:
-  - Freezes and digest-pins exact source logical object inventory via SHA-256 `inventory_manifest_digest`.
-  - Performs per-object durable intent logging before referencing objects in target revision.
-  - Checkpoints verified target references in `module_artifact_data_objects` without duplicating storage blobs.
-  - Enforces conflict safety: conflicting target digests fail with `TargetObjectConflict` without overwriting data.
-  - Final acceptance gate: enforces exact match between target and source object count and manifest digest before returning `accepted: true`.
-  - Provides `reconcile_stale_intents` for crash-recovery.
-- `crates/modules/rustok-modules/src/data_copier.rs` added `ensure_no_unmigrated_live_objects`, ensuring that when live objects exist in `module_artifact_data_objects`, structured-record copy alone cannot authorize revision change and fails closed with `UnmigratedLiveObjects(count)`.
-- `crates/modules/rustok-modules/src/control_plane.rs` exposed `artifact_data_object_migration()` on `ModuleControlPlane`.
-- Verified by:
-  - `cargo test --locked -p rustok-modules --test data_object_migration_tests` (2 passed, 0 warnings).
-  - `cargo test --locked -p rustok-modules --test data_cross_revision_copier_tests` (2 passed, 0 warnings).
-  - `cargo check -p rustok-server --test module_graphql_native_parity` (passed, 0 errors).
-  - `node scripts/verify/verify-module-control-plane-write-path.mjs` (passed).
-  - `node scripts/verify/verify-module-build-worker-isolation.mjs` (passed).
+Maintenance object migration uses one canonical owner service and consolidated
+pending schema. The physical-copy replacement requires storage and an explicit
+transaction-backed authorizer at construction and through `ModuleControlPlane`.
+The complete frozen request/inventory and all per-object reservations commit before
+publication. Actual create-only copies verify SHA-256/size; atomic references and
+terminal checkpoints retain exact replay. Pending holds protect both namespaces;
+file-backed fixtures cover corruption, current policy denial, and reconstitution
+without allocating replacement keys. Runtime execution passes 3/3 against
+file-backed SQLite and actual local storage.
+Object coverage comparison belongs to
+`ArtifactDataObjectMigrationService::count_unmigrated_live_objects`, including
+digest, size, content type, and checked counts. A structured page receipt cannot
+prove object migration. These source changes do not prove production fences,
+PostgreSQL kill/recovery, full-snapshot serving CAS, or safe GC.
+
+Maintenance namespace facts now have one canonical `ArtifactDataNamespace`
+contract in the data owner. Object migration uses the shared root-lock reader,
+including the PostgreSQL row-version fence and checked persisted metadata,
+instead of defining its own namespace DTO and SQL parser. This is the common
+input for structured-copy policy; it grants no authority.
+The object-migration runtime checks pass 3/3 after this extraction, including
+close/reopen, current policy rejection, byte corruption, and pending holds.
 
 On 2026-09-03, Bounded Item-Specific Queue Drain and Claim Security Revalidation were delivered per Section 4 of the Rollback Plan:
 - `crates/modules/rustok-modules/src/event_delivery.rs` added pre-claim security revalidation: verifies that the target module release is not quarantined or revoked in `module_artifact_security_states` and that the installation is active without uninstallation evidence. Quarantined or revoked items are immediately dead-lettered with `revoked_or_quarantined` error code without claiming or executing work.
@@ -267,22 +288,44 @@ On 2026-09-03, Bounded Item-Specific Queue Drain and Claim Security Revalidation
   - `node scripts/verify/verify-module-control-plane-write-path.mjs` (passed).
   - `node scripts/verify/verify-module-build-worker-isolation.mjs` (passed).
 
-On 2026-09-03, Crash-Safe Cross-Revision Artifact Data Copier and Preflight Evolution Classification were delivered per Section 4 of the Rollback Plan:
-- `crates/modules/rustok-modules/src/migration_preflight.rs` added `requires_cross_revision_data_copy` to `MigrationPreflightInput`, enforcing that any dynamic data-contract evolution fails closed to `UpdateMode::Maintenance`, strictly denying `UpdateMode::Automatic` mode per Section 4.
-- `crates/modules/rustok-modules/src/migrations/m20260903_000047_artifact_data_copy_operations.rs` added durable persistence for page request intents (`status = 'intent'`), page digests, receipts (`status = 'committed'`), and tenant RLS isolation.
-- `crates/modules/rustok-modules/src/data_copier.rs` implemented `ArtifactDataCrossRevisionCopier`:
-  - Paged migration of structured records between contract revisions with deterministic page SHA-256 digests.
-  - Create-only item idempotency: preexisting target keys with identical values succeed idempotently, while conflicting target values immediately abort with `ArtifactDataCopyError::TargetKeyConflict` without overwriting target data.
-  - Terminal page receipts and monotonic namespace revision advances.
-  - Crash reconciliation via `reconcile_stale_intents`.
-- `crates/modules/rustok-modules/src/control_plane.rs` exposed `artifact_data_copier()` on `ModuleControlPlane`.
-- Verified by:
-  - `cargo test --locked -p rustok-modules --test data_cross_revision_copier_tests` (2 passed, 0 warnings).
-  - `cargo test --locked -p rustok-modules --lib migration_preflight` (4 passed, 0 warnings).
-  - `cargo test --locked -p rustok-modules --test migration_and_settings_safety_tests` (3 passed, 0 warnings).
-  - `cargo check -p rustok-server --test module_graphql_native_parity` (passed, 0 errors).
-  - `node scripts/verify/verify-module-control-plane-write-path.mjs` (passed).
-  - `node scripts/verify/verify-module-build-worker-isolation.mjs` (passed).
+Structured migration preflight denies automatic mode when a data-contract
+change requires copying. `ArtifactDataCopier` now requires a transaction-backed
+authorizer, actual admitted target descriptor/quota, and exact source/target
+namespace revisions. Sorted owner root locks precede source reads, schema
+validation, create-only record writes, index projections, quota checks, and
+target revision CAS. A sealed non-serving source and staging non-serving target
+are required. Continuations must match the latest immutable committed page;
+the initial page requires an empty structured target. Skipping pages or
+restarting a terminal copy is rejected.
+
+The consolidated pending schema commits full request JSON/digest and frozen page
+JSON/digest in `preparing` before any target record write. A separate owner
+transaction rechecks current policy, descriptor, schema, and quota, then commits
+create-only records, indexes, revision CAS, and immutable receipt JSON/digest
+through its transaction-local `committing` phase. A failed commit leaves the
+original preparing page and its holds intact. `reconcile_pending_pages` loads
+the original request and frozen evidence; it never resets unknown status or
+invents command context. The receipt records the actual commit policy revision.
+Exact terminal replay precedes mutable lifecycle and policy facts.
+
+Shared database guards retain source and target during preparing and between
+non-terminal pages. Only authorized continuation supersedes the preceding page
+hold; terminal structured-page completion releases that page chain. These holds
+also protect record/object/index metadata, roots, purge, and active references.
+They are not whole-operation retention across object copying, full snapshot
+verification, and serving cutover. Revised file-backed SQLite tests pass 11/11,
+including reopen/reconciliation, current policy/quota rejection, immutable frozen
+evidence, receipt-commit rollback, and between-page write/reference rejection.
+Host maintenance/revocation, complete-operation source retention, production
+fleet fences, PostgreSQL crash/race evidence, and recovery outbox composition remain open.
+Full-snapshot verification and a separate authorized serving CAS are still required.
+
+The adjacent additive-backfill gate remains open. `DataBackfillCoordinator` has
+only an in-memory store and integration-test callers, processes pages outside
+checkpoint persistence, and resets uncertain status without observing target
+effects. Its four tests do not prove durable recovery. Replace it through real
+owner transaction/composition with exact replay identity and observed recovery;
+the central release-safety checklist records this as incomplete.
 
 On 2026-09-03, settings recovery ports and separate preview/apply transports were added. Production protection and terminal fencing remain incomplete under Section 4 of the Rollback Plan:
 - Audit found plaintext with an unkeyed SHA-256 context tag and a permissive host policy with fabricated secret-handle evidence. Both adapters were deleted. Settings recovery mutations now require an owner service supplied through host `GraphqlRuntimeInputs`; missing policy/encryption composition returns unavailable, and previews cannot authorize apply without it. The owner service accepts shared policy/cipher ports without copying or defaulting their implementations. Real encryption/KMS, retention, secret-handle, hold, and terminal-fence adapters remain required before this surface is operational.
@@ -417,16 +460,36 @@ revocation fence or production traffic/job/write drain. Terminal replay remains
 bound to the original full command before mutable lifecycle preconditions,
 including a recheck after waiting for the installation lock. Recovery prepare,
 finalization, and cutover use the same serialization/replay ordering. The
-purge integration passes 1/1 after the policy transaction cutover; fresh broader
-and host runtime checks remain pending.
+purge integration passes 1/1 after the policy transaction cutover. The owner
+library passes 308/308, object-migration fixtures 3/3, and canonical structured-
+copy fixtures 11/11. Scoped owner check/clippy and server check exit 0.
+These results do not prove production maintenance/revocation/fleet fences or the
+complete recovery/retention contract.
 
-Required next cutover: replace every slug/revision storage, broker, copy,
-snapshot, restore, and install selector with stable `data_owner_id` and opaque
-namespace-instance identity in one change. Keep the purged instance tombstoned;
-restore and verify the full snapshot in a fresh empty non-serving instance,
-then perform a separately authorized active-reference CAS. Production fences,
+The canonical pending storage, broker, copy, snapshot, restore, and install
+paths use stable `data_owner_id` and opaque namespace-instance identity.
+Remaining cutover evidence must cover every host/runtime caller and the complete
+production recovery path. A purged instance stays tombstoned; restore verifies
+the full snapshot in a fresh empty non-serving instance before a separately
+authorized active-reference CAS. Production fences,
 host-composed recovery-point encryption/policy, retention holds, and fleet evidence remain
 open. Ledger or source-marker tests do not promote these statuses.
+
+The canonical object-migration service now requires real storage and an explicit
+transaction-backed policy port. It persists the complete request, frozen namespace
+metadata/inventory, and all opaque copy keys before publishing actual digest/size-
+verified bytes with create-only writes. Target references, per-copy checkpoints,
+and the terminal parent receipt commit atomically; targets remain non-serving.
+Exact terminal replay precedes mutable lifecycle/policy facts. Pending operations
+hold both instances against purge, writes, and serving-reference changes, with
+owner-command checks and schema guards. Reconciliation resumes stored requests
+with current policy and reuses reserved keys; it never age-deletes uncertain bytes.
+The rewritten file-backed fixtures pass 3/3, covering real bytes, corruption,
+policy revocation, reopen/replay, and pending holds.
+Host maintenance/fleet fences, PostgreSQL race/kill evidence, separate full-manifest
+serving CAS, and safe orphan collection remain open; the object-migration gate is
+not closed. Policy receives actual persisted fields without a fabricated data scope
+or policy revision. FFA/FBA statuses are unchanged.
 
 Implemented:
 
@@ -752,7 +815,8 @@ Artifact-data snapshot create, restore, retention, and collection commands do
 the same: a staging snapshot retains its create context until finalization,
 and a resumed collection emits with the context that committed `collecting`.
 Artifact secret binding also uses the tenant-matched context: its durable
-operation receipt preserves all five evidence fields, rejects conflicting
+operation receipt preserves all five evidence fields and a complete request
+digest covering installation authority and secret-instance identity, rejects conflicting
 idempotency reuse, and emits its outbox event with the same identity. Sandbox
 handle acquisition and host-only secret use remain execution-scoped reads and
 do not become management-command adapters.
@@ -2007,7 +2071,8 @@ were intentionally not run.
 
 The Phase 3.6 entry contracts are `ArtifactDataBroker` and
 `ArtifactDataObjectBroker`: every operation carries host-owned
-tenant/module/data-contract/policy scope and logical names only. They expose no
+tenant/stable-owner/opaque-namespace scope, admitted contract/policy facts, and
+logical names only. They expose no
 physical storage or secret clients. `SeaOrmArtifactDataBroker` supports bounded
 structured JSON values (256-byte logical keys and 64 KiB payloads), while
 `SeaOrmArtifactDataObjectBroker` accepts bounded private objects (32 MiB),
@@ -2025,7 +2090,7 @@ The exact installation ID now travels only as host-controlled sandbox subject
 metadata so the dynamic capability router can select that scope; it is never
 artifact input or an artifact-readable capability value.
 The neutral `platform.data` grant limits the sandbox adapter to
-injected tenant/module/data-contract scope, declared logical-key prefixes, and
+injected installation authority and tenant/owner/namespace scope, declared logical-key prefixes, and
 the `get`/`put`/bounded-`put_batch`/`delete`/bounded-`list` input shapes.
 `SeaOrmArtifactDataCapabilityBroker` routes those operations to this owner
 service after tenant/subject checks; batch entries must have distinct keys and
@@ -2165,9 +2230,10 @@ deployment limits after exact installation/capability admission;
 `ModuleControlPlane` composes the same policy into both structured and object
 capability resolvers.
 The durable secret-reference slice now stores a
-tenant/module/data-contract-scoped logical name and a host-authorized
+tenant/owner/secret-instance-scoped logical name and a host-authorized
 `SecretRef` in a separate revisioned/idempotent table with a redacted outbox
-fact. The returned artifact handle contains only logical name and revision.
+fact. The returned artifact handle contains logical name, opaque secret-instance
+identity, and revision; it contains no resolver reference or value.
 `RegistryArtifactSecretAuthorizer` validates a binding through the deployment
 `SecretResolverRegistry` without resolving its value, then requires a host
 `ArtifactSecretPolicy` for lifecycle, admitted-policy, and RBAC decisions.
@@ -2175,7 +2241,7 @@ fact. The returned artifact handle contains only logical name and revision.
 at the sandbox boundary; resolver aliases, resolver keys, and secret values
 remain host-only. Its owner-provided `acquire_handle` broker additionally
 checks the injected artifact scope and host authorization before returning only
-the logical reference and revision. `ModuleControlPlane` is the production
+the logical reference, instance identity, and revision. `ModuleControlPlane` is the production
 composition root for the binding service, dynamic secret-capability resolver,
 and host-only value-use service; the control-plane verifier rejects direct
 SeaORM construction outside the owner crate. Value consumption is now a
@@ -2184,7 +2250,7 @@ separate host-only service rather than a sandbox `get_value` operation.
 `ArtifactSecretUseAuthorizer`, reloads the reference under tenant RLS, closes
 that transaction, resolves a redacted `SecretString`, and lends it to one
 host-composed fixed-purpose `ArtifactSecretValueConsumer`. The consumer returns
-no payload; the service exposes only logical reference, revision, and purpose
+no payload; the service exposes only logical reference, instance identity, revision, and purpose
 in its receipt, while resolver/consumer failures remain content-free.
 `ModuleControlPlane::artifact_secret_use` is the composition entrypoint.
 Concrete consumers retain responsibility for their operation-specific
@@ -2219,9 +2285,9 @@ same idempotent `staging` snapshot; only complete copies publish a `ready`
 canonical logical manifest digest and outbox event. Object GC takes the same
 namespace lock and retains a source key while a staging snapshot references it.
 
-Restore requires separate host authorization, the same tenant/module/data
-contract identity, a ready manifest with verified digest, and an empty active
-target at the expected namespace revision. It copies and re-hashes snapshot
+Restore requires separate host authorization, the same tenant/stable-owner/data
+contract identity, a ready manifest with verified digest, and an empty staging
+non-serving target at the expected namespace revision. It copies and re-hashes snapshot
 objects before atomically restoring structured values, object metadata,
 materialized indexes, the index contract, namespace revision CAS, durable
 idempotency/audit data, and the restore outbox event. This snapshot restore path
@@ -2229,9 +2295,9 @@ rejects purged targets. The post-purge coordinator allocates a fresh non-serving
 instance and invokes actual restore before separate authorized reference CAS.
 It never clears the original tombstone. Production composition/fences remain open.
 
-The accepted release-safety cutover replaces that current restore identity with
-exact `(scope_id, stable data_owner_id, namespace_instance_id,
-namespace_revision, data_contract_digest)` and adds durable per-copy intents.
+The canonical restore identity is exact
+`(scope_id, stable data_owner_id, namespace_instance_id, namespace_revision,
+data_contract_digest)`, with durable per-copy reservations.
 Module slug and installation are metadata, never attach authority. Post-purge
 restore builds a new isolated non-serving namespace under the same data owner
 and performs a separately authorized active-reference CAS; it never clears the
@@ -2628,7 +2694,7 @@ that reference to an exact active installation; ordinary writes cannot create
 a namespace. Shared storage keys include the same owner/instance identities.
 Restore admission requires a distinct empty staging instance, with no serving
 reference. This is incomplete worktree state, not release-safety readiness:
-all fixtures/callers, independent secret/MCP scopes, migration-object copy
+all fixtures/callers, secret/MCP runtime evidence, migration-object copy
 publication, production recovery composition and outbox facts, and real traffic/job/write/recovery/
 retention fences still require closure. Snapshot/restore copy reservations now
 publish and verify real bytes, and restore verifies the complete target manifest
@@ -3008,8 +3074,15 @@ The shared `ArtifactCapabilityScope` now binds exact installed release, tenant,
 stable owner, installation, and grant revision without a persistence contract.
 MCP and its server invoker consume it and match the complete admitted subject.
 Data scope resolution reuses this binding before adding namespace/contract
-facts. Stateless MCP runtime verification is pending; secrets still require
-the independent opaque secret-instance scope/storage/caller cutover.
+facts. Secrets now use `ArtifactSecretScope`: exact capability authority plus
+the installation's independently persisted `secret_instance_id`. Catalog and
+receipt keys use tenant/owner/secret-instance identity; no slug/revision reader
+or writer remains. Value use accepts an instance-bound handle and rejects a
+transplanted instance or invalid numeric revision. The stateless owner-isolation
+fixture and complete-request replay checks pass in secrets 9/9, with the full
+owner library passing 308/308. Stateless MCP
+runtime verification, real management authorization/revocation fences, and
+production secret-use composition remain open.
 
 Current coordinator runtime evidence: artifact_purge_and_recovery_tests passes
 1/1 with exact admitted/retired installation lineage, actual structured/object
@@ -3020,5 +3093,6 @@ after later lifecycle changes. Tests use explicit fixture policies and fsynced
 local object storage. Host/native/GraphQL composition, recovery lifecycle outbox
 facts, production fences/retention/hold policy, and remaining callers/fixtures
 are still open. The default server check passed before the coordinator API
-replacement and must be repeated. Full owner Clippy exposes unconverted
-secret/data unit-test scopes. FFA remains not_started; FBA remains boundary_ready.
+replacement; the fresh default server check and its request permission-ceiling
+test now pass. Updated secret/data fixtures pass in the full owner library.
+FFA remains not_started; FBA remains boundary_ready.

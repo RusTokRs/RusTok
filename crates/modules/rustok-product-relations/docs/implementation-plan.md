@@ -35,6 +35,11 @@ fba:
 
 ## Local work phases
 
+The package root exports the implemented `ProductRelationsAdmin` route and
+`ProductRelationsPanel` embedding surface. Native adapters use the canonical
+owner `ProductRelationService`. Host compilation remains a separate gate from
+the existing bounded SQLite tests and full native/GraphQL runtime parity.
+
 1. **Phase 1 (Complete)**: Domain entity, migration, service, outbox events, port contracts, and SQLite test suite.
 2. **Phase 2 (Complete)**: Platform registration in `modules.toml`, `apps/server`, and `docs/modules/registry.md`.
 3. **Phase 3 (Complete)**: GraphQL layer in `rustok-commerce` and UI panel in `rustok-product-admin`.

@@ -62,6 +62,133 @@ pub struct ArtifactDataScope {
     pub policy_revision: u64,
 }
 
+/// Actual namespace facts shared by owner maintenance commands. This contains
+/// no caller grant; authority must be evaluated on the owner's transaction.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactDataNamespace {
+    pub tenant_id: Uuid,
+    pub data_owner_id: Uuid,
+    pub namespace_instance_id: Uuid,
+    pub module_slug: String,
+    pub data_contract_revision: u64,
+    pub data_contract_digest: String,
+    pub namespace_revision: u64,
+}
+
+/// Call after root locking. Only the record-copy owner may hand off its own
+/// target hold after validating the exact pending request or continuation.
+pub(crate) async fn ensure_namespace_not_migration_held_on<C: ConnectionTrait>(
+    db: &C,
+    tenant_id: Uuid,
+    data_owner_id: Uuid,
+    namespace_instance_id: Uuid,
+    authorized_record_copy_target: Option<Uuid>,
+) -> Result<(), ArtifactDataError> {
+    let backend = db.get_database_backend();
+    let mut values = vec![
+        uuid_value(tenant_id, backend),
+        uuid_value(data_owner_id, backend),
+        uuid_value(namespace_instance_id, backend),
+    ];
+    let excluded = authorized_record_copy_target.map(|target| {
+        values.push(uuid_value(target, backend));
+        placeholder(backend, 4)
+    });
+    let record =
+        crate::migrations::m20260903_000047_artifact_data_copy_operations::record_copy_hold(
+            backend,
+            "namespace",
+            false,
+            excluded.as_deref(),
+        );
+    let held=db.query_one_raw(Statement::from_sql_and_values(backend,format!(
+        "SELECT 1 FROM module_artifact_data_namespaces namespace
+         WHERE namespace.tenant_id={} AND namespace.data_owner_id={} AND namespace.namespace_instance_id={}
+          AND(EXISTS(SELECT 1 FROM module_artifact_data_object_migration_operations operation
+              WHERE operation.tenant_id=namespace.tenant_id AND operation.data_owner_id=namespace.data_owner_id
+               AND operation.status IN ('preparing','committing')
+               AND(operation.source_namespace_instance_id=namespace.namespace_instance_id OR operation.target_namespace_instance_id=namespace.namespace_instance_id))
+           OR {record})",placeholder(backend,1),placeholder(backend,2),placeholder(backend,3)),values))
+        .await.map_err(storage_error)?;
+    if held.is_some() {
+        return Err(ArtifactDataError::NamespaceHeld);
+    }
+    Ok(())
+}
+
+/// Serialize root mutation before reading namespace facts. The unchanged
+/// logical revision still creates a PostgreSQL row version, so older
+/// repeatable-read writers cannot miss a hold committed behind this lock.
+pub(crate) async fn lock_artifact_data_namespace_on<C: ConnectionTrait>(
+    db: &C,
+    tenant_id: Uuid,
+    data_owner_id: Uuid,
+    namespace_instance_id: Uuid,
+) -> Result<Option<(ArtifactDataNamespace, String)>, ArtifactDataError> {
+    let backend = db.get_database_backend();
+    let values = vec![
+        uuid_value(tenant_id, backend),
+        uuid_value(data_owner_id, backend),
+        uuid_value(namespace_instance_id, backend),
+    ];
+    db.execute_raw(Statement::from_sql_and_values(
+        backend,
+        format!(
+            "UPDATE module_artifact_data_namespaces SET namespace_revision=namespace_revision
+         WHERE tenant_id={} AND data_owner_id={} AND namespace_instance_id={}",
+            placeholder(backend, 1),
+            placeholder(backend, 2),
+            placeholder(backend, 3)
+        ),
+        values.clone(),
+    ))
+    .await
+    .map_err(storage_error)?;
+    let row = db.query_one_raw(Statement::from_sql_and_values(backend, format!(
+        "SELECT namespace.*, CASE WHEN purged_at IS NULL THEN state ELSE 'purged' END AS migration_state
+         FROM module_artifact_data_namespaces namespace
+         WHERE tenant_id={} AND data_owner_id={} AND namespace_instance_id={}{}",
+        placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3),
+        namespace_lock_clause(backend)), values)).await.map_err(storage_error)?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let namespace = ArtifactDataNamespace {
+        tenant_id: uuid_from_row(&row, "tenant_id", backend)?,
+        data_owner_id: uuid_from_row(&row, "data_owner_id", backend)?,
+        namespace_instance_id: uuid_from_row(&row, "namespace_instance_id", backend)?,
+        module_slug: row.try_get("", "module_slug").map_err(storage_error)?,
+        data_contract_revision: u64::try_from(
+            row.try_get::<i64>("", "data_contract_revision")
+                .map_err(storage_error)?,
+        )
+        .map_err(storage_error)?,
+        data_contract_digest: row
+            .try_get("", "data_contract_digest")
+            .map_err(storage_error)?,
+        namespace_revision: u64::try_from(
+            row.try_get::<i64>("", "namespace_revision")
+                .map_err(storage_error)?,
+        )
+        .map_err(storage_error)?,
+    };
+    if namespace.tenant_id.is_nil()
+        || namespace.data_owner_id.is_nil()
+        || namespace.namespace_instance_id.is_nil()
+        || !valid_module_slug(&namespace.module_slug)
+        || namespace.data_contract_revision == 0
+        || namespace.namespace_revision == 0
+        || !crate::promotion::valid_digest(&namespace.data_contract_digest)
+    {
+        return Err(ArtifactDataError::InvalidScope);
+    }
+    Ok(Some((
+        namespace,
+        row.try_get("", "migration_state").map_err(storage_error)?,
+    )))
+}
+
 /// Host-selected limits for one exact artifact-data policy decision. An
 /// artifact never supplies these values. Production composition may tighten
 /// them, but cannot exceed the platform hard ceilings validated here.
@@ -3951,7 +4078,7 @@ async fn enforce_structured_data_quota<C: ConnectionTrait>(
     )
 }
 
-async fn synchronize_artifact_data_indexes(
+pub(crate) async fn synchronize_artifact_data_indexes(
     transaction: &DatabaseTransaction,
     scope: &ArtifactDataScope,
     record: &ArtifactDataRecord,
@@ -4025,7 +4152,7 @@ async fn delete_artifact_data_indexes<C: ConnectionTrait>(
     Ok(())
 }
 
-fn index_contract_digest(indexes: &[ArtifactDataIndexField]) -> Option<String> {
+pub(crate) fn index_contract_digest(indexes: &[ArtifactDataIndexField]) -> Option<String> {
     (!indexes.is_empty()).then(|| {
         let encoded = serde_json::to_vec(indexes)
             .expect("artifact data index declarations are always serializable");
@@ -5063,6 +5190,7 @@ fn data_capability_error(
         | ArtifactDataError::RevisionConflict
         | ArtifactDataError::NamespacePurged
         | ArtifactDataError::PurgePrecondition
+        | ArtifactDataError::NamespaceHeld
         | ArtifactDataError::ExportPrecondition
         | ArtifactDataError::SnapshotPrecondition
         | ArtifactDataError::SnapshotLimitExceeded
@@ -5398,6 +5526,18 @@ where
         self.authorizer
             .authorize_purge_on(&transaction, &request, &locked_target.authorization)
             .await?;
+        ensure_namespace_not_migration_held_on(
+            &transaction,
+            scope.tenant_id,
+            scope.data_owner_id,
+            scope.namespace_instance_id,
+            None,
+        )
+        .await
+        .map_err(|error| match error {
+            ArtifactDataError::Storage(message) => ArtifactDataError::Storage(message),
+            _ => ArtifactDataError::PurgePrecondition,
+        })?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
                 backend,
@@ -6282,11 +6422,11 @@ async fn require_active_namespace<C: ConnectionTrait>(
 }
 
 /// Validates the exact immutable index declaration for a namespace. The first
-/// indexed write binds the declaration before it persists data. A legacy
+/// indexed write binds the declaration before it persists data. An unbound
 /// namespace with structured values but no binding is intentionally unavailable
 /// for indexed queries: returning a partial result would be less safe than
 /// requiring an owner-mediated data-contract upgrade.
-async fn validate_artifact_data_index_contract<C: ConnectionTrait>(
+pub(crate) async fn validate_artifact_data_index_contract<C: ConnectionTrait>(
     connection: &C,
     scope: &ArtifactDataScope,
     backend: DbBackend,
@@ -6564,6 +6704,8 @@ pub enum ArtifactDataError {
     RevisionConflict,
     #[error("artifact data namespace was purged")]
     NamespacePurged,
+    #[error("artifact data namespace is held by a maintenance operation")]
+    NamespaceHeld,
     #[error("artifact data purge precondition failed")]
     PurgePrecondition,
     #[error("artifact data export precondition failed")]

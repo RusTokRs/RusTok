@@ -15,15 +15,38 @@ use rustok_core::UserRole;
 use rustok_api::Permission;
 use rustok_rbac::{
     AuthorizationDecision, DeniedReasonKind, PermissionCache, PermissionCacheLookup,
-    RuntimePermissionResolver, SeaOrmRelationPermissionStore, authorize_all_permissions,
-    authorize_any_permission, authorize_permission, invalidate_cached_permissions,
+    PermissionResolution, PermissionResolver, RuntimePermissionResolver,
+    SeaOrmRelationPermissionStore, authorize_all_permissions, authorize_any_permission,
+    authorize_permission, invalidate_cached_permissions,
 };
-
-#[cfg(test)]
-use super::rbac_persistence::assign_role_permissions_via_store;
 
 pub(crate) type ServerRuntimePermissionResolver =
     RuntimePermissionResolver<SeaOrmRelationPermissionStore, MokaPermissionCache, Error>;
+
+/// Feed authenticated request evidence to the canonical owner policy engine.
+/// A matching snapshot preserves the caller's permission ceiling.
+struct RequestPermissionResolver {
+    runtime: ServerRuntimePermissionResolver,
+}
+
+#[async_trait]
+impl PermissionResolver for RequestPermissionResolver {
+    type Error = Error;
+
+    async fn resolve_permissions(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+    ) -> Result<PermissionResolution> {
+        if let Some(permissions) = super::rbac_request_scope::permissions_for(tenant_id, user_id) {
+            return Ok(PermissionResolution {
+                permissions,
+                cache_hit: false,
+            });
+        }
+        self.runtime.resolve_permissions(tenant_id, user_id).await
+    }
+}
 
 #[derive(Clone, Copy)]
 pub(crate) enum AuthorizationCheck<'a> {
@@ -186,7 +209,9 @@ pub(crate) async fn authorize_request(
     check: AuthorizationCheck<'_>,
 ) -> Result<AuthorizationRuntimeOutcome> {
     let started_at = Instant::now();
-    let resolver = resolver(db);
+    let resolver = RequestPermissionResolver {
+        runtime: resolver(db),
+    };
     let decision = match check {
         AuthorizationCheck::Single(permission) => {
             authorize_permission(&resolver, tenant_id, user_id, permission).await?
@@ -570,12 +595,22 @@ mod tests {
         )
         .await;
 
-        assign_role_permissions_via_store(&db, &user_a, &tenant_a, UserRole::Customer)
-            .await
-            .expect("assign local role");
-        assign_role_permissions_via_store(&db, &user_b, &tenant_b, UserRole::Admin)
-            .await
-            .expect("assign foreign role");
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+            &db,
+            tenant_a,
+            user_a,
+            UserRole::Customer,
+        )
+        .await
+        .expect("assign local role");
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+            &db,
+            tenant_b,
+            user_b,
+            UserRole::Admin,
+        )
+        .await
+        .expect("assign foreign role");
 
         let local_role = roles::Entity::find()
             .filter(roles::Column::TenantId.eq(tenant_a))

@@ -742,6 +742,46 @@ fences, host/native/GraphQL composition, recovery outbox facts, and remaining
 callers/fixtures are open. The full release-safety promise remains unproven;
 module FFA/FBA readiness is unchanged.
 
+## Current object-migration evidence
+
+The canonical service and consolidated pending schema now persist a frozen
+parent request/inventory and every opaque copy reservation before publication.
+Actual create-only bytes are digest/size-verified before atomic reference and
+terminal checkpoints. An explicit current policy port receives real locked
+namespace metadata without a fabricated policy revision. Pending operations hold
+both instances against purge, writes, and serving-reference changes; reconciliation
+reuses stored requests and keys and never deletes uncertain bytes. File-backed
+runtime fixtures replace the metadata-only tests and pass 3/3 on SQLite/local
+storage with durable close/reopen and current policy revalidation.
+This does not close the maintenance migration gate: host policy/fleet fences,
+PostgreSQL races, the full kill matrix, separate full-manifest serving CAS, and
+proven orphan collection are still missing. Module readiness is unchanged.
+
+## Current structured-copy evidence
+
+Structured pages use the canonical `ArtifactDataCopier` owner API with mandatory
+transaction-backed policy and exact namespace revisions. A sealed non-serving
+source and staging non-serving target are locked in deterministic order. Record
+schema/value/revision/size checks, declared indexes, quota, target revision CAS,
+and immutable exact-response receipts commit atomically after independent durable
+admission of the full request and frozen page. Shared database guards retain both
+namespaces during preparing and between non-terminal structured pages. Only the
+authorized owner continuation hands off that page hold; terminal structured-page
+completion does not prove retention through the entire record/object migration.
+Reconciliation uses original persisted context and frozen evidence, rechecks
+current policy/schema/quota, and records the actual commit policy revision. Exact
+replay preserves continuation before mutable facts; skipped continuations and
+terminal restarts are rejected. The prior API and stale-intent failure sweep are
+deleted. File-backed SQLite fixture-policy runtime tests pass 11/11 for this protocol,
+including durable reservation without writes, receipt-commit rollback with intent
+retention, reopen/reconciliation with current policy/quota, and between-page
+write/reference rejection. Owner library tests pass 308/308, object-migration
+tests 3/3, purge/recovery integration 1/1, and snapshot/post-purge recovery 1/1;
+scoped owner check/clippy and server check exit 0.
+Complete maintenance/fleet fences,
+whole-operation source holds, PostgreSQL crash/race proof, recovery outbox, full
+snapshot verification, and separate serving CAS remain open; readiness is unchanged.
+
 ## Related Documents
 
 - [Module Release and Rollback Plan](../docs/modules/module-release-rollback-plan.md)

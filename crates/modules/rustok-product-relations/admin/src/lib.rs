@@ -7,4 +7,4 @@ pub mod ui;
 pub use core::*;
 pub use model::*;
 pub use transport::*;
-pub use ui::ProductRelationsPanel;
+pub use ui::{ProductRelationsAdmin, ProductRelationsPanel};

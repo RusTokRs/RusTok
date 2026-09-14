@@ -1,5 +1,9 @@
 # `rustok-auth` Documentation
 
+`OAuthAppTranslationLifecycle` serializes as `active` or `archived`, matching
+its canonical persisted spelling. Host translation snapshots consume this owner
+type directly rather than defining another lifecycle enum.
+
 `rustok-auth` is the core authentication module of the platform. It holds JWT lifecycle,
 credential hashing, refresh/reset/invite/email-verification token flows and
 runtime RBAC surface `users:*`.

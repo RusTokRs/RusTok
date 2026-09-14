@@ -6,7 +6,7 @@ use rustok_outbox::idempotency;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, FromQueryResult,
     QueryFilter, QueryOrder, QuerySelect, Statement, TransactionTrait,
-    sea_query::Expr,
+    sea_query::{Expr, ExprTrait},
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

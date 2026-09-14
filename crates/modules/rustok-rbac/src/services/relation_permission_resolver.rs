@@ -194,6 +194,23 @@ impl<C: ConnectionTrait> crate::PermissionResolver for ConnectionRelationPermiss
     }
 }
 
+/// Read exact persisted role membership, excluding subjects from other tenants.
+pub async fn load_role_user_ids_on<C: ConnectionTrait>(
+    db: &C,
+    tenant_id: uuid::Uuid,
+    role: rustok_core::UserRole,
+) -> Result<Vec<uuid::Uuid>, sea_orm::DbErr> {
+    let store = ConnectionRelationPermissionStore { db };
+    db.query_all_raw(store.statement(
+        "SELECT DISTINCT subject.id FROM users subject JOIN user_roles membership ON membership.user_id = subject.id JOIN roles role ON role.id = membership.role_id AND role.tenant_id = subject.tenant_id WHERE role.tenant_id = ? AND role.slug = ? ORDER BY subject.id",
+        vec![tenant_id.into(), role.to_string().into()],
+    )?)
+    .await?
+    .iter()
+    .map(|row| row.try_get("", "id"))
+    .collect()
+}
+
 #[async_trait::async_trait]
 impl crate::PermissionResolver for SeaOrmRelationPermissionStore {
     type Error = sea_orm::DbErr;
@@ -401,7 +418,7 @@ mod tests {
             .expect("sqlite database");
         for sql in [
             "CREATE TABLE users (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL)",
-            "CREATE TABLE roles (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL)",
+            "CREATE TABLE roles (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, slug TEXT NOT NULL)",
             "CREATE TABLE user_roles (user_id TEXT NOT NULL, role_id TEXT NOT NULL)",
             "CREATE TABLE permissions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, resource TEXT NOT NULL, action TEXT NOT NULL)",
             "CREATE TABLE role_permissions (role_id TEXT NOT NULL, permission_id TEXT NOT NULL)",
@@ -420,7 +437,7 @@ mod tests {
                 vec![user_id.into(), tenant_id.into()],
             ),
             (
-                "INSERT INTO roles VALUES (?1, ?2)",
+                "INSERT INTO roles VALUES (?1, ?2, 'admin')",
                 vec![role_id.into(), tenant_id.into()],
             ),
             (
@@ -456,6 +473,39 @@ mod tests {
         assert!(decision.allowed);
         assert!(!decision.cache_hit);
         assert_eq!(decision.engine, crate::AuthzEngine::Policy);
+
+        let foreign_user_id = uuid::Uuid::new_v4();
+        let foreign_tenant_id = uuid::Uuid::new_v4();
+        for (sql, values) in [
+            (
+                "INSERT INTO users VALUES (?1, ?2)",
+                vec![foreign_user_id.into(), foreign_tenant_id.into()],
+            ),
+            (
+                "INSERT INTO user_roles VALUES (?1, ?2)",
+                vec![foreign_user_id.into(), role_id.into()],
+            ),
+        ] {
+            db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                sql,
+                values,
+            ))
+            .await
+            .expect("foreign membership fixture");
+        }
+        assert_eq!(
+            super::load_role_user_ids_on(&db, tenant_id, rustok_core::UserRole::Admin)
+                .await
+                .expect("owner role membership"),
+            vec![user_id]
+        );
+        assert!(
+            super::load_role_user_ids_on(&db, foreign_tenant_id, rustok_core::UserRole::Admin)
+                .await
+                .expect("isolated role membership")
+                .is_empty()
+        );
         {
             use sea_orm::TransactionTrait;
 
@@ -467,6 +517,12 @@ mod tests {
                 ))
                 .await
                 .expect("transaction-local revocation");
+            assert!(
+                super::load_role_user_ids_on(&transaction, tenant_id, rustok_core::UserRole::Admin)
+                    .await
+                    .expect("membership must use the supplied transaction")
+                    .is_empty()
+            );
             assert!(
                 super::resolve_persisted_permissions_on(&transaction, &tenant_id, &user_id)
                     .await

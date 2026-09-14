@@ -5,7 +5,8 @@ use uuid::Uuid;
 ///
 /// Revocation archives presentation while preserving the exact copy revision
 /// that was visible before security lifecycle changed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum OAuthAppTranslationLifecycle {
     Active,
     Archived,

@@ -47,7 +47,7 @@ async fn product_relations_list_native(
         use leptos::prelude::expect_context;
         use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
         use rustok_product_relations::{
-            ProductRelationsPort, ProductRelationsService, dto::RelationType,
+            ProductRelationService, ProductRelationsPort, dto::RelationType,
         };
         use std::str::FromStr;
 
@@ -71,7 +71,7 @@ async fn product_relations_list_native(
             .as_deref()
             .and_then(|s| RelationType::from_str(s).ok());
 
-        let service = ProductRelationsService::new(runtime.db_clone());
+        let service = ProductRelationService::new(runtime.db_clone());
         let list = service
             .list_relations(tenant.id, product_id, rtype)
             .await
@@ -110,7 +110,7 @@ async fn product_relations_command_native(
         use leptos::prelude::expect_context;
         use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
         use rustok_product_relations::{
-            ProductRelationsPort, ProductRelationsService,
+            ProductRelationService, ProductRelationsPort,
             dto::{CreateProductRelationInput, RelationType, ReorderProductRelationsInput},
         };
         use std::str::FromStr;
@@ -126,7 +126,7 @@ async fn product_relations_command_native(
 
         ensure_tenant(&auth, &tenant)?;
 
-        let service = ProductRelationsService::new(runtime.db_clone());
+        let service = ProductRelationService::new(runtime.db_clone());
 
         match command {
             ProductRelationsAdminCommand::Add { draft } => {

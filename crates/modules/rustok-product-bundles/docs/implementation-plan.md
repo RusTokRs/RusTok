@@ -24,14 +24,19 @@ Product bundles, kits, configurable sets, item compositions, and package discoun
 
 ```yaml
 ffa:
-  status: ready
+  status: in_progress
   shape: core_transport_ui
 fba:
   status: boundary_ready
-  shape: admin_only
+  shape: core_transport_ui
 ```
 
 ## Local work phases
+
+The canonical admin root is `ProductBundlesAdmin`, exported from the package
+root for manifest-generated host composition. There is no alternate root alias.
+The local readiness block matches the central board; host compilation alone
+does not prove transport or runtime parity.
 
 1. **Phase 1**: Domain entities (`product_bundles`, `product_bundle_translations`, `product_bundle_items`), migrations, service, outbox events, port contracts, and SQLite test suite.
 2. **Phase 2**: Dedicated admin UI package `rustok-product-bundles-admin` with FFA/FBA architecture (`model.rs`, `core.rs`, `transport.rs`, `ui/leptos.rs`, bilingual locales).

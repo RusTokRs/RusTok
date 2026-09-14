@@ -9,19 +9,18 @@ use sea_orm::{
     ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::sync::Arc;
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::data::{
-    ArtifactDataScope, artifact_data_scope_for_execution, configure_tenant_scope,
-    namespace_lock_clause, optional_revision_value, placeholder, revision_value, uuid_from_row,
-    uuid_value,
+    configure_tenant_scope, namespace_lock_clause, optional_revision_value, placeholder,
+    revision_value, uuid_from_row, uuid_value,
 };
 use crate::{
-    ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution, ControlPlaneInfrastructure,
-    ModuleCommandContext, resolve_granted_artifact_capability,
+    ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution, ArtifactCapabilityScope,
+    ControlPlaneInfrastructure, InstalledModuleArtifact, ModuleCommandContext,
+    resolve_granted_artifact_capability,
 };
 
 const MAX_REFERENCE_NAME_BYTES: usize = 96;
@@ -30,12 +29,59 @@ const MAX_RESOLVER_KEY_BYTES: usize = 512;
 const MAX_REASON_BYTES: usize = 2_000;
 const MAX_SECRET_USE_PURPOSE_BYTES: usize = 96;
 
+/// Independent secret namespace with exact installation-backed capability authority.
+/// Its opaque instance is persisted by installation continuity; data persistence
+/// contracts and artifact-data instances do not define secret ownership.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactSecretScope {
+    pub capability: ArtifactCapabilityScope,
+    pub secret_instance_id: Uuid,
+}
+
+impl ArtifactSecretScope {
+    fn validate(&self) -> Result<(), ArtifactSecretError> {
+        let subject = SandboxSubject::ModuleArtifact {
+            installation_id: self.capability.installation_id,
+            slug: self.capability.release.slug.clone(),
+            version: self.capability.release.version.clone(),
+            digest: self.capability.release.digest.clone(),
+        };
+        if self.secret_instance_id.is_nil() || !self.capability.matches_subject(&subject) {
+            return Err(ArtifactSecretError::InvalidScope);
+        }
+        Ok(())
+    }
+}
+
+fn artifact_secret_scope_for_execution(
+    installation: &InstalledModuleArtifact,
+    execution: &ArtifactCapabilityExecution,
+    capability: &CapabilityName,
+) -> SandboxResult<ArtifactSecretScope> {
+    let scope = ArtifactSecretScope {
+        capability: crate::artifact_capability_router::artifact_capability_scope_for_execution(
+            installation,
+            execution,
+            capability,
+        )?,
+        secret_instance_id: installation
+            .secret_instance_id
+            .ok_or_else(|| SandboxError::CapabilityDenied(capability.clone()))?,
+    };
+    scope
+        .validate()
+        .map_err(|_| SandboxError::CapabilityDenied(capability.clone()))?;
+    Ok(scope)
+}
+
 /// Owner command that binds one admitted logical reference to a deployment
 /// secret reference. The reference is validated by a host authorizer before it
 /// becomes durable; no secret value is accepted or stored here.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArtifactSecretBindingRequest {
-    pub scope: ArtifactDataScope,
+    pub scope: ArtifactSecretScope,
     pub reference: String,
     pub secret: SecretRef,
     pub expected_revision: Option<u64>,
@@ -46,8 +92,10 @@ pub struct ArtifactSecretBindingRequest {
 /// The only secret-binding shape returned to artifact-facing callers. Resolver
 /// aliases, resolver keys, and secret values stay inside host-owned adapters.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArtifactSecretHandle {
     pub reference: String,
+    pub secret_instance_id: Uuid,
     pub revision: u64,
 }
 
@@ -55,8 +103,9 @@ pub struct ArtifactSecretHandle {
 /// It contains sandbox identity and scope only; it never carries a resolver
 /// alias, resolver key, or resolved secret value.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArtifactSecretHandleRequest {
-    pub scope: ArtifactDataScope,
+    pub scope: ArtifactSecretScope,
     pub reference: String,
     pub execution_id: Uuid,
     pub subject: SandboxSubject,
@@ -69,10 +118,10 @@ pub struct ArtifactSecretHandleRequest {
 /// execution identity but never a resolver alias, resolver key, or secret
 /// value. The selected consumer is fixed by host composition, not guest input.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArtifactSecretUseRequest {
-    pub scope: ArtifactDataScope,
-    pub reference: String,
-    pub expected_revision: u64,
+    pub scope: ArtifactSecretScope,
+    pub handle: ArtifactSecretHandle,
     pub execution_id: Uuid,
     pub subject: SandboxSubject,
     pub phase: ExecutionPhase,
@@ -84,7 +133,7 @@ pub struct ArtifactSecretUseRequest {
 /// short-lived `SecretString` borrow.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArtifactSecretUseContext {
-    pub scope: ArtifactDataScope,
+    pub scope: ArtifactSecretScope,
     pub reference: String,
     pub revision: u64,
     pub execution_id: Uuid,
@@ -100,6 +149,7 @@ pub struct ArtifactSecretUseContext {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactSecretUseReceipt {
     pub reference: String,
+    pub secret_instance_id: Uuid,
     pub revision: u64,
     pub purpose: String,
 }
@@ -206,7 +256,7 @@ where
         request: &ArtifactSecretBindingRequest,
     ) -> Result<(), ArtifactSecretError> {
         self.resolvers
-            .validate_reference_for_tenant(request.scope.tenant_id, &request.secret)
+            .validate_reference_for_tenant(request.scope.capability.tenant_id, &request.secret)
             .map_err(|_| ArtifactSecretError::PolicyDenied)?;
         self.policy.authorize_secret_binding(request).await
     }
@@ -276,7 +326,7 @@ impl ArtifactSecretHandleAuthorizer for SeaOrmArtifactSecretHandlePolicy {
             .map_err(|_| ArtifactSecretError::PolicyDenied)?;
         let execution = ArtifactCapabilityExecution {
             installation_id,
-            tenant_id: request.scope.tenant_id,
+            tenant_id: request.scope.capability.tenant_id,
             slug: slug.clone(),
             version: version.clone(),
             digest: digest.clone(),
@@ -285,7 +335,7 @@ impl ArtifactSecretHandleAuthorizer for SeaOrmArtifactSecretHandlePolicy {
             .await
             .map_err(|_| ArtifactSecretError::PolicyDenied)?;
         let resolved_scope =
-            artifact_data_scope_for_execution(&installation, &execution, &capability)
+            artifact_secret_scope_for_execution(&installation, &execution, &capability)
                 .map_err(|_| ArtifactSecretError::PolicyDenied)?;
         if resolved_scope != request.scope {
             return Err(ArtifactSecretError::PolicyDenied);
@@ -330,10 +380,11 @@ where
         request: ArtifactSecretBindingRequest,
     ) -> Result<ArtifactSecretHandle, ArtifactSecretError> {
         validate_request(&request)?;
+        let request_digest = crate::promotion::digest_json(&request).map_err(storage_error)?;
         self.authorizer.authorize_secret_binding(&request).await?;
 
         let transaction = self.db.begin().await.map_err(storage_error)?;
-        configure_tenant_scope(&transaction, request.scope.tenant_id)
+        configure_tenant_scope(&transaction, request.scope.capability.tenant_id)
             .await
             .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?;
         let backend = transaction.get_database_backend();
@@ -342,19 +393,18 @@ where
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT reference_name, resolver_alias, resolver_key, expected_revision, actor_id, trace_id, correlation_id, idempotency_key, reason, revision
+                    "SELECT request_digest, reference_name, resolver_alias, resolver_key, expected_revision, actor_id, trace_id, correlation_id, idempotency_key, reason, revision
                      FROM module_artifact_secret_binding_operations
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND idempotency_key = {}",
+                     WHERE tenant_id = {} AND data_owner_id = {} AND secret_instance_id = {} AND idempotency_key = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
                     placeholder(backend, 4),
                 ),
                 vec![
-                    uuid_value(request.scope.tenant_id, backend),
-                    request.scope.module_slug.clone().into(),
-                    revision_value(request.scope.data_contract_revision)
-                        .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?,
+                    uuid_value(request.scope.capability.tenant_id, backend),
+                    uuid_value(request.scope.capability.data_owner_id, backend),
+                    uuid_value(request.scope.secret_instance_id, backend),
                     uuid_value(request.context.idempotency_key, backend),
                 ],
             ))
@@ -366,10 +416,12 @@ where
             let key: String = row.try_get("", "resolver_key").map_err(storage_error)?;
             let expected_revision: Option<i64> =
                 row.try_get("", "expected_revision").map_err(storage_error)?;
-            let context = command_context_from_receipt_row(&row, request.scope.tenant_id, backend)?;
+            let context = command_context_from_receipt_row(&row, request.scope.capability.tenant_id, backend)?;
             let reason: String = row.try_get("", "reason").map_err(storage_error)?;
             let revision: i64 = row.try_get("", "revision").map_err(storage_error)?;
-            if reference != request.reference
+            let stored_digest: String = row.try_get("", "request_digest").map_err(storage_error)?;
+            if stored_digest != request_digest
+                || reference != request.reference
                 || resolver != request.secret.resolver
                 || key != request.secret.key
                 || expected_revision
@@ -384,8 +436,9 @@ where
             }
             transaction.commit().await.map_err(storage_error)?;
             return Ok(ArtifactSecretHandle {
+                secret_instance_id: request.scope.secret_instance_id,
                 reference,
-                revision: u64::try_from(revision).map_err(|_| ArtifactSecretError::RevisionConflict)?,
+                revision: positive_receipt_revision(revision)?,
             });
         }
 
@@ -394,7 +447,7 @@ where
                 backend,
                 format!(
                     "SELECT revision FROM module_artifact_secret_bindings
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     WHERE tenant_id = {} AND data_owner_id = {} AND secret_instance_id = {}
                      AND reference_name = {}{}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -408,8 +461,7 @@ where
             .map_err(storage_error)?;
         let revision = if let Some(row) = current {
             let current_revision: i64 = row.try_get("", "revision").map_err(storage_error)?;
-            let current_revision = u64::try_from(current_revision)
-                .map_err(|_| ArtifactSecretError::RevisionConflict)?;
+            let current_revision = positive_receipt_revision(current_revision)?;
             if request.expected_revision != Some(current_revision) {
                 return Err(ArtifactSecretError::RevisionConflict);
             }
@@ -422,7 +474,7 @@ where
                     format!(
                         "UPDATE module_artifact_secret_bindings
                          SET resolver_alias = {}, resolver_key = {}, revision = {}, actor_id = {}, reason = {}, updated_at = {}
-                         WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                         WHERE tenant_id = {} AND data_owner_id = {} AND secret_instance_id = {}
                          AND reference_name = {} AND revision = {}",
                         placeholder(backend, 1),
                         placeholder(backend, 2),
@@ -443,10 +495,9 @@ where
                             .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?,
                         uuid_value(request.context.actor_id, backend),
                         request.reason.clone().into(),
-                        uuid_value(request.scope.tenant_id, backend),
-                        request.scope.module_slug.clone().into(),
-                        revision_value(request.scope.data_contract_revision)
-                            .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?,
+                        uuid_value(request.scope.capability.tenant_id, backend),
+                        uuid_value(request.scope.capability.data_owner_id, backend),
+                        uuid_value(request.scope.secret_instance_id, backend),
                         request.reference.clone().into(),
                         revision_value(current_revision)
                             .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?,
@@ -467,7 +518,7 @@ where
                     backend,
                     format!(
                         "INSERT INTO module_artifact_secret_bindings
-                         (tenant_id, module_slug, data_contract_revision, reference_name, resolver_alias, resolver_key,
+                         (tenant_id, data_owner_id, secret_instance_id, reference_name, resolver_alias, resolver_key,
                           revision, actor_id, reason, created_at, updated_at)
                          VALUES ({}, {}, {}, {}, {}, {}, 1, {}, {}, {}, {})",
                         placeholder(backend, 1),
@@ -482,10 +533,9 @@ where
                         crate::data::now_expression(backend),
                     ),
                     vec![
-                        uuid_value(request.scope.tenant_id, backend),
-                        request.scope.module_slug.clone().into(),
-                        revision_value(request.scope.data_contract_revision)
-                            .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?,
+                        uuid_value(request.scope.capability.tenant_id, backend),
+                        uuid_value(request.scope.capability.data_owner_id, backend),
+                        uuid_value(request.scope.secret_instance_id, backend),
                         request.reference.clone().into(),
                         request.secret.resolver.clone().into(),
                         request.secret.key.clone().into(),
@@ -503,9 +553,9 @@ where
                 backend,
                 format!(
                     "INSERT INTO module_artifact_secret_binding_operations
-                     (tenant_id, module_slug, data_contract_revision, idempotency_key, reference_name, resolver_alias,
-                      resolver_key, expected_revision, actor_id, trace_id, correlation_id, reason, revision, completed_at)
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                     (tenant_id, data_owner_id, secret_instance_id, idempotency_key, reference_name, resolver_alias,
+                      resolver_key, expected_revision, actor_id, trace_id, correlation_id, reason, revision, request_digest, completed_at)
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -519,13 +569,13 @@ where
                     placeholder(backend, 11),
                     placeholder(backend, 12),
                     placeholder(backend, 13),
+                    placeholder(backend, 14),
                     crate::data::now_expression(backend),
                 ),
                 vec![
-                    uuid_value(request.scope.tenant_id, backend),
-                    request.scope.module_slug.clone().into(),
-                    revision_value(request.scope.data_contract_revision)
-                        .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?,
+                    uuid_value(request.scope.capability.tenant_id, backend),
+                    uuid_value(request.scope.capability.data_owner_id, backend),
+                    uuid_value(request.scope.secret_instance_id, backend),
                     uuid_value(request.context.idempotency_key, backend),
                     request.reference.clone().into(),
                     request.secret.resolver.clone().into(),
@@ -538,6 +588,7 @@ where
                     request.reason.clone().into(),
                     revision_value(revision)
                         .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?,
+                    request_digest.into(),
                 ],
             ))
             .await
@@ -548,9 +599,11 @@ where
                 self.infrastructure.event_envelope_for_command(
                     &request.context,
                     DomainEvent::ModuleArtifactSecretBound {
-                        tenant_id: request.scope.tenant_id,
-                        module_slug: request.scope.module_slug.clone(),
-                        data_contract_revision: request.scope.data_contract_revision,
+                        tenant_id: request.scope.capability.tenant_id,
+                        module_slug: request.scope.capability.release.slug.clone(),
+                        installation_id: request.scope.capability.installation_id,
+                        data_owner_id: request.scope.capability.data_owner_id,
+                        secret_instance_id: request.scope.secret_instance_id,
                         revision,
                     },
                 ),
@@ -559,6 +612,7 @@ where
             .map_err(storage_error)?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(ArtifactSecretHandle {
+            secret_instance_id: request.scope.secret_instance_id,
             reference: request.reference,
             revision,
         })
@@ -590,7 +644,7 @@ where
         self.authorizer.authorize_secret_handle(&request).await?;
 
         let transaction = self.db.begin().await.map_err(storage_error)?;
-        configure_tenant_scope(&transaction, request.scope.tenant_id)
+        configure_tenant_scope(&transaction, request.scope.capability.tenant_id)
             .await
             .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?;
         let backend = transaction.get_database_backend();
@@ -599,7 +653,7 @@ where
                 backend,
                 format!(
                     "SELECT reference_name, revision FROM module_artifact_secret_bindings
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     WHERE tenant_id = {} AND data_owner_id = {} AND secret_instance_id = {}
                      AND reference_name = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -615,8 +669,9 @@ where
         let reference: String = row.try_get("", "reference_name").map_err(storage_error)?;
         let revision: i64 = row.try_get("", "revision").map_err(storage_error)?;
         Ok(ArtifactSecretHandle {
+            secret_instance_id: request.scope.secret_instance_id,
             reference,
-            revision: u64::try_from(revision)
+            revision: positive_receipt_revision(revision)
                 .map_err(|_| ArtifactSecretError::HandleUnavailable)?,
         })
     }
@@ -662,7 +717,7 @@ where
         self.authorizer.authorize_secret_use(&request).await?;
 
         let transaction = self.db.begin().await.map_err(storage_error)?;
-        configure_tenant_scope(&transaction, request.scope.tenant_id)
+        configure_tenant_scope(&transaction, request.scope.capability.tenant_id)
             .await
             .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?;
         let backend = transaction.get_database_backend();
@@ -672,7 +727,7 @@ where
                 format!(
                     "SELECT resolver_alias, resolver_key, revision
                      FROM module_artifact_secret_bindings
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     WHERE tenant_id = {} AND data_owner_id = {} AND secret_instance_id = {}
                      AND reference_name = {} AND revision = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -689,16 +744,19 @@ where
         let resolver: String = row.try_get("", "resolver_alias").map_err(storage_error)?;
         let key: String = row.try_get("", "resolver_key").map_err(storage_error)?;
         let revision: i64 = row.try_get("", "revision").map_err(storage_error)?;
-        let revision =
-            u64::try_from(revision).map_err(|_| ArtifactSecretError::HandleUnavailable)?;
+        let revision = positive_receipt_revision(revision)
+            .map_err(|_| ArtifactSecretError::HandleUnavailable)?;
         let secret = self
             .resolvers
-            .resolve_for_tenant(request.scope.tenant_id, &SecretRef { resolver, key })
+            .resolve_for_tenant(
+                request.scope.capability.tenant_id,
+                &SecretRef { resolver, key },
+            )
             .await
             .map_err(|_| ArtifactSecretError::ResolutionUnavailable)?;
         let context = ArtifactSecretUseContext {
             scope: request.scope,
-            reference: request.reference,
+            reference: request.handle.reference,
             revision,
             execution_id: request.execution_id,
             subject: request.subject,
@@ -713,6 +771,7 @@ where
             .map_err(|_| ArtifactSecretError::ConsumerUnavailable)?;
         Ok(ArtifactSecretUseReceipt {
             reference: context.reference,
+            secret_instance_id: context.scope.secret_instance_id,
             revision: context.revision,
             purpose: context.purpose.to_string(),
         })
@@ -725,14 +784,14 @@ where
 #[derive(Clone)]
 pub struct SeaOrmArtifactSecretCapabilityBroker<A> {
     handles: SeaOrmArtifactSecretHandleService<A>,
-    scope: ArtifactDataScope,
+    scope: ArtifactSecretScope,
 }
 
 impl<A> SeaOrmArtifactSecretCapabilityBroker<A>
 where
     A: ArtifactSecretHandleAuthorizer,
 {
-    pub fn new(db: DatabaseConnection, authorizer: A, scope: ArtifactDataScope) -> Self {
+    pub fn new(db: DatabaseConnection, authorizer: A, scope: ArtifactSecretScope) -> Self {
         Self {
             handles: SeaOrmArtifactSecretHandleService::new(db, authorizer),
             scope,
@@ -753,11 +812,8 @@ where
         if call.capability.as_str() != "platform.secrets" || call.operation != "acquire_handle" {
             return Err(SandboxError::CapabilityDenied(call.capability.clone()));
         }
-        if call.context.tenant_id != Some(self.scope.tenant_id)
-            || !matches!(
-                &call.subject,
-                SandboxSubject::ModuleArtifact { slug, .. } if slug == &self.scope.module_slug
-            )
+        if call.context.tenant_id != Some(self.scope.capability.tenant_id)
+            || !self.scope.capability.matches_subject(&call.subject)
         {
             return Err(SandboxError::CapabilityDenied(call.capability.clone()));
         }
@@ -776,10 +832,8 @@ where
             .await
             .map_err(|error| secret_capability_error(&call.capability, error))?;
         Ok(CapabilityResponse {
-            output: json!({
-                "reference": handle.reference,
-                "revision": handle.revision,
-            }),
+            output: serde_json::to_value(&handle)
+                .map_err(|_| SandboxError::CapabilityDenied(call.capability.clone()))?,
         })
     }
 }
@@ -817,7 +871,7 @@ where
         }
         let installation =
             resolve_granted_artifact_capability(&self.db, execution, capability).await?;
-        let scope = artifact_data_scope_for_execution(&installation, execution, capability)?;
+        let scope = artifact_secret_scope_for_execution(&installation, execution, capability)?;
         Ok(Arc::new(SeaOrmArtifactSecretCapabilityBroker::new(
             self.db.clone(),
             self.authorizer.clone(),
@@ -845,14 +899,23 @@ fn validate_request(request: &ArtifactSecretBindingRequest) -> Result<(), Artifa
     {
         return Err(ArtifactSecretError::InvalidSecretReference);
     }
-    if !valid_command_context(request.scope.tenant_id, &request.context)
+    if !valid_command_context(request.scope.capability.tenant_id, &request.context)
         || request.reason.trim().is_empty()
         || request.reason.len() > MAX_REASON_BYTES
-        || request.expected_revision == Some(0)
+        || request
+            .expected_revision
+            .is_some_and(|revision| revision == 0 || revision > i64::MAX as u64)
     {
         return Err(ArtifactSecretError::InvalidCommand);
     }
     Ok(())
+}
+
+fn positive_receipt_revision(revision: i64) -> Result<u64, ArtifactSecretError> {
+    u64::try_from(revision)
+        .ok()
+        .filter(|value| *value > 0)
+        .ok_or(ArtifactSecretError::RevisionConflict)
 }
 
 fn valid_command_context(tenant_id: Uuid, context: &ModuleCommandContext) -> bool {
@@ -897,11 +960,13 @@ fn validate_use_request(
 ) -> Result<(), ArtifactSecretError> {
     validate_execution_secret_identity(
         &request.scope,
-        &request.reference,
+        &request.handle.reference,
         request.execution_id,
         &request.subject,
     )?;
-    if request.expected_revision == 0
+    if request.handle.secret_instance_id != request.scope.secret_instance_id
+        || request.handle.revision == 0
+        || request.handle.revision > i64::MAX as u64
         || purpose.is_empty()
         || purpose.len() > MAX_SECRET_USE_PURPOSE_BYTES
         || !purpose.chars().all(|character| {
@@ -916,7 +981,7 @@ fn validate_use_request(
 }
 
 fn validate_execution_secret_identity(
-    scope: &ArtifactDataScope,
+    scope: &ArtifactSecretScope,
     reference: &str,
     execution_id: Uuid,
     subject: &SandboxSubject,
@@ -927,10 +992,7 @@ fn validate_execution_secret_identity(
     if !valid_reference_name(reference) || execution_id.is_nil() {
         return Err(ArtifactSecretError::InvalidCommand);
     }
-    if !matches!(
-        subject,
-        SandboxSubject::ModuleArtifact { slug, .. } if slug == &scope.module_slug
-    ) {
+    if !scope.capability.matches_subject(subject) {
         return Err(ArtifactSecretError::PolicyDenied);
     }
     Ok(())
@@ -963,24 +1025,22 @@ fn binding_values(
     backend: DbBackend,
 ) -> Result<Vec<sea_orm::Value>, ArtifactSecretError> {
     Ok(vec![
-        uuid_value(request.scope.tenant_id, backend),
-        request.scope.module_slug.clone().into(),
-        revision_value(request.scope.data_contract_revision)
-            .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?,
+        uuid_value(request.scope.capability.tenant_id, backend),
+        uuid_value(request.scope.capability.data_owner_id, backend),
+        uuid_value(request.scope.secret_instance_id, backend),
         request.reference.clone().into(),
     ])
 }
 
 fn binding_values_for_scope(
-    scope: &ArtifactDataScope,
+    scope: &ArtifactSecretScope,
     reference: &str,
     backend: DbBackend,
 ) -> Result<Vec<sea_orm::Value>, ArtifactSecretError> {
     Ok(vec![
-        uuid_value(scope.tenant_id, backend),
-        scope.module_slug.clone().into(),
-        revision_value(scope.data_contract_revision)
-            .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?,
+        uuid_value(scope.capability.tenant_id, backend),
+        uuid_value(scope.capability.data_owner_id, backend),
+        uuid_value(scope.secret_instance_id, backend),
         reference.to_owned().into(),
     ])
 }
@@ -989,9 +1049,9 @@ fn binding_values_for_use(
     request: &ArtifactSecretUseRequest,
     backend: DbBackend,
 ) -> Result<Vec<sea_orm::Value>, ArtifactSecretError> {
-    let mut values = binding_values_for_scope(&request.scope, &request.reference, backend)?;
+    let mut values = binding_values_for_scope(&request.scope, &request.handle.reference, backend)?;
     values.push(
-        revision_value(request.expected_revision)
+        revision_value(request.handle.revision)
             .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?,
     );
     Ok(values)
@@ -1109,36 +1169,40 @@ mod tests {
 
     use super::{
         ArtifactSecretAuthorizer, ArtifactSecretBindingRequest, ArtifactSecretError,
-        ArtifactSecretHandleAuthorizer, ArtifactSecretHandleRequest, ArtifactSecretPolicy,
-        ArtifactSecretUseContext, ArtifactSecretUseRequest, ArtifactSecretValueConsumer,
-        RegistryArtifactSecretAuthorizer, SeaOrmArtifactSecretHandlePolicy,
-        SeaOrmArtifactSecretService, SeaOrmArtifactSecretUseService, capability_reference,
-        validate_handle_request, validate_request, validate_use_request,
+        ArtifactSecretHandle, ArtifactSecretHandleAuthorizer, ArtifactSecretHandleRequest,
+        ArtifactSecretPolicy, ArtifactSecretScope, ArtifactSecretUseContext,
+        ArtifactSecretUseRequest, ArtifactSecretValueConsumer, RegistryArtifactSecretAuthorizer,
+        SeaOrmArtifactSecretHandlePolicy, SeaOrmArtifactSecretService,
+        SeaOrmArtifactSecretUseService, capability_reference, validate_handle_request,
+        validate_request, validate_use_request,
     };
     use crate::{
-        ArtifactDataScope, ArtifactModuleKind, ArtifactPayloadKind, ArtifactPersistenceContract,
-        ArtifactSchemaDocument, ArtifactSecretConsumerError,
-        MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE,
-        ModuleArtifactDescriptor, ModuleCommandContext, ModuleDependencyLockGraph, ModulesModule,
-        canonical_schema_digest,
+        ArtifactCapabilityScope, ArtifactModuleKind, ArtifactPayloadKind, ArtifactReleaseRef,
+        ArtifactSecretConsumerError, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+        MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE, ModuleArtifactDescriptor, ModuleCommandContext,
+        ModuleDependencyLockGraph, ModulesModule,
     };
 
     fn request() -> ArtifactSecretBindingRequest {
-        let scope = ArtifactDataScope {
-            tenant_id: Uuid::new_v4(),
-            data_owner_id: Uuid::new_v4(),
-            namespace_instance_id: Uuid::new_v4(),
-            data_contract_digest:
-                "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-                    .to_string(),
-            module_slug: "sample_module".to_string(),
-            data_contract_revision: 1,
-            policy_revision: 1,
+        let scope = ArtifactSecretScope {
+            capability: ArtifactCapabilityScope {
+                tenant_id: Uuid::new_v4(),
+                installation_id: Uuid::new_v4(),
+                data_owner_id: Uuid::new_v4(),
+                release: ArtifactReleaseRef {
+                    slug: "sample_module".to_string(),
+                    version: "1.0.0".to_string(),
+                    digest: crate::promotion::digest_json(&"fixture payload")
+                        .expect("payload digest"),
+                },
+                policy_revision: 1,
+            },
+            secret_instance_id: Uuid::new_v4(),
         };
         ArtifactSecretBindingRequest {
             context: ModuleCommandContext {
                 actor_id: Uuid::new_v4(),
-                tenant_id: Some(scope.tenant_id),
+                tenant_id: Some(scope.capability.tenant_id),
                 trace_id: "test:artifact-secret-binding".to_string(),
                 correlation_id: Uuid::new_v4(),
                 idempotency_key: Uuid::new_v4(),
@@ -1156,17 +1220,13 @@ mod tests {
 
     async fn active_secret_policy_fixture(
         database: &DatabaseConnection,
+        tenant_id: Uuid,
     ) -> ArtifactSecretHandleRequest {
-        let tenant_id = Uuid::new_v4();
         let installation_id = Uuid::new_v4();
         let capability = CapabilityName::new("platform.secrets").expect("capability name");
-        let payload_digest = format!("sha256:{}", "a".repeat(64));
-        let schema_document = json!({
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "type": "object",
-            "additionalProperties": true
-        });
-        let schema_digest = canonical_schema_digest(&schema_document);
+        let payload_digest =
+            crate::promotion::digest_json(&("fixture Rhai payload", installation_id))
+                .expect("distinct immutable fixture payload digest");
         let descriptor = ModuleArtifactDescriptor {
             schema_version: MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
             slug: "sample_module".to_string(),
@@ -1182,19 +1242,12 @@ mod tests {
             bindings: Vec::new(),
             dependencies: Vec::new(),
             permissions: Vec::new(),
-            schema_documents: vec![ArtifactSchemaDocument {
-                digest: schema_digest.clone(),
-                document: schema_document,
-            }],
+            schema_documents: Vec::new(),
             settings_schema_digest: None,
-            data_schema_digest: Some(schema_digest.clone()),
+            data_schema_digest: None,
             localization_catalogs: Vec::new(),
             ui_contributions: Vec::new(),
-            persistence_contract: Some(ArtifactPersistenceContract {
-                revision: 7,
-                schema_digest,
-                indexes: Vec::new(),
-            }),
+            persistence_contract: None,
         };
         descriptor.validate().expect("valid fixture descriptor");
         let dependency_lock =
@@ -1212,6 +1265,7 @@ mod tests {
         let installed_at = "2026-07-26T12:00:00+00:00";
         let data_owner_id = Uuid::new_v4();
         let settings_instance_id = Uuid::new_v4();
+        let secret_instance_id = Uuid::new_v4();
 
         database
             .execute_raw(Statement::from_sql_and_values(
@@ -1219,17 +1273,17 @@ mod tests {
                 "INSERT INTO module_artifact_installations (
                     installation_id, scope_kind, tenant_id, registry, repository, manifest_digest,
                     slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor,
-                    data_owner_id, settings_instance_id, dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at,
+                    data_owner_id, settings_instance_id, secret_instance_id, dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at,
                     previous_installation_id, capability_grant_revision
                  ) VALUES (
                     ?1, 'tenant', ?2, 'registry.example', 'modules/sample_module', ?3,
                     'sample_module', '1.0.0', 'rhai', 'rustok:module/runtime@1', ?4, 'main', ?5,
-                    ?6, ?7, ?8, ?9, ?10, ?11, NULL, 1
+                    ?6, ?7, ?12, ?8, ?9, ?10, ?11, NULL, 1
                  )",
                 vec![
                     installation_id.to_string().into(),
                     tenant_id.to_string().into(),
-                    format!("sha256:{}", "b".repeat(64)).into(),
+                    crate::promotion::digest_json(&installation_id).expect("fixture manifest digest").into(),
                     payload_digest.clone().into(),
                     SqlValue::Json(Some(Box::new(
                         serde_json::to_value(&descriptor).expect("descriptor JSON"),
@@ -1244,6 +1298,7 @@ mod tests {
                         serde_json::to_value(&dependency_lock).expect("dependency lock JSON"),
                     ))),
                     installed_at.into(),
+                    secret_instance_id.to_string().into(),
                 ],
             ))
             .await
@@ -1285,16 +1340,15 @@ mod tests {
             .expect("sandbox policy fixture");
 
         ArtifactSecretHandleRequest {
-            scope: ArtifactDataScope {
-                tenant_id,
-                data_owner_id: Uuid::new_v4(),
-                namespace_instance_id: Uuid::new_v4(),
-                data_contract_digest:
-                    "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-                        .to_string(),
-                module_slug: descriptor.slug.clone(),
-                data_contract_revision: 7,
-                policy_revision: 1,
+            scope: ArtifactSecretScope {
+                capability: ArtifactCapabilityScope {
+                    tenant_id,
+                    installation_id,
+                    data_owner_id,
+                    release: descriptor.release_ref(),
+                    policy_revision: 1,
+                },
+                secret_instance_id,
             },
             reference: "payment_api".to_string(),
             execution_id: Uuid::new_v4(),
@@ -1383,14 +1437,17 @@ mod tests {
         let binding = request();
         let mut use_request = ArtifactSecretUseRequest {
             scope: binding.scope.clone(),
-            reference: binding.reference,
-            expected_revision: 1,
+            handle: ArtifactSecretHandle {
+                reference: binding.reference,
+                secret_instance_id: binding.scope.secret_instance_id,
+                revision: 1,
+            },
             execution_id: Uuid::new_v4(),
             subject: SandboxSubject::ModuleArtifact {
-                installation_id: Uuid::new_v4(),
-                slug: binding.scope.module_slug,
-                version: "1.0.0".to_string(),
-                digest: "sha256:sample".to_string(),
+                installation_id: binding.scope.capability.installation_id,
+                slug: binding.scope.capability.release.slug,
+                version: binding.scope.capability.release.version,
+                digest: binding.scope.capability.release.digest,
             },
             phase: ExecutionPhase::Manual,
             actor_id: Some("artifact-actor".to_string()),
@@ -1398,12 +1455,23 @@ mod tests {
         };
 
         assert!(validate_use_request(&use_request, "http.authorization").is_ok());
-        use_request.expected_revision = 0;
+        use_request.handle.secret_instance_id = Uuid::new_v4();
+        assert_eq!(
+            validate_use_request(&use_request, "http.authorization"),
+            Err(ArtifactSecretError::InvalidCommand)
+        );
+        use_request.handle.secret_instance_id = use_request.scope.secret_instance_id;
+        use_request.handle.revision = u64::MAX;
+        assert_eq!(
+            validate_use_request(&use_request, "http.authorization"),
+            Err(ArtifactSecretError::InvalidCommand)
+        );
+        use_request.handle.revision = 0;
         assert!(matches!(
             validate_use_request(&use_request, "http.authorization"),
             Err(ArtifactSecretError::InvalidCommand)
         ));
-        use_request.expected_revision = 1;
+        use_request.handle.revision = 1;
         assert!(matches!(
             validate_use_request(&use_request, "HTTP Authorization"),
             Err(ArtifactSecretError::InvalidCommand)
@@ -1474,18 +1542,26 @@ mod tests {
             .await
             .expect("exact secret binding replay");
         assert_eq!(replay, first);
+        assert_eq!(first.secret_instance_id, binding.scope.secret_instance_id);
+        assert!(database.execute_unprepared("UPDATE module_artifact_secret_binding_operations SET request_digest = 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'").await.is_err());
+        assert!(
+            database
+                .execute_unprepared("DELETE FROM module_artifact_secret_binding_operations")
+                .await
+                .is_err()
+        );
 
         let receipt = database
             .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT actor_id, trace_id, correlation_id, idempotency_key
                  FROM module_artifact_secret_binding_operations
-                 WHERE tenant_id = ?1 AND module_slug = ?2 AND data_contract_revision = ?3
+                 WHERE tenant_id = ?1 AND data_owner_id = ?2 AND secret_instance_id = ?3
                  AND idempotency_key = ?4",
                 vec![
-                    binding.scope.tenant_id.to_string().into(),
-                    binding.scope.module_slug.clone().into(),
-                    1_i64.into(),
+                    binding.scope.capability.tenant_id.to_string().into(),
+                    binding.scope.capability.data_owner_id.to_string().into(),
+                    binding.scope.secret_instance_id.to_string().into(),
                     binding.context.idempotency_key.to_string().into(),
                 ],
             ))
@@ -1531,7 +1607,7 @@ mod tests {
             .expect("secret binding event payload");
         let envelope: rustok_events::EventEnvelope =
             serde_json::from_value(payload).expect("secret binding event envelope");
-        assert_eq!(envelope.tenant_id, binding.scope.tenant_id);
+        assert_eq!(envelope.tenant_id, binding.scope.capability.tenant_id);
         assert_eq!(envelope.actor_id, Some(binding.context.actor_id));
         assert_eq!(envelope.correlation_id, binding.context.correlation_id);
         assert_eq!(
@@ -1539,6 +1615,24 @@ mod tests {
             Some(binding.context.trace_id.as_str())
         );
 
+        for field in ["policy", "installation", "version", "digest"] {
+            let mut altered = binding.clone();
+            match field {
+                "policy" => altered.scope.capability.policy_revision += 1,
+                "installation" => altered.scope.capability.installation_id = Uuid::new_v4(),
+                "version" => altered.scope.capability.release.version = "1.1.0".to_string(),
+                "digest" => {
+                    altered.scope.capability.release.digest =
+                        crate::promotion::digest_json(&field).expect("changed digest")
+                }
+                _ => unreachable!("bounded fixture field"),
+            }
+            assert_eq!(
+                service.bind(altered).await,
+                Err(ArtifactSecretError::IdempotencyConflict),
+                "changed {field}"
+            );
+        }
         let mut conflicting_replay = binding;
         conflicting_replay.context.trace_id = "test:changed-trace".to_string();
         assert!(matches!(
@@ -1570,6 +1664,143 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stateless_secret_route_isolates_owners_and_instances_with_the_same_slug() {
+        use crate::{ArtifactCapabilityBrokerResolver, ModuleControlPlane};
+
+        let database = Database::connect("sqlite::memory:").await.expect("SQLite");
+        let manager = SchemaManager::new(&database);
+        rustok_outbox::SysEventsMigration
+            .up(&manager)
+            .await
+            .expect("outbox");
+        for migration in ModulesModule.migrations() {
+            migration.up(&manager).await.expect("module migration");
+        }
+        let tenant_id = Uuid::new_v4();
+        let first = active_secret_policy_fixture(&database, tenant_id).await;
+        let second = active_secret_policy_fixture(&database, tenant_id).await;
+        assert_eq!(
+            first.scope.capability.release.slug,
+            second.scope.capability.release.slug
+        );
+        assert_ne!(
+            first.scope.capability.data_owner_id,
+            second.scope.capability.data_owner_id
+        );
+        assert_ne!(
+            first.scope.secret_instance_id,
+            second.scope.secret_instance_id
+        );
+
+        let owner = ModuleControlPlane::new(database.clone());
+        // Only management authorization is bounded fixture authority here.
+        // Handle acquisition and dynamic routing use the production owner policy.
+        let bindings = owner.artifact_secret_bindings(AllowSecretBindingAuthorizer);
+        let mut first_binding = request();
+        first_binding.scope = first.scope.clone();
+        first_binding.context.tenant_id = Some(tenant_id);
+        let bound = bindings
+            .bind(first_binding.clone())
+            .await
+            .expect("first binding");
+        let handles = super::SeaOrmArtifactSecretHandleService::new(
+            database.clone(),
+            owner.artifact_secret_handle_policy(),
+        );
+        assert_eq!(
+            handles.acquire_handle(second.clone()).await,
+            Err(ArtifactSecretError::HandleUnavailable)
+        );
+        assert_eq!(
+            handles
+                .acquire_handle(first.clone())
+                .await
+                .expect("first handle"),
+            bound
+        );
+
+        let mut second_binding = first_binding.clone();
+        second_binding.scope = second.scope.clone();
+        let second_handle = bindings
+            .bind(second_binding)
+            .await
+            .expect("independent owner binding");
+        assert_eq!(
+            second_handle.secret_instance_id,
+            second.scope.secret_instance_id
+        );
+        assert_ne!(second_handle, bound);
+        assert_eq!(
+            handles
+                .acquire_handle(second.clone())
+                .await
+                .expect("second handle"),
+            second_handle
+        );
+
+        let mut transplanted = second.clone();
+        transplanted.scope = first.scope.clone();
+        assert_eq!(
+            handles.acquire_handle(transplanted).await,
+            Err(ArtifactSecretError::PolicyDenied)
+        );
+        let mut wrong_instance = first.clone();
+        wrong_instance.scope.secret_instance_id = second.scope.secret_instance_id;
+        assert_eq!(
+            handles.acquire_handle(wrong_instance).await,
+            Err(ArtifactSecretError::PolicyDenied)
+        );
+
+        let capability = CapabilityName::new("platform.secrets").expect("capability");
+        let execution = crate::ArtifactCapabilityExecution {
+            installation_id: first.scope.capability.installation_id,
+            tenant_id,
+            slug: first.scope.capability.release.slug.clone(),
+            version: first.scope.capability.release.version.clone(),
+            digest: first.scope.capability.release.digest.clone(),
+        };
+        let resolver = owner.artifact_secret_capability(owner.artifact_secret_handle_policy());
+        let broker = resolver
+            .resolve_broker(&execution, &capability)
+            .await
+            .expect("stateless secret broker");
+        let call = CapabilityCall {
+            execution_id: first.execution_id,
+            subject: first.subject,
+            context: CapabilityCallContext {
+                phase: first.phase,
+                tenant_id: Some(tenant_id),
+                actor_id: first.actor_id,
+                trace_id: first.trace_id,
+            },
+            capability: capability.clone(),
+            operation: "acquire_handle".to_string(),
+            input: json!({"reference": first.reference}),
+        };
+        let grant = CapabilityGrant {
+            name: capability,
+            constraints: json!({"references": ["payment_api"], "operations": ["acquire_handle"]}),
+        };
+        let response = broker
+            .invoke(&call, &grant)
+            .await
+            .expect("stateless handle call");
+        let returned: ArtifactSecretHandle =
+            serde_json::from_value(response.output).expect("opaque handle");
+        assert_eq!(returned, bound);
+        let event_count = database.query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT COUNT(*) AS count FROM sys_events WHERE event_type='module.artifact.secret_bound'",
+        )).await.expect("events").expect("count");
+        assert_eq!(
+            event_count
+                .try_get::<i64>("", "count")
+                .expect("event count"),
+            2
+        );
+    }
+
+    #[tokio::test]
     async fn production_handle_policy_rechecks_exact_active_installation_and_grant() {
         let database = Database::connect("sqlite::memory:")
             .await
@@ -1578,7 +1809,7 @@ mod tests {
         for migration in ModulesModule.migrations() {
             migration.up(&manager).await.expect("module migration");
         }
-        let request = active_secret_policy_fixture(&database).await;
+        let request = active_secret_policy_fixture(&database, Uuid::new_v4()).await;
         let policy = SeaOrmArtifactSecretHandlePolicy::new(database.clone());
 
         policy
@@ -1587,7 +1818,7 @@ mod tests {
             .expect("exact active installation with current grant");
 
         let mut stale_scope = request.clone();
-        stale_scope.scope.policy_revision += 1;
+        stale_scope.scope.capability.policy_revision += 1;
         assert!(matches!(
             policy.authorize_secret_handle(&stale_scope).await,
             Err(ArtifactSecretError::PolicyDenied)
@@ -1698,13 +1929,13 @@ mod tests {
             .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO module_artifact_secret_bindings
-                 (tenant_id, module_slug, data_contract_revision, reference_name, resolver_alias,
+                 (tenant_id, data_owner_id, secret_instance_id, reference_name, resolver_alias,
                   resolver_key, revision, actor_id, reason, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, datetime('now'), datetime('now'))",
                 vec![
-                    binding.scope.tenant_id.to_string().into(),
-                    binding.scope.module_slug.clone().into(),
-                    1_i64.into(),
+                    binding.scope.capability.tenant_id.to_string().into(),
+                    binding.scope.capability.data_owner_id.to_string().into(),
+                    binding.scope.secret_instance_id.to_string().into(),
                     binding.reference.clone().into(),
                     "fixed".into(),
                     "allowed-key".into(),
@@ -1735,14 +1966,17 @@ mod tests {
         let receipt = service
             .use_secret(ArtifactSecretUseRequest {
                 scope: binding.scope.clone(),
-                reference: binding.reference.clone(),
-                expected_revision: 1,
+                handle: ArtifactSecretHandle {
+                    reference: binding.reference.clone(),
+                    secret_instance_id: binding.scope.secret_instance_id,
+                    revision: 1,
+                },
                 execution_id: Uuid::new_v4(),
                 subject: SandboxSubject::ModuleArtifact {
-                    installation_id: Uuid::new_v4(),
-                    slug: binding.scope.module_slug,
-                    version: "1.0.0".to_string(),
-                    digest: "sha256:sample".to_string(),
+                    installation_id: binding.scope.capability.installation_id,
+                    slug: binding.scope.capability.release.slug,
+                    version: binding.scope.capability.release.version,
+                    digest: binding.scope.capability.release.digest,
                 },
                 phase: ExecutionPhase::Manual,
                 actor_id: Some("artifact-actor".to_string()),

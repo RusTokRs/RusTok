@@ -2023,26 +2023,44 @@ backend preflight.
   migration-plan digest rather than an unbounded migrator during update. Reuse
   the existing owner operation and receipt ledger; do not add a parallel
   dry-run lifecycle.
-- [x] Support transactional additive expansion and resumable idempotent
+- [ ] Support transactional additive expansion and resumable idempotent
   backfills whose every checkpoint preserves the single canonical
   representation, with uncertain-outcome recovery.
-  Implemented `DataBackfillCoordinator`, `BackfillCheckpoint`, `BackfillCheckpointStore`,
-  and `InMemoryBackfillCheckpointStore` in `crates/modules/rustok-modules/src/data_backfill.rs`.
-  Provides durable page checkpointing with payload digests, single canonical representation
-  preservation, crash-safe resumption from intermediate checkpoints, and explicit uncertain-outcome
-  reconciliation before advancing cursors.
-  Verified by `crates/modules/rustok-modules/tests/data_backfill_tests.rs` (all 4 tests passing).
+  `DataBackfillCoordinator` currently has only an in-memory checkpoint-store
+  implementation and test callers; it has no durable production owner adapter.
+  Page processing and checkpoint persistence do not share a database transaction.
+  `start_or_resume` resets an uncertain status without verifying committed target
+  effects and does not bind replay to all supplied operation/owner facts. The
+  existing four memory-store tests do not prove restart, atomicity, idempotency,
+  or uncertain-outcome reconciliation. Replace this prototype through the real
+  owner transaction/composition with durable exact-request checkpoints and
+  observed recovery before cursor advance; do not retain a memory fallback.
 - [x] Classify the current create-only cross-revision artifact-data copier as
   maintenance-only. Do not claim automatic dynamic data-contract evolution
   until one canonical namespace is proven safe for all N/N+1 writes and return
   to N without dual read/write or reverse-copy behavior.
-  Verified by `migration_preflight.rs` and `data_cross_revision_copier_tests.rs`.
-- [x] Make the maintenance-only copier crash-safe with a durable page request
+  Verified by `migration_preflight.rs` and canonical `data_copier_tests.rs`
+  (11/11 bounded file-backed SQLite runtime tests).
+- [ ] Make the maintenance-only copier crash-safe with a durable page request
   digest/intent before writes, create-only item idempotency, terminal page
   receipt/checkpoint, and unknown-commit reconciliation; stale source or
   conflicting target stops without overwrite.
-  Verified by `m20260903_000047_artifact_data_copy_operations.rs`, `data_copier.rs`, and `data_cross_revision_copier_tests.rs`.
-- [x] Implement the maintenance-only broker-owned object migration for a
+  `data_copier.rs` now requires exact namespace revisions and current owner-
+  transaction policy. Source reads, target schema/index/quota checks, create-only
+  records, revision CAS, and immutable exact-response receipts commit atomically
+  after independently durable full-request/frozen-page admission. Preparing and
+  latest non-terminal pages retain both namespaces with the shared database
+  guards. Authorized continuation supersedes the previous page hold; terminal
+  structured completion releases only this page chain. Reconciliation loads the
+  original request/frozen evidence and rechecks current policy/schema/quota; no
+  stale-intent reset or synthetic context exists. Receipt-commit failure leaves
+  preparing evidence and rolls back target effects. Exact replay retains its
+  continuation before mutable facts, and receipts record commit policy revision.
+  Revised file-backed SQLite runtime tests pass 11/11. These bounded page effects do not prove
+  independently durable external-copy intents, whole-operation source retention,
+  production maintenance/revocation/fleet fences, PostgreSQL kill/race recovery,
+  recovery outbox composition, or separate full-snapshot serving CAS.
+- [ ] Implement the maintenance-only broker-owned object migration for a
   persistence-revision change: freeze and digest-pin the exact source logical
   object inventory/bytes, reserve durable per-copy intents and idempotency
   identities, checkpoint verified target references, and accept only after an
@@ -2051,7 +2069,18 @@ backend preflight.
   exists, live objects deny the revision change; the structured-record copier
   alone is never full data-migration evidence, and a completed namespace copy
   still does not authorize automatic mode.
-  Verified by `m20260903_000048_artifact_data_object_copy_operations.rs`, `data_object_migration.rs`, `data_copier.rs`, and `data_object_migration_tests.rs`.
+  The canonical service/schema/callers now reserve a complete frozen parent
+  and every opaque target key in a committed transaction before actual byte
+  publication. Digest/size-verified create-only copies and atomic target-reference
+  checkpoints support exact persisted replay and policy-revalidated reconciliation.
+  Pending source/target holds are checked by purge and recovery CAS and enforced
+  by write/root/reference schema guards. File-backed fixtures now publish actual
+  bytes and cover interrupted publication, corruption, policy denial, and reopen.
+  Local file-backed SQLite/actual-storage execution passes 3/3. Production
+  maintenance/fleet fences, PostgreSQL races and the
+  required kill matrix remain open. Target instances remain non-serving; this
+  receipt does not authorize full-snapshot CAS. No safe orphan collector exists;
+  age or absent metadata never permits deletion. This gate remains incomplete.
 - [x] Derive dynamic data-upgrade phase, checkpoint, and irreversibility from
   owner evidence, and include live settings compatibility in every decision.
   Verified by `data_upgrade.rs`, `point_of_no_return_and_irreversibility_tests.rs`.
@@ -2257,7 +2286,7 @@ backend preflight.
   block purge; another active owner with the same slug retains independent
   bytes and does not block this namespace. The updated SQLite purge integration
   checks this boundary and permanent root tombstones. Caller/fixture conversion,
-  independent secret/MCP scopes, migration-object copy publication,
+  secret/MCP runtime evidence, migration-object copy publication,
   and production recovery composition remain open. Snapshot/restore reservations now
   publish and re-read actual bytes, source holds block collection, and full
   target manifest/byte verification seals a non-serving instance before any

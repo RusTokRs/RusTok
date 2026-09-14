@@ -30,8 +30,26 @@ API would pull in the entire core runtime, while the `server` feature maintained
    `runtime` feature. The `server` feature includes `runtime` and separately adds
    Axum and Async-GraphQL, so backend runtime helpers do not force transport
    frameworks into standalone module owners.
+9. `rustok-rbac` owns persisted role-membership queries and permission decisions.
+   Authenticated host snapshots are inputs through `PermissionResolver`; hosts
+   select and bind exact tenant/actor request evidence and compose cache adapters.
+   Single, any, and all decisions use the module tenant policy engine. A snapshot
+   never establishes current persisted grants or an atomic revocation fence;
+   destructive owner commands use the current transaction-backed decision API.
 
 ## Consequences
+
+Secret capability authority follows the same owner boundary. Its canonical
+scope combines exact installation capability authority with the independently
+persisted opaque secret-instance identity. Catalogs use tenant/owner/instance
+keys; stateless installations need no artifact-data persistence contract.
+The repository-owned `module.artifact.secret_bound` initial payload and schema
+are replaced in place with installation/owner/instance identities. The publisher
+is the owner binding service; repository search finds no other publisher or
+payload reader requiring an adapter. No prior-shape reader or version family is
+retained. Resolver aliases, keys, and values remain absent from the event.
+Host current-grant, revocation, and operation-specific use fences still require
+real composition and runtime evidence; identity alone is not such a fence.
 
 - Clients of neutral/default `rustok-api` do not compile the core runtime.
 - The dependency graph is directed from runtime modules to the contract layer without a cycle.

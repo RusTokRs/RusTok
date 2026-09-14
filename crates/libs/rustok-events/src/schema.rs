@@ -567,7 +567,9 @@ const MODULE_ARTIFACT_DATA_SNAPSHOT_COLLECTED_FIELDS: &[FieldSchema] = &[
 const MODULE_ARTIFACT_SECRET_BOUND_FIELDS: &[FieldSchema] = &[
     field!("tenant_id", "uuid"),
     field!("module_slug", "string"),
-    field!("data_contract_revision", "uint64"),
+    field!("installation_id", "uuid"),
+    field!("data_owner_id", "uuid"),
+    field!("secret_instance_id", "uuid"),
     field!("revision", "uint64"),
 ];
 const MODULE_BUILD_QUEUED_FIELDS: &[FieldSchema] = &[

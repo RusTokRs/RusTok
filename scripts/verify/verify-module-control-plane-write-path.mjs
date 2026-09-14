@@ -1069,7 +1069,7 @@ try {
   if (
     secretBindingContextFields.length !== 1 ||
     !artifactSecretOwner.includes(
-      "valid_command_context(request.scope.tenant_id, &request.context)",
+      "valid_command_context(request.scope.capability.tenant_id, &request.context)",
     ) ||
     !artifactSecretOwner.includes("command_context_from_receipt_row") ||
     !artifactSecretOwner.includes(
@@ -1080,6 +1080,22 @@ try {
     fail(
       "artifact secret binding must retain a tenant-matched ModuleCommandContext in its operation receipt and owner-created outbox event",
     );
+  }
+
+  // Supplemental source boundaries; stateless/owner-isolation behavior needs
+  // the owner's runtime tests, and these checks do not attest host fences.
+  const secretBindingMigration = fs.readFileSync(path.join(ownerRoot,
+    "migrations/m20260716_000014_artifact_secret_bindings.rs"), "utf8");
+  const compactSecretOwner = artifactSecretOwner.replace(/\s+/g, "");
+  if (/\bArtifactDataScope\b|\bartifact_data_scope_for_execution\b|\bdata_contract_revision\b/.test(artifactSecretOwner)
+      || /\bmodule_slug\b|\bdata_contract_revision\b/.test(secretBindingMigration)
+      || !artifactSecretOwner.includes("pub capability: ArtifactCapabilityScope,")
+      || !compactSecretOwner.includes("installation.secret_instance_id")
+      || !artifactSecretOwner.includes("stored_digest != request_digest")
+      || !artifactSecretOwner.includes("request.handle.secret_instance_id != request.scope.secret_instance_id")
+      || !secretBindingMigration.includes("PRIMARY KEY (tenant_id, data_owner_id, secret_instance_id, reference_name)")
+      || !secretBindingMigration.includes("secret binding receipts are immutable")) {
+    fail("secret scope/catalog/receipts must use independent owner-backed instance identity and full-request replay without data-scope or slug/revision paths");
   }
 
   if (forbiddenImportViolations.length > 0) {
@@ -2582,6 +2598,92 @@ try {
     fail(
       "artifact binding operation persistence must keep its PostgreSQL tenant RLS policy",
     );
+  }
+
+  // Supplemental source guard only; runtime and fleet gates remain separate.
+  const objectMigration = fs.readFileSync(
+    path.join(ownerRoot, "data_object_migration.rs"), "utf8",
+  );
+  const objectMigrationSchema = fs.readFileSync(
+    path.join(ownerRoot, "migrations/m20260903_000048_artifact_data_object_copy_operations.rs"), "utf8",
+  );
+  const recoveryOwner = fs.readFileSync(
+    path.join(ownerRoot, "data_post_purge_recovery.rs"), "utf8",
+  );
+  for (const fragment of [
+    "ArtifactDataObjectMigrationAuthorizer",
+    "storage: StorageRuntime",
+    "expected_source_namespace_revision",
+    "expected_target_namespace_revision",
+    "request_digest: digest_json(request)",
+    "inventory_digest: digest_json(&inventory)",
+    "source_storage_key",
+    "target_storage_key",
+    "PutMode::Create",
+    "self.storage.objects.get",
+    "Sha256::digest(bytes)",
+    "operation.committed",
+    "ensure_namespace_not_migration_held_on",
+  ]) {
+    if (!objectMigration.replace(/\s+/g, "").includes(fragment.replace(/\s+/g, ""))) {
+      fail(`object migration must retain its canonical physical-copy contract: ${fragment}`);
+    }
+  }
+  for (const fragment of [
+    "module_artifact_data_object_migration_operations",
+    "FOREIGN KEY (migration_operation_id,tenant_id,data_owner_id",
+    "artifact_data_migration_reference_guard",
+    "artifact_data_migration_root_guard",
+    "migration_write_guard",
+    "Object migration evidence is immutable",
+  ]) {
+    if (!objectMigrationSchema.replace(/\s+/g, "").includes(fragment.replace(/\s+/g, ""))) {
+      fail(`object migration must retain durable reservation/hold schema: ${fragment}`);
+    }
+  }
+  if (!fs.readFileSync(artifactDataOwnerPath, "utf8").includes("ensure_namespace_not_migration_held_on")
+      || !recoveryOwner.includes("ensure_namespace_not_migration_held_on")) {
+    fail("purge and recovery serving CAS must reject shared maintenance namespace holds");
+  }
+
+  // Supplemental contract guard; these markers do not prove runtime/fleet safety.
+  const recordCopier = fs.readFileSync(path.join(ownerRoot, "data_copier.rs"), "utf8");
+  const recordCopySchema = fs.readFileSync(
+    path.join(ownerRoot, "migrations/m20260903_000047_artifact_data_copy_operations.rs"), "utf8",
+  );
+  for (const fragment of [
+    "ArtifactDataCopyAuthorizer", "authorize_copy_on(&transaction", "lock_artifact_data_namespace_on",
+    "expected_source_namespace_revision", "expected_target_namespace_revision", "digest_json(&request)",
+    "validate_authority", "synchronize_artifact_data_indexes", "receipt.next_page_cursor != request.page_cursor",
+    "source_state != \"verified\"", "target_state != \"staging\"", "request_json", "receipt_json",
+    "reserve_page", "reconcile_pending_pages", "frozen_page_json", "frozen_page_digest",
+    "status='committing'", "status='committed'", "ensure_namespace_not_migration_held_on",
+    "policy_revision: authority.target_scope.policy_revision",
+    "receipt.is_terminal_page != receipt.next_page_cursor.is_none()",
+  ]) {
+    if (!recordCopier.replace(/\s+/g, "").includes(fragment.replace(/\s+/g, ""))) {
+      fail(`record copier must retain its canonical owner transaction contract: ${fragment}`);
+    }
+  }
+  for (const fragment of [
+    "UNIQUE(tenant_id,data_owner_id,idempotency_key)", "request_digest", "receipt_digest",
+    "frozen_page_json", "frozen_page_digest", "'preparing'", "'committing'", "'committed'",
+    "record_copy_hold", "is_terminal_page", "newer.expected_target_namespace_revision>copy.expected_target_namespace_revision",
+    "FOREIGN KEY(tenant_id,data_owner_id,source_namespace_instance_id)",
+    "FOREIGN KEY(tenant_id,data_owner_id,target_namespace_instance_id)",
+    "BEFORE UPDATE OR DELETE", "Artifact record-copy receipts are immutable",
+  ]) {
+    if (!recordCopySchema.replace(/\s+/g, "").includes(fragment.replace(/\s+/g, ""))) {
+      fail(`record copier must retain its immutable exact-replay schema: ${fragment}`);
+    }
+  }
+  if (/ArtifactDataCrossRevisionCopier|CrossRevisionDataCopy|reconcile_stale_intents/.test(recordCopier)
+      || /status IN \('intent'/.test(recordCopySchema)) {
+    fail("record copier must not retain the superseded API or stale-intent failure sweep");
+  }
+  if (!objectMigrationSchema.includes("record_copy_hold")
+      || !fs.readFileSync(artifactDataOwnerPath, "utf8").includes("record_copy_hold")) {
+    fail("record and object maintenance must share source/target namespace holds");
   }
 
   console.log(

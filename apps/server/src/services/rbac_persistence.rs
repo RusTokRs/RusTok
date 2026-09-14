@@ -5,21 +5,6 @@ use sea_orm::ConnectionTrait;
 use rustok_core::UserRole;
 use rustok_telemetry::metrics;
 
-pub(crate) async fn assign_role_permissions_via_store<C>(
-    db: &C,
-    user_id: &uuid::Uuid,
-    tenant_id: &uuid::Uuid,
-    role: UserRole,
-) -> Result<()>
-where
-    C: ConnectionTrait,
-{
-    record_authz_entrypoint_call("assign_role_permissions_via_store", "core_runtime");
-    rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(db, *tenant_id, *user_id, role)
-        .await
-        .map_err(|error| Error::Message(error.to_string()))
-}
-
 pub(crate) async fn replace_user_role_via_store<C>(
     db: &C,
     user_id: &uuid::Uuid,
@@ -35,32 +20,13 @@ where
         .map_err(|error| Error::Message(error.to_string()))
 }
 
-pub(crate) async fn remove_tenant_role_assignments_via_store<C>(
-    db: &C,
-    user_id: &uuid::Uuid,
-    tenant_id: &uuid::Uuid,
-) -> Result<()>
-where
-    C: ConnectionTrait,
-{
-    record_authz_entrypoint_call("remove_tenant_role_assignments_via_store", "core_runtime");
-    rustok_rbac::RbacRoleAssignmentDbWriter::remove_tenant_role_assignments_on(
-        db, *tenant_id, *user_id,
-    )
-    .await
-    .map_err(|error| Error::Message(error.to_string()))
-}
-
 fn record_authz_entrypoint_call(entry_point: &str, path: &str) {
     metrics::record_module_entrypoint_call("rbac", entry_point, path);
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        assign_role_permissions_via_store, remove_tenant_role_assignments_via_store,
-        replace_user_role_via_store,
-    };
+    use super::replace_user_role_via_store;
     use crate::models::_entities::{permissions, role_permissions, roles, user_roles};
     use crate::models::{tenants, users};
     use chrono::Utc;
@@ -119,9 +85,14 @@ mod tests {
         let (tenant_id, user_id) =
             insert_tenant_and_user(&db, "test-tenant-assign-role", "assign-role@example.com").await;
 
-        assign_role_permissions_via_store(&db, &user_id, &tenant_id, UserRole::Manager)
-            .await
-            .expect("assign role permissions should succeed");
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+            &db,
+            tenant_id,
+            user_id,
+            UserRole::Manager,
+        )
+        .await
+        .expect("assign role permissions should succeed");
 
         let tenant_role = roles::Entity::find()
             .filter(roles::Column::TenantId.eq(tenant_id))
@@ -158,10 +129,14 @@ mod tests {
         )
         .await;
 
-        let error =
-            assign_role_permissions_via_store(&db, &user_id, &foreign_tenant_id, UserRole::Manager)
-                .await
-                .expect_err("cross-tenant role assignment must fail");
+        let error = rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+            &db,
+            foreign_tenant_id,
+            user_id,
+            UserRole::Manager,
+        )
+        .await
+        .expect_err("cross-tenant role assignment must fail");
         let message = error.to_string();
         assert!(message.contains(&user_id.to_string()));
         assert!(message.contains(&user_tenant_id.to_string()));
@@ -193,9 +168,14 @@ mod tests {
         )
         .await;
 
-        assign_role_permissions_via_store(&db, &user_id, &tenant_id, UserRole::Manager)
-            .await
-            .expect("manager role assignment should succeed");
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+            &db,
+            tenant_id,
+            user_id,
+            UserRole::Manager,
+        )
+        .await
+        .expect("manager role assignment should succeed");
 
         let manager_role = roles::Entity::find()
             .filter(roles::Column::TenantId.eq(tenant_id))
@@ -274,9 +254,14 @@ mod tests {
         )
         .await;
 
-        assign_role_permissions_via_store(&db, &user_id, &tenant_id, UserRole::Manager)
-            .await
-            .expect("manager role assignment should succeed");
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+            &db,
+            tenant_id,
+            user_id,
+            UserRole::Manager,
+        )
+        .await
+        .expect("manager role assignment should succeed");
         let manager_role = roles::Entity::find()
             .filter(roles::Column::TenantId.eq(tenant_id))
             .filter(roles::Column::Slug.eq(UserRole::Manager.to_string()))
@@ -305,9 +290,14 @@ mod tests {
         .await
         .expect("insert noncanonical role permission");
 
-        assign_role_permissions_via_store(&db, &user_id, &tenant_id, UserRole::Manager)
-            .await
-            .expect("routine assignment should succeed");
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+            &db,
+            tenant_id,
+            user_id,
+            UserRole::Manager,
+        )
+        .await
+        .expect("routine assignment should succeed");
 
         assert!(
             role_permissions::Entity::find()
@@ -327,9 +317,14 @@ mod tests {
             insert_tenant_and_user(&db, "test-tenant-replace-role", "replace-role@example.com")
                 .await;
 
-        assign_role_permissions_via_store(&db, &user_id, &tenant_id, UserRole::Customer)
-            .await
-            .expect("initial role assignment should succeed");
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+            &db,
+            tenant_id,
+            user_id,
+            UserRole::Customer,
+        )
+        .await
+        .expect("initial role assignment should succeed");
 
         replace_user_role_via_store(&db, &user_id, &tenant_id, UserRole::Admin)
             .await
@@ -381,12 +376,22 @@ mod tests {
         )
         .await;
 
-        assign_role_permissions_via_store(&db, &user_id, &tenant_id, UserRole::Manager)
-            .await
-            .expect("first role assignment should succeed");
-        assign_role_permissions_via_store(&db, &user_id, &tenant_id, UserRole::Manager)
-            .await
-            .expect("second role assignment should succeed");
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+            &db,
+            tenant_id,
+            user_id,
+            UserRole::Manager,
+        )
+        .await
+        .expect("first role assignment should succeed");
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+            &db,
+            tenant_id,
+            user_id,
+            UserRole::Manager,
+        )
+        .await
+        .expect("second role assignment should succeed");
 
         let manager_role = roles::Entity::find()
             .filter(roles::Column::TenantId.eq(tenant_id))
@@ -416,12 +421,22 @@ mod tests {
         )
         .await;
 
-        assign_role_permissions_via_store(&db, &user_id, &tenant_id, UserRole::Customer)
-            .await
-            .expect("customer role assignment should succeed");
-        assign_role_permissions_via_store(&db, &user_id, &tenant_id, UserRole::Manager)
-            .await
-            .expect("manager role assignment should succeed");
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+            &db,
+            tenant_id,
+            user_id,
+            UserRole::Customer,
+        )
+        .await
+        .expect("customer role assignment should succeed");
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+            &db,
+            tenant_id,
+            user_id,
+            UserRole::Manager,
+        )
+        .await
+        .expect("manager role assignment should succeed");
 
         let (other_tenant_id, other_user_id) = insert_tenant_and_user(
             &db,
@@ -429,18 +444,22 @@ mod tests {
             "retain-other-roles@example.com",
         )
         .await;
-        assign_role_permissions_via_store(
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
             &db,
-            &other_user_id,
-            &other_tenant_id,
+            other_tenant_id,
+            other_user_id,
             UserRole::Customer,
         )
         .await
         .expect("other tenant role assignment should succeed");
         assert!(
-            remove_tenant_role_assignments_via_store(&db, &user_id, &other_tenant_id)
-                .await
-                .is_err(),
+            rustok_rbac::RbacRoleAssignmentDbWriter::remove_tenant_role_assignments_on(
+                &db,
+                other_tenant_id,
+                user_id
+            )
+            .await
+            .is_err(),
             "the owner must reject a mismatched subject tenant"
         );
         assert_eq!(
@@ -452,9 +471,11 @@ mod tests {
             2
         );
 
-        remove_tenant_role_assignments_via_store(&db, &user_id, &tenant_id)
-            .await
-            .expect("remove tenant role assignments should succeed");
+        rustok_rbac::RbacRoleAssignmentDbWriter::remove_tenant_role_assignments_on(
+            &db, tenant_id, user_id,
+        )
+        .await
+        .expect("remove tenant role assignments should succeed");
 
         let remaining_links = user_roles::Entity::find()
             .filter(user_roles::Column::UserId.eq(user_id))

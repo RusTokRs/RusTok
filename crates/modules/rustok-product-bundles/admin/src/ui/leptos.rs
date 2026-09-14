@@ -27,7 +27,7 @@ where
 }
 
 #[component]
-pub fn BundleAdmin() -> impl IntoView {
+pub fn ProductBundlesAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = normalize_admin_locale(route_context.locale.as_deref());
     let russian = locale == "ru";
