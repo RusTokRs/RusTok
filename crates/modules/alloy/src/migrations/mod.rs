@@ -8,6 +8,7 @@ mod m20260726_000007_add_imported_release_lineage;
 mod m20260726_000008_create_release_imports;
 mod m20260825_000009_create_component_candidates;
 mod m20260913_000010_add_script_presentations;
+mod m20260914_000011_add_script_presentation_translation_change_plane;
 
 use sea_orm_migration::MigrationTrait;
 
@@ -23,5 +24,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260726_000008_create_release_imports::Migration),
         Box::new(m20260825_000009_create_component_candidates::Migration),
         Box::new(m20260913_000010_add_script_presentations::Migration),
+        Box::new(m20260914_000011_add_script_presentation_translation_change_plane::Migration),
     ]
 }
