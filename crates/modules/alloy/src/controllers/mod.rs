@@ -15,10 +15,11 @@ use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use crate::{
-    AlloyImportError, AlloyPublishedReleaseImportCommand, AlloyPublishedRhaiSourceProviderHandle,
-    AlloyReleaseGovernanceHandle, AlloyReleaseImporter, RevisionedReleaseStager,
-    RevisionedTestRunner, ScopedAlloyRuntime, ScriptError, ScriptEvidenceRetentionCommand,
-    SharedAlloyRuntime, TestCommand, alloy_release_command_context,
+    AlloyAuthoringError, AlloyAuthoringService, AlloyImportError, AlloyPublishedReleaseImportCommand,
+    AlloyPublishedRhaiSourceProviderHandle, AlloyReleaseGovernanceHandle, AlloyReleaseImporter,
+    AuthoringOrigin, CreateAlloyScriptCommand, RevisionedReleaseStager, RevisionedTestRunner,
+    ScopedAlloyRuntime, ScriptError, ScriptEvidenceRetentionCommand, SharedAlloyRuntime, TestCommand,
+    UpdateAlloyScriptCommand, alloy_release_command_context,
     api::{
         CreateScriptRequest, DeleteScriptRequest, EntityInput, ExecutionLogResponse,
         ImportPublishedReleaseRequest, ImportPublishedReleaseResponse, ListExecutionLogQuery,
@@ -27,13 +28,10 @@ use crate::{
         ScriptResponse, ScriptRevisionRequest, StageReleaseRequest, StageReleaseResponse,
         TestRunResponse, UpdateDeletedEvidenceRetentionRequest, UpdateScriptRequest,
     },
-    model::{
-        EntityProxy, ReviewCommand, Script, ScriptDeletionCommand, ScriptStatus, ScriptTrigger,
-        SourceProvenance,
-    },
+    model::{EntityProxy, ReviewCommand, ScriptDeletionCommand, ScriptStatus},
     runner::ExecutionOutcome,
     storage::ScriptRegistry,
-    utils::{dynamic_to_json, json_to_dynamic, validate_cron_expression},
+    utils::{dynamic_to_json, json_to_dynamic},
 };
 
 pub const EXECUTION_HISTORY_ROUTES: &[&str] = &[
@@ -152,6 +150,42 @@ fn script_error(error: ScriptError) -> HttpError {
             crate::TestRunError::InvalidCommand | crate::TestRunError::InvalidCompletion,
         ) => HttpError::bad_request("invalid_alloy_test", test_error.to_string()),
         other => HttpError::internal(other.to_string()),
+    }
+}
+
+fn authoring_error(error: AlloyAuthoringError) -> HttpError {
+    match error {
+        AlloyAuthoringError::NotFound => {
+            HttpError::not_found("alloy_script_not_found", "Script not found")
+        }
+        AlloyAuthoringError::RevisionConflict { expected_version } => HttpError::new(
+            StatusCode::CONFLICT,
+            "alloy_script_revision_conflict",
+            format!("Script revision conflict: expected version {expected_version}"),
+        ),
+        AlloyAuthoringError::PresentationRevisionConflict {
+            expected_copy_revision,
+        } => HttpError::new(
+            StatusCode::CONFLICT,
+            "alloy_script_presentation_revision_conflict",
+            format!(
+                "Script presentation revision conflict: expected copy revision {expected_copy_revision}"
+            ),
+        ),
+        AlloyAuthoringError::RetentionRevisionConflict {
+            expected_retention_revision,
+        } => HttpError::new(
+            StatusCode::CONFLICT,
+            "alloy_evidence_retention_revision_conflict",
+            format!(
+                "Evidence retention revision conflict: expected revision {expected_retention_revision}"
+            ),
+        ),
+        AlloyAuthoringError::Invalid => HttpError::bad_request(
+            "invalid_alloy_request",
+            "Alloy authoring command is invalid",
+        ),
+        AlloyAuthoringError::Failed => HttpError::internal("Alloy authoring operation failed"),
     }
 }
 
@@ -277,18 +311,6 @@ fn entity_to_proxy(entity: EntityInput) -> EntityProxy {
     EntityProxy::new(entity.id, entity.entity_type, data)
 }
 
-fn validate_trigger(trigger: &ScriptTrigger) -> HttpResult<()> {
-    if let ScriptTrigger::Cron { expression } = trigger {
-        validate_cron_expression(expression).map_err(|error| {
-            HttpError::bad_request(
-                "invalid_alloy_script",
-                format!("Invalid cron expression: {error}"),
-            )
-        })?;
-    }
-    Ok(())
-}
-
 pub async fn list_scripts(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
@@ -341,39 +363,25 @@ pub async fn create_script(
 ) -> HttpResult<(StatusCode, Json<ScriptResponse>)> {
     let actor_id = scripts_manage_actor(auth, &tenant, "Alloy script creation")?;
     let runtime = runtime.scoped(tenant.id)?;
-
-    if runtime.storage.get_by_name(&req.name).await.is_ok() {
-        return Err(HttpError::bad_request(
-            "invalid_alloy_request",
-            format!("Script with name '{}' already exists", req.name),
-        ));
-    }
-    validate_trigger(&req.trigger)?;
-    req.workspace
-        .validate_rhai_workspace()
-        .map_err(ScriptError::from)
-        .map_err(script_error)?;
-    let source = req
-        .workspace
-        .entrypoint_source()
-        .map_err(ScriptError::from)
-        .map_err(script_error)?;
-    let mut scope = rhai::Scope::new();
-    runtime
-        .engine
-        .compile(&req.name, source, &mut scope)
-        .map_err(script_error)?;
-
-    let mut script = Script::new(req.name, req.workspace, req.trigger);
-    script.tenant_id = tenant.id;
-    script.description = req.description;
-    script.permissions = req.permissions;
-    script.run_as_system = req.run_as_system;
-    script.author_id = Some(actor_id);
-    script.source_provenance = SourceProvenance::http("alloy_create_script");
-
-    let saved = runtime.storage.save(script).await.map_err(script_error)?;
-    Ok((StatusCode::CREATED, Json(saved.into())))
+    let service = AlloyAuthoringService::from_scoped(runtime.clone());
+    let saved = service
+        .create_script_from(
+            AuthoringOrigin::Http,
+            &actor_id,
+            CreateAlloyScriptCommand {
+                name: req.name,
+                description: req.description,
+                description_locale: req.description_locale,
+                workspace: req.workspace,
+                trigger: req.trigger,
+                permissions: req.permissions,
+                run_as_system: req.run_as_system,
+            },
+        )
+        .await
+        .map_err(authoring_error)?;
+    let script = runtime.storage.get(saved.id).await.map_err(script_error)?;
+    Ok((StatusCode::CREATED, Json(script.into())))
 }
 
 pub async fn update_script(
@@ -385,54 +393,29 @@ pub async fn update_script(
 ) -> HttpResult<Json<ScriptResponse>> {
     let actor_id = scripts_manage_actor(auth, &tenant, "Alloy script update")?;
     let runtime = runtime.scoped(tenant.id)?;
-    let mut script = runtime.storage.get(id).await.map_err(script_error)?;
-    if script.version != req.expected_version {
-        return Err(script_error(ScriptError::RevisionConflict {
-            expected: req.expected_version,
-        }));
-    }
-
-    if let Some(name) = req.name {
-        runtime.engine.invalidate(&script.name);
-        script.name = name;
-    }
-    if let Some(description) = req.description {
-        script.description = Some(description);
-    }
-    if let Some(workspace) = req.workspace {
-        runtime.engine.invalidate(&script.name);
-        workspace
-            .validate_rhai_workspace()
-            .map_err(ScriptError::from)
-            .map_err(script_error)?;
-        let source = workspace
-            .entrypoint_source()
-            .map_err(ScriptError::from)
-            .map_err(script_error)?;
-        let mut scope = rhai::Scope::new();
-        runtime
-            .engine
-            .compile(&script.name, source, &mut scope)
-            .map_err(script_error)?;
-        script.workspace = workspace;
-    }
-    if let Some(ref trigger) = req.trigger {
-        validate_trigger(trigger)?;
-    }
-    if let Some(trigger) = req.trigger {
-        script.trigger = trigger;
-    }
-    if let Some(status) = req.status {
-        script.status = status;
-    }
-    if let Some(permissions) = req.permissions {
-        script.permissions = permissions;
-    }
-    script.author_id = Some(actor_id);
-    script.source_provenance = SourceProvenance::http("alloy_update_script");
-
-    let saved = runtime.storage.save(script).await.map_err(script_error)?;
-    Ok(Json(saved.into()))
+    let service = AlloyAuthoringService::from_scoped(runtime.clone());
+    let saved = service
+        .update_script_from(
+            AuthoringOrigin::Http,
+            &actor_id,
+            UpdateAlloyScriptCommand {
+                script_id: id,
+                expected_version: req.expected_version,
+                name: req.name,
+                description: req.description,
+                description_locale: req.description_locale,
+                expected_description_copy_revision: req.expected_description_copy_revision,
+                workspace: req.workspace,
+                trigger: req.trigger,
+                status: req.status,
+                run_as_system: None,
+                permissions: req.permissions,
+            },
+        )
+        .await
+        .map_err(authoring_error)?;
+    let script = runtime.storage.get(saved.id).await.map_err(script_error)?;
+    Ok(Json(script.into()))
 }
 
 pub async fn delete_script(
