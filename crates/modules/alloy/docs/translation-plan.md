@@ -17,8 +17,9 @@ and delegates writes to the durable Alloy owner apply path. Exact committed
 replay is admitted from the owner receipt before newer live revisions are read,
 while new writes still pass the Translation snapshot/hash validation and owner
 resource/source/target CAS. Operational Script writes remain outside the change
-plane. Retained PostgreSQL execution evidence remains ALLOY-TR-5 before pilot
-promotion.
+plane. ALLOY-TR-5 now has a retained repository-hosted PostgreSQL evidence harness
+and exact-head workflow. Pilot promotion remains blocked until that focused
+workflow is run green and its reviewed post-merge evidence is retained.
 
 ## Audited owner boundary
 
@@ -178,14 +179,21 @@ The implemented sequence is:
 - preserve durable exact replay before live snapshot validation;
 - register the provider in canonical production host composition.
 
-### ALLOY-TR-5 — retained PostgreSQL evidence
+### ALLOY-TR-5 — retained PostgreSQL evidence — harness complete, green run pending
 
-- retain exact-head PostgreSQL evidence for migration/backfill, tenant
-  isolation, canonical create/update, concurrent CAS, idempotent replay after
-  later owner changes, lifecycle, progress and ChangeCursor recovery;
-- prove `scripts.manage` read/apply policy and verify that `und` provenance is
-  never advertised as a concrete exact locale;
-- only then consider pilot promotion.
+- `apps/server/tests/alloy_script_presentation_translation_target_postgres.rs`
+  retains migration/backfill, tenant-isolation, canonical owner authoring,
+  operational-only no-copy churn, multi-replica CAS, exact durable replay after
+  later owner changes, aggregate progress, frozen-window recovery and canonical
+  hard-delete tombstone evidence;
+- the evidence proves `scripts.manage` policy, tenant-private/AI-forbidden field
+  metadata and that storage-only `und` provenance is never advertised as a
+  concrete exact locale or fabricated historical change;
+- `.github/workflows/alloy-script-presentation-translation-target-postgres.yml`
+  checks out and asserts the exact PR/main SHA, performs focused formatting,
+  compiles the locked focused test and runs it against PostgreSQL 16;
+- run the focused workflow green and retain reviewed post-merge evidence before
+  considering pilot promotion.
 
 ## Non-goals
 
