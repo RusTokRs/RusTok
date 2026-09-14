@@ -238,17 +238,14 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    has_state BOOLEAN := FALSE;
     revision_token TEXT;
 BEGIN
-    SELECT EXISTS (
-        SELECT 1
-        FROM alloy_script_presentation_translation_resource_state
-        WHERE tenant_id = OLD.tenant_id AND script_id = OLD.id
-        FOR UPDATE
-    ) INTO has_state;
+    PERFORM 1
+    FROM alloy_script_presentation_translation_resource_state
+    WHERE tenant_id = OLD.tenant_id AND script_id = OLD.id
+    FOR UPDATE;
 
-    IF NOT has_state THEN
+    IF NOT FOUND THEN
         RETURN OLD;
     END IF;
 
