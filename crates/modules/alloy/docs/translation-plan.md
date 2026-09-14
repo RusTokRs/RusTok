@@ -9,7 +9,7 @@ The current Alloy `Script` aggregate mixes human-facing prose with runtime and
 security-sensitive state. Registering that aggregate as a Translation target
 would therefore be incorrect.
 
-ALLOY-TR-1 through ALLOY-TR-4 are complete. The narrow
+ALLOY-TR-1 through ALLOY-TR-5 are complete. The narrow
 `alloy/script_presentation` target is registered in production composition over
 the owner-local presentation/change plane. It exposes localized `description`
 only, requires `scripts.manage` for both read and apply, keeps AI export disabled,
@@ -17,9 +17,11 @@ and delegates writes to the durable Alloy owner apply path. Exact committed
 replay is admitted from the owner receipt before newer live revisions are read,
 while new writes still pass the Translation snapshot/hash validation and owner
 resource/source/target CAS. Operational Script writes remain outside the change
-plane. ALLOY-TR-5 now has a retained repository-hosted PostgreSQL evidence harness
-and exact-head workflow. Pilot promotion remains blocked until that focused
-workflow is run green and its reviewed post-merge evidence is retained.
+plane. Retained exact-head PostgreSQL evidence is green on post-merge
+`main@60e3463e7ff0e88eedb988ecfa2ccc70a3a266f7`: run `34841105202` asserted the
+exact checkout, passed the locked focused compile and completed the ignored
+PostgreSQL 16 evidence test with `1 passed; 0 failed`. The surface is therefore a
+pilot candidate; production enablement remains an operator rollout decision.
 
 ## Audited owner boundary
 
@@ -179,7 +181,7 @@ The implemented sequence is:
 - preserve durable exact replay before live snapshot validation;
 - register the provider in canonical production host composition.
 
-### ALLOY-TR-5 — retained PostgreSQL evidence — harness complete, green run pending
+### ALLOY-TR-5 — retained PostgreSQL evidence — complete
 
 - `apps/server/tests/alloy_script_presentation_translation_target_postgres.rs`
   retains migration/backfill, tenant-isolation, canonical owner authoring,
@@ -192,8 +194,10 @@ The implemented sequence is:
 - `.github/workflows/alloy-script-presentation-translation-target-postgres.yml`
   checks out and asserts the exact PR/main SHA, performs focused formatting,
   compiles the locked focused test and runs it against PostgreSQL 16;
-- run the focused workflow green and retain reviewed post-merge evidence before
-  considering pilot promotion.
+- post-merge main run `34841105202` asserted exact checkout
+  `60e3463e7ff0e88eedb988ecfa2ccc70a3a266f7`, passed focused formatting and
+  locked compile, and completed the PostgreSQL evidence with `1 passed; 0 failed`;
+  the retained evidence gate is closed and the surface is a pilot candidate.
 
 ## Non-goals
 
