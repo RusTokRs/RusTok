@@ -1,29 +1,29 @@
-use chrono::Utc;
 use rustok_api::{Permission, RuntimeLocale};
 use rustok_core::UserRole;
-use sea_orm::{ConnectionTrait, DbBackend, DbErr, Statement};
+use sea_orm::ConnectionTrait;
 use uuid::Uuid;
 
 use crate::catalog::{permission_display_name, role_display_name};
+use crate::presentation::{
+    RbacPresentationResourceKind, RbacPresentationStoreError, SeaOrmRbacPresentationStore,
+};
 
-const ROLE_KIND: &str = "role";
-const PERMISSION_KIND: &str = "permission";
 const BUILTIN_SOURCE_LOCALE: &str = "en";
 
 pub(crate) async fn seed_builtin_role_presentation_on<C>(
     db: &C,
     tenant_id: Uuid,
     role: &UserRole,
-) -> Result<(), DbErr>
+) -> Result<(), RbacPresentationStoreError>
 where
     C: ConnectionTrait,
 {
     insert_source_if_missing(
         db,
         tenant_id,
-        ROLE_KIND,
+        RbacPresentationResourceKind::Role,
         &role.to_string(),
-        role_display_name(role),
+        role_display_name(role).to_string(),
     )
     .await
 }
@@ -32,7 +32,7 @@ pub(crate) async fn seed_builtin_permission_presentation_on<C>(
     db: &C,
     tenant_id: Uuid,
     permission: &Permission,
-) -> Result<(), DbErr>
+) -> Result<(), RbacPresentationStoreError>
 where
     C: ConnectionTrait,
 {
@@ -41,9 +41,9 @@ where
     insert_source_if_missing(
         db,
         tenant_id,
-        PERMISSION_KIND,
+        RbacPresentationResourceKind::Permission,
         &resource_key,
-        &display_name,
+        display_name,
     )
     .await
 }
@@ -51,45 +51,30 @@ where
 async fn insert_source_if_missing<C>(
     db: &C,
     tenant_id: Uuid,
-    resource_kind: &'static str,
+    resource_kind: RbacPresentationResourceKind,
     resource_key: &str,
-    name: &str,
-) -> Result<(), DbErr>
+    name: String,
+) -> Result<(), RbacPresentationStoreError>
 where
     C: ConnectionTrait,
 {
     let source_locale = RuntimeLocale::new(BUILTIN_SOURCE_LOCALE)
         .expect("RBAC built-in source locale must remain concrete");
-    let now = Utc::now().fixed_offset();
-    let sql = match db.get_database_backend() {
-        DbBackend::Postgres => {
-            "INSERT INTO rbac_localized_presentations (tenant_id, resource_kind, resource_key, locale, name, description, copy_revision, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, NULL, 1, $6, $6) ON CONFLICT (tenant_id, resource_kind, resource_key, locale) DO NOTHING"
-        }
-        DbBackend::Sqlite => {
-            "INSERT INTO rbac_localized_presentations (tenant_id, resource_kind, resource_key, locale, name, description, copy_revision, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, NULL, 1, ?6, ?6) ON CONFLICT (tenant_id, resource_kind, resource_key, locale) DO NOTHING"
-        }
-        backend => {
-            return Err(DbErr::Custom(format!(
-                "RBAC built-in presentation seeding does not support database backend {backend:?}"
-            )));
-        }
-    };
 
-    db.execute_raw(Statement::from_sql_and_values(
-        db.get_database_backend(),
-        sql,
-        vec![
-            tenant_id.into(),
-            resource_kind.into(),
-            resource_key.into(),
-            source_locale.as_str().into(),
-            name.into(),
-            now.into(),
-        ],
-    ))
-    .await?;
-
-    Ok(())
+    match SeaOrmRbacPresentationStore::create_source_on(
+        db,
+        tenant_id,
+        resource_kind,
+        resource_key,
+        source_locale,
+        name,
+        None,
+    )
+    .await
+    {
+        Ok(_) | Err(RbacPresentationStoreError::AlreadyExists) => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 #[cfg(test)]
