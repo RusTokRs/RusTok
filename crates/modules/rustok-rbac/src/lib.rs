@@ -16,6 +16,7 @@ mod m20260803_000001_canonicalize_artifact_permissions;
 mod m20260914_000001_localized_presentations;
 pub mod ports;
 pub mod presentation;
+mod presentation_seed;
 mod repair;
 mod role_mutation;
 pub mod services;
