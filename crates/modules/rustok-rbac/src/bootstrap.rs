@@ -7,6 +7,10 @@ use uuid::Uuid;
 use rustok_api::Permission;
 use rustok_core::{Rbac, UserRole};
 
+use crate::presentation_seed::{
+    seed_builtin_permission_presentation_on, seed_builtin_role_presentation_on,
+};
+
 #[derive(Debug, Error)]
 pub enum RbacRoleAssignmentError {
     #[error("RBAC role assignment database error: {0}")]
@@ -191,6 +195,9 @@ where
     ) -> Result<(), RbacRoleAssignmentError> {
         self.ensure_user_tenant(tenant_id, user_id).await?;
         let ensured_role = self.ensure_role(tenant_id, &role).await?;
+        seed_builtin_role_presentation_on(self.db, tenant_id, &role)
+            .await
+            .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))?;
 
         if reconcile_existing_role || ensured_role.created {
             self.reconcile_role_permissions(ensured_role.id, tenant_id, &role)
@@ -332,7 +339,7 @@ where
             }
             _ => unreachable!("RBAC backend was validated before role assignment"),
         };
-        if let Some(id) = self
+        let permission_id = if let Some(id) = self
             .query_id(
                 select,
                 vec![
@@ -343,28 +350,34 @@ where
             )
             .await?
         {
-            return Ok(id);
-        }
+            id
+        } else {
+            self.execute(
+                "INSERT INTO permissions (id, tenant_id, resource, action, description) VALUES ({id}, {tenant}, {resource}, {action}, NULL) ON CONFLICT (tenant_id, resource, action) DO NOTHING",
+                vec![
+                    rustok_core::generate_id().into(),
+                    tenant_id.into(),
+                    resource.clone().into(),
+                    action.clone().into(),
+                ],
+            )
+            .await?;
 
-        self.execute(
-            "INSERT INTO permissions (id, tenant_id, resource, action, description) VALUES ({id}, {tenant}, {resource}, {action}, NULL) ON CONFLICT (tenant_id, resource, action) DO NOTHING",
-            vec![
-                rustok_core::generate_id().into(),
-                tenant_id.into(),
-                resource.clone().into(),
-                action.clone().into(),
-            ],
-        )
-        .await?;
+            self.query_id(
+                select,
+                vec![tenant_id.into(), resource.into(), action.into()],
+            )
+            .await?
+            .ok_or(RbacRoleAssignmentError::MissingPersistedRecord(
+                "permission",
+            ))?
+        };
 
-        self.query_id(
-            select,
-            vec![tenant_id.into(), resource.into(), action.into()],
-        )
-        .await?
-        .ok_or(RbacRoleAssignmentError::MissingPersistedRecord(
-            "permission",
-        ))
+        seed_builtin_permission_presentation_on(self.db, tenant_id, permission)
+            .await
+            .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))?;
+
+        Ok(permission_id)
     }
 
     async fn ensure_user_role(
