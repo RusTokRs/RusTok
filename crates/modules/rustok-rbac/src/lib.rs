@@ -14,8 +14,10 @@ mod m20260716_000001_artifact_permission_catalog;
 mod m20260717_000001_artifact_role_permissions;
 mod m20260803_000001_canonicalize_artifact_permissions;
 mod m20260914_000001_localized_presentations;
+mod m20260915_000001_seed_builtin_presentations;
 pub mod ports;
 pub mod presentation;
+pub mod presentation_catalog;
 mod repair;
 mod role_mutation;
 pub mod services;
@@ -43,6 +45,7 @@ pub use presentation::{
     RbacLocalizedPresentation, RbacPresentationResourceKind, RbacPresentationStore,
     RbacPresentationStoreError, SeaOrmRbacPresentationStore,
 };
+pub use presentation_catalog::RbacLocalizedCatalogReader;
 pub use repair::{
     RbacAffectedUser, RbacSystemRoleRepairError, RbacSystemRoleRepairOptions,
     RbacSystemRoleRepairReport,
@@ -61,7 +64,7 @@ pub use services::permission_authorizer::{
     authorize_permission,
 };
 pub use services::permission_evaluator::{
-    PermissionEvaluation, evaluate_all_permissions, evaluate_any_permission,
+    PermissionEvaluation, evaluate_all_permissions, evaluate_any_permissions,
     evaluate_single_permission,
 };
 pub use services::permission_policy::{
@@ -130,6 +133,7 @@ impl MigrationSource for RbacModule {
             Box::new(m20260717_000001_artifact_role_permissions::Migration),
             Box::new(m20260803_000001_canonicalize_artifact_permissions::Migration),
             Box::new(m20260914_000001_localized_presentations::Migration),
+            Box::new(m20260915_000001_seed_builtin_presentations::Migration),
         ]
     }
 }
