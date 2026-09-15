@@ -13,14 +13,16 @@ translatable values.
 
 RBAC-TR-1 and RBAC-TR-2 are complete. RBAC-TR-3 is now in progress: the canonical
 GraphQL role read resolves human-facing role names from the owner-localized plane
-using exact request locale first and explicit `en` source copy second. A temporary
-legacy seed fallback remains only for tenants that do not yet have built-in owner
-presentation rows. Built-in seed presentation and the native admin bootstrap still
-use the legacy inline/derived path, so the RBAC Translation provider remains
-blocked and unregistered until those remaining TR-3 write/read paths are cut over.
-Existing artifact-permission translations remain a separate RBAC-owned
-release-governance localization plane and are not a second tenant Translation
-writer.
+using exact request locale first and explicit `en` source copy second, and the
+built-in bootstrap now seeds role/permission source presentation through the owner
+module in the same transaction as canonical RBAC setup. Seed replay is insert-only,
+so it cannot overwrite existing tenant presentation copy. A temporary GraphQL
+legacy seed fallback remains for pre-cutover tenants that have not yet received
+owner rows, and the native admin bootstrap still uses inline labels. The RBAC
+Translation provider therefore remains blocked and unregistered until those
+remaining TR-3 read/backfill paths are cut over. Existing artifact-permission
+translations remain a separate RBAC-owned release-governance localization plane
+and are not a second tenant Translation writer.
 
 ## Audited authorization identity boundary
 
@@ -46,8 +48,10 @@ canonical RBAC mutation policy.
 The built-in catalog separates stable role/permission slugs from human-readable
 copy, while legacy presentation is still inline or derived:
 
-- built-in role display names are hard-coded from `UserRole`;
-- permission display names are synthesized from the permission slug;
+- built-in role/permission source copy is now centralized and seeded into owner
+  presentation rows during canonical bootstrap with explicit source locale `en`;
+- the native admin bootstrap still carries inline role labels pending the remaining
+  TR-3 read cutover;
 - future tenant-authored role/permission presentation must carry explicit locale
   provenance and remain identity-bound to the canonical role/permission key.
 
@@ -59,19 +63,25 @@ source-write edges, so newly authored copy cannot silently use storage-only
 persisted legacy copy with unknown provenance can remain truthful under `und`
 without guessing English, a tenant default, request locale, or deployment locale.
 
-There is no current persisted owner role/permission presentation data to backfill:
-the legacy built-in copy is computed inline. RBAC-TR-2 therefore deliberately does
-not fabricate `und` rows from derived strings. RBAC-TR-3 will seed canonical
-presentation through explicit-locale owner data instead.
+There was no persisted owner role/permission presentation data before TR-3: the
+legacy built-in copy was computed inline. RBAC-TR-2 therefore deliberately did not
+fabricate `und` rows from derived strings. RBAC-TR-3 now seeds canonical built-in
+source presentation as explicit `en` owner data for bootstrap/reconciliation. A
+separate retained migration/backfill slice is still required for tenants created
+before this write cutover before the temporary GraphQL fallback can be removed.
 
 Presentation copy has its own `copy_revision`. Idempotent replays do not advance
 that revision, and semantic copy changes use compare-and-set. Authorization and
-invalidation revisions/generations are not reused by this plane.
+invalidation revisions/generations are not reused by this plane. Built-in seed
+replay uses insert-on-conflict/no-op semantics and therefore never overwrites an
+existing localized row or advances its copy revision.
 
 Owner writes are identity-bound: the current store admits only resource keys that
-exist in `BuiltinTenantRbacCatalog`. Extending the owner to tenant-authored roles
-or permissions requires first extending canonical RBAC identity ownership; copy
-storage must not create orphan authorization identity.
+exist in `BuiltinTenantRbacCatalog`. The built-in seed path is crate-private and
+accepts typed canonical `UserRole`/`Permission` identities from RBAC bootstrap;
+it cannot create arbitrary tenant resource identity. Extending the owner to
+tenant-authored roles or permissions requires first extending canonical RBAC
+identity ownership; copy storage must not create orphan authorization identity.
 
 Authorization and mutation transports continue to use stable identity. Locale-
 aware admin reads may resolve presentation copy, but policy writes, assignments,
@@ -142,20 +152,21 @@ moves every canonical read and write onto this owner plane.
 
 ### RBAC-TR-3 — canonical write/read cutover — in progress
 
-Completed in the current API-read slice:
+Completed so far:
 
 - GraphQL role presentation resolves from owner-localized exact request locale;
 - missing exact locale falls back only to the explicit owner source locale `en`;
-- role slug and permission membership remain stable authorization identity and are
-  not derived from localized copy;
-- tenants without seeded owner rows retain a narrow temporary legacy seed fallback
-  so this read migration is deployable before the write-side seed cutover.
+- built-in role and permission source presentation is seeded during canonical
+  bootstrap/reconciliation with explicit concrete `RuntimeLocale("en")`;
+- seed replay is conflict-safe insert-only and does not overwrite tenant-edited
+  copy or advance copy revision;
+- role slug, permission identity and membership remain stable authorization data
+  and are not derived from localized copy.
 
 Remaining before RBAC-TR-3 can be marked complete:
 
-- route built-in seed presentation through explicit-locale owner data, remove the
-  temporary GraphQL seed fallback, and prove idempotent bootstrap does not
-  overwrite tenant-edited copy;
+- provide retained source-row migration/backfill for tenants created before the
+  bootstrap write cutover, then remove the temporary GraphQL seed fallback;
 - make any tenant-authored presentation commands locale-aware and identity-bound;
 - migrate the native admin bootstrap presentation read to the same owner-aware
   service/host contract instead of its current inline labels;
