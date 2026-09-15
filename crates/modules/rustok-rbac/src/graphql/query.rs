@@ -1,31 +1,17 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use rustok_api::{
-    AuthContext, AuthPrincipalContext, Permission, TenantContext, graphql::GraphQLError,
+    AuthContext, AuthPrincipalContext, Permission, RuntimeLocale, TenantContext,
+    graphql::{GraphQLError, resolve_graphql_locale},
     has_effective_permission,
 };
-use rustok_core::{Rbac, UserRole};
+
+use crate::RbacLocalizedCatalogReader;
 
 use super::control_plane::require_direct_control_plane_user;
 use super::types::RoleInfo;
 
 #[derive(Default)]
 pub struct RbacQuery;
-
-const ALL_ROLES: &[UserRole] = &[
-    UserRole::SuperAdmin,
-    UserRole::Admin,
-    UserRole::Manager,
-    UserRole::Customer,
-];
-
-fn display_name(role: &UserRole) -> &'static str {
-    match role {
-        UserRole::SuperAdmin => "Super Admin",
-        UserRole::Admin => "Admin",
-        UserRole::Manager => "Manager",
-        UserRole::Customer => "Customer",
-    }
-}
 
 #[Object]
 impl RbacQuery {
@@ -48,19 +34,20 @@ impl RbacQuery {
             ));
         }
 
-        let roles = ALL_ROLES
-            .iter()
-            .map(|role| {
-                let mut perms: Vec<String> = Rbac::permissions_for_role(role)
-                    .iter()
-                    .map(|p| p.to_string())
-                    .collect();
-                perms.sort();
-                RoleInfo {
-                    slug: role.to_string(),
-                    display_name: display_name(role).to_string(),
-                    permissions: perms,
-                }
+        let locale = RuntimeLocale::new(resolve_graphql_locale(ctx, None))
+            .map_err(|_| async_graphql::Error::new("RBAC request locale is invalid"))?;
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let roles = RbacLocalizedCatalogReader::new(db.clone())
+            .roles(tenant.id, &locale)
+            .await
+            .map_err(|_| {
+                async_graphql::Error::new("RBAC role presentation is temporarily unavailable")
+            })?
+            .into_iter()
+            .map(|role| RoleInfo {
+                slug: role.slug,
+                display_name: role.display_name,
+                permissions: role.permission_slugs,
             })
             .collect();
 
