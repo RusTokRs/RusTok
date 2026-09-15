@@ -28,10 +28,13 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
     #[cfg(feature = "ssr")]
     {
         use rustok_api::{
-            AuthContext, AuthPrincipalContext, Permission, TenantContext, has_effective_permission,
+            AuthContext, AuthPrincipalContext, HostRuntimeContext, PLATFORM_FALLBACK_LOCALE,
+            Permission, RequestContext, RuntimeLocale, TenantContext, has_effective_permission,
         };
-        use rustok_core::{ModuleRegistry, Rbac, UserRole, infer_user_role_from_permissions};
-        use rustok_rbac::{RbacControlPlanePrincipal, require_direct_control_plane_user};
+        use rustok_core::{ModuleRegistry, infer_user_role_from_permissions};
+        use rustok_rbac::{
+            RbacControlPlanePrincipal, RbacLocalizedCatalogReader, require_direct_control_plane_user,
+        };
 
         let registry = expect_context::<ModuleRegistry>();
         let auth = leptos_axum::extract::<AuthContext>()
@@ -83,6 +86,35 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
             ));
         }
 
+        let request_context = leptos_axum::extract::<RequestContext>().await.ok();
+        let locale = request_context
+            .as_ref()
+            .and_then(|request| RuntimeLocale::new(&request.locale).ok())
+            .or_else(|| RuntimeLocale::new(&tenant.default_locale).ok())
+            .or_else(|| RuntimeLocale::new(PLATFORM_FALLBACK_LOCALE).ok())
+            .ok_or_else(|| ServerFnError::new("RBAC request locale is unavailable"))?;
+        let host = expect_context::<HostRuntimeContext>();
+        let roles = RbacLocalizedCatalogReader::new(host.db_clone())
+            .roles(tenant.id, &locale)
+            .await
+            .map_err(|error| {
+                tracing::error!(
+                    error_type = std::any::type_name_of_val(&error),
+                    tenant_id = %tenant.id,
+                    code = "rbac.admin_presentation_unavailable",
+                    boundary = RBAC_ADMIN_BOUNDARY,
+                    "RBAC admin localized presentation read failed"
+                );
+                ServerFnError::new("RBAC role presentation is temporarily unavailable")
+            })?
+            .into_iter()
+            .map(|role| RbacRoleInfo {
+                slug: role.slug,
+                display_name: role.display_name,
+                permissions: role.permission_slugs,
+            })
+            .collect();
+
         let mut module_permissions = registry
             .list()
             .into_iter()
@@ -113,33 +145,6 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
             .collect::<Vec<_>>();
         granted_permissions.sort();
         granted_permissions.dedup();
-
-        let roles = [
-            UserRole::SuperAdmin,
-            UserRole::Admin,
-            UserRole::Manager,
-            UserRole::Customer,
-        ]
-        .into_iter()
-        .map(|role| {
-            let mut permissions = Rbac::permissions_for_role(&role)
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>();
-            permissions.sort();
-            RbacRoleInfo {
-                slug: role.to_string(),
-                display_name: match role {
-                    UserRole::SuperAdmin => "Super Admin",
-                    UserRole::Admin => "Admin",
-                    UserRole::Manager => "Manager",
-                    UserRole::Customer => "Customer",
-                }
-                .to_string(),
-                permissions,
-            }
-        })
-        .collect();
 
         Ok(RbacAdminBootstrap {
             tenant_slug: tenant.slug,
