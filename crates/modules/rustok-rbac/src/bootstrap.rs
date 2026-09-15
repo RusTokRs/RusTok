@@ -7,6 +7,8 @@ use uuid::Uuid;
 use rustok_api::Permission;
 use rustok_core::{Rbac, UserRole};
 
+use crate::presentation_catalog::seed_builtin_presentations_on;
+
 #[derive(Debug, Error)]
 pub enum RbacRoleAssignmentError {
     #[error("RBAC role assignment database error: {0}")]
@@ -25,6 +27,8 @@ pub enum RbacRoleAssignmentError {
         "RBAC built-in role slug `{slug}` is occupied by a non-system role in tenant {tenant_id}"
     )]
     BuiltInRoleSlugCollision { tenant_id: Uuid, slug: String },
+    #[error("RBAC built-in presentation seed failed: {0}")]
+    Presentation(String),
 }
 
 /// Database-backed writer for built-in role assignment and reconciliation.
@@ -191,6 +195,9 @@ where
     ) -> Result<(), RbacRoleAssignmentError> {
         self.ensure_user_tenant(tenant_id, user_id).await?;
         let ensured_role = self.ensure_role(tenant_id, &role).await?;
+        seed_builtin_presentations_on(self.db, tenant_id)
+            .await
+            .map_err(|error| RbacRoleAssignmentError::Presentation(error.to_string()))?;
 
         if reconcile_existing_role || ensured_role.created {
             self.reconcile_role_permissions(ensured_role.id, tenant_id, &role)
