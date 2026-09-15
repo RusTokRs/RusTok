@@ -16,6 +16,7 @@ mod m20260803_000001_canonicalize_artifact_permissions;
 mod m20260914_000001_localized_presentations;
 pub mod ports;
 pub mod presentation;
+mod presentation_seed;
 mod repair;
 mod role_mutation;
 pub mod services;
@@ -65,7 +66,7 @@ pub use services::permission_evaluator::{
     evaluate_single_permission,
 };
 pub use services::permission_policy::{
-    DeniedReasonKind, PermissionCheckOutcome, check_all_permissions, check_any_permission,
+    DeniedReasonKind, PermissionCheckOutcome, check_all_permissions, check_any_permissions,
     check_permission, denied_reason_for_denial, has_effective_permission_in_set,
     missing_permissions,
 };
