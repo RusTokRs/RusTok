@@ -12,7 +12,7 @@ admin host.
   progress, reviewed workflow, and reviewer workload operations, including
   private job/item workflow notes.
 - Use the host-provided GraphQL executor, tenant identity, authentication, and
-  `next-intl` locale.
+  `@rustok/next-fluent` locale.
 - Keep the selected workbench tab, glossary, and memory entry in the typed
   `tab`, `glossary_id`, and `memory_entry_id` URL query keys, without implicit
   first-item selection.

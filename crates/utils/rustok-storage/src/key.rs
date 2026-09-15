@@ -18,9 +18,13 @@ impl ObjectZone {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ObjectScope {
     Tenant(Uuid),
+    TenantModule {
+        tenant_id: Uuid,
+        module: String,
+    },
     Namespace {
         tenant_id: Uuid,
         owner_id: Uuid,
@@ -119,6 +123,10 @@ impl std::fmt::Display for DigestObjectKey {
 fn scope_segment(scope: ObjectScope) -> Result<String, KeyError> {
     match scope {
         ObjectScope::Tenant(tenant_id) => Ok(format!("tenants/{tenant_id}")),
+        ObjectScope::TenantModule { tenant_id, module } => {
+            let module = validated_segment("module", &module, 64)?;
+            Ok(format!("tenants/{tenant_id}/modules/{module}"))
+        }
         ObjectScope::Namespace {
             tenant_id,
             owner_id,
@@ -253,7 +261,7 @@ mod tests {
                 ObjectKey::chronological(
                     "module-artifact-data",
                     ObjectZone::Objects,
-                    scope,
+                    scope.clone(),
                     created_at,
                     object_id,
                     "bin"
@@ -302,6 +310,32 @@ mod tests {
                 "JPG"
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn chronological_key_supports_tenant_module_scope() {
+        let tenant_id = Uuid::from_u128(1);
+        let object_id = Uuid::from_u128(2);
+        let now = DateTime::from_timestamp(1_700_000_000, 0).unwrap();
+        let key = ObjectKey::chronological(
+            "media",
+            ObjectZone::Objects,
+            ObjectScope::TenantModule {
+                tenant_id,
+                module: "blog".to_string(),
+            },
+            now,
+            object_id,
+            "png",
+        )
+        .unwrap();
+
+        assert_eq!(
+            key.to_string(),
+            format!(
+                "media/objects/tenants/{tenant_id}/modules/blog/2023/11/14/02/{object_id}.png"
+            )
         );
     }
 }

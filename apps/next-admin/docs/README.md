@@ -9,7 +9,7 @@
 > **IMPORTANT RULES:**
 >
 > - **DO NOT write custom components** — check existing components in `src/shared/ui` and `packages/*` first
-> - **DO NOT invent custom i18n** — use host-provided `x-rustok-effective-locale` and `next-intl`
+> - **DO NOT invent custom i18n** — use host-provided `x-rustok-effective-locale` and `@rustok/next-fluent`
 > - **DO NOT duplicate transport/auth** — use shared contracts in `src/shared/api` and `src/shared/lib`
 > - **DO NOT create starter-only routes** — `billing`, `exclusive`, `workspaces` must return `notFound()`
 >
@@ -42,7 +42,7 @@ Local documentation for `apps/next-admin`.
 - canonical FSD layers for host: `app`, `shared`, `entities`, `features`, `widgets`;
 - backend integration goes through `apps/server` and shared transport packages;
 - effective locale is selected by the host/runtime layer via `x-rustok-effective-locale`
-  and `next-intl`; module-owned packages read the host-provided locale, not a cookie/query fallback chain;
+  and `@rustok/next-fluent`; module-owned packages read the host-provided locale, not a cookie/query fallback chain;
 - user language selection in Next Admin is stored in the host-owned cookie `rustok-admin-locale`;
   middleware normalizes the effective locale in order `?locale` → cookie → `x-rustok-effective-locale`
   → `Accept-Language` → `en`, and the UI uses dropdown in header and auth screens;

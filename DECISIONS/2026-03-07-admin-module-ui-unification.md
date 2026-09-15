@@ -1,7 +1,7 @@
 # Unification of UI modules between Next.js and Leptos Admin
 
 - Date: 2026-03-07
-- Status: Accepted & Implemented (v2 — with i18n libraries)
+- Status: Superseded (Next.js i18n replaced with `@rustok/next-fluent` and `.ftl` bundles, see `docs/architecture/i18n.md`)
 
 ## Context
 

@@ -8,7 +8,7 @@ import {
   IconShoppingBag
 } from '@tabler/icons-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@rustok/next-fluent';
 import { useSession } from 'next-auth/react';
 import { startTransition, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';

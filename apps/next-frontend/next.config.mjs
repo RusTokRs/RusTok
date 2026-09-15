@@ -1,8 +1,6 @@
-import createNextIntlPlugin from "next-intl/plugin";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const withNextIntl = createNextIntlPlugin();
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const apiBaseUrl = (process.env.RUSTOK_API_URL ?? "http://localhost:5150").replace(/\/$/, "");
 
@@ -37,4 +35,4 @@ const nextConfig = {
   },
 };
 
-export default withNextIntl(nextConfig);
+export default nextConfig;

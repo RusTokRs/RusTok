@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { setRequestLocale } from "next-intl/server";
+import { setRequestLocale } from "@rustok/next-fluent/server";
 
 export default async function LocaleLayout({
   children,

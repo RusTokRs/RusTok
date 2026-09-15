@@ -2,7 +2,7 @@
 
 import { CommentComposer } from '@rustok/comments-frontend';
 import type { RichTextDocument } from '@rustok/richtext';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@rustok/next-fluent';
 import { useEffect, useState } from 'react';
 
 import { getClientAuth, type AuthSession } from '@/shared/lib/auth';

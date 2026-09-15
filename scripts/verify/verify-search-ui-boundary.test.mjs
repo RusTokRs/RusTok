@@ -325,7 +325,7 @@ export async function fetchCatalogSearchOptions(request) {
 }
 `);
   writeFixtureFile(root, "apps/next-admin/src/app/dashboard/search/page.tsx", `
-import { getLocale } from 'next-intl/server';
+import { getLocale } from '@rustok/next-fluent/server';
 import { listCatalogAttributeSearchOptions, listCatalogCategorySearchOptions } from '../../../../packages/rustok-product/src';
 async function loadCatalogSearchOptions() {
   const locale = await getLocale();

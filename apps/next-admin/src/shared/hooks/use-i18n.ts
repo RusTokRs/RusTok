@@ -1,6 +1,6 @@
 'use client';
 
-// Re-export next-intl hooks for convenience.
+// Re-export next-fluent hooks for convenience.
 // Use useTranslations('namespace') for translations.
 // Use useLocale() to get current locale.
-export { useTranslations, useLocale } from 'next-intl';
+export { useTranslations, useLocale } from '@rustok/next-fluent';

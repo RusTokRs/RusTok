@@ -14,7 +14,7 @@ import {
   SelectValue
 } from '@/shared/ui/shadcn/select';
 import { IconLanguage } from '@tabler/icons-react';
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from '@rustok/next-fluent';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;

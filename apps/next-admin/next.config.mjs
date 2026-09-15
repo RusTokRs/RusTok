@@ -1,5 +1,4 @@
 import { withSentryConfig } from '@sentry/nextjs';
-import createNextIntlPlugin from 'next-intl/plugin';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -43,10 +42,7 @@ const baseConfig = {
   // (e.g. @rustok/blog-admin at file:../../crates/...) can resolve node_modules
   // from the workspace junction at the repo root.
   turbopack: {
-    root: path.resolve(__dirname, '../..'),
-    resolveAlias: {
-      'next-intl': './node_modules/next-intl'
-    }
+    root: path.resolve(__dirname, '../..')
   },
   webpack(config) {
     // Allow @rustok/blog-admin (and other local crate UI packages) to resolve
@@ -109,6 +105,4 @@ if (!process.env.NEXT_PUBLIC_SENTRY_DISABLED) {
   });
 }
 
-const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
-const nextConfig = withNextIntl(configWithPlugins);
-export default nextConfig;
+export default configWithPlugins;

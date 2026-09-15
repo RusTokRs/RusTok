@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@rustok/next-fluent';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import {
   Card,

@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { getTranslations } from 'next-intl/server';
+import { getTranslations } from '@rustok/next-fluent/server';
 
 import { auth } from '@/auth';
 import {

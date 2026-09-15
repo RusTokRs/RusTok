@@ -23,7 +23,7 @@ entrypoints must not re-export `src/features/*` implementations.
 
 - Keep module navigation registry-driven and filtered by enabled module slug.
 - Keep locale selection host-owned through `x-rustok-effective-locale` and
-  `next-intl`.
+  `@rustok/next-fluent`.
 - Keep GraphQL/REST access centralized in `src/shared/api` and package-owned API
   modules instead of page-local clients.
 - Keep the module operator page in parity with Leptos for owner-projected
@@ -37,7 +37,7 @@ entrypoints must not re-export `src/features/*` implementations.
   the shared framed vanilla Tiptap runtime is now wired through
   `@rustok/richtext`; `/richtext/frame` and its hashed assets are auth-exempt,
   immutable capability routes, and the Blog/Forum editor adapters consume
-  host `next-intl` messages. Owner-selected content locale, derived direction,
+  host `@rustok/next-fluent` messages. Owner-selected content locale, derived direction,
   spellcheck and dynamic read-only state now update without remounting the
   iframe; the Blog edit form takes that locale from the post's requested or
   effective translation instead of overwriting it with the host UI locale.

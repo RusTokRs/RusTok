@@ -32,7 +32,7 @@ export type SearchCatalogFilterOption = {
   label: string;
 };
 
-type SearchCatalogFilters = {
+export type SearchCatalogFilters = {
   channelId: string;
   categoryIds: string;
   attributeCode: string;

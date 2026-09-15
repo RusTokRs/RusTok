@@ -6,7 +6,7 @@ import {
   type RichTextDocument
 } from '@rustok/richtext';
 import { RichTextEditor } from '@rustok/richtext/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@rustok/next-fluent';
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 

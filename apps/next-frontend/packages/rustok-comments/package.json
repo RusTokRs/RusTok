@@ -6,7 +6,7 @@
   "types": "./src/index.ts",
   "dependencies": {
     "@rustok/richtext": "file:../../../../packages/richtext",
-    "next-intl": "^4.13.2",
+    "@rustok/next-fluent": "file:../../../../packages/next-fluent",
     "react": "^19.2.7"
   },
   "license": "BUSL-1.1"

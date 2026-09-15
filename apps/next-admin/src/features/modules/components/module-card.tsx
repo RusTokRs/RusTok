@@ -5,7 +5,7 @@ import {
   IconPlugConnected,
   IconPlugConnectedX
 } from '@tabler/icons-react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@rustok/next-fluent';
 
 import { Badge } from '@/shared/ui/shadcn/badge';
 import { Button } from '@/shared/ui/shadcn/button';

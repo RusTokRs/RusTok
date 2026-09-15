@@ -1,5 +1,5 @@
 import { RichTextHtml } from '@rustok/richtext/view';
-import { getTranslations } from 'next-intl/server';
+import { getTranslations } from '@rustok/next-fluent/server';
 
 import { storefrontGraphql } from '@/shared/lib/graphql';
 import { fetchPublishedPost, fetchPublishedPosts } from "../api/posts";

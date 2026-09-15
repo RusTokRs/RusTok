@@ -7,7 +7,7 @@ import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@rustok/next-fluent';
 
 export default function UserRegisterForm() {
   const t = useTranslations('register');

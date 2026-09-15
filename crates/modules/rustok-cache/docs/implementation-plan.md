@@ -27,7 +27,7 @@ Last reconciled with `main`: 2026-07-29.
     GraphQL API and UI boundary;
   - the client-safe shell registration entrypoint is separated from server
     page exports, and the client status component consumes the host
-    `next-intl` provider;
+    `@rustok/next-fluent` provider;
   - live browser and backend transport parity evidence remains required.
 - Last verified at (UTC): 2026-07-29
 - Owner: Cache module maintainers

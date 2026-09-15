@@ -2,7 +2,7 @@ import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
 import { EventsPage } from '@rustok/events-admin';
 import { Suspense } from 'react';
-import { getTranslations } from 'next-intl/server';
+import { getTranslations } from '@rustok/next-fluent/server';
 
 export async function generateMetadata() {
   const t = await getTranslations('events');

@@ -1,12 +1,9 @@
-import { getRequestConfig } from "next-intl/server";
+import { setRequestConfig } from "@rustok/next-fluent/server";
+import fs from "node:fs/promises";
+import path from "node:path";
 
-const messageLoaders = {
-  en: () => import("../messages/en.json").then((module) => module.default),
-  ru: () => import("../messages/ru.json").then((module) => module.default),
-} as const;
-
-export type Locale = keyof typeof messageLoaders;
-export const locales = Object.keys(messageLoaders) as Locale[];
+export const locales = ["en", "ru"] as const;
+export type Locale = (typeof locales)[number];
 export const defaultLocale = "en";
 
 function matchSupportedLocale(value?: string | null): Locale | undefined {
@@ -23,11 +20,23 @@ export function resolveLocale(value?: string | null): Locale {
   return matchSupportedLocale(value) ?? defaultLocale;
 }
 
-export default getRequestConfig(async ({ locale }) => {
+const ftlCache = new Map<Locale, string>();
+
+async function loadFtlMessages(locale: Locale): Promise<string> {
+  const cached = ftlCache.get(locale);
+  if (cached) return cached;
+
+  const ftlPath = path.join(process.cwd(), "messages", `${locale}.ftl`);
+  const content = await fs.readFile(ftlPath, "utf8");
+  ftlCache.set(locale, content);
+  return content;
+}
+
+export default setRequestConfig(async ({ locale }) => {
   const resolvedLocale = resolveLocale(locale);
 
   return {
     locale: resolvedLocale,
-    messages: await messageLoaders[resolvedLocale](),
+    messages: await loadFtlMessages(resolvedLocale),
   };
 });

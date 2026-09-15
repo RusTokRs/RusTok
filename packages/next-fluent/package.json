@@ -1,0 +1,64 @@
+{
+  "name": "@rustok/next-fluent",
+  "version": "0.1.0",
+  "description": "Modern, lightweight Project Fluent (Mozilla) localization library for Next.js App Router (RSC + Client Components)",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./src/client.ts",
+      "default": "./dist/client.js"
+    },
+    "./server": {
+      "types": "./src/server.ts",
+      "default": "./dist/server.js"
+    },
+    "./middleware": {
+      "types": "./src/middleware.ts",
+      "default": "./dist/middleware.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node ./scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test ./test/*.test.mjs",
+    "verify": "npm run build && npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "@fluent/bundle": "0.19.1"
+  },
+  "peerDependencies": {
+    "next": ">=15.0.0",
+    "react": ">=19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "esbuild": "^0.28.2",
+    "typescript": "7.0.2"
+  },
+  "license": "BUSL-1.1",
+  "keywords": [
+    "nextjs",
+    "fluent",
+    "i18n",
+    "localization",
+    "l10n",
+    "project-fluent",
+    "mozilla-fluent",
+    "react",
+    "app-router",
+    "rsc"
+  ]
+}

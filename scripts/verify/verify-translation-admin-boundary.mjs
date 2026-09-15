@@ -35,8 +35,8 @@ const files = {
   uiLabel: "crates/ui/leptos-ui/src/label.rs",
   leptosEn: "crates/modules/rustok-translation/admin/locales/en.ftl",
   leptosRu: "crates/modules/rustok-translation/admin/locales/ru.ftl",
-  nextEn: "apps/next-admin/messages/en.json",
-  nextRu: "apps/next-admin/messages/ru.json",
+  nextEn: "apps/next-admin/messages/en.ftl",
+  nextRu: "apps/next-admin/messages/ru.ftl",
 };
 
 function absolute(relativePath) {
@@ -560,7 +560,7 @@ for (const marker of [
 contains(
   source.nextPackage,
   "useTranslations('translation')",
-  `${files.nextPackage}: Next package must consume host next-intl messages`,
+  `${files.nextPackage}: Next package must consume host next-fluent messages`,
 );
 contains(
   source.nextPackage,
@@ -624,10 +624,12 @@ function parseFtlKeys(content) {
 try {
   const leptosEnKeys = parseFtlKeys(source.leptosEn).sort();
   const leptosRuKeys = parseFtlKeys(source.leptosRu).sort();
-  const nextEn = JSON.parse(source.nextEn);
-  const nextRu = JSON.parse(source.nextRu);
-  const nextEnKeys = flatten(nextEn.translation, "translation").sort();
-  const nextRuKeys = flatten(nextRu.translation, "translation").sort();
+  const nextEnKeys = parseFtlKeys(source.nextEn)
+    .filter((k) => k.startsWith("translation."))
+    .sort();
+  const nextRuKeys = parseFtlKeys(source.nextRu)
+    .filter((k) => k.startsWith("translation."))
+    .sort();
   const expected = JSON.stringify(leptosEnKeys);
   if (JSON.stringify(leptosRuKeys) !== expected) {
     fail("Translation Leptos locale bundles do not expose identical keys");

@@ -79,7 +79,7 @@ If component doesn't exist, check if it's available in:
 
 ### 4. DO NOT Invent Custom i18n
 
-✅ **ALWAYS use:** host-provided `x-rustok-effective-locale` + `next-intl`
+✅ **ALWAYS use:** host-provided `x-rustok-effective-locale` + `@rustok/next-fluent` (Project Fluent)
 ❌ **NEVER create** package-local cookie/header/query locale fallback chains
 
 User locale selection:

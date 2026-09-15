@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@rustok/next-fluent';
 
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/shadcn/alert';
 import { Badge } from '@/shared/ui/shadcn/badge';

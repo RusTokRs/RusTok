@@ -1,23 +1,13 @@
-import { getRequestConfig } from 'next-intl/server';
+import { setRequestConfig } from '@rustok/next-fluent/server';
 import { headers } from 'next/headers';
-import type { AbstractIntlMessages } from 'next-intl';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import {
   defaultLocale,
   EFFECTIVE_LOCALE_HEADER,
   locales,
   type Locale
 } from './config';
-
-const messageLoaders = {
-  en: () =>
-    import('../../messages/en.json').then(
-      (module) => module.default as AbstractIntlMessages
-    ),
-  ru: () =>
-    import('../../messages/ru.json').then(
-      (module) => module.default as AbstractIntlMessages
-    )
-} satisfies Record<Locale, () => Promise<AbstractIntlMessages>>;
 
 function matchSupportedLocale(value?: string | null): Locale | undefined {
   const normalized = value?.trim().replaceAll('_', '-').toLowerCase();
@@ -42,15 +32,35 @@ function resolveAcceptLanguage(value: string | null): Locale | undefined {
     .find((locale): locale is Locale => Boolean(locale));
 }
 
-export default getRequestConfig(async () => {
-  const headerStore = await headers();
-  const locale =
-    matchSupportedLocale(headerStore.get(EFFECTIVE_LOCALE_HEADER)) ??
-    resolveAcceptLanguage(headerStore.get('accept-language')) ??
-    defaultLocale;
+const ftlCache = new Map<Locale, string>();
+
+async function loadFtlMessages(locale: Locale): Promise<string> {
+  const cached = ftlCache.get(locale);
+  if (cached) return cached;
+
+  const ftlPath = path.join(process.cwd(), 'messages', `${locale}.ftl`);
+  const content = await fs.readFile(ftlPath, 'utf8');
+  ftlCache.set(locale, content);
+  return content;
+}
+
+export default setRequestConfig(async () => {
+  let locale: Locale = defaultLocale;
+
+  try {
+    const headerStore = await headers();
+    locale =
+      matchSupportedLocale(headerStore.get(EFFECTIVE_LOCALE_HEADER)) ??
+      resolveAcceptLanguage(headerStore.get('accept-language')) ??
+      defaultLocale;
+  } catch {
+    // Fallback if called outside request context
+  }
+
+  const messages = await loadFtlMessages(locale);
 
   return {
     locale,
-    messages: await messageLoaders[locale]()
+    messages
   };
 });

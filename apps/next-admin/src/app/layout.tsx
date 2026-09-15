@@ -7,8 +7,9 @@ import ThemeProvider from '@/shared/lib/themes/theme-provider';
 import { cn } from '@/shared/lib/utils';
 import type { Metadata, Viewport } from 'next';
 import { cookies } from 'next/headers';
-import { NextIntlClientProvider } from 'next-intl';
-import { getLocale, getMessages } from 'next-intl/server';
+import { FluentProvider } from '@rustok/next-fluent';
+import { getLocale, getMessages } from '@rustok/next-fluent/server';
+import '@/i18n/request';
 import NextTopLoader from 'nextjs-toploader';
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
 import '../styles/globals.css';
@@ -62,7 +63,7 @@ export default async function RootLayout({
         )}
       >
         <NextTopLoader color='var(--primary)' showSpinner={false} />
-        <NextIntlClientProvider messages={messages} locale={locale}>
+        <FluentProvider messages={messages} locale={locale}>
           <NuqsAdapter>
             <ThemeProvider
               attribute='class'
@@ -77,7 +78,7 @@ export default async function RootLayout({
               </Providers>
             </ThemeProvider>
           </NuqsAdapter>
-        </NextIntlClientProvider>
+        </FluentProvider>
       </body>
     </html>
   );

@@ -7,7 +7,7 @@ import {
   KBarProvider,
   KBarSearch
 } from 'kbar';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@rustok/next-fluent';
 import { useRouter } from 'next/navigation';
 import { useMemo } from 'react';
 import RenderResults from './render-result';

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { CheckCircle2, Rocket, Sparkles } from "lucide-react";
-import { getTranslations } from "next-intl/server";
+import { getTranslations } from "@rustok/next-fluent/server";
 
 import { getModulesForSlot } from "@/modules";
 import {

@@ -8,7 +8,7 @@
 >
 > **IMPORTANT RULES:**
 > - **DO NOT duplicate transport/auth** — use shared contracts in `src/shared/lib` and `packages/*`
-> - **DO NOT invent custom i18n** — use middleware locale and `next-intl`
+> - **DO NOT invent custom i18n** — use middleware locale and `@rustok/next-fluent`
 > - **DO NOT write custom SEO runtime** — use `SeoPageContext` from backend + Next Metadata API adapter
 > - **DO NOT hardcode `/en|/ru` in middleware** — get supported locales from message loaders
 >

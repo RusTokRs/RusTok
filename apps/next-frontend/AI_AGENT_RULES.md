@@ -54,7 +54,7 @@ existing suppression in files touched by the task.
 Reuse shared integration gateways in `src/shared/lib/*`.
 
 ### 3. DO NOT Invent Custom i18n
-✅ **ALWAYS use:** middleware locale + `next-intl`
+✅ **ALWAYS use:** middleware locale + `@rustok/next-fluent` (Project Fluent)
 ❌ **NEVER create** package-local cookie/header/query locale fallback
 
 Locale normalization:
@@ -135,7 +135,7 @@ Templates: `contracts/seo/live-evidence/templates/`
 | Ad-hoc GraphQL client per route | Use `src/shared/lib` |
 | Hardcoded `/en\|/ru` in middleware | Get locales from message loaders |
 | Host-local SEO source-of-truth | Use `SeoPageContext` from backend |
-| Package-local i18n fallback chain | Use middleware + `next-intl` |
+| Package-local i18n fallback chain | Use middleware + `@rustok/next-fluent` |
 | Module UI inside host routes | Compose from `packages/*` and `src/modules` |
 | Separate query schema from Rust | Match `apps/storefront` contract |
 | Host-local schema.org mapping | Use backend `SeoStructuredDataBlock` |

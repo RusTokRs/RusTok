@@ -13,7 +13,7 @@ import {
   type RichTextDocument
 } from '@rustok/richtext';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useLocale } from 'next-intl';
+import { useLocale } from '@rustok/next-fluent';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { useForm, type Resolver } from 'react-hook-form';

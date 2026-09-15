@@ -2,7 +2,7 @@ import { cn } from '@/shared/lib/utils';
 import Link from 'next/link';
 import { InteractiveGridPattern } from './interactive-grid';
 import UserRegisterForm from './user-register-form';
-import { getTranslations } from 'next-intl/server';
+import { getTranslations } from '@rustok/next-fluent/server';
 import { LanguageSelect } from '@/widgets/app-shell/language-select';
 
 export default async function SignUpViewPage() {

@@ -97,7 +97,7 @@ server-side authenticated session before forwarding the GraphQL request.
 Next-admin uses `crypto.randomUUID()` when available and a UUID-shaped fallback
 only for older runtimes. The operation identity stays stable across a failed
 request and rotates on command-shape changes. Package-owned English/Russian copy
-uses the host locale selected through `next-intl`.
+uses the host locale selected through `@rustok/next-fluent`.
 
 ## Compatibility
 

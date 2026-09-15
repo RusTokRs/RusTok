@@ -6,7 +6,7 @@ import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@rustok/next-fluent';
 
 export default function UserAuthForm() {
   const t = useTranslations('auth');

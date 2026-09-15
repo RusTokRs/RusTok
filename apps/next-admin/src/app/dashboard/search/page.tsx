@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { getLocale } from 'next-intl/server';
+import { getLocale } from '@rustok/next-fluent/server';
 
 import { auth } from '@/auth';
 import { graphqlRequest } from '@/shared/api/graphql';

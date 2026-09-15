@@ -1,9 +1,8 @@
-// i18n is now handled by next-intl.
+// i18n is handled by @rustok/next-fluent (Project Fluent).
 //
-// Server Components: import { getTranslations } from 'next-intl/server';
-// Client Components: import { useTranslations } from 'next-intl';
+// Server Components: import { getTranslations, getLocale } from '@rustok/next-fluent/server';
+// Client Components: import { useTranslations, useLocale } from '@rustok/next-fluent';
 //
-// Locale is resolved by the host runtime and exposed through next-intl.
-// See: next.config.mjs (createNextIntlPlugin) and src/app/layout.tsx (NextIntlClientProvider).
+// Locale is resolved by the host runtime and exposed through next-fluent.
 
-export { useTranslations, useLocale } from 'next-intl';
+export { useTranslations, useLocale } from '@rustok/next-fluent';
