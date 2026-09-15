@@ -207,7 +207,7 @@ impl SeaOrmRbacPresentationStore {
             .transpose()
     }
 
-    async fn create_source_on<C>(
+    pub(crate) async fn create_source_on<C>(
         connection: &C,
         tenant_id: Uuid,
         resource_kind: RbacPresentationResourceKind,
