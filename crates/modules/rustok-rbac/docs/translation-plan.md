@@ -11,12 +11,13 @@ installation identity, continuity fingerprints, durable invalidation generations
 receipts and events participate in authorization semantics and must never become
 translatable values.
 
-RBAC-TR-1 and RBAC-TR-2 are complete. The owner now has a separate localized
-presentation plane for admitted role/permission identity with exact stored locale,
-explicit concrete source locale for new writes, and copy-only CAS revisions.
-Canonical admin/API reads and built-in seed presentation still use the legacy
-inline/derived path, so the RBAC Translation provider remains blocked and
-unregistered until RBAC-TR-3 cuts canonical reads/writes over to the owner plane.
+RBAC-TR-1 and RBAC-TR-2 are complete. RBAC-TR-3 is now in progress: the canonical
+GraphQL role read resolves human-facing role names from the owner-localized plane
+using exact request locale first and explicit `en` source copy second. A temporary
+legacy seed fallback remains only for tenants that do not yet have built-in owner
+presentation rows. Built-in seed presentation and the native admin bootstrap still
+use the legacy inline/derived path, so the RBAC Translation provider remains
+blocked and unregistered until those remaining TR-3 write/read paths are cut over.
 Existing artifact-permission translations remain a separate RBAC-owned
 release-governance localization plane and are not a second tenant Translation
 writer.
@@ -97,9 +98,9 @@ tenant Translation target track does not silently absorb it.
 
 ## Proposed narrow Translation contract
 
-No RBAC Translation provider is registered through RBAC-TR-2. After the canonical
-write/read cutover, the candidate tenant Translation surface is presentation-only
-role/permission copy:
+No RBAC Translation provider is registered through RBAC-TR-3 while the canonical
+cutover remains incomplete. After the canonical write/read cutover, the candidate
+tenant Translation surface is presentation-only role/permission copy:
 
 - owner slug: `rbac`;
 - stable resource identity: canonical role or permission identity inside its
@@ -114,7 +115,7 @@ role/permission copy:
 
 Resource kinds and copy-only revision semantics are now owner-defined by TR-2.
 The final field/write contract remains intentionally deferred until RBAC-TR-3
-moves canonical reads and writes onto this owner plane.
+moves every canonical read and write onto this owner plane.
 
 ## Delivery slices
 
@@ -139,15 +140,29 @@ moves canonical reads and writes onto this owner plane.
 - artifact-permission release translations stay on their existing governance
   plane.
 
-### RBAC-TR-3 — canonical write/read cutover
+### RBAC-TR-3 — canonical write/read cutover — in progress
 
-- route built-in seed presentation through explicit-locale owner data;
-- make tenant-authored presentation commands locale-aware and identity-bound;
-- migrate admin/API presentation reads to owner locale-aware services;
+Completed in the current API-read slice:
+
+- GraphQL role presentation resolves from owner-localized exact request locale;
+- missing exact locale falls back only to the explicit owner source locale `en`;
+- role slug and permission membership remain stable authorization identity and are
+  not derived from localized copy;
+- tenants without seeded owner rows retain a narrow temporary legacy seed fallback
+  so this read migration is deployable before the write-side seed cutover.
+
+Remaining before RBAC-TR-3 can be marked complete:
+
+- route built-in seed presentation through explicit-locale owner data, remove the
+  temporary GraphQL seed fallback, and prove idempotent bootstrap does not
+  overwrite tenant-edited copy;
+- make any tenant-authored presentation commands locale-aware and identity-bound;
+- migrate the native admin bootstrap presentation read to the same owner-aware
+  service/host contract instead of its current inline labels;
 - prove display-only edits cannot change grants, fingerprints, assignments or
   authorization events;
-- retire legacy inline/derived presentation only after all canonical reads and
-  writes use the localized owner plane.
+- retire all remaining legacy inline/derived presentation only after every
+  canonical read and write uses the localized owner plane.
 
 ### RBAC-TR-4 — narrow Translation provider
 
