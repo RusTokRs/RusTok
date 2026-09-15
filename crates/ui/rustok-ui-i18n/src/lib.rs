@@ -13,59 +13,27 @@ use std::sync::OnceLock;
 
 use fluent_bundle::concurrent::FluentBundle;
 use fluent_bundle::FluentResource;
-use serde_json::Value;
 
 pub use fluent_bundle::{FluentArgs, FluentValue};
 pub use unic_langid::LanguageIdentifier;
 
-pub type UiMessageCatalog = BTreeMap<String, BTreeMap<String, String>>;
 pub type FluentCatalog = BTreeMap<String, FluentBundle<FluentResource>>;
 
 pub struct UiTranslator<'a> {
-    catalog: Option<&'a UiMessageCatalog>,
-    fluent_catalog: Option<&'a FluentCatalog>,
+    fluent_catalog: &'a FluentCatalog,
     default_locale: &'a str,
 }
 
 impl<'a> UiTranslator<'a> {
-    pub const fn new(catalog: &'a UiMessageCatalog, default_locale: &'a str) -> Self {
+    pub const fn new(fluent_catalog: &'a FluentCatalog, default_locale: &'a str) -> Self {
         Self {
-            catalog: Some(catalog),
-            fluent_catalog: None,
-            default_locale,
-        }
-    }
-
-    pub const fn with_fluent(fluent_catalog: &'a FluentCatalog, default_locale: &'a str) -> Self {
-        Self {
-            catalog: None,
-            fluent_catalog: Some(fluent_catalog),
-            default_locale,
-        }
-    }
-
-    pub const fn combined(
-        catalog: &'a UiMessageCatalog,
-        fluent_catalog: &'a FluentCatalog,
-        default_locale: &'a str,
-    ) -> Self {
-        Self {
-            catalog: Some(catalog),
-            fluent_catalog: Some(fluent_catalog),
+            fluent_catalog,
             default_locale,
         }
     }
 
     pub fn resolve(&self, locale: Option<&str>, key: &str) -> Option<String> {
-        if let Some(fluent) = self.fluent_catalog {
-            if let Some(msg) = resolve_fluent_message(fluent, locale, self.default_locale, key, None) {
-                return Some(msg);
-            }
-        }
-        if let Some(catalog) = self.catalog {
-            return resolve_ui_message(catalog, locale, self.default_locale, key);
-        }
-        None
+        resolve_fluent_message(self.fluent_catalog, locale, self.default_locale, key, None)
     }
 
     pub fn t(&self, locale: Option<&str>, key: &str, fallback: &str) -> String {
@@ -79,15 +47,10 @@ impl<'a> UiTranslator<'a> {
         args: Option<&FluentArgs<'args>>,
         fallback: &str,
     ) -> String {
-        if let Some(fluent) = self.fluent_catalog {
-            if let Some(msg) = resolve_fluent_message(fluent, locale, self.default_locale, key, args) {
-                return msg;
-            }
-        }
-        if let Some(catalog) = self.catalog {
-            if let Some(msg) = resolve_ui_message(catalog, locale, self.default_locale, key) {
-                return msg;
-            }
+        if let Some(msg) =
+            resolve_fluent_message(self.fluent_catalog, locale, self.default_locale, key, args)
+        {
+            return msg;
         }
         fallback.to_string()
     }
@@ -96,7 +59,6 @@ impl<'a> UiTranslator<'a> {
 pub struct UiMessages {
     default_locale: &'static str,
     bundles: &'static [(&'static str, &'static str)],
-    json_catalog: OnceLock<UiMessageCatalog>,
     fluent_catalog: OnceLock<FluentCatalog>,
 }
 
@@ -108,18 +70,8 @@ impl UiMessages {
         Self {
             default_locale,
             bundles,
-            json_catalog: OnceLock::new(),
             fluent_catalog: OnceLock::new(),
         }
-    }
-
-    pub fn json_catalog(&self) -> &UiMessageCatalog {
-        self.json_catalog
-            .get_or_init(|| build_ui_message_catalog(self.bundles))
-    }
-
-    pub fn catalog(&self) -> &UiMessageCatalog {
-        self.json_catalog()
     }
 
     pub fn fluent_catalog(&self) -> &FluentCatalog {
@@ -142,37 +94,10 @@ impl UiMessages {
         args: Option<&FluentArgs<'args>>,
         fallback: &str,
     ) -> String {
-        let is_json = self
-            .bundles
-            .first()
-            .map_or(false, |(_, content)| content.trim_start().starts_with('{'));
-
-        if !is_json {
-            if let Some(msg) = resolve_fluent_message(
-                self.fluent_catalog(),
-                locale,
-                self.default_locale,
-                key,
-                args,
-            ) {
-                return msg;
-            }
-        }
-
-        if let Some(msg) = resolve_ui_message(self.json_catalog(), locale, self.default_locale, key) {
+        if let Some(msg) =
+            resolve_fluent_message(self.fluent_catalog(), locale, self.default_locale, key, args)
+        {
             return msg;
-        }
-
-        if is_json {
-            if let Some(msg) = resolve_fluent_message(
-                self.fluent_catalog(),
-                locale,
-                self.default_locale,
-                key,
-                args,
-            ) {
-                return msg;
-            }
         }
 
         fallback.to_string()
@@ -192,8 +117,19 @@ pub fn normalize_admin_locale(locale: Option<&str>) -> &'static str {
     }
 }
 
+/// Helper macro for constructing `FluentArgs`.
+/// Supports both:
+/// - `fluent_args!(name = val, count = count)`
+/// - `fluent_args!("name" => val, "count" => count)`
 #[macro_export]
 macro_rules! fluent_args {
+    ($($key:ident = $val:expr),* $(,)?) => {{
+        let mut args = $crate::FluentArgs::new();
+        $(
+            args.set(stringify!($key), $crate::FluentValue::from($val));
+        )*
+        args
+    }};
     ($($key:expr => $val:expr),* $(,)?) => {{
         let mut args = $crate::FluentArgs::new();
         $(
@@ -203,21 +139,93 @@ macro_rules! fluent_args {
     }};
 }
 
-pub fn build_ui_message_catalog(bundles: &[(&str, &str)]) -> UiMessageCatalog {
-    let mut catalog = UiMessageCatalog::new();
+/// Global macro for resolving messages against a specified `UiMessages` reference.
+#[macro_export]
+macro_rules! t {
+    ($messages:expr, $locale:expr, $key:expr, $fallback:expr) => {
+        $messages.t_for_locale($locale, $key, $fallback)
+    };
+    ($messages:expr, $locale:expr, $key:expr, $fallback:expr, $($arg_name:ident = $arg_val:expr),+ $(,)?) => {
+        $messages.format(
+            $locale,
+            $key,
+            Some(&$crate::fluent_args!($($arg_name = $arg_val),+)),
+            $fallback,
+        )
+    };
+    ($messages:expr, $locale:expr, $key:expr, $fallback:expr, $($arg_name:expr => $arg_val:expr),+ $(,)?) => {
+        $messages.format(
+            $locale,
+            $key,
+            Some(&$crate::fluent_args!($($arg_name => $arg_val),+)),
+            $fallback,
+        )
+    };
+}
 
-    for (locale, bundle) in bundles {
-        let Some(locale) = normalize_locale_tag(locale) else {
-            continue;
-        };
+/// Macro for resolving module-local messages with parameters.
+#[macro_export]
+macro_rules! module_t {
+    ($locale:expr, $key:expr, $fallback:expr) => {
+        $crate::t($locale, $key, $fallback)
+    };
+    ($locale:expr, $key:expr, $fallback:expr, $($arg_name:ident = $arg_val:expr),+ $(,)?) => {
+        $crate::format(
+            $locale,
+            $key,
+            Some(&$crate::fluent_args!($($arg_name = $arg_val),+)),
+            $fallback,
+        )
+    };
+}
 
-        let value = serde_json::from_str::<Value>(bundle).unwrap_or(Value::Null);
-        let mut messages = BTreeMap::new();
-        flatten_ui_messages(&value, "", &mut messages);
-        catalog.insert(locale, messages);
-    }
+/// Declares canonical module-owned i18n catalogs and accessor functions.
+///
+/// Default invocation (loads `../locales/en.ftl` and `../locales/ru.ftl`):
+/// ```ignore
+/// rustok_ui_i18n::declare_module_i18n!();
+/// ```
+///
+/// Custom invocation (with additional locales):
+/// ```ignore
+/// rustok_ui_i18n::declare_module_i18n!(
+///     "en",
+///     &[
+///         ("en", include_str!("../locales/en.ftl")),
+///         ("ru", include_str!("../locales/ru.ftl")),
+///         ("ar", include_str!("../locales/ar.ftl")),
+///     ]
+/// );
+/// ```
+#[macro_export]
+macro_rules! declare_module_i18n {
+    () => {
+        $crate::declare_module_i18n!(
+            "en",
+            &[
+                ("en", include_str!("../locales/en.ftl")),
+                ("ru", include_str!("../locales/ru.ftl")),
+            ]
+        );
+    };
+    ($default_locale:expr, $bundles:expr) => {
+        static MESSAGES: $crate::UiMessages = $crate::UiMessages::new($default_locale, $bundles);
 
-    catalog
+        #[inline]
+        pub fn t(locale: Option<&str>, key: &str, fallback: &str) -> String {
+            MESSAGES.t_for_locale(locale, key, fallback)
+        }
+
+        #[inline]
+        pub fn format<'args>(
+            locale: Option<&str>,
+            key: &str,
+            args: Option<&$crate::FluentArgs<'args>>,
+            fallback: &str,
+        ) -> String {
+            MESSAGES.format(locale, key, args, fallback)
+        }
+    };
 }
 
 pub fn build_fluent_bundle(
@@ -251,6 +259,34 @@ pub fn build_fluent_catalog(bundles: &[(&str, &str)]) -> FluentCatalog {
     catalog
 }
 
+const STACK_KEY_BUF_SIZE: usize = 128;
+
+/// Executes a closure with a kebab-case representation of `key`.
+///
+/// If `key` contains '.', replaces '.' with '-' using a fixed stack buffer for
+/// keys <= 128 bytes, avoiding any heap allocation in the hot rendering path.
+#[inline]
+pub fn with_kebab_key<R>(key: &str, f: impl FnOnce(&str) -> R) -> R {
+    if !key.contains('.') {
+        return f(key);
+    }
+
+    if key.len() <= STACK_KEY_BUF_SIZE {
+        let mut buf = [0u8; STACK_KEY_BUF_SIZE];
+        let bytes = key.as_bytes();
+        for (i, &b) in bytes.iter().enumerate() {
+            buf[i] = if b == b'.' { b'-' } else { b };
+        }
+        // SAFETY: '.' (0x2E) and '-' (0x2D) are single-byte ASCII characters.
+        // Replacing '.' with '-' in valid UTF-8 maintains valid UTF-8.
+        let kebab = unsafe { std::str::from_utf8_unchecked(&buf[..key.len()]) };
+        f(kebab)
+    } else {
+        let kebab = key.replace('.', "-");
+        f(&kebab)
+    }
+}
+
 pub fn resolve_fluent_message<'args>(
     catalog: &FluentCatalog,
     locale: Option<&str>,
@@ -259,60 +295,24 @@ pub fn resolve_fluent_message<'args>(
     args: Option<&FluentArgs<'args>>,
 ) -> Option<String> {
     let candidates = locale_candidates(locale, default_locale);
-    let kebab_key = if key.contains('.') {
-        Some(key.replace('.', "-"))
-    } else {
-        None
-    };
 
-    for candidate in candidates {
-        if let Some(bundle) = catalog.get(candidate.as_str()) {
-            let message = bundle
-                .get_message(key)
-                .or_else(|| kebab_key.as_ref().and_then(|k| bundle.get_message(k)));
-            if let Some(message) = message {
-                if let Some(pattern) = message.value() {
-                    let mut errors = vec![];
-                    let formatted = bundle.format_pattern(pattern, args, &mut errors);
-                    if !errors.is_empty() {
-                        tracing::warn!(?errors, key, "Fluent message formatting errors");
+    with_kebab_key(key, |lookup_key| {
+        for candidate in candidates {
+            if let Some(bundle) = catalog.get(candidate.as_str()) {
+                if let Some(message) = bundle.get_message(lookup_key) {
+                    if let Some(pattern) = message.value() {
+                        let mut errors = vec![];
+                        let formatted = bundle.format_pattern(pattern, args, &mut errors);
+                        if !errors.is_empty() {
+                            tracing::warn!(?errors, key, "Fluent message formatting errors");
+                        }
+                        return Some(formatted.to_string());
                     }
-                    return Some(formatted.to_string());
                 }
             }
         }
-    }
-
-    None
-}
-
-pub fn resolve_ui_message(
-    catalog: &UiMessageCatalog,
-    locale: Option<&str>,
-    default_locale: &str,
-    key: &str,
-) -> Option<String> {
-    let candidates = locale_candidates(locale, default_locale);
-
-    for candidate in candidates {
-        if let Some(messages) = catalog.get(candidate.as_str())
-            && let Some(value) = messages.get(key)
-        {
-            return Some(value.clone());
-        }
-    }
-
-    None
-}
-
-pub fn resolve_ui_message_or_fallback(
-    catalog: &UiMessageCatalog,
-    locale: Option<&str>,
-    default_locale: &str,
-    key: &str,
-    fallback: &str,
-) -> String {
-    resolve_ui_message(catalog, locale, default_locale, key).unwrap_or_else(|| fallback.to_string())
+        None
+    })
 }
 
 pub fn normalize_locale_tag(locale: &str) -> Option<String> {
@@ -353,106 +353,32 @@ fn push_unique(candidates: &mut Vec<String>, locale: &str) {
     }
 }
 
-fn flatten_ui_messages(value: &Value, prefix: &str, target: &mut BTreeMap<String, String>) {
-    match value {
-        Value::Object(map) => {
-            for (key, child) in map {
-                let next_prefix = if prefix.is_empty() {
-                    key.to_string()
-                } else {
-                    format!("{prefix}.{key}")
-                };
-                flatten_ui_messages(child, next_prefix.as_str(), target);
-            }
-        }
-        Value::String(text) if !prefix.is_empty() => {
-            target.insert(prefix.to_string(), text.clone());
-        }
-        _ => {}
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn resolve_ui_message_falls_back_from_regional_locale_to_language() {
-        let catalog = build_ui_message_catalog(&[
-            ("en", r#"{ "title": "Workflows" }"#),
-            ("fr", r#"{ "title": "Workflows FR" }"#),
-        ]);
-
-        let resolved = resolve_ui_message(&catalog, Some("fr-FR"), "en", "title");
-
-        assert_eq!(resolved.as_deref(), Some("Workflows FR"));
-    }
-
-    #[test]
-    fn resolve_ui_message_uses_default_locale_before_platform_fallback() {
-        let catalog = build_ui_message_catalog(&[
-            ("en", r#"{ "title": "Workflows" }"#),
-            ("de", r#"{ "title": "Workflows DE" }"#),
-        ]);
-
-        let resolved = resolve_ui_message(&catalog, Some("fr"), "de", "title");
-
-        assert_eq!(resolved.as_deref(), Some("Workflows DE"));
-    }
-
-    #[test]
-    fn resolve_ui_message_or_fallback_returns_literal_fallback_when_key_is_missing() {
-        let catalog = build_ui_message_catalog(&[("en", r#"{ "title": "Workflows" }"#)]);
-
-        let resolved =
-            resolve_ui_message_or_fallback(&catalog, Some("fr"), "en", "missing", "Fallback");
-
-        assert_eq!(resolved, "Fallback");
-    }
-
-    #[test]
-    fn build_ui_message_catalog_flattens_nested_json() {
-        let catalog = build_ui_message_catalog(&[(
-            "en",
-            r#"{ "blog": { "posts": { "title": "Posts" } }, "ignored": 1 }"#,
-        )]);
-
-        assert_eq!(
-            catalog
-                .get("en")
-                .and_then(|messages| messages.get("blog.posts.title"))
-                .map(String::as_str),
-            Some("Posts")
-        );
-        assert!(
-            !catalog
-                .get("en")
-                .expect("en catalog")
-                .contains_key("ignored")
-        );
-    }
-
-    #[test]
-    fn build_ui_message_catalog_normalizes_locale_tags() {
-        let catalog = build_ui_message_catalog(&[("pt_br", r#"{ "title": "Title" }"#)]);
-
-        assert!(catalog.contains_key("pt-BR"));
-    }
 
     #[test]
     fn normalize_locale_tag_supports_iso_639_three_letter_codes() {
         assert_eq!(normalize_locale_tag("fil"), Some("fil".to_string()));
         assert_eq!(normalize_locale_tag("yue"), Some("yue".to_string()));
         assert_eq!(normalize_locale_tag("ru_RU"), Some("ru-RU".to_string()));
+        assert_eq!(normalize_locale_tag("pt_BR"), Some("pt-BR".to_string()));
     }
 
     #[test]
-    fn ui_translator_resolves_with_literal_fallback() {
-        let catalog = build_ui_message_catalog(&[("en", r#"{ "title": "Dashboard" }"#)]);
-        let translator = UiTranslator::new(&catalog, "en");
-
-        assert_eq!(translator.t(Some("fr"), "title", "Fallback"), "Dashboard");
-        assert_eq!(translator.t(Some("fr"), "missing", "Fallback"), "Fallback");
+    fn with_kebab_key_converts_without_heap_allocations() {
+        with_kebab_key("workflow.table.name", |k| {
+            assert_eq!(k, "workflow-table-name");
+        });
+        with_kebab_key("already-kebab", |k| {
+            assert_eq!(k, "already-kebab");
+        });
+        // Long key beyond stack buffer
+        let long_key = "a.".repeat(100);
+        with_kebab_key(&long_key, |k| {
+            assert!(!k.contains('.'));
+            assert!(k.contains('-'));
+        });
     }
 
     #[test]
@@ -465,7 +391,7 @@ cart-items = { $count ->
 }
 "#;
         let catalog = build_fluent_catalog(&[("ru", ftl_ru)]);
-        let translator = UiTranslator::with_fluent(&catalog, "ru");
+        let translator = UiTranslator::new(&catalog, "ru");
 
         let mut args1 = FluentArgs::new();
         args1.set("count", 1);
@@ -497,23 +423,6 @@ cart-items = { $count ->
     }
 
     #[test]
-    fn ui_messages_resolves_json_bundles() {
-        static MESSAGES: UiMessages = UiMessages::new(
-            "en",
-            &[
-                ("en", r#"{ "title": "Dashboard", "hello": "Hello {name}" }"#),
-                ("ru", r#"{ "title": "Панель" }"#),
-            ],
-        );
-
-        assert_eq!(MESSAGES.t(Some("ru"), "title", "Fallback"), "Панель");
-        assert_eq!(MESSAGES.t(Some("ru-RU"), "title", "Fallback"), "Панель");
-        assert_eq!(MESSAGES.t_for_locale(Some("en"), "title", "Fallback"), "Dashboard");
-        assert_eq!(MESSAGES.t(Some("es"), "title", "Fallback"), "Dashboard");
-        assert_eq!(MESSAGES.t(Some("ru"), "missing", "Fallback"), "Fallback");
-    }
-
-    #[test]
     fn ui_messages_resolves_fluent_bundles_with_macro_args() {
         const FTL_EN: &str = r#"
 welcome = Welcome, { $name }!
@@ -530,10 +439,7 @@ items-count = { $count ->
    *[other] { $count } товаров
 }
 "#;
-        static MESSAGES: UiMessages = UiMessages::new(
-            "en",
-            &[("en", FTL_EN), ("ru", FTL_RU)],
-        );
+        static MESSAGES: UiMessages = UiMessages::new("en", &[("en", FTL_EN), ("ru", FTL_RU)]);
 
         let args = fluent_args!["name" => "Alice"];
         assert_eq!(
@@ -545,15 +451,33 @@ items-count = { $count ->
             "Добро пожаловать, Alice!"
         );
 
-        let count_args = fluent_args!["count" => 3];
+        // Test fluent_args! with identifier syntax
+        let args_ident = fluent_args!(name = "Bob");
+        assert_eq!(
+            MESSAGES.format(Some("en"), "welcome", Some(&args_ident), "Fallback"),
+            "Welcome, Bob!"
+        );
+
+        let count_args = fluent_args!(count = 3);
         assert_eq!(
             MESSAGES.format(Some("ru"), "items-count", Some(&count_args), "Fallback"),
             "3 товара"
         );
+
         // Verify dotted key resolves via kebab-case mapping
         assert_eq!(
             MESSAGES.format(Some("ru"), "items.count", Some(&count_args), "Fallback"),
             "3 товара"
+        );
+
+        // Verify t! macro with arguments
+        assert_eq!(
+            t!(MESSAGES, Some("ru"), "items.count", "fallback", count = 5),
+            "5 товаров"
+        );
+        assert_eq!(
+            t!(MESSAGES, Some("en"), "welcome", "fallback", name = "Charlie"),
+            "Welcome, Charlie!"
         );
     }
 
@@ -619,5 +543,30 @@ page-builder-translations-localizedMetadataValuesPlaceholder =
         let bundle = build_fluent_bundle("en", ftl).unwrap();
         assert!(bundle.has_message("page-builder-translations-valuesPlaceholder"));
         assert!(bundle.has_message("page-builder-translations-localizedMetadataValuesPlaceholder"));
+    }
+
+    mod mock_module {
+        const EN_FTL: &str = "test-title = Title\ntest-greet = Hello, { $name }!\n";
+        const RU_FTL: &str = "test-title = Заголовок\ntest-greet = Привет, { $name }!\n";
+
+        super::declare_module_i18n!("en", &[("en", EN_FTL), ("ru", RU_FTL)]);
+
+        #[test]
+        fn declare_module_i18n_expands_and_resolves_correctly() {
+            assert_eq!(t(Some("en"), "test.title", "Fallback"), "Title");
+            assert_eq!(t(Some("ru"), "test.title", "Fallback"), "Заголовок");
+            assert_eq!(t(Some("fr"), "test.title", "Fallback"), "Title");
+            assert_eq!(t(Some("en"), "missing.key", "Fallback"), "Fallback");
+
+            let args = fluent_args!(name = "Иван");
+            assert_eq!(
+                format(Some("ru"), "test.greet", Some(&args), "Fallback"),
+                "Привет, Иван!"
+            );
+            assert_eq!(
+                crate::t!(MESSAGES, Some("ru"), "test.greet", "Fallback", name = "Иван"),
+                "Привет, Иван!"
+            );
+        }
     }
 }

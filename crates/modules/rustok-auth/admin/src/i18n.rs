@@ -1,18 +1,6 @@
-use rustok_ui_i18n::UiMessages;
-
 use crate::core::{AuthTransportErrorKind, classify_auth_transport_error};
 
-static MESSAGES: UiMessages = UiMessages::new(
-    "en",
-    &[
-        ("en", include_str!("../locales/en.ftl")),
-        ("ru", include_str!("../locales/ru.ftl")),
-    ],
-);
-
-pub fn t(locale: Option<&str>, key: &str, fallback: &str) -> String {
-    MESSAGES.t_for_locale(locale, key, fallback)
-}
+rustok_ui_i18n::declare_module_i18n!();
 
 pub fn auth_transport_error_message(locale: Option<&str>, error: &str) -> String {
     let (key, fallback) = match classify_auth_transport_error(error) {

@@ -8,5 +8,4 @@ description = "Framework-agnostic UI message catalog and resolution helpers for 
 [dependencies]
 fluent-bundle.workspace = true
 unic-langid.workspace = true
-serde_json.workspace = true
 tracing.workspace = true

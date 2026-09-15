@@ -84,8 +84,21 @@ impl RouteQueryWriter {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct RouteLocale(pub Signal<Option<String>>);
+
 pub fn read_route_query_value(route_context: &UiRouteContext, key: &str) -> Option<String> {
     route_context.query_value(key).map(str::to_owned)
+}
+
+pub fn use_route_locale() -> Signal<Option<String>> {
+    if let Some(route_locale) = use_context::<RouteLocale>() {
+        return route_locale.0;
+    }
+
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let locale = route_context.locale;
+    Signal::derive(move || locale.clone())
 }
 
 pub fn use_route_query_value(key: &'static str) -> Signal<Option<String>> {

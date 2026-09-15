@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use leptos::prelude::*;
 use leptos_router::NavigateOptions;
 use leptos_router::hooks::{use_location, use_navigate, use_query_map};
-use leptos_ui_routing::RouteQueryPolicy;
+use leptos_ui_routing::{RouteLocale, RouteQueryPolicy};
 use rustok_ui_core::{UiRouteContext, sanitize_admin_route_query};
 
 use crate::{Locale, use_i18n};
@@ -33,10 +33,11 @@ pub fn ModuleRequestProvider(
             &raw_query.get(),
         )
     });
-    let locale = match use_i18n().get_locale() {
+    let i18n = use_i18n();
+    let reactive_locale = Signal::derive(move || match i18n.get_locale() {
         Locale::en => Some("en".to_string()),
         Locale::ru => Some("ru".to_string()),
-    };
+    });
 
     Effect::new(move |_| {
         let raw_query = raw_query.get();
@@ -61,9 +62,10 @@ pub fn ModuleRequestProvider(
         );
     });
 
+    provide_context(RouteLocale(reactive_locale));
     provide_context(RouteQueryPolicy::new(sanitize_admin_route_query));
     provide_context(UiRouteContext {
-        locale,
+        locale: reactive_locale.get_untracked(),
         route_segment,
         subpath,
         query: sanitized_query.get_untracked(),

@@ -7,22 +7,26 @@ RusToK module-owned UI packages and future UI adapters.
 
 ## Responsibilities
 
-- Build flat message catalogs from nested JSON locale bundles or Fluent (.ftl) files.
-- Provide thread-safe static bundle management via `UiMessages` (`Send + Sync`).
-- Resolve message keys from the host-provided effective locale.
+- Manage Project Fluent (`.ftl`) message catalogs with natural grammar and pluralization.
+- Provide thread-safe concurrent bundle management via `UiMessages` (`Send + Sync`).
+- Resolve message keys from the host-provided effective locale with zero-allocation stack buffering.
 - Apply the platform UI fallback chain without depending on Leptos, Dioxus, Next.js, or host routing.
 - Provide canonical locale normalization (`normalize_admin_locale`).
+- Provide boilerplate reduction macro (`declare_module_i18n!`) for module UI packages.
 - Keep UI i18n catalog logic out of `rustok-api` and framework-specific crates.
 
 ## Entry Points
 
 - `UiMessages`
+- `declare_module_i18n!`
 - `fluent_args!`
+- `t!`
+- `module_t!`
 - `normalize_admin_locale`
-- `UiMessageCatalog`
-- `build_ui_message_catalog`
-- `resolve_ui_message`
-- `resolve_ui_message_or_fallback`
+- `build_fluent_bundle`
+- `build_fluent_catalog`
+- `resolve_fluent_message`
+- `with_kebab_key`
 
 ## Interactions
 

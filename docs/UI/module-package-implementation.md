@@ -310,7 +310,7 @@ pub fn BlogAdmin() -> impl IntoView {
 | `rustok-ui-core` | **Framework-agnostic UI contracts:** `UiRouteContext`, `UiRouteQueryUpdate`, `UiRouteQueryIntent`, `AdminQueryKey`, admin query sanitization, `normalize_ui_text`, `parse_ui_csv`, `ui_busy_key*` helpers (use in `core.rs` and host UI context wiring). |
 | `rustok-graphql` | **GraphQL core client:** `GraphqlRequest`, `GraphqlHttpError`, `execute`, `persisted_query_extension` (use in `graphql_adapter.rs`) |
 | `rustok-graphql-leptos` | **Leptos GraphQL hooks:** `use_query`, `use_mutation`, `use_lazy_query` for Leptos UI code that needs reactive GraphQL hooks |
-| `rustok-ui-i18n` | **Framework-agnostic UI i18n:** `UiMessages` (Fluent `.ftl` and JSON catalogs), `t_for_locale`, `normalize_admin_locale`, parameter formatting. Do not import it through `rustok-api`. |
+| `rustok-ui-i18n` | **Framework-agnostic UI i18n:** `UiMessages` (Project Fluent `.ftl` catalogs), `declare_module_i18n!`, `t_for_locale`, `normalize_admin_locale`, parameter formatting. Do not import it through `rustok-api`. |
 | `rustok-ui-transport` | **Framework-agnostic FFA transport evidence:** shared transport path, selected-path error/result types and build-profile transport selection helpers for native server + GraphQL facades. |
 | `rustok-seo-admin-support` | `SeoEntityPanel`, `SeoEntityForm`, `SeoSnippetPreviewCard`, `SeoRecommendationsCard` — embed in owner module admin packages |
 
@@ -335,14 +335,14 @@ Cross-framework component API (props, variants, CSS variables):
 |---|---|---|
 | UI primitives (buttons, inputs, cards) | `crates/ui/leptos-ui/` | `Button`, `Input`, `Card` |
 | Framework-agnostic UI route/query/input/busy contracts | `crates/ui/rustok-ui-core/` | `UiRouteContext`, `UiRouteQueryUpdate`, `UiRouteQueryIntent`, `AdminQueryKey`, `normalize_ui_text`, `ui_busy_key_with_id` |
-| Leptos routing/query adapter helpers | `crates/ui/leptos-ui-routing/` | `use_route_query_value`, `use_route_query_writer` |
+| Leptos routing/query adapter helpers | `crates/ui/leptos-ui-routing/` | `use_route_query_value`, `use_route_query_writer`, `use_route_locale` |
 | Framework-agnostic FFA transport result evidence and build-profile transport selection | `crates/ui/rustok-ui-transport/` | `UiTransportError`, `UiTransportPath`, `UiTransportResult`, `execute_selected_transport` |
 | Framework-agnostic GraphQL transport client | `crates/ui/rustok-graphql/` | GraphQL request/response/error types and HTTP execution |
 | Leptos GraphQL hooks adapter | `crates/ui/rustok-graphql-leptos/` | Reactive Leptos query/mutation hooks |
 | Auth/session hooks | `crates/ui/leptos-auth/` | Auth state, session context |
 | Form state management | `crates/ui/leptos-forms/` | Multi-field form state |
 | Table/pagination UI | `crates/ui/leptos-table/` | Reusable table component |
-| Framework-agnostic UI i18n | `crates/ui/rustok-ui-i18n/` | `UiMessages` static catalog storage, Fluent/JSON resolution and locale normalization |
+| Framework-agnostic UI i18n | `crates/ui/rustok-ui-i18n/` | `declare_module_i18n!`, `UiMessages` static catalog storage, Fluent resolution and locale normalization |
 | Host/API/backend contracts | `crates/libs/rustok-api/` | Locale, permissions, ports, server/runtime contracts |
 | Domain-specific cross-module UI | `crates/modules/rustok-<capability>-<surface>-support/` | `rustok-seo-admin-support` |
 
@@ -415,28 +415,30 @@ Full contract: [`docs/architecture/i18n.md`](../architecture/i18n.md)
 - Module-owned UI packages never use `leptos_i18n`, `t!(i18n, key)` macros, or `rustok-api` UI i18n helpers.
 - Host shell/navigation i18n is host-owned and must not be copied into module-owned UI packages.
 
-**Solution:** `rustok-ui-i18n` provides framework-agnostic `UiMessages` supporting both Fluent (`.ftl`) and JSON catalogs, pluralization, locale normalization, and fallback resolution.
+**Solution:** `rustok-ui-i18n` provides framework-agnostic `UiMessages` supporting Project Fluent (`.ftl`) catalogs, pluralization, locale normalization, hot-path zero-allocation lookup, and fallback resolution.
 
 - Operates purely on framework-agnostic Rust types and concurrent bundles (`Send + Sync`), making it universally usable across Leptos, Dioxus, or CLI without framework adapter crates.
 - `rustok-api` does not own or re-export UI message resolution.
 
-`i18n.rs` uses the framework-agnostic `UiMessages` pattern:
+`i18n.rs` uses the canonical `declare_module_i18n!` macro:
 
 ```rust
 // src/i18n.rs
-use rustok_ui_i18n::UiMessages;
+rustok_ui_i18n::declare_module_i18n!();
+```
 
-static MESSAGES: UiMessages = UiMessages::new(
+Or for packages bundling additional languages (e.g. Arabic):
+
+```rust
+// src/i18n.rs
+rustok_ui_i18n::declare_module_i18n!(
     "en",
     &[
         ("en", include_str!("../locales/en.ftl")),
         ("ru", include_str!("../locales/ru.ftl")),
-    ],
+        ("ar", include_str!("../locales/ar.ftl")),
+    ]
 );
-
-pub fn t(locale: Option<&str>, key: &str, fallback: &str) -> String {
-    MESSAGES.t_for_locale(locale, key, fallback)
-}
 ```
 
 Usage in `ui/leptos.rs` — pass the host-provided locale and always supply a fallback string:
@@ -532,4 +534,4 @@ parent module crate. Verify with `cargo xtask module validate <slug>`.
 | Duplicating code across 2+ modules | Violates DRY; extract to shared library instead (see extraction decision matrix above) |
 | New locale files without `rustok-module.toml` declaration | Breaks i18n verification |
 | `t!(i18n, key)` macro usage | Wrong i18n pattern — `leptos_i18n` is Leptos-specific, breaks FFA; use `i18n::t(locale, "key", "fallback")` with `rustok-ui-i18n` instead |
-| Writing `i18n.rs` from scratch without `rustok-ui-i18n` | Wrong i18n pattern — follow the standard `LeptosUiMessages` boilerplate; this is framework-agnostic and Dioxus-compatible |
+| Writing `i18n.rs` from scratch without `rustok-ui-i18n` | Wrong i18n pattern — use `rustok_ui_i18n::declare_module_i18n!()`; this is framework-agnostic and Dioxus-compatible |
