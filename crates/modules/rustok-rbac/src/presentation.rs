@@ -207,7 +207,7 @@ impl SeaOrmRbacPresentationStore {
             .transpose()
     }
 
-    pub(crate) async fn create_source_on<C>(
+    async fn create_source_on<C>(
         connection: &C,
         tenant_id: Uuid,
         resource_kind: RbacPresentationResourceKind,
@@ -244,6 +244,47 @@ impl SeaOrmRbacPresentationStore {
         .await?;
 
         try_into_domain(row)
+    }
+
+    pub(crate) async fn ensure_source_on<C>(
+        connection: &C,
+        tenant_id: Uuid,
+        resource_kind: RbacPresentationResourceKind,
+        resource_key: &str,
+        source_locale: RuntimeLocale,
+        name: String,
+        description: Option<String>,
+    ) -> Result<RbacLocalizedPresentation, RbacPresentationStoreError>
+    where
+        C: ConnectionTrait,
+    {
+        Self::ensure_known_resource(tenant_id, resource_kind, resource_key)?;
+        let locale = StoredLocale::from(source_locale);
+        if let Some(current) =
+            Self::find_exact_on(connection, tenant_id, resource_kind, resource_key, &locale).await?
+        {
+            return Ok(current);
+        }
+
+        let now = Utc::now().fixed_offset();
+        Entity::insert(ActiveModel {
+            tenant_id: Set(tenant_id),
+            resource_kind: Set(resource_kind.as_str().to_owned()),
+            resource_key: Set(resource_key.to_owned()),
+            locale: Set(locale.as_str().to_owned()),
+            name: Set(name),
+            description: Set(description),
+            copy_revision: Set(1),
+            created_at: Set(now),
+            updated_at: Set(now),
+        })
+        .on_conflict_do_nothing()
+        .exec(connection)
+        .await?;
+
+        Self::find_exact_on(connection, tenant_id, resource_kind, resource_key, &locale)
+            .await?
+            .ok_or(RbacPresentationStoreError::NotFound)
     }
 
     async fn compare_and_set_source_on<C>(
