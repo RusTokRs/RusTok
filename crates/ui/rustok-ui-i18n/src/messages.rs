@@ -13,7 +13,10 @@ use std::sync::OnceLock;
 use fluent_bundle::FluentArgs;
 use unic_langid::LanguageIdentifier;
 
-use crate::bundle::{build_fluent_catalog, try_build_fluent_catalog, FluentCatalog};
+use crate::bundle::{
+    build_fluent_catalog_report, try_build_fluent_catalog, FluentCatalog,
+    FluentCatalogBuildReport,
+};
 use crate::error::{BundleBuildError, I18nError};
 use crate::locale::locale_candidates;
 
@@ -232,14 +235,15 @@ impl PreparedUiMessages {
 
 /// Primary thread-safe (`Send + Sync`) container for module-owned UI translations.
 ///
-/// Stores compile-time embedded message bundles and lazily initializes concurrent
-/// Fluent bundles on first message resolution. The lazy path is intentionally
-/// lenient for UI rendering; use [`UiMessages::prepare`] when startup must fail
+/// Stores compile-time embedded message bundles and lazily initializes one
+/// lenient catalog build report on first message resolution or diagnostic access.
+/// The cached report owns both the usable concurrent Fluent catalog and typed
+/// skipped-entry diagnostics. Use [`UiMessages::prepare`] when startup must fail
 /// closed on catalog/configuration errors.
 pub struct UiMessages {
     default_locale: &'static str,
     bundles: &'static [(&'static str, &'static str)],
-    fluent_catalog: OnceLock<FluentCatalog>,
+    fluent_catalog: OnceLock<FluentCatalogBuildReport>,
 }
 
 impl UiMessages {
@@ -284,13 +288,29 @@ impl UiMessages {
         })
     }
 
-    /// Accesses the underlying lazily-initialized lenient `FluentCatalog`.
+    fn fluent_catalog_report(&self) -> &FluentCatalogBuildReport {
+        self.fluent_catalog
+            .get_or_init(|| build_fluent_catalog_report(self.bundles))
+    }
+
+    /// Accesses the underlying lazily initialized lenient `FluentCatalog`.
     ///
     /// Invalid bundle entries are logged and skipped by this convenience path.
-    /// Use [`Self::prepare`] when catalog construction errors must be returned.
+    /// The same one-time initialization also retains typed diagnostics, available
+    /// through [`Self::initialization_diagnostics`]. Use [`Self::prepare`] when
+    /// catalog construction errors must fail closed instead.
     pub fn fluent_catalog(&self) -> &FluentCatalog {
-        self.fluent_catalog
-            .get_or_init(|| build_fluent_catalog(self.bundles))
+        self.fluent_catalog_report().catalog()
+    }
+
+    /// Returns typed diagnostics retained by the lazy lenient initialization.
+    ///
+    /// Calling this before the first lookup triggers the same one-time `OnceLock`
+    /// initialization used by [`Self::fluent_catalog`]; it never rebuilds the
+    /// catalog solely to recover diagnostics. The returned slice remains stable
+    /// for the lifetime of this `UiMessages` value.
+    pub fn initialization_diagnostics(&self) -> &[BundleBuildError] {
+        self.fluent_catalog_report().diagnostics()
     }
 
     /// Prepares one effective locale for repeated lookups through the lazy catalog.
