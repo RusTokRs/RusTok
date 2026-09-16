@@ -13,8 +13,12 @@ use unic_langid::LanguageIdentifier;
 pub(crate) const MAX_LOCALE_TAG_LEN: usize = 64;
 
 fn parse_locale_tag(locale: &str) -> Option<LanguageIdentifier> {
+    if locale.is_empty() || locale.len() > MAX_LOCALE_TAG_LEN {
+        return None;
+    }
+
     let trimmed = locale.trim();
-    if trimmed.is_empty() || trimmed.len() > MAX_LOCALE_TAG_LEN {
+    if trimmed.is_empty() {
         return None;
     }
 
@@ -43,9 +47,9 @@ pub fn normalize_admin_locale(locale: Option<&str>) -> &'static str {
 
 /// Parses and normalizes a BCP 47 language identifier, replacing underscores with hyphens.
 ///
-/// Inputs longer than 64 bytes are rejected before normalization allocates. BCP 47
-/// language identifiers are ASCII, so the byte limit matches the shared Next.js
-/// locale policy while keeping request-scope lookup work bounded.
+/// Raw inputs longer than 64 bytes are rejected before trimming or normalization work.
+/// BCP 47 language identifiers are ASCII, so the byte limit matches the shared Next.js
+/// locale policy for valid tags while keeping request-scope lookup work bounded.
 pub fn normalize_locale_tag(locale: &str) -> Option<String> {
     parse_locale_tag(locale).map(|langid| langid.to_string())
 }

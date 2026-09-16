@@ -51,6 +51,27 @@ fn oversized_locale_is_rejected_consistently_by_lookup_and_strict_builders() {
 }
 
 #[test]
+fn raw_padding_cannot_bypass_the_pre_trim_length_bound() {
+    let padded_invalid = format!("{}!", " ".repeat(64));
+    assert!(padded_invalid.len() > 64);
+    assert_eq!(normalize_locale_tag(&padded_invalid), None);
+
+    let error = match build_fluent_bundle(&padded_invalid, FTL) {
+        Ok(_) => panic!("raw oversized locale must fail before trim/parsing"),
+        Err(error) => error,
+    };
+
+    match &error {
+        BundleBuildError::LocaleTooLong { length, max_len } => {
+            assert_eq!(*length, padded_invalid.len());
+            assert_eq!(*max_len, 64);
+        }
+        other => panic!("expected LocaleTooLong, got {other:?}"),
+    }
+    assert!(!error.to_string().contains(&padded_invalid));
+}
+
+#[test]
 fn lenient_catalog_skips_oversized_unreachable_locale() {
     let catalog = build_fluent_catalog(&[(OVERSIZED_LOCALE, FTL), ("en", FTL)]);
 

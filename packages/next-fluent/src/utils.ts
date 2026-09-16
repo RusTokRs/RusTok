@@ -1,11 +1,20 @@
 const MAX_LOCALE_TAG_LENGTH = 64;
+const HTTP_QVALUE = /^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/;
+
+function localeDiagnosticValue(locale: string): string {
+  if (locale.length > MAX_LOCALE_TAG_LENGTH) {
+    return `<oversized locale: ${locale.length} code units>`;
+  }
+  return locale;
+}
 
 export function canonicalizeLocale(locale?: string | null): string | undefined {
   if (!locale || typeof locale !== 'string') return undefined;
-  const raw = locale.trim();
-  if (!raw || raw.length > MAX_LOCALE_TAG_LENGTH) return undefined;
+  if (locale.length > MAX_LOCALE_TAG_LENGTH) return undefined;
 
-  // Bound request-controlled input before replaceAll allocates a normalized copy.
+  // Bound request-controlled raw input before trim/replaceAll can allocate copies.
+  const raw = locale.trim();
+  if (!raw) return undefined;
   const normalized = raw.replaceAll('_', '-');
 
   try {
@@ -20,6 +29,44 @@ export function normalizeLocaleTag(value?: string | null): string | undefined {
   return canonicalizeLocale(value);
 }
 
+function localeLookupCandidates(canonical: string): string[] {
+  const candidates: string[] = [];
+  const pushCandidate = (candidate?: string): void => {
+    if (candidate && !candidates.some((item) => item.toLowerCase() === candidate.toLowerCase())) {
+      candidates.push(candidate);
+    }
+  };
+
+  pushCandidate(canonical);
+
+  try {
+    const locale = new Intl.Locale(canonical);
+
+    // Extensions are not a structural fallback layer for catalog selection.
+    // Probe the extension-free base name before removing variant/core parts.
+    pushCandidate(locale.baseName);
+
+    // Treat all variants as one specificity layer. Intl canonicalization can
+    // reorder variants, so peeling serialized subtags one-by-one can manufacture
+    // arbitrary partial-variant parents just like unic-langid can on Rust.
+    const core = [locale.language, locale.script, locale.region]
+      .filter((part): part is string => Boolean(part))
+      .join('-');
+    pushCandidate(core);
+
+    if (locale.region) {
+      pushCandidate([locale.language, locale.script].filter(Boolean).join('-'));
+    }
+    if (locale.script || locale.region) {
+      pushCandidate(locale.language);
+    }
+  } catch {
+    // `canonical` came from Intl.getCanonicalLocales, so this is defensive only.
+  }
+
+  return candidates;
+}
+
 export function matchSupportedLocale(
   value: string | null | undefined,
   locales: readonly string[]
@@ -28,23 +75,47 @@ export function matchSupportedLocale(
   const canonical = canonicalizeLocale(value);
   if (!canonical) return undefined;
 
-  // 1. Exact canonical match
-  const exact = locales.find((loc) => {
-    const locCanonical = canonicalizeLocale(loc);
-    return locCanonical?.toLowerCase() === canonical.toLowerCase();
-  });
-  if (exact) return exact;
-
-  // 2. Base language match (e.g. "en-US" -> "en")
-  const baseLang = canonical.split('-')[0]?.toLowerCase();
-  if (baseLang) {
-    return locales.find((loc) => {
+  for (const candidate of localeLookupCandidates(canonical)) {
+    const normalizedCandidate = candidate.toLowerCase();
+    const matched = locales.find((loc) => {
       const locCanonical = canonicalizeLocale(loc);
-      return locCanonical?.toLowerCase() === baseLang || loc.toLowerCase() === baseLang;
+      return locCanonical?.toLowerCase() === normalizedCandidate;
     });
+    if (matched) return matched;
   }
 
   return undefined;
+}
+
+function parseAcceptLanguageEntry(entry: string): { tag: string; quality: number } | undefined {
+  const trimmed = entry.trim();
+  if (!trimmed) return undefined;
+
+  const firstSeparator = trimmed.indexOf(';');
+  const tag = (firstSeparator === -1 ? trimmed : trimmed.slice(0, firstSeparator)).trim();
+  if (!tag) return undefined;
+
+  let quality = 1.0;
+  let paramStart = firstSeparator === -1 ? trimmed.length : firstSeparator + 1;
+
+  while (paramStart < trimmed.length) {
+    const nextSeparator = trimmed.indexOf(';', paramStart);
+    const paramEnd = nextSeparator === -1 ? trimmed.length : nextSeparator;
+    const param = trimmed.slice(paramStart, paramEnd).trim();
+    const qParam = param.match(/^q\s*=\s*(.*)$/i);
+    if (qParam) {
+      const rawQuality = qParam[1].trim();
+      if (!HTTP_QVALUE.test(rawQuality)) return undefined;
+      quality = Number(rawQuality);
+      break;
+    }
+
+    if (nextSeparator === -1) break;
+    paramStart = nextSeparator + 1;
+  }
+
+  if (quality <= 0) return undefined;
+  return { tag, quality };
 }
 
 export function resolveAcceptLanguage(
@@ -53,41 +124,35 @@ export function resolveAcceptLanguage(
 ): string | undefined {
   if (!header) return undefined;
 
-  const candidates = header
-    .split(',')
-    .map((entry) => {
-      const trimmed = entry.trim();
-      if (!trimmed) return null;
+  // Parse candidates one at a time instead of materializing and sorting the
+  // entire request-controlled header. Tracking only the best supported match
+  // preserves descending-q and stable first-seen semantics with bounded
+  // auxiliary memory regardless of candidate count.
+  let bestLocale: string | undefined;
+  let bestQuality = Number.NEGATIVE_INFINITY;
+  let entryStart = 0;
 
-      const [tagPart, ...rest] = trimmed.split(';');
-      const tag = tagPart.trim();
-      if (!tag) return null;
+  while (entryStart <= header.length) {
+    const separator = header.indexOf(',', entryStart);
+    const entryEnd = separator === -1 ? header.length : separator;
+    const candidate = parseAcceptLanguageEntry(header.slice(entryStart, entryEnd));
 
-      let quality = 1.0;
-      for (const param of rest) {
-        const match = param.trim().match(/^q\s*=\s*([0-9.]+)/i);
-        if (match) {
-          const parsed = Number.parseFloat(match[1]);
-          quality = Number.isNaN(parsed) ? 1.0 : parsed;
-          break;
-        }
+    if (candidate && candidate.quality > bestQuality) {
+      const matched = candidate.tag === '*'
+        ? locales[0]
+        : matchSupportedLocale(candidate.tag, locales);
+
+      if (matched) {
+        bestLocale = matched;
+        bestQuality = candidate.quality;
       }
-
-      if (quality <= 0) return null;
-      return { tag, quality };
-    })
-    .filter((item): item is { tag: string; quality: number } => item !== null)
-    .sort((a, b) => b.quality - a.quality);
-
-  for (const { tag } of candidates) {
-    if (tag === '*') {
-      return locales[0];
     }
-    const matched = matchSupportedLocale(tag, locales);
-    if (matched) return matched;
+
+    if (separator === -1) break;
+    entryStart = separator + 1;
   }
 
-  return undefined;
+  return bestLocale;
 }
 
 export function validateI18nConfig(options: {
@@ -101,14 +166,18 @@ export function validateI18nConfig(options: {
   const canonicalLocales = options.locales.map((loc) => {
     const canonical = canonicalizeLocale(loc);
     if (!canonical) {
-      throw new Error(`[next-fluent] Invalid locale tag in "locales": "${loc}"`);
+      throw new Error(
+        `[next-fluent] Invalid locale tag in "locales": "${localeDiagnosticValue(loc)}"`
+      );
     }
     return canonical.toLowerCase();
   });
 
   const defaultCanonical = canonicalizeLocale(options.defaultLocale);
   if (!defaultCanonical) {
-    throw new Error(`[next-fluent] Invalid "defaultLocale": "${options.defaultLocale}"`);
+    throw new Error(
+      `[next-fluent] Invalid "defaultLocale": "${localeDiagnosticValue(options.defaultLocale)}"`
+    );
   }
 
   if (!canonicalLocales.includes(defaultCanonical.toLowerCase())) {
