@@ -2,10 +2,11 @@ const MAX_LOCALE_TAG_LENGTH = 64;
 
 export function canonicalizeLocale(locale?: string | null): string | undefined {
   if (!locale || typeof locale !== 'string') return undefined;
-  const raw = locale.trim();
-  if (!raw || raw.length > MAX_LOCALE_TAG_LENGTH) return undefined;
+  if (locale.length > MAX_LOCALE_TAG_LENGTH) return undefined;
 
-  // Bound request-controlled input before replaceAll allocates a normalized copy.
+  // Bound request-controlled raw input before trim/replaceAll can allocate copies.
+  const raw = locale.trim();
+  if (!raw) return undefined;
   const normalized = raw.replaceAll('_', '-');
 
   try {
