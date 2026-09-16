@@ -1,7 +1,6 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, ForumModule, UpdateCategoryInput,
-    entities::forum_category_taxonomy_binding,
     services::{ForumCategoryRouteDisposition, ForumCategoryRouteService},
 };
 use rustok_outbox::OutboxModule;
@@ -106,12 +105,12 @@ async fn category_routes_read_taxonomy_after_legacy_route_copy_is_removed() -> T
     );
     assert_eq!(fallback_match.canonical.path, "/fr/forum/c/aide");
 
-    forum_category_taxonomy_binding::Entity::delete_by_id((tenant_id, category.id))
+    rustok_taxonomy::entities::taxonomy_term::Entity::delete_by_id(category.id)
         .exec(&db)
         .await?;
     assert!(
         routes.resolve(tenant_id, "en", "help", None).await.is_err(),
-        "Taxonomy route lookup must fail closed when the Forum binding is missing"
+        "Taxonomy route lookup must fail closed when the Taxonomy Category is missing"
     );
     assert!(
         routes
@@ -154,6 +153,7 @@ async fn setup() -> TestResult<DatabaseConnection> {
     for migration in TaxonomyModule.migrations() {
         migration.up(&manager).await?;
     }
+    flex::cache_generation::create_field_definition_cache_generation_table(&manager).await?;
     for migration in ForumModule.migrations() {
         migration.up(&manager).await?;
     }

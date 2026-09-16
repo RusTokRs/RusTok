@@ -1,7 +1,7 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CategoryTreeQuery, CreateCategoryInput, ForumModule, UpdateCategoryInput,
-    entities::{forum_category, forum_category_taxonomy_binding},
+    entities::forum_category,
 };
 use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
@@ -86,10 +86,6 @@ async fn forum_category_tree_and_mutation_responses_use_taxonomy_canonical_data(
         .await?
         .expect("Forum policy row remains");
     let mut stale_category: forum_category::ActiveModel = legacy_category.into();
-    stale_category.parent_id = Set(None);
-    stale_category.position = Set(99);
-    stale_category.icon = Set(Some("legacy-only-icon".to_string()));
-    stale_category.color = Set(Some("#ffffff".to_string()));
     stale_category.moderated = Set(true);
     stale_category.update(&db).await?;
 
@@ -128,12 +124,8 @@ async fn forum_category_tree_and_mutation_responses_use_taxonomy_canonical_data(
     assert_eq!(support_node.breadcrumbs.len(), 2);
     assert_eq!(support_node.breadcrumbs[0].name, "General");
     assert_eq!(support_node.breadcrumbs[1].name, "Support Updated");
-    assert!(
-        tree.roots.iter().all(|node| node.id != support.id),
-        "stale Forum parent_id must not turn Support into a tree root"
-    );
 
-    forum_category_taxonomy_binding::Entity::delete_by_id((tenant_id, support.id))
+    rustok_taxonomy::entities::taxonomy_term::Entity::delete_by_id(support.id)
         .exec(&db)
         .await?;
     let missing_binding = service
@@ -205,6 +197,7 @@ async fn setup() -> TestResult<DatabaseConnection> {
     for migration in TaxonomyModule.migrations() {
         migration.up(&manager).await?;
     }
+    flex::cache_generation::create_field_definition_cache_generation_table(&manager).await?;
     for migration in ForumModule.migrations() {
         migration.up(&manager).await?;
     }

@@ -199,13 +199,17 @@ async fn assert_placement(
     use rustok_forum::entities::forum_category;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
-    let model = forum_category::Entity::find_by_id(category_id)
+    let _model = forum_category::Entity::find_by_id(category_id)
         .filter(forum_category::Column::TenantId.eq(tenant_id))
         .one(db)
         .await?
         .ok_or_else(|| test_error(format!("missing category {category_id}")))?;
-    assert_eq!(model.parent_id, expected_parent_id);
-    assert_eq!(model.position, expected_position);
+    let placement = rustok_taxonomy::entities::taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, category_id))
+        .one(db)
+        .await?
+        .ok_or_else(|| test_error(format!("missing category hierarchy placement {category_id}")))?;
+    assert_eq!(placement.parent_term_id, expected_parent_id);
+    assert_eq!(placement.position, expected_position);
     Ok(())
 }
 

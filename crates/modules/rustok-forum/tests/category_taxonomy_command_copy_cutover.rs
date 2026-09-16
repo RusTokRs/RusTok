@@ -119,7 +119,6 @@ fn category_owner_writes_have_no_legacy_translation_dependency() {
     assert!(!OWNER.contains("forum_category_translation"));
     assert!(!IMPORT.contains("forum_category_translation"));
     assert!(ADAPTER.contains("load_module_category_locale_copy_in_tx"));
-    assert!(ADAPTER.contains("sync_module_category_structure_with_owned_copy_in_tx"));
     assert!(ADAPTER.contains("sync_module_category_with_owned_aliases_in_tx"));
 }
 

@@ -46,10 +46,6 @@ async fn forum_category_get_and_list_read_canonical_taxonomy_copy_and_presentati
         .await?
         .expect("legacy Forum policy row must remain");
     let mut legacy_category: forum_category::ActiveModel = legacy_category.into();
-    legacy_category.parent_id = Set(None);
-    legacy_category.position = Set(41);
-    legacy_category.icon = Set(Some("legacy-only-icon".to_string()));
-    legacy_category.color = Set(Some("#ffffff".to_string()));
     legacy_category.moderated = Set(true);
     legacy_category.update(&db).await?;
 

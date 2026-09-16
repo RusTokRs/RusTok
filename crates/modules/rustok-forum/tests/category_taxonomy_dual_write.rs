@@ -1,7 +1,7 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, ForumModule, MoveCategoryInput,
-    ReorderCategorySiblingsInput, UpdateCategoryInput, entities::forum_category_taxonomy_binding,
+    ReorderCategorySiblingsInput, UpdateCategoryInput,
 };
 use rustok_outbox::OutboxModule;
 use rustok_taxonomy::{
@@ -52,11 +52,12 @@ async fn forum_category_writes_keep_taxonomy_category_mirror_current() -> TestRe
         )
         .await?;
 
-    let binding = forum_category_taxonomy_binding::Entity::find_by_id((tenant_id, support.id))
+    let term = rustok_taxonomy::entities::taxonomy_term::Entity::find_by_id(support.id)
+        .filter(rustok_taxonomy::entities::taxonomy_term::Column::TenantId.eq(tenant_id))
         .one(&db)
         .await?
-        .expect("dual-write must create the transitional same-ID binding");
-    assert_eq!(binding.taxonomy_category_id, support.id);
+        .expect("canonical Same-ID taxonomy term must exist");
+    assert_eq!(term.id, support.id);
 
     let projected = load_category(&reader, tenant_id, support.id).await?;
     assert_eq!(projected.name, "Support");
@@ -209,6 +210,7 @@ async fn setup() -> TestResult<DatabaseConnection> {
     for migration in TaxonomyModule.migrations() {
         migration.up(&manager).await?;
     }
+    flex::cache_generation::create_field_definition_cache_generation_table(&manager).await?;
     for migration in ForumModule.migrations() {
         migration.up(&manager).await?;
     }

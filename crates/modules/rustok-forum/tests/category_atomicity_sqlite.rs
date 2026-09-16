@@ -102,8 +102,9 @@ END
         "forced translation update failure must make category update fail"
     );
     let persisted = load_category(&db, tenant_id, category.id).await?;
-    assert_eq!(persisted.position, 3);
     assert!(!persisted.moderated);
+    let category_view = service.get(tenant_id, admin_security(), category.id, "en").await?;
+    assert_eq!(category_view.position, 3);
     assert!(
         taxonomy_term_translation::Entity::find()
             .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
@@ -157,8 +158,9 @@ END
         "forced new-locale failure must make category update fail"
     );
     let persisted = load_category(&db, tenant_id, category.id).await?;
-    assert_eq!(persisted.position, 3);
     assert!(!persisted.moderated);
+    let category_view = service.get(tenant_id, admin_security(), category.id, "en").await?;
+    assert_eq!(category_view.position, 3);
     assert!(
         taxonomy_term_translation::Entity::find()
             .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))

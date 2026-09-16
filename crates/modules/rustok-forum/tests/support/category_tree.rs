@@ -183,8 +183,8 @@ pub async fn exercise_category_tree_read_model(db: &DatabaseConnection) -> TestR
     db.execute_raw(Statement::from_sql_and_values(
         db.get_database_backend(),
         "INSERT INTO forum_categories \
-            (id, tenant_id, position, moderated, topic_count, reply_count) \
-         VALUES (?, ?, 0, FALSE, 0, 0)",
+            (id, tenant_id, moderated, topic_count, reply_count) \
+         VALUES (?, ?, FALSE, 0, 0)",
         [unbound_category_id.into(), unbound_tenant.into()],
     ))
     .await?;
@@ -198,7 +198,7 @@ pub async fn exercise_category_tree_read_model(db: &DatabaseConnection) -> TestR
             },
         )
         .await;
-    assert_validation_contains(unbound_error, "Taxonomy Category binding")?;
+    assert_validation_contains(unbound_error, "Taxonomy Category projection is missing")?;
 
     let deep_tenant = Uuid::new_v4();
     let deep_seed = seed_deep_tree(db, deep_tenant, MAX_FORUM_CATEGORY_TREE_DEPTH + 2).await;
@@ -265,17 +265,16 @@ async fn seed_deep_tree(
 }
 
 async fn seed_oversized_tree(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<()> {
-    for position in 0..=MAX_FORUM_CATEGORY_TREE_NODES {
+    for _ in 0..=MAX_FORUM_CATEGORY_TREE_NODES {
         let category_id = Uuid::new_v4();
         db.execute_raw(Statement::from_sql_and_values(
             db.get_database_backend(),
             "INSERT INTO forum_categories \
-                (id, tenant_id, position, moderated, topic_count, reply_count) \
-             VALUES (?, ?, ?, FALSE, 0, 0)",
+                (id, tenant_id, moderated, topic_count, reply_count) \
+             VALUES (?, ?, FALSE, 0, 0)",
             [
                 category_id.into(),
                 tenant_id.into(),
-                (position as i32).into(),
             ],
         ))
         .await?;
@@ -287,30 +286,20 @@ async fn seed_category_without_translation(
     db: &DatabaseConnection,
     tenant_id: Uuid,
 ) -> TestResult<Uuid> {
-    use rustok_forum::entities::{forum_category, forum_category_taxonomy_binding};
-    use rustok_taxonomy::entities::taxonomy_term;
+    use rustok_forum::entities::forum_category;
+    use rustok_taxonomy::entities::{taxonomy_category_hierarchy, taxonomy_term};
     use sea_orm::{ActiveModelTrait, Set};
 
     let category_id = Uuid::new_v4();
     let cat_model = forum_category::ActiveModel {
         id: Set(category_id),
         tenant_id: Set(tenant_id),
-        parent_id: Set(None),
-        position: Set(0),
         moderated: Set(false),
         topic_count: Set(0),
         reply_count: Set(0),
         ..Default::default()
     };
     cat_model.insert(db).await?;
-
-    let binding = forum_category_taxonomy_binding::ActiveModel {
-        tenant_id: Set(tenant_id),
-        forum_category_id: Set(category_id),
-        taxonomy_category_id: Set(category_id),
-        ..Default::default()
-    };
-    binding.insert(db).await?;
 
     let term = taxonomy_term::ActiveModel {
         id: Set(category_id),
@@ -322,6 +311,14 @@ async fn seed_category_without_translation(
         ..Default::default()
     };
     term.insert(db).await?;
+
+    let hierarchy = taxonomy_category_hierarchy::ActiveModel {
+        tenant_id: Set(tenant_id),
+        term_id: Set(category_id),
+        parent_term_id: Set(None),
+        position: Set(0),
+    };
+    hierarchy.insert(db).await?;
 
     Ok(category_id)
 }
