@@ -101,3 +101,27 @@ test('oversized configuration diagnostics do not retain locale payloads', () => 
     }
   );
 });
+
+test('configuration rejects duplicate canonical locale identities', () => {
+  for (const locales of [
+    ['en-US', 'en_US'],
+    ['EN-us', 'en-US'],
+    ['sr-Latn-RS', 'sr_latn_rs'],
+  ]) {
+    assert.throws(
+      () => validateI18nConfig({ locales, defaultLocale: locales[0] }),
+      (error) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /Duplicate locale identity in "locales"/);
+        return true;
+      },
+      `canonical duplicates must be rejected: ${locales.join(', ')}`
+    );
+  }
+});
+
+test('configuration keeps distinct locale identities and canonical default membership', () => {
+  assert.doesNotThrow(() =>
+    validateI18nConfig({ locales: ['en-US', 'en-GB', 'sr-Latn-RS'], defaultLocale: 'en_US' })
+  );
+});
