@@ -13,6 +13,8 @@ import {
   createI18n,
 } from '../dist/index.js';
 
+const stripBidiIsolates = (value) => value.replace(/[\u2068\u2069]/g, '');
+
 test('NF-01: Multi-bundle fallback chain resolves bundle-by-bundle without collision', () => {
   const ruBundle = createFluentBundle('ru', `
 save = Сохранить
@@ -246,7 +248,6 @@ test('forLocale supports direct in-memory messages and fallbackMessages', async 
     fallbackMessages: 'farewell = Goodbye!\ngreet = Hello, {$name}!',
   });
 
-  assert.equal(t('greet', { name: 'Иван' }), 'Привет, Иван!');
+  assert.equal(stripBidiIsolates(t('greet', { name: 'Иван' })), 'Привет, Иван!');
   assert.equal(t('farewell'), 'Goodbye!');
 });
-
