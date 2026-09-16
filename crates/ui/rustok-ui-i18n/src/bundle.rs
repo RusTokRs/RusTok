@@ -38,6 +38,27 @@ fn parse_language_identifier(locale: &str) -> Result<LanguageIdentifier, BundleB
         })
 }
 
+fn build_fluent_bundle_from_parsed(
+    langid: LanguageIdentifier,
+    normalized_locale: &str,
+    ftl_source: &str,
+) -> Result<FluentBundle<FluentResource>, BundleBuildError> {
+    let mut bundle = FluentBundle::new_concurrent(vec![langid]);
+    bundle.set_use_isolating(true);
+    let resource = FluentResource::try_new(ftl_source.to_string())
+        .map_err(|(_, errors)| BundleBuildError::FluentParse {
+            locale: normalized_locale.to_string(),
+            errors: errors.into_iter().map(|e| format!("{e:?}")).collect(),
+        })?;
+    bundle
+        .add_resource(resource)
+        .map_err(|errors| BundleBuildError::AddResource {
+            locale: normalized_locale.to_string(),
+            errors,
+        })?;
+    Ok(bundle)
+}
+
 /// Builds a concurrent `FluentBundle` from raw FTL source string.
 ///
 /// Locale tags are normalized before parsing, so underscore-separated tags such
@@ -54,20 +75,7 @@ pub fn build_fluent_bundle(
 ) -> Result<FluentBundle<FluentResource>, BundleBuildError> {
     let langid = parse_language_identifier(locale)?;
     let normalized = langid.to_string();
-    let mut bundle = FluentBundle::new_concurrent(vec![langid]);
-    bundle.set_use_isolating(true);
-    let resource = FluentResource::try_new(ftl_source.to_string())
-        .map_err(|(_, errors)| BundleBuildError::FluentParse {
-            locale: normalized.clone(),
-            errors: errors.into_iter().map(|e| format!("{e:?}")).collect(),
-        })?;
-    bundle
-        .add_resource(resource)
-        .map_err(|errors| BundleBuildError::AddResource {
-            locale: normalized,
-            errors,
-        })?;
-    Ok(bundle)
+    build_fluent_bundle_from_parsed(langid, &normalized, ftl_source)
 }
 
 /// Strictly builds an immutable, concurrent `FluentCatalog`.
@@ -81,12 +89,13 @@ pub fn try_build_fluent_catalog(
     let mut catalog = FluentCatalog::new();
 
     for (locale, ftl_source) in bundles {
-        let normalized = parse_language_identifier(locale)?.to_string();
+        let langid = parse_language_identifier(locale)?;
+        let normalized = langid.to_string();
         if catalog.contains_key(&normalized) {
             return Err(BundleBuildError::DuplicateLocale { locale: normalized });
         }
 
-        let bundle = build_fluent_bundle(&normalized, ftl_source)?;
+        let bundle = build_fluent_bundle_from_parsed(langid, &normalized, ftl_source)?;
         catalog.insert(normalized, bundle);
     }
 
@@ -103,13 +112,14 @@ pub fn build_fluent_catalog(bundles: &[(&str, &str)]) -> FluentCatalog {
     let mut catalog = FluentCatalog::new();
 
     for (locale, ftl_source) in bundles {
-        let normalized = match parse_language_identifier(locale) {
-            Ok(langid) => langid.to_string(),
+        let langid = match parse_language_identifier(locale) {
+            Ok(langid) => langid,
             Err(error) => {
                 tracing::error!(%error, locale = *locale, "Skipping invalid Fluent locale");
                 continue;
             }
         };
+        let normalized = langid.to_string();
 
         if catalog.contains_key(&normalized) {
             tracing::error!(
@@ -119,7 +129,7 @@ pub fn build_fluent_catalog(bundles: &[(&str, &str)]) -> FluentCatalog {
             continue;
         }
 
-        match build_fluent_bundle(&normalized, ftl_source) {
+        match build_fluent_bundle_from_parsed(langid, &normalized, ftl_source) {
             Ok(bundle) => {
                 catalog.insert(normalized, bundle);
             }
