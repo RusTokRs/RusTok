@@ -29,6 +29,44 @@ export function normalizeLocaleTag(value?: string | null): string | undefined {
   return canonicalizeLocale(value);
 }
 
+function localeLookupCandidates(canonical: string): string[] {
+  const candidates: string[] = [];
+  const pushCandidate = (candidate?: string): void => {
+    if (candidate && !candidates.some((item) => item.toLowerCase() === candidate.toLowerCase())) {
+      candidates.push(candidate);
+    }
+  };
+
+  pushCandidate(canonical);
+
+  try {
+    const locale = new Intl.Locale(canonical);
+
+    // Extensions are not a structural fallback layer for catalog selection.
+    // Probe the extension-free base name before removing variant/core parts.
+    pushCandidate(locale.baseName);
+
+    // Treat all variants as one specificity layer. Intl canonicalization can
+    // reorder variants, so peeling serialized subtags one-by-one can manufacture
+    // arbitrary partial-variant parents just like unic-langid can on Rust.
+    const core = [locale.language, locale.script, locale.region]
+      .filter((part): part is string => Boolean(part))
+      .join('-');
+    pushCandidate(core);
+
+    if (locale.region) {
+      pushCandidate([locale.language, locale.script].filter(Boolean).join('-'));
+    }
+    if (locale.script || locale.region) {
+      pushCandidate(locale.language);
+    }
+  } catch {
+    // `canonical` came from Intl.getCanonicalLocales, so this is defensive only.
+  }
+
+  return candidates;
+}
+
 export function matchSupportedLocale(
   value: string | null | undefined,
   locales: readonly string[]
@@ -37,20 +75,13 @@ export function matchSupportedLocale(
   const canonical = canonicalizeLocale(value);
   if (!canonical) return undefined;
 
-  // 1. Exact canonical match
-  const exact = locales.find((loc) => {
-    const locCanonical = canonicalizeLocale(loc);
-    return locCanonical?.toLowerCase() === canonical.toLowerCase();
-  });
-  if (exact) return exact;
-
-  // 2. Base language match (e.g. "en-US" -> "en")
-  const baseLang = canonical.split('-')[0]?.toLowerCase();
-  if (baseLang) {
-    return locales.find((loc) => {
+  for (const candidate of localeLookupCandidates(canonical)) {
+    const normalizedCandidate = candidate.toLowerCase();
+    const matched = locales.find((loc) => {
       const locCanonical = canonicalizeLocale(loc);
-      return locCanonical?.toLowerCase() === baseLang || loc.toLowerCase() === baseLang;
+      return locCanonical?.toLowerCase() === normalizedCandidate;
     });
+    if (matched) return matched;
   }
 
   return undefined;
