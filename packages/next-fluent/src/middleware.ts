@@ -1,5 +1,10 @@
 import type { I18nMiddlewareOptions } from './types';
-import { matchSupportedLocale, resolveAcceptLanguage, validateI18nConfig } from './utils';
+import {
+  matchConfiguredLocaleIdentity,
+  matchSupportedLocale,
+  resolveAcceptLanguage,
+  validateI18nConfig,
+} from './utils';
 
 export interface NextMiddlewareRequestLike {
   url: string;
@@ -28,6 +33,14 @@ export function createI18nMiddleware(options: I18nMiddlewareOptions) {
     cookieName = 'rustok-locale',
     headerName = 'x-rustok-effective-locale',
   } = options;
+
+  // Validation guarantees exact canonical membership. Resolve that identity to
+  // the spelling actually configured in `locales` so comparisons, redirects,
+  // cookies, and propagated headers never leak an alias spelling from defaultLocale.
+  const configuredDefaultLocale = matchConfiguredLocaleIdentity(defaultLocale, locales);
+  if (!configuredDefaultLocale) {
+    throw new Error('[next-fluent] Unable to resolve configured default locale identity.');
+  }
 
   return async function middleware(request: NextMiddlewareRequestLike) {
     let NextResponse: any;
@@ -81,7 +94,7 @@ export function createI18nMiddleware(options: I18nMiddlewareOptions) {
       locales
     );
 
-    const preferredLocale = cookieLocale || headerLocale || defaultLocale;
+    const preferredLocale = cookieLocale || headerLocale || configuredDefaultLocale;
 
     const createSuccessResponse = (effectiveLocale: string) => {
       const requestHeaders = new Headers();
@@ -133,18 +146,18 @@ export function createI18nMiddleware(options: I18nMiddlewareOptions) {
 
     // Strategy 2: 'as-needed' (default locale without prefix, others with prefix)
     if (localePrefix === 'as-needed') {
-      if (matchedPrefix === defaultLocale) {
+      if (matchedPrefix === configuredDefaultLocale) {
         // Strip default locale prefix
         const remainingPath = `/${segments.slice(1).join('/')}${search}`;
-        return createRedirect(new URL(remainingPath, request.url), defaultLocale);
+        return createRedirect(new URL(remainingPath, request.url), configuredDefaultLocale);
       }
       if (matchedPrefix) {
         // Non-default locale with prefix
         return createSuccessResponse(matchedPrefix);
       }
       // No prefix in URL:
-      if (preferredLocale === defaultLocale) {
-        return createSuccessResponse(defaultLocale);
+      if (preferredLocale === configuredDefaultLocale) {
+        return createSuccessResponse(configuredDefaultLocale);
       }
       // Preferred locale is non-default: redirect to /{preferredLocale}/path
       const targetPath = `/${preferredLocale}${pathname === '/' ? '' : pathname}${search}`;
