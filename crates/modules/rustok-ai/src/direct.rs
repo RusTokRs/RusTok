@@ -427,6 +427,7 @@ impl DirectTaskHandler for MediaImageAssetHandler {
                 original_name: file_name.clone(),
                 content_type: provider_image.mime_type.clone(),
                 data: Bytes::from(provider_image.bytes),
+                owner_module: Some("ai".to_string()),
             })
             .await
             .map_err(|err| AiError::Runtime(err.to_string()))?;

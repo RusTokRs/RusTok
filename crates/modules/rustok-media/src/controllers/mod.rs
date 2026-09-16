@@ -101,6 +101,10 @@ fn media_error(error: MediaError) -> HttpError {
             "invalid_rendition_purpose",
             format!("Invalid rendition purpose: {purpose}"),
         ),
+        MediaError::InvalidOwnerModule(module) => HttpError::bad_request(
+            "invalid_owner_module",
+            format!("Invalid owner module: {module}"),
+        ),
         MediaError::RenditionInProgress(id) => HttpError::new(
             StatusCode::CONFLICT,
             "media_rendition_in_progress",
@@ -178,11 +182,17 @@ pub struct MediaListResponse {
     pub total: u64,
 }
 
+#[derive(Debug, Deserialize, Default)]
+pub struct UploadQuery {
+    pub module: Option<String>,
+}
+
 /// Upload a media file using multipart/form-data with a `file` field.
 pub async fn upload(
     State(runtime): State<MediaHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    Query(query): Query<UploadQuery>,
     mut multipart: Multipart,
 ) -> HttpResult<(StatusCode, Json<MediaItem>)> {
     require_media_permission(&tenant, &auth, Action::Create)?;
@@ -212,6 +222,7 @@ pub async fn upload(
         let item = service
             .upload(UploadInput {
                 tenant_id: tenant.id,
+                owner_module: query.module,
                 uploaded_by: auth.human_user_id(),
                 original_name: file_name,
                 content_type,

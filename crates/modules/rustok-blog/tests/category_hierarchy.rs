@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use rustok_blog::dto::{CreateCategoryInput, MoveCategoryInput, UpdateCategoryInput};
+use rustok_blog::dto::{
+    CategoryPlacementResponse, CreateCategoryInput, MoveCategoryInput, UpdateCategoryInput,
+};
 use rustok_blog::entities::blog_category;
 use rustok_blog::services::{CategoryCommandService, CategoryService};
 use rustok_blog::{BlogError, BlogModule};
@@ -8,6 +10,7 @@ use rustok_comments::CommentsModule;
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
+use rustok_taxonomy::entities::taxonomy_category_hierarchy;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -36,10 +39,25 @@ async fn setup() -> DatabaseConnection {
     db
 }
 
+struct NoopCategoryDeleteCleanup;
+
+#[async_trait::async_trait]
+impl rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort for NoopCategoryDeleteCleanup {
+    async fn cleanup_in_tx(
+        &self,
+        _txn: &sea_orm::DatabaseTransaction,
+        _tenant_id: Uuid,
+        _category_id: Uuid,
+    ) -> rustok_taxonomy::TaxonomyResult<()> {
+        Ok(())
+    }
+}
+
 fn services(db: &DatabaseConnection) -> (CategoryService, CategoryCommandService) {
     let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
     (
-        CategoryService::new(db.clone(), event_bus),
+        CategoryService::new(db.clone(), event_bus)
+            .with_category_delete_cleanup(Arc::new(NoopCategoryDeleteCleanup)),
         CategoryCommandService::new(db.clone()),
     )
 }
@@ -81,13 +99,35 @@ async fn load_category(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     category_id: Uuid,
-) -> blog_category::Model {
-    blog_category::Entity::find_by_id(category_id)
-        .filter(blog_category::Column::TenantId.eq(tenant_id))
-        .one(db)
+) -> CategoryPlacementResponse {
+    let rows = taxonomy_category_hierarchy::Entity::find()
+        .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+        .all(db)
         .await
-        .expect("category read should succeed")
-        .expect("category should exist")
+        .expect("hierarchy load should succeed");
+
+    let map: std::collections::HashMap<Uuid, (Option<Uuid>, i32)> = rows
+        .into_iter()
+        .map(|r| (r.term_id, (r.parent_term_id, r.position)))
+        .collect();
+
+    let &(parent_id, position) = map
+        .get(&category_id)
+        .expect("category must exist in taxonomy hierarchy");
+
+    let mut depth = 0;
+    let mut curr = parent_id;
+    while let Some(p) = curr {
+        depth += 1;
+        curr = map.get(&p).and_then(|&(next_p, _)| next_p);
+    }
+
+    CategoryPlacementResponse {
+        id: category_id,
+        parent_id,
+        position,
+        depth,
+    }
 }
 
 #[tokio::test]
@@ -251,7 +291,8 @@ async fn delete_rejects_non_leaf_and_compacts_remaining_siblings() {
     let transport = MemoryTransport::new();
     let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
-    let category_service = CategoryService::new(db.clone(), event_bus);
+    let category_service = CategoryService::new(db.clone(), event_bus)
+        .with_category_delete_cleanup(Arc::new(NoopCategoryDeleteCleanup));
     let tenant_id = Uuid::new_v4();
 
     let parent = create_category(&category_service, tenant_id, "Parent", None, 0).await;

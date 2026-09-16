@@ -24,12 +24,25 @@ const ftlCache = new Map<Locale, string>();
 
 async function loadFtlMessages(locale: Locale): Promise<string> {
   const cached = ftlCache.get(locale);
-  if (cached) return cached;
+  if (cached && process.env.NODE_ENV === "production") return cached;
 
-  const ftlPath = path.join(process.cwd(), "messages", `${locale}.ftl`);
-  const content = await fs.readFile(ftlPath, "utf8");
-  ftlCache.set(locale, content);
-  return content;
+  const candidatePaths = [
+    path.join(process.cwd(), "messages", `${locale}.ftl`),
+    path.resolve(process.cwd(), "apps/next-frontend/messages", `${locale}.ftl`),
+  ];
+
+  for (const candidate of candidatePaths) {
+    try {
+      const content = await fs.readFile(/*turbopackIgnore: true*/ candidate, "utf8");
+      ftlCache.set(locale, content);
+      return content;
+    } catch {
+      // try next candidate
+    }
+  }
+
+  console.warn(`[next-frontend] Could not find FTL messages for locale: ${locale}`);
+  return "";
 }
 
 export default setRequestConfig(async ({ locale }) => {

@@ -7,6 +7,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub tenant_id: Uuid,
+    pub owner_module: String,
     pub uploaded_by: Option<Uuid>,
     pub upload_session_id: Option<Uuid>,
     pub active_blob_id: Option<Uuid>,

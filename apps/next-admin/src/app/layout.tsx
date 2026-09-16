@@ -7,7 +7,7 @@ import ThemeProvider from '@/shared/lib/themes/theme-provider';
 import { cn } from '@/shared/lib/utils';
 import type { Metadata, Viewport } from 'next';
 import { cookies } from 'next/headers';
-import { FluentProvider } from '@rustok/next-fluent';
+import { FluentProvider } from '@rustok/next-fluent/client';
 import { getLocale, getMessages } from '@rustok/next-fluent/server';
 import '@/i18n/request';
 import NextTopLoader from 'nextjs-toploader';

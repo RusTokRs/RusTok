@@ -25,6 +25,8 @@ pub struct MediaUploadRequest {
     pub original_name: String,
     pub content_type: String,
     pub content_length: Option<u64>,
+    #[serde(default)]
+    pub owner_module: Option<String>,
 }
 
 /// Transport selected and owned by Media for one upload operation.
@@ -203,6 +205,7 @@ impl MediaAssetWritePort for MediaService {
                     lease.operation_id,
                     PrepareUploadSessionInput {
                         tenant_id,
+                        owner_module: request.owner_module,
                         actor_id: Uuid::parse_str(&context.actor.id).ok(),
                         original_name: request.original_name,
                         content_type: request.content_type,
@@ -521,6 +524,10 @@ pub(crate) fn media_error_to_port_error(error: MediaError) -> PortError {
             "media.invalid_rendition_purpose",
             format!("invalid rendition purpose: {purpose}"),
         ),
+        MediaError::InvalidOwnerModule(module) => PortError::validation(
+            "media.invalid_owner_module",
+            format!("invalid owner module: {module}"),
+        ),
         MediaError::RenditionInProgress(id) => PortError::conflict(
             "media.rendition_in_progress",
             format!("rendition is already being processed: {id}"),
@@ -612,6 +619,7 @@ mod tests {
                 original_name: "hero.webp".to_string(),
                 content_type: "image/webp".to_string(),
                 content_length: Some(1024),
+                owner_module: None,
             })
             .is_ok()
         );
@@ -620,6 +628,7 @@ mod tests {
             original_name: " ".to_string(),
             content_type: "image/webp".to_string(),
             content_length: None,
+            owner_module: None,
         })
         .expect_err("empty file name must fail before transport selection");
         assert_eq!(error.code, "media.upload_name_empty");

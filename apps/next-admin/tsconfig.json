@@ -19,6 +19,8 @@
       "@/shared/*": ["./src/shared/*"],
       "@/entities/*": ["./src/entities/*"],
       "@/widgets/*": ["./src/widgets/*"],
+      "@rustok/next-fluent": ["../../packages/next-fluent/src/index.ts"],
+      "@rustok/next-fluent/*": ["../../packages/next-fluent/src/*"],
       "~/*": ["./public/*"]
     },
     "incremental": true,

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chrono::Utc;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
+use rustok_taxonomy::entities::taxonomy_category_hierarchy;
 use rustok_taxonomy::{TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
@@ -11,17 +11,14 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::entities::{blog_category, blog_category_taxonomy_binding};
+use crate::entities::blog_category;
 use crate::{BlogError, BlogResult};
-
-use super::category_taxonomy_sync::sync_category_structures_in_tx;
 
 /// Blog-owned cleanup that participates in Taxonomy's canonical Category delete transaction.
 ///
 /// The outer Taxonomy owner deletes the canonical term only after this cleanup succeeds. Blog
 /// removes its membership row, compacts and replays sibling placement, publishes reindex evidence
 /// and finally delegates to the host-owned capability cleanup (Flex in the server composition).
-/// The retired Blog Translation change journal is intentionally not part of this lifecycle.
 pub(crate) struct BlogCategoryDeleteCleanup {
     blog_category_id: Uuid,
     actor_id: Option<Uuid>,
@@ -52,20 +49,10 @@ impl BlogCategoryDeleteCleanup {
     ) -> BlogResult<()> {
         lock_category_tree_in_tx(txn, tenant_id).await?;
 
-        let binding =
-            blog_category_taxonomy_binding::Entity::find_by_id((tenant_id, self.blog_category_id))
-                .one(txn)
-                .await?
-                .ok_or_else(|| {
-                    BlogError::validation(format!(
-                        "Blog category {} has no Taxonomy Category binding",
-                        self.blog_category_id
-                    ))
-                })?;
-        if binding.taxonomy_category_id != taxonomy_category_id {
+        if self.blog_category_id != taxonomy_category_id {
             return Err(BlogError::validation(format!(
-                "Blog category {} is bound to Taxonomy Category {}, not delete target {}",
-                self.blog_category_id, binding.taxonomy_category_id, taxonomy_category_id
+                "Blog category {} does not match delete target {}",
+                self.blog_category_id, taxonomy_category_id
             )));
         }
 
@@ -75,6 +62,11 @@ impl BlogCategoryDeleteCleanup {
             .await?
             .ok_or_else(|| BlogError::category_not_found(self.blog_category_id))?;
         ensure_category_is_leaf_in_tx(txn, tenant_id, self.blog_category_id).await?;
+
+        let placement = taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, self.blog_category_id))
+            .one(txn)
+            .await?;
+        let parent_id = placement.and_then(|p| p.parent_term_id);
 
         let deleted = blog_category::Entity::delete_many()
             .filter(blog_category::Column::Id.eq(self.blog_category_id))
@@ -88,8 +80,13 @@ impl BlogCategoryDeleteCleanup {
             ));
         }
 
-        let sibling_ids = canonicalize_siblings_in_tx(txn, tenant_id, category.parent_id).await?;
-        sync_category_structures_in_tx(txn, tenant_id, &sibling_ids).await?;
+        taxonomy_category_hierarchy::Entity::delete_many()
+            .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_category_hierarchy::Column::TermId.eq(self.blog_category_id))
+            .exec(txn)
+            .await?;
+
+        let _sibling_ids = canonicalize_siblings_in_tx(txn, tenant_id, parent_id).await?;
 
         self.event_bus
             .publish_in_tx(
@@ -148,9 +145,18 @@ async fn ensure_category_is_leaf_in_tx(
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> BlogResult<()> {
-    let child = blog_category::Entity::find()
+    let blog_category_ids = blog_category::Entity::find()
         .filter(blog_category::Column::TenantId.eq(tenant_id))
-        .filter(blog_category::Column::ParentId.eq(category_id))
+        .all(txn)
+        .await?
+        .into_iter()
+        .map(|c| c.id)
+        .collect::<Vec<_>>();
+
+    let child = taxonomy_category_hierarchy::Entity::find()
+        .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_category_hierarchy::Column::ParentTermId.eq(category_id))
+        .filter(taxonomy_category_hierarchy::Column::TermId.is_in(blog_category_ids))
         .one(txn)
         .await?;
     if child.is_some() {
@@ -166,29 +172,38 @@ async fn canonicalize_siblings_in_tx(
     tenant_id: Uuid,
     parent_id: Option<Uuid>,
 ) -> BlogResult<Vec<Uuid>> {
-    let mut query =
-        blog_category::Entity::find().filter(blog_category::Column::TenantId.eq(tenant_id));
+    let blog_category_ids = blog_category::Entity::find()
+        .filter(blog_category::Column::TenantId.eq(tenant_id))
+        .all(txn)
+        .await?
+        .into_iter()
+        .map(|c| c.id)
+        .collect::<Vec<_>>();
+
+    let mut query = taxonomy_category_hierarchy::Entity::find()
+        .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_category_hierarchy::Column::TermId.is_in(blog_category_ids));
     query = match parent_id {
-        Some(parent_id) => query.filter(blog_category::Column::ParentId.eq(parent_id)),
-        None => query.filter(blog_category::Column::ParentId.is_null()),
+        Some(parent_id) => {
+            query.filter(taxonomy_category_hierarchy::Column::ParentTermId.eq(parent_id))
+        }
+        None => query.filter(taxonomy_category_hierarchy::Column::ParentTermId.is_null()),
     };
     let siblings = query
-        .order_by_asc(blog_category::Column::Position)
-        .order_by_asc(blog_category::Column::Id)
+        .order_by_asc(taxonomy_category_hierarchy::Column::Position)
+        .order_by_asc(taxonomy_category_hierarchy::Column::TermId)
         .all(txn)
         .await?;
-    let now = Utc::now();
     let mut sibling_ids = Vec::with_capacity(siblings.len());
     for (index, sibling) in siblings.into_iter().enumerate() {
         let desired_position = i32::try_from(index)
             .map_err(|_| BlogError::validation("Category sibling position exceeds i32 range"))?;
-        sibling_ids.push(sibling.id);
+        sibling_ids.push(sibling.term_id);
         if sibling.position == desired_position {
             continue;
         }
-        let mut active: blog_category::ActiveModel = sibling.into();
+        let mut active: taxonomy_category_hierarchy::ActiveModel = sibling.into();
         active.position = Set(desired_position);
-        active.updated_at = Set(now.into());
         active.update(txn).await?;
     }
     Ok(sibling_ids)

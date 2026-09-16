@@ -1,7 +1,7 @@
 import "@/styles/globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { FluentProvider } from "@rustok/next-fluent";
+import { FluentProvider } from "@rustok/next-fluent/client";
 import { getLocale, getMessages } from "@rustok/next-fluent/server";
 import "../i18n";
 

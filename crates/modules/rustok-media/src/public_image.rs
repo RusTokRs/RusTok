@@ -146,6 +146,7 @@ impl MediaPublicImageService {
         MediaItem {
             id: asset.id,
             tenant_id: asset.tenant_id,
+            owner_module: asset.owner_module,
             uploaded_by: asset.uploaded_by,
             filename,
             original_name: asset.original_name,

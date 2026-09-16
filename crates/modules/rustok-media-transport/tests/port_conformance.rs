@@ -106,6 +106,7 @@ fn png_upload(tenant_id: Uuid, name: &str) -> UploadInput {
         original_name: name.to_string(),
         content_type: "image/png".to_string(),
         data: Bytes::from(bytes.into_inner()),
+        owner_module: None,
     }
 }
 
@@ -231,6 +232,7 @@ async fn exercise_provider(
                 original_name: "next.png".to_string(),
                 content_type: "image/png".to_string(),
                 content_length: Some(128),
+                owner_module: None,
             },
         )
         .await

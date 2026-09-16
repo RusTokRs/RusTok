@@ -17,7 +17,7 @@ use crate::dto::{
     CategoryListItem, CategoryResponse, CreateCategoryInput, ListCategoriesFilter,
     MAX_BLOG_CATEGORY_TREE_NODES, UpdateCategoryInput,
 };
-use crate::entities::{blog_category, blog_category_taxonomy_binding};
+use crate::entities::blog_category;
 use crate::error::{BlogError, BlogResult};
 
 const BLOG_TAXONOMY_SCOPE: &str = "blog";
@@ -98,7 +98,6 @@ impl CategoryService {
         security: SecurityContext,
     ) -> BlogResult<()> {
         enforce_scope(&security, Resource::BlogCategories, Action::Delete)?;
-        let binding = load_binding(&self.db, tenant_id, category_id).await?;
         let capability_cleanup = self.category_delete_cleanup.clone().ok_or_else(|| {
             BlogError::validation(
                 "Blog Category delete requires host-composed Taxonomy capability cleanup",
@@ -113,7 +112,7 @@ impl CategoryService {
         TaxonomyService::new(self.db.clone())
             .delete_module_category_with_cleanup(
                 tenant_id,
-                binding.taxonomy_category_id,
+                category_id,
                 BLOG_TAXONOMY_SCOPE,
                 &cleanup,
             )
@@ -152,27 +151,13 @@ impl CategoryService {
             .iter()
             .map(|category| category.id)
             .collect::<Vec<_>>();
-        let bindings = blog_category_taxonomy_binding::Entity::find()
-            .filter(blog_category_taxonomy_binding::Column::TenantId.eq(tenant_id))
-            .filter(blog_category_taxonomy_binding::Column::BlogCategoryId.is_in(category_ids))
-            .all(&self.db)
-            .await?;
-        if bindings.len() != categories.len() {
-            return Err(BlogError::validation(
-                "Blog Category Taxonomy binding coverage is incomplete",
-            ));
-        }
 
-        let taxonomy_ids = bindings
-            .iter()
-            .map(|binding| binding.taxonomy_category_id)
-            .collect::<Vec<_>>();
         let canonical = TaxonomyOwnerCategoryReader::new(self.db.clone())
             .load_scoped_categories(
                 tenant_id,
                 TaxonomyScopeType::Module,
                 Some(BLOG_TAXONOMY_SCOPE),
-                Some(&taxonomy_ids),
+                Some(&category_ids),
                 &locale,
                 Some(PLATFORM_FALLBACK_LOCALE),
             )
@@ -183,19 +168,6 @@ impl CategoryService {
             ));
         }
 
-        let binding_by_blog = bindings
-            .iter()
-            .map(|binding| (binding.blog_category_id, binding.taxonomy_category_id))
-            .collect::<HashMap<_, _>>();
-        let blog_by_taxonomy = bindings
-            .iter()
-            .map(|binding| (binding.taxonomy_category_id, binding.blog_category_id))
-            .collect::<HashMap<_, _>>();
-        if binding_by_blog.len() != categories.len() || blog_by_taxonomy.len() != categories.len() {
-            return Err(BlogError::validation(
-                "Blog Category Taxonomy binding is not one-to-one",
-            ));
-        }
         let canonical_by_id = canonical
             .into_iter()
             .map(|category| (category.id, category))
@@ -209,34 +181,13 @@ impl CategoryService {
         let mut rows = categories
             .into_iter()
             .map(|category| {
-                let taxonomy_id = binding_by_blog
-                    .get(&category.id)
-                    .copied()
-                    .ok_or_else(|| {
-                        BlogError::validation(format!(
-                            "Blog category {} has no Taxonomy binding",
-                            category.id
-                        ))
-                    })?;
-                let canonical = canonical_by_id.get(&taxonomy_id).ok_or_else(|| {
+                let canonical = canonical_by_id.get(&category.id).ok_or_else(|| {
                     BlogError::validation(format!(
                         "Blog category {} Taxonomy projection is missing",
                         category.id
                     ))
                 })?;
-                let parent_id = canonical
-                    .parent_id
-                    .map(|parent_taxonomy_id| {
-                        blog_by_taxonomy
-                            .get(&parent_taxonomy_id)
-                            .copied()
-                            .ok_or_else(|| {
-                                BlogError::validation(format!(
-                                    "Taxonomy Category {parent_taxonomy_id} parent has no Blog binding"
-                                ))
-                            })
-                    })
-                    .transpose()?;
+                let parent_id = canonical.parent_id;
                 Ok((category, canonical.clone(), parent_id))
             })
             .collect::<BlogResult<Vec<_>>>()?;
@@ -281,8 +232,7 @@ impl CategoryService {
             .one(&self.db)
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
-        let binding = load_binding(&self.db, tenant_id, category_id).await?;
-        let taxonomy_ids = [binding.taxonomy_category_id];
+        let taxonomy_ids = [category_id];
         let canonical = TaxonomyOwnerCategoryReader::new(self.db.clone())
             .load_scoped_categories(
                 tenant_id,
@@ -297,10 +247,10 @@ impl CategoryService {
             .next()
             .ok_or_else(|| {
                 BlogError::validation(format!(
-                    "Blog category {category_id} binding points to a missing Taxonomy Category"
+                    "Blog category {category_id} points to a missing Taxonomy Category"
                 ))
             })?;
-        let parent_id = resolve_parent_binding(&self.db, tenant_id, canonical.parent_id).await?;
+        let parent_id = canonical.parent_id;
 
         Ok(CategoryResponse {
             id: category.id,
@@ -318,43 +268,6 @@ impl CategoryService {
             updated_at: category.updated_at.into(),
         })
     }
-}
-
-async fn load_binding(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    category_id: Uuid,
-) -> BlogResult<blog_category_taxonomy_binding::Model> {
-    blog_category_taxonomy_binding::Entity::find_by_id((tenant_id, category_id))
-        .one(db)
-        .await?
-        .ok_or_else(|| {
-            BlogError::validation(format!(
-                "Blog category {category_id} has no Taxonomy binding"
-            ))
-        })
-}
-
-async fn resolve_parent_binding(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    parent_taxonomy_id: Option<Uuid>,
-) -> BlogResult<Option<Uuid>> {
-    let Some(parent_taxonomy_id) = parent_taxonomy_id else {
-        return Ok(None);
-    };
-    blog_category_taxonomy_binding::Entity::find()
-        .filter(blog_category_taxonomy_binding::Column::TenantId.eq(tenant_id))
-        .filter(blog_category_taxonomy_binding::Column::TaxonomyCategoryId.eq(parent_taxonomy_id))
-        .one(db)
-        .await?
-        .map(|binding| binding.blog_category_id)
-        .ok_or_else(|| {
-            BlogError::validation(format!(
-                "Taxonomy Category {parent_taxonomy_id} parent has no Blog binding"
-            ))
-        })
-        .map(Some)
 }
 
 fn normalize_locale(locale: &str) -> BlogResult<String> {

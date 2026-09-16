@@ -16,6 +16,7 @@ use crate::dto::{CreateCategoryInput, MAX_BLOG_CATEGORY_TREE_NODES, UpdateCatego
 use crate::entities::blog_category;
 use crate::error::{BlogError, BlogResult};
 use crate::services::{category_taxonomy_sync, rbac::enforce_scope};
+use rustok_taxonomy::entities::taxonomy_category_hierarchy;
 
 /// Blog-owned Category command core.
 ///
@@ -63,15 +64,12 @@ impl CategoryService {
         if let Some(parent_id) = parent_id {
             Self::ensure_exists_in_tx(&txn, tenant_id, parent_id).await?;
         }
-        canonicalize_siblings_for_insert_in_tx(&txn, tenant_id, parent_id, requested_position, now)
+        canonicalize_siblings_for_insert_in_tx(&txn, tenant_id, parent_id, requested_position)
             .await?;
 
         blog_category::ActiveModel {
             id: Set(id),
             tenant_id: Set(tenant_id),
-            parent_id: Set(parent_id),
-            position: Set(requested_position),
-            depth: Set(0),
             post_count: Set(0),
             settings: Set(input.settings),
             revision: Set(1),
@@ -85,6 +83,8 @@ impl CategoryService {
             &txn,
             tenant_id,
             id,
+            parent_id,
+            requested_position,
             locale,
             name,
             slug,
@@ -182,10 +182,21 @@ impl CategoryService {
             }
         };
 
+        let existing_placement =
+            taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, category_id))
+                .one(&txn)
+                .await?;
+        let (parent_id, position) = match existing_placement {
+            Some(p) => (p.parent_term_id, p.position),
+            None => (None, 0),
+        };
+
         category_taxonomy_sync::sync_category_copy_in_tx(
             &txn,
             tenant_id,
             category_id,
+            parent_id,
+            position,
             locale,
             canonical_name,
             canonical_slug,
@@ -273,16 +284,27 @@ async fn load_siblings_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     parent_id: Option<Uuid>,
-) -> BlogResult<Vec<blog_category::Model>> {
-    let mut query =
-        blog_category::Entity::find().filter(blog_category::Column::TenantId.eq(tenant_id));
+) -> BlogResult<Vec<taxonomy_category_hierarchy::Model>> {
+    let blog_category_ids = blog_category::Entity::find()
+        .filter(blog_category::Column::TenantId.eq(tenant_id))
+        .all(txn)
+        .await?
+        .into_iter()
+        .map(|c| c.id)
+        .collect::<Vec<_>>();
+
+    let mut query = taxonomy_category_hierarchy::Entity::find()
+        .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_category_hierarchy::Column::TermId.is_in(blog_category_ids));
     query = match parent_id {
-        Some(parent_id) => query.filter(blog_category::Column::ParentId.eq(parent_id)),
-        None => query.filter(blog_category::Column::ParentId.is_null()),
+        Some(parent_id) => {
+            query.filter(taxonomy_category_hierarchy::Column::ParentTermId.eq(parent_id))
+        }
+        None => query.filter(taxonomy_category_hierarchy::Column::ParentTermId.is_null()),
     };
     Ok(query
-        .order_by_asc(blog_category::Column::Position)
-        .order_by_asc(blog_category::Column::Id)
+        .order_by_asc(taxonomy_category_hierarchy::Column::Position)
+        .order_by_asc(taxonomy_category_hierarchy::Column::TermId)
         .all(txn)
         .await?)
 }
@@ -292,7 +314,6 @@ async fn canonicalize_siblings_for_insert_in_tx(
     tenant_id: Uuid,
     parent_id: Option<Uuid>,
     requested_position: i32,
-    now: chrono::DateTime<Utc>,
 ) -> BlogResult<()> {
     let siblings = load_siblings_in_tx(txn, tenant_id, parent_id).await?;
     let insertion_index = usize::try_from(requested_position)
@@ -314,24 +335,12 @@ async fn canonicalize_siblings_for_insert_in_tx(
         };
         let desired_position = i32::try_from(desired_index)
             .map_err(|_| BlogError::validation("Category sibling position exceeds i32 range"))?;
-        update_sibling_position_in_tx(txn, sibling, desired_position, now).await?;
+        if sibling.position != desired_position {
+            let mut active: taxonomy_category_hierarchy::ActiveModel = sibling.into();
+            active.position = Set(desired_position);
+            active.update(txn).await?;
+        }
     }
-    Ok(())
-}
-
-async fn update_sibling_position_in_tx(
-    txn: &DatabaseTransaction,
-    sibling: blog_category::Model,
-    desired_position: i32,
-    now: chrono::DateTime<Utc>,
-) -> BlogResult<()> {
-    if sibling.position == desired_position {
-        return Ok(());
-    }
-    let mut active: blog_category::ActiveModel = sibling.into();
-    active.position = Set(desired_position);
-    active.updated_at = Set(now.into());
-    active.update(txn).await?;
     Ok(())
 }
 

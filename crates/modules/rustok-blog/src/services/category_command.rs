@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
     DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
@@ -10,6 +9,7 @@ use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
+use rustok_taxonomy::entities::taxonomy_category_hierarchy;
 
 use crate::dto::{
     CategoryPlacementResponse, MAX_BLOG_CATEGORY_TREE_NODES, MoveCategoryInput,
@@ -17,14 +17,13 @@ use crate::dto::{
 };
 use crate::entities::blog_category;
 use crate::error::{BlogError, BlogResult};
-use crate::services::category_taxonomy_sync::sync_category_structures_in_tx;
 use crate::services::rbac::enforce_scope;
 
 /// Owner-side structural commands for the Blog category hierarchy.
 ///
 /// Localized copy stays in `CategoryService`; parent/child placement is a separate
 /// command so `null` can unambiguously mean "move to root" and hierarchy changes
-/// cannot be confused with locale updates.
+/// cannot be confused with locale updates. Canonical hierarchy is stored in Taxonomy.
 pub struct CategoryCommandService {
     db: DatabaseConnection,
 }
@@ -47,32 +46,43 @@ impl CategoryCommandService {
         lock_category_tree_in_tx(&txn, tenant_id).await?;
 
         let categories = load_categories_in_tx(&txn, tenant_id).await?;
-        let models = categories
+        let blog_ids = categories
             .iter()
-            .cloned()
-            .map(|category| (category.id, category))
-            .collect::<HashMap<_, _>>();
-        let category = models
-            .get(&category_id)
-            .cloned()
-            .ok_or_else(|| BlogError::category_not_found(category_id))?;
-        ensure_parent_exists(&models, input.parent_id)?;
+            .map(|category| category.id)
+            .collect::<HashSet<_>>();
+        if !blog_ids.contains(&category_id) {
+            return Err(BlogError::category_not_found(category_id));
+        }
+        ensure_parent_exists(&blog_ids, input.parent_id)?;
 
-        let mut parent_by_id = models
-            .values()
-            .map(|category| (category.id, category.parent_id))
+        let hierarchy_rows = taxonomy_category_hierarchy::Entity::find()
+            .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_category_hierarchy::Column::TermId.is_in(blog_ids.iter().copied()))
+            .all(&txn)
+            .await?;
+        let mut placement_by_id = hierarchy_rows
+            .into_iter()
+            .map(|row| (row.term_id, (row.parent_term_id, row.position)))
             .collect::<HashMap<_, _>>();
-        validate_and_compute_depths(&parent_by_id)?;
+        for id in &blog_ids {
+            placement_by_id.entry(*id).or_insert((None, 0));
+        }
+
+        let mut parent_by_id = placement_by_id
+            .iter()
+            .map(|(id, (parent, _))| (*id, *parent))
+            .collect::<HashMap<_, _>>();
+        let old_depths = validate_and_compute_depths(&parent_by_id)?;
         parent_by_id.insert(category_id, input.parent_id);
         let desired_depths = validate_and_compute_depths(&parent_by_id)?;
 
-        let source_parent_id = category.parent_id;
+        let source_parent_id = placement_by_id[&category_id].0;
         let target_index = input.position as usize;
         let mut updated = Vec::new();
         let mut touched = HashSet::new();
 
         if source_parent_id == input.parent_id {
-            let mut siblings = sibling_ids(&categories, source_parent_id, Some(category_id));
+            let mut siblings = sibling_ids(&blog_ids, &placement_by_id, source_parent_id, Some(category_id));
             if target_index > siblings.len() {
                 return Err(BlogError::validation(format!(
                     "Category position {} exceeds sibling count {}",
@@ -84,7 +94,7 @@ impl CategoryCommandService {
             updated.extend(
                 persist_sibling_order(
                     &txn,
-                    &models,
+                    tenant_id,
                     &desired_depths,
                     source_parent_id,
                     &siblings,
@@ -93,8 +103,8 @@ impl CategoryCommandService {
                 .await?,
             );
         } else {
-            let source_siblings = sibling_ids(&categories, source_parent_id, Some(category_id));
-            let mut target_siblings = sibling_ids(&categories, input.parent_id, None);
+            let source_siblings = sibling_ids(&blog_ids, &placement_by_id, source_parent_id, Some(category_id));
+            let mut target_siblings = sibling_ids(&blog_ids, &placement_by_id, input.parent_id, None);
             if target_index > target_siblings.len() {
                 return Err(BlogError::validation(format!(
                     "Category position {} exceeds destination sibling count {}",
@@ -107,7 +117,7 @@ impl CategoryCommandService {
             updated.extend(
                 persist_sibling_order(
                     &txn,
-                    &models,
+                    tenant_id,
                     &desired_depths,
                     source_parent_id,
                     &source_siblings,
@@ -118,7 +128,7 @@ impl CategoryCommandService {
             updated.extend(
                 persist_sibling_order(
                     &txn,
-                    &models,
+                    tenant_id,
                     &desired_depths,
                     input.parent_id,
                     &target_siblings,
@@ -129,7 +139,7 @@ impl CategoryCommandService {
         }
 
         updated.extend(
-            persist_descendant_depth_changes(&txn, &models, &desired_depths, &touched).await?,
+            persist_descendant_depth_changes(&blog_ids, &placement_by_id, &old_depths, &desired_depths, &touched),
         );
 
         let moved = updated
@@ -137,10 +147,6 @@ impl CategoryCommandService {
             .find(|placement| placement.id == category_id)
             .cloned()
             .ok_or_else(|| BlogError::validation("Moved category placement was not persisted"))?;
-
-        let mut taxonomy_structure_ids = touched.iter().copied().collect::<Vec<_>>();
-        taxonomy_structure_ids.sort_unstable();
-        sync_category_structures_in_tx(&txn, tenant_id, &taxonomy_structure_ids).await?;
 
         txn.commit().await?;
         Ok(MoveCategoryResponse { moved, updated })
@@ -171,7 +177,6 @@ async fn load_categories_in_tx(
 ) -> BlogResult<Vec<blog_category::Model>> {
     let categories = blog_category::Entity::find()
         .filter(blog_category::Column::TenantId.eq(tenant_id))
-        .order_by_asc(blog_category::Column::Position)
         .order_by_asc(blog_category::Column::Id)
         .limit(MAX_BLOG_CATEGORY_TREE_NODES + 1)
         .all(txn)
@@ -185,11 +190,11 @@ async fn load_categories_in_tx(
 }
 
 fn ensure_parent_exists(
-    models: &HashMap<Uuid, blog_category::Model>,
+    blog_ids: &HashSet<Uuid>,
     parent_id: Option<Uuid>,
 ) -> BlogResult<()> {
     if let Some(parent_id) = parent_id
-        && !models.contains_key(&parent_id)
+        && !blog_ids.contains(&parent_id)
     {
         return Err(BlogError::validation(format!(
             "Category parent {parent_id} does not exist in the tenant"
@@ -199,20 +204,29 @@ fn ensure_parent_exists(
 }
 
 fn sibling_ids(
-    categories: &[blog_category::Model],
+    blog_ids: &HashSet<Uuid>,
+    placement_by_id: &HashMap<Uuid, (Option<Uuid>, i32)>,
     parent_id: Option<Uuid>,
     excluded_id: Option<Uuid>,
 ) -> Vec<Uuid> {
-    categories
+    let mut siblings = blog_ids
         .iter()
-        .filter(|category| category.parent_id == parent_id && Some(category.id) != excluded_id)
-        .map(|category| category.id)
-        .collect()
+        .copied()
+        .filter(|id| {
+            let (parent, _) = placement_by_id[id];
+            parent == parent_id && Some(*id) != excluded_id
+        })
+        .map(|id| (id, placement_by_id[&id].1))
+        .collect::<Vec<_>>();
+    siblings.sort_by(|(left_id, left_pos), (right_id, right_pos)| {
+        left_pos.cmp(right_pos).then_with(|| left_id.cmp(right_id))
+    });
+    siblings.into_iter().map(|(id, _)| id).collect()
 }
 
 async fn persist_sibling_order(
     txn: &DatabaseTransaction,
-    models: &HashMap<Uuid, blog_category::Model>,
+    tenant_id: Uuid,
     desired_depths: &HashMap<Uuid, i32>,
     parent_id: Option<Uuid>,
     ordered_ids: &[Uuid],
@@ -220,10 +234,6 @@ async fn persist_sibling_order(
 ) -> BlogResult<Vec<CategoryPlacementResponse>> {
     let mut placements = Vec::with_capacity(ordered_ids.len());
     for (position, category_id) in ordered_ids.iter().copied().enumerate() {
-        let category = models
-            .get(&category_id)
-            .cloned()
-            .ok_or_else(|| BlogError::category_not_found(category_id))?;
         let position = i32::try_from(position)
             .map_err(|_| BlogError::validation("Category sibling position exceeds i32 range"))?;
         let depth = *desired_depths.get(&category_id).ok_or_else(|| {
@@ -232,17 +242,30 @@ async fn persist_sibling_order(
             ))
         })?;
 
-        if category.parent_id != parent_id
-            || category.position != position
-            || category.depth != depth
-        {
-            let mut active: blog_category::ActiveModel = category.into();
-            active.parent_id = Set(parent_id);
-            active.position = Set(position);
-            active.depth = Set(depth);
-            active.updated_at = Set(Utc::now().into());
-            active.update(txn).await?;
+        let existing = taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, category_id))
+            .one(txn)
+            .await?;
+        match existing {
+            Some(existing) => {
+                if existing.parent_term_id != parent_id || existing.position != position {
+                    let mut active: taxonomy_category_hierarchy::ActiveModel = existing.into();
+                    active.parent_term_id = Set(parent_id);
+                    active.position = Set(position);
+                    active.update(txn).await?;
+                }
+            }
+            None => {
+                taxonomy_category_hierarchy::ActiveModel {
+                    tenant_id: Set(tenant_id),
+                    term_id: Set(category_id),
+                    parent_term_id: Set(parent_id),
+                    position: Set(position),
+                }
+                .insert(txn)
+                .await?;
+            }
         }
+
         touched.insert(category_id);
         placements.push(CategoryPlacementResponse {
             id: category_id,
@@ -254,45 +277,34 @@ async fn persist_sibling_order(
     Ok(placements)
 }
 
-async fn persist_descendant_depth_changes(
-    txn: &DatabaseTransaction,
-    models: &HashMap<Uuid, blog_category::Model>,
+fn persist_descendant_depth_changes(
+    blog_ids: &HashSet<Uuid>,
+    placement_by_id: &HashMap<Uuid, (Option<Uuid>, i32)>,
+    old_depths: &HashMap<Uuid, i32>,
     desired_depths: &HashMap<Uuid, i32>,
     touched: &HashSet<Uuid>,
-) -> BlogResult<Vec<CategoryPlacementResponse>> {
+) -> Vec<CategoryPlacementResponse> {
     let mut placements = Vec::new();
-    let mut category_ids = models.keys().copied().collect::<Vec<_>>();
+    let mut category_ids = blog_ids.iter().copied().collect::<Vec<_>>();
     category_ids.sort();
 
     for category_id in category_ids {
         if touched.contains(&category_id) {
             continue;
         }
-        let category = models
-            .get(&category_id)
-            .cloned()
-            .ok_or_else(|| BlogError::category_not_found(category_id))?;
-        let depth = *desired_depths.get(&category_id).ok_or_else(|| {
-            BlogError::validation(format!(
-                "Blog category depth was not computed for category {category_id}"
-            ))
-        })?;
-        if category.depth == depth {
-            continue;
+        let (parent_id, position) = placement_by_id[&category_id];
+        let old_depth = old_depths.get(&category_id).copied().unwrap_or(0);
+        let desired_depth = desired_depths.get(&category_id).copied().unwrap_or(0);
+        if old_depth != desired_depth {
+            placements.push(CategoryPlacementResponse {
+                id: category_id,
+                parent_id,
+                position,
+                depth: desired_depth,
+            });
         }
-
-        let mut active: blog_category::ActiveModel = category.clone().into();
-        active.depth = Set(depth);
-        active.updated_at = Set(Utc::now().into());
-        active.update(txn).await?;
-        placements.push(CategoryPlacementResponse {
-            id: category_id,
-            parent_id: category.parent_id,
-            position: category.position,
-            depth,
-        });
     }
-    Ok(placements)
+    placements
 }
 
 fn validate_and_compute_depths(

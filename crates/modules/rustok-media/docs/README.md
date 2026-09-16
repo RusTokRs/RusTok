@@ -19,7 +19,8 @@
 - an unauthenticated Media-owned capability GET that derives tenant authority from `TenantContext`, verifies the active ready image blob and checksum, reads the object, and returns immutable bytes with ETag, content length/type, and `nosniff`;
 - loopback-verified `rustok-media-transport` tonic adapters for the existing generic metadata/control operations. Binary bodies remain outside gRPC; parity for the new public-image capability remains an explicit future extraction gate;
 - GraphQL and REST adapters of the module;
-- upload validation by size/MIME policy and tenant isolation before accessing storage;
+- upload validation by size/MIME policy, module-scoped storage namespace (`media/{zone}/tenants/{tenant_id}/modules/{owner_module}/...`), and tenant isolation before accessing storage;
+- module-scoped media management: `owner_module` tracking, filtering with `list_by_module`, and cascading cleanup with `purge_module_media` on module deactivation/uninstallation;
 - module-owned admin UI package `rustok-media-admin`;
 - observability signals for upload, delete, rendition, upload sessions, reconciliation, and storage health;
 - owner-local lifecycle persistence and restart-safe reconciliation;

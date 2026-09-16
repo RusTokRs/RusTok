@@ -15,7 +15,9 @@ await build({
     index: resolve(root, 'src/index.ts'),
     server: resolve(root, 'src/server.ts'),
     client: resolve(root, 'src/client.ts'),
-    middleware: resolve(root, 'src/middleware.ts')
+    middleware: resolve(root, 'src/middleware.ts'),
+    factory: resolve(root, 'src/factory.ts'),
+    typegen: resolve(root, 'src/typegen.ts')
   },
   outdir: dist,
   bundle: true,
@@ -26,8 +28,9 @@ await build({
   sourcemap: false
 });
 
+const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 try {
-  execSync('npm.cmd exec tsc -- --declaration --emitDeclarationOnly --outDir dist', {
+  execSync(`${npmCmd} exec tsc -- --declaration --emitDeclarationOnly --outDir dist`, {
     cwd: root,
     stdio: 'inherit'
   });

@@ -42,6 +42,9 @@ pub enum MediaError {
     #[error("Invalid rendition purpose: {0}")]
     InvalidRenditionPurpose(String),
 
+    #[error("Invalid owner module: {0}")]
+    InvalidOwnerModule(String),
+
     #[error("Rendition is already being processed: {0}")]
     RenditionInProgress(Uuid),
 

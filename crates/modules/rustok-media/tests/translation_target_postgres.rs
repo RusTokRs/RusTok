@@ -293,6 +293,7 @@ fn png_upload(tenant_id: Uuid) -> UploadInput {
         original_name: "translation-evidence.png".to_string(),
         content_type: "image/png".to_string(),
         data: Bytes::from(bytes.into_inner()),
+        owner_module: None,
     }
 }
 

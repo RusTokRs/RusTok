@@ -13,7 +13,52 @@ use sea_orm::{
 use sea_orm_migration::prelude::*;
 use uuid::Uuid;
 
-use crate::entities::{blog_category, blog_category_taxonomy_binding, blog_category_translation};
+use crate::entities::blog_category_translation;
+
+mod migration_blog_category_taxonomy_binding {
+    use sea_orm::entity::prelude::*;
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "blog_category_taxonomy_bindings")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub tenant_id: Uuid,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub blog_category_id: Uuid,
+        pub taxonomy_category_id: Uuid,
+        pub created_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+use migration_blog_category_taxonomy_binding as blog_category_taxonomy_binding;
+
+mod migration_blog_category {
+    use sea_orm::entity::prelude::*;
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "blog_categories")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub parent_id: Option<Uuid>,
+        pub position: i32,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+use migration_blog_category as blog_category;
 
 const BLOG_SCOPE_VALUE: &str = "blog";
 const TAXONOMY_ROUTE_KEY_MAX_BYTES: usize = 120;

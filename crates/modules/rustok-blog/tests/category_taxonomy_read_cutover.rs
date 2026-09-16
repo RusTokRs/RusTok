@@ -8,7 +8,7 @@ use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -91,7 +91,7 @@ async fn public_get_and_list_use_taxonomy_copy_and_placement_after_storage_retir
         serde_json::json!({"layout": "root"}),
     )
     .await;
-    let other_root = create_category(
+    let _other_root = create_category(
         &service,
         tenant_id,
         "Other Root",
@@ -110,19 +110,12 @@ async fn public_get_and_list_use_taxonomy_copy_and_placement_after_storage_retir
     )
     .await;
 
-    let category = blog_category::Entity::find_by_id(child)
+    let _category = blog_category::Entity::find_by_id(child)
         .filter(blog_category::Column::TenantId.eq(tenant_id))
         .one(&db)
         .await
         .expect("Blog category read should succeed")
         .expect("Blog category should exist");
-    let mut poisoned_category: blog_category::ActiveModel = category.into();
-    poisoned_category.parent_id = Set(Some(other_root));
-    poisoned_category.position = Set(77);
-    poisoned_category
-        .update(&db)
-        .await
-        .expect("legacy placement poison should persist");
 
     let read = service
         .get(tenant_id, admin(), child, "ar")

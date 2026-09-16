@@ -392,6 +392,39 @@ fn normalize_rendition_purpose(value: &str) -> Result<String> {
         .ok_or_else(|| MediaError::InvalidRenditionPurpose(value.to_string()))
 }
 
+pub(crate) fn normalize_owner_module(value: Option<&str>) -> Result<String> {
+    match value {
+        None => Ok("general".to_string()),
+        Some(raw) => {
+            let module = raw.trim().to_ascii_lowercase().replace('_', "-");
+            if module.is_empty() {
+                return Ok("general".to_string());
+            }
+            let valid = module.len() <= 64
+                && !module.starts_with('-')
+                && !module.ends_with('-')
+                && module
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-');
+            valid
+                .then_some(module)
+                .ok_or_else(|| MediaError::InvalidOwnerModule(raw.to_string()))
+        }
+    }
+}
+
+pub(crate) fn extract_module_from_staging_key(key: &str) -> Option<String> {
+    let parts: Vec<&str> = key.split('/').collect();
+    if let Some(pos) = parts.iter().position(|&segment| segment == "modules") {
+        if let Some(module) = parts.get(pos + 1) {
+            if !module.is_empty() {
+                return Some((*module).to_string());
+            }
+        }
+    }
+    None
+}
+
 impl MediaService {
     pub fn new(db: DatabaseConnection, storage: StorageRuntime) -> Self {
         let translation_event_bus =
@@ -442,13 +475,17 @@ impl MediaService {
         }
         let (size, verified) = validate_upload_policy(&input)?;
         let original_name = normalize_original_name(&input.original_name, verified.extension);
+        let owner_module = normalize_owner_module(input.owner_module.as_deref())?;
         let asset_id = generate_id();
         let blob_id = generate_id();
         let now = Utc::now();
         let key = ObjectKey::chronological(
             "media",
             ObjectZone::Objects,
-            ObjectScope::Tenant(input.tenant_id),
+            ObjectScope::TenantModule {
+                tenant_id: input.tenant_id,
+                module: owner_module.clone(),
+            },
             now,
             blob_id,
             verified.extension,
@@ -476,6 +513,7 @@ impl MediaService {
             AssetActiveModel {
                 id: Set(asset_id),
                 tenant_id: Set(input.tenant_id),
+                owner_module: Set(owner_module),
                 uploaded_by: Set(input.uploaded_by),
                 upload_session_id: Set(upload_session_id),
                 active_blob_id: Set(None),
@@ -638,10 +676,14 @@ impl MediaService {
                     reason: error.to_string(),
                 }
             })?;
+        let owner_module = normalize_owner_module(input.owner_module.as_deref())?;
         let key = ObjectKey::chronological(
             "media",
             ObjectZone::Staging,
-            ObjectScope::Tenant(input.tenant_id),
+            ObjectScope::TenantModule {
+                tenant_id: input.tenant_id,
+                module: owner_module,
+            },
             created_at,
             id,
             "upload",
@@ -828,6 +870,7 @@ impl MediaService {
                     original_name: session.original_name.clone(),
                     content_type: session.expected_mime_type.clone(),
                     data,
+                    owner_module: extract_module_from_staging_key(&session.staging_key),
                 },
                 Some(session_id),
             )
@@ -1059,7 +1102,10 @@ impl MediaService {
         let key = ObjectKey::chronological(
             "media",
             ObjectZone::Objects,
-            ObjectScope::Tenant(input.tenant_id),
+            ObjectScope::TenantModule {
+                tenant_id: input.tenant_id,
+                module: asset.owner_module.clone(),
+            },
             created_at,
             result_blob_id,
             output.extension,
@@ -1318,6 +1364,52 @@ impl MediaService {
                 .collect(),
             total,
         ))
+    }
+
+    pub async fn list_by_module(
+        &self,
+        tenant_id: Uuid,
+        module: &str,
+        limit: u64,
+        offset: u64,
+    ) -> Result<(Vec<MediaItem>, u64)> {
+        let normalized = normalize_owner_module(Some(module))?;
+        let query = AssetEntity::find()
+            .filter(AssetCol::TenantId.eq(tenant_id))
+            .filter(AssetCol::OwnerModule.eq(normalized))
+            .filter(AssetCol::LifecycleState.eq(AssetState::Active.as_str()))
+            .order_by_desc(AssetCol::CreatedAt);
+
+        let total = query.clone().count(&self.db).await?;
+        let rows = query
+            .find_also_related(BlobEntity)
+            .limit(limit)
+            .offset(offset)
+            .all(&self.db)
+            .await?;
+        Ok((
+            rows.into_iter()
+                .filter_map(|(asset, blob)| blob.map(|blob| self.to_item(asset, blob)))
+                .collect(),
+            total,
+        ))
+    }
+
+    pub async fn purge_module_media(&self, tenant_id: Uuid, module: &str) -> Result<u64> {
+        let normalized = normalize_owner_module(Some(module))?;
+        let assets = AssetEntity::find()
+            .filter(AssetCol::TenantId.eq(tenant_id))
+            .filter(AssetCol::OwnerModule.eq(normalized))
+            .filter(AssetCol::LifecycleState.ne(AssetState::Deleted.as_str()))
+            .all(&self.db)
+            .await?;
+
+        let mut count = 0u64;
+        for asset in assets {
+            self.delete(tenant_id, asset.id).await?;
+            count += 1;
+        }
+        Ok(count)
     }
 
     pub async fn get_asset_summary(
@@ -2083,6 +2175,7 @@ impl MediaService {
         MediaItem {
             id: asset.id,
             tenant_id: asset.tenant_id,
+            owner_module: asset.owner_module,
             uploaded_by: asset.uploaded_by,
             filename,
             original_name: asset.original_name,
@@ -2121,6 +2214,7 @@ mod tests {
             original_name: "asset.bin".to_string(),
             content_type: content_type.to_string(),
             data: Bytes::from(data),
+            owner_module: None,
         }
     }
 
@@ -2228,6 +2322,40 @@ mod tests {
                 source: Box::new(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout",)),
             })),
             MediaReconciliationDecision::RetryLater
+        );
+    }
+
+    #[test]
+    fn owner_module_normalization_and_key_extraction() {
+        use super::{extract_module_from_staging_key, normalize_owner_module};
+
+        assert_eq!(normalize_owner_module(None).unwrap(), "general");
+        assert_eq!(normalize_owner_module(Some("")).unwrap(), "general");
+        assert_eq!(normalize_owner_module(Some("   ")).unwrap(), "general");
+        assert_eq!(normalize_owner_module(Some("Blog")).unwrap(), "blog");
+        assert_eq!(
+            normalize_owner_module(Some("blog_posts")).unwrap(),
+            "blog-posts"
+        );
+        assert_eq!(
+            normalize_owner_module(Some("forum-attachments")).unwrap(),
+            "forum-attachments"
+        );
+        assert!(normalize_owner_module(Some("invalid/module")).is_err());
+        assert!(normalize_owner_module(Some("-leading-dash")).is_err());
+        assert!(normalize_owner_module(Some(&"a".repeat(65))).is_err());
+
+        assert_eq!(
+            extract_module_from_staging_key(
+                "media/staging/tenants/00000000-0000-0000-0000-000000000001/modules/blog/2026/09/16/00/test.upload"
+            ),
+            Some("blog".to_string())
+        );
+        assert_eq!(
+            extract_module_from_staging_key(
+                "media/staging/tenants/00000000-0000-0000-0000-000000000001/2026/09/16/00/test.upload"
+            ),
+            None
         );
     }
 }

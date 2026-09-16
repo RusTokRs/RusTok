@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use rustok_blog::{
-    BlogCategoryTaxonomyBindingEntity, BlogError, BlogModule, CategoryService, CreateCategoryInput,
+    BlogError, BlogModule, CategoryService, CreateCategoryInput,
     UpdateCategoryInput,
-    entities::{blog_category, blog_category_taxonomy_binding},
+    entities::blog_category,
 };
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_events::EventEnvelope;
@@ -112,13 +112,13 @@ async fn category_commands_use_taxonomy_after_legacy_storage_retirement() {
     assert_eq!(initial.name, "Support");
     assert_eq!(initial.slug, "support");
 
-    let binding = BlogCategoryTaxonomyBindingEntity::find_by_id((tenant_id, category_id))
+    let term = taxonomy_term::Entity::find_by_id(category_id)
+        .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
         .one(&db)
         .await
-        .expect("binding read should succeed")
-        .expect("same-ID Blog Taxonomy binding should exist");
-    assert_eq!(binding.blog_category_id, category_id);
-    assert_eq!(binding.taxonomy_category_id, category_id);
+        .expect("taxonomy term read should succeed")
+        .expect("same-ID Taxonomy term should exist");
+    assert_eq!(term.id, category_id);
 
     let updated_response = service
         .update(
@@ -245,11 +245,6 @@ async fn taxonomy_route_conflict_rolls_back_blog_create() {
         .count(&db)
         .await
         .expect("Blog category count should succeed");
-    let before_bindings = blog_category_taxonomy_binding::Entity::find()
-        .filter(blog_category_taxonomy_binding::Column::TenantId.eq(tenant_id))
-        .count(&db)
-        .await
-        .expect("Blog binding count should succeed");
 
     let error = service
         .create(tenant_id, admin(), create_input("Reserved", "reserved"))
@@ -265,14 +260,5 @@ async fn taxonomy_route_conflict_rolls_back_blog_create() {
             .expect("Blog category count after rollback should succeed"),
         before_categories,
         "failed Taxonomy synchronization must roll back the Blog category row"
-    );
-    assert_eq!(
-        blog_category_taxonomy_binding::Entity::find()
-            .filter(blog_category_taxonomy_binding::Column::TenantId.eq(tenant_id))
-            .count(&db)
-            .await
-            .expect("Blog binding count after rollback should succeed"),
-        before_bindings,
-        "failed Taxonomy synchronization must not leak a Blog binding"
     );
 }

@@ -30,7 +30,7 @@ const ASSET_TYPES: Record<string, string> = {
 export async function richTextFrameResponse(): Promise<Response> {
   const root = await richTextDistRoot();
   const manifest = await richTextManifest(root);
-  const html = await readFile(resolve(root, manifest.frame));
+  const html = await readFile(/*turbopackIgnore: true*/ resolve(root, manifest.frame));
   return new Response(html, {
     headers: { ...FRAME_SECURITY_HEADERS, 'content-type': 'text/html; charset=utf-8' }
   });
@@ -45,7 +45,7 @@ export async function richTextFrameAssetResponse(asset: string): Promise<Respons
   if (!Object.values(manifest).includes(asset)) {
     return new Response('Not found', { status: 404 });
   }
-  const body = await readFile(resolve(root, asset));
+  const body = await readFile(/*turbopackIgnore: true*/ resolve(root, asset));
   const extension = asset.slice(asset.lastIndexOf('.'));
   return new Response(body, {
     headers: {
@@ -57,7 +57,7 @@ export async function richTextFrameAssetResponse(asset: string): Promise<Respons
 
 async function richTextManifest(root: string): Promise<Record<string, string> & { frame: string }> {
   return JSON.parse(
-    await readFile(resolve(root, 'asset-manifest.json'), 'utf8')
+    await readFile(/*turbopackIgnore: true*/ resolve(root, 'asset-manifest.json'), 'utf8')
   ) as Record<string, string> & { frame: string };
 }
 
@@ -69,7 +69,7 @@ async function richTextDistRoot(): Promise<string> {
   ];
   for (const candidate of candidates) {
     try {
-      await readFile(resolve(candidate, 'asset-manifest.json'));
+      await readFile(/*turbopackIgnore: true*/ resolve(candidate, 'asset-manifest.json'));
       return candidate;
     } catch {
       // Try the next supported workspace or deployment layout.

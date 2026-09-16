@@ -111,6 +111,7 @@ fn png_upload(tenant_id: Uuid) -> UploadInput {
         original_name: "hero.png".to_string(),
         content_type: "image/png".to_string(),
         data: Bytes::from(bytes.into_inner()),
+        owner_module: None,
     }
 }
 
@@ -338,6 +339,7 @@ async fn presigned_session_finalization_is_idempotent_and_cleans_staging() {
             content_type: upload.content_type.clone(),
             content_length: Some(upload.data.len() as u64),
             expires_in: Duration::from_secs(300),
+            owner_module: None,
         })
         .await
         .expect("upload session should be prepared");
@@ -411,6 +413,7 @@ async fn reconciliation_expires_upload_session_and_removes_staging_object() {
             content_type: upload.content_type,
             content_length: Some(upload.data.len() as u64),
             expires_in: Duration::from_secs(300),
+            owner_module: None,
         })
         .await
         .expect("upload session should prepare");
@@ -1040,4 +1043,105 @@ async fn translation_target_progress_counts_only_exact_locale_values_and_source_
     assert_eq!(foreign_tenant.resources, 0);
     assert_eq!(foreign_tenant.exact_optional_units, 0);
     assert!(foreign_tenant.owner_change_cursor.is_none());
+}
+
+#[tokio::test]
+async fn module_scoped_media_isolation_and_purge_flow() {
+    let (database, storage, _directory) = test_runtime().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant(&database, tenant_id).await;
+    let service = MediaService::new(database.clone(), storage.clone());
+
+    let mut png_upload_blog = png_upload(tenant_id);
+    png_upload_blog.owner_module = Some("blog".to_string());
+    png_upload_blog.original_name = "blog-post-cover.png".to_string();
+    let blog_asset = service
+        .upload(png_upload_blog)
+        .await
+        .expect("blog upload should succeed");
+    assert_eq!(blog_asset.owner_module, "blog");
+    assert!(
+        blog_asset
+            .storage_path
+            .contains(&format!("tenants/{tenant_id}/modules/blog/")),
+        "blog asset path should contain tenant and blog module namespace, got: {}",
+        blog_asset.storage_path
+    );
+
+    let mut png_upload_product = png_upload(tenant_id);
+    png_upload_product.owner_module = Some("product".to_string());
+    png_upload_product.original_name = "product-image.png".to_string();
+    let product_asset = service
+        .upload(png_upload_product)
+        .await
+        .expect("product upload should succeed");
+    assert_eq!(product_asset.owner_module, "product");
+    assert!(
+        product_asset
+            .storage_path
+            .contains(&format!("tenants/{tenant_id}/modules/product/")),
+        "product asset path should contain tenant and product module namespace, got: {}",
+        product_asset.storage_path
+    );
+
+    let default_asset = service
+        .upload(png_upload(tenant_id))
+        .await
+        .expect("default upload should succeed");
+    assert_eq!(default_asset.owner_module, "general");
+    assert!(
+        default_asset
+            .storage_path
+            .contains(&format!("tenants/{tenant_id}/modules/general/")),
+        "default asset path should contain tenant and general module namespace, got: {}",
+        default_asset.storage_path
+    );
+
+    let (blog_items, blog_total) = service
+        .list_by_module(tenant_id, "blog", 10, 0)
+        .await
+        .expect("list blog media should succeed");
+    assert_eq!(blog_total, 1);
+    assert_eq!(blog_items.len(), 1);
+    assert_eq!(blog_items[0].id, blog_asset.id);
+
+    let (product_items, product_total) = service
+        .list_by_module(tenant_id, "product", 10, 0)
+        .await
+        .expect("list product media should succeed");
+    assert_eq!(product_total, 1);
+    assert_eq!(product_items.len(), 1);
+    assert_eq!(product_items[0].id, product_asset.id);
+
+    // Purge blog media completely
+    let purged_count = service
+        .purge_module_media(tenant_id, "blog")
+        .await
+        .expect("purge blog media should succeed");
+    assert_eq!(purged_count, 1);
+
+    // Verify blog media is gone
+    let (blog_after, blog_after_total) = service
+        .list_by_module(tenant_id, "blog", 10, 0)
+        .await
+        .expect("list blog media after purge should succeed");
+    assert_eq!(blog_after_total, 0);
+    assert!(blog_after.is_empty());
+
+    // Verify product and general media remain unaffected
+    let (product_after, product_after_total) = service
+        .list_by_module(tenant_id, "product", 10, 0)
+        .await
+        .expect("list product media after blog purge should succeed");
+    assert_eq!(product_after_total, 1);
+    assert_eq!(product_after.len(), 1);
+    assert_eq!(product_after[0].id, product_asset.id);
+
+    let (general_after, general_after_total) = service
+        .list_by_module(tenant_id, "general", 10, 0)
+        .await
+        .expect("list general media after blog purge should succeed");
+    assert_eq!(general_after_total, 1);
+    assert_eq!(general_after.len(), 1);
+    assert_eq!(general_after[0].id, default_asset.id);
 }

@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 pub struct UploadInput {
     pub tenant_id: Uuid,
+    pub owner_module: Option<String>,
     pub uploaded_by: Option<Uuid>,
     pub original_name: String,
     pub content_type: String,
@@ -37,6 +38,7 @@ pub struct MediaRenditionItem {
 #[derive(Debug, Clone)]
 pub struct PrepareUploadSessionInput {
     pub tenant_id: Uuid,
+    pub owner_module: Option<String>,
     pub actor_id: Option<Uuid>,
     pub original_name: String,
     pub content_type: String,
@@ -55,6 +57,7 @@ pub struct PreparedUploadSession {
 pub struct MediaItem {
     pub id: Uuid,
     pub tenant_id: Uuid,
+    pub owner_module: String,
     pub uploaded_by: Option<Uuid>,
     pub filename: String,
     pub original_name: String,
@@ -592,6 +595,7 @@ mod tests {
         let item = MediaItem {
             id: uuid::Uuid::new_v4(),
             tenant_id: uuid::Uuid::new_v4(),
+            owner_module: "general".to_string(),
             uploaded_by: None,
             filename: "hero.webp".to_string(),
             original_name: "hero.webp".to_string(),

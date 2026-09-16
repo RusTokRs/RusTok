@@ -90,6 +90,7 @@ async fn storage_relative_image_gets_owner_capability_url_and_immutable_body() {
             original_name: "profile.png".to_string(),
             content_type: "image/png".to_string(),
             data: expected.clone(),
+            owner_module: None,
         })
         .await
         .expect("image upload should succeed");

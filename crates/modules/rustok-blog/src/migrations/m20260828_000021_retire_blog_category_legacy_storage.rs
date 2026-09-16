@@ -4,7 +4,28 @@ use rustok_taxonomy::{TaxonomyScopeType, TaxonomyTermKind, entities::taxonomy_te
 use sea_orm::{ColumnTrait, DatabaseBackend, EntityTrait, QueryFilter};
 use sea_orm_migration::prelude::*;
 
-use crate::entities::{blog_category, blog_category_taxonomy_binding};
+use crate::entities::blog_category;
+
+mod blog_category_taxonomy_binding {
+    use sea_orm::entity::prelude::*;
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "blog_category_taxonomy_bindings")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub tenant_id: Uuid,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub blog_category_id: Uuid,
+        pub taxonomy_category_id: Uuid,
+        pub created_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
 
 const BLOG_SCOPE_VALUE: &str = "blog";
 

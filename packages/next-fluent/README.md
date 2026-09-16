@@ -102,7 +102,116 @@ export function Navigation() {
 }
 ```
 
-### 5. Middleware (`middleware.ts`)
+### 5. Rich Text & Interactive Markup (`t.rich`)
+
+Format messages with interactive React elements or styled tags:
+
+```ftl
+terms-notice = By signing up you agree to our <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>.
+```
+
+```tsx
+const content = t.rich('terms-notice', {
+  terms: (chunks) => <a href="/terms" className="underline font-semibold">{chunks}</a>,
+  privacy: (chunks) => <a href="/privacy" className="underline font-semibold">{chunks}</a>,
+});
+```
+
+### 6. Checking Key Existence (`t.has`)
+
+```tsx
+if (t.has('banner.promotion')) {
+  return <PromoBanner message={t('banner.promotion')} />;
+}
+```
+
+### 7. Type Safety & Code Generation (`next-fluent typegen`)
+
+Generate TypeScript definitions directly from your `.ftl` catalogs for full autocompletion in your IDE:
+
+```bash
+npx next-fluent typegen --input messages/en.ftl --output src/types/i18n.d.ts
+```
+
+### 8. Fallback Locales & Modular Catalogs
+
+Prevent missing translation keys by specifying a fallback bundle:
+
+```tsx
+<FluentProvider
+  locale="ru"
+  messages={ruCatalog}
+  fallbackLocale="en"
+  fallbackMessages={enCatalog}
+>
+  {children}
+</FluentProvider>
+```
+
+Compose modular domain catalogs seamlessly:
+
+```tsx
+const messages = [baseCatalogFtl, blogModuleFtl, forumModuleFtl];
+<FluentProvider locale={locale} messages={messages}>
+  {children}
+</FluentProvider>
+```
+
+### 9. Built-in Intl Functions (`CURRENCY` and `PERCENT`)
+
+Format monetary amounts and percentages directly inside FTL without ad-hoc component code:
+
+```ftl
+cart-total = Total: { CURRENCY($total, currency: "USD") }
+order-discount = Discount: { PERCENT($rate, minimumFractionDigits: 1) }
+```
+
+### 10. Debug Mode
+
+Highlight missing translations in development:
+
+```tsx
+<FluentProvider locale={locale} messages={messages} debug={process.env.NODE_ENV !== 'production'}>
+  {children}
+</FluentProvider>
+```
+
+Missing keys return `[MISSING: key.name]` and output warnings to the developer console.
+
+### 11. Pseudo-localization for UI Testing
+
+Stress-test layout overflow, hardcoded dimensions, and text truncation using pseudo-localization:
+
+```bash
+npx next-fluent pseudo --input messages/en.ftl --output messages/en-XA.ftl
+```
+
+Produces accented, elongated text (`[Šţööŕééƒŕööñţ...]`) while preserving variables, tags, and selectors.
+
+### 12. Direct `.ftl` Asset Imports (Docker & Edge)
+
+Enable bundling `.ftl` catalogs directly into server JS bundles for standalone Docker / Vercel Edge / AWS Lambda:
+
+```javascript
+// next.config.mjs
+export default {
+  webpack(config) {
+    config.module.rules.push({
+      test: /\.ftl$/,
+      type: 'asset/source',
+    });
+    return config;
+  },
+};
+```
+
+Import `.ftl` files directly:
+
+```typescript
+import enMessages from '@/messages/en.ftl';
+```
+
+### 13. Middleware (`middleware.ts`)
 
 ```typescript
 import { createI18nMiddleware } from '@rustok/next-fluent/middleware';
@@ -149,3 +258,5 @@ Storefront-features =
 ## License
 
 Business Source License 1.1 with RusToK Additional Use Grant.
+
+

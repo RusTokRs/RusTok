@@ -26,10 +26,18 @@ const nextConfig = {
       },
     ];
   },
+  turbopack: {
+    root: join(__dirname, "../.."),
+  },
   webpack(config) {
     config.resolve.alias = {
       ...config.resolve.alias,
       "@": join(__dirname, "src"),
+      "@rustok/next-fluent$": join(__dirname, "../../packages/next-fluent/dist/index.js"),
+      "@rustok/next-fluent/client$": join(__dirname, "../../packages/next-fluent/dist/client.js"),
+      "@rustok/next-fluent/server$": join(__dirname, "../../packages/next-fluent/dist/server.js"),
+      "@rustok/next-fluent/middleware$": join(__dirname, "../../packages/next-fluent/dist/middleware.js"),
+      "@rustok/next-fluent/typegen$": join(__dirname, "../../packages/next-fluent/dist/typegen.js")
     };
     return config;
   },

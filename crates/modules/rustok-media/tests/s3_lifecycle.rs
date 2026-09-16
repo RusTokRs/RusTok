@@ -108,6 +108,7 @@ async fn media_lifecycle_and_presigned_upload_conform_to_s3_compatible_storage()
             original_name: "source.png".to_string(),
             content_type: "image/png".to_string(),
             data: source.clone(),
+            owner_module: None,
         })
         .await
         .expect("direct S3 upload should succeed");
@@ -139,6 +140,7 @@ async fn media_lifecycle_and_presigned_upload_conform_to_s3_compatible_storage()
             content_type: "image/png".to_string(),
             content_length: Some(source.len() as u64),
             expires_in: Duration::from_secs(300),
+            owner_module: None,
         })
         .await
         .expect("presigned S3 session should prepare");

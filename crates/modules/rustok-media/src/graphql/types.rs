@@ -8,6 +8,7 @@ use crate::dto::{MediaItem, MediaTranslationItem};
 pub struct GqlMediaItem {
     pub id: Uuid,
     pub tenant_id: Uuid,
+    pub owner_module: String,
     pub uploaded_by: Option<Uuid>,
     pub filename: String,
     pub original_name: String,
@@ -25,6 +26,7 @@ impl From<MediaItem> for GqlMediaItem {
         Self {
             id: item.id,
             tenant_id: item.tenant_id,
+            owner_module: item.owner_module,
             uploaded_by: item.uploaded_by,
             filename: item.filename,
             original_name: item.original_name,

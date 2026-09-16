@@ -5,7 +5,7 @@ use std::sync::{
 
 use async_trait::async_trait;
 use rustok_blog::{
-    BlogCategoryTaxonomyBindingEntity, BlogModule, CategoryService, CreateCategoryInput,
+    BlogModule, CategoryService, CreateCategoryInput,
     entities::blog_category,
 };
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
@@ -124,13 +124,6 @@ async fn delete_removes_blog_binding_and_taxonomy_owner_and_replays_sibling_posi
             .is_none()
     );
     assert!(
-        BlogCategoryTaxonomyBindingEntity::find_by_id((tenant_id, first))
-            .one(&db)
-            .await
-            .expect("binding lookup should succeed")
-            .is_none()
-    );
-    assert!(
         taxonomy_term::Entity::find_by_id(first)
             .one(&db)
             .await
@@ -138,13 +131,12 @@ async fn delete_removes_blog_binding_and_taxonomy_owner_and_replays_sibling_posi
             .is_none()
     );
 
-    let second_blog = blog_category::Entity::find_by_id(second)
+    let _second_blog = blog_category::Entity::find_by_id(second)
         .filter(blog_category::Column::TenantId.eq(tenant_id))
         .one(&db)
         .await
         .expect("remaining Blog Category lookup should succeed")
         .expect("remaining Blog Category should exist");
-    assert_eq!(second_blog.position, 0);
     let second_taxonomy = taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, second))
         .one(&db)
         .await
@@ -182,13 +174,6 @@ async fn host_cleanup_failure_rolls_back_blog_and_taxonomy_deletion() {
             .one(&db)
             .await
             .expect("Blog Category lookup should succeed")
-            .is_some()
-    );
-    assert!(
-        BlogCategoryTaxonomyBindingEntity::find_by_id((tenant_id, category_id))
-            .one(&db)
-            .await
-            .expect("binding lookup should succeed")
             .is_some()
     );
     assert!(

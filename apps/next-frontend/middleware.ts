@@ -1,6 +1,6 @@
 import { createI18nMiddleware } from "@rustok/next-fluent/middleware";
 
-import { defaultLocale, locales } from "./src/i18n";
+import { defaultLocale, locales } from "./src/i18n-config";
 
 export default createI18nMiddleware({
   locales,

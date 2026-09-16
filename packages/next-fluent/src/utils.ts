@@ -1,48 +1,18 @@
+export function canonicalizeLocale(locale?: string | null): string | undefined {
+  if (!locale || typeof locale !== 'string') return undefined;
+  const trimmed = locale.trim().replaceAll('_', '-');
+  if (!trimmed || trimmed.length > 64) return undefined;
+
+  try {
+    const canonical = Intl.getCanonicalLocales(trimmed);
+    return canonical[0];
+  } catch {
+    return undefined;
+  }
+}
+
 export function normalizeLocaleTag(value?: string | null): string | undefined {
-  const normalized = value?.trim().replaceAll('_', '-');
-  if (!normalized || normalized.length > 32) {
-    return undefined;
-  }
-
-  const parts = normalized
-    .split('-')
-    .map((part) => part.trim())
-    .filter(Boolean);
-
-  if (parts.length === 0) {
-    return undefined;
-  }
-
-  const rebuilt: string[] = [];
-  for (const [index, part] of parts.entries()) {
-    if (!/^[A-Za-z0-9]+$/.test(part)) {
-      return undefined;
-    }
-
-    if (index === 0) {
-      rebuilt.push(part.toLowerCase());
-      continue;
-    }
-
-    if (/^[A-Za-z]{2}$/.test(part)) {
-      rebuilt.push(part.toUpperCase());
-      continue;
-    }
-
-    if (/^[A-Za-z]{4}$/.test(part)) {
-      rebuilt.push(`${part[0].toUpperCase()}${part.slice(1).toLowerCase()}`);
-      continue;
-    }
-
-    if (/^\d{3}$/.test(part)) {
-      rebuilt.push(part);
-      continue;
-    }
-
-    rebuilt.push(part.toLowerCase());
-  }
-
-  return rebuilt.join('-');
+  return canonicalizeLocale(value);
 }
 
 export function matchSupportedLocale(
@@ -50,16 +20,26 @@ export function matchSupportedLocale(
   locales: readonly string[]
 ): string | undefined {
   if (!value) return undefined;
-  const normalized = normalizeLocaleTag(value);
-  if (!normalized) return undefined;
+  const canonical = canonicalizeLocale(value);
+  if (!canonical) return undefined;
 
-  const exact = locales.find(
-    (loc) => loc.toLowerCase() === normalized.toLowerCase()
-  );
+  // 1. Exact canonical match
+  const exact = locales.find((loc) => {
+    const locCanonical = canonicalizeLocale(loc);
+    return locCanonical?.toLowerCase() === canonical.toLowerCase();
+  });
   if (exact) return exact;
 
-  const baseLang = normalized.split('-')[0].toLowerCase();
-  return locales.find((loc) => loc.toLowerCase() === baseLang);
+  // 2. Base language match (e.g. "en-US" -> "en")
+  const baseLang = canonical.split('-')[0]?.toLowerCase();
+  if (baseLang) {
+    return locales.find((loc) => {
+      const locCanonical = canonicalizeLocale(loc);
+      return locCanonical?.toLowerCase() === baseLang || loc.toLowerCase() === baseLang;
+    });
+  }
+
+  return undefined;
 }
 
 export function resolveAcceptLanguage(
@@ -71,19 +51,66 @@ export function resolveAcceptLanguage(
   const candidates = header
     .split(',')
     .map((entry) => {
-      const [tag, qPart] = entry.split(';q=');
-      const quality = qPart ? Number.parseFloat(qPart) : 1.0;
-      return { tag: tag.trim(), quality: Number.isNaN(quality) ? 1.0 : quality };
+      const trimmed = entry.trim();
+      if (!trimmed) return null;
+
+      const [tagPart, ...rest] = trimmed.split(';');
+      const tag = tagPart.trim();
+      if (!tag) return null;
+
+      let quality = 1.0;
+      for (const param of rest) {
+        const match = param.trim().match(/^q\s*=\s*([0-9.]+)/i);
+        if (match) {
+          const parsed = Number.parseFloat(match[1]);
+          quality = Number.isNaN(parsed) ? 1.0 : parsed;
+          break;
+        }
+      }
+
+      if (quality <= 0) return null;
+      return { tag, quality };
     })
-    .filter(({ tag }) => Boolean(tag))
+    .filter((item): item is { tag: string; quality: number } => item !== null)
     .sort((a, b) => b.quality - a.quality);
 
   for (const { tag } of candidates) {
+    if (tag === '*') {
+      return locales[0];
+    }
     const matched = matchSupportedLocale(tag, locales);
     if (matched) return matched;
   }
 
   return undefined;
+}
+
+export function validateI18nConfig(options: {
+  locales: readonly string[];
+  defaultLocale: string;
+}): void {
+  if (!options || !Array.isArray(options.locales) || options.locales.length === 0) {
+    throw new Error('[next-fluent] "locales" must be a non-empty array.');
+  }
+
+  const canonicalLocales = options.locales.map((loc) => {
+    const canonical = canonicalizeLocale(loc);
+    if (!canonical) {
+      throw new Error(`[next-fluent] Invalid locale tag in "locales": "${loc}"`);
+    }
+    return canonical.toLowerCase();
+  });
+
+  const defaultCanonical = canonicalizeLocale(options.defaultLocale);
+  if (!defaultCanonical) {
+    throw new Error(`[next-fluent] Invalid "defaultLocale": "${options.defaultLocale}"`);
+  }
+
+  if (!canonicalLocales.includes(defaultCanonical.toLowerCase())) {
+    throw new Error(
+      `[next-fluent] "defaultLocale" ("${options.defaultLocale}") must be included in "locales" [${options.locales.join(', ')}].`
+    );
+  }
 }
 
 export function withKebabKey(key: string): string {
