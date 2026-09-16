@@ -23,6 +23,8 @@ pub enum BundleBuildError {
         locale: String,
         source: unic_langid::LanguageIdentifierError,
     },
+    /// The configured default locale has no exact catalog entry.
+    MissingDefaultLocale { locale: String },
     /// The FTL resource syntax is invalid.
     FluentParse {
         locale: String,
@@ -45,6 +47,9 @@ impl fmt::Display for BundleBuildError {
             }
             Self::InvalidDefaultLocale { locale, source } => {
                 write!(f, "Invalid default locale '{locale}': {source}")
+            }
+            Self::MissingDefaultLocale { locale } => {
+                write!(f, "Default locale '{locale}' is not present in the Fluent catalog")
             }
             Self::FluentParse { locale, errors } => {
                 write!(f, "Fluent parse errors for locale '{locale}': {errors:?}")
