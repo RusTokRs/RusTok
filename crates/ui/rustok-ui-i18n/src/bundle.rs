@@ -101,7 +101,7 @@ pub fn build_fluent_catalog(bundles: &[(&str, &str)]) -> FluentCatalog {
 
         if catalog.contains_key(&normalized) {
             tracing::error!(
-                locale = normalized,
+                locale = %normalized,
                 "Skipping duplicate normalized Fluent locale"
             );
             continue;
@@ -112,7 +112,7 @@ pub fn build_fluent_catalog(bundles: &[(&str, &str)]) -> FluentCatalog {
                 catalog.insert(normalized, bundle);
             }
             Err(error) => {
-                tracing::error!(%error, locale = normalized, "Skipping invalid Fluent bundle");
+                tracing::error!(%error, locale = %normalized, "Skipping invalid Fluent bundle");
             }
         }
     }
