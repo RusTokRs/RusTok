@@ -114,6 +114,18 @@ runtime filesystem discovery.
     inputs. The batch contract verifies usable-entry preservation, typed diagnostic ordering, and
     payload-free `LocaleTooLong` metadata at scale.
 
+21. **Preferred pre-1.0 public facade and API tiers.**
+    `rustok_ui_i18n::prelude` provides the recommended high-level import surface for new consumers while
+    preserving all existing crate-root and module exports. `docs/public-api.md` classifies the preferred,
+    lower-level interoperability and compatibility-only surfaces, and an external integration contract
+    prevents accidental erosion of the prelude. No existing export was narrowed without consumer evidence.
+
+22. **Generated boundary validation with repository-standard tooling.**
+    Bounded `proptest` coverage exercises arbitrary Unicode locale inputs across 256 generated cases per
+    property. Successful normalization must remain parseable, canonical and idempotent; fallback chains
+    must remain deduplicated, canonical, include platform `en`, and stay within the structural nine-entry
+    bound. Oversized raw inputs remain fail-closed. No crate-local `cargo-fuzz` island was introduced.
+
 ## Remaining engineering work
 
 ### 1. Locale model and extension semantics
@@ -131,29 +143,27 @@ Remaining decisions:
 
 ### 2. Public API / semver surface before 1.0
 
-The crate is currently workspace version `0.1.0` and publicly exposes modules, Fluent types,
-`unic_langid::LanguageIdentifier`, `FluentCatalog` internals and helper functions in addition to the
-intended high-level message/runtime facades. The public error enums are now explicitly non-exhaustive.
-The workspace dependency graph demonstrates broad consumption of this crate, so existing exports remain
-compatibility surface until symbol-level consumers can be migrated deliberately.
+The crate is currently workspace version `0.1.0`. Its public surface is now explicitly tiered: new
+module-owned code has an additive high-level `prelude`, while catalog/locale interoperability APIs and
+older dependency-backed/module-path exports remain available for compatibility. The public error enums
+are non-exhaustive. Existing low-level exports are therefore no longer an unclassified cleanup target.
 
 Remaining work before a stable release:
-- complete symbol-level inventory of public modules, dependency types and low-level helpers;
-- decide which dependency types are intentional public contract versus implementation leakage;
-- prefer additive facade APIs and reserve removals/type wrapping for an explicit migration window;
-- only narrow existing public exports after concrete consumer migration evidence exists.
+- collect concrete workspace symbol-usage evidence for any compatibility-only export proposed for narrowing;
+- migrate every in-repository consumer before deprecating or wrapping such an export;
+- decide, with that evidence, which dependency-backed types remain intentional interoperability contract;
+- reserve actual removals/type wrapping for an explicit pre-1.0 breaking window rather than opportunistic cleanup.
 
-### 3. Fuzz validation
+### 3. Native fuzzing infrastructure
 
-Property, malformed-input, concurrency and deterministic stress matrices now cover the known contracts,
-but generated cases are still needed to explore parser/state combinations that hand-written fixtures do
-not enumerate.
+Generated boundary validation now exists through the repository-standard `proptest` dependency. The
+repository does not currently provide a shared `cargo-fuzz` harness/corpus workflow for this crate, so
+introducing a one-off local fuzz subsystem is not required to close the current hardening plan.
 
-Next steps:
-- add fuzz targets for locale normalization/candidate construction and FTL/catalog ingestion if repository
-  fuzz infrastructure is approved;
-- keep fuzz corpora bounded so failures remain reproducible and diagnostics cannot amplify generated input;
-- preserve any minimized regression input as a deterministic integration test after a fuzz finding.
+If project-wide native fuzz infrastructure is added later:
+- add bounded targets for locale normalization/candidate construction and FTL/catalog ingestion;
+- keep corpora/input sizes bounded so failures remain reproducible and diagnostics cannot amplify generated input;
+- preserve every minimized finding that changes behavior as a deterministic regression test.
 
 ### 4. Retained benchmark evidence
 
@@ -179,7 +189,7 @@ Next.js Fluent parity surface:
 - `cd packages/next-fluent && npm run verify`
 
 Future test work:
-- fuzz targets once project fuzz infrastructure exists;
+- native fuzz targets only after shared project fuzz infrastructure exists;
 - retained benchmark evidence for any further hot-path optimization;
 - extension-policy contract tests if the Rust locale model changes.
 
