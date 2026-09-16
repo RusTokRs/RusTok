@@ -163,15 +163,26 @@ export function validateI18nConfig(options: {
     throw new Error('[next-fluent] "locales" must be a non-empty array.');
   }
 
-  const canonicalLocales = options.locales.map((loc) => {
+  // Locale matching throughout the package is canonical and case-insensitive.
+  // Reject duplicate canonical identities at configuration time instead of
+  // allowing two raw spellings to compete for the same runtime locale.
+  const canonicalLocales = new Set<string>();
+  for (const loc of options.locales) {
     const canonical = canonicalizeLocale(loc);
     if (!canonical) {
       throw new Error(
         `[next-fluent] Invalid locale tag in "locales": "${localeDiagnosticValue(loc)}"`
       );
     }
-    return canonical.toLowerCase();
-  });
+
+    const identity = canonical.toLowerCase();
+    if (canonicalLocales.has(identity)) {
+      throw new Error(
+        `[next-fluent] Duplicate locale identity in "locales": "${canonical}"`
+      );
+    }
+    canonicalLocales.add(identity);
+  }
 
   const defaultCanonical = canonicalizeLocale(options.defaultLocale);
   if (!defaultCanonical) {
@@ -180,7 +191,7 @@ export function validateI18nConfig(options: {
     );
   }
 
-  if (!canonicalLocales.includes(defaultCanonical.toLowerCase())) {
+  if (!canonicalLocales.has(defaultCanonical.toLowerCase())) {
     throw new Error(
       `[next-fluent] "defaultLocale" ("${options.defaultLocale}") must be included in "locales" [${options.locales.join(', ')}].`
     );
