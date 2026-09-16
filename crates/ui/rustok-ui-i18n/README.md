@@ -49,8 +49,8 @@ not as two independent keys; a module must not assign different semantics to the
 Catalog construction has three explicit modes:
 
 - `try_build_fluent_catalog` is fail-closed: malformed/oversized locale input, invalid resources, and duplicate normalized locale keys are returned as typed errors.
-- `build_fluent_catalog` is the lenient rendering convenience path: invalid catalog entries are logged and skipped, while the first bundle for a normalized locale key wins.
-- `bundle::build_fluent_catalog_report` uses the same lenient behavior but additionally returns typed diagnostics for every skipped entry so startup health code does not need to scrape logs.
+- `build_fluent_catalog` is the lenient rendering convenience path: invalid catalog entries are logged and skipped, while the first **parseable locale input** reserves each normalized locale identity before its FTL payload is parsed. A malformed first payload therefore cannot be silently replaced by a later duplicate; the later duplicate is diagnosed and skipped.
+- `bundle::build_fluent_catalog_report` uses the same lenient behavior but additionally returns typed diagnostics for every skipped entry so startup health code does not need to scrape logs. In a malformed-first collision this preserves both diagnostics in input order: the original bundle failure followed by `DuplicateLocale` for the shadowing entry.
 
 `UiMessages` caches the lenient report once. `initialization_diagnostics()` exposes both skipped-entry
 errors and invalid/oversized/missing default-locale configuration from that same initialization; it does
