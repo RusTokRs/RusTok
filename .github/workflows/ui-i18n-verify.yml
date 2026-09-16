@@ -1,0 +1,45 @@
+name: UI I18n Verify
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/ui/rustok-ui-i18n/**"
+      - ".github/workflows/ui-i18n-verify.yml"
+  pull_request:
+    paths:
+      - "crates/ui/rustok-ui-i18n/**"
+      - ".github/workflows/ui-i18n-verify.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Format, Test, Clippy & WASM
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+      - name: Format
+        run: cargo fmt -p rustok-ui-i18n -- --check
+      - name: Test
+        run: cargo test -p rustok-ui-i18n --all-features
+      - name: Clippy
+        run: cargo clippy -p rustok-ui-i18n --all-targets --all-features -- -D warnings
+      - name: WASM check
+        run: cargo check -p rustok-ui-i18n --all-features --target wasm32-unknown-unknown

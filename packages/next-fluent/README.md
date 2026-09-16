@@ -5,7 +5,7 @@ A modern, fast, lightweight localization library for Next.js App Router (React S
 ## Features
 
 - **Project Fluent Engine**: Full support for Mozilla Fluent syntax, advanced pluralization (`one`/`few`/`many`), terms, selectors, and variables via official `@fluent/bundle`.
-- **Zero-Isolating Strings**: Renders clean strings without Unicode Bidirectional Isolating characters (FSI/PDI).
+- **Bidi-Safe Interpolation**: Unicode Bidirectional Isolating characters (FSI/PDI) are enabled by default around interpolated Fluent values so mixed RTL/LTR text remains correctly ordered. Low-level `createFluentBundle` callers can explicitly set `useIsolating: false` only when they intentionally need legacy byte-for-byte output.
 - **RSC Native**: `getTranslations(namespace?)` and `getLocale()` with request-level memoization via React `cache()`.
 - **Client Components**: `<FluentProvider>` context and lightweight `useTranslations(namespace?)`, `useLocale()` hooks.
 - **Middleware**: Built-in `createI18nMiddleware` for App Router URL prefixing, cookie management, and `Accept-Language` detection.
@@ -226,6 +226,13 @@ export const config = {
 };
 ```
 
+## Low-Level Bundle Options
+
+`createFluentBundle(locale, source, { useIsolating })` exposes the underlying Fluent isolation switch.
+The default is `true`. Setting it to `false` changes the formatted string contract by removing FSI/PDI
+around interpolated values and should only be done when a consumer deliberately owns bidi handling or
+requires legacy serialized output.
+
 ## Fluent `.ftl` Catalog Example
 
 `messages/en.ftl`:
@@ -258,5 +265,3 @@ Storefront-features =
 ## License
 
 Business Source License 1.1 with RusToK Additional Use Grant.
-
-

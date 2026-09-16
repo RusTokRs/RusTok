@@ -9,3 +9,11 @@ description = "Framework-agnostic UI message catalog and resolution helpers for 
 fluent-bundle.workspace = true
 unic-langid.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+proptest.workspace = true
+
+[[bench]]
+name = "lookup"
+harness = false

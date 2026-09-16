@@ -17,7 +17,10 @@ export function createFluentBundle(
 ): FluentBundle {
   const defaultFunctions = createDefaultFunctions(locale);
   const bundle = new FluentBundle(locale, {
-    useIsolating: options.useIsolating ?? false,
+    // Keep Project Fluent's bidi safety enabled by default. Consumers that need
+    // byte-for-byte legacy output can opt out explicitly, but normal UI rendering
+    // must isolate interpolated values so mixed LTR/RTL text remains well ordered.
+    useIsolating: options.useIsolating ?? true,
     functions: {
       ...defaultFunctions,
       ...options.functions,
@@ -41,6 +44,10 @@ export interface CreateTranslatorOptions {
   namespace?: string;
   debug?: boolean;
 }
+
+const FORMAT_ERROR = Symbol('format-error');
+type FormatCandidateResult = string | null | typeof FORMAT_ERROR;
+type RawCandidateResult = string[] | string | null | typeof FORMAT_ERROR;
 
 export function createTranslator(
   bundle: FluentBundle | null,
@@ -84,13 +91,17 @@ export function createTranslator(
     targetBundle: FluentBundle,
     candidate: string,
     args?: FluentArgs
-  ): string | null => {
+  ): FormatCandidateResult => {
     const msg = targetBundle.getMessage(candidate);
     if (msg?.value) {
       const errors: Error[] = [];
       const formatted = targetBundle.formatPattern(msg.value, args, errors);
       if (errors.length > 0) {
         console.warn(`[next-fluent] Format errors for key "${candidate}":`, errors);
+        // Never expose Fluent's partially formatted output. A message that exists
+        // but cannot be formatted is a terminal resolution failure, matching the
+        // Rust lenient path rather than silently falling through to another locale.
+        return FORMAT_ERROR;
       }
       return formatted;
     }
@@ -99,14 +110,15 @@ export function createTranslator(
 
   const tFn = (key: string, args?: FluentArgs): string => {
     const candidates = buildKeyCandidates(namespace, key);
+    const fallbackKey = namespace ? `${namespace}.${key}` : key;
     for (const b of allBundles) {
       for (const candidate of candidates) {
         const formatted = formatCandidate(b, candidate, args);
+        if (formatted === FORMAT_ERROR) return fallbackKey;
         if (formatted !== null) return formatted;
       }
     }
 
-    const fallbackKey = namespace ? `${namespace}.${key}` : key;
     if (debug) {
       console.warn(`[next-fluent] Missing translation for key "${fallbackKey}"`);
       return `[MISSING: ${fallbackKey}]`;
@@ -115,7 +127,10 @@ export function createTranslator(
     return fallbackKey;
   };
 
-  const getRawValue = (targetBundle: FluentBundle, candidate: string): string[] | string | null => {
+  const getRawValue = (
+    targetBundle: FluentBundle,
+    candidate: string
+  ): RawCandidateResult => {
     const msg = targetBundle.getMessage(candidate);
     if (!msg) return null;
 
@@ -129,14 +144,30 @@ export function createTranslator(
         return a.localeCompare(b);
       });
 
-      return sortedAttrKeys.map((attrKey) => {
+      const values: string[] = [];
+      for (const attrKey of sortedAttrKeys) {
         const pattern = msg.attributes[attrKey];
-        return targetBundle.formatPattern(pattern, undefined, []);
-      });
+        const errors: Error[] = [];
+        const formatted = targetBundle.formatPattern(pattern, undefined, errors);
+        if (errors.length > 0) {
+          console.warn(
+            `[next-fluent] Format errors for raw attribute "${candidate}.${attrKey}":`,
+            errors
+          );
+          return FORMAT_ERROR;
+        }
+        values.push(formatted);
+      }
+      return values;
     }
 
     if (msg.value) {
-      const rawText = targetBundle.formatPattern(msg.value, undefined, []);
+      const errors: Error[] = [];
+      const rawText = targetBundle.formatPattern(msg.value, undefined, errors);
+      if (errors.length > 0) {
+        console.warn(`[next-fluent] Format errors for raw key "${candidate}":`, errors);
+        return FORMAT_ERROR;
+      }
       const trimmed = rawText.trim();
       if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
         try {
@@ -156,14 +187,15 @@ export function createTranslator(
 
   tFn.raw = (key: string): string[] | string => {
     const candidates = buildKeyCandidates(namespace, key);
+    const fallbackKey = namespace ? `${namespace}.${key}` : key;
     for (const b of allBundles) {
       for (const candidate of candidates) {
         const res = getRawValue(b, candidate);
+        if (res === FORMAT_ERROR) return fallbackKey;
         if (res !== null) return res;
       }
     }
 
-    const fallbackKey = namespace ? `${namespace}.${key}` : key;
     if (debug) {
       console.warn(`[next-fluent] Missing raw translation for key "${fallbackKey}"`);
       return `[MISSING: ${fallbackKey}]`;
@@ -203,4 +235,3 @@ export function createTranslator(
 
   return tFn as Translations;
 }
-

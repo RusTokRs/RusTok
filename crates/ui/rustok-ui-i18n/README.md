@@ -9,27 +9,58 @@ RusToK module-owned UI packages and future UI adapters.
 
 The crate is structured into focused domain modules:
 
-- `locale`: BCP 47 language identifier normalization (`normalize_locale_tag`), canonical admin locale resolution (`normalize_admin_locale`), and fallback candidate chains (`locale_candidates`).
-- `bundle`: Concurrent Project Fluent (`.ftl`) bundle (`build_fluent_bundle`) and catalog (`build_fluent_catalog`, `FluentCatalog`) construction with zero-isolating string formatting.
-- `messages`: Core thread-safe UI message facade (`UiMessages`), borrowed translator (`UiTranslator`), zero-allocation stack-buffered kebab-case key conversion (`with_kebab_key`), and candidate resolution (`resolve_fluent_message`).
-- `error`: Typed errors (`BundleBuildError`, `I18nError`) for parse and resource failures.
+- `locale`: Unicode Language Identifier normalization (`normalize_locale_tag`), canonical admin locale resolution (`normalize_admin_locale`), and fallback candidate chains (`locale_candidates`).
+- `bundle`: Concurrent Project Fluent (`.ftl`) bundle (`build_fluent_bundle`) and catalog (`build_fluent_catalog`, `try_build_fluent_catalog`, `bundle::build_fluent_catalog_report`, `FluentCatalog`) construction with Unicode bidi isolation enabled for interpolated values.
+- `messages`: Core thread-safe UI message facade (`UiMessages`), fail-closed prepared runtime (`PreparedUiMessages`), borrowed translator (`UiTranslator`), prepared per-locale translator (`UiLocaleTranslator`), stack-buffered kebab-case key conversion (`with_kebab_key`), and strict/lenient candidate resolution (`try_resolve_fluent_message`, `resolve_fluent_message`).
+- `error`: Typed errors (`BundleBuildError`, `I18nError`) for locale, catalog, lookup, and formatting failures.
 - `macros`: Ergonomic macros (`declare_module_i18n!`, `fluent_args!`, `t!`, `module_t!`).
 
 ## Responsibilities
 
-- Manage Project Fluent (`.ftl`) message catalogs with natural grammar, selectors, and pluralization.
+- Manage Project Fluent (`.ftl`) message catalogs with natural grammar, selectors, pluralization, and parameter interpolation.
 - Provide thread-safe concurrent bundle management via `UiMessages` (`Send + Sync`).
-- Resolve message keys from the host-provided effective locale with zero-allocation stack buffering for keys <= 128 bytes.
-- Apply the platform UI fallback chain (regional tag -> language base -> default locale -> "en" -> fallback string) without depending on Leptos, Dioxus, Next.js, or host routing.
-- Provide canonical locale normalization (`normalize_admin_locale`).
-- Provide boilerplate reduction macro (`declare_module_i18n!`) for module UI packages.
+- Preserve Project Fluent Unicode directional isolation around interpolated values so mixed LTR/RTL UI text renders safely.
+- Resolve message keys from the host-provided effective locale with stack buffering for dotted keys up to 128 bytes.
+- Apply the platform UI fallback chain (regional/script/variant tag -> less-specific language identifier -> default locale -> `"en"` -> fallback string) without depending on Leptos, Dioxus, Next.js, or host routing.
+- Provide strict startup preparation (`UiMessages::prepare`) and a fail-soft catalog report API for inspectable skipped-entry diagnostics.
+- Keep request/catalog locale normalization bounded before allocation.
 - Keep UI i18n catalog logic out of `rustok-api` and framework-specific crates.
-- Maintain full compile-time portability for `wasm32-unknown-unknown` (pure in-memory, zero runtime filesystem access).
+- Maintain compile-time portability for `wasm32-unknown-unknown` (pure in-memory, zero runtime filesystem access).
+
+## Locale Model
+
+Catalog keys are represented by `unic_langid::LanguageIdentifier`: language, optional script,
+optional region, and variants. Unicode/private-use extensions are not retained as part of catalog
+identity. Callers that require extension-aware locale semantics must keep that policy in the host layer
+until the locale model is deliberately widened.
+
+The shared Rust/Next locale-input policy bounds trimmed locale identifiers to 64 bytes before
+underscore normalization allocates. Runtime lookup, direct bundle construction, strict catalog
+construction, lenient catalog construction, and prepared startup use the same contract. Oversized
+inputs are rejected without retaining or logging the full untrusted payload.
+
+## Key Identity and Catalog Collisions
+
+Application-facing dotted keys are a convenience spelling for Fluent kebab IDs: `account.profile.title`
+and `account-profile-title` intentionally resolve to the same message identity. Treat those spellings as aliases,
+not as two independent keys; a module must not assign different semantics to the dotted and kebab forms.
+
+Catalog construction has three explicit modes:
+
+- `try_build_fluent_catalog` is fail-closed: malformed/oversized locale input, invalid resources, and duplicate normalized locale keys are returned as typed errors.
+- `build_fluent_catalog` is the lenient rendering convenience path: invalid catalog entries are logged and skipped, while the first bundle for a normalized locale key wins.
+- `bundle::build_fluent_catalog_report` uses the same lenient behavior but additionally returns typed diagnostics for every skipped entry so startup health code does not need to scrape logs.
+
+Within an individual Fluent resource, message/resource conflicts are handled by Project Fluent's
+`add_resource` validation and surface as `BundleBuildError::AddResource`; this crate does not silently invent
+an override policy for Rust catalogs.
 
 ## Entry Points
 
 - `UiMessages`
+- `PreparedUiMessages`
 - `UiTranslator`
+- `UiLocaleTranslator`
 - `BundleBuildError`
 - `I18nError`
 - `declare_module_i18n!`
@@ -41,14 +72,18 @@ The crate is structured into focused domain modules:
 - `locale_candidates`
 - `build_fluent_bundle`
 - `build_fluent_catalog`
+- `try_build_fluent_catalog`
+- `bundle::build_fluent_catalog_report`
+- `bundle::FluentCatalogBuildReport`
 - `resolve_fluent_message`
+- `try_resolve_fluent_message`
 - `with_kebab_key`
 
 ## Interactions
 
 - Module-owned UI packages use this crate from local `i18n.rs` files via `declare_module_i18n!`.
-- Host/runtime code still owns effective locale selection; this crate only resolves messages for a supplied locale.
-- Parity with `@rustok/next-fluent`: shared `.ftl` conventions and zero-isolating string configuration.
+- Host/runtime code owns effective locale selection; this crate only resolves messages for a supplied locale.
+- `@rustok/next-fluent` uses the same Project Fluent bidi-safe default and bounded locale-input policy so Rust and Next.js agree on core interpolation/locale safety.
 
 ## Boundary Rules
 
@@ -59,5 +94,7 @@ The crate is structured into focused domain modules:
 
 ## Docs
 
-- [Platform docs index](../../docs/index.md)
-- [Module UI package implementation guide](../../docs/UI/module-package-implementation.md)
+- [Crate docs](./docs/README.md)
+- [Implementation plan](./docs/implementation-plan.md)
+- [Platform docs index](../../../docs/index.md)
+- [Module UI package implementation guide](../../../docs/UI/module-package-implementation.md)
