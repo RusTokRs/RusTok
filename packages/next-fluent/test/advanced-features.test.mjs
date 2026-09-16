@@ -12,6 +12,9 @@ import {
   pseudoLocalizeText,
 } from '../dist/index.js';
 
+const stripBidiIsolates = (value) =>
+  typeof value === 'string' ? value.replace(/[\u2068\u2069]/g, '') : value;
+
 test('t.rich formats interactive markup tags into React elements', () => {
   const ftl = `
 welcome-message = Hello, <bold>{ $name }</bold>! Visit our <link>website</link> or <docs>docs</docs>.
@@ -35,7 +38,7 @@ welcome-message = Hello, <bold>{ $name }</bold>! Visit our <link>website</link> 
   const boldEl = children[1];
   assert.ok(React.isValidElement(boldEl));
   assert.equal(boldEl.type, 'strong');
-  assert.equal(boldEl.props.children, 'Alice');
+  assert.equal(stripBidiIsolates(boldEl.props.children), 'Alice');
 
   assert.equal(children[2], '! Visit our ');
 
@@ -199,8 +202,8 @@ order-discount = Discount: { PERCENT($rate) }
   const bundleEn = createFluentBundle('en', ftlEn);
   const tEn = createTranslator(bundleEn);
 
-  assert.equal(tEn('order-total', { val: 99.99 }), 'Total: $99.99');
-  assert.equal(tEn('order-discount', { rate: 0.15 }), 'Discount: 15%');
+  assert.equal(stripBidiIsolates(tEn('order-total', { val: 99.99 })), 'Total: $99.99');
+  assert.equal(stripBidiIsolates(tEn('order-discount', { rate: 0.15 })), 'Discount: 15%');
 
   const ftlRu = `
 order-total = К оплате: { CURRENCY($val, currency: "RUB") }
@@ -208,7 +211,7 @@ order-total = К оплате: { CURRENCY($val, currency: "RUB") }
   const bundleRu = createFluentBundle('ru', ftlRu);
   const tRu = createTranslator(bundleRu);
 
-  const ruResult = tRu('order-total', { val: 1500 });
+  const ruResult = stripBidiIsolates(tRu('order-total', { val: 1500 }));
   // Russian currency formatter includes ruble symbol ₽ or руб.
   assert.ok(ruResult.includes('1') && (ruResult.includes('₽') || ruResult.includes('руб')));
 });
@@ -249,4 +252,3 @@ welcome-title = Welcome to our shop, { $name }!
   assert.ok(pseudo.includes('['));
   assert.ok(pseudo.includes(']'));
 });
-
