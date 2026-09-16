@@ -12,7 +12,10 @@ use std::sync::OnceLock;
 
 use fluent_bundle::FluentArgs;
 
-use crate::bundle::{build_fluent_catalog, FluentCatalog};
+use crate::bundle::{
+    build_fluent_catalog, try_build_fluent_catalog, FluentCatalog,
+};
+use crate::error::{BundleBuildError, I18nError};
 use crate::locale::locale_candidates;
 
 /// Ephemeral translator facade over a borrowed `FluentCatalog`.
@@ -29,12 +32,35 @@ impl<'a> UiTranslator<'a> {
         }
     }
 
+    pub fn try_resolve(
+        &self,
+        locale: Option<&str>,
+        key: &str,
+    ) -> Result<String, I18nError> {
+        try_resolve_fluent_message(self.fluent_catalog, locale, self.default_locale, key, None)
+    }
+
     pub fn resolve(&self, locale: Option<&str>, key: &str) -> Option<String> {
         resolve_fluent_message(self.fluent_catalog, locale, self.default_locale, key, None)
     }
 
     pub fn t(&self, locale: Option<&str>, key: &str, fallback: &str) -> String {
         self.format_message(locale, key, None, fallback)
+    }
+
+    pub fn try_format_message<'args>(
+        &self,
+        locale: Option<&str>,
+        key: &str,
+        args: Option<&FluentArgs<'args>>,
+    ) -> Result<String, I18nError> {
+        try_resolve_fluent_message(
+            self.fluent_catalog,
+            locale,
+            self.default_locale,
+            key,
+            args,
+        )
     }
 
     pub fn format_message<'args>(
@@ -76,6 +102,14 @@ impl UiMessages {
         }
     }
 
+    /// Validates all embedded locale/FTL pairs using strict catalog semantics.
+    ///
+    /// This is intended for tests and CI so malformed resources never become a
+    /// production-only fallback surprise.
+    pub fn validate(&self) -> Result<(), BundleBuildError> {
+        try_build_fluent_catalog(self.bundles).map(|_| ())
+    }
+
     /// Accesses the underlying lazily-initialized `FluentCatalog`.
     pub fn fluent_catalog(&self) -> &FluentCatalog {
         self.fluent_catalog
@@ -90,6 +124,22 @@ impl UiMessages {
     /// Resolves a simple translation key for the specified locale (alias for `t`).
     pub fn t_for_locale(&self, locale: Option<&str>, key: &str, fallback: &str) -> String {
         self.t(locale, key, fallback)
+    }
+
+    /// Strictly resolves and formats a message without applying literal fallback text.
+    pub fn try_format<'args>(
+        &self,
+        locale: Option<&str>,
+        key: &str,
+        args: Option<&FluentArgs<'args>>,
+    ) -> Result<String, I18nError> {
+        try_resolve_fluent_message(
+            self.fluent_catalog(),
+            locale,
+            self.default_locale,
+            key,
+            args,
+        )
     }
 
     /// Resolves and formats a message with parameters.
@@ -138,14 +188,15 @@ pub fn with_kebab_key<R>(key: &str, f: impl FnOnce(&str) -> R) -> R {
     }
 }
 
-/// Resolves a message against the `FluentCatalog` using the locale fallback candidate chain.
-pub fn resolve_fluent_message<'args>(
+/// Strictly resolves a message against the `FluentCatalog` using the locale
+/// fallback candidate chain.
+pub fn try_resolve_fluent_message<'args>(
     catalog: &FluentCatalog,
     locale: Option<&str>,
     default_locale: &str,
     key: &str,
     args: Option<&FluentArgs<'args>>,
-) -> Option<String> {
+) -> Result<String, I18nError> {
     let candidates = locale_candidates(locale, default_locale);
 
     with_kebab_key(key, |lookup_key| {
@@ -157,11 +208,41 @@ pub fn resolve_fluent_message<'args>(
                 let mut errors = vec![];
                 let formatted = bundle.format_pattern(pattern, args, &mut errors);
                 if !errors.is_empty() {
-                    tracing::warn!(?errors, key, "Fluent message formatting errors");
+                    return Err(I18nError::FormattingFailed {
+                        locale: candidate,
+                        key: key.to_string(),
+                        errors,
+                    });
                 }
-                return Some(formatted.to_string());
+                return Ok(formatted.to_string());
             }
         }
-        None
+
+        Err(I18nError::MessageNotFound {
+            locale: locale.unwrap_or(default_locale).to_string(),
+            key: key.to_string(),
+        })
     })
+}
+
+/// Resolves a message using lenient UI semantics.
+///
+/// Missing messages return `None`. Formatting failures are logged and also
+/// return `None`, allowing the caller to use its explicit literal fallback
+/// instead of rendering a partially formatted message.
+pub fn resolve_fluent_message<'args>(
+    catalog: &FluentCatalog,
+    locale: Option<&str>,
+    default_locale: &str,
+    key: &str,
+    args: Option<&FluentArgs<'args>>,
+) -> Option<String> {
+    match try_resolve_fluent_message(catalog, locale, default_locale, key, args) {
+        Ok(message) => Some(message),
+        Err(I18nError::MessageNotFound { .. }) => None,
+        Err(error) => {
+            tracing::warn!(%error, key, "Fluent message resolution failed");
+            None
+        }
+    }
 }

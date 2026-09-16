@@ -12,17 +12,20 @@ use unic_langid::LanguageIdentifier;
 
 /// Normalizes the admin UI effective locale to either "ru" or "en".
 ///
-/// If `locale` is absent or not Russian, defaults to `"en"`.
+/// If `locale` is absent, invalid, or not Russian, defaults to `"en"`.
 pub fn normalize_admin_locale(locale: Option<&str>) -> &'static str {
-    match locale {
-        Some(value)
-            if value.eq_ignore_ascii_case("ru")
-                || value.starts_with("ru-")
-                || value.starts_with("ru_") =>
-        {
-            "ru"
-        }
-        _ => "en",
+    let Some(locale) = locale.and_then(normalize_locale_tag) else {
+        return "en";
+    };
+
+    if locale
+        .split('-')
+        .next()
+        .is_some_and(|language| language.eq_ignore_ascii_case("ru"))
+    {
+        "ru"
+    } else {
+        "en"
     }
 }
 
@@ -40,10 +43,10 @@ pub fn normalize_locale_tag(locale: &str) -> Option<String> {
 /// Generates a deduplicated ordered list of locale fallback candidates.
 ///
 /// Order of precedence:
-/// 1. Requested locale (e.g. `ru-RU`)
-/// 2. Language base of requested locale (e.g. `ru`)
-/// 3. Default locale (e.g. `en-US` and then `en`)
-/// 4. Canonical platform fallback (`"en"`)
+/// 1. Requested locale from most-specific to least-specific
+///    (e.g. `zh-Hans-CN` -> `zh-Hans` -> `zh`)
+/// 2. Default locale from most-specific to least-specific
+/// 3. Canonical platform fallback (`"en"`)
 pub fn locale_candidates(locale: Option<&str>, default_locale: &str) -> Vec<String> {
     let mut candidates = Vec::new();
 
@@ -54,16 +57,20 @@ pub fn locale_candidates(locale: Option<&str>, default_locale: &str) -> Vec<Stri
     candidates
 }
 
-/// Pushes normalized locale and its language-only base to the candidate list.
+/// Pushes a normalized locale and all of its progressively less-specific
+/// parents to the candidate list.
 pub fn push_locale_candidate(candidates: &mut Vec<String>, locale: Option<&str>) {
     let Some(locale) = locale.and_then(normalize_locale_tag) else {
         return;
     };
 
-    push_unique(candidates, locale.as_str());
-
-    if let Some((language, _)) = locale.split_once('-') {
-        push_unique(candidates, language);
+    let mut current = locale.as_str();
+    loop {
+        push_unique(candidates, current);
+        let Some((parent, _)) = current.rsplit_once('-') else {
+            break;
+        };
+        current = parent;
     }
 }
 
