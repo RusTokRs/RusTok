@@ -14,6 +14,8 @@ const EN: &str = "title = Title\n";
 const RU_FIRST: &str = "title = Первый\n";
 const RU_DUPLICATE: &str = "title = Второй\n";
 const BROKEN_DE: &str = "this is not valid fluent";
+const OVERSIZED_DEFAULT: &str =
+    "en-abcde-fghij-klmno-pqrst-uvwxy-zabcd-efghi-jklmn-opqrs-tuvwx-yzabc";
 
 static MESSAGES: UiMessages = UiMessages::new(
     "en",
@@ -25,6 +27,10 @@ static MESSAGES: UiMessages = UiMessages::new(
         ("de", BROKEN_DE),
     ],
 );
+static MISSING_DEFAULT: UiMessages = UiMessages::new("fr", &[("en", EN)]);
+static INVALID_DEFAULT: UiMessages = UiMessages::new("!", &[("en", EN)]);
+static OVERSIZED_DEFAULT_MESSAGES: UiMessages =
+    UiMessages::new(OVERSIZED_DEFAULT, &[("en", EN)]);
 
 #[test]
 fn lazy_initialization_retains_diagnostics_without_rebuilding_catalog() {
@@ -55,6 +61,55 @@ fn lazy_initialization_retains_diagnostics_without_rebuilding_catalog() {
 
     assert_eq!(MESSAGES.initialization_diagnostics().as_ptr(), diagnostics_ptr);
     assert_eq!(MESSAGES.fluent_catalog() as *const _, catalog_ptr);
+}
+
+#[test]
+fn lazy_initialization_reports_missing_default_without_disabling_platform_fallback() {
+    let diagnostics = MISSING_DEFAULT.initialization_diagnostics();
+    assert_eq!(diagnostics.len(), 1);
+    assert!(matches!(
+        &diagnostics[0],
+        BundleBuildError::MissingDefaultLocale { locale } if locale == "fr"
+    ));
+
+    assert_eq!(MISSING_DEFAULT.t(None, "title", "fallback"), "Title");
+    assert!(matches!(
+        MISSING_DEFAULT.validate(),
+        Err(BundleBuildError::MissingDefaultLocale { ref locale }) if locale == "fr"
+    ));
+}
+
+#[test]
+fn lazy_initialization_reports_invalid_default_without_disabling_platform_fallback() {
+    let diagnostics = INVALID_DEFAULT.initialization_diagnostics();
+    assert_eq!(diagnostics.len(), 1);
+    assert!(matches!(
+        &diagnostics[0],
+        BundleBuildError::InvalidDefaultLocale { locale, .. } if locale == "!"
+    ));
+
+    assert_eq!(INVALID_DEFAULT.t(None, "title", "fallback"), "Title");
+    assert!(matches!(
+        INVALID_DEFAULT.validate(),
+        Err(BundleBuildError::InvalidDefaultLocale { ref locale, .. }) if locale == "!"
+    ));
+}
+
+#[test]
+fn lazy_initialization_keeps_oversized_default_diagnostics_bounded() {
+    assert!(OVERSIZED_DEFAULT.len() > 64);
+
+    let diagnostics = OVERSIZED_DEFAULT_MESSAGES.initialization_diagnostics();
+    assert_eq!(diagnostics.len(), 1);
+    match &diagnostics[0] {
+        BundleBuildError::LocaleTooLong { length, max_len } => {
+            assert_eq!(*length, OVERSIZED_DEFAULT.len());
+            assert_eq!(*max_len, 64);
+        }
+        other => panic!("expected LocaleTooLong, got {other:?}"),
+    }
+    assert!(!diagnostics[0].to_string().contains(OVERSIZED_DEFAULT));
+    assert_eq!(OVERSIZED_DEFAULT_MESSAGES.t(None, "title", "fallback"), "Title");
 }
 
 #[test]
