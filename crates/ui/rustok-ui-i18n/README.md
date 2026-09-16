@@ -12,7 +12,7 @@ The crate is structured into focused domain modules:
 - `locale`: Unicode Language Identifier normalization (`normalize_locale_tag`), canonical admin locale resolution (`normalize_admin_locale`), and structured fallback candidate chains (`locale_candidates`).
 - `bundle`: Concurrent Project Fluent (`.ftl`) bundle (`build_fluent_bundle`) and catalog (`build_fluent_catalog`, `try_build_fluent_catalog`, `bundle::build_fluent_catalog_report`, `FluentCatalog`) construction with Unicode bidi isolation enabled for interpolated values.
 - `messages`: Core thread-safe UI message facade (`UiMessages`), fail-closed prepared runtime (`PreparedUiMessages`), borrowed translator (`UiTranslator`), prepared per-locale translator (`UiLocaleTranslator`), stack-buffered safe kebab-case key conversion (`with_kebab_key`), strict/lenient candidate resolution (`try_resolve_fluent_message`, `resolve_fluent_message`), and cached lazy-initialization diagnostics.
-- `error`: Typed errors (`BundleBuildError`, `I18nError`) for locale, catalog, lookup, and formatting failures.
+- `error`: Typed errors (`BundleBuildError`, `I18nError`) for locale, catalog, lookup, and formatting failures. Both public error enums are non-exhaustive; downstream matches must retain a wildcard arm so new diagnostics can be added compatibly.
 - `macros`: Ergonomic macros (`declare_module_i18n!`, `fluent_args!`, `t!`, `module_t!`).
 
 ## Responsibilities
@@ -96,6 +96,7 @@ an override policy for Rust catalogs.
 - Do not select the user's locale here; consume the host-provided effective locale.
 - Do not add runtime filesystem scanning or environment lookups in production paths.
 - Do not add module-specific message keys or business copy to this crate.
+- Treat exported dependency types and helper functions as compatibility surface until an explicit migration window narrows them; prefer additive facade APIs over silent removals.
 
 ## Docs
 

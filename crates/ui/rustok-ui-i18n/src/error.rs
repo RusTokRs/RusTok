@@ -11,6 +11,11 @@
 use std::fmt;
 
 /// Errors that can occur when building and parsing a Fluent bundle.
+///
+/// This enum is non-exhaustive so new diagnostics can be added without forcing
+/// downstream consumers to update exhaustive matches. Match the variants you
+/// need and keep a wildcard arm for forward compatibility.
+#[non_exhaustive]
 #[derive(Debug)]
 pub enum BundleBuildError {
     /// The specified locale string exceeds the supported bounded input length.
@@ -87,6 +92,10 @@ impl std::error::Error for BundleBuildError {
 }
 
 /// High-level i18n operations error.
+///
+/// This enum is non-exhaustive so the facade can grow new typed failures without
+/// turning every downstream exhaustive match into a semver blocker.
+#[non_exhaustive]
 #[derive(Debug)]
 pub enum I18nError {
     /// Bundle construction failed.
