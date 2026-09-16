@@ -176,8 +176,9 @@ impl<'a> UiLocaleTranslator<'a> {
 ///
 /// `PreparedUiMessages` is constructed with [`UiMessages::prepare`]. Unlike the
 /// lazy [`UiMessages::fluent_catalog`] path, construction rejects malformed
-/// locale tags, malformed FTL resources, duplicate normalized locales, and an
-/// invalid configured default locale before any lookup can occur.
+/// locale tags, malformed FTL resources, duplicate normalized locales, an
+/// invalid configured default locale, and a default locale without an exact
+/// normalized catalog entry before any lookup can occur.
 pub struct PreparedUiMessages {
     default_locale: &'static str,
     fluent_catalog: FluentCatalog,
@@ -258,20 +259,27 @@ impl UiMessages {
 
     /// Strictly validates the configured default locale and every embedded bundle.
     ///
+    /// The normalized default locale must also have an exact catalog entry, matching
+    /// the `@rustok/next-fluent` configuration invariant that `defaultLocale` is one
+    /// of the configured locales.
+    ///
     /// This is intended for tests and CI. Production startup code that wants to
     /// validate once and reuse the exact validated catalog should call [`Self::prepare`].
     pub fn validate(&self) -> Result<(), BundleBuildError> {
-        validate_default_locale(self.default_locale)?;
-        try_build_fluent_catalog(self.bundles).map(|_| ())
+        let default_locale = normalize_default_locale(self.default_locale)?;
+        let fluent_catalog = try_build_fluent_catalog(self.bundles)?;
+        ensure_default_locale_present(&fluent_catalog, &default_locale)
     }
 
     /// Builds a fail-closed catalog once and returns an owned prepared runtime.
     ///
     /// This avoids the validate-then-rebuild pattern: the returned object serves
-    /// lookups from the same strict catalog that passed construction.
+    /// lookups from the same strict catalog that passed construction. The normalized
+    /// default locale must be present in that exact catalog.
     pub fn prepare(&self) -> Result<PreparedUiMessages, BundleBuildError> {
-        validate_default_locale(self.default_locale)?;
+        let default_locale = normalize_default_locale(self.default_locale)?;
         let fluent_catalog = try_build_fluent_catalog(self.bundles)?;
+        ensure_default_locale_present(&fluent_catalog, &default_locale)?;
         Ok(PreparedUiMessages {
             default_locale: self.default_locale,
             fluent_catalog,
@@ -340,15 +348,28 @@ impl UiMessages {
     }
 }
 
-fn validate_default_locale(default_locale: &str) -> Result<(), BundleBuildError> {
+fn normalize_default_locale(default_locale: &str) -> Result<String, BundleBuildError> {
     let normalized = default_locale.trim().replace('_', "-");
     normalized
         .parse::<LanguageIdentifier>()
-        .map(|_| ())
+        .map(|langid| langid.to_string())
         .map_err(|source| BundleBuildError::InvalidDefaultLocale {
             locale: default_locale.to_string(),
             source,
         })
+}
+
+fn ensure_default_locale_present(
+    fluent_catalog: &FluentCatalog,
+    default_locale: &str,
+) -> Result<(), BundleBuildError> {
+    if fluent_catalog.contains_key(default_locale) {
+        Ok(())
+    } else {
+        Err(BundleBuildError::MissingDefaultLocale {
+            locale: default_locale.to_string(),
+        })
+    }
 }
 
 const STACK_KEY_BUF_SIZE: usize = 128;
