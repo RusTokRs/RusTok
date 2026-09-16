@@ -18,7 +18,7 @@ use crate::bundle::{
     FluentCatalogBuildReport,
 };
 use crate::error::{BundleBuildError, I18nError};
-use crate::locale::locale_candidates;
+use crate::locale::{locale_candidates, MAX_LOCALE_TAG_LEN};
 
 /// Ephemeral translator facade over a borrowed `FluentCatalog`.
 pub struct UiTranslator<'a> {
@@ -367,7 +367,15 @@ impl UiMessages {
 }
 
 fn normalize_default_locale(default_locale: &str) -> Result<String, BundleBuildError> {
-    let normalized = default_locale.trim().replace('_', "-");
+    let trimmed = default_locale.trim();
+    if trimmed.len() > MAX_LOCALE_TAG_LEN {
+        return Err(BundleBuildError::LocaleTooLong {
+            length: trimmed.len(),
+            max_len: MAX_LOCALE_TAG_LEN,
+        });
+    }
+
+    let normalized = trimmed.replace('_', "-");
     normalized
         .parse::<LanguageIdentifier>()
         .map(|langid| langid.to_string())
