@@ -8,7 +8,7 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use fluent_bundle::concurrent::FluentBundle;
 use fluent_bundle::FluentResource;
@@ -148,23 +148,28 @@ pub fn try_build_fluent_catalog(
 
 /// Builds an immutable, concurrent `FluentCatalog` using lenient UI semantics.
 ///
-/// This preserves the original convenience API: invalid entries are logged and
-/// skipped, duplicate normalized locales are first-wins, and only the usable
-/// catalog is returned. Call [`build_fluent_catalog_report`] when the same
-/// fail-soft behavior also needs typed, inspectable initialization diagnostics.
-/// Call [`try_build_fluent_catalog`] when any invalid input must fail closed.
+/// This preserves the convenience API: invalid entries are logged and skipped,
+/// the first input entry for each normalized locale identity wins even when its
+/// FTL payload is invalid, and only successfully built first entries appear in
+/// the usable catalog. Later duplicate identities are always diagnosed and skipped.
+/// Call [`build_fluent_catalog_report`] when the same fail-soft behavior also needs
+/// typed, inspectable initialization diagnostics. Call [`try_build_fluent_catalog`]
+/// when any invalid input must fail closed.
 pub fn build_fluent_catalog(bundles: &[(&str, &str)]) -> FluentCatalog {
     build_fluent_catalog_report(bundles).into_catalog()
 }
 
 /// Builds a lenient catalog while retaining typed diagnostics for skipped input.
 ///
-/// The rendering semantics are identical to [`build_fluent_catalog`], including
-/// first-wins duplicate handling and tracing diagnostics. Unlike the convenience
-/// API, this function also returns every skipped-entry error to the caller so
-/// startup health checks and observability code do not have to scrape logs.
+/// The rendering semantics are identical to [`build_fluent_catalog`]. Normalized
+/// locale identity is reserved by the first parseable input before its FTL payload
+/// is parsed, so later duplicates cannot silently replace a malformed first entry.
+/// Every skipped-entry error is returned in input order in addition to tracing
+/// diagnostics, allowing startup health checks to detect both the original bundle
+/// failure and any later duplicate collision.
 pub fn build_fluent_catalog_report(bundles: &[(&str, &str)]) -> FluentCatalogBuildReport {
     let mut catalog = FluentCatalog::new();
+    let mut seen_locales = BTreeSet::new();
     let mut diagnostics = Vec::new();
 
     for (locale, ftl_source) in bundles {
@@ -189,7 +194,7 @@ pub fn build_fluent_catalog_report(bundles: &[(&str, &str)]) -> FluentCatalogBui
         };
         let normalized = langid.to_string();
 
-        if catalog.contains_key(&normalized) {
+        if !seen_locales.insert(normalized.clone()) {
             let error = BundleBuildError::DuplicateLocale {
                 locale: normalized.clone(),
             };
