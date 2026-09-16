@@ -31,10 +31,10 @@ async fn exercise_constraints(db: &DatabaseConnection) -> TestResult<()> {
         format!(
             r#"
 INSERT INTO forum_categories
-    (id, tenant_id, position, moderated, topic_count, reply_count)
+    (id, tenant_id, moderated, topic_count, reply_count)
 VALUES
-    ('{category_a}', '{tenant_a}', 0, FALSE, 0, 0),
-    ('{category_b}', '{tenant_b}', 0, FALSE, 0, 0)
+    ('{category_a}', '{tenant_a}', FALSE, 0, 0),
+    ('{category_b}', '{tenant_b}', FALSE, 0, 0)
 "#
         ),
     )

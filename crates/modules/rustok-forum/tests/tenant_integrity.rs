@@ -30,11 +30,17 @@ async fn exercise_tenant_constraints(db: &DatabaseConnection) -> TestResult<()> 
         db,
         format!(
             r#"
-INSERT INTO forum_categories
-    (id, tenant_id, position, moderated, topic_count, reply_count)
+INSERT INTO taxonomy_terms
+    (id, tenant_id, kind, scope_type, scope_value, canonical_key, revision)
 VALUES
-    ('{category_a}', '{tenant_a}', 0, FALSE, 0, 0),
-    ('{category_b}', '{tenant_b}', 0, FALSE, 0, 0)
+    ('{category_a}', '{tenant_a}', 'category', 'module', 'forum', 'cat-a', 1),
+    ('{category_b}', '{tenant_b}', 'category', 'module', 'forum', 'cat-b', 1);
+
+INSERT INTO forum_categories
+    (id, tenant_id, moderated, topic_count, reply_count)
+VALUES
+    ('{category_a}', '{tenant_a}', FALSE, 0, 0),
+    ('{category_b}', '{tenant_b}', FALSE, 0, 0);
 "#
         ),
     )
@@ -44,12 +50,11 @@ VALUES
         db,
         format!(
             r#"
-INSERT INTO forum_categories
-    (id, tenant_id, parent_id, position, moderated, topic_count, reply_count)
+INSERT INTO taxonomy_category_hierarchy
+    (tenant_id, term_id, parent_term_id, position)
 VALUES
-    ('{}', '{tenant_b}', '{category_a}', 0, FALSE, 0, 0)
-"#,
-            Uuid::new_v4()
+    ('{tenant_b}', '{category_b}', '{category_a}', 0)
+"#
         ),
         "cross-tenant category parent",
     )

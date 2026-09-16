@@ -50,17 +50,24 @@ pub async fn exercise_category_subtree_lifecycle(db: &DatabaseConnection) -> Tes
     let blocked = insert_topic(db, blocked_topic_id, tenant_id, grandchild_id).await;
     assert_error_contains(blocked, "does not allow topic creation")?;
 
-    let active_child_id = Uuid::new_v4();
-    let active_child = db
-        .execute_raw(Statement::from_sql_and_values(
-            db.get_database_backend(),
-            "INSERT INTO forum_categories \
-             (id, tenant_id, parent_id, position, moderated, topic_count, reply_count) \
-             VALUES (?, ?, ?, 1, FALSE, 0, 0)",
-            [active_child_id.into(), tenant_id.into(), child_id.into()],
-        ))
+    let active_child = service
+        .create(
+            tenant_id,
+            security.clone(),
+            rustok_forum::CreateCategoryInput {
+                name: "Active Child".to_string(),
+                slug: "active-child".to_string(),
+                locale: "en".to_string(),
+                description: None,
+                icon: None,
+                color: None,
+                parent_id: Some(child_id),
+                position: Some(1),
+                moderated: false,
+            },
+        )
         .await;
-    assert_error_contains(active_child.map(|_| ()), "archived parent")?;
+    assert_validation_contains(active_child, "archived parent")?;
 
     assert_validation_contains(
         service

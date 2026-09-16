@@ -15,7 +15,7 @@ use crate::dto::{
     MoveCategoryInput, MoveCategoryResponse, ReorderCategorySiblingsInput,
     ReorderCategorySiblingsResponse,
 };
-use crate::entities::forum_category;
+use crate::entities::{forum_category, forum_category_lifecycle};
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
 

@@ -233,7 +233,7 @@ impl CategoryTaxonomyTreeReadService {
             .map_err(map_taxonomy_read_error)?;
         if projected.len() != unique_forum_ids.len() {
             return Err(ForumError::Validation(
-                "Forum category tree cutover found an incomplete Taxonomy Category owner projection"
+                "Forum category tree cutover: Taxonomy Category projection is missing"
                     .to_string(),
             ));
         }

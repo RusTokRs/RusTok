@@ -66,12 +66,12 @@ pub async fn exercise_forum_event_contract(db: &DatabaseConnection) -> TestResul
         format!(
             r#"
 INSERT INTO forum_categories
-    (id, tenant_id, position, moderated, topic_count, reply_count)
+    (id, tenant_id, moderated, topic_count, reply_count)
 VALUES
-    ({cat_id}, {t_id}, 0, FALSE, 0, 0);
+    ({cat_id}, {t_id}, FALSE, 0, 0);
 
 UPDATE forum_categories
-SET color = 'blue'
+SET moderated = TRUE
 WHERE tenant_id = {t_id} AND id = {cat_id};
 
 INSERT INTO forum_topics
@@ -200,16 +200,16 @@ DELETE FROM forum_topics
 WHERE tenant_id = {t_id} AND id = {top_id};
 
 INSERT INTO forum_categories
-    (id, tenant_id, position, moderated, topic_count, reply_count)
+    (id, tenant_id, moderated, topic_count, reply_count)
 VALUES
-    ({empty_cat_id}, {t_id}, 1, FALSE, 0, 0);
+    ({empty_cat_id}, {t_id}, FALSE, 0, 0);
 DELETE FROM forum_categories
 WHERE tenant_id = {t_id} AND id = {empty_cat_id};
 
 INSERT INTO forum_categories
-    (id, tenant_id, position, moderated, topic_count, reply_count)
+    (id, tenant_id, moderated, topic_count, reply_count)
 VALUES
-    ({foreign_cat_id}, {foreign_t_id}, 0, FALSE, 0, 0);
+    ({foreign_cat_id}, {foreign_t_id}, FALSE, 0, 0);
 "#,
             sql_uuid(Uuid::new_v4()),
             sql_uuid(Uuid::new_v4()),
@@ -326,12 +326,12 @@ VALUES
         return Err(test_error("forum aggregate event filter is not isolated"));
     }
 
-    for index in 0..110 {
+    for _ in 0..110 {
         execute(
             db,
             format!(
                 "UPDATE forum_categories
-                 SET color = 'contract-{index}'
+                 SET moderated = NOT moderated
                  WHERE tenant_id = {t_id} AND id = {cat_id}"
             ),
         )

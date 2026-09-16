@@ -326,9 +326,9 @@ async fn seed_approved_reply(
         format!(
             r#"
 INSERT INTO forum_categories
-    (id, tenant_id, position, moderated, topic_count, reply_count)
+    (id, tenant_id, moderated, topic_count, reply_count)
 VALUES
-    ('{}', '{}', 0, FALSE, 1, 1);
+    ('{}', '{}', FALSE, 1, 1);
 
 INSERT INTO forum_topics
     (id, tenant_id, category_id, status, metadata, is_pinned, is_locked, reply_count)

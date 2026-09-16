@@ -192,9 +192,9 @@ async fn seed_thread(db: &DatabaseConnection, slug: &str) -> TestResult<ThreadSe
         format!(
             r#"
 INSERT INTO forum_categories
-    (id, tenant_id, position, moderated, topic_count, reply_count)
+    (id, tenant_id, moderated, topic_count, reply_count)
 VALUES
-    (X'{}', X'{}', 0, 0, 0, 0);
+    (X'{}', X'{}', 0, 0, 0);
 
 INSERT INTO forum_topics
     (id, tenant_id, category_id, author_id, status, metadata,

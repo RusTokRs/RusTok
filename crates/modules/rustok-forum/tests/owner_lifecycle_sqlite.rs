@@ -224,8 +224,8 @@ async fn seed_category(
 ) {
     db.execute_unprepared(&format!(
         "INSERT INTO forum_categories \
-         (id, tenant_id, position, moderated, topic_count, reply_count) \
-         VALUES ({}, {}, 0, {}, 0, 0)",
+         (id, tenant_id, moderated, topic_count, reply_count) \
+         VALUES ({}, {}, {}, 0, 0)",
         sql_uuid(category_id),
         sql_uuid(tenant_id),
         if moderated { 1 } else { 0 }

@@ -449,19 +449,27 @@ async fn forum_04_category_cycle_is_rejected() -> TestResult<()> {
         execute(
             &context.db,
             format!(
-                "INSERT INTO forum_categories
-                    (id, tenant_id, position, moderated, topic_count, reply_count)
+                "INSERT INTO taxonomy_terms
+                    (id, tenant_id, kind, scope_type, scope_value, canonical_key, revision)
                  VALUES
-                    ('{category_a}', '{tenant_id}', 0, FALSE, 0, 0),
-                    ('{category_b}', '{tenant_id}', 0, FALSE, 0, 0);
-                 UPDATE forum_categories SET parent_id = '{category_b}' WHERE id = '{category_a}';"
+                    ('{category_a}', '{tenant_id}', 'category', 'module', 'forum', 'cat-a', 1),
+                    ('{category_b}', '{tenant_id}', 'category', 'module', 'forum', 'cat-b', 1);
+                 INSERT INTO forum_categories
+                    (id, tenant_id, moderated, topic_count, reply_count)
+                 VALUES
+                    ('{category_a}', '{tenant_id}', FALSE, 0, 0),
+                    ('{category_b}', '{tenant_id}', FALSE, 0, 0);
+                 INSERT INTO taxonomy_category_hierarchy
+                    (tenant_id, term_id, parent_term_id, position)
+                 VALUES
+                    ('{tenant_id}', '{category_a}', '{category_b}', 0);"
             ),
         )
         .await?;
         expect_rejected(
             &context.db,
             format!(
-                "UPDATE forum_categories SET parent_id = '{category_a}' WHERE id = '{category_b}'"
+                "INSERT INTO taxonomy_category_hierarchy (tenant_id, term_id, parent_term_id, position) VALUES ('{tenant_id}', '{category_b}', '{category_a}', 0)"
             ),
             "category cycle",
         )
@@ -732,9 +740,9 @@ async fn seed_forum(
         &context.db,
         format!(
             "INSERT INTO forum_categories
-                (id, tenant_id, position, moderated, topic_count, reply_count)
+                (id, tenant_id, moderated, topic_count, reply_count)
              VALUES
-                ('{}', '{}', 0, {}, 1, 0);
+                ('{}', '{}', {}, 1, 0);
              INSERT INTO forum_topics
                 (id, tenant_id, category_id, status, metadata, is_pinned, is_locked, reply_count)
              VALUES

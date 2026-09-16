@@ -203,9 +203,9 @@ async fn seed_concurrency_topic(
         format!(
             r#"
 INSERT INTO forum_categories
-    (id, tenant_id, position, moderated, topic_count, reply_count)
+    (id, tenant_id, moderated, topic_count, reply_count)
 VALUES
-    ('{category_id}', '{tenant_id}', 0, FALSE, 0, 0);
+    ('{category_id}', '{tenant_id}', FALSE, 0, 0);
 
 INSERT INTO forum_topics
     (id, tenant_id, category_id, status, metadata, is_pinned, is_locked,
@@ -259,9 +259,9 @@ async fn seed_production_sized_read_fixture(
         format!(
             r#"
 INSERT INTO forum_categories
-    (id, tenant_id, position, moderated, topic_count, reply_count)
+    (id, tenant_id, moderated, topic_count, reply_count)
 VALUES
-    ('{category_id}', '{tenant_id}', 0, FALSE, 0, 0);
+    ('{category_id}', '{tenant_id}', FALSE, 0, 0);
 
 INSERT INTO forum_topics
     (id, tenant_id, category_id, status, metadata, is_pinned, is_locked,

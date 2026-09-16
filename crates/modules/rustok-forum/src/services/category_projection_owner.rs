@@ -1,3 +1,5 @@
+use crate::entities::forum_category_lifecycle;
+
 /// Transactional owner facade for canonical Forum Category mutations.
 ///
 /// Forum owns membership, policy/counters and command authorization; Taxonomy
@@ -39,6 +41,17 @@ impl CategoryProjectionOwnerService {
 
         if let Some(parent_id) = input.parent_id {
             CategoryService::find_category_in_tx(&txn, tenant_id, parent_id).await?;
+            if forum_category_lifecycle::Entity::find()
+                .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
+                .filter(forum_category_lifecycle::Column::CategoryId.eq(parent_id))
+                .one(&txn)
+                .await?
+                .is_some()
+            {
+                return Err(ForumError::Validation(
+                    "active forum category cannot have archived parent".to_string(),
+                ));
+            }
         }
 
         shift_siblings_for_insert_in_tx(&txn, tenant_id, input.parent_id, requested_position)

@@ -28,9 +28,9 @@ async fn concurrent_replies_preserve_atomic_counters() -> TestResult<()> {
             &context.db,
             format!(
                 "INSERT INTO forum_categories
-                    (id, tenant_id, position, moderated, topic_count, reply_count)
+                    (id, tenant_id, moderated, topic_count, reply_count)
                  VALUES
-                    ('{category_id}', '{tenant_id}', 0, FALSE, 1, 0);
+                    ('{category_id}', '{tenant_id}', FALSE, 1, 0);
                  INSERT INTO forum_topics
                     (id, tenant_id, category_id, status, metadata, is_pinned, is_locked, reply_count)
                  VALUES
@@ -93,9 +93,9 @@ async fn concurrent_topics_preserve_atomic_counters() -> TestResult<()> {
             &context.db,
             format!(
                 "INSERT INTO forum_categories
-                    (id, tenant_id, position, moderated, topic_count, reply_count)
+                    (id, tenant_id, moderated, topic_count, reply_count)
                  VALUES
-                    ('{category_id}', '{tenant_id}', 0, FALSE, 0, 0);"
+                    ('{category_id}', '{tenant_id}', FALSE, 0, 0);"
             ),
         )
         .await?;

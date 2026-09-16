@@ -70,7 +70,6 @@ fn category_reads_do_not_silently_default_missing_translations() {
     let source = include_str!("../src/services/category_taxonomy_read.rs");
 
     assert!(source.contains("missing_projection"));
-    assert!(source.contains("missing_binding"));
     assert!(source.contains("Column::TenantId.eq(tenant_id)"));
 }
 

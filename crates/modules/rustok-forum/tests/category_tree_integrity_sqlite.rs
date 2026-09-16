@@ -12,52 +12,138 @@ type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 async fn sqlite_rejects_self_parent_and_category_cycles() -> TestResult<()> {
     let db = setup_sqlite().await?;
     let tenant_id = Uuid::new_v4();
-    let root_id = Uuid::new_v4();
-    let child_id = Uuid::new_v4();
-    let grandchild_id = Uuid::new_v4();
+    let service = rustok_forum::CategoryService::new(db.clone());
+    let security = rustok_core::SecurityContext::system();
 
-    execute(
-        &db,
-        format!(
-            r#"
-INSERT INTO forum_categories
-    (id, tenant_id, position, moderated, topic_count, reply_count)
-VALUES
-    ('{root_id}', '{tenant_id}', 0, 0, 0, 0),
-    ('{child_id}', '{tenant_id}', 1, 0, 0, 0),
-    ('{grandchild_id}', '{tenant_id}', 2, 0, 0, 0);
+    let root = service
+        .create(
+            tenant_id,
+            security.clone(),
+            rustok_forum::CreateCategoryInput {
+                name: "Root".to_string(),
+                slug: "root".to_string(),
+                locale: "en".to_string(),
+                description: None,
+                icon: None,
+                color: None,
+                parent_id: None,
+                position: Some(0),
+                moderated: false,
+            },
+        )
+        .await?;
 
-UPDATE forum_categories SET parent_id = '{root_id}' WHERE id = '{child_id}';
-UPDATE forum_categories SET parent_id = '{child_id}' WHERE id = '{grandchild_id}';
-"#,
-        ),
-    )
-    .await?;
+    let child = service
+        .create(
+            tenant_id,
+            security.clone(),
+            rustok_forum::CreateCategoryInput {
+                name: "Child".to_string(),
+                slug: "child".to_string(),
+                locale: "en".to_string(),
+                description: None,
+                icon: None,
+                color: None,
+                parent_id: Some(root.id),
+                position: Some(0),
+                moderated: false,
+            },
+        )
+        .await?;
 
-    assert_rejected(
-        &db,
-        format!("UPDATE forum_categories SET parent_id = '{root_id}' WHERE id = '{root_id}'"),
-        "self-parent category",
-    )
-    .await?;
+    let grandchild = service
+        .create(
+            tenant_id,
+            security.clone(),
+            rustok_forum::CreateCategoryInput {
+                name: "Grandchild".to_string(),
+                slug: "grandchild".to_string(),
+                locale: "en".to_string(),
+                description: None,
+                icon: None,
+                color: None,
+                parent_id: Some(child.id),
+                position: Some(0),
+                moderated: false,
+            },
+        )
+        .await?;
 
-    assert_rejected(
-        &db,
-        format!("UPDATE forum_categories SET parent_id = '{grandchild_id}' WHERE id = '{root_id}'"),
-        "three-level category cycle",
-    )
-    .await?;
+    let self_parent_err = service
+        .move_category(
+            tenant_id,
+            root.id,
+            security.clone(),
+            rustok_forum::MoveCategoryInput {
+                parent_id: Some(root.id),
+                position: 0,
+            },
+        )
+        .await;
+    assert!(
+        self_parent_err.is_err(),
+        "self-parent category must be rejected"
+    );
 
-    execute(
-        &db,
-        format!("UPDATE forum_categories SET parent_id = '{root_id}' WHERE id = '{grandchild_id}'"),
-    )
-    .await?;
-    execute(
-        &db,
-        format!("UPDATE forum_categories SET parent_id = NULL WHERE id = '{grandchild_id}'"),
-    )
-    .await?;
+    let cycle_err = service
+        .move_category(
+            tenant_id,
+            root.id,
+            security.clone(),
+            rustok_forum::MoveCategoryInput {
+                parent_id: Some(grandchild.id),
+                position: 0,
+            },
+        )
+        .await;
+    assert!(
+        cycle_err.is_err(),
+        "three-level category cycle must be rejected"
+    );
+
+    service
+        .move_category(
+            tenant_id,
+            grandchild.id,
+            security.clone(),
+            rustok_forum::MoveCategoryInput {
+                parent_id: Some(root.id),
+                position: 1,
+            },
+        )
+        .await?;
+
+    service
+        .move_category(
+            tenant_id,
+            grandchild.id,
+            security.clone(),
+            rustok_forum::MoveCategoryInput {
+                parent_id: None,
+                position: 1,
+            },
+        )
+        .await?;
+
+    service
+        .archive_subtree(tenant_id, root.id, security.clone())
+        .await?;
+
+    let move_under_archived_err = service
+        .move_category(
+            tenant_id,
+            grandchild.id,
+            security.clone(),
+            rustok_forum::MoveCategoryInput {
+                parent_id: Some(root.id),
+                position: 0,
+            },
+        )
+        .await;
+    assert!(
+        move_under_archived_err.is_err(),
+        "moving active category under archived parent must be rejected"
+    );
 
     Ok(())
 }
@@ -74,15 +160,13 @@ async fn setup_sqlite() -> TestResult<DatabaseConnection> {
         .sqlx_logging(false);
     let db = Database::connect(options).await?;
 
-    execute(
-        &db,
+    db.execute_unprepared(
         r#"
 CREATE TABLE users (
     id TEXT NOT NULL PRIMARY KEY,
     tenant_id TEXT NOT NULL
 )
-"#
-        .to_string(),
+"#,
     )
     .await?;
 
@@ -99,13 +183,3 @@ CREATE TABLE users (
     Ok(db)
 }
 
-async fn execute(db: &DatabaseConnection, sql: String) -> TestResult<()> {
-    db.execute_unprepared(&sql).await?;
-    Ok(())
-}
-
-async fn assert_rejected(db: &DatabaseConnection, sql: String, label: &str) -> TestResult<()> {
-    let result = db.execute_unprepared(&sql).await;
-    assert!(result.is_err(), "{label} must be rejected");
-    Ok(())
-}

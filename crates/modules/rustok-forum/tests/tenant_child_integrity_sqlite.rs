@@ -25,10 +25,10 @@ async fn sqlite_rejects_cross_tenant_forum_child_rows() -> TestResult<()> {
         format!(
             r#"
 INSERT INTO forum_categories
-    (id, tenant_id, position, moderated, topic_count, reply_count)
+    (id, tenant_id, moderated, topic_count, reply_count)
 VALUES
-    ('{category_a}', '{tenant_a}', 0, 0, 0, 0),
-    ('{category_b}', '{tenant_b}', 0, 0, 0, 0)
+    ('{category_a}', '{tenant_a}', 0, 0, 0),
+    ('{category_b}', '{tenant_b}', 0, 0, 0)
 "#
         ),
     )

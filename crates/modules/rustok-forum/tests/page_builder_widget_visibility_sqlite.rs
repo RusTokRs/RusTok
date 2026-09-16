@@ -74,11 +74,33 @@ async fn page_builder_owner_visibility_preserves_category_floor_tenant_and_topic
     ] {
         db.execute_raw(Statement::from_sql_and_values(
             backend,
-            "INSERT INTO forum_categories (id, tenant_id, parent_id, position, moderated, topic_count, reply_count) VALUES (?, ?, ?, ?, 0, 0, 0)",
-            [cat_id.into(), t_id.into(), parent.into(), pos.into()],
+            "INSERT INTO forum_categories (id, tenant_id, moderated, topic_count, reply_count) VALUES (?, ?, 0, 0, 0)",
+            [cat_id.into(), t_id.into()],
         ))
         .await
         .expect("Forum category should insert");
+
+        db.execute_raw(Statement::from_sql_and_values(
+            backend,
+            "INSERT INTO taxonomy_terms (id, tenant_id, kind, scope_type, scope_value, canonical_key, revision) VALUES (?, ?, 'category', 'module', 'forum', ?, 1)",
+            [cat_id.into(), t_id.into(), format!("term-{cat_id}").into()],
+        ))
+        .await
+        .expect("Taxonomy term should insert");
+
+        if let Some(parent) = parent {
+            use sea_orm::ActiveModelTrait;
+            use sea_orm::ActiveValue::Set;
+            rustok_taxonomy::entities::taxonomy_category_hierarchy::ActiveModel {
+                tenant_id: Set(t_id),
+                term_id: Set(cat_id),
+                parent_term_id: Set(Some(parent)),
+                position: Set(pos),
+            }
+            .insert(&db)
+            .await
+            .expect("Hierarchy should insert");
+        }
     }
 
     for (cat_id, t_id) in [

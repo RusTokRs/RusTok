@@ -218,7 +218,10 @@ pub async fn exercise_category_tree_read_model(db: &DatabaseConnection) -> TestR
         }
         Err(err) => {
             let err_str = format!("{err:?}");
-            if !err_str.contains("maximum depth") && !err_str.contains("exceeds maximum depth") {
+            if !err_str.contains("maximum depth")
+                && !err_str.contains("exceeds maximum depth")
+                && !err_str.contains("cannot exceed depth")
+            {
                 return Err(test_error(format!("unexpected deep tree error: {err_str}")));
             }
         }

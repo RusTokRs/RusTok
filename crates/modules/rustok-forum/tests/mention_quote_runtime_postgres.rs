@@ -448,8 +448,8 @@ async fn seed_category(
         db,
         format!(
             "INSERT INTO forum_categories \
-                 (id, tenant_id, position, moderated, topic_count, reply_count) \
-             VALUES ('{category_id}', '{tenant_id}', 0, FALSE, 0, 0)"
+                 (id, tenant_id, moderated, topic_count, reply_count) \
+             VALUES ('{category_id}', '{tenant_id}', FALSE, 0, 0)"
         ),
     )
     .await

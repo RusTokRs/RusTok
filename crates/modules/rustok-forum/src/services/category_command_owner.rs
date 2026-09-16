@@ -30,6 +30,28 @@ impl CategoryCommandProjectionOwnerService {
         }
         ensure_parent_exists(&models, input.parent_id)?;
 
+        if let Some(parent_id) = input.parent_id {
+            let is_parent_archived = forum_category_lifecycle::Entity::find()
+                .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
+                .filter(forum_category_lifecycle::Column::CategoryId.eq(parent_id))
+                .one(&txn)
+                .await?
+                .is_some();
+            if is_parent_archived {
+                let is_category_archived = forum_category_lifecycle::Entity::find()
+                    .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
+                    .filter(forum_category_lifecycle::Column::CategoryId.eq(category_id))
+                    .one(&txn)
+                    .await?
+                    .is_some();
+                if !is_category_archived {
+                    return Err(ForumError::Validation(
+                        "active forum category cannot have archived parent".to_string(),
+                    ));
+                }
+            }
+        }
+
         let category_ids = categories.iter().map(|c| c.id).collect::<Vec<_>>();
         let placement_by_id = load_placements_in_tx(&txn, tenant_id, &category_ids).await?;
 

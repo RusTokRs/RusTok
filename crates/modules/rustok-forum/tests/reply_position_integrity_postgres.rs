@@ -104,9 +104,9 @@ async fn seed_forum(db: &sea_orm::DatabaseConnection) -> TestResult<ForumSeed> {
         db,
         format!(
             "INSERT INTO forum_categories
-                (id, tenant_id, position, moderated, topic_count, reply_count)
+                (id, tenant_id, moderated, topic_count, reply_count)
              VALUES
-                ('{}', '{}', 0, FALSE, 1, 0);
+                ('{}', '{}', FALSE, 1, 0);
              INSERT INTO forum_topics
                 (id, tenant_id, category_id, status, metadata, is_pinned, is_locked, reply_count)
              VALUES

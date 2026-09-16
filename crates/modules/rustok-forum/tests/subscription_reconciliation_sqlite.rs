@@ -54,8 +54,8 @@ fn sql_uuid(id: Uuid) -> String {
 async fn seed_category(db: &DatabaseConnection, tenant_id: Uuid, category_id: Uuid) {
     db.execute_unprepared(&format!(
         "INSERT INTO forum_categories \
-         (id, tenant_id, position, moderated, topic_count, reply_count) \
-         VALUES ({}, {}, 0, 0, 0, 0)",
+         (id, tenant_id, moderated, topic_count, reply_count) \
+         VALUES ({}, {}, 0, 0, 0)",
         sql_uuid(category_id),
         sql_uuid(tenant_id),
     ))

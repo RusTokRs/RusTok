@@ -59,6 +59,132 @@ WHEN EXISTS (
 BEGIN
     SELECT RAISE(ABORT, 'non-empty forum category cannot be physically deleted');
 END;
+
+CREATE TRIGGER forum_category_lifecycle_write_insert
+BEFORE INSERT ON forum_category_lifecycle
+FOR EACH ROW
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM forum_categories category
+    WHERE category.id = NEW.category_id
+      AND category.tenant_id = NEW.tenant_id
+) OR EXISTS (
+    SELECT 1
+    FROM taxonomy_category_hierarchy hierarchy
+    JOIN forum_categories child
+      ON child.id = hierarchy.term_id
+     AND child.tenant_id = NEW.tenant_id
+    WHERE hierarchy.parent_term_id = NEW.category_id
+      AND hierarchy.tenant_id = NEW.tenant_id
+      AND NOT EXISTS (
+          SELECT 1
+          FROM forum_category_lifecycle child_lifecycle
+          WHERE child_lifecycle.category_id = child.id
+            AND child_lifecycle.tenant_id = NEW.tenant_id
+      )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'forum category lifecycle write violation');
+END;
+
+CREATE TRIGGER forum_category_lifecycle_write_update
+BEFORE UPDATE OF category_id, tenant_id ON forum_category_lifecycle
+FOR EACH ROW
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM forum_categories category
+    WHERE category.id = NEW.category_id
+      AND category.tenant_id = NEW.tenant_id
+) OR EXISTS (
+    SELECT 1
+    FROM taxonomy_category_hierarchy hierarchy
+    JOIN forum_categories child
+      ON child.id = hierarchy.term_id
+     AND child.tenant_id = NEW.tenant_id
+    WHERE hierarchy.parent_term_id = NEW.category_id
+      AND hierarchy.tenant_id = NEW.tenant_id
+      AND NOT EXISTS (
+          SELECT 1
+          FROM forum_category_lifecycle child_lifecycle
+          WHERE child_lifecycle.category_id = child.id
+            AND child_lifecycle.tenant_id = NEW.tenant_id
+      )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'forum category lifecycle write violation');
+END;
+
+CREATE TRIGGER forum_category_lifecycle_delete
+BEFORE DELETE ON forum_category_lifecycle
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1
+    FROM taxonomy_category_hierarchy hierarchy
+    JOIN forum_category_lifecycle parent_lifecycle
+      ON parent_lifecycle.category_id = hierarchy.parent_term_id
+     AND parent_lifecycle.tenant_id = OLD.tenant_id
+    WHERE hierarchy.term_id = OLD.category_id
+      AND hierarchy.tenant_id = OLD.tenant_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'active forum category cannot have archived parent');
+END;
+
+DROP TRIGGER IF EXISTS forum_80_category_created_event;
+DROP TRIGGER IF EXISTS forum_80_category_updated_event;
+DROP TRIGGER IF EXISTS forum_80_category_deleted_event;
+
+CREATE TRIGGER forum_80_category_created_event
+AFTER INSERT ON forum_categories
+FOR EACH ROW
+BEGIN
+INSERT INTO forum_domain_events (
+        event_id, tenant_id, aggregate_type, aggregate_id,
+        event_type, schema_version, actor_id, payload
+    ) VALUES (
+        randomblob(16),
+        NEW.tenant_id, 'category', NEW.id,
+        'forum.category.created', 1, NULL, json_object(
+            'category_id', lower(hex(NEW.id)),
+            'moderated', NEW.moderated
+        )
+    );
+END;
+
+CREATE TRIGGER forum_80_category_updated_event
+AFTER UPDATE OF moderated ON forum_categories
+FOR EACH ROW
+WHEN OLD.moderated IS NOT NEW.moderated
+BEGIN
+INSERT INTO forum_domain_events (
+        event_id, tenant_id, aggregate_type, aggregate_id,
+        event_type, schema_version, actor_id, payload
+    ) VALUES (
+        randomblob(16),
+        NEW.tenant_id, 'category', NEW.id,
+        'forum.category.updated', 1, NULL, json_object(
+            'category_id', lower(hex(NEW.id)),
+            'change_scope', 'category',
+            'moderated', NEW.moderated
+        )
+    );
+END;
+
+CREATE TRIGGER forum_80_category_deleted_event
+AFTER DELETE ON forum_categories
+FOR EACH ROW
+BEGIN
+INSERT INTO forum_domain_events (
+        event_id, tenant_id, aggregate_type, aggregate_id,
+        event_type, schema_version, actor_id, payload
+    ) VALUES (
+        randomblob(16),
+        OLD.tenant_id, 'category', OLD.id,
+        'forum.category.deleted', 1, NULL, json_object(
+            'category_id', lower(hex(OLD.id))
+        )
+    );
+END;
 "#,
             )
             .await?;
@@ -100,6 +226,101 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER forum_00_reject_nonempty_category_delete
 BEFORE DELETE ON forum_categories
 FOR EACH ROW EXECUTE FUNCTION forum_reject_nonempty_category_delete();
+
+CREATE OR REPLACE FUNCTION forum_validate_category_lifecycle_write()
+RETURNS trigger AS $$
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text, 2));
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM forum_categories category
+        WHERE category.id = NEW.category_id
+          AND category.tenant_id = NEW.tenant_id
+    ) THEN
+        RAISE EXCEPTION 'forum category lifecycle tenant mismatch';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM taxonomy_category_hierarchy hierarchy
+        JOIN forum_categories child
+          ON child.id = hierarchy.term_id
+         AND child.tenant_id = NEW.tenant_id
+        WHERE hierarchy.parent_term_id = NEW.category_id
+          AND hierarchy.tenant_id = NEW.tenant_id
+          AND NOT EXISTS (
+              SELECT 1
+              FROM forum_category_lifecycle child_lifecycle
+              WHERE child_lifecycle.category_id = child.id
+                AND child_lifecycle.tenant_id = NEW.tenant_id
+          )
+    ) THEN
+        RAISE EXCEPTION 'archived forum category cannot have active child';
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER forum_category_lifecycle_write_guard
+BEFORE INSERT OR UPDATE ON forum_category_lifecycle
+FOR EACH ROW EXECUTE FUNCTION forum_validate_category_lifecycle_write();
+
+CREATE OR REPLACE FUNCTION forum_validate_category_lifecycle_delete()
+RETURNS trigger AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM taxonomy_category_hierarchy hierarchy
+        JOIN forum_category_lifecycle parent_lifecycle
+          ON parent_lifecycle.category_id = hierarchy.parent_term_id
+         AND parent_lifecycle.tenant_id = OLD.tenant_id
+        WHERE hierarchy.term_id = OLD.category_id
+          AND hierarchy.tenant_id = OLD.tenant_id
+    ) THEN
+        RAISE EXCEPTION 'active forum category cannot have archived parent';
+    END IF;
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER forum_category_lifecycle_delete_guard
+BEFORE DELETE ON forum_category_lifecycle
+FOR EACH ROW EXECUTE FUNCTION forum_validate_category_lifecycle_delete();
+
+CREATE OR REPLACE FUNCTION forum_emit_category_event()
+RETURNS trigger AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        PERFORM forum_append_domain_event(
+            OLD.tenant_id,
+            'category',
+            OLD.id,
+            'forum.category.deleted',
+            NULL,
+            jsonb_build_object('category_id', OLD.id)
+        );
+        RETURN OLD;
+    END IF;
+
+    IF OLD.moderated IS DISTINCT FROM NEW.moderated THEN
+        PERFORM forum_append_domain_event(
+            NEW.tenant_id,
+            'category',
+            NEW.id,
+            'forum.category.updated',
+            NULL,
+            jsonb_build_object(
+                'category_id', NEW.id,
+                'change_scope', 'category',
+                'moderated', NEW.moderated
+            )
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 "#,
             )
             .await?;
