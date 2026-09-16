@@ -40,12 +40,16 @@ fn locale_fallback_matrix_preserves_language_script_region_and_variant_levels() 
 fn duplicate_message_ids_fail_strict_resource_construction() {
     let source = "title = First\ntitle = Second\n";
 
-    let error = build_fluent_bundle("en", source)
-        .expect_err("duplicate Fluent message ids must be rejected by strict construction");
+    let error = match build_fluent_bundle("en", source) {
+        Ok(_) => panic!("duplicate Fluent message ids must be rejected by strict construction"),
+        Err(err) => err,
+    };
     assert!(matches!(error, BundleBuildError::AddResource { .. }));
 
-    let error = try_build_fluent_catalog(&[("en", source)])
-        .expect_err("strict catalog construction must propagate duplicate message ids");
+    let error = match try_build_fluent_catalog(&[("en", source)]) {
+        Ok(_) => panic!("strict catalog construction must propagate duplicate message ids"),
+        Err(err) => err,
+    };
     assert!(matches!(error, BundleBuildError::AddResource { .. }));
 }
 
