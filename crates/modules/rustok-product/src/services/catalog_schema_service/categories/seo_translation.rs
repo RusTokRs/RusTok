@@ -13,11 +13,13 @@ use rustok_translation_targets::{
     TranslationResourceIdentity, TranslationResourceLifecycle, TranslationResourcePage,
     TranslationResourceSnapshot, TranslationResourceSummary, TranslationStrategy,
     TranslationTargetCapability, TranslationTargetChange, TranslationTargetChangePage,
-    TranslationTargetChangesRequest, TranslationTargetProgressFacts, TranslationTargetProgressRequest,
-    TranslationTargetProvider, TranslationTargetProviderDescriptor, TranslationValueProfile,
+    TranslationTargetChangesRequest, TranslationTargetProgressFacts,
+    TranslationTargetProgressRequest, TranslationTargetProvider,
+    TranslationTargetProviderDescriptor, TranslationValueProfile,
     provider_support::{
-        contract_validation_error, field_hash, merged_patch_values, normalize_optional_target_value,
-        read_request_from_patch, validate_patch_against_snapshot, validation_to_port_error,
+        contract_validation_error, field_hash, merged_patch_values,
+        normalize_optional_target_value, read_request_from_patch, validate_patch_against_snapshot,
+        validation_to_port_error,
     },
     validate_translation_apply_context, validate_translation_read_context,
 };
@@ -266,7 +268,9 @@ impl ProductCatalogSchemaService {
         if has_more {
             aggregates.truncate(usize::from(limit));
         }
-        let next_after = has_more.then(|| aggregates.last().map(|row| row.id)).flatten();
+        let next_after = has_more
+            .then(|| aggregates.last().map(|row| row.id))
+            .flatten();
         let resources = aggregates
             .into_iter()
             .map(|aggregate| build_snapshot(aggregate, &source_locale, &target_locale))
@@ -481,11 +485,7 @@ WHERE category.tenant_id = $1
       OR NULLIF(BTRIM(source.meta_description), '') IS NOT NULL
   )
 "#,
-                vec![
-                    tenant_id.into(),
-                    source_locale.into(),
-                    target_locale.into(),
-                ],
+                vec![tenant_id.into(), source_locale.into(), target_locale.into()],
             ))
             .await?
             .ok_or_else(|| {
@@ -675,8 +675,9 @@ impl TranslationTargetProvider for ProductCategorySeoTranslationTargetProvider {
         TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
                 .expect("static Product owner slug must satisfy Translation contract"),
-            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static Product Category SEO resource kind must satisfy Translation contract"),
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
+                "static Product Category SEO resource kind must satisfy Translation contract",
+            ),
             display_name: "Product Category SEO copy".to_string(),
             capabilities: BTreeSet::from([
                 TranslationTargetCapability::ListResources,
@@ -810,7 +811,11 @@ impl TranslationTargetProvider for ProductCategorySeoTranslationTargetProvider {
             .validate()
             .map_err(|error| contract_validation_error(error.to_string()))?;
         let tenant_id = parse_tenant_id(&context)?;
-        let parsed = request.after.as_ref().map(parse_change_cursor).transpose()?;
+        let parsed = request
+            .after
+            .as_ref()
+            .map(parse_change_cursor)
+            .transpose()?;
         let (through, after) = match parsed {
             Some((through, after)) if through == after => {
                 let current = self
@@ -853,7 +858,10 @@ impl TranslationTargetProvider for ProductCategorySeoTranslationTargetProvider {
             .map(|change| {
                 Ok(TranslationTargetChange {
                     identity: category_seo_identity(change.category_id),
-                    resource_revision: opaque_revision(change.resource_revision, "resource_revision")?,
+                    resource_revision: opaque_revision(
+                        change.resource_revision,
+                        "resource_revision",
+                    )?,
                     lifecycle: match change.lifecycle {
                         ChangeLifecycle::Active => TranslationResourceLifecycle::Active,
                         ChangeLifecycle::Archived => TranslationResourceLifecycle::Archived,
@@ -886,12 +894,14 @@ impl TranslationTargetProvider for ProductCategorySeoTranslationTargetProvider {
         if validation.accepted {
             if let Err(error) = merged_target(&request, &snapshot) {
                 validation.accepted = false;
-                validation.issues.push(rustok_translation_targets::TranslationPatchIssue {
-                    code: "product.category_seo_translation_target_empty".to_string(),
-                    message: error.message,
-                    severity: rustok_translation_targets::TranslationPatchIssueSeverity::Error,
-                    field: None,
-                });
+                validation
+                    .issues
+                    .push(rustok_translation_targets::TranslationPatchIssue {
+                        code: "product.category_seo_translation_target_empty".to_string(),
+                        message: error.message,
+                        severity: rustok_translation_targets::TranslationPatchIssueSeverity::Error,
+                        field: None,
+                    });
             }
         }
         Ok(validation)
@@ -958,7 +968,9 @@ impl TranslationTargetProvider for ProductCategorySeoTranslationTargetProvider {
         }
         .await;
         if let Err(error) = &result {
-            self.service.fail_schema_operation_receipt(lease, error).await?;
+            self.service
+                .fail_schema_operation_receipt(lease, error)
+                .await?;
         }
         result
     }
@@ -1030,7 +1042,10 @@ where
 {
     AggregateRow::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
-        format!("{} WHERE category.tenant_id = $1 AND category.id = $2", aggregate_select_sql()),
+        format!(
+            "{} WHERE category.tenant_id = $1 AND category.id = $2",
+            aggregate_select_sql()
+        ),
         vec![tenant_id.into(), category_id.into()],
     ))
     .one(db)
@@ -1065,7 +1080,11 @@ FROM catalog_categories category
 }
 
 fn source_eligible_sql(with_after: bool) -> String {
-    let after = if with_after { "AND category.id > $3" } else { "" };
+    let after = if with_after {
+        "AND category.id > $3"
+    } else {
+        ""
+    };
     let limit = if with_after { "$4" } else { "$3" };
     format!(
         r#"
@@ -1095,11 +1114,12 @@ ORDER BY category.id ASC
 }
 
 fn decode_aggregate(row: AggregateRow) -> OwnerResult<Aggregate> {
-    let translations: Vec<StoredTranslation> = serde_json::from_value(row.translations).map_err(|error| {
-        ProductCategorySeoTranslationError::OwnerInvariant(format!(
-            "persisted Product Category SEO translations are invalid: {error}"
-        ))
-    })?;
+    let translations: Vec<StoredTranslation> =
+        serde_json::from_value(row.translations).map_err(|error| {
+            ProductCategorySeoTranslationError::OwnerInvariant(format!(
+                "persisted Product Category SEO translations are invalid: {error}"
+            ))
+        })?;
     if row.id.is_nil() || row.tenant_id.is_nil() || row.code.trim().is_empty() {
         return Err(ProductCategorySeoTranslationError::OwnerInvariant(
             "persisted Product Category SEO identity is invalid".to_string(),
@@ -1130,10 +1150,12 @@ fn build_snapshot(
         .iter()
         .find(|translation| translation.locale == source_locale)
         .filter(|translation| translation.has_copy())
-        .ok_or_else(|| ProductCategorySeoTranslationError::SourceLocaleNotFound {
-            category_id: aggregate.id,
-            locale: source_locale.to_string(),
-        })?;
+        .ok_or_else(
+            || ProductCategorySeoTranslationError::SourceLocaleNotFound {
+                category_id: aggregate.id,
+                locale: source_locale.to_string(),
+            },
+        )?;
     let source = source_record.copy();
     let target_record = aggregate
         .translations
@@ -1162,12 +1184,7 @@ fn build_snapshot(
         source_locale: source_locale.to_string(),
         target_locale: target_locale.to_string(),
         resource_revision: resource_revision(aggregate.translation_revision),
-        source_revision: locale_revision(
-            aggregate.tenant_id,
-            aggregate.id,
-            source_locale,
-            &source,
-        ),
+        source_revision: locale_revision(aggregate.tenant_id, aggregate.id, source_locale, &source),
         target_revision,
         exact_locales,
         source,
@@ -1187,7 +1204,10 @@ fn locale_revision(tenant_id: Uuid, category_id: Uuid, locale: &str, copy: &SeoC
     hash_str(&mut hasher, locale);
     hash_optional_str(&mut hasher, copy.meta_title.as_deref());
     hash_optional_str(&mut hasher, copy.meta_description.as_deref());
-    format!("product-category-seo-locale-v1:{}", hex::encode(hasher.finalize()))
+    format!(
+        "product-category-seo-locale-v1:{}",
+        hex::encode(hasher.finalize())
+    )
 }
 
 fn deleted_revision(root_event_id: Uuid, category_id: Uuid) -> String {
@@ -1195,10 +1215,15 @@ fn deleted_revision(root_event_id: Uuid, category_id: Uuid) -> String {
     hash_str(&mut hasher, DELETED_REVISION_NAMESPACE);
     hash_uuid(&mut hasher, root_event_id);
     hash_uuid(&mut hasher, category_id);
-    format!("product-category-seo-deleted-v1:{}", hex::encode(hasher.finalize()))
+    format!(
+        "product-category-seo-deleted-v1:{}",
+        hex::encode(hasher.finalize())
+    )
 }
 
-fn summary_from_owner(owner: &ExactLocaleSnapshot) -> Result<TranslationResourceSummary, PortError> {
+fn summary_from_owner(
+    owner: &ExactLocaleSnapshot,
+) -> Result<TranslationResourceSummary, PortError> {
     Ok(TranslationResourceSummary {
         identity: category_seo_identity(owner.category_id),
         display_label: owner.category_code.clone(),
@@ -1674,7 +1699,9 @@ fn nonnegative_count(value: i64, field: &str) -> OwnerResult<u64> {
 }
 
 fn optional_positive_sequence(value: Option<i64>, field: &str) -> OwnerResult<Option<u64>> {
-    value.map(|value| positive_sequence(value, field)).transpose()
+    value
+        .map(|value| positive_sequence(value, field))
+        .transpose()
 }
 
 fn positive_sequence(value: i64, field: &str) -> OwnerResult<u64> {

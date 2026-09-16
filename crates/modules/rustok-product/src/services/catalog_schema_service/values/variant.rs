@@ -59,7 +59,9 @@ impl ProductCatalogSchemaService {
             .detached_attribute_ids
             .into_iter()
             .collect::<HashSet<_>>(),
-            None => existing_value_attribute_ids.into_iter().collect::<HashSet<_>>(),
+            None => existing_value_attribute_ids
+                .into_iter()
+                .collect::<HashSet<_>>(),
         };
 
         let rows = ProductAttributeValueRow::find_by_statement(Statement::from_sql_and_values(
@@ -92,8 +94,8 @@ impl ProductCatalogSchemaService {
         .all(conn)
         .await?;
 
-        let option_rows = ProductAttributeValueOptionRow::find_by_statement(
-            Statement::from_sql_and_values(
+        let option_rows =
+            ProductAttributeValueOptionRow::find_by_statement(Statement::from_sql_and_values(
                 conn.get_database_backend(),
                 r#"
                 SELECT pvavo.value_id, pvavo.option_id
@@ -103,10 +105,9 @@ impl ProductCatalogSchemaService {
                 ORDER BY pvavo.option_id
                 "#,
                 vec![tenant_id.into(), variant_id.into()],
-            ),
-        )
-        .all(conn)
-        .await?;
+            ))
+            .all(conn)
+            .await?;
         let mut options_by_value: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
         for row in option_rows {
             options_by_value
@@ -162,8 +163,8 @@ impl ProductCatalogSchemaService {
             .iter()
             .map(|patch| patch.attribute_id)
             .collect::<Vec<_>>();
-        let definitions = load_variant_patch_definitions(&self.db, tenant_id, &patch_attribute_ids)
-            .await?;
+        let definitions =
+            load_variant_patch_definitions(&self.db, tenant_id, &patch_attribute_ids).await?;
         let selected_option_ids = patches
             .iter()
             .flat_map(|patch| match &patch.value {
@@ -361,11 +362,7 @@ where
     .ok_or(CommerceError::VariantNotFound(variant_id))
 }
 
-async fn touch_variant_owner<C>(
-    conn: &C,
-    tenant_id: Uuid,
-    variant_id: Uuid,
-) -> CommerceResult<()>
+async fn touch_variant_owner<C>(conn: &C, tenant_id: Uuid, variant_id: Uuid) -> CommerceResult<()>
 where
     C: ConnectionTrait,
 {

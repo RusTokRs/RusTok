@@ -241,12 +241,13 @@ impl ProductCatalogSchemaService {
 
         let mut categories = HashMap::new();
         for row in category_rows {
-            let parent_category_id = *taxonomy_parent_map.get(&row.category_id).ok_or_else(|| {
-                CommerceError::Validation(format!(
-                    "Product category {} is missing its Taxonomy hierarchy projection",
-                    row.category_id
-                ))
-            })?;
+            let parent_category_id =
+                *taxonomy_parent_map.get(&row.category_id).ok_or_else(|| {
+                    CommerceError::Validation(format!(
+                        "Product category {} is missing its Taxonomy hierarchy projection",
+                        row.category_id
+                    ))
+                })?;
             let clone_snapshot = row
                 .snapshot
                 .and_then(|value| serde_json::from_value(value).ok())
@@ -348,18 +349,16 @@ async fn load_product_taxonomy_category_parent_map<C>(
 where
     C: ConnectionTrait,
 {
-    let rows = ProductCategoryHierarchyRow::find_by_statement(
-        Statement::from_sql_and_values(
-            connection.get_database_backend(),
-            r#"
+    let rows = ProductCategoryHierarchyRow::find_by_statement(Statement::from_sql_and_values(
+        connection.get_database_backend(),
+        r#"
             SELECT c.id AS category_id
             FROM catalog_categories c
             WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
             ORDER BY c.id ASC
             "#,
-            vec![tenant_id.into()],
-        ),
-    )
+        vec![tenant_id.into()],
+    ))
     .all(connection)
     .await?;
 

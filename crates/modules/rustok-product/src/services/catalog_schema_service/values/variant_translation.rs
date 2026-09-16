@@ -16,8 +16,9 @@ use rustok_translation_targets::{
     TranslationResourceIdentity, TranslationResourceLifecycle, TranslationResourcePage,
     TranslationResourceSnapshot, TranslationResourceSummary, TranslationStrategy,
     TranslationTargetCapability, TranslationTargetChange, TranslationTargetChangePage,
-    TranslationTargetChangesRequest, TranslationTargetProgressFacts, TranslationTargetProgressRequest,
-    TranslationTargetProvider, TranslationTargetProviderDescriptor, TranslationValueProfile,
+    TranslationTargetChangesRequest, TranslationTargetProgressFacts,
+    TranslationTargetProgressRequest, TranslationTargetProvider,
+    TranslationTargetProviderDescriptor, TranslationValueProfile,
     provider_support::{
         contract_validation_error, field_hash, merged_patch_values, read_request_from_patch,
         required_target_value, validate_patch_against_snapshot, validation_to_port_error,
@@ -169,9 +170,11 @@ impl ChangeLifecycle {
         match value {
             "active" => Ok(Self::Active),
             "deleted" => Ok(Self::Deleted),
-            _ => Err(ProductVariantAttributeValueTranslationError::OwnerInvariant(
-                "change journal returned an unknown lifecycle".to_string(),
-            )),
+            _ => Err(
+                ProductVariantAttributeValueTranslationError::OwnerInvariant(
+                    "change journal returned an unknown lifecycle".to_string(),
+                ),
+            ),
         }
     }
 }
@@ -247,7 +250,9 @@ impl ProductCatalogSchemaService {
         if has_more {
             aggregates.truncate(usize::from(limit));
         }
-        let next_after = has_more.then(|| aggregates.last().map(|row| row.id)).flatten();
+        let next_after = has_more
+            .then(|| aggregates.last().map(|row| row.id))
+            .flatten();
         let resources = aggregates
             .into_iter()
             .map(|aggregate| build_snapshot(aggregate, &source_locale, &target_locale))
@@ -270,7 +275,9 @@ impl ProductCatalogSchemaService {
         ensure_postgres(self.db.get_database_backend())?;
         let aggregate = load_variant_attribute_value_aggregate(&self.db, tenant_id, value_id)
             .await?
-            .ok_or(ProductVariantAttributeValueTranslationError::ValueNotFound(value_id))?;
+            .ok_or(ProductVariantAttributeValueTranslationError::ValueNotFound(
+                value_id,
+            ))?;
         build_snapshot(aggregate, &source_locale, &target_locale)
     }
 
@@ -340,9 +347,11 @@ FOR UPDATE OF pvav
             &before.source_revision,
         )?;
         if request.expected_target_revision != before.target_revision {
-            return Err(ProductVariantAttributeValueTranslationError::RevisionConflict {
-                revision: "target",
-            });
+            return Err(
+                ProductVariantAttributeValueTranslationError::RevisionConflict {
+                    revision: "target",
+                },
+            );
         }
 
         txn.execute_raw(Statement::from_sql_and_values(
@@ -464,11 +473,7 @@ WHERE pvav.tenant_id = $1
   AND pa.value_type IN ('text', 'textarea', 'richtext')
   AND NULLIF(BTRIM(source_translation.value_text), '') IS NOT NULL
 "#,
-                vec![
-                    tenant_id.into(),
-                    source_locale.into(),
-                    target_locale.into(),
-                ],
+                vec![tenant_id.into(), source_locale.into(), target_locale.into()],
             ))
             .await?
             .ok_or_else(|| {
@@ -822,7 +827,11 @@ impl TranslationTargetProvider for ProductVariantAttributeValueTranslationTarget
             .validate()
             .map_err(|error| contract_validation_error(error.to_string()))?;
         let tenant_id = parse_tenant_id(&context)?;
-        let parsed = request.after.as_ref().map(parse_change_cursor).transpose()?;
+        let parsed = request
+            .after
+            .as_ref()
+            .map(parse_change_cursor)
+            .transpose()?;
         let (through, after) = match parsed {
             Some((through, after)) if through == after => {
                 let current = self
@@ -966,7 +975,9 @@ impl TranslationTargetProvider for ProductVariantAttributeValueTranslationTarget
         }
         .await;
         if let Err(error) = &result {
-            self.service.fail_schema_operation_receipt(lease, error).await?;
+            self.service
+                .fail_schema_operation_receipt(lease, error)
+                .await?;
         }
         result
     }
@@ -1129,9 +1140,11 @@ fn decode_aggregate(row: AggregateRow) -> OwnerResult<Aggregate> {
         || row.attribute_id.is_nil()
         || row.attribute_code.trim().is_empty()
     {
-        return Err(ProductVariantAttributeValueTranslationError::OwnerInvariant(
-            "persisted Product Variant attribute-value identity is invalid".to_string(),
-        ));
+        return Err(
+            ProductVariantAttributeValueTranslationError::OwnerInvariant(
+                "persisted Product Variant attribute-value identity is invalid".to_string(),
+            ),
+        );
     }
     let translation_revision = positive_sequence(row.translation_revision, "resource")?;
     for translation in &translations {
@@ -1220,12 +1233,7 @@ fn resource_revision_from_sequence(sequence: i64) -> OwnerResult<String> {
     positive_sequence(sequence, "resource").map(resource_revision)
 }
 
-fn locale_revision(
-    tenant_id: Uuid,
-    value_id: Uuid,
-    locale: &str,
-    value: Option<&str>,
-) -> String {
+fn locale_revision(tenant_id: Uuid, value_id: Uuid, locale: &str, value: Option<&str>) -> String {
     let mut hasher = Sha256::new();
     hash_str(&mut hasher, LOCALE_REVISION_NAMESPACE);
     hash_uuid(&mut hasher, tenant_id);
@@ -1249,7 +1257,9 @@ fn deleted_revision(root_event_id: Uuid, value_id: Uuid) -> String {
     )
 }
 
-fn summary_from_owner(owner: &ExactLocaleSnapshot) -> Result<TranslationResourceSummary, PortError> {
+fn summary_from_owner(
+    owner: &ExactLocaleSnapshot,
+) -> Result<TranslationResourceSummary, PortError> {
     Ok(TranslationResourceSummary {
         identity: variant_attribute_value_identity(owner.value_id),
         display_label: format!("{} · {}", owner.attribute_code, owner.variant_id),
@@ -1559,12 +1569,10 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
         ),
         CommerceError::ProductNotFound(_)
         | CommerceError::VariantNotFound(_)
-        | CommerceError::ImageNotFound(_) => {
-            PortError::not_found(
-                "product.variant_attribute_value_translation_resource_not_found",
-                "Product Variant attribute-value translation resource was not found",
-            )
-        }
+        | CommerceError::ImageNotFound(_) => PortError::not_found(
+            "product.variant_attribute_value_translation_resource_not_found",
+            "Product Variant attribute-value translation resource was not found",
+        ),
         CommerceError::DuplicateHandle { .. }
         | CommerceError::DuplicateSku(_)
         | CommerceError::CannotDeleteOnlyVariant
@@ -1602,10 +1610,12 @@ fn validate_locale_pair(source_locale: &str, target_locale: &str) -> OwnerResult
 
 fn validate_stored_translation(translation: &StoredTranslation) -> OwnerResult<()> {
     if canonical_locale(&translation.locale)? != translation.locale {
-        return Err(ProductVariantAttributeValueTranslationError::OwnerInvariant(
-            "persisted Product Variant attribute-value translation locale is not canonical"
-                .to_string(),
-        ));
+        return Err(
+            ProductVariantAttributeValueTranslationError::OwnerInvariant(
+                "persisted Product Variant attribute-value translation locale is not canonical"
+                    .to_string(),
+            ),
+        );
     }
     Ok(())
 }
@@ -1632,9 +1642,7 @@ fn validate_uuid(value: Uuid, field: &str) -> OwnerResult<()> {
 
 fn ensure_revision(revision: &'static str, expected: &str, current: &str) -> OwnerResult<()> {
     if expected != current {
-        return Err(ProductVariantAttributeValueTranslationError::RevisionConflict {
-            revision,
-        });
+        return Err(ProductVariantAttributeValueTranslationError::RevisionConflict { revision });
     }
     Ok(())
 }
@@ -1658,7 +1666,9 @@ fn nonnegative_count(value: i64, field: &str) -> OwnerResult<u64> {
 }
 
 fn optional_positive_sequence(value: Option<i64>, field: &str) -> OwnerResult<Option<u64>> {
-    value.map(|value| positive_sequence(value, field)).transpose()
+    value
+        .map(|value| positive_sequence(value, field))
+        .transpose()
 }
 
 fn positive_sequence(value: i64, field: &str) -> OwnerResult<u64> {
@@ -1681,9 +1691,11 @@ fn change_record_from_row(row: sea_orm::QueryResult) -> OwnerResult<ChangeRecord
     let resource_revision: String = row.try_get("", "resource_revision")?;
     let lifecycle: String = row.try_get("", "lifecycle")?;
     if value_id.is_nil() || resource_revision.trim().is_empty() {
-        return Err(ProductVariantAttributeValueTranslationError::OwnerInvariant(
-            "Product Variant attribute-value translation change row is invalid".to_string(),
-        ));
+        return Err(
+            ProductVariantAttributeValueTranslationError::OwnerInvariant(
+                "Product Variant attribute-value translation change row is invalid".to_string(),
+            ),
+        );
     }
     Ok(ChangeRecord {
         change_seq,

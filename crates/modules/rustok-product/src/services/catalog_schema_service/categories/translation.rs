@@ -13,8 +13,9 @@ use rustok_translation_targets::{
     TranslationResourceIdentity, TranslationResourceLifecycle, TranslationResourcePage,
     TranslationResourceSnapshot, TranslationResourceSummary, TranslationStrategy,
     TranslationTargetCapability, TranslationTargetChange, TranslationTargetChangePage,
-    TranslationTargetChangesRequest, TranslationTargetProgressFacts, TranslationTargetProgressRequest,
-    TranslationTargetProvider, TranslationTargetProviderDescriptor, TranslationValueProfile,
+    TranslationTargetChangesRequest, TranslationTargetProgressFacts,
+    TranslationTargetProgressRequest, TranslationTargetProvider,
+    TranslationTargetProviderDescriptor, TranslationValueProfile,
     provider_support::{
         contract_validation_error, field_hash, merged_patch_values, read_request_from_patch,
         required_target_value, validate_patch_against_snapshot, validation_to_port_error,
@@ -57,9 +58,13 @@ enum ProductCategoryFormTranslationError {
     Commerce(#[from] CommerceError),
     #[error("Product category form translation resource not found: {0}")]
     CategoryFormNotFound(Uuid),
-    #[error("Product category form translation source locale not found: {locale} for category {category_id}")]
+    #[error(
+        "Product category form translation source locale not found: {locale} for category {category_id}"
+    )]
     SourceLocaleNotFound { category_id: Uuid, locale: String },
-    #[error("Product category form translation locale is incomplete: {locale} for category {category_id}")]
+    #[error(
+        "Product category form translation locale is incomplete: {locale} for category {category_id}"
+    )]
     IncompleteLocale { category_id: Uuid, locale: String },
     #[error("Product category form translation {revision} revision conflict")]
     RevisionConflict { revision: &'static str },
@@ -253,7 +258,9 @@ impl ProductCatalogSchemaService {
         if has_more {
             aggregates.truncate(usize::from(limit));
         }
-        let next_after = has_more.then(|| aggregates.last().map(|row| row.id)).flatten();
+        let next_after = has_more
+            .then(|| aggregates.last().map(|row| row.id))
+            .flatten();
         let resources = aggregates
             .into_iter()
             .map(|aggregate| build_snapshot(aggregate, &source_locale, &target_locale))
@@ -640,8 +647,9 @@ impl TranslationTargetProvider for ProductCategoryFormTranslationTargetProvider 
         TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
                 .expect("static Product owner slug must satisfy Translation contract"),
-            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static Product Category Form resource kind must satisfy Translation contract"),
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
+                "static Product Category Form resource kind must satisfy Translation contract",
+            ),
             display_name: "Product category form copy".to_string(),
             capabilities: BTreeSet::from([
                 TranslationTargetCapability::ListResources,
@@ -775,7 +783,11 @@ impl TranslationTargetProvider for ProductCategoryFormTranslationTargetProvider 
             .validate()
             .map_err(|error| contract_validation_error(error.to_string()))?;
         let tenant_id = parse_tenant_id(&context)?;
-        let parsed = request.after.as_ref().map(parse_change_cursor).transpose()?;
+        let parsed = request
+            .after
+            .as_ref()
+            .map(parse_change_cursor)
+            .transpose()?;
         let (through, after) = match parsed {
             Some((through, after)) if through == after => {
                 let current = self
@@ -818,7 +830,10 @@ impl TranslationTargetProvider for ProductCategoryFormTranslationTargetProvider 
             .map(|change| {
                 Ok(TranslationTargetChange {
                     identity: category_form_identity(change.category_id),
-                    resource_revision: opaque_revision(change.resource_revision, "resource_revision")?,
+                    resource_revision: opaque_revision(
+                        change.resource_revision,
+                        "resource_revision",
+                    )?,
                     lifecycle: match change.lifecycle {
                         ChangeLifecycle::Active => TranslationResourceLifecycle::Active,
                         ChangeLifecycle::Archived => TranslationResourceLifecycle::Archived,
@@ -911,7 +926,9 @@ impl TranslationTargetProvider for ProductCategoryFormTranslationTargetProvider 
         }
         .await;
         if let Err(error) = &result {
-            self.service.fail_schema_operation_receipt(lease, error).await?;
+            self.service
+                .fail_schema_operation_receipt(lease, error)
+                .await?;
         }
         result
     }
@@ -1276,7 +1293,9 @@ fn observe_progress(
     Ok(())
 }
 
-fn summary_from_owner(owner: &ExactLocaleSnapshot) -> Result<TranslationResourceSummary, PortError> {
+fn summary_from_owner(
+    owner: &ExactLocaleSnapshot,
+) -> Result<TranslationResourceSummary, PortError> {
     Ok(TranslationResourceSummary {
         identity: category_form_identity(owner.category_id),
         display_label: owner.category_code.clone(),
@@ -1612,10 +1631,12 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
             "product.category_form_translation_owner_validation",
             "Product rejected the Category Form translation mutation",
         ),
-        CommerceError::CannotDeletePublished | CommerceError::CannotDeleteOnlyVariant => PortError::conflict(
-            "product.category_form_translation_owner_conflict",
-            "Product state conflicts with the requested Category Form translation mutation",
-        ),
+        CommerceError::CannotDeletePublished | CommerceError::CannotDeleteOnlyVariant => {
+            PortError::conflict(
+                "product.category_form_translation_owner_conflict",
+                "Product state conflicts with the requested Category Form translation mutation",
+            )
+        }
         CommerceError::Core(_) => PortError::invariant_violation(
             "product.category_form_translation_owner_invariant",
             "Product Category Form translation state is invalid",
@@ -1694,7 +1715,9 @@ fn ensure_postgres(backend: DatabaseBackend) -> OwnerResult<()> {
 }
 
 fn optional_positive_sequence(value: Option<i64>, field: &str) -> OwnerResult<Option<u64>> {
-    value.map(|value| positive_sequence(value, field)).transpose()
+    value
+        .map(|value| positive_sequence(value, field))
+        .transpose()
 }
 
 fn positive_sequence(value: i64, field: &str) -> OwnerResult<u64> {
@@ -1737,7 +1760,9 @@ fn owner_error_to_commerce(error: ProductCategoryFormTranslationError) -> Commer
 }
 
 fn checked_add(value: &mut u64, increment: u64, label: &str) -> OwnerResult<()> {
-    *value = value.checked_add(increment).ok_or_else(|| overflow(label))?;
+    *value = value
+        .checked_add(increment)
+        .ok_or_else(|| overflow(label))?;
     Ok(())
 }
 

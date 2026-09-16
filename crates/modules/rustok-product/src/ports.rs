@@ -935,7 +935,10 @@ mod tests {
             CommerceError::CannotDeleteOnlyVariant,
         );
         assert_eq!(cannot_delete_only.kind, PortErrorKind::Conflict);
-        assert_eq!(cannot_delete_only.code, "product.cannot_delete_only_variant");
+        assert_eq!(
+            cannot_delete_only.code,
+            "product.cannot_delete_only_variant"
+        );
         assert_eq!(
             cannot_delete_only.message,
             "cannot delete the only variant of a product"

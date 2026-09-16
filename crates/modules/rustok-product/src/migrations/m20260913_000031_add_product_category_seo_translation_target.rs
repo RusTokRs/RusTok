@@ -51,15 +51,16 @@ ORDER BY tenant_id, category_id, locale
             if let Some(existing_locale) = normalized_owners.get(&key) {
                 return Err(DbErr::Migration(format!(
                     "Product Category SEO locale normalization collision for tenant {} category {} locale {} between stored locales {:?} and {:?}",
-                    row.tenant_id,
-                    row.category_id,
-                    normalized_locale,
-                    existing_locale,
-                    row.locale
+                    row.tenant_id, row.category_id, normalized_locale, existing_locale, row.locale
                 )));
             }
             normalized_owners.insert(key, row.locale.clone());
-            normalized_rows.push((row.tenant_id, row.category_id, row.locale, normalized_locale));
+            normalized_rows.push((
+                row.tenant_id,
+                row.category_id,
+                row.locale,
+                normalized_locale,
+            ));
         }
 
         for (tenant_id, category_id, stored_locale, normalized_locale) in normalized_rows {

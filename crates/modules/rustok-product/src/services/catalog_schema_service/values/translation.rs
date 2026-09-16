@@ -16,8 +16,9 @@ use rustok_translation_targets::{
     TranslationResourceIdentity, TranslationResourceLifecycle, TranslationResourcePage,
     TranslationResourceSnapshot, TranslationResourceSummary, TranslationStrategy,
     TranslationTargetCapability, TranslationTargetChange, TranslationTargetChangePage,
-    TranslationTargetChangesRequest, TranslationTargetProgressFacts, TranslationTargetProgressRequest,
-    TranslationTargetProvider, TranslationTargetProviderDescriptor, TranslationValueProfile,
+    TranslationTargetChangesRequest, TranslationTargetProgressFacts,
+    TranslationTargetProgressRequest, TranslationTargetProvider,
+    TranslationTargetProviderDescriptor, TranslationValueProfile,
     provider_support::{
         contract_validation_error, field_hash, merged_patch_values, read_request_from_patch,
         required_target_value, validate_patch_against_snapshot, validation_to_port_error,
@@ -59,7 +60,9 @@ enum ProductAttributeValueTranslationError {
     Commerce(#[from] CommerceError),
     #[error("Product localized attribute value resource not found: {0}")]
     ValueNotFound(Uuid),
-    #[error("Product localized attribute value source locale not found: {locale} for value {value_id}")]
+    #[error(
+        "Product localized attribute value source locale not found: {locale} for value {value_id}"
+    )]
     SourceLocaleNotFound { value_id: Uuid, locale: String },
     #[error("Product localized attribute value {revision} revision conflict")]
     RevisionConflict { revision: &'static str },
@@ -238,7 +241,9 @@ impl ProductCatalogSchemaService {
         if has_more {
             aggregates.truncate(usize::from(limit));
         }
-        let next_after = has_more.then(|| aggregates.last().map(|row| row.id)).flatten();
+        let next_after = has_more
+            .then(|| aggregates.last().map(|row| row.id))
+            .flatten();
         let resources = aggregates
             .into_iter()
             .map(|aggregate| build_snapshot(aggregate, &source_locale, &target_locale))
@@ -261,7 +266,9 @@ impl ProductCatalogSchemaService {
         ensure_postgres(self.db.get_database_backend())?;
         let aggregate = load_attribute_value_aggregate(&self.db, tenant_id, value_id)
             .await?
-            .ok_or(ProductAttributeValueTranslationError::ValueNotFound(value_id))?;
+            .ok_or(ProductAttributeValueTranslationError::ValueNotFound(
+                value_id,
+            ))?;
         build_snapshot(aggregate, &source_locale, &target_locale)
     }
 
@@ -303,13 +310,17 @@ FOR UPDATE OF pav
             ))
             .await?;
         if locked.is_none() {
-            return Err(ProductAttributeValueTranslationError::ValueNotFound(value_id));
+            return Err(ProductAttributeValueTranslationError::ValueNotFound(
+                value_id,
+            ));
         }
 
         let before = build_snapshot(
             load_attribute_value_aggregate(&txn, tenant_id, value_id)
                 .await?
-                .ok_or(ProductAttributeValueTranslationError::ValueNotFound(value_id))?,
+                .ok_or(ProductAttributeValueTranslationError::ValueNotFound(
+                    value_id,
+                ))?,
             &source_locale,
             &target_locale,
         )?;
@@ -348,7 +359,9 @@ ON CONFLICT (value_id, locale) DO UPDATE SET value_text = EXCLUDED.value_text
         let after = build_snapshot(
             load_attribute_value_aggregate(&txn, tenant_id, value_id)
                 .await?
-                .ok_or(ProductAttributeValueTranslationError::ValueNotFound(value_id))?,
+                .ok_or(ProductAttributeValueTranslationError::ValueNotFound(
+                    value_id,
+                ))?,
             &source_locale,
             &target_locale,
         )?;
@@ -427,11 +440,7 @@ WHERE pav.tenant_id = $1
   AND pa.value_type IN ('text', 'textarea', 'richtext')
   AND NULLIF(BTRIM(source_translation.value_text), '') IS NOT NULL
 "#,
-                vec![
-                    tenant_id.into(),
-                    source_locale.into(),
-                    target_locale.into(),
-                ],
+                vec![tenant_id.into(), source_locale.into(), target_locale.into()],
             ))
             .await?
             .ok_or_else(|| {
@@ -606,7 +615,9 @@ ORDER BY value_id, change_seq DESC
         }
 
         for (value_id, previous) in previous {
-            if live_ids.contains(&value_id) || previous.lifecycle == ChangeLifecycle::Deleted.as_str() {
+            if live_ids.contains(&value_id)
+                || previous.lifecycle == ChangeLifecycle::Deleted.as_str()
+            {
                 continue;
             }
             let revision = deleted_revision(root_event_id, value_id);
@@ -631,8 +642,9 @@ impl TranslationTargetProvider for ProductAttributeValueTranslationTargetProvide
         TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
                 .expect("static Product owner slug must satisfy Translation contract"),
-            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static Product Attribute Value resource kind must satisfy Translation contract"),
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
+                "static Product Attribute Value resource kind must satisfy Translation contract",
+            ),
             display_name: "Product localized attribute values".to_string(),
             capabilities: BTreeSet::from([
                 TranslationTargetCapability::ListResources,
@@ -766,7 +778,11 @@ impl TranslationTargetProvider for ProductAttributeValueTranslationTargetProvide
             .validate()
             .map_err(|error| contract_validation_error(error.to_string()))?;
         let tenant_id = parse_tenant_id(&context)?;
-        let parsed = request.after.as_ref().map(parse_change_cursor).transpose()?;
+        let parsed = request
+            .after
+            .as_ref()
+            .map(parse_change_cursor)
+            .transpose()?;
         let (through, after) = match parsed {
             Some((through, after)) if through == after => {
                 let current = self
@@ -809,7 +825,10 @@ impl TranslationTargetProvider for ProductAttributeValueTranslationTargetProvide
             .map(|change| {
                 Ok(TranslationTargetChange {
                     identity: attribute_value_identity(change.value_id),
-                    resource_revision: opaque_revision(change.resource_revision, "resource_revision")?,
+                    resource_revision: opaque_revision(
+                        change.resource_revision,
+                        "resource_revision",
+                    )?,
                     lifecycle: match change.lifecycle {
                         ChangeLifecycle::Active => TranslationResourceLifecycle::Active,
                         ChangeLifecycle::Deleted => TranslationResourceLifecycle::Deleted,
@@ -901,7 +920,9 @@ impl TranslationTargetProvider for ProductAttributeValueTranslationTargetProvide
         }
         .await;
         if let Err(error) = &result {
-            self.service.fail_schema_operation_receipt(lease, error).await?;
+            self.service
+                .fail_schema_operation_receipt(lease, error)
+                .await?;
         }
         result
     }
@@ -973,7 +994,10 @@ where
 {
     AggregateRow::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
-        format!("{} WHERE pav.tenant_id = $1 AND pav.id = $2", aggregate_select_sql()),
+        format!(
+            "{} WHERE pav.tenant_id = $1 AND pav.id = $2",
+            aggregate_select_sql()
+        ),
         vec![tenant_id.into(), value_id.into()],
     ))
     .one(db)
@@ -1041,11 +1065,12 @@ ORDER BY pav.id ASC
 }
 
 fn decode_aggregate(row: AggregateRow) -> OwnerResult<Aggregate> {
-    let translations: Vec<StoredTranslation> = serde_json::from_value(row.translations).map_err(|error| {
-        ProductAttributeValueTranslationError::OwnerInvariant(format!(
-            "persisted Product attribute-value translations are invalid: {error}"
-        ))
-    })?;
+    let translations: Vec<StoredTranslation> =
+        serde_json::from_value(row.translations).map_err(|error| {
+            ProductAttributeValueTranslationError::OwnerInvariant(format!(
+                "persisted Product attribute-value translations are invalid: {error}"
+            ))
+        })?;
     if row.id.is_nil()
         || row.tenant_id.is_nil()
         || row.product_id.is_nil()
@@ -1082,10 +1107,12 @@ fn build_snapshot(
         .find(|translation| translation.locale == source_locale)
         .and_then(|translation| translation.value_text.clone())
         .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| ProductAttributeValueTranslationError::SourceLocaleNotFound {
-            value_id: aggregate.id,
-            locale: source_locale.to_string(),
-        })?;
+        .ok_or_else(
+            || ProductAttributeValueTranslationError::SourceLocaleNotFound {
+                value_id: aggregate.id,
+                locale: source_locale.to_string(),
+            },
+        )?;
     let target_record = aggregate
         .translations
         .iter()
@@ -1139,12 +1166,7 @@ fn resource_revision_from_sequence(sequence: i64) -> OwnerResult<String> {
     positive_sequence(sequence, "resource").map(resource_revision)
 }
 
-fn locale_revision(
-    tenant_id: Uuid,
-    value_id: Uuid,
-    locale: &str,
-    value: Option<&str>,
-) -> String {
+fn locale_revision(tenant_id: Uuid, value_id: Uuid, locale: &str, value: Option<&str>) -> String {
     let mut hasher = Sha256::new();
     hash_str(&mut hasher, LOCALE_REVISION_NAMESPACE);
     hash_uuid(&mut hasher, tenant_id);
@@ -1168,7 +1190,9 @@ fn deleted_revision(root_event_id: Uuid, value_id: Uuid) -> String {
     )
 }
 
-fn summary_from_owner(owner: &ExactLocaleSnapshot) -> Result<TranslationResourceSummary, PortError> {
+fn summary_from_owner(
+    owner: &ExactLocaleSnapshot,
+) -> Result<TranslationResourceSummary, PortError> {
     Ok(TranslationResourceSummary {
         identity: attribute_value_identity(owner.value_id),
         display_label: owner.attribute_code.clone(),
@@ -1366,8 +1390,9 @@ fn attribute_value_identity(value_id: Uuid) -> TranslationResourceIdentity {
     TranslationResourceIdentity {
         owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
             .expect("static Product owner slug must satisfy Translation contract"),
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-            .expect("static Product Attribute Value resource kind must satisfy Translation contract"),
+        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
+            "static Product Attribute Value resource kind must satisfy Translation contract",
+        ),
         resource_id: ResourceId::new(value_id.to_string())
             .expect("Product attribute-value UUID must satisfy Translation resource id contract"),
         subresource_id: None,
@@ -1454,7 +1479,9 @@ fn owner_error_to_port_error(error: ProductAttributeValueTranslationError) -> Po
             "product.attribute_value_translation_owner_invariant",
             "Product attribute-value translation owner state is invalid",
         ),
-        ProductAttributeValueTranslationError::Commerce(error) => product_error_to_port_error(error),
+        ProductAttributeValueTranslationError::Commerce(error) => {
+            product_error_to_port_error(error)
+        }
     }
 }
 
@@ -1559,7 +1586,9 @@ fn nonnegative_count(value: i64, field: &str) -> OwnerResult<u64> {
 }
 
 fn optional_positive_sequence(value: Option<i64>, field: &str) -> OwnerResult<Option<u64>> {
-    value.map(|value| positive_sequence(value, field)).transpose()
+    value
+        .map(|value| positive_sequence(value, field))
+        .transpose()
 }
 
 fn positive_sequence(value: i64, field: &str) -> OwnerResult<u64> {

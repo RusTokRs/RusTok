@@ -13,12 +13,13 @@ use rustok_translation_targets::{
     TranslationResourceIdentity, TranslationResourceLifecycle, TranslationResourcePage,
     TranslationResourceSnapshot, TranslationResourceSummary, TranslationStrategy,
     TranslationTargetCapability, TranslationTargetChange, TranslationTargetChangePage,
-    TranslationTargetChangesRequest, TranslationTargetProgressFacts, TranslationTargetProgressRequest,
-    TranslationTargetProvider, TranslationTargetProviderDescriptor, TranslationValueProfile,
+    TranslationTargetChangesRequest, TranslationTargetProgressFacts,
+    TranslationTargetProgressRequest, TranslationTargetProvider,
+    TranslationTargetProviderDescriptor, TranslationValueProfile,
     provider_support::{
-        contract_validation_error, field_hash, merged_patch_values, normalize_optional_target_value,
-        read_request_from_patch, required_target_value, validate_patch_against_snapshot,
-        validation_to_port_error,
+        contract_validation_error, field_hash, merged_patch_values,
+        normalize_optional_target_value, read_request_from_patch, required_target_value,
+        validate_patch_against_snapshot, validation_to_port_error,
     },
     validate_translation_apply_context, validate_translation_read_context,
 };
@@ -62,9 +63,13 @@ enum ProductAttributeTranslationError {
     Commerce(#[from] CommerceError),
     #[error("Product attribute not found: {0}")]
     AttributeNotFound(Uuid),
-    #[error("Product attribute translation source locale not found: {locale} for attribute {attribute_id}")]
+    #[error(
+        "Product attribute translation source locale not found: {locale} for attribute {attribute_id}"
+    )]
     SourceLocaleNotFound { attribute_id: Uuid, locale: String },
-    #[error("Product attribute translation locale is incomplete: {locale} for attribute {attribute_id}")]
+    #[error(
+        "Product attribute translation locale is incomplete: {locale} for attribute {attribute_id}"
+    )]
     IncompleteLocale { attribute_id: Uuid, locale: String },
     #[error("Product attribute translation {revision} revision conflict")]
     RevisionConflict { revision: &'static str },
@@ -278,7 +283,9 @@ impl ProductCatalogSchemaService {
         if has_more {
             aggregates.truncate(usize::from(limit));
         }
-        let next_after = has_more.then(|| aggregates.last().map(|row| row.id)).flatten();
+        let next_after = has_more
+            .then(|| aggregates.last().map(|row| row.id))
+            .flatten();
         let resources = aggregates
             .into_iter()
             .map(|aggregate| build_snapshot(aggregate, &source_locale, &target_locale))
@@ -376,9 +383,7 @@ impl ProductCatalogSchemaService {
             &before.source_revision,
         )?;
         if request.expected_target_revision != before.target_revision {
-            return Err(ProductAttributeTranslationError::RevisionConflict {
-                revision: "target",
-            });
+            return Err(ProductAttributeTranslationError::RevisionConflict { revision: "target" });
         }
         let current_option_ids = before
             .source
@@ -442,7 +447,8 @@ ON CONFLICT (option_id, locale) DO UPDATE SET label = EXCLUDED.label
         )?;
         let target = after.target.clone().ok_or_else(|| {
             ProductAttributeTranslationError::OwnerInvariant(
-                "exact target locale is absent after Product attribute translation apply".to_string(),
+                "exact target locale is absent after Product attribute translation apply"
+                    .to_string(),
             )
         })?;
         if !record_complete(&target) {
@@ -819,7 +825,11 @@ impl TranslationTargetProvider for ProductAttributeTranslationTargetProvider {
             .validate()
             .map_err(|error| contract_validation_error(error.to_string()))?;
         let tenant_id = parse_tenant_id(&context)?;
-        let parsed = request.after.as_ref().map(parse_change_cursor).transpose()?;
+        let parsed = request
+            .after
+            .as_ref()
+            .map(parse_change_cursor)
+            .transpose()?;
         let (through, after) = match parsed {
             Some((through, after)) if through == after => {
                 let current = self
@@ -862,7 +872,10 @@ impl TranslationTargetProvider for ProductAttributeTranslationTargetProvider {
             .map(|change| {
                 Ok(TranslationTargetChange {
                     identity: attribute_identity(change.attribute_id),
-                    resource_revision: opaque_revision(change.resource_revision, "resource_revision")?,
+                    resource_revision: opaque_revision(
+                        change.resource_revision,
+                        "resource_revision",
+                    )?,
                     lifecycle: match change.lifecycle {
                         ChangeLifecycle::Active => TranslationResourceLifecycle::Active,
                         ChangeLifecycle::Archived => TranslationResourceLifecycle::Archived,
@@ -955,7 +968,9 @@ impl TranslationTargetProvider for ProductAttributeTranslationTargetProvider {
         }
         .await;
         if let Err(error) = &result {
-            self.service.fail_schema_operation_receipt(lease, error).await?;
+            self.service
+                .fail_schema_operation_receipt(lease, error)
+                .await?;
         }
         result
     }
@@ -1027,7 +1042,10 @@ where
 {
     AggregateRow::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
-        format!("{} WHERE a.tenant_id = $1 AND a.id = $2", aggregate_select_sql()),
+        format!(
+            "{} WHERE a.tenant_id = $1 AND a.id = $2",
+            aggregate_select_sql()
+        ),
         vec![tenant_id.into(), attribute_id.into()],
     ))
     .one(db)
@@ -1117,11 +1135,12 @@ ORDER BY a.id ASC
 }
 
 fn decode_aggregate(row: AggregateRow) -> OwnerResult<Aggregate> {
-    let translations: Vec<StoredTranslation> = serde_json::from_value(row.translations).map_err(|error| {
-        ProductAttributeTranslationError::OwnerInvariant(format!(
-            "persisted attribute translations are invalid: {error}"
-        ))
-    })?;
+    let translations: Vec<StoredTranslation> =
+        serde_json::from_value(row.translations).map_err(|error| {
+            ProductAttributeTranslationError::OwnerInvariant(format!(
+                "persisted attribute translations are invalid: {error}"
+            ))
+        })?;
     let options: Vec<StoredOption> = serde_json::from_value(row.options).map_err(|error| {
         ProductAttributeTranslationError::OwnerInvariant(format!(
             "persisted attribute options are invalid: {error}"
@@ -1286,7 +1305,10 @@ fn resource_revision(aggregate: &Aggregate) -> String {
             hash_str(&mut hasher, &translation.label);
         }
     }
-    format!("product-attribute-resource-v1:{}", hex::encode(hasher.finalize()))
+    format!(
+        "product-attribute-resource-v1:{}",
+        hex::encode(hasher.finalize())
+    )
 }
 
 fn locale_revision(tenant_id: Uuid, attribute_id: Uuid, record: &LocaleRecord) -> String {
@@ -1305,7 +1327,10 @@ fn locale_revision(tenant_id: Uuid, attribute_id: Uuid, record: &LocaleRecord) -
         hasher.update(option.position.to_be_bytes());
         hash_optional_str(&mut hasher, option.label.as_deref());
     }
-    format!("product-attribute-locale-v1:{}", hex::encode(hasher.finalize()))
+    format!(
+        "product-attribute-locale-v1:{}",
+        hex::encode(hasher.finalize())
+    )
 }
 
 fn deleted_revision(root_event_id: Uuid, attribute_id: Uuid) -> String {
@@ -1363,11 +1388,7 @@ fn observe_progress(
         if source_value.is_some() {
             checked_add(&mut facts.optional_units, 1, "optional_units")?;
             if target_value.is_some_and(|value| !value.trim().is_empty()) {
-                checked_add(
-                    &mut facts.exact_optional_units,
-                    1,
-                    "exact_optional_units",
-                )?;
+                checked_add(&mut facts.exact_optional_units, 1, "exact_optional_units")?;
             }
         }
     }
@@ -1377,7 +1398,9 @@ fn observe_progress(
     Ok(())
 }
 
-fn summary_from_owner(owner: &ExactLocaleSnapshot) -> Result<TranslationResourceSummary, PortError> {
+fn summary_from_owner(
+    owner: &ExactLocaleSnapshot,
+) -> Result<TranslationResourceSummary, PortError> {
     Ok(TranslationResourceSummary {
         identity: attribute_identity(owner.attribute_id),
         display_label: owner.source.label.clone().ok_or_else(|| {
@@ -1873,7 +1896,8 @@ fn validate_stored_option_translation(translation: &StoredOptionTranslation) -> 
         || translation.label.chars().count() > 255
     {
         return Err(ProductAttributeTranslationError::OwnerInvariant(
-            "persisted Product attribute option translation violates its owner contract".to_string(),
+            "persisted Product attribute option translation violates its owner contract"
+                .to_string(),
         ));
     }
     Ok(())
@@ -1942,7 +1966,9 @@ fn ensure_postgres(backend: DatabaseBackend) -> OwnerResult<()> {
 }
 
 fn optional_positive_sequence(value: Option<i64>, field: &str) -> OwnerResult<Option<u64>> {
-    value.map(|value| positive_sequence(value, field)).transpose()
+    value
+        .map(|value| positive_sequence(value, field))
+        .transpose()
 }
 
 fn positive_sequence(value: i64, field: &str) -> OwnerResult<u64> {
@@ -1985,7 +2011,9 @@ fn owner_error_to_commerce(error: ProductAttributeTranslationError) -> CommerceE
 }
 
 fn checked_add(value: &mut u64, increment: u64, label: &str) -> OwnerResult<()> {
-    *value = value.checked_add(increment).ok_or_else(|| overflow(label))?;
+    *value = value
+        .checked_add(increment)
+        .ok_or_else(|| overflow(label))?;
     Ok(())
 }
 

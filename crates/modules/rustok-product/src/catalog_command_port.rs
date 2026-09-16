@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::dto::{
     AddProductImageInput, CreateProductInput, CreateVariantInput, ProductImageResponse,
-    ProductResponse, UpdateProductInput, UpdateProductImageInput, UpdateVariantInput,
+    ProductResponse, UpdateProductImageInput, UpdateProductInput, UpdateVariantInput,
     VariantResponse,
 };
 use crate::{CatalogService, CommerceError};
@@ -58,11 +58,8 @@ pub trait ProductCatalogCommandPort: Send + Sync {
         input: UpdateVariantInput,
     ) -> Result<VariantResponse, PortError>;
 
-    async fn delete_variant(
-        &self,
-        context: PortContext,
-        variant_id: Uuid,
-    ) -> Result<(), PortError>;
+    async fn delete_variant(&self, context: PortContext, variant_id: Uuid)
+    -> Result<(), PortError>;
 
     async fn add_product_image(
         &self,
@@ -442,4 +439,3 @@ mod tests {
         );
     }
 }
-

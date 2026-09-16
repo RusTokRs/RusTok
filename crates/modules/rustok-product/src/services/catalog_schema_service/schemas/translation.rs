@@ -13,12 +13,13 @@ use rustok_translation_targets::{
     TranslationResourceIdentity, TranslationResourceLifecycle, TranslationResourcePage,
     TranslationResourceSnapshot, TranslationResourceSummary, TranslationStrategy,
     TranslationTargetCapability, TranslationTargetChange, TranslationTargetChangePage,
-    TranslationTargetChangesRequest, TranslationTargetProgressFacts, TranslationTargetProgressRequest,
-    TranslationTargetProvider, TranslationTargetProviderDescriptor, TranslationValueProfile,
+    TranslationTargetChangesRequest, TranslationTargetProgressFacts,
+    TranslationTargetProgressRequest, TranslationTargetProvider,
+    TranslationTargetProviderDescriptor, TranslationValueProfile,
     provider_support::{
-        contract_validation_error, field_hash, merged_patch_values, normalize_optional_target_value,
-        read_request_from_patch, required_target_value, validate_patch_against_snapshot,
-        validation_to_port_error,
+        contract_validation_error, field_hash, merged_patch_values,
+        normalize_optional_target_value, read_request_from_patch, required_target_value,
+        validate_patch_against_snapshot, validation_to_port_error,
     },
     validate_translation_apply_context, validate_translation_read_context,
 };
@@ -60,13 +61,19 @@ enum ProductAttributeSchemaTranslationError {
     Commerce(#[from] CommerceError),
     #[error("Product attribute schema not found: {0}")]
     SchemaNotFound(Uuid),
-    #[error("Product attribute schema translation source locale not found: {locale} for schema {schema_id}")]
+    #[error(
+        "Product attribute schema translation source locale not found: {locale} for schema {schema_id}"
+    )]
     SourceLocaleNotFound { schema_id: Uuid, locale: String },
-    #[error("Product attribute schema translation locale is incomplete: {locale} for schema {schema_id}")]
+    #[error(
+        "Product attribute schema translation locale is incomplete: {locale} for schema {schema_id}"
+    )]
     IncompleteLocale { schema_id: Uuid, locale: String },
     #[error("Product attribute schema translation {revision} revision conflict")]
     RevisionConflict { revision: &'static str },
-    #[error("Product attribute schema translation group set changed while the mutation was prepared")]
+    #[error(
+        "Product attribute schema translation group set changed while the mutation was prepared"
+    )]
     GroupSetMismatch,
     #[error("Product attribute schema translation owner invariant failed: {0}")]
     OwnerInvariant(String),
@@ -269,7 +276,9 @@ impl ProductCatalogSchemaService {
         if has_more {
             aggregates.truncate(usize::from(limit));
         }
-        let next_after = has_more.then(|| aggregates.last().map(|row| row.id)).flatten();
+        let next_after = has_more
+            .then(|| aggregates.last().map(|row| row.id))
+            .flatten();
         let resources = aggregates
             .into_iter()
             .map(|aggregate| build_snapshot(aggregate, &source_locale, &target_locale))
@@ -292,7 +301,9 @@ impl ProductCatalogSchemaService {
         ensure_postgres(self.db.get_database_backend())?;
         let aggregate = load_schema_aggregate(&self.db, tenant_id, schema_id)
             .await?
-            .ok_or(ProductAttributeSchemaTranslationError::SchemaNotFound(schema_id))?;
+            .ok_or(ProductAttributeSchemaTranslationError::SchemaNotFound(
+                schema_id,
+            ))?;
         build_snapshot(aggregate, &source_locale, &target_locale)
     }
 
@@ -332,7 +343,9 @@ impl ProductCatalogSchemaService {
             ))
             .await?;
         if locked.is_none() {
-            return Err(ProductAttributeSchemaTranslationError::SchemaNotFound(schema_id));
+            return Err(ProductAttributeSchemaTranslationError::SchemaNotFound(
+                schema_id,
+            ));
         }
         txn.query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -344,7 +357,9 @@ impl ProductCatalogSchemaService {
         let before = build_snapshot(
             load_schema_aggregate(&txn, tenant_id, schema_id)
                 .await?
-                .ok_or(ProductAttributeSchemaTranslationError::SchemaNotFound(schema_id))?,
+                .ok_or(ProductAttributeSchemaTranslationError::SchemaNotFound(
+                    schema_id,
+                ))?,
             &source_locale,
             &target_locale,
         )?;
@@ -413,7 +428,9 @@ ON CONFLICT (group_id, locale) DO UPDATE SET label = EXCLUDED.label
         let after = build_snapshot(
             load_schema_aggregate(&txn, tenant_id, schema_id)
                 .await?
-                .ok_or(ProductAttributeSchemaTranslationError::SchemaNotFound(schema_id))?,
+                .ok_or(ProductAttributeSchemaTranslationError::SchemaNotFound(
+                    schema_id,
+                ))?,
             &source_locale,
             &target_locale,
         )?;
@@ -663,8 +680,9 @@ impl TranslationTargetProvider for ProductAttributeSchemaTranslationTargetProvid
         TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
                 .expect("static Product owner slug must satisfy Translation contract"),
-            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static Product Attribute Schema resource kind must satisfy Translation contract"),
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
+                "static Product Attribute Schema resource kind must satisfy Translation contract",
+            ),
             display_name: "Product attribute schema copy".to_string(),
             capabilities: BTreeSet::from([
                 TranslationTargetCapability::ListResources,
@@ -798,7 +816,11 @@ impl TranslationTargetProvider for ProductAttributeSchemaTranslationTargetProvid
             .validate()
             .map_err(|error| contract_validation_error(error.to_string()))?;
         let tenant_id = parse_tenant_id(&context)?;
-        let parsed = request.after.as_ref().map(parse_change_cursor).transpose()?;
+        let parsed = request
+            .after
+            .as_ref()
+            .map(parse_change_cursor)
+            .transpose()?;
         let (through, after) = match parsed {
             Some((through, after)) if through == after => {
                 let current = self
@@ -841,7 +863,10 @@ impl TranslationTargetProvider for ProductAttributeSchemaTranslationTargetProvid
             .map(|change| {
                 Ok(TranslationTargetChange {
                     identity: schema_identity(change.schema_id),
-                    resource_revision: opaque_revision(change.resource_revision, "resource_revision")?,
+                    resource_revision: opaque_revision(
+                        change.resource_revision,
+                        "resource_revision",
+                    )?,
                     lifecycle: match change.lifecycle {
                         ChangeLifecycle::Active => TranslationResourceLifecycle::Active,
                         ChangeLifecycle::Archived => TranslationResourceLifecycle::Archived,
@@ -934,7 +959,9 @@ impl TranslationTargetProvider for ProductAttributeSchemaTranslationTargetProvid
         }
         .await;
         if let Err(error) = &result {
-            self.service.fail_schema_operation_receipt(lease, error).await?;
+            self.service
+                .fail_schema_operation_receipt(lease, error)
+                .await?;
         }
         result
     }
@@ -1006,7 +1033,10 @@ where
 {
     let row = AggregateRow::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
-        format!("{} WHERE s.tenant_id = $1 AND s.id = $2", aggregate_select_sql()),
+        format!(
+            "{} WHERE s.tenant_id = $1 AND s.id = $2",
+            aggregate_select_sql()
+        ),
         vec![tenant_id.into(), schema_id.into()],
     ))
     .one(db)
@@ -1091,11 +1121,12 @@ ORDER BY s.id ASC
 }
 
 fn decode_aggregate(row: AggregateRow) -> OwnerResult<Aggregate> {
-    let translations: Vec<StoredTranslation> = serde_json::from_value(row.translations).map_err(|error| {
-        ProductAttributeSchemaTranslationError::OwnerInvariant(format!(
-            "persisted attribute schema translations are invalid: {error}"
-        ))
-    })?;
+    let translations: Vec<StoredTranslation> =
+        serde_json::from_value(row.translations).map_err(|error| {
+            ProductAttributeSchemaTranslationError::OwnerInvariant(format!(
+                "persisted attribute schema translations are invalid: {error}"
+            ))
+        })?;
     let groups: Vec<StoredGroup> = serde_json::from_value(row.groups).map_err(|error| {
         ProductAttributeSchemaTranslationError::OwnerInvariant(format!(
             "persisted attribute schema groups are invalid: {error}"
@@ -1135,10 +1166,12 @@ fn build_snapshot(
 ) -> OwnerResult<ExactLocaleSnapshot> {
     let source = locale_record(&aggregate, source_locale);
     if record_empty(&source) {
-        return Err(ProductAttributeSchemaTranslationError::SourceLocaleNotFound {
-            schema_id: aggregate.id,
-            locale: source_locale.to_string(),
-        });
+        return Err(
+            ProductAttributeSchemaTranslationError::SourceLocaleNotFound {
+                schema_id: aggregate.id,
+                locale: source_locale.to_string(),
+            },
+        );
     }
     if !record_complete(&source) {
         return Err(ProductAttributeSchemaTranslationError::IncompleteLocale {
@@ -1334,11 +1367,7 @@ fn observe_progress(
             .as_ref()
             .is_some_and(|value| !value.trim().is_empty())
         {
-            checked_add(
-                &mut facts.exact_optional_units,
-                1,
-                "exact_optional_units",
-            )?;
+            checked_add(&mut facts.exact_optional_units, 1, "exact_optional_units")?;
         }
     }
     if exact_required == required_units {
@@ -1347,7 +1376,9 @@ fn observe_progress(
     Ok(())
 }
 
-fn summary_from_owner(owner: &ExactLocaleSnapshot) -> Result<TranslationResourceSummary, PortError> {
+fn summary_from_owner(
+    owner: &ExactLocaleSnapshot,
+) -> Result<TranslationResourceSummary, PortError> {
     Ok(TranslationResourceSummary {
         identity: schema_identity(owner.schema_id),
         display_label: owner.source.name.clone().ok_or_else(|| {
@@ -1635,8 +1666,9 @@ fn schema_identity(schema_id: Uuid) -> TranslationResourceIdentity {
     TranslationResourceIdentity {
         owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
             .expect("static Product owner slug must satisfy Translation contract"),
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-            .expect("static Product Attribute Schema resource kind must satisfy Translation contract"),
+        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
+            "static Product Attribute Schema resource kind must satisfy Translation contract",
+        ),
         resource_id: ResourceId::new(schema_id.to_string())
             .expect("Product Attribute Schema UUID must satisfy Translation resource id contract"),
         subresource_id: None,
@@ -1711,21 +1743,27 @@ fn owner_error_to_port_error(error: ProductAttributeSchemaTranslationError) -> P
             "product.attribute_schema_translation_resource_not_found",
             "Product Attribute Schema translation resource was not found",
         ),
-        ProductAttributeSchemaTranslationError::SourceLocaleNotFound { .. } => PortError::not_found(
-            "product.attribute_schema_translation_source_not_found",
-            "Exact source Product Attribute Schema locale was not found",
-        ),
+        ProductAttributeSchemaTranslationError::SourceLocaleNotFound { .. } => {
+            PortError::not_found(
+                "product.attribute_schema_translation_source_not_found",
+                "Exact source Product Attribute Schema locale was not found",
+            )
+        }
         ProductAttributeSchemaTranslationError::IncompleteLocale { .. }
-        | ProductAttributeSchemaTranslationError::OwnerInvariant(_) => PortError::invariant_violation(
-            "product.attribute_schema_translation_owner_invariant",
-            "Product Attribute Schema translation owner state is invalid",
-        ),
+        | ProductAttributeSchemaTranslationError::OwnerInvariant(_) => {
+            PortError::invariant_violation(
+                "product.attribute_schema_translation_owner_invariant",
+                "Product Attribute Schema translation owner state is invalid",
+            )
+        }
         ProductAttributeSchemaTranslationError::RevisionConflict { .. }
         | ProductAttributeSchemaTranslationError::GroupSetMismatch => PortError::conflict(
             "product.attribute_schema_translation_revision_conflict",
             "Product Attribute Schema translation state conflicts with the requested mutation",
         ),
-        ProductAttributeSchemaTranslationError::Commerce(error) => product_error_to_port_error(error),
+        ProductAttributeSchemaTranslationError::Commerce(error) => {
+            product_error_to_port_error(error)
+        }
     }
 }
 
@@ -1787,7 +1825,8 @@ fn validate_stored_translation(translation: &StoredTranslation) -> OwnerResult<(
         || translation.name.chars().count() > 255
     {
         return Err(ProductAttributeSchemaTranslationError::OwnerInvariant(
-            "persisted Product attribute schema translation violates its owner contract".to_string(),
+            "persisted Product attribute schema translation violates its owner contract"
+                .to_string(),
         ));
     }
     validate_optional_persisted(translation.description.as_deref(), None)?;
@@ -1874,7 +1913,9 @@ fn ensure_postgres(backend: DatabaseBackend) -> OwnerResult<()> {
 }
 
 fn optional_positive_sequence(value: Option<i64>, field: &str) -> OwnerResult<Option<u64>> {
-    value.map(|value| positive_sequence(value, field)).transpose()
+    value
+        .map(|value| positive_sequence(value, field))
+        .transpose()
 }
 
 fn positive_sequence(value: i64, field: &str) -> OwnerResult<u64> {
@@ -1917,7 +1958,9 @@ fn owner_error_to_commerce(error: ProductAttributeSchemaTranslationError) -> Com
 }
 
 fn checked_add(value: &mut u64, increment: u64, label: &str) -> OwnerResult<()> {
-    *value = value.checked_add(increment).ok_or_else(|| overflow(label))?;
+    *value = value
+        .checked_add(increment)
+        .ok_or_else(|| overflow(label))?;
     Ok(())
 }
 

@@ -472,16 +472,16 @@ impl CatalogService {
                     .await?;
 
                 if let Some(existing_model) = existing {
-                    let mut active: entities::product_translation::ActiveModel = existing_model.into();
+                    let mut active: entities::product_translation::ActiveModel =
+                        existing_model.into();
                     active.title = Set(translation_input.title);
                     active.handle = Set(handle.clone());
                     active.description = Set(translation_input.description);
                     active.meta_title = Set(translation_input.meta_title);
                     active.meta_description = Set(translation_input.meta_description);
-                    active
-                        .update(&txn)
-                        .await
-                        .map_err(|error| map_product_unique_violation(error, &handle, &locale, None))?;
+                    active.update(&txn).await.map_err(|error| {
+                        map_product_unique_violation(error, &handle, &locale, None)
+                    })?;
                 } else {
                     let translation = entities::product_translation::ActiveModel {
                         id: Set(generate_id()),
@@ -494,10 +494,9 @@ impl CatalogService {
                         meta_title: Set(translation_input.meta_title),
                         meta_description: Set(translation_input.meta_description),
                     };
-                    translation
-                        .insert(&txn)
-                        .await
-                        .map_err(|error| map_product_unique_violation(error, &handle, &locale, None))?;
+                    translation.insert(&txn).await.map_err(|error| {
+                        map_product_unique_violation(error, &handle, &locale, None)
+                    })?;
                 }
             }
         }
@@ -857,9 +856,10 @@ impl CatalogService {
             updated_at: Set(now.into()),
         };
 
-        variant.insert(&txn).await.map_err(|error| {
-            map_product_unique_violation(error, "", "", input.sku.as_deref())
-        })?;
+        variant
+            .insert(&txn)
+            .await
+            .map_err(|error| map_product_unique_violation(error, "", "", input.sku.as_deref()))?;
 
         let default_stock_location =
             BootstrapService::ensure_default_location_in_tx(&txn, tenant_id).await?;
@@ -991,9 +991,10 @@ impl CatalogService {
             active.option3 = Set(Some(option3));
         }
 
-        let updated_variant = active.update(&txn).await.map_err(|error| {
-            map_product_unique_violation(error, "", "", input.sku.as_deref())
-        })?;
+        let updated_variant = active
+            .update(&txn)
+            .await
+            .map_err(|error| map_product_unique_violation(error, "", "", input.sku.as_deref()))?;
 
         if options_changed {
             let variant_title = generate_variant_title_from_inputs(

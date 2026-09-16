@@ -479,7 +479,6 @@ fn taxonomy_category_hierarchy_order(
     Ok(ordered)
 }
 
-
 async fn write_category_seo_translation_in_tx(
     txn: &ProductWriteTransaction,
     tenant_id: Uuid,
@@ -907,6 +906,4 @@ mod tests {
         input.meta_description = Some("SEO description".to_string());
         assert!(category_translation_has_seo(&input));
     }
-
-
 }

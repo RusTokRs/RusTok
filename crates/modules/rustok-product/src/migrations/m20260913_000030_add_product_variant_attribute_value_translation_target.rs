@@ -26,17 +26,15 @@ impl MigrationTrait for Migration {
         }
 
         let connection = manager.get_connection();
-        let rows = VariantAttributeValueTranslationRow::find_by_statement(
-            Statement::from_string(
-                connection.get_database_backend(),
-                r#"
+        let rows = VariantAttributeValueTranslationRow::find_by_statement(Statement::from_string(
+            connection.get_database_backend(),
+            r#"
 SELECT id, value_id, locale
 FROM product_variant_attribute_value_translations
 ORDER BY value_id, locale, id
 "#
-                .to_string(),
-            ),
-        )
+            .to_string(),
+        ))
         .all(connection)
         .await?;
 
