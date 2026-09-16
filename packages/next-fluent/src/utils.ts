@@ -127,25 +127,29 @@ export function buildKeyCandidates(
   key: string
 ): string[] {
   const candidates: string[] = [];
+  const pushCandidate = (candidate: string): void => {
+    if (!candidates.includes(candidate)) {
+      candidates.push(candidate);
+    }
+  };
 
-  if (namespace && namespace.trim()) {
-    const cleanNs = namespace.trim();
+  const cleanNs = namespace?.trim();
+  if (cleanNs) {
     const joined = `${cleanNs}.${key}`;
-    candidates.push(withKebabKey(joined));
-    candidates.push(joined);
+    pushCandidate(withKebabKey(joined));
+    pushCandidate(joined);
 
-    // Also support checking namespace with hyphen
+    // Keep the legacy namespace-hyphen alias, but avoid probing an equivalent
+    // candidate twice when it matches the kebab form of the joined key.
     const nsHyphen = withKebabKey(cleanNs);
     if (nsHyphen !== cleanNs) {
-      candidates.push(`${nsHyphen}-${key}`);
+      pushCandidate(`${nsHyphen}-${key}`);
     }
   }
 
-  // Key as-is with kebab conversion and direct key
-  candidates.push(withKebabKey(key));
-  if (!candidates.includes(key)) {
-    candidates.push(key);
-  }
+  // Key as-is with kebab conversion and direct key, preserving first-seen order.
+  pushCandidate(withKebabKey(key));
+  pushCandidate(key);
 
   return candidates;
 }
