@@ -126,22 +126,17 @@ runtime filesystem discovery.
     must remain deduplicated, canonical, include platform `en`, and stay within the structural nine-entry
     bound. Oversized raw inputs remain fail-closed. No crate-local `cargo-fuzz` island was introduced.
 
+23. **Explicit extension-free Rust locale identity.**
+    Rust catalog identity is deliberately the `unic_langid::LanguageIdentifier` core model only:
+    language, optional script, region and variants. Unicode (`-u-...`) and private-use (`-x-...`)
+    extensions are rejected as whole inputs instead of being silently stripped into a different catalog
+    identity. Host/runtime code owns any extension-aware selection before passing the effective Rust
+    catalog locale. `@rustok/next-fluent` may still probe an exact extension-bearing locale and then its
+    `Intl.Locale.baseName`, because the JavaScript runtime has an extension-aware locale representation.
+
 ## Remaining engineering work
 
-### 1. Locale model and extension semantics
-
-Rust catalog identity remains `unic_langid::LanguageIdentifier`. It models language, optional script,
-region and variants, but not Unicode/private-use extensions. Next canonicalization can preserve those
-extensions through `Intl`, but that does not give Rust catalogs extension semantics.
-
-Remaining decisions:
-- decide whether extension-aware Rust catalog identity is ever required;
-- otherwise keep extension selection explicitly host-owned and document Rust as intentionally
-  `LanguageIdentifier`-only;
-- if the Rust representation is widened later, define exact cross-runtime extension identity/fallback
-  rules rather than layering ad-hoc extension stripping onto catalog lookup.
-
-### 2. Public API / semver surface before 1.0
+### 1. Public API / semver surface before 1.0
 
 The crate is currently workspace version `0.1.0`. Its public surface is now explicitly tiered: new
 module-owned code has an additive high-level `prelude`, while catalog/locale interoperability APIs and
@@ -154,7 +149,7 @@ Remaining work before a stable release:
 - decide, with that evidence, which dependency-backed types remain intentional interoperability contract;
 - reserve actual removals/type wrapping for an explicit pre-1.0 breaking window rather than opportunistic cleanup.
 
-### 3. Native fuzzing infrastructure
+### 2. Native fuzzing infrastructure
 
 Generated boundary validation now exists through the repository-standard `proptest` dependency. The
 repository does not currently provide a shared `cargo-fuzz` harness/corpus workflow for this crate, so
@@ -165,13 +160,13 @@ If project-wide native fuzz infrastructure is added later:
 - keep corpora/input sizes bounded so failures remain reproducible and diagnostics cannot amplify generated input;
 - preserve every minimized finding that changes behavior as a deterministic regression test.
 
-### 4. Retained benchmark evidence
+### 3. Retained benchmark evidence
 
 The benchmark matrix exists, but optimization decisions should retain actual before/after numbers when a
 hot-path change is proposed. Do not replace `BTreeMap`, Fluent storage, or candidate representation based
 on intuition alone.
 
-### 5. Locale-aware domain formatting
+### 4. Locale-aware domain formatting
 
 Currency/date/number formatting remains intentionally outside core lookup semantics. If introduced,
 expose it through Fluent functions and keep framework/transport concerns outside this crate.
@@ -191,7 +186,7 @@ Next.js Fluent parity surface:
 Future test work:
 - native fuzz targets only after shared project fuzz infrastructure exists;
 - retained benchmark evidence for any further hot-path optimization;
-- extension-policy contract tests if the Rust locale model changes.
+- extension-policy contract tests if the Rust locale model is deliberately widened.
 
 ## Change rules
 
