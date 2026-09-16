@@ -18,6 +18,11 @@ pub enum BundleBuildError {
         locale: String,
         source: unic_langid::LanguageIdentifierError,
     },
+    /// The configured default locale failed to parse into a valid LanguageIdentifier.
+    InvalidDefaultLocale {
+        locale: String,
+        source: unic_langid::LanguageIdentifierError,
+    },
     /// The FTL resource syntax is invalid.
     FluentParse {
         locale: String,
@@ -38,6 +43,9 @@ impl fmt::Display for BundleBuildError {
             Self::InvalidLocale { locale, source } => {
                 write!(f, "Invalid locale '{locale}': {source}")
             }
+            Self::InvalidDefaultLocale { locale, source } => {
+                write!(f, "Invalid default locale '{locale}': {source}")
+            }
             Self::FluentParse { locale, errors } => {
                 write!(f, "Fluent parse errors for locale '{locale}': {errors:?}")
             }
@@ -54,7 +62,9 @@ impl fmt::Display for BundleBuildError {
 impl std::error::Error for BundleBuildError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::InvalidLocale { source, .. } => Some(source),
+            Self::InvalidLocale { source, .. } | Self::InvalidDefaultLocale { source, .. } => {
+                Some(source)
+            }
             _ => None,
         }
     }
