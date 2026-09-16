@@ -238,8 +238,8 @@ impl PreparedUiMessages {
 /// Stores compile-time embedded message bundles and lazily initializes one
 /// lenient catalog build report on first message resolution or diagnostic access.
 /// The cached report owns both the usable concurrent Fluent catalog and typed
-/// skipped-entry diagnostics. Use [`UiMessages::prepare`] when startup must fail
-/// closed on catalog/configuration errors.
+/// skipped-entry/configuration diagnostics. Use [`UiMessages::prepare`] when
+/// startup must fail closed on catalog/configuration errors.
 pub struct UiMessages {
     default_locale: &'static str,
     bundles: &'static [(&'static str, &'static str)],
@@ -289,26 +289,63 @@ impl UiMessages {
     }
 
     fn fluent_catalog_report(&self) -> &FluentCatalogBuildReport {
-        self.fluent_catalog
-            .get_or_init(|| build_fluent_catalog_report(self.bundles))
+        self.fluent_catalog.get_or_init(|| {
+            let mut report = build_fluent_catalog_report(self.bundles);
+
+            match normalize_default_locale(self.default_locale) {
+                Ok(default_locale) => {
+                    if let Err(error) = ensure_default_locale_present(report.catalog(), &default_locale)
+                    {
+                        tracing::error!(
+                            %error,
+                            default_locale = self.default_locale,
+                            "Configured Fluent default locale is absent from the usable catalog"
+                        );
+                        report.push_diagnostic(error);
+                    }
+                }
+                Err(error) => {
+                    match &error {
+                        BundleBuildError::LocaleTooLong { length, max_len } => {
+                            tracing::error!(
+                                length,
+                                max_len,
+                                "Configured Fluent default locale is oversized"
+                            );
+                        }
+                        _ => {
+                            tracing::error!(
+                                %error,
+                                default_locale = self.default_locale,
+                                "Configured Fluent default locale is invalid"
+                            );
+                        }
+                    }
+                    report.push_diagnostic(error);
+                }
+            }
+
+            report
+        })
     }
 
     /// Accesses the underlying lazily initialized lenient `FluentCatalog`.
     ///
     /// Invalid bundle entries are logged and skipped by this convenience path.
-    /// The same one-time initialization also retains typed diagnostics, available
-    /// through [`Self::initialization_diagnostics`]. Use [`Self::prepare`] when
-    /// catalog construction errors must fail closed instead.
+    /// The same one-time initialization also retains typed entry/configuration
+    /// diagnostics, available through [`Self::initialization_diagnostics`]. Use
+    /// [`Self::prepare`] when catalog construction errors must fail closed instead.
     pub fn fluent_catalog(&self) -> &FluentCatalog {
         self.fluent_catalog_report().catalog()
     }
 
     /// Returns typed diagnostics retained by the lazy lenient initialization.
     ///
-    /// Calling this before the first lookup triggers the same one-time `OnceLock`
-    /// initialization used by [`Self::fluent_catalog`]; it never rebuilds the
-    /// catalog solely to recover diagnostics. The returned slice remains stable
-    /// for the lifetime of this `UiMessages` value.
+    /// Diagnostics include both skipped catalog entries and invalid/missing default
+    /// locale configuration. Calling this before the first lookup triggers the same
+    /// one-time `OnceLock` initialization used by [`Self::fluent_catalog`]; it never
+    /// rebuilds the catalog solely to recover diagnostics. The returned slice remains
+    /// stable for the lifetime of this `UiMessages` value.
     pub fn initialization_diagnostics(&self) -> &[BundleBuildError] {
         self.fluent_catalog_report().diagnostics()
     }
