@@ -28,10 +28,17 @@ fn oversized_locale_is_rejected_consistently_by_lookup_and_strict_builders() {
         Ok(_) => panic!("bundle construction must share the runtime locale length bound"),
         Err(error) => error,
     };
-    assert!(matches!(
-        bundle_error,
-        BundleBuildError::LocaleTooLong { max_len: 64, .. }
-    ));
+    match &bundle_error {
+        BundleBuildError::LocaleTooLong { length, max_len } => {
+            assert_eq!(*length, OVERSIZED_LOCALE.len());
+            assert_eq!(*max_len, 64);
+        }
+        other => panic!("expected LocaleTooLong, got {other:?}"),
+    }
+    assert!(
+        !bundle_error.to_string().contains(OVERSIZED_LOCALE),
+        "oversized untrusted locale payload must not be retained in diagnostics"
+    );
 
     let catalog_error = match try_build_fluent_catalog(&[(OVERSIZED_LOCALE, FTL)]) {
         Ok(_) => panic!("strict catalogs must not contain locales runtime lookup rejects"),
