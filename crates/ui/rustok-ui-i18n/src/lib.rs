@@ -27,7 +27,8 @@ pub use locale::{
     push_unique,
 };
 pub use messages::{
-    resolve_fluent_message, try_resolve_fluent_message, with_kebab_key, UiMessages, UiTranslator,
+    resolve_fluent_message, try_resolve_fluent_message, with_kebab_key, PreparedUiMessages,
+    UiLocaleTranslator, UiMessages, UiTranslator,
 };
 
 #[cfg(test)]
