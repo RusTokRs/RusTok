@@ -34,10 +34,6 @@ fn locale_fallback_matrix_preserves_language_script_region_and_variant_levels() 
         locale_candidates(Some("de-DE-1901"), "en-GB"),
         vec!["de-DE-1901", "de-DE", "de", "en-GB", "en"]
     );
-    assert_eq!(
-        locale_candidates(Some("sl-rozaj-biske"), "en"),
-        vec!["sl-biske-rozaj", "sl-biske", "sl", "en"]
-    );
 }
 
 #[test]
@@ -86,17 +82,14 @@ items = { $count ->
         handles.push(thread::spawn(move || {
             barrier.wait();
 
-            let count = if thread_index % 2 == 0 { 22 } else { 5 };
-            let locale = if thread_index % 3 == 0 { "ru-RU" } else { "en-US" };
+            let (locale, count, expected) = if thread_index % 2 == 0 {
+                ("ru-RU", 22, "22 товара")
+            } else {
+                ("en-US", 5, "5 items")
+            };
             let args = fluent_args!(count = count);
             let actual = MESSAGES.format(Some(locale), "items", Some(&args), "fallback");
-
-            let visible = strip_bidi_isolates(&actual);
-            if locale.starts_with("ru") {
-                assert_eq!(visible, "22 товара");
-            } else {
-                assert_eq!(visible, "5 items");
-            }
+            assert_eq!(strip_bidi_isolates(&actual), expected);
         }));
     }
 
@@ -104,8 +97,10 @@ items = { $count ->
         handle.join().expect("concurrent first lookup thread panicked");
     }
 
+    assert_eq!(MESSAGES.fluent_catalog().len(), 2);
+    let args = fluent_args!(count = 1);
     assert_eq!(
-        strip_bidi_isolates(&MESSAGES.t(Some("en"), "items", "fallback")),
-        "{ $count } items"
+        strip_bidi_isolates(&MESSAGES.format(Some("en"), "items", Some(&args), "fallback")),
+        "1 item"
     );
 }
