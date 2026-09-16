@@ -417,6 +417,43 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         schema.create_table_from_entity(tenant_module::Entity),
     )
     .await;
+
+    for sql in [
+        "CREATE TABLE IF NOT EXISTS stock_location_translation_change_journal (
+            change_seq INTEGER PRIMARY KEY AUTOINCREMENT,
+            operation_id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL,
+            stock_location_id TEXT NOT NULL,
+            resource_revision TEXT NOT NULL,
+            lifecycle TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+        "CREATE TABLE IF NOT EXISTS shipping_option_translation_change_journal (
+            change_seq INTEGER PRIMARY KEY AUTOINCREMENT,
+            operation_id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL,
+            shipping_option_id TEXT NOT NULL,
+            resource_revision TEXT NOT NULL,
+            lifecycle TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+        "CREATE TABLE IF NOT EXISTS region_translation_change_journal (
+            change_seq INTEGER PRIMARY KEY AUTOINCREMENT,
+            operation_id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL,
+            region_id TEXT NOT NULL,
+            resource_revision TEXT NOT NULL,
+            lifecycle TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+    ] {
+        db.execute_raw(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            sql.to_string(),
+        ))
+        .await
+        .expect("failed to create translation change journal test table");
+    }
 }
 
 async fn create_entity_table(
