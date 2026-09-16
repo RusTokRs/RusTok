@@ -90,12 +90,11 @@ impl<'a> UiTranslator<'a> {
 /// Translator bound to one effective locale with a precomputed fallback chain.
 ///
 /// Construction performs locale normalization and candidate allocation once;
-/// subsequent key lookups reuse the stored candidates. The type only borrows
-/// the immutable concurrent Fluent catalog and is therefore safe to share when
-/// the underlying catalog is shared.
+/// subsequent key lookups reuse the stored candidates. The effective diagnostic
+/// locale is borrowed from that same candidate chain, avoiding a duplicate owned
+/// `String` per prepared translator.
 pub struct UiLocaleTranslator<'a> {
     fluent_catalog: &'a FluentCatalog,
-    requested_locale: String,
     candidates: Vec<String>,
 }
 
@@ -107,7 +106,6 @@ impl<'a> UiLocaleTranslator<'a> {
     ) -> Self {
         Self {
             fluent_catalog,
-            requested_locale: locale.unwrap_or(default_locale).to_string(),
             candidates: locale_candidates(locale, default_locale),
         }
     }
@@ -121,7 +119,7 @@ impl<'a> UiLocaleTranslator<'a> {
         try_resolve_fluent_candidates(
             self.fluent_catalog,
             &self.candidates,
-            &self.requested_locale,
+            effective_locale(&self.candidates),
             key,
             None,
         )
@@ -131,7 +129,7 @@ impl<'a> UiLocaleTranslator<'a> {
         resolve_fluent_candidates(
             self.fluent_catalog,
             &self.candidates,
-            &self.requested_locale,
+            effective_locale(&self.candidates),
             key,
             None,
         )
@@ -149,7 +147,7 @@ impl<'a> UiLocaleTranslator<'a> {
         try_resolve_fluent_candidates(
             self.fluent_catalog,
             &self.candidates,
-            &self.requested_locale,
+            effective_locale(&self.candidates),
             key,
             args,
         )
@@ -164,7 +162,7 @@ impl<'a> UiLocaleTranslator<'a> {
         resolve_fluent_candidates(
             self.fluent_catalog,
             &self.candidates,
-            &self.requested_locale,
+            effective_locale(&self.candidates),
             key,
             args,
         )
@@ -372,6 +370,11 @@ fn ensure_default_locale_present(
     }
 }
 
+#[inline]
+fn effective_locale(candidates: &[String]) -> &str {
+    candidates.first().map(String::as_str).unwrap_or("en")
+}
+
 const STACK_KEY_BUF_SIZE: usize = 128;
 
 /// Executes a closure with a kebab-case representation of `key`.
@@ -409,15 +412,20 @@ pub fn try_resolve_fluent_message<'args>(
     key: &str,
     args: Option<&FluentArgs<'args>>,
 ) -> Result<String, I18nError> {
-    let requested_locale = locale.unwrap_or(default_locale);
     let candidates = locale_candidates(locale, default_locale);
-    try_resolve_fluent_candidates(catalog, &candidates, requested_locale, key, args)
+    try_resolve_fluent_candidates(
+        catalog,
+        &candidates,
+        effective_locale(&candidates),
+        key,
+        args,
+    )
 }
 
 fn try_resolve_fluent_candidates<'args>(
     catalog: &FluentCatalog,
     candidates: &[String],
-    requested_locale: &str,
+    effective_locale: &str,
     key: &str,
     args: Option<&FluentArgs<'args>>,
 ) -> Result<String, I18nError> {
@@ -441,7 +449,7 @@ fn try_resolve_fluent_candidates<'args>(
         }
 
         Err(I18nError::MessageNotFound {
-            locale: requested_locale.to_string(),
+            locale: effective_locale.to_string(),
             key: key.to_string(),
         })
     })
@@ -459,19 +467,24 @@ pub fn resolve_fluent_message<'args>(
     key: &str,
     args: Option<&FluentArgs<'args>>,
 ) -> Option<String> {
-    let requested_locale = locale.unwrap_or(default_locale);
     let candidates = locale_candidates(locale, default_locale);
-    resolve_fluent_candidates(catalog, &candidates, requested_locale, key, args)
+    resolve_fluent_candidates(
+        catalog,
+        &candidates,
+        effective_locale(&candidates),
+        key,
+        args,
+    )
 }
 
 fn resolve_fluent_candidates<'args>(
     catalog: &FluentCatalog,
     candidates: &[String],
-    requested_locale: &str,
+    effective_locale: &str,
     key: &str,
     args: Option<&FluentArgs<'args>>,
 ) -> Option<String> {
-    match try_resolve_fluent_candidates(catalog, candidates, requested_locale, key, args) {
+    match try_resolve_fluent_candidates(catalog, candidates, effective_locale, key, args) {
         Ok(message) => Some(message),
         Err(I18nError::MessageNotFound { .. }) => None,
         Err(error) => {
