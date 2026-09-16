@@ -404,14 +404,14 @@ impl UiMessages {
 }
 
 fn normalize_default_locale(default_locale: &str) -> Result<String, BundleBuildError> {
-    let trimmed = default_locale.trim();
-    if trimmed.len() > MAX_LOCALE_TAG_LEN {
+    if default_locale.len() > MAX_LOCALE_TAG_LEN {
         return Err(BundleBuildError::LocaleTooLong {
-            length: trimmed.len(),
+            length: default_locale.len(),
             max_len: MAX_LOCALE_TAG_LEN,
         });
     }
 
+    let trimmed = default_locale.trim();
     let normalized = trimmed.replace('_', "-");
     normalized
         .parse::<LanguageIdentifier>()
