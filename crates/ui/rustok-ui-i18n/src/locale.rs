@@ -10,7 +10,7 @@
 
 use unic_langid::LanguageIdentifier;
 
-const MAX_LOCALE_TAG_LEN: usize = 64;
+pub(crate) const MAX_LOCALE_TAG_LEN: usize = 64;
 
 /// Normalizes the admin UI effective locale to either "ru" or "en".
 ///
