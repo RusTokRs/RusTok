@@ -31,6 +31,15 @@ impl<'a> UiTranslator<'a> {
         }
     }
 
+    /// Prepares one locale fallback chain for reuse across multiple message lookups.
+    ///
+    /// Prefer this in request/render scopes that resolve many keys for the same
+    /// effective locale. It avoids reparsing the locale and reallocating the
+    /// fallback candidate vector on every lookup.
+    pub fn for_locale(&self, locale: Option<&str>) -> UiLocaleTranslator<'a> {
+        UiLocaleTranslator::new(self.fluent_catalog, locale, self.default_locale)
+    }
+
     pub fn try_resolve(
         &self,
         locale: Option<&str>,
@@ -78,6 +87,91 @@ impl<'a> UiTranslator<'a> {
     }
 }
 
+/// Translator bound to one effective locale with a precomputed fallback chain.
+///
+/// Construction performs locale normalization and candidate allocation once;
+/// subsequent key lookups reuse the stored candidates. The type only borrows
+/// the immutable concurrent Fluent catalog and is therefore safe to share when
+/// the underlying catalog is shared.
+pub struct UiLocaleTranslator<'a> {
+    fluent_catalog: &'a FluentCatalog,
+    requested_locale: String,
+    candidates: Vec<String>,
+}
+
+impl<'a> UiLocaleTranslator<'a> {
+    pub fn new(
+        fluent_catalog: &'a FluentCatalog,
+        locale: Option<&str>,
+        default_locale: &str,
+    ) -> Self {
+        Self {
+            fluent_catalog,
+            requested_locale: locale.unwrap_or(default_locale).to_string(),
+            candidates: locale_candidates(locale, default_locale),
+        }
+    }
+
+    /// Returns the normalized fallback candidates reused by this translator.
+    pub fn candidates(&self) -> &[String] {
+        &self.candidates
+    }
+
+    pub fn try_resolve(&self, key: &str) -> Result<String, I18nError> {
+        try_resolve_fluent_candidates(
+            self.fluent_catalog,
+            &self.candidates,
+            &self.requested_locale,
+            key,
+            None,
+        )
+    }
+
+    pub fn resolve(&self, key: &str) -> Option<String> {
+        resolve_fluent_candidates(
+            self.fluent_catalog,
+            &self.candidates,
+            &self.requested_locale,
+            key,
+            None,
+        )
+    }
+
+    pub fn t(&self, key: &str, fallback: &str) -> String {
+        self.format(key, None, fallback)
+    }
+
+    pub fn try_format<'args>(
+        &self,
+        key: &str,
+        args: Option<&FluentArgs<'args>>,
+    ) -> Result<String, I18nError> {
+        try_resolve_fluent_candidates(
+            self.fluent_catalog,
+            &self.candidates,
+            &self.requested_locale,
+            key,
+            args,
+        )
+    }
+
+    pub fn format<'args>(
+        &self,
+        key: &str,
+        args: Option<&FluentArgs<'args>>,
+        fallback: &str,
+    ) -> String {
+        resolve_fluent_candidates(
+            self.fluent_catalog,
+            &self.candidates,
+            &self.requested_locale,
+            key,
+            args,
+        )
+        .unwrap_or_else(|| fallback.to_string())
+    }
+}
+
 /// A fail-closed, fully built message catalog for production startup paths.
 ///
 /// `PreparedUiMessages` is constructed with [`UiMessages::prepare`]. Unlike the
@@ -105,6 +199,11 @@ impl PreparedUiMessages {
         UiTranslator::new(&self.fluent_catalog, self.default_locale)
     }
 
+    /// Prepares one effective locale for repeated lookups against this validated catalog.
+    pub fn for_locale(&self, locale: Option<&str>) -> UiLocaleTranslator<'_> {
+        UiLocaleTranslator::new(&self.fluent_catalog, locale, self.default_locale)
+    }
+
     /// Strictly resolves and formats a message without applying literal fallback text.
     pub fn try_format<'args>(
         &self,
@@ -123,8 +222,7 @@ impl PreparedUiMessages {
         args: Option<&FluentArgs<'args>>,
         fallback: &str,
     ) -> String {
-        self.translator()
-            .format_message(locale, key, args, fallback)
+        self.translator().format_message(locale, key, args, fallback)
     }
 
     /// Resolves a simple translation key with an explicit literal fallback.
@@ -187,6 +285,11 @@ impl UiMessages {
     pub fn fluent_catalog(&self) -> &FluentCatalog {
         self.fluent_catalog
             .get_or_init(|| build_fluent_catalog(self.bundles))
+    }
+
+    /// Prepares one effective locale for repeated lookups through the lazy catalog.
+    pub fn for_locale(&self, locale: Option<&str>) -> UiLocaleTranslator<'_> {
+        UiLocaleTranslator::new(self.fluent_catalog(), locale, self.default_locale)
     }
 
     /// Resolves a simple translation key for the specified locale, falling back if not found.
@@ -285,8 +388,18 @@ pub fn try_resolve_fluent_message<'args>(
     key: &str,
     args: Option<&FluentArgs<'args>>,
 ) -> Result<String, I18nError> {
+    let requested_locale = locale.unwrap_or(default_locale);
     let candidates = locale_candidates(locale, default_locale);
+    try_resolve_fluent_candidates(catalog, &candidates, requested_locale, key, args)
+}
 
+fn try_resolve_fluent_candidates<'args>(
+    catalog: &FluentCatalog,
+    candidates: &[String],
+    requested_locale: &str,
+    key: &str,
+    args: Option<&FluentArgs<'args>>,
+) -> Result<String, I18nError> {
     with_kebab_key(key, |lookup_key| {
         for candidate in candidates {
             if let Some(bundle) = catalog.get(candidate.as_str())
@@ -297,7 +410,7 @@ pub fn try_resolve_fluent_message<'args>(
                 let formatted = bundle.format_pattern(pattern, args, &mut errors);
                 if !errors.is_empty() {
                     return Err(I18nError::FormattingFailed {
-                        locale: candidate,
+                        locale: candidate.clone(),
                         key: key.to_string(),
                         errors,
                     });
@@ -307,7 +420,7 @@ pub fn try_resolve_fluent_message<'args>(
         }
 
         Err(I18nError::MessageNotFound {
-            locale: locale.unwrap_or(default_locale).to_string(),
+            locale: requested_locale.to_string(),
             key: key.to_string(),
         })
     })
@@ -325,7 +438,19 @@ pub fn resolve_fluent_message<'args>(
     key: &str,
     args: Option<&FluentArgs<'args>>,
 ) -> Option<String> {
-    match try_resolve_fluent_message(catalog, locale, default_locale, key, args) {
+    let requested_locale = locale.unwrap_or(default_locale);
+    let candidates = locale_candidates(locale, default_locale);
+    resolve_fluent_candidates(catalog, &candidates, requested_locale, key, args)
+}
+
+fn resolve_fluent_candidates<'args>(
+    catalog: &FluentCatalog,
+    candidates: &[String],
+    requested_locale: &str,
+    key: &str,
+    args: Option<&FluentArgs<'args>>,
+) -> Option<String> {
+    match try_resolve_fluent_candidates(catalog, candidates, requested_locale, key, args) {
         Ok(message) => Some(message),
         Err(I18nError::MessageNotFound { .. }) => None,
         Err(error) => {
