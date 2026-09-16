@@ -28,6 +28,8 @@ pub enum BundleBuildError {
         locale: String,
         errors: Vec<fluent_bundle::FluentError>,
     },
+    /// More than one bundle normalized to the same locale key.
+    DuplicateLocale { locale: String },
 }
 
 impl fmt::Display for BundleBuildError {
@@ -41,6 +43,9 @@ impl fmt::Display for BundleBuildError {
             }
             Self::AddResource { locale, errors } => {
                 write!(f, "Failed to add resource for locale '{locale}': {errors:?}")
+            }
+            Self::DuplicateLocale { locale } => {
+                write!(f, "Duplicate Fluent catalog locale '{locale}'")
             }
         }
     }
