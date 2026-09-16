@@ -24,7 +24,7 @@ fn parse_language_identifier(locale: &str) -> Result<LanguageIdentifier, BundleB
     let trimmed = locale.trim();
     if trimmed.len() > MAX_LOCALE_TAG_LEN {
         return Err(BundleBuildError::LocaleTooLong {
-            locale: locale.to_string(),
+            length: trimmed.len(),
             max_len: MAX_LOCALE_TAG_LEN,
         });
     }
@@ -65,6 +65,8 @@ fn build_fluent_bundle_from_parsed(
 /// as `ru_RU` are accepted consistently with `normalize_locale_tag`. The same
 /// bounded locale-input contract used by runtime lookup is enforced before
 /// normalization allocates, preventing catalogs that lookup can never select.
+/// Oversized-input errors report only lengths and never retain the untrusted
+/// locale payload.
 ///
 /// Unicode directional isolation is explicitly enabled. Fluent therefore wraps
 /// interpolated values with FSI/PDI markers where appropriate, preventing mixed
@@ -105,15 +107,24 @@ pub fn try_build_fluent_catalog(
 /// Builds an immutable, concurrent `FluentCatalog` using lenient UI semantics.
 ///
 /// Invalid, oversized locale/FTL inputs are skipped, but every skipped entry is
-/// logged. Duplicate normalized locale keys are also logged and the first entry
-/// wins. Call [`try_build_fluent_catalog`] from validation and CI paths that must
-/// fail closed on invalid catalogs.
+/// logged. Oversized locale payloads are never copied into diagnostics or logs;
+/// only their bounded metadata is emitted. Duplicate normalized locale keys are
+/// also logged and the first entry wins. Call [`try_build_fluent_catalog`] from
+/// validation and CI paths that must fail closed on invalid catalogs.
 pub fn build_fluent_catalog(bundles: &[(&str, &str)]) -> FluentCatalog {
     let mut catalog = FluentCatalog::new();
 
     for (locale, ftl_source) in bundles {
         let langid = match parse_language_identifier(locale) {
             Ok(langid) => langid,
+            Err(BundleBuildError::LocaleTooLong { length, max_len }) => {
+                tracing::error!(
+                    length,
+                    max_len,
+                    "Skipping oversized Fluent locale"
+                );
+                continue;
+            }
             Err(error) => {
                 tracing::error!(%error, locale = *locale, "Skipping invalid Fluent locale");
                 continue;
