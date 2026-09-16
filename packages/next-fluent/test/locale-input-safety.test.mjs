@@ -42,6 +42,22 @@ test('Accept-Language streaming preserves q priority and first-seen ties', () =>
   );
 });
 
+test('Accept-Language rejects malformed or out-of-range qvalues', () => {
+  const locales = ['en', 'ru'];
+
+  for (const invalidQuality of ['bogus', '2', '1.5', '.8', '0.1234', '1.001', '.']) {
+    assert.equal(
+      resolveAcceptLanguage(`ru;q=${invalidQuality},en;q=0.5`, locales),
+      'en',
+      `invalid q=${invalidQuality} must not promote ru`
+    );
+  }
+
+  assert.equal(resolveAcceptLanguage('ru;Q=1.000,en;q=0.9', locales), 'ru');
+  assert.equal(resolveAcceptLanguage('ru;q=0.123,en;q=0.5', locales), 'en');
+  assert.equal(resolveAcceptLanguage('ru;q=0,en', locales), 'en');
+});
+
 test('large Accept-Language candidate sets resolve without candidate-array materialization', () => {
   const unsupported = Array.from({ length: 4096 }, (_, index) => `x-${index}`).join(',');
   const header = `${unsupported},ru;q=0.9`;
