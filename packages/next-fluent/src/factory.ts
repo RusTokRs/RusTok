@@ -1,7 +1,7 @@
 import type { I18nConfig, Translations, GetTranslationsOptions } from './types';
 import { createI18nMiddleware, type NextMiddlewareRequestLike } from './middleware';
 import { forLocale, getLocale, setRequestConfig } from './server';
-import { validateI18nConfig } from './utils';
+import { matchConfiguredLocaleIdentity, validateI18nConfig } from './utils';
 
 export interface I18nRuntime {
   readonly config: I18nConfig;
@@ -19,12 +19,20 @@ export interface I18nRuntime {
 export function createI18n(config: I18nConfig): I18nRuntime {
   validateI18nConfig(config);
 
+  const configuredDefaultLocale = matchConfiguredLocaleIdentity(
+    config.defaultLocale,
+    config.locales
+  );
+  if (!configuredDefaultLocale) {
+    throw new Error('[next-fluent] Unable to resolve configured default locale identity.');
+  }
+
   const middlewareFn = createI18nMiddleware(config);
 
   if (config.loadMessages) {
     const loader = config.loadMessages;
     setRequestConfig(async ({ locale }) => {
-      const target = locale ?? config.defaultLocale;
+      const target = locale ?? configuredDefaultLocale;
       const msgs = await loader(target);
       return {
         locale: target,
@@ -35,7 +43,7 @@ export function createI18n(config: I18nConfig): I18nRuntime {
 
   const serverOptions = {
     locales: config.locales,
-    defaultLocale: config.defaultLocale,
+    defaultLocale: configuredDefaultLocale,
     headerName: config.headerName,
   };
 
