@@ -1,10 +1,15 @@
+const MAX_LOCALE_TAG_LENGTH = 64;
+
 export function canonicalizeLocale(locale?: string | null): string | undefined {
   if (!locale || typeof locale !== 'string') return undefined;
-  const trimmed = locale.trim().replaceAll('_', '-');
-  if (!trimmed || trimmed.length > 64) return undefined;
+  const raw = locale.trim();
+  if (!raw || raw.length > MAX_LOCALE_TAG_LENGTH) return undefined;
+
+  // Bound request-controlled input before replaceAll allocates a normalized copy.
+  const normalized = raw.replaceAll('_', '-');
 
   try {
-    const canonical = Intl.getCanonicalLocales(trimmed);
+    const canonical = Intl.getCanonicalLocales(normalized);
     return canonical[0];
   } catch {
     return undefined;

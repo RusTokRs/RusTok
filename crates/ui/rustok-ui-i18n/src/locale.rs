@@ -10,6 +10,8 @@
 
 use unic_langid::LanguageIdentifier;
 
+const MAX_LOCALE_TAG_LEN: usize = 64;
+
 /// Normalizes the admin UI effective locale to either "ru" or "en".
 ///
 /// If `locale` is absent, invalid, or not Russian, defaults to `"en"`.
@@ -29,13 +31,18 @@ pub fn normalize_admin_locale(locale: Option<&str>) -> &'static str {
     }
 }
 
-/// Parses and normalizes a BCP 47 locale tag, replacing underscores with hyphens.
+/// Parses and normalizes a BCP 47 language identifier, replacing underscores with hyphens.
+///
+/// Inputs longer than 64 bytes are rejected before normalization allocates. BCP 47
+/// language identifiers are ASCII, so the byte limit matches the shared Next.js
+/// locale policy while keeping request-scope lookup work bounded.
 pub fn normalize_locale_tag(locale: &str) -> Option<String> {
-    let normalized = locale.trim().replace('_', "-");
-    if normalized.is_empty() {
+    let trimmed = locale.trim();
+    if trimmed.is_empty() || trimmed.len() > MAX_LOCALE_TAG_LEN {
         return None;
     }
 
+    let normalized = trimmed.replace('_', "-");
     let langid: LanguageIdentifier = normalized.parse().ok()?;
     Some(langid.to_string())
 }
