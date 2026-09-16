@@ -11,10 +11,9 @@
 use std::sync::OnceLock;
 
 use fluent_bundle::FluentArgs;
+use unic_langid::LanguageIdentifier;
 
-use crate::bundle::{
-    build_fluent_catalog, try_build_fluent_catalog, FluentCatalog,
-};
+use crate::bundle::{build_fluent_catalog, try_build_fluent_catalog, FluentCatalog};
 use crate::error::{BundleBuildError, I18nError};
 use crate::locale::locale_candidates;
 
@@ -79,10 +78,67 @@ impl<'a> UiTranslator<'a> {
     }
 }
 
+/// A fail-closed, fully built message catalog for production startup paths.
+///
+/// `PreparedUiMessages` is constructed with [`UiMessages::prepare`]. Unlike the
+/// lazy [`UiMessages::fluent_catalog`] path, construction rejects malformed
+/// locale tags, malformed FTL resources, duplicate normalized locales, and an
+/// invalid configured default locale before any lookup can occur.
+pub struct PreparedUiMessages {
+    default_locale: &'static str,
+    fluent_catalog: FluentCatalog,
+}
+
+impl PreparedUiMessages {
+    /// Returns the configured default locale.
+    pub const fn default_locale(&self) -> &'static str {
+        self.default_locale
+    }
+
+    /// Returns the validated Fluent catalog.
+    pub const fn fluent_catalog(&self) -> &FluentCatalog {
+        &self.fluent_catalog
+    }
+
+    /// Borrows this prepared catalog through the common translator facade.
+    pub const fn translator(&self) -> UiTranslator<'_> {
+        UiTranslator::new(&self.fluent_catalog, self.default_locale)
+    }
+
+    /// Strictly resolves and formats a message without applying literal fallback text.
+    pub fn try_format<'args>(
+        &self,
+        locale: Option<&str>,
+        key: &str,
+        args: Option<&FluentArgs<'args>>,
+    ) -> Result<String, I18nError> {
+        self.translator().try_format_message(locale, key, args)
+    }
+
+    /// Resolves and formats a message with an explicit literal fallback.
+    pub fn format<'args>(
+        &self,
+        locale: Option<&str>,
+        key: &str,
+        args: Option<&FluentArgs<'args>>,
+        fallback: &str,
+    ) -> String {
+        self.translator()
+            .format_message(locale, key, args, fallback)
+    }
+
+    /// Resolves a simple translation key with an explicit literal fallback.
+    pub fn t(&self, locale: Option<&str>, key: &str, fallback: &str) -> String {
+        self.translator().t(locale, key, fallback)
+    }
+}
+
 /// Primary thread-safe (`Send + Sync`) container for module-owned UI translations.
 ///
 /// Stores compile-time embedded message bundles and lazily initializes concurrent
-/// Fluent bundles on first message resolution.
+/// Fluent bundles on first message resolution. The lazy path is intentionally
+/// lenient for UI rendering; use [`UiMessages::prepare`] when startup must fail
+/// closed on catalog/configuration errors.
 pub struct UiMessages {
     default_locale: &'static str,
     bundles: &'static [(&'static str, &'static str)],
@@ -102,15 +158,32 @@ impl UiMessages {
         }
     }
 
-    /// Validates all embedded locale/FTL pairs using strict catalog semantics.
+    /// Strictly validates the configured default locale and every embedded bundle.
     ///
-    /// This is intended for tests and CI so malformed resources never become a
-    /// production-only fallback surprise.
+    /// This is intended for tests and CI. Production startup code that wants to
+    /// validate once and reuse the exact validated catalog should call [`Self::prepare`].
     pub fn validate(&self) -> Result<(), BundleBuildError> {
+        validate_default_locale(self.default_locale)?;
         try_build_fluent_catalog(self.bundles).map(|_| ())
     }
 
-    /// Accesses the underlying lazily-initialized `FluentCatalog`.
+    /// Builds a fail-closed catalog once and returns an owned prepared runtime.
+    ///
+    /// This avoids the validate-then-rebuild pattern: the returned object serves
+    /// lookups from the same strict catalog that passed construction.
+    pub fn prepare(&self) -> Result<PreparedUiMessages, BundleBuildError> {
+        validate_default_locale(self.default_locale)?;
+        let fluent_catalog = try_build_fluent_catalog(self.bundles)?;
+        Ok(PreparedUiMessages {
+            default_locale: self.default_locale,
+            fluent_catalog,
+        })
+    }
+
+    /// Accesses the underlying lazily-initialized lenient `FluentCatalog`.
+    ///
+    /// Invalid bundle entries are logged and skipped by this convenience path.
+    /// Use [`Self::prepare`] when catalog construction errors must be returned.
     pub fn fluent_catalog(&self) -> &FluentCatalog {
         self.fluent_catalog
             .get_or_init(|| build_fluent_catalog(self.bundles))
@@ -127,6 +200,10 @@ impl UiMessages {
     }
 
     /// Strictly resolves and formats a message without applying literal fallback text.
+    ///
+    /// This method is strict about lookup/formatting but uses the lazily initialized
+    /// lenient catalog for backward compatibility. Use [`Self::prepare`] when
+    /// bundle construction itself must also be fail-closed.
     pub fn try_format<'args>(
         &self,
         locale: Option<&str>,
@@ -158,6 +235,17 @@ impl UiMessages {
 
         fallback.to_string()
     }
+}
+
+fn validate_default_locale(default_locale: &str) -> Result<(), BundleBuildError> {
+    let normalized = default_locale.trim().replace('_', "-");
+    normalized
+        .parse::<LanguageIdentifier>()
+        .map(|_| ())
+        .map_err(|source| BundleBuildError::InvalidDefaultLocale {
+            locale: default_locale.to_string(),
+            source,
+        })
 }
 
 const STACK_KEY_BUF_SIZE: usize = 128;
