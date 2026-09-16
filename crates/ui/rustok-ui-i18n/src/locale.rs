@@ -12,6 +12,16 @@ use unic_langid::LanguageIdentifier;
 
 pub(crate) const MAX_LOCALE_TAG_LEN: usize = 64;
 
+fn parse_locale_tag(locale: &str) -> Option<LanguageIdentifier> {
+    let trimmed = locale.trim();
+    if trimmed.is_empty() || trimmed.len() > MAX_LOCALE_TAG_LEN {
+        return None;
+    }
+
+    let normalized = trimmed.replace('_', "-");
+    normalized.parse().ok()
+}
+
 /// Normalizes the admin UI effective locale to either "ru" or "en".
 ///
 /// If `locale` is absent, invalid, or not Russian, defaults to `"en"`.
@@ -37,14 +47,7 @@ pub fn normalize_admin_locale(locale: Option<&str>) -> &'static str {
 /// language identifiers are ASCII, so the byte limit matches the shared Next.js
 /// locale policy while keeping request-scope lookup work bounded.
 pub fn normalize_locale_tag(locale: &str) -> Option<String> {
-    let trimmed = locale.trim();
-    if trimmed.is_empty() || trimmed.len() > MAX_LOCALE_TAG_LEN {
-        return None;
-    }
-
-    let normalized = trimmed.replace('_', "-");
-    let langid: LanguageIdentifier = normalized.parse().ok()?;
-    Some(langid.to_string())
+    parse_locale_tag(locale).map(|langid| langid.to_string())
 }
 
 /// Generates a deduplicated ordered list of locale fallback candidates.
@@ -54,6 +57,11 @@ pub fn normalize_locale_tag(locale: &str) -> Option<String> {
 ///    (e.g. `zh-Hans-CN` -> `zh-Hans` -> `zh`)
 /// 2. Default locale from most-specific to least-specific
 /// 3. Canonical platform fallback (`"en"`)
+///
+/// Variant subtags are treated as one unordered specificity layer. `unic_langid`
+/// canonicalizes variants as an ordered set, so peeling the serialized tag one
+/// hyphen at a time can manufacture an arbitrary partial-variant parent. The
+/// fallback therefore removes all variants together before region and script.
 pub fn locale_candidates(locale: Option<&str>, default_locale: &str) -> Vec<String> {
     let mut candidates = Vec::new();
 
@@ -64,21 +72,34 @@ pub fn locale_candidates(locale: Option<&str>, default_locale: &str) -> Vec<Stri
     candidates
 }
 
-/// Pushes a normalized locale and all of its progressively less-specific
+/// Pushes a normalized locale and its progressively less-specific structural
 /// parents to the candidate list.
 pub fn push_locale_candidate(candidates: &mut Vec<String>, locale: Option<&str>) {
-    let Some(locale) = locale.and_then(normalize_locale_tag) else {
+    let Some(mut langid) = locale.and_then(parse_locale_tag) else {
         return;
     };
 
-    let mut current = locale.as_str();
-    loop {
-        push_unique(candidates, current);
-        let Some((parent, _)) = current.rsplit_once('-') else {
-            break;
-        };
-        current = parent;
+    push_langid_candidate(candidates, &langid);
+
+    if langid.variants().next().is_some() {
+        langid.clear_variants();
+        push_langid_candidate(candidates, &langid);
     }
+
+    if langid.region.is_some() {
+        langid.region = None;
+        push_langid_candidate(candidates, &langid);
+    }
+
+    if langid.script.is_some() {
+        langid.script = None;
+        push_langid_candidate(candidates, &langid);
+    }
+}
+
+fn push_langid_candidate(candidates: &mut Vec<String>, langid: &LanguageIdentifier) {
+    let locale = langid.to_string();
+    push_unique(candidates, &locale);
 }
 
 /// Appends `locale` to `candidates` only if not already present.
