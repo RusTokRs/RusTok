@@ -132,6 +132,7 @@ mod tests {
         MediaItem {
             id: Uuid::new_v4(),
             tenant_id,
+            owner_module: "profiles".to_string(),
             uploaded_by,
             filename: "profile-image.png".to_string(),
             original_name: "profile-image.png".to_string(),
