@@ -14,6 +14,7 @@ pub mod locale;
 #[macro_use]
 pub mod macros;
 pub mod messages;
+pub mod prelude;
 
 pub use fluent_bundle::{FluentArgs, FluentValue};
 pub use unic_langid::LanguageIdentifier;
