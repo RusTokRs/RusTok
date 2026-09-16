@@ -103,6 +103,11 @@ runtime filesystem discovery.
     Production code is in-memory and has no runtime filesystem dependency; `wasm32-unknown-unknown`
     remains a supported compile target.
 
+19. **Forward-compatible public error enums.**
+    `BundleBuildError` and `I18nError` are non-exhaustive before 1.0. Downstream consumers can still
+    inspect stable variants but must keep a wildcard arm, allowing new typed diagnostics to be added
+    without turning every exhaustive match into a future semver blocker.
+
 ## Remaining engineering work
 
 ### 1. Locale model and extension semantics
@@ -121,13 +126,14 @@ Remaining decisions:
 ### 2. Public API / semver surface before 1.0
 
 The crate is currently workspace version `0.1.0` and publicly exposes modules, Fluent types,
-`unic_langid::LanguageIdentifier`, `FluentCatalog` internals and public error enums.
+`unic_langid::LanguageIdentifier`, `FluentCatalog` internals and helper functions in addition to the
+intended high-level message/runtime facades. The public error enums are now explicitly non-exhaustive.
 
-Before a stable release:
-- inventory real workspace/external consumers;
+Remaining work before a stable release:
+- inventory real workspace/external consumers of public modules, dependency types and low-level helpers;
 - decide which dependency types are intentional public contract versus implementation leakage;
-- decide whether error enums should become non-exhaustive before downstream exhaustive matches harden;
-- prefer additive facade APIs and reserve removals/type wrapping for an explicit migration window.
+- prefer additive facade APIs and reserve removals/type wrapping for an explicit migration window;
+- only narrow existing public exports after concrete consumer migration evidence exists.
 
 ### 3. Fuzz and stress validation
 
