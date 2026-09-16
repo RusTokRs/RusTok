@@ -81,7 +81,7 @@ pub fn push_locale_candidate(candidates: &mut Vec<String>, locale: Option<&str>)
 
     push_langid_candidate(candidates, &langid);
 
-    if langid.variants().len() > 0 {
+    if langid.variants().next().is_some() {
         langid.clear_variants();
         push_langid_candidate(candidates, &langid);
     }
