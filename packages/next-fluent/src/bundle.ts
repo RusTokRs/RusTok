@@ -45,6 +45,9 @@ export interface CreateTranslatorOptions {
   debug?: boolean;
 }
 
+const FORMAT_ERROR = Symbol('format-error');
+type FormatCandidateResult = string | null | typeof FORMAT_ERROR;
+
 export function createTranslator(
   bundle: FluentBundle | null,
   namespaceOrFallbackOrOpts?: string | FluentBundle | CreateTranslatorOptions | null,
@@ -87,13 +90,17 @@ export function createTranslator(
     targetBundle: FluentBundle,
     candidate: string,
     args?: FluentArgs
-  ): string | null => {
+  ): FormatCandidateResult => {
     const msg = targetBundle.getMessage(candidate);
     if (msg?.value) {
       const errors: Error[] = [];
       const formatted = targetBundle.formatPattern(msg.value, args, errors);
       if (errors.length > 0) {
         console.warn(`[next-fluent] Format errors for key "${candidate}":`, errors);
+        // Never expose Fluent's partially formatted output. A message that exists
+        // but cannot be formatted is a terminal resolution failure, matching the
+        // Rust lenient path rather than silently falling through to another locale.
+        return FORMAT_ERROR;
       }
       return formatted;
     }
@@ -102,14 +109,15 @@ export function createTranslator(
 
   const tFn = (key: string, args?: FluentArgs): string => {
     const candidates = buildKeyCandidates(namespace, key);
+    const fallbackKey = namespace ? `${namespace}.${key}` : key;
     for (const b of allBundles) {
       for (const candidate of candidates) {
         const formatted = formatCandidate(b, candidate, args);
+        if (formatted === FORMAT_ERROR) return fallbackKey;
         if (formatted !== null) return formatted;
       }
     }
 
-    const fallbackKey = namespace ? `${namespace}.${key}` : key;
     if (debug) {
       console.warn(`[next-fluent] Missing translation for key "${fallbackKey}"`);
       return `[MISSING: ${fallbackKey}]`;
