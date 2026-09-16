@@ -20,3 +20,19 @@ test('format errors never expose partial Fluent output or fall through locale fa
     'Привет, Иван!'
   );
 });
+
+test('t.raw rejects partial values and attributes when formatting needs arguments', () => {
+  const bundle = createFluentBundle(
+    'en',
+    `
+raw-value = Value for { $name }
+raw-list =
+    .item0 = Static item
+    .item1 = Item for { $name }
+`
+  );
+  const t = createTranslator(bundle);
+
+  assert.equal(t.raw('raw-value'), 'raw-value');
+  assert.equal(t.raw('raw-list'), 'raw-list');
+});
