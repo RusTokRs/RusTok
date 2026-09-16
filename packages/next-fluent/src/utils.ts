@@ -1,4 +1,5 @@
 const MAX_LOCALE_TAG_LENGTH = 64;
+const HTTP_QVALUE = /^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/;
 
 function localeDiagnosticValue(locale: string): string {
   if (locale.length > MAX_LOCALE_TAG_LENGTH) {
@@ -70,10 +71,11 @@ function parseAcceptLanguageEntry(entry: string): { tag: string; quality: number
     const nextSeparator = trimmed.indexOf(';', paramStart);
     const paramEnd = nextSeparator === -1 ? trimmed.length : nextSeparator;
     const param = trimmed.slice(paramStart, paramEnd).trim();
-    const match = param.match(/^q\s*=\s*([0-9.]+)/i);
-    if (match) {
-      const parsed = Number.parseFloat(match[1]);
-      quality = Number.isNaN(parsed) ? 1.0 : parsed;
+    const qParam = param.match(/^q\s*=\s*(.*)$/i);
+    if (qParam) {
+      const rawQuality = qParam[1].trim();
+      if (!HTTP_QVALUE.test(rawQuality)) return undefined;
+      quality = Number(rawQuality);
       break;
     }
 
