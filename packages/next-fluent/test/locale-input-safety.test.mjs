@@ -21,6 +21,34 @@ test('oversized Accept-Language candidate does not block a later supported local
   );
 });
 
+test('Accept-Language streaming preserves q priority and first-seen ties', () => {
+  const locales = ['en', 'ru', 'de'];
+
+  assert.equal(
+    resolveAcceptLanguage('ru;q=0.8,en;q=0.8,de;q=0.7', locales),
+    'ru'
+  );
+  assert.equal(
+    resolveAcceptLanguage('ru;q=0.8,en;q=0.9,de;q=0.7', locales),
+    'en'
+  );
+  assert.equal(
+    resolveAcceptLanguage('*;q=0.7,ru;q=0.8', locales),
+    'ru'
+  );
+  assert.equal(
+    resolveAcceptLanguage('*;q=0.9,ru;q=0.8', locales),
+    'en'
+  );
+});
+
+test('large Accept-Language candidate sets resolve without candidate-array materialization', () => {
+  const unsupported = Array.from({ length: 4096 }, (_, index) => `x-${index}`).join(',');
+  const header = `${unsupported},ru;q=0.9`;
+
+  assert.equal(resolveAcceptLanguage(header, ['en', 'ru']), 'ru');
+});
+
 test('bounded surrounding whitespace is still trimmed', () => {
   assert.equal(
     normalizeLocaleTag('        ru_RU        '),
