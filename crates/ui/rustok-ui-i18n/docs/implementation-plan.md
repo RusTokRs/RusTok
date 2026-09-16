@@ -108,6 +108,12 @@ runtime filesystem discovery.
     inspect stable variants but must keep a wildcard arm, allowing new typed diagnostics to be added
     without turning every exhaustive match into a future semver blocker.
 
+20. **Deterministic stress validation.**
+    Integration stress tests cover a 1,000-message Fluent resource, a 64-locale strict catalog, and a
+    mixed 128-entry lenient batch containing valid, invalid-locale, oversized-locale and malformed-FTL
+    inputs. The batch contract verifies usable-entry preservation, typed diagnostic ordering, and
+    payload-free `LocaleTooLong` metadata at scale.
+
 ## Remaining engineering work
 
 ### 1. Locale model and extension semantics
@@ -128,23 +134,26 @@ Remaining decisions:
 The crate is currently workspace version `0.1.0` and publicly exposes modules, Fluent types,
 `unic_langid::LanguageIdentifier`, `FluentCatalog` internals and helper functions in addition to the
 intended high-level message/runtime facades. The public error enums are now explicitly non-exhaustive.
+The workspace dependency graph demonstrates broad consumption of this crate, so existing exports remain
+compatibility surface until symbol-level consumers can be migrated deliberately.
 
 Remaining work before a stable release:
-- inventory real workspace/external consumers of public modules, dependency types and low-level helpers;
+- complete symbol-level inventory of public modules, dependency types and low-level helpers;
 - decide which dependency types are intentional public contract versus implementation leakage;
 - prefer additive facade APIs and reserve removals/type wrapping for an explicit migration window;
 - only narrow existing public exports after concrete consumer migration evidence exists.
 
-### 3. Fuzz and stress validation
+### 3. Fuzz validation
 
-Existing property/malformed/concurrency tests plus bounded locale and large `Accept-Language` fixtures
-cover known regressions, but deterministic suites are not a substitute for adversarial parser/runtime stress.
+Property, malformed-input, concurrency and deterministic stress matrices now cover the known contracts,
+but generated cases are still needed to explore parser/state combinations that hand-written fixtures do
+not enumerate.
 
 Next steps:
 - add fuzz targets for locale normalization/candidate construction and FTL/catalog ingestion if repository
   fuzz infrastructure is approved;
-- add bounded stress fixtures for very large message catalogs and malformed-resource batches;
-- verify diagnostic collection remains non-amplifying across all future request-controlled inputs.
+- keep fuzz corpora bounded so failures remain reproducible and diagnostics cannot amplify generated input;
+- preserve any minimized regression input as a deterministic integration test after a fuzz finding.
 
 ### 4. Retained benchmark evidence
 
@@ -171,7 +180,6 @@ Next.js Fluent parity surface:
 
 Future test work:
 - fuzz targets once project fuzz infrastructure exists;
-- stress matrices for large malformed/valid catalogs;
 - retained benchmark evidence for any further hot-path optimization;
 - extension-policy contract tests if the Rust locale model changes.
 
