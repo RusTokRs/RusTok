@@ -40,5 +40,5 @@ negotiation remains a separate follow-up and must not be inferred from the curre
 
 - [Root README](../README.md)
 - [Implementation Plan](./implementation-plan.md)
-- [Module UI Package Implementation Guide](../../../docs/UI/module-package-implementation.md)
-- [Platform Documentation Map](../../../docs/index.md)
+- [Module UI Package Implementation Guide](../../../../docs/UI/module-package-implementation.md)
+- [Platform Documentation Map](../../../../docs/index.md)
