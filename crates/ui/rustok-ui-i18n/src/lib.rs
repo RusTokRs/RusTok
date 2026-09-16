@@ -18,19 +18,25 @@ pub mod messages;
 pub use fluent_bundle::{FluentArgs, FluentValue};
 pub use unic_langid::LanguageIdentifier;
 
-pub use bundle::{build_fluent_bundle, build_fluent_catalog, FluentCatalog};
+pub use bundle::{
+    build_fluent_bundle, build_fluent_catalog, try_build_fluent_catalog, FluentCatalog,
+};
 pub use error::{BundleBuildError, I18nError};
 pub use locale::{
     locale_candidates, normalize_admin_locale, normalize_locale_tag, push_locale_candidate,
     push_unique,
 };
 pub use messages::{
-    resolve_fluent_message, with_kebab_key, UiMessages, UiTranslator,
+    resolve_fluent_message, try_resolve_fluent_message, with_kebab_key, UiMessages, UiTranslator,
 };
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn without_bidi_isolates(value: &str) -> String {
+        value.replace('\u{2068}', "").replace('\u{2069}', "")
+    }
 
     #[test]
     fn normalize_locale_tag_supports_iso_639_three_letter_codes() {
@@ -71,28 +77,48 @@ cart-items = { $count ->
         let mut args1 = FluentArgs::new();
         args1.set("count", 1);
         assert_eq!(
-            translator.format_message(Some("ru"), "cart-items", Some(&args1), "fallback"),
+            without_bidi_isolates(&translator.format_message(
+                Some("ru"),
+                "cart-items",
+                Some(&args1),
+                "fallback",
+            )),
             "1 товар"
         );
 
         let mut args2 = FluentArgs::new();
         args2.set("count", 3);
         assert_eq!(
-            translator.format_message(Some("ru"), "cart-items", Some(&args2), "fallback"),
+            without_bidi_isolates(&translator.format_message(
+                Some("ru"),
+                "cart-items",
+                Some(&args2),
+                "fallback",
+            )),
             "3 товара"
         );
 
         let mut args5 = FluentArgs::new();
         args5.set("count", 5);
         assert_eq!(
-            translator.format_message(Some("ru"), "cart-items", Some(&args5), "fallback"),
+            without_bidi_isolates(&translator.format_message(
+                Some("ru"),
+                "cart-items",
+                Some(&args5),
+                "fallback",
+            )),
             "5 товаров"
         );
 
         let mut args21 = FluentArgs::new();
         args21.set("count", 21);
         assert_eq!(
-            translator.format_message(Some("ru"), "cart-items", Some(&args21), "fallback"),
+            without_bidi_isolates(&translator.format_message(
+                Some("ru"),
+                "cart-items",
+                Some(&args21),
+                "fallback",
+            )),
             "21 товар"
         );
     }
@@ -118,40 +144,77 @@ items-count = { $count ->
 
         let args = fluent_args!["name" => "Alice"];
         assert_eq!(
-            MESSAGES.format(Some("en"), "welcome", Some(&args), "Fallback"),
+            without_bidi_isolates(&MESSAGES.format(
+                Some("en"),
+                "welcome",
+                Some(&args),
+                "Fallback",
+            )),
             "Welcome, Alice!"
         );
         assert_eq!(
-            MESSAGES.format(Some("ru"), "welcome", Some(&args), "Fallback"),
+            without_bidi_isolates(&MESSAGES.format(
+                Some("ru"),
+                "welcome",
+                Some(&args),
+                "Fallback",
+            )),
             "Добро пожаловать, Alice!"
         );
 
         // Test fluent_args! with identifier syntax
         let args_ident = fluent_args!(name = "Bob");
         assert_eq!(
-            MESSAGES.format(Some("en"), "welcome", Some(&args_ident), "Fallback"),
+            without_bidi_isolates(&MESSAGES.format(
+                Some("en"),
+                "welcome",
+                Some(&args_ident),
+                "Fallback",
+            )),
             "Welcome, Bob!"
         );
 
         let count_args = fluent_args!(count = 3);
         assert_eq!(
-            MESSAGES.format(Some("ru"), "items-count", Some(&count_args), "Fallback"),
+            without_bidi_isolates(&MESSAGES.format(
+                Some("ru"),
+                "items-count",
+                Some(&count_args),
+                "Fallback",
+            )),
             "3 товара"
         );
 
         // Verify dotted key resolves via kebab-case mapping
         assert_eq!(
-            MESSAGES.format(Some("ru"), "items.count", Some(&count_args), "Fallback"),
+            without_bidi_isolates(&MESSAGES.format(
+                Some("ru"),
+                "items.count",
+                Some(&count_args),
+                "Fallback",
+            )),
             "3 товара"
         );
 
         // Verify t! macro with arguments
         assert_eq!(
-            t!(MESSAGES, Some("ru"), "items.count", "fallback", count = 5),
+            without_bidi_isolates(&t!(
+                MESSAGES,
+                Some("ru"),
+                "items.count",
+                "fallback",
+                count = 5
+            )),
             "5 товаров"
         );
         assert_eq!(
-            t!(MESSAGES, Some("en"), "welcome", "fallback", name = "Charlie"),
+            without_bidi_isolates(&t!(
+                MESSAGES,
+                Some("en"),
+                "welcome",
+                "fallback",
+                name = "Charlie"
+            )),
             "Welcome, Charlie!"
         );
     }
@@ -235,11 +298,22 @@ page-builder-translations-localizedMetadataValuesPlaceholder =
 
             let args = fluent_args!(name = "Иван");
             assert_eq!(
-                format(Some("ru"), "test.greet", Some(&args), "Fallback"),
+                super::without_bidi_isolates(&format(
+                    Some("ru"),
+                    "test.greet",
+                    Some(&args),
+                    "Fallback",
+                )),
                 "Привет, Иван!"
             );
             assert_eq!(
-                crate::t!(MESSAGES, Some("ru"), "test.greet", "Fallback", name = "Иван"),
+                super::without_bidi_isolates(&crate::t!(
+                    MESSAGES,
+                    Some("ru"),
+                    "test.greet",
+                    "Fallback",
+                    name = "Иван"
+                )),
                 "Привет, Иван!"
             );
         }

@@ -2,98 +2,165 @@
 
 ## Current state
 
-`rustok-ui-i18n` owns framework-agnostic UI message catalog resolution supporting
-Project Fluent (`.ftl`) message catalogs, canonical locale normalization
-(`normalize_admin_locale`), thread-safe concurrent bundle storage (`Send + Sync`),
-zero-allocation hot-path key resolution (`with_kebab_key`), macro declaration
-(`declare_module_i18n!`), typed error diagnostics (`BundleBuildError`), and fallback resolution.
-The crate is modularized into `locale`, `bundle`, `messages`, `error`, and `macros` submodules.
-All legacy JSON catalog code and `serde_json` dependencies have been completely removed in accordance with
-the platform Zero-Legacy policy (`AGENTS.md`).
+`rustok-ui-i18n` owns framework-agnostic Project Fluent message catalog resolution supporting
+Unicode Language Identifier normalization, thread-safe concurrent bundle storage (`Send + Sync`),
+stack-buffered dotted-to-kebab key conversion, module declaration macros, typed diagnostics, and
+requested/default/platform fallback resolution. The crate is decomposed into `locale`, `bundle`,
+`messages`, `error`, and `macros` modules.
+
+All production resources are compile-time embedded/in-memory. The crate does not select the user's
+locale and does not depend on a UI framework, router, HTTP stack, cookies, environment variables or
+runtime filesystem discovery.
 
 ## FFA/FBA boundary
 
 - FFA status: `active`
 - FBA status: `not_started`
 - Structural shape: `no_ui_boundary`
-- This crate owns neither framework hooks nor module business copy, routing,
-  transport, or locale selection policy. It is strictly framework-agnostic.
+- This crate owns neither framework hooks nor module business copy, routing, transport, or locale selection policy.
 
-## Open results
+## Completed foundations
 
-1. **Adopt Project Fluent (`fluent-bundle`) for message catalogs and grammar.** (Completed)
-   Translation catalogs support standard `.ftl` (Fluent Translation List)
-   format, isolating natural language grammar, plurals, and parameter interpolation
-   without leaking language logic into Rust UI components. Unit tests verify
-   Russian plurals (1/2/5) and parameter formatting.
+1. **Project Fluent catalogs and grammar.**
+   `.ftl` resources are parsed into concurrent `FluentBundle`s and support Fluent selectors,
+   pluralization and interpolation.
 
-2. **Modular architecture decomposition.** (Completed)
-   Refactored monolithic `lib.rs` into clear submodules:
-   - `locale`: BCP 47 locale normalization and candidate chains.
-   - `bundle`: Concurrent Fluent bundle and catalog compilation.
-   - `messages`: `UiMessages` and `UiTranslator` facades, zero-allocation kebab-case hot path.
-   - `error`: Typed `BundleBuildError` and `I18nError`.
+2. **Modular architecture decomposition.**
+   - `locale`: locale normalization and candidate chains;
+   - `bundle`: Fluent bundle/catalog construction;
+   - `messages`: `UiMessages`, `UiTranslator`, strict/lenient resolution and key conversion;
+   - `error`: `BundleBuildError` and `I18nError`;
    - `macros`: `declare_module_i18n!`, `fluent_args!`, `t!`, `module_t!`.
 
-3. **Typed error hierarchy.** (Completed)
-   Replaced raw string errors in `build_fluent_bundle` with `BundleBuildError` (`InvalidLocale`,
-   `FluentParse`, `AddResource`) implementing `Display` and `std::error::Error`.
+3. **Strict and lenient catalog paths.**
+   `try_build_fluent_catalog` fails closed on malformed locales, malformed FTL and duplicate
+   normalized locales. `build_fluent_catalog` remains a lenient UI path and emits diagnostics for
+   skipped invalid input. `UiMessages::validate` gives CI/tests a fail-closed validation hook.
 
-4. **Formalized contract & invariant tests.** (Completed)
-   Added `tests/contract_tests.rs` covering:
-   - Full Russian cardinal pluralization matrix (1, 2, 3, 4, 5, 6, 10, 11, 12, 14, 19, 20, 21, 22, 24, 25, 101, 102, 105, 111).
-   - English pluralization matrix (0, 1, 2, 5, 21).
-   - Multi-bundle fallback chain (`ru-RU` -> `ru` -> `en` -> fallback string).
-   - Zero-isolating string formatting (guaranteeing no `\u{2068}` or `\u{2069}` Unicode directional markers, matching `@rustok/next-fluent`).
-   - Thread safety: compile-time `Send + Sync` assertions and multi-threaded concurrent resolution.
+4. **Strict and lenient message resolution.**
+   `try_resolve_fluent_message` / `try_format` report missing keys and formatting failures through
+   `I18nError`; lenient rendering logs formatting failures and allows the caller's literal fallback.
 
-5. **WASM portability check.** (Completed)
-   Verified clean compilation for `wasm32-unknown-unknown` with zero warnings. The crate operates
-   100% in-memory with compile-time embedded resources, with zero runtime filesystem or environment dependencies.
+5. **Bidi-safe Fluent interpolation.**
+   Unicode FSI/PDI isolation is enabled by default in both `rustok-ui-i18n` and
+   `@rustok/next-fluent`. Contract tests explicitly cover an LTR interpolation inside an RTL Arabic
+   message. Existing grammar tests compare visible content after removing isolation markers rather
+   than asserting the unsafe absence of those markers.
 
-6. **Integrate ICU4X for e-commerce formatting.**
-   Provide locale-aware formatting (`icu_decimal`, `icu_datetime`) exposed to Fluent
-   messages for locale-aware currency and date rendering.
-   **Depends on:** adding relevant `icu4x` modules.
-   **Verification:** round-trip tests with complex BCP 47 tags and currency formatting across locales.
+6. **Thread safety and lazy initialization.**
+   `UiMessages` uses `std::sync::OnceLock` and concurrent Fluent bundles. Contract tests assert
+   `Send + Sync` and exercise concurrent message resolution from multiple native threads.
 
-7. **Unified framework-agnostic `UiMessages` facade & declare macro.** (Completed)
-   `UiMessages` provides thread-safe concurrent bundle management, `t_for_locale`,
-   `format` with `FluentArgs`, `fluent_args!` helper macro, `declare_module_i18n!`
-   macro, and canonical `normalize_admin_locale`.
+7. **WASM-friendly production boundary.**
+   Production code is in-memory and has no runtime filesystem dependency. The supported verification
+   target remains `wasm32-unknown-unknown`.
 
-8. **Zero-legacy JSON catalog elimination & zero-allocation hot path.** (Completed)
-   All JSON catalog types, methods, and `serde_json` were deleted. Hot-path key
-   conversion from dotted syntax to kebab-case uses a zero-allocation stack buffer for keys <= 128 bytes.
+8. **Zero-legacy JSON catalog elimination.**
+   Legacy JSON catalog code and `serde_json` dependency have been removed from this crate.
 
-9. **Atomic cutover across all UI modules.** (Completed)
-   All 43+ module `i18n.rs` files migrated to `rustok_ui_i18n::UiMessages` via `declare_module_i18n!`.
-   All module `Cargo.toml` files updated to declare `rustok-ui-i18n.workspace = true`.
+9. **Module cutover.**
+   Module UI packages use the shared `UiMessages`/macro boundary instead of maintaining separate
+   localization engines.
 
-## Deep Research Audit Fact-Check & Resolution
+## Remaining engineering work
 
-An external audit report (`deep-research-report (1).md`) suggested potential P0 issues regarding
-global mutable roots, SSR locale leaks, runtime filesystem discovery, and WASM incompatibility.
-Verification against the codebase confirmed:
-- The crate has never possessed global mutable locale state (`set_current_locale` or `GENERATED_I18N_ROOT`).
-  All resolution is stateless and receives `locale: Option<&str>` explicitly per invocation.
-- Production runtime has zero filesystem calls (`std::fs` is only used in unit tests to validate module `.ftl` files).
-- The crate is purely in-memory and compiles cleanly for `wasm32-unknown-unknown`.
-- Arguments use native `FluentArgs` via `fluent_args!`, not `serde_json`.
+### 1. Locale model and negotiation
 
-The valid architectural recommendations from the report (modularization, typed errors, contract tests)
-were incorporated into the crate design.
+The current catalog key type is `unic_langid::LanguageIdentifier`. It supports language, optional
+script, region and variants, but it is not a full extension-preserving BCP-47 locale model. Unicode
+extensions/private-use subtags must not silently acquire semantics they do not have.
 
-## Verification
+Next steps:
+- define the supported locale-tag contract explicitly;
+- add matrix tests for scripts, regions and variants;
+- decide whether extension-aware catalog identity is required or whether extensions are intentionally
+  host-owned and removed before catalog lookup;
+- replace string-suffix fallback construction with a structured negotiation abstraction if full locale
+  semantics are required.
 
-- `cargo test -p rustok-ui-i18n` (18 unit and contract tests)
-- `cargo check -p rustok-ui-i18n --target wasm32-unknown-unknown`
+### 2. Initialization semantics
+
+`UiMessages::validate` is strict, while the lazily cached production catalog is intentionally built
+through the lenient path. The API should make that lifecycle distinction explicit so consumers do not
+mistake strict message formatting for strict catalog initialization.
+
+Next steps:
+- introduce an explicit validated/prepared catalog construction path suitable for application startup;
+- make initialization diagnostics inspectable without relying only on logs;
+- keep lenient rendering as an intentional opt-in policy rather than an implicit substitute for validation.
+
+### 3. Allocation and hot-path profile
+
+`with_kebab_key` avoids heap allocation for dotted keys up to 128 bytes, but locale normalization and
+candidate creation currently allocate `String`s/`Vec`s per lookup. Optimize only after measuring.
+
+Next steps:
+- add Criterion benchmarks for no-args lookup, args formatting, requested-locale fallback and missing keys;
+- measure locale parsing/candidate allocation separately from Fluent formatting;
+- add a prepared locale/resolver abstraction if profiling shows candidate construction is material;
+- benchmark tens of locales and large message catalogs before changing the map/storage representation.
+
+### 4. Public API and semver surface
+
+The crate publicly re-exports Fluent and `unic-langid` types and exposes its internal modules. This is
+convenient today but couples downstream semver to public dependencies.
+
+Next steps:
+- inventory real workspace consumers before removing or wrapping any public dependency types;
+- prefer additive facade APIs first;
+- reserve any surface reduction for an explicit breaking-change window.
+
+### 5. Macro contract hardening
+
+The runtime behavior is covered, but exported macros still need consumer-style compile tests.
+
+Next steps:
+- compile-pass tests from an external-crate context;
+- compile-fail diagnostics for invalid macro forms;
+- verify renamed crate usage and hygiene assumptions around module-local `MESSAGES`.
+
+### 6. Catalog integrity and collision policy
+
+Dotted keys are mapped to kebab keys (`a.b` -> `a-b`), so source-level aliases can collide by design.
+The library must either document that equivalence as a key convention or validate catalogs against
+ambiguous aliases.
+
+Next steps:
+- add key convention/collision fixtures;
+- add duplicate-message and malformed-resource matrices;
+- define first-wins/strict-error behavior for every catalog construction path.
+
+### 7. Locale-aware domain formatting
+
+Currency/date/number formatting should remain a separate, measured capability rather than be mixed
+into core lookup semantics. If introduced, expose it through Fluent functions and keep framework
+concerns outside this crate.
+
+## Verification matrix
+
+Rust foundation:
+- `cargo test -p rustok-ui-i18n`
 - `cargo clippy -p rustok-ui-i18n -- -D warnings`
-- `cargo test -p rustok-forum-admin --lib`
+- `cargo check -p rustok-ui-i18n --target wasm32-unknown-unknown`
+
+Next.js Fluent parity surface:
+- `cd packages/next-fluent && npm run verify`
+
+Follow-up test work:
+- property tests for normalization/candidate invariants and dotted-key conversion;
+- malformed FTL and duplicate-key fixtures;
+- compile tests for exported macros/public API;
+- fuzz targets for FTL/catalog ingestion boundaries where project policy allows fuzz infrastructure;
+- concurrency tests that race first initialization as well as steady-state lookup;
+- locale/fallback matrices covering language/script/region/variant combinations;
+- benchmarks for small and large catalog shapes.
 
 ## Change rules
 
-1. Keep all Leptos, Dioxus, and host framework dependencies out of this crate.
-2. Keep locale selection with the host/runtime effective-locale contract (`UiRouteContext.locale`).
-3. Domain modules own their own `.ftl` message files; this crate provides the engine and shared formatting helpers.
-4. Follow the Zero-Legacy policy: no compatibility stubs or deprecated aliases.
+1. Keep Leptos, Dioxus, Axum, GraphQL, cookie, header, query and routing dependencies out of this crate.
+2. Keep locale selection with the host/runtime effective-locale contract.
+3. Domain modules own their `.ftl` message files; this crate owns the engine and shared formatting boundary.
+4. Do not silently weaken Unicode bidi safety for prettier serialized strings.
+5. Do not claim full BCP-47 extension semantics until the locale representation actually preserves them.
+6. Make performance changes from benchmark evidence rather than replacing simple structures speculatively.
+7. Avoid breaking public API until workspace consumers have been inventoried and migrated.

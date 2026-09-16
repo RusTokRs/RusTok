@@ -34,8 +34,9 @@ fn parse_language_identifier(locale: &str) -> Result<LanguageIdentifier, BundleB
 /// Locale tags are normalized before parsing, so underscore-separated tags such
 /// as `ru_RU` are accepted consistently with `normalize_locale_tag`.
 ///
-/// Sets `bundle.set_use_isolating(false)` to generate clean strings without
-/// directional isolate characters, matching `@rustok/next-fluent`.
+/// Unicode directional isolation is explicitly enabled. Fluent therefore wraps
+/// interpolated values with FSI/PDI markers where appropriate, preventing mixed
+/// LTR/RTL arguments from changing the surrounding message direction.
 pub fn build_fluent_bundle(
     locale: &str,
     ftl_source: &str,
@@ -43,7 +44,7 @@ pub fn build_fluent_bundle(
     let langid = parse_language_identifier(locale)?;
     let normalized = langid.to_string();
     let mut bundle = FluentBundle::new_concurrent(vec![langid]);
-    bundle.set_use_isolating(false);
+    bundle.set_use_isolating(true);
     let resource = FluentResource::try_new(ftl_source.to_string())
         .map_err(|(_, errors)| BundleBuildError::FluentParse {
             locale: normalized.clone(),

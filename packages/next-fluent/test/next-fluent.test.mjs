@@ -12,6 +12,8 @@ import {
 
 import { createI18nMiddleware } from '../dist/middleware.js';
 
+const stripBidiIsolates = (value) => value.replace(/[\u2068\u2069]/g, '');
+
 test('normalizeLocaleTag handles tags correctly', () => {
   assert.equal(normalizeLocaleTag('en'), 'en');
   assert.equal(normalizeLocaleTag('en_US'), 'en-US');
@@ -60,14 +62,14 @@ cart-items = { $count ->
   const bundle = createFluentBundle('ru', ftlRu);
   const t = createTranslator(bundle);
 
-  assert.equal(t('cart-items', { count: 1 }), '1 товар');
-  assert.equal(t('cart-items', { count: 2 }), '2 товара');
-  assert.equal(t('cart-items', { count: 3 }), '3 товара');
-  assert.equal(t('cart-items', { count: 4 }), '4 товара');
-  assert.equal(t('cart-items', { count: 5 }), '5 товаров');
-  assert.equal(t('cart-items', { count: 11 }), '11 товаров');
-  assert.equal(t('cart-items', { count: 21 }), '21 товар');
-  assert.equal(t('cart-items', { count: 24 }), '24 товара');
+  assert.equal(stripBidiIsolates(t('cart-items', { count: 1 })), '1 товар');
+  assert.equal(stripBidiIsolates(t('cart-items', { count: 2 })), '2 товара');
+  assert.equal(stripBidiIsolates(t('cart-items', { count: 3 })), '3 товара');
+  assert.equal(stripBidiIsolates(t('cart-items', { count: 4 })), '4 товара');
+  assert.equal(stripBidiIsolates(t('cart-items', { count: 5 })), '5 товаров');
+  assert.equal(stripBidiIsolates(t('cart-items', { count: 11 })), '11 товаров');
+  assert.equal(stripBidiIsolates(t('cart-items', { count: 21 })), '21 товар');
+  assert.equal(stripBidiIsolates(t('cart-items', { count: 24 })), '24 товара');
 });
 
 test('English plural forms evaluate correctly', () => {
@@ -80,9 +82,9 @@ items-count = { $count ->
   const bundle = createFluentBundle('en', ftlEn);
   const t = createTranslator(bundle);
 
-  assert.equal(t('items-count', { count: 1 }), '1 item');
-  assert.equal(t('items-count', { count: 2 }), '2 items');
-  assert.equal(t('items-count', { count: 0 }), '0 items');
+  assert.equal(stripBidiIsolates(t('items-count', { count: 1 })), '1 item');
+  assert.equal(stripBidiIsolates(t('items-count', { count: 2 })), '2 items');
+  assert.equal(stripBidiIsolates(t('items-count', { count: 0 })), '0 items');
 });
 
 test('Namespaced translations and variable interpolation', () => {
@@ -96,11 +98,23 @@ richText-error-serialize = Preparation failed
 
   const tNav = createTranslator(bundle, 'app.nav');
   assert.equal(tNav('dashboard'), 'Dashboard');
-  assert.equal(tNav('welcome', { name: 'RusToK' }), 'Welcome, RusToK!');
+  assert.equal(stripBidiIsolates(tNav('welcome', { name: 'RusToK' })), 'Welcome, RusToK!');
 
   const tRich = createTranslator(bundle, 'richText');
   assert.equal(tRich('bold'), 'Bold');
   assert.equal(tRich('error.serialize'), 'Preparation failed');
+});
+
+test('bidi isolation is enabled by default and can be explicitly disabled', () => {
+  const ftl = 'greeting = مرحبًا، { $name }!';
+
+  const safeBundle = createFluentBundle('ar', ftl);
+  const safeT = createTranslator(safeBundle);
+  assert.equal(safeT('greeting', { name: 'Alice' }), 'مرحبًا، \u2068Alice\u2069!');
+
+  const legacyBundle = createFluentBundle('ar', ftl, { useIsolating: false });
+  const legacyT = createTranslator(legacyBundle);
+  assert.equal(legacyT('greeting', { name: 'Alice' }), 'مرحبًا، Alice!');
 });
 
 test('t.raw formats attributes and JSON arrays', () => {

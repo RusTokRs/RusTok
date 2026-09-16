@@ -18,6 +18,10 @@ use rustok_ui_i18n::{
 
 fn assert_send_sync<T: Send + Sync>() {}
 
+fn without_bidi_isolates(value: &str) -> String {
+    value.replace('\u{2068}', "").replace('\u{2069}', "")
+}
+
 #[test]
 fn ui_messages_implements_send_and_sync() {
     assert_send_sync::<UiMessages>();
@@ -118,7 +122,8 @@ items = { $count ->
         let args = fluent_args!(count = count);
         let actual = MESSAGES.format(Some("ru"), "items", Some(&args), "fallback");
         assert_eq!(
-            actual, expected,
+            without_bidi_isolates(&actual),
+            expected,
             "Failed for Russian count {count}: expected '{expected}', got '{actual}'"
         );
     }
@@ -146,7 +151,8 @@ items = { $count ->
         let args = fluent_args!(count = count);
         let actual = MESSAGES.format(Some("en"), "items", Some(&args), "fallback");
         assert_eq!(
-            actual, expected,
+            without_bidi_isolates(&actual),
+            expected,
             "Failed for English count {count}: expected '{expected}', got '{actual}'"
         );
     }
@@ -193,17 +199,18 @@ fn multi_bundle_fallback_chain() {
 }
 
 #[test]
-fn zero_isolating_characters_in_formatted_strings() {
-    const FTL: &str = "greeting = Hello, { $name }! You have { $count } notifications.\n";
-    static MESSAGES: UiMessages = UiMessages::new("en", &[("en", FTL)]);
+fn formatted_arguments_are_wrapped_with_bidi_isolates() {
+    const FTL: &str = "greeting = مرحبًا، { $name }!\n";
+    static MESSAGES: UiMessages = UiMessages::new("ar", &[("ar", FTL)]);
 
-    let args = fluent_args!(name = "Alice", count = 3);
-    let result = MESSAGES.format(Some("en"), "greeting", Some(&args), "fallback");
+    let args = fluent_args!(name = "Alice");
+    let result = MESSAGES.format(Some("ar"), "greeting", Some(&args), "fallback");
 
-    assert_eq!(result, "Hello, Alice! You have 3 notifications.");
-    // Ensure no Unicode directional isolation markers (\u{2068}, \u{2069})
-    assert!(!result.contains('\u{2068}'), "Must not contain First Strong Isolate");
-    assert!(!result.contains('\u{2069}'), "Must not contain Pop Directional Isolate");
+    assert!(
+        result.contains("\u{2068}Alice\u{2069}"),
+        "Interpolated LTR text inside an RTL message must be directionally isolated: {result:?}"
+    );
+    assert_eq!(without_bidi_isolates(&result), "مرحبًا، Alice!");
 }
 
 #[test]
@@ -251,10 +258,10 @@ fn concurrent_multithreaded_message_resolution() {
                 let args = fluent_args!(user = user.as_str());
                 if i % 2 == 0 {
                     let res = msg.format(Some("ru"), "greet", Some(&args), "fallback");
-                    assert_eq!(res, format!("Привет, {user}!"));
+                    assert_eq!(without_bidi_isolates(&res), format!("Привет, {user}!"));
                 } else {
                     let res = msg.format(Some("en"), "greet", Some(&args), "fallback");
-                    assert_eq!(res, format!("Hello, {user}!"));
+                    assert_eq!(without_bidi_isolates(&res), format!("Hello, {user}!"));
                 }
             }
         }));
