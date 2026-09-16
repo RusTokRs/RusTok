@@ -55,47 +55,71 @@ export function matchSupportedLocale(
   return undefined;
 }
 
+function parseAcceptLanguageEntry(entry: string): { tag: string; quality: number } | undefined {
+  const trimmed = entry.trim();
+  if (!trimmed) return undefined;
+
+  const firstSeparator = trimmed.indexOf(';');
+  const tag = (firstSeparator === -1 ? trimmed : trimmed.slice(0, firstSeparator)).trim();
+  if (!tag) return undefined;
+
+  let quality = 1.0;
+  let paramStart = firstSeparator === -1 ? trimmed.length : firstSeparator + 1;
+
+  while (paramStart < trimmed.length) {
+    const nextSeparator = trimmed.indexOf(';', paramStart);
+    const paramEnd = nextSeparator === -1 ? trimmed.length : nextSeparator;
+    const param = trimmed.slice(paramStart, paramEnd).trim();
+    const match = param.match(/^q\s*=\s*([0-9.]+)/i);
+    if (match) {
+      const parsed = Number.parseFloat(match[1]);
+      quality = Number.isNaN(parsed) ? 1.0 : parsed;
+      break;
+    }
+
+    if (nextSeparator === -1) break;
+    paramStart = nextSeparator + 1;
+  }
+
+  if (quality <= 0) return undefined;
+  return { tag, quality };
+}
+
 export function resolveAcceptLanguage(
   header: string | null | undefined,
   locales: readonly string[]
 ): string | undefined {
   if (!header) return undefined;
 
-  const candidates = header
-    .split(',')
-    .map((entry) => {
-      const trimmed = entry.trim();
-      if (!trimmed) return null;
+  // Parse candidates one at a time instead of materializing and sorting the
+  // entire request-controlled header. Tracking only the best supported match
+  // preserves descending-q and stable first-seen semantics with bounded
+  // auxiliary memory regardless of candidate count.
+  let bestLocale: string | undefined;
+  let bestQuality = Number.NEGATIVE_INFINITY;
+  let entryStart = 0;
 
-      const [tagPart, ...rest] = trimmed.split(';');
-      const tag = tagPart.trim();
-      if (!tag) return null;
+  while (entryStart <= header.length) {
+    const separator = header.indexOf(',', entryStart);
+    const entryEnd = separator === -1 ? header.length : separator;
+    const candidate = parseAcceptLanguageEntry(header.slice(entryStart, entryEnd));
 
-      let quality = 1.0;
-      for (const param of rest) {
-        const match = param.trim().match(/^q\s*=\s*([0-9.]+)/i);
-        if (match) {
-          const parsed = Number.parseFloat(match[1]);
-          quality = Number.isNaN(parsed) ? 1.0 : parsed;
-          break;
-        }
+    if (candidate && candidate.quality > bestQuality) {
+      const matched = candidate.tag === '*'
+        ? locales[0]
+        : matchSupportedLocale(candidate.tag, locales);
+
+      if (matched) {
+        bestLocale = matched;
+        bestQuality = candidate.quality;
       }
-
-      if (quality <= 0) return null;
-      return { tag, quality };
-    })
-    .filter((item): item is { tag: string; quality: number } => item !== null)
-    .sort((a, b) => b.quality - a.quality);
-
-  for (const { tag } of candidates) {
-    if (tag === '*') {
-      return locales[0];
     }
-    const matched = matchSupportedLocale(tag, locales);
-    if (matched) return matched;
+
+    if (separator === -1) break;
+    entryStart = separator + 1;
   }
 
-  return undefined;
+  return bestLocale;
 }
 
 export function validateI18nConfig(options: {
