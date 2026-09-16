@@ -20,6 +20,45 @@ use crate::locale::MAX_LOCALE_TAG_LEN;
 /// A thread-safe, sorted map of normalized locale tags to their concurrent `FluentBundle`.
 pub type FluentCatalog = BTreeMap<String, FluentBundle<FluentResource>>;
 
+/// Result of lenient catalog construction with inspectable skipped-entry diagnostics.
+///
+/// The catalog contains every valid first-wins locale entry. `diagnostics()` keeps
+/// the typed reasons for malformed, oversized, duplicate, or otherwise invalid
+/// entries that were skipped while preserving the existing fail-soft rendering
+/// semantics.
+#[must_use = "inspect diagnostics or consume the resulting catalog"]
+pub struct FluentCatalogBuildReport {
+    catalog: FluentCatalog,
+    diagnostics: Vec<BundleBuildError>,
+}
+
+impl FluentCatalogBuildReport {
+    /// Returns the successfully built lenient catalog.
+    pub fn catalog(&self) -> &FluentCatalog {
+        &self.catalog
+    }
+
+    /// Returns typed diagnostics for every skipped input entry, in input order.
+    pub fn diagnostics(&self) -> &[BundleBuildError] {
+        &self.diagnostics
+    }
+
+    /// Returns whether every supplied catalog entry was accepted.
+    pub fn is_clean(&self) -> bool {
+        self.diagnostics.is_empty()
+    }
+
+    /// Consumes the report and returns only the successfully built catalog.
+    pub fn into_catalog(self) -> FluentCatalog {
+        self.catalog
+    }
+
+    /// Consumes the report and returns both catalog and diagnostics.
+    pub fn into_parts(self) -> (FluentCatalog, Vec<BundleBuildError>) {
+        (self.catalog, self.diagnostics)
+    }
+}
+
 fn parse_language_identifier(locale: &str) -> Result<LanguageIdentifier, BundleBuildError> {
     let trimmed = locale.trim();
     if trimmed.len() > MAX_LOCALE_TAG_LEN {
@@ -106,37 +145,53 @@ pub fn try_build_fluent_catalog(
 
 /// Builds an immutable, concurrent `FluentCatalog` using lenient UI semantics.
 ///
-/// Invalid, oversized locale/FTL inputs are skipped, but every skipped entry is
-/// logged. Oversized locale payloads are never copied into diagnostics or logs;
-/// only their bounded metadata is emitted. Duplicate normalized locale keys are
-/// also logged and the first entry wins. Call [`try_build_fluent_catalog`] from
-/// validation and CI paths that must fail closed on invalid catalogs.
+/// This preserves the original convenience API: invalid entries are logged and
+/// skipped, duplicate normalized locales are first-wins, and only the usable
+/// catalog is returned. Call [`build_fluent_catalog_report`] when the same
+/// fail-soft behavior also needs typed, inspectable initialization diagnostics.
+/// Call [`try_build_fluent_catalog`] when any invalid input must fail closed.
 pub fn build_fluent_catalog(bundles: &[(&str, &str)]) -> FluentCatalog {
+    build_fluent_catalog_report(bundles).into_catalog()
+}
+
+/// Builds a lenient catalog while retaining typed diagnostics for skipped input.
+///
+/// The rendering semantics are identical to [`build_fluent_catalog`], including
+/// first-wins duplicate handling and tracing diagnostics. Unlike the convenience
+/// API, this function also returns every skipped-entry error to the caller so
+/// startup health checks and observability code do not have to scrape logs.
+pub fn build_fluent_catalog_report(bundles: &[(&str, &str)]) -> FluentCatalogBuildReport {
     let mut catalog = FluentCatalog::new();
+    let mut diagnostics = Vec::new();
 
     for (locale, ftl_source) in bundles {
         let langid = match parse_language_identifier(locale) {
             Ok(langid) => langid,
-            Err(BundleBuildError::LocaleTooLong { length, max_len }) => {
-                tracing::error!(
-                    length,
-                    max_len,
-                    "Skipping oversized Fluent locale"
-                );
-                continue;
-            }
             Err(error) => {
-                tracing::error!(%error, locale = *locale, "Skipping invalid Fluent locale");
+                match &error {
+                    BundleBuildError::LocaleTooLong { length, max_len } => {
+                        tracing::error!(
+                            length,
+                            max_len,
+                            "Skipping oversized Fluent locale"
+                        );
+                    }
+                    _ => {
+                        tracing::error!(%error, locale = *locale, "Skipping invalid Fluent locale");
+                    }
+                }
+                diagnostics.push(error);
                 continue;
             }
         };
         let normalized = langid.to_string();
 
         if catalog.contains_key(&normalized) {
-            tracing::error!(
-                locale = normalized,
-                "Skipping duplicate normalized Fluent locale"
-            );
+            let error = BundleBuildError::DuplicateLocale {
+                locale: normalized.clone(),
+            };
+            tracing::error!(%error, locale = normalized, "Skipping duplicate normalized Fluent locale");
+            diagnostics.push(error);
             continue;
         }
 
@@ -146,9 +201,13 @@ pub fn build_fluent_catalog(bundles: &[(&str, &str)]) -> FluentCatalog {
             }
             Err(error) => {
                 tracing::error!(%error, locale = normalized, "Skipping invalid Fluent bundle");
+                diagnostics.push(error);
             }
         }
     }
 
-    catalog
+    FluentCatalogBuildReport {
+        catalog,
+        diagnostics,
+    }
 }
