@@ -43,6 +43,10 @@ impl FluentCatalogBuildReport {
         &self.diagnostics
     }
 
+    pub(crate) fn push_diagnostic(&mut self, error: BundleBuildError) {
+        self.diagnostics.push(error);
+    }
+
     /// Returns whether every supplied catalog entry was accepted.
     pub fn is_clean(&self) -> bool {
         self.diagnostics.is_empty()
