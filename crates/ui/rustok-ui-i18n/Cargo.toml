@@ -7,8 +7,9 @@ description = "Framework-agnostic UI message catalog and resolution helpers for 
 
 [dependencies]
 fluent-bundle.workspace = true
-unic-langid.workspace = true
 tracing.workspace = true
+unic-langid.workspace = true
+unic-locale = "0.9.6"
 
 [dev-dependencies]
 criterion.workspace = true
