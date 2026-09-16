@@ -20,9 +20,15 @@ test('oversized Accept-Language candidate does not block a later supported local
   );
 });
 
-test('surrounding whitespace is trimmed before applying the locale length bound', () => {
+test('bounded surrounding whitespace is still trimmed', () => {
   assert.equal(
-    normalizeLocaleTag('                    ru_RU                    '),
+    normalizeLocaleTag('        ru_RU        '),
     'ru-RU'
   );
+});
+
+test('oversized raw padding is rejected before trim work', () => {
+  const padded = `${' '.repeat(32)}ru_RU${' '.repeat(32)}`;
+  assert.ok(padded.length > 64);
+  assert.equal(normalizeLocaleTag(padded), undefined);
 });
