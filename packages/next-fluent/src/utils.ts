@@ -33,6 +33,25 @@ export function normalizeLocaleTag(value?: string | null): string | undefined {
   return canonicalizeLocale(value);
 }
 
+/**
+ * Resolves one locale value to the exact configured spelling with the same
+ * canonical identity. Unlike `matchSupportedLocale`, this never applies
+ * language/script/region fallback; it is for configuration identity only.
+ */
+export function matchConfiguredLocaleIdentity(
+  value: string | null | undefined,
+  locales: readonly string[]
+): string | undefined {
+  const canonical = canonicalizeLocale(value);
+  if (!canonical) return undefined;
+  const identity = canonical.toLowerCase();
+
+  return locales.find((locale) => {
+    const configured = canonicalizeLocale(locale);
+    return configured?.toLowerCase() === identity;
+  });
+}
+
 function localeLookupCandidates(canonical: string): string[] {
   const candidates: string[] = [];
   const pushCandidate = (candidate?: string): void => {
