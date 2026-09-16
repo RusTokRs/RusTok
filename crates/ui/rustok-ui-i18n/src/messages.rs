@@ -380,7 +380,9 @@ const STACK_KEY_BUF_SIZE: usize = 128;
 /// Executes a closure with a kebab-case representation of `key`.
 ///
 /// If `key` contains '.', replaces '.' with '-' using a fixed stack buffer for
-/// keys <= 128 bytes, avoiding any heap allocation in the hot rendering path.
+/// keys <= 128 bytes, avoiding heap allocation on the normal stack path. A safe
+/// UTF-8 validation guards the stack slice; an unexpected validation failure
+/// falls back to the ordinary allocating replacement instead of invoking `unsafe`.
 #[inline]
 pub fn with_kebab_key<R>(key: &str, f: impl FnOnce(&str) -> R) -> R {
     if !key.contains('.') {
@@ -393,14 +395,16 @@ pub fn with_kebab_key<R>(key: &str, f: impl FnOnce(&str) -> R) -> R {
         for (i, &b) in bytes.iter().enumerate() {
             buf[i] = if b == b'.' { b'-' } else { b };
         }
-        // SAFETY: '.' (0x2E) and '-' (0x2D) are single-byte ASCII characters.
-        // Replacing '.' with '-' in valid UTF-8 maintains valid UTF-8.
-        let kebab = unsafe { std::str::from_utf8_unchecked(&buf[..key.len()]) };
-        f(kebab)
-    } else {
-        let kebab = key.replace('.', "-");
-        f(&kebab)
+
+        let Ok(kebab) = std::str::from_utf8(&buf[..key.len()]) else {
+            let kebab = key.replace('.', "-");
+            return f(&kebab);
+        };
+        return f(kebab);
     }
+
+    let kebab = key.replace('.', "-");
+    f(&kebab)
 }
 
 /// Strictly resolves a message against the `FluentCatalog` using the locale
