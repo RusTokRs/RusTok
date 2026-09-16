@@ -2,7 +2,12 @@ import { cache } from 'react';
 import type { FluentBundle } from '@fluent/bundle';
 import type { RequestConfigFn, Translations } from './types';
 import { createFluentBundle, createTranslator } from './bundle';
-import { matchSupportedLocale, resolveAcceptLanguage } from './utils';
+import {
+  matchConfiguredLocaleIdentity,
+  matchSupportedLocale,
+  resolveAcceptLanguage,
+  validateI18nConfig,
+} from './utils';
 
 let globalConfigFn: RequestConfigFn | null = null;
 let globalLocales: readonly string[] = ['en', 'ru'];
@@ -19,12 +24,26 @@ export function configureServerI18n(config: {
   locales?: readonly string[];
   defaultLocale?: string;
 }): void {
-  if (config.locales && config.locales.length > 0) {
-    globalLocales = config.locales;
+  const nextLocales =
+    config.locales && config.locales.length > 0 ? config.locales : globalLocales;
+  const nextDefaultLocale = config.defaultLocale ?? globalDefaultLocale;
+
+  // Validate the prospective pair before mutating either global. Partial updates
+  // therefore cannot leave a default locale outside the configured locale set.
+  validateI18nConfig({
+    locales: nextLocales,
+    defaultLocale: nextDefaultLocale,
+  });
+  const configuredDefaultLocale = matchConfiguredLocaleIdentity(
+    nextDefaultLocale,
+    nextLocales
+  );
+  if (!configuredDefaultLocale) {
+    throw new Error('[next-fluent] Unable to resolve configured default locale identity.');
   }
-  if (config.defaultLocale) {
-    globalDefaultLocale = config.defaultLocale;
-  }
+
+  globalLocales = nextLocales;
+  globalDefaultLocale = configuredDefaultLocale;
 }
 
 export function setRequestConfig(fn: RequestConfigFn): RequestConfigFn {
@@ -56,7 +75,13 @@ export async function getLocale(options?: ServerI18nOptions): Promise<string> {
   }
 
   const allowedLocales = options?.locales ?? globalLocales;
-  const defLocale = options?.defaultLocale ?? globalDefaultLocale;
+  const requestedDefaultLocale = options?.defaultLocale ?? globalDefaultLocale;
+  const defLocale = matchConfiguredLocaleIdentity(requestedDefaultLocale, allowedLocales);
+  if (!defLocale) {
+    throw new Error(
+      '[next-fluent] "defaultLocale" must resolve to an exact configured locale identity.'
+    );
+  }
   const headerKey = options?.headerName ?? 'x-rustok-effective-locale';
   const cookieList = options?.cookieNames ?? [
     'rustok-locale',
@@ -207,4 +232,3 @@ export async function getTranslations(
   const locale = explicitLocale ?? (await getLocale());
   return forLocale(locale, options);
 }
-
