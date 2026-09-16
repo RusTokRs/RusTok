@@ -34,9 +34,14 @@ fn prepared_locale_keeps_the_expected_fallback_chain() {
     );
 
     let translator = MESSAGES.for_locale(Some("zh-Hant-TW"));
+    let candidates = translator
+        .candidates()
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
     assert_eq!(
-        translator.candidates(),
-        ["zh-Hant-TW", "zh-Hant", "zh", "en-GB", "en"]
+        candidates,
+        vec!["zh-Hant-TW", "zh-Hant", "zh", "en-GB", "en"]
     );
     assert_eq!(translator.t("title", "fallback"), "繁體中文");
 }
