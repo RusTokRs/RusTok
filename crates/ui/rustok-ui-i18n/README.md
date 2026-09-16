@@ -11,7 +11,7 @@ The crate is structured into focused domain modules:
 
 - `locale`: Unicode Language Identifier normalization (`normalize_locale_tag`), canonical admin locale resolution (`normalize_admin_locale`), and fallback candidate chains (`locale_candidates`).
 - `bundle`: Concurrent Project Fluent (`.ftl`) bundle (`build_fluent_bundle`) and catalog (`build_fluent_catalog`, `try_build_fluent_catalog`, `FluentCatalog`) construction with Unicode bidi isolation enabled for interpolated values.
-- `messages`: Core thread-safe UI message facade (`UiMessages`), borrowed translator (`UiTranslator`), zero-allocation stack-buffered kebab-case key conversion (`with_kebab_key`), and strict/lenient candidate resolution (`try_resolve_fluent_message`, `resolve_fluent_message`).
+- `messages`: Core thread-safe UI message facade (`UiMessages`), fail-closed prepared runtime (`PreparedUiMessages`), borrowed translator (`UiTranslator`), prepared per-locale translator (`UiLocaleTranslator`), zero-allocation stack-buffered kebab-case key conversion (`with_kebab_key`), and strict/lenient candidate resolution (`try_resolve_fluent_message`, `resolve_fluent_message`).
 - `error`: Typed errors (`BundleBuildError`, `I18nError`) for parse, resource, lookup, and formatting failures.
 - `macros`: Ergonomic macros (`declare_module_i18n!`, `fluent_args!`, `t!`, `module_t!`).
 
@@ -54,7 +54,9 @@ an override policy for Rust catalogs.
 ## Entry Points
 
 - `UiMessages`
+- `PreparedUiMessages`
 - `UiTranslator`
+- `UiLocaleTranslator`
 - `BundleBuildError`
 - `I18nError`
 - `declare_module_i18n!`
