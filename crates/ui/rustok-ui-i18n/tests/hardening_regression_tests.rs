@@ -42,14 +42,19 @@ fn bundle_builder_accepts_normalized_underscore_tags() {
 
 #[test]
 fn strict_catalog_builder_rejects_invalid_resources_and_duplicates() {
-    let invalid = try_build_fluent_catalog(&[("en", "broken message")]).unwrap_err();
+    let invalid = match try_build_fluent_catalog(&[("en", "broken message")]) {
+        Err(error) => error,
+        Ok(_) => panic!("expected invalid FTL to fail strict catalog validation"),
+    };
     assert!(matches!(invalid, BundleBuildError::FluentParse { .. }));
 
-    let duplicate = try_build_fluent_catalog(&[
+    let duplicate = match try_build_fluent_catalog(&[
         ("ru_RU", "key = one\n"),
         ("ru-RU", "key = two\n"),
-    ])
-    .unwrap_err();
+    ]) {
+        Err(error) => error,
+        Ok(_) => panic!("expected duplicate normalized locale to fail validation"),
+    };
     assert!(matches!(
         duplicate,
         BundleBuildError::DuplicateLocale { ref locale } if locale == "ru-RU"
