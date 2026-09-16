@@ -1,3 +1,23 @@
+use std::collections::{HashMap, HashSet};
+
+use chrono::Utc;
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    Statement, TransactionTrait,
+};
+use uuid::Uuid;
+
+use rustok_api::{Action, Resource};
+use rustok_core::SecurityContext;
+
+use crate::dto::{
+    CategorySubtreeLifecycleResponse, MAX_FORUM_CATEGORY_TREE_DEPTH, MAX_FORUM_CATEGORY_TREE_NODES,
+};
+use crate::entities::{forum_category, forum_category_lifecycle};
+use crate::error::{ForumError, ForumResult};
+use crate::services::rbac::enforce_scope;
+
 /// Transactional category lifecycle owner with inherited projection invalidation.
 pub(super) struct CategoryLifecycleProjectionOwnerService {
     db: DatabaseConnection,
@@ -56,11 +76,13 @@ impl CategoryLifecycleProjectionOwnerService {
             .cloned()
             .map(|category| (category.id, category))
             .collect::<HashMap<_, _>>();
-        let root = models
-            .get(&root_id)
-            .cloned()
-            .ok_or(ForumError::CategoryNotFound(root_id))?;
-        validate_parent_map(&models)?;
+        if !models.contains_key(&root_id) {
+            return Err(ForumError::CategoryNotFound(root_id));
+        }
+
+        let category_ids = categories.iter().map(|c| c.id).collect::<Vec<_>>();
+        let parent_by_id = load_category_parents_in_tx(&txn, tenant_id, &category_ids).await?;
+        validate_parent_map(&parent_by_id)?;
 
         let lifecycle_rows = forum_category_lifecycle::Entity::find()
             .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
@@ -71,9 +93,9 @@ impl CategoryLifecycleProjectionOwnerService {
             .map(|lifecycle| (lifecycle.category_id, lifecycle))
             .collect::<HashMap<_, _>>();
 
-        let affected_category_ids = collect_subtree_ids(&categories, root_id)?;
+        let affected_category_ids = collect_subtree_ids(&parent_by_id, root_id)?;
         if !archived {
-            ensure_restore_ancestors_are_active(&models, &lifecycle_by_category, &root)?;
+            ensure_restore_ancestors_are_active(&parent_by_id, &lifecycle_by_category, root_id)?;
         }
 
         let now = Utc::now();

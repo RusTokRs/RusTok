@@ -14,7 +14,7 @@ use crate::dto::{
     ReplyCursorPage, ReplyCursorQuery, TopicCursorPage, TopicCursorQuery, TopicUnreadCursorPage,
     TopicUnreadCursorQuery, TopicUnreadSummaryReadModel, bounded_forum_read_limit,
 };
-use crate::entities::{forum_category, forum_category_taxonomy_binding};
+use crate::entities::forum_category;
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
 use crate::services::subscription::SubscriptionService;
@@ -72,79 +72,34 @@ impl ForumReadModelService {
             .iter()
             .map(|category| category.id)
             .collect::<Vec<_>>();
-        let bindings = forum_category_taxonomy_binding::Entity::find()
-            .filter(forum_category_taxonomy_binding::Column::TenantId.eq(tenant_id))
-            .filter(
-                forum_category_taxonomy_binding::Column::ForumCategoryId
-                    .is_in(category_ids.clone()),
-            )
-            .all(&self.db)
-            .await?;
-        let binding_by_forum_id = bindings
-            .iter()
-            .map(|binding| (binding.forum_category_id, binding.taxonomy_category_id))
-            .collect::<HashMap<_, _>>();
-        let forum_id_by_taxonomy_id = bindings
-            .iter()
-            .map(|binding| (binding.taxonomy_category_id, binding.forum_category_id))
-            .collect::<HashMap<_, _>>();
-        for category_id in &category_ids {
-            if !binding_by_forum_id.contains_key(category_id) {
-                return Err(ForumError::Validation(format!(
-                    "Forum category {category_id} has no Taxonomy Category binding"
-                )));
-            }
-        }
 
-        let taxonomy_ids = bindings
-            .iter()
-            .map(|binding| binding.taxonomy_category_id)
-            .collect::<Vec<_>>();
         let projections = TaxonomyOwnerCategoryReader::new(self.db.clone())
             .load_scoped_categories(
                 tenant_id,
                 TaxonomyScopeType::Module,
                 Some("forum"),
-                Some(&taxonomy_ids),
+                Some(&category_ids),
                 &requested_locale,
                 fallback_locale.as_deref(),
             )
             .await
             .map_err(map_taxonomy_read_error)?;
-        let mut projection_by_taxonomy_id = projections
+        let mut projection_by_id = projections
             .into_iter()
             .map(|projection| (projection.id, projection))
             .collect::<HashMap<_, _>>();
 
         let mut rows = Vec::with_capacity(categories.len());
         for category in categories {
-            let taxonomy_id = *binding_by_forum_id.get(&category.id).ok_or_else(|| {
-                ForumError::Validation(format!(
-                    "Forum category {} lost its Taxonomy Category binding",
-                    category.id
-                ))
-            })?;
-            let canonical = projection_by_taxonomy_id
-                .remove(&taxonomy_id)
+            let canonical = projection_by_id
+                .remove(&category.id)
                 .ok_or_else(|| {
                     ForumError::Validation(format!(
-                        "Forum category {} Taxonomy Category {taxonomy_id} projection is missing",
+                        "Forum category {} Taxonomy Category projection is missing",
                         category.id
                     ))
                 })?;
-            let parent_id = canonical
-                .parent_id
-                .map(|taxonomy_parent_id| {
-                    forum_id_by_taxonomy_id
-                        .get(&taxonomy_parent_id)
-                        .copied()
-                        .ok_or_else(|| {
-                            ForumError::Validation(format!(
-                                "Taxonomy parent Category {taxonomy_parent_id} has no Forum category binding"
-                            ))
-                        })
-                })
-                .transpose()?;
+            let parent_id = canonical.parent_id;
             rows.push(BoundCategoryReadModel {
                 owner: category,
                 canonical,

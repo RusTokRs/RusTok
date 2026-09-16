@@ -1,4 +1,4 @@
-use sea_orm::{DatabaseBackend, Statement};
+use sea_orm::DatabaseBackend;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -7,9 +7,6 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let db = manager.get_connection();
-        let backend = manager.get_database_backend();
-
         // 1. Drop table forum_category_taxonomy_bindings
         manager
             .drop_table(
@@ -20,70 +17,89 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // 2. Drop parent FK and columns (parent_id, position, icon, color) from forum_categories
-        match backend {
-            DatabaseBackend::Postgres => {
-                db.execute(Statement::from_string(
-                    backend,
-                    "ALTER TABLE forum_categories DROP CONSTRAINT IF EXISTS fk_forum_categories_parent_tenant;".to_string(),
-                ))
-                .await?;
-                db.execute(Statement::from_string(
-                    backend,
-                    "ALTER TABLE forum_categories DROP CONSTRAINT IF EXISTS fk_forum_categories_parent;".to_string(),
-                ))
-                .await?;
-                db.execute(Statement::from_string(
-                    backend,
-                    "ALTER TABLE forum_categories DROP COLUMN IF EXISTS parent_id, DROP COLUMN IF EXISTS position, DROP COLUMN IF EXISTS icon, DROP COLUMN IF EXISTS color;".to_string(),
-                ))
-                .await?;
-            }
-            DatabaseBackend::Sqlite => {
-                // SQLite drops columns using alter table drop column
-                let _ = db
-                    .execute(Statement::from_string(
-                        backend,
-                        "ALTER TABLE forum_categories DROP COLUMN parent_id;".to_string(),
-                    ))
-                    .await;
-                let _ = db
-                    .execute(Statement::from_string(
-                        backend,
-                        "ALTER TABLE forum_categories DROP COLUMN position;".to_string(),
-                    ))
-                    .await;
-                let _ = db
-                    .execute(Statement::from_string(
-                        backend,
-                        "ALTER TABLE forum_categories DROP COLUMN icon;".to_string(),
-                    ))
-                    .await;
-                let _ = db
-                    .execute(Statement::from_string(
-                        backend,
-                        "ALTER TABLE forum_categories DROP COLUMN color;".to_string(),
-                    ))
-                    .await;
-            }
-            other => {
-                return Err(DbErr::Custom(format!(
-                    "Clean forum category canonical taxonomy migration does not support {other:?}"
-                )));
-            }
+        // 2. If PostgreSQL or MySQL, drop foreign keys
+        if manager.get_database_backend() != DatabaseBackend::Sqlite {
+            let _ = manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .table(ForumCategories::Table)
+                        .name("fk_forum_categories_parent_tenant")
+                        .to_owned(),
+                )
+                .await;
+            let _ = manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .table(ForumCategories::Table)
+                        .name("fk_forum_categories_parent")
+                        .to_owned(),
+                )
+                .await;
         }
+
+        // 3. Drop redundant columns parent_id, position, icon, color
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ForumCategories::Table)
+                    .drop_column(ForumCategories::ParentId)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ForumCategories::Table)
+                    .drop_column(ForumCategories::Position)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ForumCategories::Table)
+                    .drop_column(ForumCategories::Icon)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ForumCategories::Table)
+                    .drop_column(ForumCategories::Color)
+                    .to_owned(),
+            )
+            .await?;
 
         Ok(())
     }
 
     async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
-        // Intentionally irreversible as part of target taxonomy architecture cutover.
+        // Intentionally irreversible under Zero-Legacy Policy.
+        // Taxonomy is the single canonical source of truth for Category hierarchy and presentation.
         Ok(())
     }
 }
 
-#[derive(DeriveIden)]
+#[derive(Iden)]
 enum ForumCategoryTaxonomyBindings {
     #[iden = "forum_category_taxonomy_bindings"]
     Table,
+}
+
+#[derive(Iden)]
+enum ForumCategories {
+    #[iden = "forum_categories"]
+    Table,
+    #[iden = "parent_id"]
+    ParentId,
+    #[iden = "position"]
+    Position,
+    #[iden = "icon"]
+    Icon,
+    #[iden = "color"]
+    Color,
 }

@@ -15,9 +15,54 @@ use sea_orm::{
 use sea_orm_migration::prelude::*;
 use uuid::Uuid;
 
-use crate::entities::{
-    forum_category, forum_category_taxonomy_binding, forum_category_translation,
-};
+use crate::entities::forum_category_translation;
+
+mod migration_forum_category {
+    use sea_orm::entity::prelude::*;
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "forum_categories")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub parent_id: Option<Uuid>,
+        pub position: i32,
+        pub icon: Option<String>,
+        pub color: Option<String>,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+use migration_forum_category as forum_category;
+
+mod migration_forum_category_taxonomy_binding {
+    use sea_orm::entity::prelude::*;
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "forum_category_taxonomy_bindings")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub tenant_id: Uuid,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub forum_category_id: Uuid,
+        pub taxonomy_category_id: Uuid,
+        pub created_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+use migration_forum_category_taxonomy_binding as forum_category_taxonomy_binding;
 
 const FORUM_SCOPE_VALUE: &str = "forum";
 const TAXONOMY_ROUTE_KEY_MAX_BYTES: usize = 120;

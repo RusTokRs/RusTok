@@ -1,7 +1,7 @@
 use rustok_taxonomy::{TaxonomyError, TaxonomyOwnerCategoryReader, TaxonomyScopeType};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
-use crate::entities::{forum_category, forum_category_taxonomy_binding};
+use crate::entities::forum_category;
 
 impl CategoryService {
     pub const MAX_FORUM_CATEGORY_LOCALE_ENUMERATION_IDS: usize = 512;
@@ -62,33 +62,12 @@ impl CategoryService {
             }
         }
 
-        let bindings = forum_category_taxonomy_binding::Entity::find()
-            .filter(forum_category_taxonomy_binding::Column::TenantId.eq(tenant_id))
-            .filter(
-                forum_category_taxonomy_binding::Column::ForumCategoryId
-                    .is_in(category_ids.to_vec()),
-            )
-            .all(&self.db)
-            .await?;
-        let taxonomy_by_forum = bindings
-            .into_iter()
-            .map(|binding| (binding.forum_category_id, binding.taxonomy_category_id))
-            .collect::<std::collections::HashMap<_, _>>();
-        let mut taxonomy_ids = Vec::with_capacity(category_ids.len());
-        for category_id in category_ids {
-            taxonomy_ids.push(*taxonomy_by_forum.get(category_id).ok_or_else(|| {
-                ForumError::Validation(format!(
-                    "Forum category {category_id} has no Taxonomy Category binding"
-                ))
-            })?);
-        }
-
         let projections = TaxonomyOwnerCategoryReader::new(self.db.clone())
             .load_scoped_categories(
                 tenant_id,
                 TaxonomyScopeType::Module,
                 Some("forum"),
-                Some(&taxonomy_ids),
+                Some(category_ids),
                 rustok_api::PLATFORM_FALLBACK_LOCALE,
                 None,
             )
@@ -99,17 +78,16 @@ impl CategoryService {
                     "Forum Taxonomy category locale enumeration failed: {other}"
                 )),
             })?;
-        let locales_by_taxonomy = projections
+        let locales_by_id = projections
             .into_iter()
             .map(|projection| (projection.id, projection.available_locales))
             .collect::<std::collections::HashMap<_, _>>();
 
         let mut result = Vec::with_capacity(category_ids.len());
         for category_id in category_ids {
-            let taxonomy_id = taxonomy_by_forum[category_id];
-            let locales = locales_by_taxonomy.get(&taxonomy_id).cloned().ok_or_else(|| {
+            let locales = locales_by_id.get(category_id).cloned().ok_or_else(|| {
                 ForumError::Validation(format!(
-                    "Forum category {category_id} Taxonomy Category {taxonomy_id} projection is missing"
+                    "Forum category {category_id} Taxonomy Category projection is missing"
                 ))
             })?;
             if locales.is_empty() {

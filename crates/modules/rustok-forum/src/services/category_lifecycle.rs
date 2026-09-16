@@ -1,23 +1,3 @@
-use std::collections::{HashMap, HashSet};
-
-use chrono::Utc;
-use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-    Statement, TransactionTrait,
-};
-use uuid::Uuid;
-
-use rustok_api::{Action, Resource};
-use rustok_core::SecurityContext;
-
-use crate::dto::{
-    CategorySubtreeLifecycleResponse, MAX_FORUM_CATEGORY_TREE_DEPTH, MAX_FORUM_CATEGORY_TREE_NODES,
-};
-use crate::entities::{forum_category, forum_category_lifecycle};
-use crate::error::{ForumError, ForumResult};
-use crate::services::rbac::enforce_scope;
-
 async fn lock_category_tree_in_tx(txn: &DatabaseTransaction, tenant_id: Uuid) -> ForumResult<()> {
     match txn.get_database_backend() {
         DatabaseBackend::Postgres => {
@@ -42,7 +22,6 @@ async fn load_categories_in_tx(
 ) -> ForumResult<Vec<forum_category::Model>> {
     let categories = forum_category::Entity::find()
         .filter(forum_category::Column::TenantId.eq(tenant_id))
-        .order_by_asc(forum_category::Column::Position)
         .order_by_asc(forum_category::Column::Id)
         .limit(MAX_FORUM_CATEGORY_TREE_NODES + 1)
         .all(txn)
@@ -55,18 +34,41 @@ async fn load_categories_in_tx(
     Ok(categories)
 }
 
+async fn load_category_parents_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    category_ids: &[Uuid],
+) -> ForumResult<HashMap<Uuid, Option<Uuid>>> {
+    let hierarchy_rows = rustok_taxonomy::entities::taxonomy_category_hierarchy::Entity::find()
+        .filter(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+        .filter(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TermId.is_in(category_ids.iter().copied()))
+        .all(txn)
+        .await?;
+    let mut parent_by_id = hierarchy_rows
+        .into_iter()
+        .map(|row| (row.term_id, row.parent_term_id))
+        .collect::<HashMap<_, _>>();
+    for id in category_ids {
+        parent_by_id.entry(*id).or_insert(None);
+    }
+    Ok(parent_by_id)
+}
+
 fn collect_subtree_ids(
-    categories: &[forum_category::Model],
+    parent_by_id: &HashMap<Uuid, Option<Uuid>>,
     root_id: Uuid,
 ) -> ForumResult<Vec<Uuid>> {
     let mut children_by_parent = HashMap::<Uuid, Vec<Uuid>>::new();
-    for category in categories {
-        if let Some(parent_id) = category.parent_id {
+    for (category_id, parent_id) in parent_by_id {
+        if let Some(parent_id) = parent_id {
             children_by_parent
-                .entry(parent_id)
+                .entry(*parent_id)
                 .or_default()
-                .push(category.id);
+                .push(*category_id);
         }
+    }
+    for children in children_by_parent.values_mut() {
+        children.sort();
     }
 
     let mut result = Vec::new();
@@ -92,29 +94,29 @@ fn collect_subtree_ids(
 }
 
 fn ensure_restore_ancestors_are_active(
-    models: &HashMap<Uuid, forum_category::Model>,
+    parent_by_id: &HashMap<Uuid, Option<Uuid>>,
     lifecycle_by_category: &HashMap<Uuid, forum_category_lifecycle::Model>,
-    root: &forum_category::Model,
+    root_id: Uuid,
 ) -> ForumResult<()> {
-    let mut parent_id = root.parent_id;
+    let mut parent_id = parent_by_id.get(&root_id).copied().flatten();
     while let Some(current_id) = parent_id {
-        let parent = models.get(&current_id).ok_or_else(|| {
-            ForumError::Validation(format!(
+        if !parent_by_id.contains_key(&current_id) {
+            return Err(ForumError::Validation(format!(
                 "Forum category tree references missing or foreign parent {current_id}"
-            ))
-        })?;
+            )));
+        }
         if lifecycle_by_category.contains_key(&current_id) {
             return Err(ForumError::Validation(
                 "Category subtree cannot be restored beneath an archived ancestor".to_string(),
             ));
         }
-        parent_id = parent.parent_id;
+        parent_id = parent_by_id.get(&current_id).copied().flatten();
     }
     Ok(())
 }
 
-fn validate_parent_map(models: &HashMap<Uuid, forum_category::Model>) -> ForumResult<()> {
-    for category_id in models.keys().copied() {
+fn validate_parent_map(parent_by_id: &HashMap<Uuid, Option<Uuid>>) -> ForumResult<()> {
+    for category_id in parent_by_id.keys().copied() {
         let mut current_id = category_id;
         let mut depth = 0usize;
         let mut visited = HashSet::new();
@@ -124,15 +126,15 @@ fn validate_parent_map(models: &HashMap<Uuid, forum_category::Model>) -> ForumRe
                     "Forum category hierarchy cycle".to_string(),
                 ));
             }
-            let category = models.get(&current_id).ok_or_else(|| {
+            let parent_id = parent_by_id.get(&current_id).ok_or_else(|| {
                 ForumError::Validation(format!(
                     "Forum category tree references missing category {current_id}"
                 ))
             })?;
-            let Some(parent_id) = category.parent_id else {
+            let Some(parent_id) = *parent_id else {
                 break;
             };
-            if !models.contains_key(&parent_id) {
+            if !parent_by_id.contains_key(&parent_id) {
                 return Err(ForumError::Validation(format!(
                     "Forum category tree references missing or foreign parent {parent_id}"
                 )));

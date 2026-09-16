@@ -38,22 +38,11 @@ impl CategoryService {
         if let Some(parent_id) = record.parent_id {
             Self::find_category_in_tx(txn, tenant_id, parent_id).await?;
         }
-        shift_siblings_for_insert_in_tx(
-            txn,
-            tenant_id,
-            record.parent_id,
-            record.position,
-            Utc::now(),
-        )
-        .await?;
+        shift_siblings_for_insert_in_tx(txn, tenant_id, record.parent_id, record.position).await?;
 
         forum_category::ActiveModel {
             id: Set(record.id),
             tenant_id: Set(tenant_id),
-            parent_id: Set(record.parent_id),
-            position: Set(record.position),
-            icon: Set(record.icon.clone()),
-            color: Set(record.color.clone()),
             moderated: Set(record.moderated),
             topic_count: Set(0),
             reply_count: Set(0),
@@ -67,13 +56,16 @@ impl CategoryService {
             txn,
             tenant_id,
             record.id,
+            record.parent_id,
+            record.position,
+            record.icon.clone(),
+            record.color.clone(),
             locale,
             record.name.clone(),
             slug,
             record.description.clone(),
         )
         .await?;
-        taxonomy_sync::sync_siblings_for_parent_in_tx(txn, tenant_id, record.parent_id).await?;
 
         Ok(())
     }

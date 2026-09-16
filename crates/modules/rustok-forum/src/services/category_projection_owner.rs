@@ -41,16 +41,12 @@ impl CategoryProjectionOwnerService {
             CategoryService::find_category_in_tx(&txn, tenant_id, parent_id).await?;
         }
 
-        shift_siblings_for_insert_in_tx(&txn, tenant_id, input.parent_id, requested_position, now)
+        shift_siblings_for_insert_in_tx(&txn, tenant_id, input.parent_id, requested_position)
             .await?;
 
         forum_category::ActiveModel {
             id: Set(id),
             tenant_id: Set(tenant_id),
-            parent_id: Set(input.parent_id),
-            position: Set(requested_position),
-            icon: Set(input.icon),
-            color: Set(input.color),
             moderated: Set(input.moderated),
             topic_count: Set(0),
             reply_count: Set(0),
@@ -64,13 +60,16 @@ impl CategoryProjectionOwnerService {
             &txn,
             tenant_id,
             id,
+            input.parent_id,
+            requested_position,
+            input.icon,
+            input.color,
             locale,
             canonical_name,
             slug,
             canonical_description,
         )
         .await?;
-        taxonomy_sync::sync_siblings_for_parent_in_tx(&txn, tenant_id, input.parent_id).await?;
         super::projection_invalidation::publish_forum_projection_scope_direct_in_tx(
             &txn,
             tenant_id,
@@ -108,16 +107,27 @@ impl CategoryProjectionOwnerService {
 
         let mut active: forum_category::ActiveModel = category.into();
         active.updated_at = Set(Utc::now().into());
-        if input.icon.is_some() {
-            active.icon = Set(input.icon);
-        }
-        if input.color.is_some() {
-            active.color = Set(input.color);
-        }
         if let Some(moderated) = input.moderated {
             active.moderated = Set(moderated);
         }
         active.update(&txn).await?;
+
+        let existing_placement =
+            rustok_taxonomy::entities::taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, category_id))
+                .one(&txn)
+                .await?;
+        let (parent_id, position) = match existing_placement {
+            Some(p) => (p.parent_term_id, p.position),
+            None => (None, 0),
+        };
+        let existing_presentation =
+            rustok_taxonomy::entities::taxonomy_category_presentation::Entity::find_by_id((tenant_id, category_id))
+                .one(&txn)
+                .await?;
+        let (icon, color) = match existing_presentation {
+            Some(p) => (input.icon.or(p.icon_key), input.color.or(p.color)),
+            None => (input.icon, input.color),
+        };
 
         let existing_canonical =
             taxonomy_sync::load_category_locale_copy_in_tx(&txn, tenant_id, category_id, &locale)
@@ -157,6 +167,10 @@ impl CategoryProjectionOwnerService {
             &txn,
             tenant_id,
             category_id,
+            parent_id,
+            position,
+            icon,
+            color,
             locale,
             canonical_name,
             canonical_slug,

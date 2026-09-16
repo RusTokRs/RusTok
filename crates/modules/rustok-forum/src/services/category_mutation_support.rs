@@ -43,38 +43,30 @@ async fn shift_siblings_for_insert_in_tx(
     tenant_id: Uuid,
     parent_id: Option<Uuid>,
     requested_position: i32,
-    now: chrono::DateTime<Utc>,
 ) -> ForumResult<()> {
-    let siblings = match parent_id {
-        Some(parent_id) => {
-            forum_category::Entity::find()
-                .filter(forum_category::Column::TenantId.eq(tenant_id))
-                .filter(forum_category::Column::ParentId.eq(parent_id))
-                .filter(forum_category::Column::Position.gte(requested_position))
-                .order_by_desc(forum_category::Column::Position)
-                .order_by_desc(forum_category::Column::Id)
-                .all(txn)
-                .await?
-        }
-        None => {
-            forum_category::Entity::find()
-                .filter(forum_category::Column::TenantId.eq(tenant_id))
-                .filter(forum_category::Column::ParentId.is_null())
-                .filter(forum_category::Column::Position.gte(requested_position))
-                .order_by_desc(forum_category::Column::Position)
-                .order_by_desc(forum_category::Column::Id)
-                .all(txn)
-                .await?
-        }
+    let mut query = rustok_taxonomy::entities::taxonomy_category_hierarchy::Entity::find()
+        .filter(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+        .filter(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::Position.gte(requested_position));
+    query = match parent_id {
+        Some(parent_id) => query.filter(
+            rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::ParentTermId.eq(parent_id),
+        ),
+        None => query.filter(
+            rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::ParentTermId.is_null(),
+        ),
     };
+    let siblings = query
+        .order_by_desc(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::Position)
+        .order_by_desc(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TermId)
+        .all(txn)
+        .await?;
 
     for sibling in siblings {
         let next_position = sibling.position.checked_add(1).ok_or_else(|| {
             ForumError::Validation("Category sibling position exceeds i32 range".to_string())
         })?;
-        let mut active: forum_category::ActiveModel = sibling.into();
+        let mut active: rustok_taxonomy::entities::taxonomy_category_hierarchy::ActiveModel = sibling.into();
         active.position = Set(next_position);
-        active.updated_at = Set(now.into());
         active.update(txn).await?;
     }
 

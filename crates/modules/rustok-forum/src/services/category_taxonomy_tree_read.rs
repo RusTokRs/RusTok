@@ -12,7 +12,7 @@ use crate::dto::{
     CategoryBreadcrumb, CategoryTreeNode, CategoryTreeQuery, CategoryTreeResponse,
     MAX_FORUM_CATEGORY_TREE_DEPTH, MAX_FORUM_CATEGORY_TREE_NODES,
 };
-use crate::entities::{forum_category, forum_category_lifecycle, forum_category_taxonomy_binding};
+use crate::entities::{forum_category, forum_category_lifecycle};
 use crate::error::{ForumError, ForumResult};
 use crate::services::category_policy::CategoryTopicPolicyService;
 use crate::services::subscription::SubscriptionService;
@@ -219,79 +219,31 @@ impl CategoryTaxonomyTreeReadService {
         fallback_locale: Option<&str>,
     ) -> ForumResult<HashMap<Uuid, BoundTaxonomyCategory>> {
         let unique_forum_ids = forum_category_ids.iter().copied().collect::<HashSet<_>>();
-        let bindings = forum_category_taxonomy_binding::Entity::find()
-            .filter(forum_category_taxonomy_binding::Column::TenantId.eq(tenant_id))
-            .filter(
-                forum_category_taxonomy_binding::Column::ForumCategoryId
-                    .is_in(unique_forum_ids.iter().copied()),
-            )
-            .all(&self.db)
-            .await?;
-        if bindings.len() != unique_forum_ids.len() {
-            return Err(ForumError::Validation(
-                "Forum category tree cutover requires a complete same-tenant Taxonomy Category binding set"
-                    .to_string(),
-            ));
-        }
-
-        let taxonomy_ids = bindings
-            .iter()
-            .map(|binding| binding.taxonomy_category_id)
-            .collect::<Vec<_>>();
+        let unique_forum_vec = unique_forum_ids.iter().copied().collect::<Vec<_>>();
         let projected = TaxonomyOwnerCategoryReader::new(self.db.clone())
             .load_scoped_categories(
                 tenant_id,
                 TaxonomyScopeType::Module,
                 Some("forum"),
-                Some(&taxonomy_ids),
+                Some(&unique_forum_vec),
                 locale,
                 fallback_locale,
             )
             .await
             .map_err(map_taxonomy_read_error)?;
-        if projected.len() != taxonomy_ids.len() {
+        if projected.len() != unique_forum_ids.len() {
             return Err(ForumError::Validation(
                 "Forum category tree cutover found an incomplete Taxonomy Category owner projection"
                     .to_string(),
             ));
         }
 
-        let projected_by_taxonomy_id = projected
-            .into_iter()
-            .map(|category| (category.id, category))
-            .collect::<HashMap<_, _>>();
-        let taxonomy_to_forum = bindings
-            .iter()
-            .map(|binding| (binding.taxonomy_category_id, binding.forum_category_id))
-            .collect::<HashMap<_, _>>();
-
-        let mut result = HashMap::with_capacity(bindings.len());
-        for binding in bindings {
-            let category = projected_by_taxonomy_id
-                .get(&binding.taxonomy_category_id)
-                .ok_or_else(|| {
-                    ForumError::Validation(format!(
-                        "Forum category {} is bound to a missing Taxonomy Category owner projection",
-                        binding.forum_category_id
-                    ))
-                })?;
-            let parent_id = category
-                .parent_id
-                .map(|parent_taxonomy_id| {
-                    taxonomy_to_forum
-                        .get(&parent_taxonomy_id)
-                        .copied()
-                        .ok_or_else(|| {
-                            ForumError::Validation(format!(
-                                "Taxonomy Category {} references parent {parent_taxonomy_id} without a Forum binding",
-                                category.id
-                            ))
-                        })
-                })
-                .transpose()?;
+        let mut result = HashMap::with_capacity(projected.len());
+        for category in projected {
+            let parent_id = category.parent_id;
             result.insert(
-                binding.forum_category_id,
-                bind_owner_projection(category, parent_id),
+                category.id,
+                bind_owner_projection(&category, parent_id),
             );
         }
         Ok(result)

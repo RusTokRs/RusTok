@@ -25,24 +25,26 @@ impl CategoryCommandProjectionOwnerService {
             .cloned()
             .map(|category| (category.id, category))
             .collect::<HashMap<_, _>>();
-        let category = models
-            .get(&category_id)
-            .cloned()
-            .ok_or(ForumError::CategoryNotFound(category_id))?;
+        if !models.contains_key(&category_id) {
+            return Err(ForumError::CategoryNotFound(category_id));
+        }
         ensure_parent_exists(&models, input.parent_id)?;
 
-        let mut parent_by_id = models
-            .values()
-            .map(|category| (category.id, category.parent_id))
+        let category_ids = categories.iter().map(|c| c.id).collect::<Vec<_>>();
+        let placement_by_id = load_placements_in_tx(&txn, tenant_id, &category_ids).await?;
+
+        let mut parent_by_id = placement_by_id
+            .iter()
+            .map(|(id, (parent, _))| (*id, *parent))
             .collect::<HashMap<_, _>>();
         validate_parent_map(&parent_by_id)?;
         parent_by_id.insert(category_id, input.parent_id);
         validate_parent_map(&parent_by_id)?;
 
-        let source_parent_id = category.parent_id;
+        let source_parent_id = placement_by_id[&category_id].0;
         let target_index = input.position as usize;
         let updated = if source_parent_id == input.parent_id {
-            let mut siblings = sibling_ids(&categories, source_parent_id, Some(category_id));
+            let mut siblings = sibling_ids(&category_ids, &placement_by_id, source_parent_id, Some(category_id));
             if target_index > siblings.len() {
                 return Err(ForumError::Validation(format!(
                     "Category position {} exceeds sibling count {}",
@@ -51,10 +53,10 @@ impl CategoryCommandProjectionOwnerService {
                 )));
             }
             siblings.insert(target_index, category_id);
-            persist_sibling_order(&txn, &models, source_parent_id, &siblings).await?
+            persist_sibling_order(&txn, tenant_id, source_parent_id, &siblings).await?
         } else {
-            let source_siblings = sibling_ids(&categories, source_parent_id, Some(category_id));
-            let mut target_siblings = sibling_ids(&categories, input.parent_id, None);
+            let source_siblings = sibling_ids(&category_ids, &placement_by_id, source_parent_id, Some(category_id));
+            let mut target_siblings = sibling_ids(&category_ids, &placement_by_id, input.parent_id, None);
             if target_index > target_siblings.len() {
                 return Err(ForumError::Validation(format!(
                     "Category position {} exceeds destination sibling count {}",
@@ -65,9 +67,9 @@ impl CategoryCommandProjectionOwnerService {
             target_siblings.insert(target_index, category_id);
 
             let mut updated =
-                persist_sibling_order(&txn, &models, source_parent_id, &source_siblings).await?;
+                persist_sibling_order(&txn, tenant_id, source_parent_id, &source_siblings).await?;
             updated.extend(
-                persist_sibling_order(&txn, &models, input.parent_id, &target_siblings).await?,
+                persist_sibling_order(&txn, tenant_id, input.parent_id, &target_siblings).await?,
             );
             updated
         };
@@ -82,17 +84,6 @@ impl CategoryCommandProjectionOwnerService {
                 )
             })?;
 
-        let mut mirrored = HashSet::new();
-        for placement in &updated {
-            if mirrored.insert(placement.id) {
-                super::category::taxonomy_sync::sync_category_structure_in_tx(
-                    &txn,
-                    tenant_id,
-                    placement.id,
-                )
-                .await?;
-            }
-        }
         super::projection_invalidation::publish_forum_projection_scope_direct_in_tx(
             &txn,
             tenant_id,
@@ -125,13 +116,17 @@ impl CategoryCommandProjectionOwnerService {
             .map(|category| (category.id, category))
             .collect::<HashMap<_, _>>();
         ensure_parent_exists(&models, input.parent_id)?;
-        let parent_by_id = models
-            .values()
-            .map(|category| (category.id, category.parent_id))
+
+        let category_ids = categories.iter().map(|c| c.id).collect::<Vec<_>>();
+        let placement_by_id = load_placements_in_tx(&txn, tenant_id, &category_ids).await?;
+
+        let parent_by_id = placement_by_id
+            .iter()
+            .map(|(id, (parent, _))| (*id, *parent))
             .collect::<HashMap<_, _>>();
         validate_parent_map(&parent_by_id)?;
 
-        let current = sibling_ids(&categories, input.parent_id, None);
+        let current = sibling_ids(&category_ids, &placement_by_id, input.parent_id, None);
         let requested = input.ordered_category_ids;
         let requested_set = requested.iter().copied().collect::<HashSet<_>>();
         let current_set = current.iter().copied().collect::<HashSet<_>>();
@@ -146,15 +141,7 @@ impl CategoryCommandProjectionOwnerService {
             ));
         }
 
-        let siblings = persist_sibling_order(&txn, &models, input.parent_id, &requested).await?;
-        for placement in &siblings {
-            super::category::taxonomy_sync::sync_category_structure_in_tx(
-                &txn,
-                tenant_id,
-                placement.id,
-            )
-            .await?;
-        }
+        let siblings = persist_sibling_order(&txn, tenant_id, input.parent_id, &requested).await?;
         super::projection_invalidation::publish_forum_projection_scope_direct_in_tx(
             &txn,
             tenant_id,

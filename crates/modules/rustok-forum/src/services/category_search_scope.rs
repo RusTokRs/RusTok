@@ -67,7 +67,6 @@ impl ForumSearchCategoryScopeService {
 
         let categories = forum_category::Entity::find()
             .filter(forum_category::Column::TenantId.eq(tenant_id))
-            .order_by_asc(forum_category::Column::Position)
             .order_by_asc(forum_category::Column::Id)
             .limit(MAX_FORUM_CATEGORY_TREE_NODES + 1)
             .all(&self.db)
@@ -78,15 +77,30 @@ impl ForumSearchCategoryScopeService {
             )));
         }
 
-        let hierarchy = CategoryHierarchy::from_ordered_nodes(
-            categories
-                .iter()
-                .map(|category| (category.id, category.parent_id)),
-        )?;
         let tenant_category_ids = categories
             .iter()
             .map(|category| category.id)
             .collect::<Vec<_>>();
+        let hierarchy_rows = rustok_taxonomy::entities::taxonomy_category_hierarchy::Entity::find()
+            .filter(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+            .filter(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TermId.is_in(tenant_category_ids.iter().copied()))
+            .order_by_asc(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::Position)
+            .order_by_asc(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TermId)
+            .all(&self.db)
+            .await?;
+        let mut parent_by_id = hierarchy_rows
+            .into_iter()
+            .map(|row| (row.term_id, row.parent_term_id))
+            .collect::<HashMap<_, _>>();
+        for id in &tenant_category_ids {
+            parent_by_id.entry(*id).or_insert(None);
+        }
+
+        let hierarchy = CategoryHierarchy::from_ordered_nodes(
+            tenant_category_ids
+                .iter()
+                .map(|id| (*id, parent_by_id.get(id).copied().flatten())),
+        )?;
         let archived_category_ids = forum_category_lifecycle::Entity::find()
             .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
             .filter(forum_category_lifecycle::Column::CategoryId.is_in(tenant_category_ids))

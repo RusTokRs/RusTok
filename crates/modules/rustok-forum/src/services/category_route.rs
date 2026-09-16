@@ -6,7 +6,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::entities::{forum_category, forum_category_lifecycle, forum_category_taxonomy_binding};
+use crate::entities::{forum_category, forum_category_lifecycle};
 use crate::error::{ForumError, ForumResult};
 
 pub const MAX_FORUM_CATEGORY_ROUTE_LOCALE_LEN: usize = 64;
@@ -42,9 +42,9 @@ pub struct ForumCategoryRouteResolution {
 ///
 /// Canonical localized slugs and immutable aliases are resolved through the
 /// Taxonomy route-key registry. Forum retains ownership of route disclosure:
-/// the resolved Taxonomy Category must map through the same-tenant typed Forum
-/// binding and the Forum category must remain active. The public path remains
-/// `/{locale}/forum/c/{slug}` and hierarchy is intentionally absent from it.
+/// the resolved Taxonomy Category uses direct Same-ID and the Forum category
+/// must remain active. The public path remains `/{locale}/forum/c/{slug}` and
+/// hierarchy is intentionally absent from it.
 pub struct ForumCategoryRouteService {
     db: DatabaseConnection,
 }
@@ -65,10 +65,7 @@ impl ForumCategoryRouteService {
         let fallback_locale = fallback_locale.map(normalize_route_locale).transpose()?;
         ensure_active_category(&self.db, tenant_id, category_id).await?;
 
-        let binding = load_taxonomy_binding_for_forum(&self.db, tenant_id, category_id).await?;
-        let taxonomy_category_id = binding
-            .map(|binding| binding.taxonomy_category_id)
-            .ok_or(ForumError::CategoryRouteResolutionConflict)?;
+        let taxonomy_category_id = category_id;
         let taxonomy_categories = TaxonomyOwnerCategoryReader::new(self.db.clone())
             .load_scoped_categories(
                 tenant_id,
@@ -131,10 +128,7 @@ impl ForumCategoryRouteService {
             return Err(ForumError::CategoryRouteNotFound);
         }
 
-        let binding = load_forum_binding_for_taxonomy(&self.db, tenant_id, route.term_id).await?;
-        let category_id = binding
-            .map(|binding| binding.forum_category_id)
-            .ok_or(ForumError::CategoryRouteNotFound)?;
+        let category_id = route.term_id;
         ensure_active_category(&self.db, tenant_id, category_id).await?;
 
         let canonical = self
@@ -188,32 +182,6 @@ async fn ensure_active_category(
         return Err(ForumError::CategoryRouteNotFound);
     }
     Ok(())
-}
-
-async fn load_taxonomy_binding_for_forum(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    category_id: Uuid,
-) -> ForumResult<Option<forum_category_taxonomy_binding::Model>> {
-    forum_category_taxonomy_binding::Entity::find_by_id((tenant_id, category_id))
-        .one(db)
-        .await
-        .map_err(ForumError::from)
-}
-
-async fn load_forum_binding_for_taxonomy(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    taxonomy_category_id: Uuid,
-) -> ForumResult<Option<forum_category_taxonomy_binding::Model>> {
-    forum_category_taxonomy_binding::Entity::find()
-        .filter(forum_category_taxonomy_binding::Column::TenantId.eq(tenant_id))
-        .filter(
-            forum_category_taxonomy_binding::Column::TaxonomyCategoryId.eq(taxonomy_category_id),
-        )
-        .one(db)
-        .await
-        .map_err(ForumError::from)
 }
 
 fn map_taxonomy_route_error(error: rustok_taxonomy::TaxonomyError) -> ForumError {

@@ -27,7 +27,7 @@ fn forum_route_reads_are_taxonomy_owned() {
         "TaxonomyOwnerCategoryReader",
         "resolve_term_route_for_module(",
         "pub alias_id: Option<Uuid>",
-        "forum_category_taxonomy_binding",
+        "TaxonomyScopeType::Module",
         "ensure_active_category",
     ] {
         assert!(ROUTE.contains(marker), "missing route marker {marker}");
@@ -37,6 +37,7 @@ fn forum_route_reads_are_taxonomy_owned() {
         "forum_category_route_aliases",
         "load_alias_route_candidates",
         "load_exact_current_route_owners",
+        "forum_category_taxonomy_binding",
     ] {
         assert!(
             !ROUTE.contains(forbidden),

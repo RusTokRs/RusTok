@@ -376,10 +376,16 @@ async fn category_subtree_ids_in_tx(
         return Err(ForumError::CategoryNotFound(root_category_id));
     }
 
+    let category_ids = categories.iter().map(|c| c.id).collect::<Vec<_>>();
+    let hierarchy_rows = rustok_taxonomy::entities::taxonomy_category_hierarchy::Entity::find()
+        .filter(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+        .filter(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TermId.is_in(category_ids.iter().copied()))
+        .all(txn)
+        .await?;
     let mut children = HashMap::<Uuid, Vec<Uuid>>::new();
-    for category in &categories {
-        if let Some(parent_id) = category.parent_id {
-            children.entry(parent_id).or_default().push(category.id);
+    for row in hierarchy_rows {
+        if let Some(parent_id) = row.parent_term_id {
+            children.entry(parent_id).or_default().push(row.term_id);
         }
     }
 
