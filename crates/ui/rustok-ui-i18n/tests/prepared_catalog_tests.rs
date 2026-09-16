@@ -42,6 +42,58 @@ fn validate_rejects_invalid_default_locale() {
 }
 
 #[test]
+fn validate_rejects_default_locale_missing_from_catalog() {
+    static MESSAGES: UiMessages = UiMessages::new(
+        "fr",
+        &[("en", "title = Title\n")],
+    );
+
+    let error = MESSAGES
+        .validate()
+        .expect_err("strict validation must require an exact default-locale bundle");
+
+    assert!(matches!(
+        error,
+        BundleBuildError::MissingDefaultLocale { ref locale } if locale == "fr"
+    ));
+}
+
+#[test]
+fn prepare_rejects_default_locale_missing_from_catalog() {
+    static MESSAGES: UiMessages = UiMessages::new(
+        "en-US",
+        &[("en", "title = Title\n")],
+    );
+
+    let error = match MESSAGES.prepare() {
+        Ok(_) => panic!("prepared runtime must not silently downgrade its configured default locale"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(
+        error,
+        BundleBuildError::MissingDefaultLocale { ref locale } if locale == "en-US"
+    ));
+}
+
+#[test]
+fn strict_default_locale_membership_uses_normalized_catalog_keys() {
+    static MESSAGES: UiMessages = UiMessages::new(
+        "en_US",
+        &[("en-US", "title = Title\n")],
+    );
+
+    MESSAGES
+        .validate()
+        .expect("canonical-equivalent default locale must match the normalized catalog key");
+    let prepared = MESSAGES
+        .prepare()
+        .expect("canonical-equivalent default locale must prepare successfully");
+
+    assert_eq!(prepared.t(None, "title", "fallback"), "Title");
+}
+
+#[test]
 fn prepare_rejects_malformed_catalog_instead_of_skipping_it() {
     static MESSAGES: UiMessages = UiMessages::new(
         "en",
