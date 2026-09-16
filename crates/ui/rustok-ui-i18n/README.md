@@ -34,6 +34,23 @@ optional region, and variants. Unicode/private-use extensions are not yet retain
 identity; callers that require extension-aware locale semantics must keep that policy in the host layer until
 the dedicated locale negotiation work is completed.
 
+## Key Identity and Catalog Collisions
+
+Application-facing dotted keys are a convenience spelling for Fluent kebab IDs: `account.profile.title`
+and `account-profile-title` intentionally resolve to the same message identity. Treat those spellings as aliases,
+not as two independent keys; a module must not assign different semantics to the dotted and kebab forms.
+
+Catalog construction has two explicit collision policies:
+
+- `try_build_fluent_catalog` is fail-closed: malformed locale/resource input and duplicate normalized locale
+  keys are returned as typed errors.
+- `build_fluent_catalog` is the lenient rendering path: invalid catalog entries are logged and skipped, while
+  the first bundle for a normalized locale key wins and later duplicates are ignored.
+
+Within an individual Fluent resource, message/resource conflicts are handled by Project Fluent's
+`add_resource` validation and surface as `BundleBuildError::AddResource`; this crate does not silently invent
+an override policy for Rust catalogs.
+
 ## Entry Points
 
 - `UiMessages`
