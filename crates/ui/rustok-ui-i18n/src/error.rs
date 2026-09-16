@@ -13,6 +13,11 @@ use std::fmt;
 /// Errors that can occur when building and parsing a Fluent bundle.
 #[derive(Debug)]
 pub enum BundleBuildError {
+    /// The specified locale string exceeds the supported bounded input length.
+    LocaleTooLong {
+        locale: String,
+        max_len: usize,
+    },
     /// The specified locale string failed to parse into a valid LanguageIdentifier.
     InvalidLocale {
         locale: String,
@@ -42,6 +47,12 @@ pub enum BundleBuildError {
 impl fmt::Display for BundleBuildError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::LocaleTooLong { locale, max_len } => {
+                write!(
+                    f,
+                    "Locale '{locale}' exceeds the supported maximum of {max_len} bytes"
+                )
+            }
             Self::InvalidLocale { locale, source } => {
                 write!(f, "Invalid locale '{locale}': {source}")
             }
