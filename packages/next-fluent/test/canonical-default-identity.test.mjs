@@ -87,13 +87,10 @@ test('server configuration validates prospective locale/default state atomically
     defaultLocale: 'en_US',
   });
 
-  await assert.rejects(
-    async () => configureServerI18n({ locales: ['ru'] }),
+  assert.throws(
+    () => configureServerI18n({ locales: ['ru'] }),
     /defaultLocale.*must be included|must be included in "locales"/
-  ).catch((error) => {
-    // configureServerI18n is synchronous; normalize the assertion below instead.
-    throw error;
-  });
+  );
 
   assert.equal(await getLocale(), 'en-US');
 });
