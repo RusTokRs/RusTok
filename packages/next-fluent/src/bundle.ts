@@ -1,7 +1,7 @@
 import { FluentBundle, FluentResource, type FluentFunction } from '@fluent/bundle';
 import type React from 'react';
 import type { FluentArgs, FluentVariable, RichTranslationValues, Translations } from './types';
-import { buildKeyCandidates } from './utils';
+import { buildKeyCandidates, canonicalizeLocale } from './utils';
 import { parseRichText } from './rich';
 import { createDefaultFunctions } from './functions';
 
@@ -10,13 +10,34 @@ export interface CreateFluentBundleOptions {
   functions?: Record<string, FluentFunction>;
 }
 
+function fluentBundleLocaleDiagnostic(locale: unknown): string {
+  if (typeof locale !== 'string') {
+    const kind = locale === null ? 'null' : typeof locale;
+    return `<non-string locale: ${kind}>`;
+  }
+  if (locale.length > 64) {
+    return `<oversized locale: ${locale.length} code units>`;
+  }
+  return locale;
+}
+
 export function createFluentBundle(
   locale: string,
   ftlSource: string | readonly string[],
   options: CreateFluentBundleOptions = {}
 ): FluentBundle {
-  const defaultFunctions = createDefaultFunctions(locale);
-  const bundle = new FluentBundle(locale, {
+  // Low-level bundle construction follows the same locale contract as the
+  // high-level runtime: bound raw input, canonicalize aliases such as ru_RU,
+  // and reject malformed identities before they reach Fluent or Intl helpers.
+  const canonicalLocale = canonicalizeLocale(locale);
+  if (!canonicalLocale) {
+    throw new Error(
+      `[next-fluent] Invalid Fluent bundle locale: "${fluentBundleLocaleDiagnostic(locale)}"`
+    );
+  }
+
+  const defaultFunctions = createDefaultFunctions(canonicalLocale);
+  const bundle = new FluentBundle(canonicalLocale, {
     // Keep Project Fluent's bidi safety enabled by default. Consumers that need
     // byte-for-byte legacy output can opt out explicitly, but normal UI rendering
     // must isolate interpolated values so mixed LTR/RTL text remains well ordered.
@@ -32,7 +53,7 @@ export function createFluentBundle(
     const resource = new FluentResource(src);
     const errors = bundle.addResource(resource, { allowOverrides: true });
     if (errors && errors.length > 0) {
-      console.warn(`[next-fluent] Warnings adding FTL resource for locale ${locale}:`, errors);
+      console.warn(`[next-fluent] Warnings adding FTL resource for locale ${canonicalLocale}:`, errors);
     }
   }
   return bundle;
