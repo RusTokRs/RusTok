@@ -64,14 +64,14 @@ impl FluentCatalogBuildReport {
 }
 
 fn parse_language_identifier(locale: &str) -> Result<LanguageIdentifier, BundleBuildError> {
-    let trimmed = locale.trim();
-    if trimmed.len() > MAX_LOCALE_TAG_LEN {
+    if locale.len() > MAX_LOCALE_TAG_LEN {
         return Err(BundleBuildError::LocaleTooLong {
-            length: trimmed.len(),
+            length: locale.len(),
             max_len: MAX_LOCALE_TAG_LEN,
         });
     }
 
+    let trimmed = locale.trim();
     let normalized = trimmed.replace('_', "-");
     normalized
         .parse()
@@ -105,11 +105,10 @@ fn build_fluent_bundle_from_parsed(
 /// Builds a concurrent `FluentBundle` from raw FTL source string.
 ///
 /// Locale tags are normalized before parsing, so underscore-separated tags such
-/// as `ru_RU` are accepted consistently with `normalize_locale_tag`. The same
-/// bounded locale-input contract used by runtime lookup is enforced before
-/// normalization allocates, preventing catalogs that lookup can never select.
-/// Oversized-input errors report only lengths and never retain the untrusted
-/// locale payload.
+/// as `ru_RU` are accepted consistently with `normalize_locale_tag`. The same raw
+/// 64-byte locale-input contract used by runtime lookup is enforced before trim or
+/// normalization work, preventing padded inputs from bypassing the bound. Oversized
+/// errors report only lengths and never retain the untrusted locale payload.
 ///
 /// Unicode directional isolation is explicitly enabled. Fluent therefore wraps
 /// interpolated values with FSI/PDI markers where appropriate, preventing mixed
