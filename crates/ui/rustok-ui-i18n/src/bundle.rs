@@ -15,12 +15,21 @@ use fluent_bundle::FluentResource;
 use unic_langid::LanguageIdentifier;
 
 use crate::error::BundleBuildError;
+use crate::locale::MAX_LOCALE_TAG_LEN;
 
 /// A thread-safe, sorted map of normalized locale tags to their concurrent `FluentBundle`.
 pub type FluentCatalog = BTreeMap<String, FluentBundle<FluentResource>>;
 
 fn parse_language_identifier(locale: &str) -> Result<LanguageIdentifier, BundleBuildError> {
-    let normalized = locale.trim().replace('_', "-");
+    let trimmed = locale.trim();
+    if trimmed.len() > MAX_LOCALE_TAG_LEN {
+        return Err(BundleBuildError::LocaleTooLong {
+            locale: locale.to_string(),
+            max_len: MAX_LOCALE_TAG_LEN,
+        });
+    }
+
+    let normalized = trimmed.replace('_', "-");
     normalized
         .parse()
         .map_err(|source| BundleBuildError::InvalidLocale {
@@ -32,7 +41,9 @@ fn parse_language_identifier(locale: &str) -> Result<LanguageIdentifier, BundleB
 /// Builds a concurrent `FluentBundle` from raw FTL source string.
 ///
 /// Locale tags are normalized before parsing, so underscore-separated tags such
-/// as `ru_RU` are accepted consistently with `normalize_locale_tag`.
+/// as `ru_RU` are accepted consistently with `normalize_locale_tag`. The same
+/// bounded locale-input contract used by runtime lookup is enforced before
+/// normalization allocates, preventing catalogs that lookup can never select.
 ///
 /// Unicode directional isolation is explicitly enabled. Fluent therefore wraps
 /// interpolated values with FSI/PDI markers where appropriate, preventing mixed
@@ -62,8 +73,8 @@ pub fn build_fluent_bundle(
 /// Strictly builds an immutable, concurrent `FluentCatalog`.
 ///
 /// Unlike [`build_fluent_catalog`], this function never skips invalid input:
-/// malformed locale tags, invalid FTL resources, and duplicate normalized
-/// locale keys are returned to the caller as errors.
+/// malformed/oversized locale tags, invalid FTL resources, and duplicate
+/// normalized locale keys are returned to the caller as errors.
 pub fn try_build_fluent_catalog(
     bundles: &[(&str, &str)],
 ) -> Result<FluentCatalog, BundleBuildError> {
@@ -84,10 +95,10 @@ pub fn try_build_fluent_catalog(
 
 /// Builds an immutable, concurrent `FluentCatalog` using lenient UI semantics.
 ///
-/// Invalid locale/FTL inputs are skipped, but every skipped entry is logged.
-/// Duplicate normalized locale keys are also logged and the first entry wins.
-/// Call [`try_build_fluent_catalog`] from validation and CI paths that must fail
-/// closed on invalid catalogs.
+/// Invalid, oversized locale/FTL inputs are skipped, but every skipped entry is
+/// logged. Duplicate normalized locale keys are also logged and the first entry
+/// wins. Call [`try_build_fluent_catalog`] from validation and CI paths that must
+/// fail closed on invalid catalogs.
 pub fn build_fluent_catalog(bundles: &[(&str, &str)]) -> FluentCatalog {
     let mut catalog = FluentCatalog::new();
 
