@@ -24,15 +24,19 @@ fn oversized_locale_is_rejected_consistently_by_lookup_and_strict_builders() {
     assert!(OVERSIZED_LOCALE.len() > 64);
     assert_eq!(normalize_locale_tag(OVERSIZED_LOCALE), None);
 
-    let bundle_error = build_fluent_bundle(OVERSIZED_LOCALE, FTL)
-        .expect_err("bundle construction must share the runtime locale length bound");
+    let bundle_error = match build_fluent_bundle(OVERSIZED_LOCALE, FTL) {
+        Ok(_) => panic!("bundle construction must share the runtime locale length bound"),
+        Err(error) => error,
+    };
     assert!(matches!(
         bundle_error,
         BundleBuildError::LocaleTooLong { max_len: 64, .. }
     ));
 
-    let catalog_error = try_build_fluent_catalog(&[(OVERSIZED_LOCALE, FTL)])
-        .expect_err("strict catalogs must not contain locales runtime lookup rejects");
+    let catalog_error = match try_build_fluent_catalog(&[(OVERSIZED_LOCALE, FTL)]) {
+        Ok(_) => panic!("strict catalogs must not contain locales runtime lookup rejects"),
+        Err(error) => error,
+    };
     assert!(matches!(
         catalog_error,
         BundleBuildError::LocaleTooLong { max_len: 64, .. }
@@ -53,9 +57,10 @@ fn prepared_runtime_cannot_validate_an_unreachable_default_catalog() {
     static MESSAGES: UiMessages =
         UiMessages::new(OVERSIZED_LOCALE, &[(OVERSIZED_LOCALE, FTL), ("en", FTL)]);
 
-    let error = MESSAGES
-        .prepare()
-        .expect_err("prepared runtime must fail closed before caching an unreachable default");
+    let error = match MESSAGES.prepare() {
+        Ok(_) => panic!("prepared runtime must fail closed before caching an unreachable default"),
+        Err(error) => error,
+    };
     assert!(matches!(
         error,
         BundleBuildError::LocaleTooLong { max_len: 64, .. }
