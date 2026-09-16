@@ -17,6 +17,7 @@ const SKIPPED_DIRECTORIES: &[&str] = &[
     "node_modules",
     "output",
     "target",
+    "vendor",
 ];
 
 #[derive(Debug, Deserialize)]
@@ -150,6 +151,7 @@ fn collect_i18n_api_inventory() -> Result<I18nApiInventoryReport> {
             .to_path_buf();
         let mut source_files = Vec::new();
         collect_rust_sources(&package_root, &mut source_files)?;
+        source_files.sort();
 
         for source_path in source_files {
             let content = fs::read_to_string(&source_path)
@@ -218,6 +220,11 @@ fn collect_rust_sources(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
             {
                 continue;
             }
+            // Nested Cargo packages are inventoried from their own cargo-metadata
+            // package entry. Do not attribute their sources to the parent package.
+            if path.join("Cargo.toml").is_file() {
+                continue;
+            }
             collect_rust_sources(&path, files)?;
             continue;
         }
@@ -226,7 +233,6 @@ fn collect_rust_sources(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
         }
     }
 
-    files.sort();
     Ok(())
 }
 
