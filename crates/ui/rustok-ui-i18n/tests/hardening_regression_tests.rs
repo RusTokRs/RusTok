@@ -42,11 +42,13 @@ fn locale_contract_is_language_identifier_not_extension_preserving_locale() {
 
 #[test]
 fn strict_catalog_rejects_duplicate_normalized_locales() {
-    let error = try_build_fluent_catalog(&[
+    let error = match try_build_fluent_catalog(&[
         ("en_US", "title = First\n"),
         ("en-US", "title = Second\n"),
-    ])
-    .expect_err("normalized duplicate locales must fail closed");
+    ]) {
+        Ok(_) => panic!("normalized duplicate locales must fail closed"),
+        Err(error) => error,
+    };
 
     match error {
         BundleBuildError::DuplicateLocale { locale } => assert_eq!(locale, "en-US"),
@@ -67,8 +69,10 @@ fn lenient_catalog_keeps_first_duplicate_locale() {
 
 #[test]
 fn strict_catalog_rejects_malformed_ftl() {
-    let error = try_build_fluent_catalog(&[("en", "this is not valid fluent")])
-        .expect_err("malformed FTL must fail strict construction");
+    let error = match try_build_fluent_catalog(&[("en", "this is not valid fluent")]) {
+        Ok(_) => panic!("malformed FTL must fail strict construction"),
+        Err(error) => error,
+    };
 
     assert!(matches!(error, BundleBuildError::FluentParse { .. }));
 }
