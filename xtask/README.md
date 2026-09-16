@@ -13,6 +13,7 @@ The tool provides one stable entry point for repository maintenance tasks that a
 - Detect drift between `modules.toml` and central module documentation maps such as `docs/modules/registry.md`, `docs/modules/_index.md`, and UI package indexes.
 - Build targeted local module smoke plans for `cargo xtask module test <slug>`.
 - Generate server module registry artifacts from `modules.toml`.
+- Inventory workspace consumers of compatibility-only `rustok-ui-i18n` APIs before pre-1.0 semver migrations.
 - Provide operator commands for module publishing, staging, governance follow-up actions, owner transfers, yanking, and remote runner execution.
 - Keep mandatory local audit paths Windows-safe where possible and leave Bash-only scripts as optional perimeter checks.
 
@@ -28,6 +29,7 @@ cargo xtask module test <slug>
 cargo xtask install-dev --create-db
 cargo xtask generate-registry
 cargo xtask list-modules
+cargo xtask i18n-api-inventory
 ```
 
 Registry/operator flows use the same binary:
@@ -52,6 +54,29 @@ durable validation detail. It can claim only stages explicitly owned by a
 `remote` runner. Platform compile/test gates are owner-evidence stages and can
 be completed only by a verified durable platform build result; `module publish`
 does not translate local Cargo execution into that evidence.
+
+## I18n Public API Inventory
+
+`cargo xtask i18n-api-inventory` is the repository-owned evidence path for pre-1.0 `rustok-ui-i18n` API review. It does not mutate code and does not decide that an export is safe to remove.
+
+The command:
+
+- runs `cargo metadata --no-deps --format-version 1` to discover workspace packages that declare `rustok-ui-i18n`, including renamed dependencies;
+- scans only those packages' Rust source trees;
+- excludes symlinks and generated/build-heavy directories such as `target`, `node_modules`, `.next`, and `output`;
+- reports compatibility-only dependency types, low-level helpers, concrete catalog representation, and public module-path candidates;
+- distinguishes `direct-path` evidence from conservative `same-file-candidate` evidence caused by multiline use trees or other textual ambiguity;
+- sorts packages and findings so repeated runs produce reviewable output;
+- supports `--json` for retaining machine-readable migration evidence.
+
+Use it before narrowing any compatibility-only export:
+
+```powershell
+cargo xtask i18n-api-inventory
+cargo xtask i18n-api-inventory --json
+```
+
+A finding means “inspect and migrate before narrowing”, not “this symbol is definitely resolved through the i18n crate”. Conversely, zero findings are repository evidence only; generated or external consumers still require an explicit release decision.
 
 ## Local Non-Docker Install
 
@@ -116,6 +141,7 @@ cargo xtask module test <slug>
 ## Interactions
 
 - Reads `modules.toml` as the central composition source of truth.
+- Reads Cargo metadata for the non-mutating i18n compatibility API inventory.
 - Reads each path module's `Cargo.toml`, `rustok-module.toml`, `README.md`, `docs/README.md`, and `docs/implementation-plan.md`.
 - Scans module source files for declared runtime entry types, permissions, transports, and event-listener registration paths.
 - Checks server-side feature flags, generated module registry wiring, controller shims, and default-enabled module closure.
@@ -131,6 +157,7 @@ Use targeted checks when editing `xtask`:
 ```powershell
 cargo check -p xtask
 cargo test -p xtask
+cargo xtask i18n-api-inventory
 cargo xtask validate-manifest
 cargo xtask module validate <slug>
 ```
