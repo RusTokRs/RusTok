@@ -60,16 +60,27 @@ fn lenient_catalog_skips_oversized_unreachable_locale() {
 }
 
 #[test]
-fn prepared_runtime_cannot_validate_an_unreachable_default_catalog() {
+fn strict_default_locale_validation_is_bounded_before_normalization_allocates() {
     static MESSAGES: UiMessages =
         UiMessages::new(OVERSIZED_LOCALE, &[(OVERSIZED_LOCALE, FTL), ("en", FTL)]);
 
-    let error = match MESSAGES.prepare() {
+    let validate_error = match MESSAGES.validate() {
+        Ok(()) => panic!("strict validation must reject an oversized default before catalog build"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        validate_error,
+        BundleBuildError::LocaleTooLong { max_len: 64, .. }
+    ));
+    assert!(!validate_error.to_string().contains(OVERSIZED_LOCALE));
+
+    let prepare_error = match MESSAGES.prepare() {
         Ok(_) => panic!("prepared runtime must fail closed before caching an unreachable default"),
         Err(error) => error,
     };
     assert!(matches!(
-        error,
+        prepare_error,
         BundleBuildError::LocaleTooLong { max_len: 64, .. }
     ));
+    assert!(!prepare_error.to_string().contains(OVERSIZED_LOCALE));
 }
