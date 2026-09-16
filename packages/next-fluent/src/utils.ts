@@ -1,7 +1,11 @@
 const MAX_LOCALE_TAG_LENGTH = 64;
 const HTTP_QVALUE = /^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/;
 
-function localeDiagnosticValue(locale: string): string {
+function localeDiagnosticValue(locale: unknown): string {
+  if (typeof locale !== 'string') {
+    const kind = locale === null ? 'null' : typeof locale;
+    return `<non-string locale: ${kind}>`;
+  }
   if (locale.length > MAX_LOCALE_TAG_LENGTH) {
     return `<oversized locale: ${locale.length} code units>`;
   }
