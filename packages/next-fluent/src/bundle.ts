@@ -17,7 +17,10 @@ export function createFluentBundle(
 ): FluentBundle {
   const defaultFunctions = createDefaultFunctions(locale);
   const bundle = new FluentBundle(locale, {
-    useIsolating: options.useIsolating ?? false,
+    // Keep Project Fluent's bidi safety enabled by default. Consumers that need
+    // byte-for-byte legacy output can opt out explicitly, but normal UI rendering
+    // must isolate interpolated values so mixed LTR/RTL text remains well ordered.
+    useIsolating: options.useIsolating ?? true,
     functions: {
       ...defaultFunctions,
       ...options.functions,
@@ -203,4 +206,3 @@ export function createTranslator(
 
   return tFn as Translations;
 }
-
