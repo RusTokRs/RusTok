@@ -125,3 +125,29 @@ test('configuration keeps distinct locale identities and canonical default membe
     validateI18nConfig({ locales: ['en-US', 'en-GB', 'sr-Latn-RS'], defaultLocale: 'en_US' })
   );
 });
+
+test('malformed runtime config values produce controlled bounded errors', () => {
+  for (const invalidLocale of [null, undefined, 42, true, {}, []]) {
+    assert.throws(
+      () => validateI18nConfig({ locales: [invalidLocale], defaultLocale: 'en' }),
+      (error) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.name, 'Error');
+        assert.match(error.message, /Invalid locale tag in "locales": "<non-string locale:/);
+        return true;
+      }
+    );
+  }
+
+  for (const invalidDefault of [null, undefined, 42, true, {}, []]) {
+    assert.throws(
+      () => validateI18nConfig({ locales: ['en'], defaultLocale: invalidDefault }),
+      (error) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.name, 'Error');
+        assert.match(error.message, /Invalid "defaultLocale": "<non-string locale:/);
+        return true;
+      }
+    );
+  }
+});
