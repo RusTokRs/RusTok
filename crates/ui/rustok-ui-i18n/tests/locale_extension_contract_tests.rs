@@ -31,8 +31,10 @@ fn extension_bearing_requested_locale_is_not_silently_stripped() {
 
 #[test]
 fn extension_bearing_catalog_locale_is_a_typed_error() {
-    let error = build_fluent_bundle(UNICODE_EXTENSION, "hello = Hello")
-        .expect_err("extension-bearing locale must not become Rust catalog identity");
+    let error = match build_fluent_bundle(UNICODE_EXTENSION, "hello = Hello") {
+        Err(error) => error,
+        Ok(_) => panic!("extension-bearing locale must not become Rust catalog identity"),
+    };
 
     assert!(matches!(error, BundleBuildError::InvalidLocale { .. }));
 }
