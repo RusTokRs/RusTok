@@ -1,5 +1,12 @@
 const MAX_LOCALE_TAG_LENGTH = 64;
 
+function localeDiagnosticValue(locale: string): string {
+  if (locale.length > MAX_LOCALE_TAG_LENGTH) {
+    return `<oversized locale: ${locale.length} code units>`;
+  }
+  return locale;
+}
+
 export function canonicalizeLocale(locale?: string | null): string | undefined {
   if (!locale || typeof locale !== 'string') return undefined;
   if (locale.length > MAX_LOCALE_TAG_LENGTH) return undefined;
@@ -102,14 +109,18 @@ export function validateI18nConfig(options: {
   const canonicalLocales = options.locales.map((loc) => {
     const canonical = canonicalizeLocale(loc);
     if (!canonical) {
-      throw new Error(`[next-fluent] Invalid locale tag in "locales": "${loc}"`);
+      throw new Error(
+        `[next-fluent] Invalid locale tag in "locales": "${localeDiagnosticValue(loc)}"`
+      );
     }
     return canonical.toLowerCase();
   });
 
   const defaultCanonical = canonicalizeLocale(options.defaultLocale);
   if (!defaultCanonical) {
-    throw new Error(`[next-fluent] Invalid "defaultLocale": "${options.defaultLocale}"`);
+    throw new Error(
+      `[next-fluent] Invalid "defaultLocale": "${localeDiagnosticValue(options.defaultLocale)}"`
+    );
   }
 
   if (!canonicalLocales.includes(defaultCanonical.toLowerCase())) {
