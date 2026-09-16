@@ -33,9 +33,10 @@ runtime filesystem discovery.
    duplicate normalized locales and resource-add failures.
 
 4. **Lenient catalog construction with inspectable diagnostics.**
-   `build_fluent_catalog` keeps fail-soft first-wins rendering semantics and tracing diagnostics.
-   `bundle::build_fluent_catalog_report` returns the same usable catalog plus typed diagnostics for
-   every skipped entry in input order.
+   `build_fluent_catalog` keeps fail-soft first-input-wins rendering semantics and tracing diagnostics.
+   A parseable locale reserves its normalized identity before FTL parsing, so a malformed first payload
+   cannot be silently replaced by a later duplicate. `bundle::build_fluent_catalog_report` returns the
+   same usable catalog plus typed diagnostics for every skipped entry in input order.
 
 5. **Bounded raw locale-input contract.**
    Runtime lookup, catalog construction and default-locale validation enforce the same 64-byte raw
@@ -71,7 +72,7 @@ runtime filesystem discovery.
 
 11. **Catalog/key collision contract.**
     Dotted application keys and kebab Fluent IDs are explicitly one logical identity (`a.b` == `a-b`).
-    Duplicate normalized locales are strict errors and lenient first-wins. Duplicate message IDs are
+    Duplicate normalized locales are strict errors and lenient first-input-wins. Duplicate message IDs are
     rejected by Fluent resource validation.
 
 12. **Safe dotted-key conversion.**
@@ -134,6 +135,14 @@ runtime filesystem discovery.
     catalog locale. `@rustok/next-fluent` may still probe an exact extension-bearing locale and then its
     `Intl.Locale.baseName`, because the JavaScript runtime has an extension-aware locale representation.
 
+24. **Repository-owned public API consumer inventory.**
+    `cargo xtask i18n-api-inventory` uses `cargo metadata --no-deps` to discover workspace packages that
+    depend on `rustok-ui-i18n`, including dependency renames, and scans their Rust sources for conservative
+    compatibility-only symbol/module evidence. Results are deterministic and sorted, with direct-path and
+    same-file-candidate evidence kept distinct. `--json` provides machine-readable output. This removes
+    dependency on GitHub code-search availability for pre-1.0 migration reviews without pretending a textual
+    scan is compiler proof.
+
 ## Remaining engineering work
 
 ### 1. Public API / semver surface before 1.0
@@ -143,9 +152,17 @@ module-owned code has an additive high-level `prelude`, while catalog/locale int
 older dependency-backed/module-path exports remain available for compatibility. The public error enums
 are non-exhaustive. Existing low-level exports are therefore no longer an unclassified cleanup target.
 
+The repository now owns a deterministic evidence command:
+
+```text
+cargo xtask i18n-api-inventory
+cargo xtask i18n-api-inventory --json
+```
+
 Remaining work before a stable release:
-- collect concrete workspace symbol-usage evidence for any compatibility-only export proposed for narrowing;
-- migrate every in-repository consumer before deprecating or wrapping such an export;
+- run and retain the inventory output when proposing any compatibility-only export for narrowing;
+- review `same-file-candidate` findings rather than treating conservative textual matches as compiler proof;
+- migrate every confirmed in-repository consumer before deprecating or wrapping such an export;
 - decide, with that evidence, which dependency-backed types remain intentional interoperability contract;
 - reserve actual removals/type wrapping for an explicit pre-1.0 breaking window rather than opportunistic cleanup.
 
@@ -179,6 +196,10 @@ Rust foundation:
 - `cargo clippy -p rustok-ui-i18n --all-targets --all-features -- -D warnings`
 - `cargo check -p rustok-ui-i18n --all-features --target wasm32-unknown-unknown`
 - optional measured work: `cargo bench -p rustok-ui-i18n --bench lookup`
+
+Repository API evidence:
+- `cargo xtask i18n-api-inventory`
+- optional machine-readable evidence: `cargo xtask i18n-api-inventory --json`
 
 Next.js Fluent parity surface:
 - `cd packages/next-fluent && npm run verify`

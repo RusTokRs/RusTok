@@ -54,12 +54,33 @@ The crate root and public modules also expose implementation-oriented or depende
 
 They remain public today because removing or wrapping them without workspace consumer evidence would create an avoidable pre-1.0 migration surprise.
 
+## Workspace consumer evidence
+
+Use the repository-owned inventory instead of GitHub code-search when reviewing a compatibility-only export:
+
+```text
+cargo xtask i18n-api-inventory
+cargo xtask i18n-api-inventory --json
+```
+
+The command uses `cargo metadata --no-deps` to discover workspace packages that actually declare a dependency on `rustok-ui-i18n`, including renamed dependencies. It then scans those packages' Rust sources for compatibility-only symbol/module candidates and emits deterministic, sorted findings.
+
+Evidence is deliberately conservative:
+
+- `direct-path` means the dependency alias and compatibility symbol occur on the same source line;
+- `same-file-candidate` covers multiline use trees and other cases where the source file references the i18n dependency alias and the compatibility symbol, but the textual scanner cannot prove they belong to the same Rust path;
+- the command excludes `target`, `node_modules`, `.next`, `output`, symlink traversal, and the `rustok-ui-i18n` package itself;
+- a finding is migration evidence to inspect, not an automatic deprecation decision;
+- zero findings are useful repository evidence but still do not authorize an automatic breaking removal without review of generated/external consumers.
+
+This inventory exists specifically so pre-1.0 API decisions do not depend on the availability or freshness of an external code-search index.
+
 ## Change policy before 1.0
 
 1. Prefer additive facade APIs over removing existing exports.
 2. Treat public dependency types, module paths, helper functions and enum variants as compatibility surface.
 3. Keep public error enums non-exhaustive so typed diagnostics can evolve without forcing exhaustive downstream matches.
-4. Before narrowing an existing export, capture concrete workspace symbol-usage evidence and migrate every in-repository consumer first.
+4. Before narrowing an existing export, run `cargo xtask i18n-api-inventory`, inspect every candidate finding, and migrate every in-repository consumer first.
 5. If an export still needs removal after migration, deprecate it first when practical and perform the removal only in an explicit pre-1.0 breaking window.
 6. Do not move framework, transport, routing, cookie/header or locale-selection policy into this crate merely to make the facade look smaller.
 
