@@ -120,14 +120,13 @@ INSERT INTO products (id, tenant_id) VALUES
     ('10000000-0000-0000-0000-000000000101', '10000000-0000-0000-0000-000000000001'),
     ('20000000-0000-0000-0000-000000000202', '20000000-0000-0000-0000-000000000002');
 
-BEGIN;
-INSERT INTO catalog_categories (id, tenant_id, code, slug, path) VALUES
-    ('10000000-0000-0000-0000-000000000111', '10000000-0000-0000-0000-000000000001', 'root', 'root', 'root'),
-    ('20000000-0000-0000-0000-000000000222', '20000000-0000-0000-0000-000000000002', 'root', 'root', 'root');
-INSERT INTO catalog_category_closure (tenant_id, ancestor_id, descendant_id, depth) VALUES
-    ('10000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000111', '10000000-0000-0000-0000-000000000111', 0),
-    ('20000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000222', '20000000-0000-0000-0000-000000000222', 0);
-COMMIT;
+INSERT INTO taxonomy_terms (id, tenant_id) VALUES
+    ('10000000-0000-0000-0000-000000000111', '10000000-0000-0000-0000-000000000001'),
+    ('20000000-0000-0000-0000-000000000222', '20000000-0000-0000-0000-000000000002');
+
+INSERT INTO catalog_categories (id, tenant_id, code, path) VALUES
+    ('10000000-0000-0000-0000-000000000111', '10000000-0000-0000-0000-000000000001', 'root', 'root'),
+    ('20000000-0000-0000-0000-000000000222', '20000000-0000-0000-0000-000000000002', 'root', 'root');
 
 INSERT INTO product_attributes (id, tenant_id, code, value_type) VALUES
     ('10000000-0000-0000-0000-000000000121', '10000000-0000-0000-0000-000000000001', 'material', 'text'),
@@ -141,9 +140,9 @@ INSERT INTO product_translations (id, product_id, tenant_id, locale, title, hand
     ('10000000-0000-0000-0000-000000000141', '10000000-0000-0000-0000-000000000101', '10000000-0000-0000-0000-000000000001', 'en-US', 'Tenant one', 'shared'),
     ('20000000-0000-0000-0000-000000000282', '20000000-0000-0000-0000-000000000202', '20000000-0000-0000-0000-000000000002', 'en-US', 'Tenant two', 'shared');
 
-INSERT INTO catalog_category_translations (id, category_id, locale, name) VALUES
-    ('10000000-0000-0000-0000-000000000151', '10000000-0000-0000-0000-000000000111', 'en-US', 'Shared'),
-    ('20000000-0000-0000-0000-000000000292', '20000000-0000-0000-0000-000000000222', 'en-US', 'Shared');
+INSERT INTO catalog_category_seo_translations (id, category_id, tenant_id, locale, meta_title) VALUES
+    ('10000000-0000-0000-0000-000000000151', '10000000-0000-0000-0000-000000000111', '10000000-0000-0000-0000-000000000001', 'en-US', 'Shared'),
+    ('20000000-0000-0000-0000-000000000292', '20000000-0000-0000-0000-000000000222', '20000000-0000-0000-0000-000000000002', 'en-US', 'Shared');
 INSERT INTO product_attribute_translations (id, attribute_id, locale, label) VALUES
     ('10000000-0000-0000-0000-000000000161', '10000000-0000-0000-0000-000000000121', 'en-US', 'Shared'),
     ('20000000-0000-0000-0000-000000000302', '20000000-0000-0000-0000-000000000242', 'en-US', 'Shared');
@@ -163,11 +162,11 @@ INSERT INTO product_attribute_schema_translations (id, schema_id, locale, name) 
                 "fk_product_translations_product_tenant",
             ),
             (
-                "INSERT INTO catalog_categories (id, tenant_id, parent_id, code, slug, path, level) \
-                 VALUES ('30000000-0000-0000-0000-000000000002', \
+                "INSERT INTO catalog_categories (id, tenant_id, code, path, level) \
+                 VALUES ('10000000-0000-0000-0000-000000000111', \
                  '20000000-0000-0000-0000-000000000002', \
-                 '10000000-0000-0000-0000-000000000111', 'cross', 'cross', 'root/cross', 1)",
-                "fk_catalog_categories_parent_tenant",
+                 'cross', 'root/cross', 1)",
+                "fk_catalog_categories_taxonomy_term",
             ),
             (
                 "INSERT INTO product_attribute_schema_attributes \
@@ -212,7 +211,7 @@ INSERT INTO product_attribute_schema_translations (id, schema_id, locale, name) 
                 DbBackend::Postgres,
                 r#"
 SELECT
-    (SELECT COUNT(*) FROM catalog_category_translations translation
+    (SELECT COUNT(*) FROM catalog_category_seo_translations translation
      JOIN catalog_categories owner ON owner.id = translation.category_id
      WHERE owner.tenant_id = '10000000-0000-0000-0000-000000000001') AS category_count,
     (SELECT COUNT(*) FROM product_attribute_translations translation
@@ -454,6 +453,7 @@ async fn assert_target_schema(db: &DatabaseConnection) -> Result<(), Box<dyn std
                 "deleted_at",
             ][..],
         ),
+        ("catalog_categories", &["parent_id", "slug", "position"][..]),
     ] {
         for column in columns {
             assert_column_missing(db, table, column).await?;
@@ -462,6 +462,9 @@ async fn assert_target_schema(db: &DatabaseConnection) -> Result<(), Box<dyn std
 
     assert_column_contract(db, "product_images", "media_id", "uuid", false).await?;
     assert_column_contract(db, "product_variants", "weight", "numeric", true).await?;
+    assert_table_missing(db, "product_catalog_category_taxonomy_bindings").await?;
+    assert_table_missing(db, "catalog_category_closure").await?;
+    assert_table_missing(db, "catalog_category_translations").await?;
     Ok(())
 }
 

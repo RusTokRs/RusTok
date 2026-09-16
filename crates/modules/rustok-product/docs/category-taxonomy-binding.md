@@ -1,7 +1,7 @@
 # Product Category → Taxonomy migration contract
 
-Status: **source-complete PostgreSQL Product Category canonical/hierarchy donor retirement; non-PostgreSQL donor compatibility retained**
-Current migration cursor: **TAXONOMY-CAT-34 PostgreSQL closure storage retirement; Product navigation projections and non-PostgreSQL closure compatibility retained**.
+Status: **canonical Same-ID cutover complete across all backends; intermediate binding table, closure/translation donors, and redundant domain columns retired**
+Current migration cursor: **Phase 4 (Migration 32) Canonical Same-ID Taxonomy cutover; direct FK `catalog_categories(tenant_id, id) -> taxonomy_terms(tenant_id, id)` enforced; `product_catalog_category_taxonomy_bindings`, `parent_id`, `slug`, `position` dropped**.
 
 TAXONOMY-CAT-23 introduced the tenant-safe Product-owned binding seam.
 TAXONOMY-CAT-24 added the PostgreSQL-only monotonic backfill of existing Product
@@ -384,8 +384,28 @@ locale identity.
 ## Translation ownership boundary
 
 No `product/category` Translation provider is introduced. Canonical Category localized
-copy is synchronized and read under the registered Taxonomy `taxonomy/term` provider on
-PostgreSQL. `catalog_category_seo_translations` is Product SEO storage, not a Translation
-provider and not canonical Category copy. After CAT-29, legacy Product Category
-translation rows exist only on backends that still use the explicit non-PostgreSQL donor
-compatibility path.
+copy is synchronized and read under the registered Taxonomy `taxonomy/term` provider across
+all backends. `catalog_category_seo_translations` is Product SEO storage, not a Translation
+provider and not canonical Category copy. Following Migration 32, legacy Product Category
+translation rows and fallback readers have been retired repository-wide.
+
+## Phase 4: Canonical Same-ID cutover and full donor retirement (Migration 32)
+
+Migration `m20260916_000032_clean_product_category_canonical_taxonomy` completes the transition to canonical Same-ID (`category_id == taxonomy_term_id`) in accordance with the repository's Zero-Legacy Policy:
+
+1. **Retirement of intermediate binding table**:
+   - `product_catalog_category_taxonomy_bindings` is dropped across all supported backends.
+   - Dual-read/join queries (`LEFT JOIN product_catalog_category_taxonomy_bindings`) in `CatalogSchemaService` are eliminated; category IDs are direct references to `taxonomy_terms`.
+
+2. **Removal of redundant domain columns**:
+   - In `catalog_categories`, redundant mirrors of hierarchy and presentation state (`parent_id`, `slug`, `position`) are dropped.
+   - Legacy tree cycle triggers (`trg_catalog_categories_validate_tree`, `rustok_product_validate_category_tree_trigger`, `rustok_product_assert_category_tree`) and slug unique constraints (`uq_catalog_categories_parent_slug`, `uq_catalog_categories_tenant_root_slug`) are dropped.
+   - Hierarchy and cycle prevention are canonically enforced by `taxonomy_category_hierarchy`.
+
+3. **Enforcement of Same-ID foreign key constraint**:
+   - Composite foreign key `fk_catalog_categories_taxonomy_term` (`(tenant_id, id) REFERENCES taxonomy_terms(tenant_id, id) ON DELETE CASCADE`) is established on PostgreSQL and supported engines, guaranteeing cross-table referential integrity.
+   - On category creation, synchronization to `taxonomy_terms` is executed first within the write transaction, satisfying the foreign key constraint before `catalog_categories` insertion.
+
+4. **Elimination of legacy donor read/write fallbacks**:
+   - Non-PostgreSQL legacy donor writes (`should_write_legacy_category_translation`, `should_write_product_category_closure`) and donor read fallbacks (`list_categories_from_product_donor`, closure-based group label inheritance) are deleted.
+   - Category listing and effective form resolution consume `TaxonomyOwnerCategoryReader` uniformly across all database engines.

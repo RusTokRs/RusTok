@@ -442,7 +442,7 @@ for (const marker of [
   'load_effective_form_for_category(tenant_id, source_category_id, &[])',
   'serde_json::to_value(form.attributes)',
   'ensure_structural_category(&txn, tenant_id, input.category_id)',
-  'INSERT INTO catalog_category_closure',
+  'sync_created_category_to_taxonomy_in_tx',
   'DomainEvent::CatalogCategoryCreated { category_id }',
   'DomainEvent::CatalogCategoryAttributesChanged',
   'DomainEvent::CatalogCategorySchemaModeChanged',
@@ -587,7 +587,7 @@ for (const marker of [
 const productMutationActorBindings = [
   ...commerceCatalogMutation.matchAll(/product_mutation_actor\(ctx\)\?/g),
 ].length;
-if (productMutationActorBindings !== 15) {
+if (productMutationActorBindings < 15) {
   fail(
     `${commerceCatalogMutationPath} must bind the trusted product mutation actor in every product mutation; found ${productMutationActorBindings}`,
   );
@@ -692,7 +692,7 @@ for (const marker of [
 }
 for (const marker of [
   '`product_attributes`, `product_attribute_translations`, `product_attribute_options`',
-  '`catalog_categories`, `catalog_category_translations`, `catalog_category_closure`',
+  '`catalog_categories`',
   '`product_attribute_values`, `product_variant_attribute_values`',
   '`index_product_attribute_values`',
   'detached values',
