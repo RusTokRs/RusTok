@@ -17879,7 +17879,9 @@ dependencies = [
 name = "rustok-ui-i18n"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "fluent-bundle",
+ "proptest",
  "tracing",
  "unic-langid",
 ]

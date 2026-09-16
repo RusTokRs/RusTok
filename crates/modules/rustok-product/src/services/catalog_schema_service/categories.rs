@@ -60,82 +60,6 @@ impl ProductCatalogSchemaService {
             .map(|row| format!("{}/{}", row.path, input.slug))
             .unwrap_or_else(|| input.slug.clone());
 
-        txn.execute_raw(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            r#"
-            INSERT INTO catalog_categories (
-                id, tenant_id, parent_id, code, slug, kind, path, level, position,
-                is_active, rule_config, metadata
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, $10, $11)
-            "#,
-            vec![
-                category_id.into(),
-                tenant_id.into(),
-                input.parent_id.into(),
-                input.code.clone().into(),
-                input.slug.clone().into(),
-                input.kind.as_str().into(),
-                path.clone().into(),
-                level.into(),
-                input.position.into(),
-                input.rule_config.clone().into(),
-                input.metadata.clone().into(),
-            ],
-        ))
-        .await?;
-
-        if should_write_product_category_closure(txn.get_database_backend()) {
-            txn.execute_raw(Statement::from_sql_and_values(
-                txn.get_database_backend(),
-                r#"
-                INSERT INTO catalog_category_closure (tenant_id, ancestor_id, descendant_id, depth)
-                VALUES ($1, $2, $2, 0)
-                "#,
-                vec![tenant_id.into(), category_id.into()],
-            ))
-            .await?;
-
-            if let Some(parent_id) = input.parent_id {
-                txn.execute_raw(Statement::from_sql_and_values(
-                    txn.get_database_backend(),
-                    r#"
-                    INSERT INTO catalog_category_closure (
-                        tenant_id, ancestor_id, descendant_id, depth
-                    )
-                    SELECT tenant_id, ancestor_id, $3, depth + 1
-                    FROM catalog_category_closure
-                    WHERE tenant_id = $1 AND descendant_id = $2
-                    "#,
-                    vec![tenant_id.into(), parent_id.into(), category_id.into()],
-                ))
-                .await?;
-            }
-        }
-
-        for translation in &translations {
-            if should_write_legacy_category_translation(txn.get_database_backend()) {
-                txn.execute_raw(Statement::from_sql_and_values(
-                    txn.get_database_backend(),
-                    r#"
-                    INSERT INTO catalog_category_translations (
-                        id, category_id, locale, name, description, meta_title, meta_description
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-                    "#,
-                    vec![
-                        generate_id().into(),
-                        category_id.into(),
-                        translation.locale.clone().into(),
-                        translation.name.clone().into(),
-                        translation.description.clone().into(),
-                        translation.meta_title.clone().into(),
-                        translation.meta_description.clone().into(),
-                    ],
-                ))
-                .await?;
-            }
-            write_category_seo_translation_in_tx(&txn, tenant_id, category_id, translation).await?;
-        }
-
         sync_created_category_to_taxonomy_in_tx(
             &txn,
             tenant_id,
@@ -144,6 +68,31 @@ impl ProductCatalogSchemaService {
             &translations,
         )
         .await?;
+
+        txn.execute_raw(Statement::from_sql_and_values(
+            txn.get_database_backend(),
+            r#"
+            INSERT INTO catalog_categories (
+                id, tenant_id, code, kind, path, level,
+                is_active, rule_config, metadata
+            ) VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7, $8)
+            "#,
+            vec![
+                category_id.into(),
+                tenant_id.into(),
+                input.code.clone().into(),
+                input.kind.as_str().into(),
+                path.clone().into(),
+                level.into(),
+                input.rule_config.clone().into(),
+                input.metadata.clone().into(),
+            ],
+        ))
+        .await?;
+
+        for translation in &translations {
+            write_category_seo_translation_in_tx(&txn, tenant_id, category_id, translation).await?;
+        }
 
         txn.publish(
             tenant_id,
@@ -171,10 +120,7 @@ impl ProductCatalogSchemaService {
         let locale = normalize_locale_tag(locale).ok_or_else(|| {
             CommerceError::Validation("category locale must be a valid locale tag".into())
         })?;
-        if self.db.get_database_backend() == DatabaseBackend::Postgres {
-            return list_categories_from_taxonomy(self, tenant_id, &locale).await;
-        }
-        list_categories_from_product_donor(self, tenant_id, &locale).await
+        list_categories_from_taxonomy(self, tenant_id, &locale).await
     }
 
     pub async fn create_category_group(
@@ -360,7 +306,6 @@ struct ProductCategoryTaxonomyReadRow {
     code: String,
     path: String,
     kind: String,
-    taxonomy_category_id: Option<Uuid>,
 }
 
 async fn list_categories_from_taxonomy(
@@ -369,18 +314,14 @@ async fn list_categories_from_taxonomy(
     locale: &str,
 ) -> CommerceResult<Vec<CatalogCategoryListRecord>> {
     let rows = ProductCategoryTaxonomyReadRow::find_by_statement(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
+        service.db.get_database_backend(),
         r#"
         SELECT
             c.id,
             c.code,
             c.path,
-            c.kind,
-            binding.taxonomy_category_id
+            c.kind
         FROM catalog_categories c
-        LEFT JOIN product_catalog_category_taxonomy_bindings binding
-          ON binding.tenant_id = c.tenant_id
-         AND binding.catalog_category_id = c.id
         WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
         ORDER BY c.path ASC
         "#,
@@ -393,22 +334,7 @@ async fn list_categories_from_taxonomy(
         return Ok(Vec::new());
     }
 
-    let mut taxonomy_category_ids = Vec::with_capacity(rows.len());
-    for row in &rows {
-        let taxonomy_category_id = row.taxonomy_category_id.ok_or_else(|| {
-            CommerceError::Validation(format!(
-                "Product category {} is missing its Taxonomy Category binding",
-                row.id
-            ))
-        })?;
-        if taxonomy_category_id != row.id {
-            return Err(CommerceError::Validation(format!(
-                "Product category {} is bound to incompatible Taxonomy Category {taxonomy_category_id}",
-                row.id
-            )));
-        }
-        taxonomy_category_ids.push(taxonomy_category_id);
-    }
+    let taxonomy_category_ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
 
     let owners = TaxonomyOwnerCategoryReader::new(service.db.clone())
         .load_scoped_categories(
@@ -443,20 +369,7 @@ fn compose_taxonomy_category_list_records(
 
     rows.into_iter()
         .map(|row| {
-            let taxonomy_category_id = row.taxonomy_category_id.ok_or_else(|| {
-                CommerceError::Validation(format!(
-                    "Product category {} is missing its Taxonomy Category binding",
-                    row.id
-                ))
-            })?;
-            if taxonomy_category_id != row.id {
-                return Err(CommerceError::Validation(format!(
-                    "Product category {} is bound to incompatible Taxonomy Category {taxonomy_category_id}",
-                    row.id
-                )));
-            }
-
-            let owner = owners.remove(&taxonomy_category_id).ok_or_else(|| {
+            let owner = owners.remove(&row.id).ok_or_else(|| {
                 CommerceError::Validation(format!(
                     "Product category {} is missing its Taxonomy owner projection",
                     row.id
@@ -566,51 +479,6 @@ fn taxonomy_category_hierarchy_order(
     Ok(ordered)
 }
 
-async fn list_categories_from_product_donor(
-    service: &ProductCatalogSchemaService,
-    tenant_id: Uuid,
-    locale: &str,
-) -> CommerceResult<Vec<CatalogCategoryListRecord>> {
-    CatalogCategoryListRow::find_by_statement(Statement::from_sql_and_values(
-        service.db.get_database_backend(),
-        r#"
-        SELECT
-            c.id,
-            c.parent_id,
-            c.code,
-            c.slug,
-            c.path,
-            c.kind,
-            COALESCE(t.name, c.code) AS name
-        FROM catalog_categories c
-        LEFT JOIN LATERAL (
-            SELECT translation.name
-            FROM catalog_category_translations translation
-            WHERE translation.category_id = c.id
-            ORDER BY
-                CASE
-                    WHEN translation.locale = $2 THEN 0
-                    WHEN translation.locale = $3 THEN 1
-                    ELSE 2
-                END,
-                translation.locale ASC,
-                translation.id ASC
-            LIMIT 1
-        ) t ON TRUE
-        WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
-        ORDER BY c.path ASC
-        "#,
-        vec![
-            tenant_id.into(),
-            locale.to_owned().into(),
-            PLATFORM_FALLBACK_LOCALE.to_string().into(),
-        ],
-    ))
-    .all(&service.db)
-    .await
-    .map_err(Into::into)
-    .and_then(|rows| rows.into_iter().map(TryInto::try_into).collect())
-}
 
 async fn write_category_seo_translation_in_tx(
     txn: &ProductWriteTransaction,
@@ -647,14 +515,6 @@ fn category_translation_has_seo(translation: &CategoryTranslationInput) -> bool 
     translation.meta_title.is_some() || translation.meta_description.is_some()
 }
 
-fn should_write_legacy_category_translation(backend: DatabaseBackend) -> bool {
-    backend != DatabaseBackend::Postgres
-}
-
-fn should_write_product_category_closure(backend: DatabaseBackend) -> bool {
-    backend != DatabaseBackend::Postgres
-}
-
 async fn sync_created_category_to_taxonomy_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -684,17 +544,6 @@ async fn sync_created_category_to_taxonomy_in_tx(
         .await
         .map_err(map_taxonomy_category_sync_error)?;
     }
-
-    txn.execute_raw(Statement::from_sql_and_values(
-        txn.get_database_backend(),
-        r#"
-        INSERT INTO product_catalog_category_taxonomy_bindings (
-            tenant_id, catalog_category_id, taxonomy_category_id, created_at
-        ) VALUES ($1, $2, $2, CURRENT_TIMESTAMP)
-        "#,
-        vec![tenant_id.into(), category_id.into()],
-    ))
-    .await?;
 
     Ok(())
 }
@@ -858,7 +707,6 @@ mod tests {
             code: "product-code".to_string(),
             path: "retained/product-path".to_string(),
             kind: "structural".to_string(),
-            taxonomy_category_id: Some(id),
         }
     }
 
@@ -962,19 +810,6 @@ mod tests {
                 .to_string()
                 .contains("missing its Taxonomy owner projection")
         );
-
-        let mut missing_binding = taxonomy_read_row(id);
-        missing_binding.taxonomy_category_id = None;
-        let error = compose_taxonomy_category_list_records(
-            vec![missing_binding],
-            vec![taxonomy_owner_category(id, "Name", "slug", None)],
-        )
-        .expect_err("missing binding must fail closed");
-        assert!(
-            error
-                .to_string()
-                .contains("missing its Taxonomy Category binding")
-        );
     }
 
     #[test]
@@ -1073,29 +908,5 @@ mod tests {
         assert!(category_translation_has_seo(&input));
     }
 
-    #[test]
-    fn category_legacy_translation_write_is_non_postgres_only() {
-        assert!(!should_write_legacy_category_translation(
-            DatabaseBackend::Postgres
-        ));
-        assert!(should_write_legacy_category_translation(
-            DatabaseBackend::Sqlite
-        ));
-        assert!(should_write_legacy_category_translation(
-            DatabaseBackend::MySql
-        ));
-    }
 
-    #[test]
-    fn category_closure_write_is_non_postgres_only() {
-        assert!(!should_write_product_category_closure(
-            DatabaseBackend::Postgres
-        ));
-        assert!(should_write_product_category_closure(
-            DatabaseBackend::Sqlite
-        ));
-        assert!(should_write_product_category_closure(
-            DatabaseBackend::MySql
-        ));
-    }
 }

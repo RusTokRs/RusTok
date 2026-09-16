@@ -726,11 +726,10 @@ impl From<ProductAttributeSchemaListRow> for ProductAttributeSchemaListRecord {
 #[derive(FromQueryResult)]
 struct CategorySchemaRow {
     category_id: Uuid,
-    parent_category_id: Option<Uuid>,
     kind: String,
     mode: String,
     schema_id: Option<Uuid>,
-    snapshot: Value,
+    snapshot: Option<Value>,
 }
 
 #[derive(FromQueryResult)]
@@ -744,11 +743,6 @@ struct CategoryAttributeRow {
     position: Option<i32>,
     visibility_overrides: Value,
     validation_overrides: Value,
-}
-
-#[derive(FromQueryResult)]
-struct CategoryAncestorRow {
-    category_id: Uuid,
 }
 
 #[derive(FromQueryResult)]
