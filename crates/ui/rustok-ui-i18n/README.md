@@ -71,5 +71,5 @@ the dedicated locale negotiation work is completed.
 
 - [Crate docs](./docs/README.md)
 - [Implementation plan](./docs/implementation-plan.md)
-- [Platform docs index](../../docs/index.md)
-- [Module UI package implementation guide](../../docs/UI/module-package-implementation.md)
+- [Platform docs index](../../../docs/index.md)
+- [Module UI package implementation guide](../../../docs/UI/module-package-implementation.md)
