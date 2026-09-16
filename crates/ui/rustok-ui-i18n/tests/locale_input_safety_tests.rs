@@ -23,9 +23,18 @@ fn oversized_locale_is_rejected_before_entering_fallback_chain() {
 }
 
 #[test]
-fn surrounding_whitespace_does_not_count_against_locale_limit() {
+fn bounded_surrounding_whitespace_is_still_trimmed() {
     assert_eq!(
-        normalize_locale_tag("                    ru_RU                    "),
+        normalize_locale_tag("        ru_RU        "),
         Some("ru-RU".to_string())
     );
+}
+
+#[test]
+fn oversized_raw_padding_is_rejected_before_trim_work() {
+    let padded = format!("{}ru_RU{}", " ".repeat(32), " ".repeat(32));
+    assert!(padded.len() > 64);
+
+    assert_eq!(normalize_locale_tag(&padded), None);
+    assert_eq!(locale_candidates(Some(&padded), "en"), vec!["en"]);
 }
