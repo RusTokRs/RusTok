@@ -40,3 +40,23 @@ pub enum CommerceError {
 }
 
 pub type CommerceResult<T> = Result<T, CommerceError>;
+
+impl From<rustok_core::field_schema::FlexError> for CommerceError {
+    fn from(error: rustok_core::field_schema::FlexError) -> Self {
+        match error {
+            rustok_core::field_schema::FlexError::Database(message) => {
+                CommerceError::Database(sea_orm::DbErr::Custom(message))
+            }
+            rustok_core::field_schema::FlexError::NotFound(id) => {
+                CommerceError::Validation(format!("Custom field definition `{id}` was not found"))
+            }
+            rustok_core::field_schema::FlexError::DuplicateFieldKey(key) => {
+                CommerceError::Validation(format!("Custom field key `{key}` already exists"))
+            }
+            rustok_core::field_schema::FlexError::InvalidLocale(locale) => {
+                CommerceError::Validation(format!("Invalid custom field locale: `{locale}`"))
+            }
+            other => CommerceError::Validation(other.to_string()),
+        }
+    }
+}

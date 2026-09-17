@@ -151,6 +151,64 @@ pub fn merge_donor_flex_metadata(
     merge_reserved_donor_metadata(reserved, Some(flex_patch.clone()))
 }
 
+/// Prepare attached values write for a donor entity being created.
+///
+/// Separates unmanaged/reserved donor metadata from active Flex custom fields,
+/// validates and normalizes the Flex fields, and merges the reserved donor metadata
+/// back into `PreparedAttachedValuesWrite.metadata`.
+pub fn prepare_donor_attached_values_create(
+    schema: CustomFieldsSchema,
+    donor_payload: &Value,
+    locale: &str,
+) -> Result<PreparedAttachedValuesWrite, FlexError> {
+    let (reserved, flex_payload) = split_donor_metadata(&schema, donor_payload);
+    let mut prepared = prepare_attached_values_create(
+        schema,
+        Some(Value::Object(flex_payload)),
+        locale,
+    )?;
+    prepared.metadata = Some(merge_reserved_donor_metadata(reserved, prepared.metadata));
+    Ok(prepared)
+}
+
+/// Prepare attached values write for a donor entity being updated.
+///
+/// Merges unmanaged/reserved donor metadata patch with existing donor metadata,
+/// extracts and validates active Flex custom fields against existing localized rows,
+/// and produces a single unified `PreparedAttachedValuesWrite`.
+pub async fn prepare_donor_attached_values_update<C>(
+    db: &C,
+    entity: AttachedEntityRef<'_>,
+    schema: CustomFieldsSchema,
+    locale: &str,
+    existing_donor_metadata: &Value,
+    donor_patch: Option<&Value>,
+) -> Result<PreparedAttachedValuesWrite, FlexError>
+where
+    C: ConnectionTrait,
+{
+    let (existing_reserved, existing_flex) = split_donor_metadata(&schema, existing_donor_metadata);
+    let (reserved_patch, flex_patch) = match donor_patch {
+        Some(patch) => {
+            let (r, f) = split_donor_metadata(&schema, patch);
+            (r, Some(Value::Object(f)))
+        }
+        None => (Map::new(), None),
+    };
+    let merged_reserved = merge_reserved_donor_patch(existing_reserved, reserved_patch);
+    let mut prepared = prepare_attached_values_update(
+        db,
+        entity,
+        schema,
+        locale,
+        &Value::Object(existing_flex),
+        flex_patch,
+    )
+    .await?;
+    prepared.metadata = Some(merge_reserved_donor_metadata(merged_reserved, prepared.metadata));
+    Ok(prepared)
+}
+
 pub async fn resolve_attached_payload<C>(
     db: &C,
     entity: AttachedEntityRef<'_>,
@@ -522,7 +580,8 @@ mod tests {
     use super::{
         ActiveModel, AttachedEntityRef, Entity, delete_attached_localized_values,
         merge_reserved_donor_metadata, prepare_attached_values_create,
-        prepare_attached_values_update, split_donor_metadata, split_existing_metadata,
+        prepare_attached_values_update, prepare_donor_attached_values_create,
+        prepare_donor_attached_values_update, split_donor_metadata, split_existing_metadata,
     };
 
     fn definition(field_key: &str, is_localized: bool) -> FieldDefinition {
@@ -771,6 +830,116 @@ mod tests {
                 "material": "cotton",
             })
         );
+    }
+
+    #[test]
+    fn prepare_donor_attached_values_create_splits_and_merges_donor_metadata() {
+        let schema = CustomFieldsSchema::new(vec![
+            definition("fit", false),
+            definition("care_instructions", true),
+        ]);
+
+        let payload = json!({
+            "shipping_profile": { "slug": "express" },
+            "fit": "regular",
+            "care_instructions": "hand wash only",
+        });
+
+        let prepared = prepare_donor_attached_values_create(schema, &payload, "en")
+            .expect("prepare donor create");
+
+        assert_eq!(
+            prepared.metadata,
+            Some(json!({
+                "shipping_profile": { "slug": "express" },
+                "fit": "regular",
+            }))
+        );
+        assert_eq!(
+            prepared.localized_values,
+            Some(json!({
+                "care_instructions": "hand wash only",
+            }))
+        );
+        assert_eq!(prepared.locale.as_deref(), Some("en"));
+    }
+
+    async fn setup_attached_test_db() -> sea_orm::DatabaseConnection {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory db");
+
+        db.execute_raw(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            r#"
+            CREATE TABLE flex_attached_localized_values (
+                id TEXT PRIMARY KEY NOT NULL,
+                tenant_id TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                field_key TEXT NOT NULL,
+                locale TEXT NOT NULL,
+                value TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#
+            .to_string(),
+        ))
+        .await
+        .expect("table should be created");
+
+        db
+    }
+
+    #[tokio::test]
+    async fn prepare_donor_attached_values_update_preserves_reserved_and_updates_flex() {
+        let db = setup_attached_test_db().await;
+        let tenant_id = Uuid::new_v4();
+        let entity_id = Uuid::new_v4();
+        let schema = CustomFieldsSchema::new(vec![
+            definition("fit", false),
+            definition("care_instructions", true),
+        ]);
+
+        let existing_metadata = json!({
+            "shipping_profile": { "slug": "standard" },
+            "fit": "slim",
+        });
+        let patch = json!({
+            "shipping_profile": { "slug": "express" },
+            "care_instructions": "dry clean only",
+        });
+
+        let prepared = prepare_donor_attached_values_update(
+            &db,
+            AttachedEntityRef {
+                tenant_id,
+                entity_type: "product",
+                entity_id,
+            },
+            schema,
+            "en",
+            &existing_metadata,
+            Some(&patch),
+        )
+        .await
+        .expect("prepare donor update");
+
+        assert_eq!(
+            prepared.metadata,
+            Some(json!({
+                "shipping_profile": { "slug": "express" },
+                "fit": "slim",
+            }))
+        );
+        assert_eq!(
+            prepared.localized_values,
+            Some(json!({
+                "care_instructions": "dry clean only",
+            }))
+        );
+        assert_eq!(prepared.locale.as_deref(), Some("en"));
     }
 }
 

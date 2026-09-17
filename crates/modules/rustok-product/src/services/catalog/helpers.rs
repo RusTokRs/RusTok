@@ -22,12 +22,7 @@ pub mod product_field_definitions_storage {
 }
 
 pub fn map_flex_cleanup_error(error: rustok_core::field_schema::FlexError) -> CommerceError {
-    match error {
-        rustok_core::field_schema::FlexError::Database(message) => {
-            CommerceError::Database(sea_orm::DbErr::Custom(message))
-        }
-        other => CommerceError::Validation(other.to_string()),
-    }
+    error.into()
 }
 
 pub fn normalize_seller_id(value: Option<&str>) -> Option<String> {
@@ -515,16 +510,7 @@ where
 {
     reject_reserved_tag_metadata(&payload)?;
     let schema = load_product_custom_fields_schema(conn, tenant_id).await?;
-    let (reserved_payload, flex_payload) = split_product_metadata_payload(&schema, &payload);
-    flex::prepare_attached_values_create(schema, Some(Value::Object(flex_payload)), locale)
-        .map(|mut prepared| {
-            prepared.metadata = Some(merge_reserved_product_metadata(
-                reserved_payload,
-                prepared.metadata,
-            ));
-            prepared
-        })
-        .map_err(|error| CommerceError::Validation(error.to_string()))
+    flex::prepare_donor_attached_values_create(schema, &payload, locale).map_err(CommerceError::from)
 }
 
 pub async fn prepare_product_custom_fields_for_update<C>(
@@ -540,31 +526,49 @@ where
 {
     reject_reserved_tag_metadata(&payload)?;
     let schema = load_product_custom_fields_schema(conn, tenant_id).await?;
-    let (reserved_patch, flex_payload) = split_product_metadata_payload(&schema, &payload);
-    let (existing_reserved_metadata, existing_flex_metadata) =
-        split_product_metadata_payload(&schema, existing_metadata);
-    let reserved_payload = merge_product_metadata_patch(existing_reserved_metadata, reserved_patch);
-    flex::prepare_attached_values_update(
+    flex::prepare_donor_attached_values_update(
         conn,
         flex::AttachedEntityRef {
             tenant_id,
-            entity_type: "product",
+            entity_type: flex::PRODUCT_ENTITY_TYPE,
             entity_id: product_id,
         },
         schema,
         locale,
-        &Value::Object(existing_flex_metadata),
-        Some(Value::Object(flex_payload)),
+        existing_metadata,
+        Some(&payload),
     )
     .await
-    .map(|mut prepared| {
-        prepared.metadata = Some(merge_reserved_product_metadata(
-            reserved_payload,
-            prepared.metadata,
-        ));
-        prepared
-    })
-    .map_err(|error| CommerceError::Validation(error.to_string()))
+    .map_err(CommerceError::from)
+}
+
+pub async fn resolve_product_metadata_with_schema<C>(
+    conn: &C,
+    tenant_id: Uuid,
+    product_id: Uuid,
+    metadata: &Value,
+    locale: &str,
+    fallback_locale: &str,
+    schema: &CustomFieldsSchema,
+) -> CommerceResult<Value>
+where
+    C: ConnectionTrait,
+{
+    flex::resolve_attached_payload(
+        conn,
+        flex::AttachedEntityRef {
+            tenant_id,
+            entity_type: flex::PRODUCT_ENTITY_TYPE,
+            entity_id: product_id,
+        },
+        schema.clone(),
+        metadata,
+        locale,
+        fallback_locale,
+    )
+    .await
+    .map(|payload| payload.unwrap_or_else(|| serde_json::json!({})))
+    .map_err(CommerceError::from)
 }
 
 pub async fn resolve_product_metadata<C>(
@@ -579,21 +583,16 @@ where
     C: ConnectionTrait,
 {
     let schema = load_product_custom_fields_schema(conn, tenant_id).await?;
-    flex::resolve_attached_payload(
+    resolve_product_metadata_with_schema(
         conn,
-        flex::AttachedEntityRef {
-            tenant_id,
-            entity_type: "product",
-            entity_id: product_id,
-        },
-        schema,
+        tenant_id,
+        product_id,
         metadata,
         locale,
         fallback_locale,
+        &schema,
     )
     .await
-    .map(|payload| payload.unwrap_or_else(|| serde_json::json!({})))
-    .map_err(|error| CommerceError::Validation(error.to_string()))
 }
 
 pub fn product_channel_visibility_condition(
@@ -780,11 +779,13 @@ where
 mod product_metadata_tests {
     use super::{
         merge_product_metadata_patch, merge_reserved_product_metadata,
-        reject_reserved_tag_metadata, split_product_metadata_payload,
+        reject_reserved_tag_metadata, resolve_product_metadata_with_schema,
+        split_product_metadata_payload,
     };
     use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType};
     use serde_json::json;
     use std::collections::HashMap;
+    use uuid::Uuid;
 
     fn definition(field_key: &str) -> FieldDefinition {
         FieldDefinition {
@@ -876,5 +877,59 @@ mod product_metadata_tests {
                 "material": "linen"
             })
         );
+    }
+
+    #[tokio::test]
+    async fn resolve_product_metadata_with_schema_preserves_reserved_and_resolves_flex() {
+        use sea_orm::ConnectionTrait;
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory db");
+
+        db.execute_raw(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            r#"
+            CREATE TABLE flex_attached_localized_values (
+                id TEXT PRIMARY KEY NOT NULL,
+                tenant_id TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                field_key TEXT NOT NULL,
+                locale TEXT NOT NULL,
+                value TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#
+            .to_string(),
+        ))
+        .await
+        .expect("create flex_attached_localized_values");
+
+        let tenant_id = Uuid::new_v4();
+        let product_id = Uuid::new_v4();
+        let schema = CustomFieldsSchema::new(vec![definition("fit"), definition("material")]);
+
+        let metadata = json!({
+            "source": "erp",
+            "fit": "oversized",
+            "material": "cotton",
+        });
+
+        let resolved = resolve_product_metadata_with_schema(
+            &db,
+            tenant_id,
+            product_id,
+            &metadata,
+            "en",
+            "en",
+            &schema,
+        )
+        .await
+        .expect("resolve with schema");
+
+        assert_eq!(resolved.get("source"), Some(&json!("erp")));
+        assert_eq!(resolved.get("fit"), Some(&json!("oversized")));
+        assert_eq!(resolved.get("material"), Some(&json!("cotton")));
     }
 }

@@ -1,6 +1,10 @@
 use rustok_core::field_schema::is_valid_field_key;
 
 pub const MAX_FLEX_ENTITY_TYPE_BYTES: usize = 64;
+pub const PRODUCT_ENTITY_TYPE: &str = "product";
+pub const USER_ENTITY_TYPE: &str = "user";
+pub const ORDER_ENTITY_TYPE: &str = "order";
+pub const TOPIC_ENTITY_TYPE: &str = "topic";
 pub const TAXONOMY_CATEGORY_ENTITY_TYPE: &str = "taxonomy.category";
 
 /// Flex donor identifiers are product-contract names, not field keys. A donor

@@ -94,9 +94,16 @@ impl CatalogService {
             prepared_custom_fields.locale.as_deref(),
             prepared_custom_fields.localized_values.as_ref(),
         ) {
-            flex::persist_localized_values(&txn, tenant_id, "product", product_id, locale, values)
-                .await
-                .map_err(|error| CommerceError::Validation(error.to_string()))?;
+            flex::persist_localized_values(
+                &txn,
+                tenant_id,
+                flex::PRODUCT_ENTITY_TYPE,
+                product_id,
+                locale,
+                values,
+            )
+            .await
+            .map_err(CommerceError::from)?;
         }
 
         let translation_locales = collect_translation_locales(&input.translations);
@@ -443,9 +450,16 @@ impl CatalogService {
                 prepared_custom_fields.localized_values.as_ref(),
             )
         {
-            flex::persist_localized_values(&txn, tenant_id, "product", product_id, locale, values)
-                .await
-                .map_err(|error| CommerceError::Validation(error.to_string()))?;
+            flex::persist_localized_values(
+                &txn,
+                tenant_id,
+                flex::PRODUCT_ENTITY_TYPE,
+                product_id,
+                locale,
+                values,
+            )
+            .await
+            .map_err(CommerceError::from)?;
         }
 
         let translation_inputs = input.translations.clone();
@@ -768,9 +782,9 @@ impl CatalogService {
             .exec(&txn)
             .await?;
 
-        flex::delete_attached_localized_values(&txn, tenant_id, "product", product_id)
+        flex::delete_attached_localized_values(&txn, tenant_id, flex::PRODUCT_ENTITY_TYPE, product_id)
             .await
-            .map_err(map_flex_cleanup_error)?;
+            .map_err(CommerceError::from)?;
 
         txn.publish_product_deleted(
             tenant_id,

@@ -765,10 +765,15 @@ fn flex_field_definition_view_mapping_is_owned_by_flex_crate() {
         }
     }
 
-    let cache =
+    let cache = format!(
+        "{}\n{}",
         std::fs::read_to_string(repo.join("apps/server/src/services/field_definition_cache.rs"))
-            .expect("server field-definition cache source should read");
-    let cache_production = cache.split("#[cfg(test)]").next().unwrap_or(&cache);
+            .expect("server field-definition cache source should read"),
+        std::fs::read_to_string(repo.join("apps/server/src/services/field_definition_cache_base.rs"))
+            .expect("server field-definition cache base source should read"),
+    );
+    let cache_production = cache.split("#[cfg(test)]\nmod tests").next().unwrap_or(&cache);
+    let cache_production = cache_production.split("#[cfg(test)]\r\nmod tests").next().unwrap_or(cache_production);
     assert!(
         cache_production
             .contains("flex::field_definition_cache_invalidation_target(&envelope.event)"),

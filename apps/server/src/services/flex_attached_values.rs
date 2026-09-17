@@ -7,7 +7,8 @@ use uuid::Uuid;
 
 use flex::{
     AttachedEntityRef, FlexMappedErrorKind, GenericAttachedFieldDefinitionService,
-    TAXONOMY_CATEGORY_ENTITY_TYPE, delete_attached_localized_values,
+    ORDER_ENTITY_TYPE, PRODUCT_ENTITY_TYPE, TAXONOMY_CATEGORY_ENTITY_TYPE, TOPIC_ENTITY_TYPE,
+    USER_ENTITY_TYPE, delete_attached_localized_values,
     delete_generic_attached_values, load_exact_locale_values, load_generic_attached_shared_values,
     load_localized_values_by_locale, lock_attached_translation_schema_in_tx, map_flex_error,
     merge_donor_flex_metadata, persist_localized_values, persist_prepared_generic_attached_values,
@@ -127,7 +128,7 @@ impl FlexAttachedValuesService {
         prepared: &PreparedAttachedValuesWrite,
     ) -> ServerResult<()> {
         match entity_type {
-            "user" => {
+            USER_ENTITY_TYPE => {
                 let txn = db.begin().await?;
                 let user = crate::models::_entities::users::Entity::find_by_id(entity_id)
                     .filter(crate::models::_entities::users::Column::TenantId.eq(tenant_id))
@@ -157,7 +158,7 @@ impl FlexAttachedValuesService {
                 Ok(())
             }
             #[cfg(feature = "mod-product")]
-            "product" => {
+            PRODUCT_ENTITY_TYPE => {
                 let txn = db.begin().await?;
                 let product = rustok_product::entities::product::Entity::find_by_id(entity_id)
                     .filter(rustok_product::entities::product::Column::TenantId.eq(tenant_id))
@@ -188,7 +189,7 @@ impl FlexAttachedValuesService {
                 Ok(())
             }
             #[cfg(feature = "mod-order")]
-            "order" => {
+            ORDER_ENTITY_TYPE => {
                 let txn = db.begin().await?;
                 let order = rustok_order::entities::order::Entity::find_by_id(entity_id)
                     .filter(rustok_order::entities::order::Column::TenantId.eq(tenant_id))
@@ -218,7 +219,7 @@ impl FlexAttachedValuesService {
                 Ok(())
             }
             #[cfg(feature = "mod-forum")]
-            "topic" => {
+            TOPIC_ENTITY_TYPE => {
                 let txn = db.begin().await?;
                 let topic = rustok_forum::entities::forum_topic::Entity::find_by_id(entity_id)
                     .filter(rustok_forum::entities::forum_topic::Column::TenantId.eq(tenant_id))
@@ -309,7 +310,7 @@ impl FlexAttachedValuesService {
         payload: Option<Value>,
     ) -> ServerResult<()> {
         match entity_type {
-            "user" => {
+            USER_ENTITY_TYPE => {
                 let txn = db.begin().await?;
                 let schema = load_schema(db, tenant_id, entity_type)
                     .await
@@ -355,7 +356,7 @@ impl FlexAttachedValuesService {
                 Ok(())
             }
             #[cfg(feature = "mod-product")]
-            "product" => {
+            PRODUCT_ENTITY_TYPE => {
                 let txn = db.begin().await?;
                 let schema = load_schema(db, tenant_id, entity_type)
                     .await
@@ -402,7 +403,7 @@ impl FlexAttachedValuesService {
                 Ok(())
             }
             #[cfg(feature = "mod-order")]
-            "order" => {
+            ORDER_ENTITY_TYPE => {
                 let txn = db.begin().await?;
                 let schema = load_schema(db, tenant_id, entity_type)
                     .await
@@ -448,7 +449,7 @@ impl FlexAttachedValuesService {
                 Ok(())
             }
             #[cfg(feature = "mod-forum")]
-            "topic" => {
+            TOPIC_ENTITY_TYPE => {
                 let txn = db.begin().await?;
                 let schema = load_schema(db, tenant_id, entity_type)
                     .await
@@ -561,7 +562,7 @@ impl FlexAttachedValuesService {
             .await
             .map_err(map_flex_host_error)?;
         match entity_type {
-            "user" => {
+            USER_ENTITY_TYPE => {
                 let user = crate::models::_entities::users::Entity::find_by_id(entity_id)
                     .filter(crate::models::_entities::users::Column::TenantId.eq(tenant_id))
                     .one(db)
@@ -579,7 +580,7 @@ impl FlexAttachedValuesService {
                 .map_err(map_flex_host_error)
             }
             #[cfg(feature = "mod-product")]
-            "product" => {
+            PRODUCT_ENTITY_TYPE => {
                 let product = rustok_product::entities::product::Entity::find_by_id(entity_id)
                     .filter(rustok_product::entities::product::Column::TenantId.eq(tenant_id))
                     .one(db)
@@ -597,7 +598,7 @@ impl FlexAttachedValuesService {
                 .map_err(map_flex_host_error)
             }
             #[cfg(feature = "mod-order")]
-            "order" => {
+            ORDER_ENTITY_TYPE => {
                 let order = rustok_order::entities::order::Entity::find_by_id(entity_id)
                     .filter(rustok_order::entities::order::Column::TenantId.eq(tenant_id))
                     .one(db)
@@ -615,7 +616,7 @@ impl FlexAttachedValuesService {
                 .map_err(map_flex_host_error)
             }
             #[cfg(feature = "mod-forum")]
-            "topic" => {
+            TOPIC_ENTITY_TYPE => {
                 let topic = rustok_forum::entities::forum_topic::Entity::find_by_id(entity_id)
                     .filter(rustok_forum::entities::forum_topic::Column::TenantId.eq(tenant_id))
                     .one(db)
@@ -658,7 +659,7 @@ impl FlexAttachedValuesService {
         entity_id: Uuid,
     ) -> ServerResult<()> {
         match entity_type {
-            "user" => {
+            USER_ENTITY_TYPE => {
                 let txn = db.begin().await?;
                 let user = crate::models::_entities::users::Entity::find_by_id(entity_id)
                     .filter(crate::models::_entities::users::Column::TenantId.eq(tenant_id))
@@ -681,7 +682,7 @@ impl FlexAttachedValuesService {
                 Ok(())
             }
             #[cfg(feature = "mod-product")]
-            "product" => {
+            PRODUCT_ENTITY_TYPE => {
                 let txn = db.begin().await?;
                 let product = rustok_product::entities::product::Entity::find_by_id(entity_id)
                     .filter(rustok_product::entities::product::Column::TenantId.eq(tenant_id))
@@ -705,7 +706,7 @@ impl FlexAttachedValuesService {
                 Ok(())
             }
             #[cfg(feature = "mod-order")]
-            "order" => {
+            ORDER_ENTITY_TYPE => {
                 let txn = db.begin().await?;
                 let order = rustok_order::entities::order::Entity::find_by_id(entity_id)
                     .filter(rustok_order::entities::order::Column::TenantId.eq(tenant_id))
@@ -728,7 +729,7 @@ impl FlexAttachedValuesService {
                 Ok(())
             }
             #[cfg(feature = "mod-forum")]
-            "topic" => {
+            TOPIC_ENTITY_TYPE => {
                 let txn = db.begin().await?;
                 let topic = rustok_forum::entities::forum_topic::Entity::find_by_id(entity_id)
                     .filter(rustok_forum::entities::forum_topic::Column::TenantId.eq(tenant_id))
@@ -987,7 +988,7 @@ where
     C: ConnectionTrait,
 {
     match entity_type {
-        "user" => {
+        USER_ENTITY_TYPE => {
             let exists = crate::models::_entities::users::Entity::find_by_id(entity_id)
                 .filter(crate::models::_entities::users::Column::TenantId.eq(tenant_id))
                 .one(db)
@@ -1000,7 +1001,7 @@ where
             }
         }
         #[cfg(feature = "mod-product")]
-        "product" => {
+        PRODUCT_ENTITY_TYPE => {
             let exists = rustok_product::entities::product::Entity::find_by_id(entity_id)
                 .filter(rustok_product::entities::product::Column::TenantId.eq(tenant_id))
                 .one(db)
@@ -1013,7 +1014,7 @@ where
             }
         }
         #[cfg(feature = "mod-order")]
-        "order" => {
+        ORDER_ENTITY_TYPE => {
             let exists = rustok_order::entities::order::Entity::find_by_id(entity_id)
                 .filter(rustok_order::entities::order::Column::TenantId.eq(tenant_id))
                 .one(db)
@@ -1026,7 +1027,7 @@ where
             }
         }
         #[cfg(feature = "mod-forum")]
-        "topic" => {
+        TOPIC_ENTITY_TYPE => {
             let exists = rustok_forum::entities::forum_topic::Entity::find_by_id(entity_id)
                 .filter(rustok_forum::entities::forum_topic::Column::TenantId.eq(tenant_id))
                 .one(db)
@@ -1099,10 +1100,10 @@ async fn load_schema(
     entity_type: &str,
 ) -> Result<CustomFieldsSchema, FlexError> {
     match entity_type {
-        "user" => UserFieldService::get_schema(db, tenant_id).await,
-        "product" => ProductFieldService::get_schema(db, tenant_id).await,
-        "order" => OrderFieldService::get_schema(db, tenant_id).await,
-        "topic" => TopicFieldService::get_schema(db, tenant_id).await,
+        USER_ENTITY_TYPE => UserFieldService::get_schema(db, tenant_id).await,
+        PRODUCT_ENTITY_TYPE => ProductFieldService::get_schema(db, tenant_id).await,
+        ORDER_ENTITY_TYPE => OrderFieldService::get_schema(db, tenant_id).await,
+        TOPIC_ENTITY_TYPE => TopicFieldService::get_schema(db, tenant_id).await,
         #[cfg(feature = "mod-taxonomy")]
         TAXONOMY_CATEGORY_ENTITY_TYPE => {
             GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE)
