@@ -119,6 +119,7 @@ read diagnostic payloads remain separate open slices.
 - FFA status: `in_progress`
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
+- Transport profile: GraphQL-only single-adapter; native/GraphQL admin parity is in progress.
 - FBA provider contract: `fulfillment.shipping_selection.v1` in
   `crates/modules/rustok-fulfillment/contracts/fulfillment-fba-registry.json`.
 - Additional workflow contract: `fulfillment.checkout_execution.v1` in

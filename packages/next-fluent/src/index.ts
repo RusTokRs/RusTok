@@ -18,14 +18,19 @@ export {
 
 export {
   FluentProvider,
+  FormattedMessage,
   useLocale,
   useTranslations,
   type FluentProviderProps,
+  type FormattedMessageProps,
 } from './client';
 
 export {
   createFluentBundle,
   createTranslator,
+  getCachedFluentBundle,
+  clearBundleCache,
+  getBundleCacheStats,
   type CreateFluentBundleOptions,
   type CreateTranslatorOptions,
 } from './bundle';
@@ -58,6 +63,7 @@ export {
   resolveAcceptLanguage,
   validateI18nConfig,
   withKebabKey,
+  buildKeyCandidates,
 } from './utils';
 
 export type {
@@ -67,6 +73,7 @@ export type {
   NonEmptyArray,
   TagRenderFn,
   RichTranslationValues,
+  MessageArgsFor,
   TranslationFn,
   Translations,
   RequestConfigFn,

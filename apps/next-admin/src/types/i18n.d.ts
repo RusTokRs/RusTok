@@ -1662,8 +1662,8 @@ export interface AppMessageArgs {
   'events-transport-active'?: Record<string, never>;
   'events.transport.help'?: Record<string, never>;
   'events-transport-help'?: Record<string, never>;
-  'events.transport.iggyDeployment': { 1: string | number | Date };
-  'events-transport-iggyDeployment': { 1: string | number | Date };
+  'events.transport.iggyDeployment'?: Record<string, never>;
+  'events-transport-iggyDeployment'?: Record<string, never>;
   'events.transport.label'?: Record<string, never>;
   'events-transport-label'?: Record<string, never>;
   'events.transport.moduleDisabledWarning'?: Record<string, never>;

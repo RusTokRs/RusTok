@@ -143,7 +143,7 @@ const customerBody = functionBody(safe, "customer_error");
 for (const [value, label] of [
   ["let error_type = std::any::type_name_of_val(&error);", "customer error type"],
   [
-    "correlation_id = ?request_context.map(|context| context.correlation_id)",
+    "correlation_id = ?request_context.map(|context| &context.correlation_id)",
     "customer correlation diagnostic",
   ],
   ["request_context_present = request_context.is_some()", "customer request context presence"],

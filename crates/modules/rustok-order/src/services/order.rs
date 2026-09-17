@@ -1,5 +1,9 @@
 use chrono::Utc;
-use flex::{persist_localized_values, prepare_attached_values_create, resolve_attached_payload};
+use flex::{
+    field_definition_from_source, impl_field_definition_source, merge_reserved_donor_metadata,
+    persist_localized_values, prepare_attached_values_create, resolve_attached_payload,
+    split_donor_metadata,
+};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{
@@ -49,6 +53,7 @@ const ORDER_CHANGE_STATUS_CANCELLED: &str = "cancelled";
 mod order_field_definitions_storage {
     rustok_core::define_field_definitions_entity!("order_field_definitions");
 }
+impl_field_definition_source!(order_field_definitions_storage::Model);
 
 pub struct OrderService {
     db: DatabaseConnection,

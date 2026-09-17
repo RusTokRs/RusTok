@@ -20,16 +20,11 @@ Brand catalog, manufacturers, media presentation, and product associations.
 - In-memory SQLite test suite implemented.
 - Platform registration in `modules.toml`, `docs/modules/registry.md`, and distribution crates.
 
-## FFA/FBA Status
+## FFA/FBA status
 
-```yaml
-ffa:
-  status: not_started
-  shape: none
-fba:
-  status: boundary_ready
-  shape: no_ui_boundary
-```
+- FFA status: `in_progress`
+- FBA status: `boundary_ready`
+- Structural shape: `core_transport_ui`
 
 ## Local work phases
 

@@ -2,8 +2,10 @@
 
 import React, { createContext, useContext, useMemo } from 'react';
 import type { FluentBundle } from '@fluent/bundle';
-import type { Translations } from './types';
+import type { FormattedMessageProps, Translations } from './types';
 import { createFluentBundle, createTranslator } from './bundle';
+
+export type { FormattedMessageProps };
 
 interface FluentContextValue {
   locale: string;
@@ -101,7 +103,10 @@ export function useLocale(): string {
   return context.locale;
 }
 
-export function useTranslations(namespace?: string): Translations {
+export function useTranslations<
+  Key extends string = string,
+  ArgsMap extends Record<string, any> = Record<string, any>
+>(namespace?: string): Translations<Key, ArgsMap> {
   const context = useContext(FluentContext);
   return useMemo(
     () =>
@@ -111,8 +116,48 @@ export function useTranslations(namespace?: string): Translations {
           (context.fallbackBundle ? [context.fallbackBundle] : null),
         namespace,
         debug: context.debug,
-      }),
+      }) as unknown as Translations<Key, ArgsMap>,
     [context.bundle, context.fallbackBundle, context.fallbackBundles, namespace, context.debug]
   );
+}
+
+export function FormattedMessage<
+  Key extends string = string,
+  ArgsMap extends Record<string, any> = Record<string, any>
+>({
+  id,
+  args,
+  values,
+  fallback,
+  className,
+  as: Component,
+}: FormattedMessageProps<Key, ArgsMap>): React.ReactNode {
+  let t: Translations<Key, ArgsMap>;
+  try {
+    t = useTranslations<Key, ArgsMap>();
+  } catch {
+    return fallback !== undefined ? fallback : id;
+  }
+
+  if (!t.has(id)) {
+    if (fallback !== undefined) return fallback;
+  }
+
+  let content: React.ReactNode;
+  if (values && Object.keys(values).length > 0) {
+    content = t.rich(id, values);
+  } else {
+    content = (t as unknown as (k: string, a?: unknown) => string)(id, args);
+  }
+
+  if (Component) {
+    return React.createElement(Component, { className }, content);
+  }
+
+  if (className) {
+    return React.createElement('span', { className }, content);
+  }
+
+  return content;
 }
 

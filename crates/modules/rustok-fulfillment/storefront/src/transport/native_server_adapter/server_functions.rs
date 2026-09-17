@@ -84,6 +84,7 @@ fn map_owner_runtime_error<E>(
             owner_operation = FULFILLMENT_STOREFRONT_NATIVE_OPERATION,
             tenant_id_non_nil = !tenant_id.is_nil(),
             request_context_present = true,
+            correlation_id = %request_context.correlation_id,
             channel_id_present = request_context.channel_id.is_some(),
             channel_id_non_nil = ?request_context.channel_id.map(|value| !value.is_nil()),
             channel_slug_present = request_context.channel_slug.is_some(),

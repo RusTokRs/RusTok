@@ -20,16 +20,11 @@ Product bundles, kits, configurable sets, item compositions, and package discoun
 - Dedicated UI package `rustok-product-bundles-admin` created under FFA/FBA architecture.
 - Platform registration in `modules.toml` and server/admin applications.
 
-## FFA/FBA Status
+## FFA/FBA status
 
-```yaml
-ffa:
-  status: in_progress
-  shape: core_transport_ui
-fba:
-  status: boundary_ready
-  shape: core_transport_ui
-```
+- FFA status: `in_progress`
+- FBA status: `boundary_ready`
+- Structural shape: `core_transport_ui`
 
 ## Local work phases
 

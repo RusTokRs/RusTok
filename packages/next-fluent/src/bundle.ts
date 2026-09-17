@@ -1,41 +1,28 @@
-import { FluentBundle, FluentResource, type FluentFunction } from '@fluent/bundle';
+import type { FluentBundle, FluentFunction } from '@fluent/bundle';
 import type React from 'react';
 import type { FluentArgs, FluentVariable, RichTranslationValues, Translations } from './types';
 import { buildKeyCandidates } from './utils';
 import { parseRichText } from './rich';
-import { createDefaultFunctions } from './functions';
+import {
+  getCachedFluentBundle,
+  clearBundleCache,
+  getBundleCacheStats,
+  type CreateFluentBundleOptions,
+} from './cache';
 
-export interface CreateFluentBundleOptions {
-  useIsolating?: boolean;
-  functions?: Record<string, FluentFunction>;
-}
+export {
+  getCachedFluentBundle,
+  clearBundleCache,
+  getBundleCacheStats,
+  type CreateFluentBundleOptions,
+};
 
 export function createFluentBundle(
   locale: string,
   ftlSource: string | readonly string[],
   options: CreateFluentBundleOptions = {}
 ): FluentBundle {
-  const defaultFunctions = createDefaultFunctions(locale);
-  const bundle = new FluentBundle(locale, {
-    // Keep Project Fluent's bidi safety enabled by default. Consumers that need
-    // byte-for-byte legacy output can opt out explicitly, but normal UI rendering
-    // must isolate interpolated values so mixed LTR/RTL text remains well ordered.
-    useIsolating: options.useIsolating ?? true,
-    functions: {
-      ...defaultFunctions,
-      ...options.functions,
-    },
-  });
-  const sources = Array.isArray(ftlSource) ? ftlSource : [ftlSource];
-  for (const src of sources) {
-    if (!src || typeof src !== 'string') continue;
-    const resource = new FluentResource(src);
-    const errors = bundle.addResource(resource, { allowOverrides: true });
-    if (errors && errors.length > 0) {
-      console.warn(`[next-fluent] Warnings adding FTL resource for locale ${locale}:`, errors);
-    }
-  }
-  return bundle;
+  return getCachedFluentBundle(locale, ftlSource, options);
 }
 
 export interface CreateTranslatorOptions {

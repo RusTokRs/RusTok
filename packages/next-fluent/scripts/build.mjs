@@ -17,7 +17,8 @@ await build({
     client: resolve(root, 'src/client.ts'),
     middleware: resolve(root, 'src/middleware.ts'),
     factory: resolve(root, 'src/factory.ts'),
-    typegen: resolve(root, 'src/typegen.ts')
+    typegen: resolve(root, 'src/typegen.ts'),
+    utils: resolve(root, 'src/utils.ts')
   },
   outdir: dist,
   bundle: true,

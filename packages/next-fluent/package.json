@@ -30,6 +30,10 @@
     "./typegen": {
       "types": "./src/typegen.ts",
       "default": "./dist/typegen.js"
+    },
+    "./utils": {
+      "types": "./src/utils.ts",
+      "default": "./dist/utils.js"
     }
   },
   "sideEffects": false,

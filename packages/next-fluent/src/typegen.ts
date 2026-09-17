@@ -9,6 +9,13 @@ export interface ExtractedMessage {
   variables: string[];
 }
 
+function extractVariablesFromLine(line: string): string[] {
+  // Strip quoted strings so $foo inside "price is $100" isn't treated as variable
+  const lineWithoutStrings = line.replace(/"[^"\\]*(?:\\.[^"\\]*)*"/g, '');
+  const matches = lineWithoutStrings.matchAll(/\$([a-zA-Z][a-zA-Z0-9_-]*)/g);
+  return Array.from(matches, (m) => m[1]);
+}
+
 export function extractMessagesFromFtl(ftlContent: string): ExtractedMessage[] {
   const messages: ExtractedMessage[] = [];
   const lines = ftlContent.split(/\r?\n/);
@@ -34,11 +41,9 @@ export function extractMessagesFromFtl(ftlContent: string): ExtractedMessage[] {
       };
       messages.push(currentMsg);
 
-      // Extract inline variables: `{$name}` or `{ $name }`
-      const varMatches = line.matchAll(/\{\s*\$([a-zA-Z0-9_-]+)/g);
-      for (const vm of varMatches) {
-        if (!currentMsg.variables.includes(vm[1])) {
-          currentMsg.variables.push(vm[1]);
+      for (const v of extractVariablesFromLine(line)) {
+        if (!currentMsg.variables.includes(v)) {
+          currentMsg.variables.push(v);
         }
       }
       continue;
@@ -48,15 +53,19 @@ export function extractMessagesFromFtl(ftlContent: string): ExtractedMessage[] {
     const attrMatch = line.match(/^\s+\.([a-zA-Z][a-zA-Z0-9_-]*)\s*=/);
     if (attrMatch && currentMsg) {
       currentMsg.attributes.push(attrMatch[1]);
+      for (const v of extractVariablesFromLine(line)) {
+        if (!currentMsg.variables.includes(v)) {
+          currentMsg.variables.push(v);
+        }
+      }
       continue;
     }
 
     // Continuation line with variables
     if (currentMsg) {
-      const varMatches = line.matchAll(/\{\s*\$([a-zA-Z0-9_-]+)/g);
-      for (const vm of varMatches) {
-        if (!currentMsg.variables.includes(vm[1])) {
-          currentMsg.variables.push(vm[1]);
+      for (const v of extractVariablesFromLine(line)) {
+        if (!currentMsg.variables.includes(v)) {
+          currentMsg.variables.push(v);
         }
       }
     }

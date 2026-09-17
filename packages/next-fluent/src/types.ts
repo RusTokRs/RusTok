@@ -14,14 +14,39 @@ export type RichTranslationValues = Record<
   FluentVariable | TagRenderFn | React.ReactNode
 >;
 
-export interface TranslationFn<Key extends string = string> {
-  (key: Key, args?: FluentArgs): string;
-  raw(key: Key): string[] | string;
-  rich(key: Key, values?: RichTranslationValues): React.ReactNode;
-  has(key: Key): boolean;
+export type MessageArgsFor<K extends string, ArgsMap> =
+  K extends keyof ArgsMap
+    ? ArgsMap[K] extends Record<string, never> | undefined
+      ? [args?: FluentArgs]
+      : [args: ArgsMap[K]]
+    : [args?: FluentArgs];
+
+export interface TranslationFn<
+  Key extends string = string,
+  ArgsMap extends Record<string, any> = Record<string, any>
+> {
+  <K extends Key>(key: K, ...args: MessageArgsFor<K, ArgsMap>): string;
+  raw<K extends Key>(key: K): string[] | string;
+  rich<K extends Key>(key: K, values?: RichTranslationValues): React.ReactNode;
+  has<K extends Key>(key: K): boolean;
 }
 
-export type Translations<Key extends string = string> = TranslationFn<Key>;
+export type Translations<
+  Key extends string = string,
+  ArgsMap extends Record<string, any> = Record<string, any>
+> = TranslationFn<Key, ArgsMap>;
+
+export interface FormattedMessageProps<
+  Key extends string = string,
+  ArgsMap extends Record<string, any> = Record<string, any>
+> {
+  id: Key;
+  args?: Key extends keyof ArgsMap ? ArgsMap[Key] : FluentArgs;
+  values?: RichTranslationValues;
+  fallback?: React.ReactNode;
+  className?: string;
+  as?: React.ElementType;
+}
 
 export interface RequestConfigParams {
   locale?: string;

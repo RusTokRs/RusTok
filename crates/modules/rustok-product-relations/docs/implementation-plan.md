@@ -22,16 +22,11 @@ Product relations, merchandising associations (cross-sells, up-sells, related, a
 - Dedicated Leptos FFA admin package `rustok-product-relations-admin` with native server functions and parallel GraphQL contract.
 - In-memory SQLite tests pass 4/4; GraphQL surface regression tests pass.
 
-## FFA/FBA Status
+## FFA/FBA status
 
-```yaml
-ffa:
-  status: in_progress
-  shape: core_transport_ui
-fba:
-  status: boundary_ready
-  shape: core_transport_ui
-```
+- FFA status: `in_progress`
+- FBA status: `boundary_ready`
+- Structural shape: `core_transport_ui`
 
 ## Local work phases
 

@@ -193,8 +193,10 @@ for (const marker of [
 ]) {
   assertContains(ui, marker, `${uiPath}: expected payment-owned UI/request marker ${marker}`);
 }
-for (const marker of ["UiMessages", "include_str!(\"../locales/en.ftl\")", "include_str!(\"../locales/ru.ftl\")", "t_for_locale"]) {
-  assertContains(i18n, marker, `${i18nPath}: expected host-locale catalog marker ${marker}`);
+if (!i18n.includes("declare_module_i18n!")) {
+  for (const marker of ["UiMessages", "include_str!(\"../locales/en.ftl\")", "include_str!(\"../locales/ru.ftl\")", "t_for_locale"]) {
+    assertContains(i18n, marker, `${i18nPath}: expected host-locale catalog marker ${marker}`);
+  }
 }
 for (const marker of ["slot = \"checkout_payment_handoff\"", "[provides.storefront_ui.i18n]", "leptos_locales_path = \"storefront/locales\""]) {
   assertContains(manifest, marker, `${manifestPath}: expected locale-aware storefront manifest marker ${marker}`);

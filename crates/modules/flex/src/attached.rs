@@ -91,6 +91,56 @@ where
     )
 }
 
+/// Split donor metadata into unmanaged/reserved operational keys and Flex-managed custom fields.
+pub fn split_donor_metadata(
+    schema: &CustomFieldsSchema,
+    metadata: &Value,
+) -> (Map<String, Value>, Map<String, Value>) {
+    let mut reserved = Map::new();
+    let mut custom_fields = Map::new();
+    let known_keys: HashSet<&str> = schema
+        .active_definitions()
+        .iter()
+        .map(|definition| definition.field_key.as_str())
+        .collect();
+
+    if let Some(map) = metadata.as_object() {
+        for (key, value) in map {
+            if known_keys.contains(key.as_str()) {
+                custom_fields.insert(key.clone(), value.clone());
+            } else {
+                reserved.insert(key.clone(), value.clone());
+            }
+        }
+    }
+
+    (reserved, custom_fields)
+}
+
+/// Merge unmanaged/reserved donor operational metadata with validated Flex custom fields.
+pub fn merge_reserved_donor_metadata(
+    mut reserved: Map<String, Value>,
+    custom_fields: Option<Value>,
+) -> Value {
+    if let Some(custom_fields) = custom_fields.and_then(|value| value.as_object().cloned()) {
+        for (key, value) in custom_fields {
+            reserved.insert(key, value);
+        }
+    }
+    Value::Object(reserved)
+}
+
+/// Merge an existing reserved metadata map with a patch map.
+pub fn merge_reserved_donor_patch(
+    mut existing: Map<String, Value>,
+    patch: Map<String, Value>,
+) -> Map<String, Value> {
+    for (key, value) in patch {
+        existing.insert(key, value);
+    }
+    existing
+}
+
 pub async fn resolve_attached_payload<C>(
     db: &C,
     entity: AttachedEntityRef<'_>,
@@ -653,4 +703,55 @@ mod tests {
             Some(json!({"tagline": "English tagline"}))
         );
     }
+
+    #[test]
+    fn split_donor_metadata_routes_only_known_flex_keys() {
+        let schema = CustomFieldsSchema::new(vec![
+            definition("fit", false),
+            definition("material", true),
+        ]);
+        let payload = json!({
+            "fit": "regular",
+            "material": "linen",
+            "shipping_profile": { "slug": "default" },
+            "internal_flag": true,
+        });
+
+        let (reserved, flex) = split_donor_metadata(&schema, &payload);
+
+        assert_eq!(
+            reserved.get("shipping_profile"),
+            Some(&json!({ "slug": "default" }))
+        );
+        assert_eq!(reserved.get("internal_flag"), Some(&json!(true)));
+        assert_eq!(reserved.get("fit"), None);
+        assert_eq!(reserved.get("material"), None);
+
+        assert_eq!(flex.get("fit"), Some(&json!("regular")));
+        assert_eq!(flex.get("material"), Some(&json!("linen")));
+        assert_eq!(flex.get("shipping_profile"), None);
+    }
+
+    #[test]
+    fn merge_reserved_donor_metadata_keeps_reserved_and_writes_flex_values() {
+        let mut reserved = Map::new();
+        reserved.insert("shipping_profile".to_string(), json!({ "slug": "express" }));
+
+        let flex = json!({
+            "fit": "oversized",
+            "material": "cotton",
+        });
+
+        let merged = merge_reserved_donor_metadata(reserved, Some(flex));
+
+        assert_eq!(
+            merged,
+            json!({
+                "shipping_profile": { "slug": "express" },
+                "fit": "oversized",
+                "material": "cotton",
+            })
+        );
+    }
 }
+

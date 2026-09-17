@@ -418,31 +418,12 @@ where
     Ok(CustomFieldsSchema::new(definitions))
 }
 
+flex::impl_field_definition_source!(product_field_definitions_storage::Model);
+
 pub fn product_field_definition_from_row(
     row: product_field_definitions_storage::Model,
 ) -> Option<FieldDefinition> {
-    let field_type: FieldType =
-        serde_json::from_value(serde_json::Value::String(row.field_type.clone())).ok()?;
-    let label = serde_json::from_value(row.label).unwrap_or_default();
-    let description = row
-        .description
-        .and_then(|value| serde_json::from_value(value).ok());
-    let validation: Option<ValidationRule> = row
-        .validation
-        .and_then(|value| serde_json::from_value(value).ok());
-
-    Some(FieldDefinition {
-        field_key: row.field_key,
-        field_type,
-        label,
-        description,
-        is_localized: row.is_localized,
-        is_required: row.is_required,
-        default_value: row.default_value,
-        validation,
-        position: row.position,
-        is_active: row.is_active,
-    })
+    flex::field_definition_from_source(&row)
 }
 
 pub fn split_product_metadata_payload(
@@ -452,47 +433,21 @@ pub fn split_product_metadata_payload(
     serde_json::Map<String, Value>,
     serde_json::Map<String, Value>,
 ) {
-    let known_keys = schema
-        .active_definitions()
-        .into_iter()
-        .map(|definition| definition.field_key.as_str())
-        .collect::<HashSet<_>>();
-    let mut reserved = serde_json::Map::new();
-    let mut custom_fields = serde_json::Map::new();
-
-    for (key, value) in metadata.as_object().cloned().unwrap_or_default() {
-        if known_keys.contains(key.as_str()) {
-            custom_fields.insert(key, value);
-        } else {
-            reserved.insert(key, value);
-        }
-    }
-
-    (reserved, custom_fields)
+    flex::split_donor_metadata(schema, metadata)
 }
 
 pub fn merge_product_metadata_patch(
-    mut existing: serde_json::Map<String, Value>,
+    existing: serde_json::Map<String, Value>,
     patch: serde_json::Map<String, Value>,
 ) -> serde_json::Map<String, Value> {
-    for (key, value) in patch {
-        existing.insert(key, value);
-    }
-
-    existing
+    flex::merge_reserved_donor_patch(existing, patch)
 }
 
 pub fn merge_reserved_product_metadata(
-    mut reserved: serde_json::Map<String, Value>,
+    reserved: serde_json::Map<String, Value>,
     custom_fields: Option<Value>,
 ) -> Value {
-    if let Some(custom_fields) = custom_fields.and_then(|value| value.as_object().cloned()) {
-        for (key, value) in custom_fields {
-            reserved.insert(key, value);
-        }
-    }
-
-    Value::Object(reserved)
+    flex::merge_reserved_donor_metadata(reserved, custom_fields)
 }
 
 pub fn pick_product_translation<'a>(

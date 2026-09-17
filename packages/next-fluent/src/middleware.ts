@@ -106,7 +106,11 @@ export function createI18nMiddleware(options: I18nMiddlewareOptions) {
         response.headers.set(headerName, effectiveLocale);
       }
       if (response.cookies?.set) {
-        response.cookies.set(cookieName, effectiveLocale, { path: '/' });
+        response.cookies.set(cookieName, effectiveLocale, {
+          path: '/',
+          maxAge: 31536000,
+          sameSite: 'lax',
+        });
       }
       return response;
     };
@@ -117,7 +121,11 @@ export function createI18nMiddleware(options: I18nMiddlewareOptions) {
         response.headers.set(headerName, targetLocale);
       }
       if (response.cookies?.set) {
-        response.cookies.set(cookieName, targetLocale, { path: '/' });
+        response.cookies.set(cookieName, targetLocale, {
+          path: '/',
+          maxAge: 31536000,
+          sameSite: 'lax',
+        });
       }
       return response;
     };

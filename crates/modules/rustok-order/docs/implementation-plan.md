@@ -92,6 +92,7 @@ compile and mounted-parity validation permits their removal.
 - FFA status: `in_progress`
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
+- Transport profile: GraphQL-only single-adapter; native/GraphQL admin parity is in progress.
 - FBA provider contract: `order.checkout_completion.v1` in
   `crates/modules/rustok-order/contracts/order-fba-registry.json`.
 - Additional workflow contracts:

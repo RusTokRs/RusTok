@@ -125,10 +125,13 @@ export interface ForLocaleOptions {
   debug?: boolean;
 }
 
-export async function forLocale(
+export async function forLocale<
+  Key extends string = string,
+  ArgsMap extends Record<string, any> = Record<string, any>
+>(
   locale: string,
   options?: string | ForLocaleOptions
-): Promise<Translations> {
+): Promise<Translations<Key, ArgsMap>> {
   let namespace: string | undefined;
   let fallbackLocale: string | undefined;
   let fallbackLocales: readonly string[] | undefined;
@@ -197,14 +200,17 @@ export async function forLocale(
     fallbackBundles: fallbackBundleList,
     namespace,
     debug,
-  });
+  }) as unknown as Translations<Key, ArgsMap>;
 }
 
-export async function getTranslations(
+export async function getTranslations<
+  Key extends string = string,
+  ArgsMap extends Record<string, any> = Record<string, any>
+>(
   options?: string | ({ locale?: string } & ForLocaleOptions)
-): Promise<Translations> {
+): Promise<Translations<Key, ArgsMap>> {
   const explicitLocale = typeof options === 'object' && options ? options.locale : undefined;
   const locale = explicitLocale ?? (await getLocale());
-  return forLocale(locale, options);
+  return forLocale<Key, ArgsMap>(locale, options);
 }
 

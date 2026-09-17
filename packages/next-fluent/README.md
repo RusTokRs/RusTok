@@ -102,7 +102,7 @@ export function Navigation() {
 }
 ```
 
-### 5. Rich Text & Interactive Markup (`t.rich`)
+### 5. Rich Text & Interactive Markup (`t.rich` and `<FormattedMessage />`)
 
 Format messages with interactive React elements or styled tags:
 
@@ -110,11 +110,26 @@ Format messages with interactive React elements or styled tags:
 terms-notice = By signing up you agree to our <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>.
 ```
 
+Using `t.rich`:
 ```tsx
 const content = t.rich('terms-notice', {
   terms: (chunks) => <a href="/terms" className="underline font-semibold">{chunks}</a>,
   privacy: (chunks) => <a href="/privacy" className="underline font-semibold">{chunks}</a>,
 });
+```
+
+Or declaratively with `<FormattedMessage />`:
+```tsx
+import { FormattedMessage } from '@rustok/next-fluent';
+
+<FormattedMessage
+  id="terms-notice"
+  values={{
+    terms: (chunks) => <a href="/terms">{chunks}</a>,
+    privacy: (chunks) => <a href="/privacy">{chunks}</a>,
+  }}
+  fallback="Default terms notice"
+/>
 ```
 
 ### 6. Checking Key Existence (`t.has`)
