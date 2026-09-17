@@ -2,7 +2,9 @@ use leptos::prelude::*;
 
 use crate::catalog_controls::CatalogListInput;
 use crate::core::FetchRequest;
-use crate::model::{ProductList, ProductListItem, StorefrontProductsData};
+use crate::model::{ProductList, StorefrontProductsData};
+#[cfg(feature = "ssr")]
+use crate::model::ProductListItem;
 
 use super::native_server_adapter::{self, ApiError};
 
@@ -150,6 +152,7 @@ fn map_product_list(value: rustok_product::StorefrontProductList) -> ProductList
     }
 }
 
+#[cfg(feature = "ssr")]
 fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
     channel_slug
         .map(str::trim)

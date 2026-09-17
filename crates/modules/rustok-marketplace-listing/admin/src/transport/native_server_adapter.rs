@@ -103,6 +103,7 @@ fn map_module_availability_error<E: std::fmt::Display>(
         action = ?action,
         tenant_id = %tenant_id,
         correlation_id = %request.correlation_id,
+        user_id = ?request.user_id,
         channel_id = ?request.channel_id,
         channel_slug = ?request.channel_slug,
         locale = %request.locale,

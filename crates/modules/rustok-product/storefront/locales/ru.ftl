@@ -2,8 +2,22 @@ product-badge = product
 product-common-sellerId = seller id
 product-common-sellerUnassigned = seller id: не назначен
 product-error-load = Не удалось загрузить storefront-данные каталога
+product-list-allCategories = Все категории
+product-list-attributeFiltersHelp = Укажите коды атрибутов в формате код=значение, разделённые точкой с запятой.
+product-list-attributeFiltersLabel = Фильтры по атрибутам
+product-list-attributeFiltersPlaceholder = color=red;weight=12.5
+product-list-categoryLabel = Категория
 product-list-empty = Опубликованные товары пока недоступны.
 product-list-open = Открыть
+product-list-searchLabel = Поиск по каталогу
+product-list-searchPlaceholder = Поиск опубликованных товаров
+product-list-searchSubmit = Применить
+product-list-sortAscending = Сначала старые
+product-list-sortByLabel = Сортировка по
+product-list-sortCreatedAt = Дата создания
+product-list-sortDescending = Сначала новые
+product-list-sortDirectionLabel = Направление
+product-list-sortPublishedAt = Дата публикации
 product-list-title = Опубликованные товары
 product-list-total = { $count } всего
 product-list-vendorFallback = Независимый бренд

@@ -17,7 +17,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, normalize_locale_tag};
-use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, ValidationRule};
+use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition};
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
@@ -1096,28 +1096,7 @@ async fn load_order_custom_fields_schema(
 fn order_field_definition_from_row(
     row: order_field_definitions_storage::Model,
 ) -> Option<FieldDefinition> {
-    let field_type: FieldType =
-        serde_json::from_value(serde_json::Value::String(row.field_type.clone())).ok()?;
-    let label = serde_json::from_value(row.label).unwrap_or_default();
-    let description = row
-        .description
-        .and_then(|value| serde_json::from_value(value).ok());
-    let validation: Option<ValidationRule> = row
-        .validation
-        .and_then(|value| serde_json::from_value(value).ok());
-
-    Some(FieldDefinition {
-        field_key: row.field_key,
-        field_type,
-        label,
-        description,
-        is_localized: row.is_localized,
-        is_required: row.is_required,
-        default_value: row.default_value,
-        validation,
-        position: row.position,
-        is_active: row.is_active,
-    })
+    field_definition_from_source(&row)
 }
 
 fn split_order_metadata_payload(
@@ -1127,36 +1106,14 @@ fn split_order_metadata_payload(
     serde_json::Map<String, Value>,
     serde_json::Map<String, Value>,
 ) {
-    let known_keys = schema
-        .active_definitions()
-        .into_iter()
-        .map(|definition| definition.field_key.as_str())
-        .collect::<HashSet<_>>();
-    let mut reserved = serde_json::Map::new();
-    let mut custom_fields = serde_json::Map::new();
-
-    for (key, value) in metadata.as_object().cloned().unwrap_or_default() {
-        if known_keys.contains(key.as_str()) {
-            custom_fields.insert(key, value);
-        } else {
-            reserved.insert(key, value);
-        }
-    }
-
-    (reserved, custom_fields)
+    split_donor_metadata(schema, metadata)
 }
 
 fn merge_reserved_order_metadata(
-    mut reserved: serde_json::Map<String, Value>,
+    reserved: serde_json::Map<String, Value>,
     custom_fields: Option<Value>,
 ) -> Value {
-    if let Some(custom_fields) = custom_fields.and_then(|value| value.as_object().cloned()) {
-        for (key, value) in custom_fields {
-            reserved.insert(key, value);
-        }
-    }
-
-    Value::Object(reserved)
+    merge_reserved_donor_metadata(reserved, custom_fields)
 }
 
 fn normalize_seller_id(value: Option<&str>) -> Option<String> {

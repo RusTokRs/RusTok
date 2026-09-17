@@ -286,7 +286,7 @@ impl CommerceCatalogMutation {
             shipping_profile_slug: input.shipping_profile_slug,
             primary_category_id: input.primary_category_id,
             tags: input.tags,
-            metadata: None,
+            metadata: input.custom_fields.map(|cf| cf.0),
             status: input.status.map(Into::into),
         };
 

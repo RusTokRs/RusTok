@@ -1,4 +1,7 @@
-use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionTrait};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    TransactionTrait,
+};
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
@@ -7,10 +10,10 @@ use flex::{
     TAXONOMY_CATEGORY_ENTITY_TYPE, delete_attached_localized_values,
     delete_generic_attached_values, load_exact_locale_values, load_generic_attached_shared_values,
     load_localized_values_by_locale, lock_attached_translation_schema_in_tx, map_flex_error,
-    persist_localized_values, persist_prepared_generic_attached_values,
+    merge_reserved_donor_patch, persist_localized_values, persist_prepared_generic_attached_values,
     prepare_attached_values_create, prepare_attached_values_update,
     prepare_generic_attached_values_update, record_flex_attached_translation_deleted_in_tx,
-    resolve_attached_payload, resolve_generic_attached_values,
+    resolve_attached_payload, resolve_generic_attached_values, split_donor_metadata,
 };
 use rustok_core::field_schema::{CustomFieldsSchema, FlexError};
 
@@ -124,6 +127,127 @@ impl FlexAttachedValuesService {
         prepared: &PreparedAttachedValuesWrite,
     ) -> ServerResult<()> {
         match entity_type {
+            "user" => {
+                let txn = db.begin().await?;
+                let user = crate::models::_entities::users::Entity::find_by_id(entity_id)
+                    .filter(crate::models::_entities::users::Column::TenantId.eq(tenant_id))
+                    .one(&txn)
+                    .await?
+                    .ok_or(Error::NotFound)?;
+                let schema = load_schema(db, tenant_id, entity_type)
+                    .await
+                    .map_err(map_flex_host_error)?;
+                if let Some(flex_meta) = prepared.metadata.as_ref() {
+                    let new_metadata =
+                        merge_reserved_donor_patch(&schema, &user.metadata, flex_meta);
+                    let mut active: crate::models::_entities::users::ActiveModel = user.into();
+                    active.metadata = sea_orm::ActiveValue::Set(new_metadata);
+                    active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
+                    active.update(&txn).await?;
+                }
+                if let (Some(loc), Some(values)) = (
+                    prepared.locale.as_deref(),
+                    prepared.localized_values.as_ref(),
+                ) {
+                    persist_localized_values(&txn, tenant_id, entity_type, entity_id, loc, values)
+                        .await
+                        .map_err(map_flex_host_error)?;
+                }
+                txn.commit().await?;
+                Ok(())
+            }
+            #[cfg(feature = "mod-product")]
+            "product" => {
+                let txn = db.begin().await?;
+                let product = rustok_product::entities::product::Entity::find_by_id(entity_id)
+                    .filter(rustok_product::entities::product::Column::TenantId.eq(tenant_id))
+                    .one(&txn)
+                    .await?
+                    .ok_or(Error::NotFound)?;
+                let schema = load_schema(db, tenant_id, entity_type)
+                    .await
+                    .map_err(map_flex_host_error)?;
+                if let Some(flex_meta) = prepared.metadata.as_ref() {
+                    let new_metadata =
+                        merge_reserved_donor_patch(&schema, &product.metadata, flex_meta);
+                    let mut active: rustok_product::entities::product::ActiveModel =
+                        product.into();
+                    active.metadata = sea_orm::ActiveValue::Set(new_metadata);
+                    active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
+                    active.update(&txn).await?;
+                }
+                if let (Some(loc), Some(values)) = (
+                    prepared.locale.as_deref(),
+                    prepared.localized_values.as_ref(),
+                ) {
+                    persist_localized_values(&txn, tenant_id, entity_type, entity_id, loc, values)
+                        .await
+                        .map_err(map_flex_host_error)?;
+                }
+                txn.commit().await?;
+                Ok(())
+            }
+            #[cfg(feature = "mod-order")]
+            "order" => {
+                let txn = db.begin().await?;
+                let order = rustok_order::entities::order::Entity::find_by_id(entity_id)
+                    .filter(rustok_order::entities::order::Column::TenantId.eq(tenant_id))
+                    .one(&txn)
+                    .await?
+                    .ok_or(Error::NotFound)?;
+                let schema = load_schema(db, tenant_id, entity_type)
+                    .await
+                    .map_err(map_flex_host_error)?;
+                if let Some(flex_meta) = prepared.metadata.as_ref() {
+                    let new_metadata =
+                        merge_reserved_donor_patch(&schema, &order.metadata, flex_meta);
+                    let mut active: rustok_order::entities::order::ActiveModel = order.into();
+                    active.metadata = sea_orm::ActiveValue::Set(new_metadata);
+                    active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
+                    active.update(&txn).await?;
+                }
+                if let (Some(loc), Some(values)) = (
+                    prepared.locale.as_deref(),
+                    prepared.localized_values.as_ref(),
+                ) {
+                    persist_localized_values(&txn, tenant_id, entity_type, entity_id, loc, values)
+                        .await
+                        .map_err(map_flex_host_error)?;
+                }
+                txn.commit().await?;
+                Ok(())
+            }
+            #[cfg(feature = "mod-forum")]
+            "topic" => {
+                let txn = db.begin().await?;
+                let topic = rustok_forum::entities::forum_topic::Entity::find_by_id(entity_id)
+                    .filter(rustok_forum::entities::forum_topic::Column::TenantId.eq(tenant_id))
+                    .one(&txn)
+                    .await?
+                    .ok_or(Error::NotFound)?;
+                let schema = load_schema(db, tenant_id, entity_type)
+                    .await
+                    .map_err(map_flex_host_error)?;
+                if let Some(flex_meta) = prepared.metadata.as_ref() {
+                    let new_metadata =
+                        merge_reserved_donor_patch(&schema, &topic.metadata, flex_meta);
+                    let mut active: rustok_forum::entities::forum_topic::ActiveModel =
+                        topic.into();
+                    active.metadata = sea_orm::ActiveValue::Set(new_metadata);
+                    active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
+                    active.update(&txn).await?;
+                }
+                if let (Some(loc), Some(values)) = (
+                    prepared.locale.as_deref(),
+                    prepared.localized_values.as_ref(),
+                ) {
+                    persist_localized_values(&txn, tenant_id, entity_type, entity_id, loc, values)
+                        .await
+                        .map_err(map_flex_host_error)?;
+                }
+                txn.commit().await?;
+                Ok(())
+            }
             #[cfg(feature = "mod-taxonomy")]
             TAXONOMY_CATEGORY_ENTITY_TYPE => {
                 let txn = db.begin().await?;
@@ -185,6 +309,191 @@ impl FlexAttachedValuesService {
         payload: Option<Value>,
     ) -> ServerResult<()> {
         match entity_type {
+            "user" => {
+                let txn = db.begin().await?;
+                let schema = load_schema(db, tenant_id, entity_type)
+                    .await
+                    .map_err(map_flex_host_error)?;
+                let user = crate::models::_entities::users::Entity::find_by_id(entity_id)
+                    .filter(crate::models::_entities::users::Column::TenantId.eq(tenant_id))
+                    .one(&txn)
+                    .await?
+                    .ok_or(Error::NotFound)?;
+                let entity = attached_ref(tenant_id, entity_type, entity_id);
+                let prepared = prepare_attached_values_update(
+                    &txn,
+                    entity,
+                    schema.clone(),
+                    locale,
+                    &user.metadata,
+                    payload,
+                )
+                .await
+                .map_err(map_flex_host_error)?;
+
+                let new_metadata = match prepared.metadata {
+                    Some(flex_meta) => {
+                        merge_reserved_donor_patch(&schema, &user.metadata, &flex_meta)
+                    }
+                    None => user.metadata.clone(),
+                };
+
+                let mut active: crate::models::_entities::users::ActiveModel = user.into();
+                active.metadata = sea_orm::ActiveValue::Set(new_metadata);
+                active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
+                active.update(&txn).await?;
+
+                if let (Some(loc), Some(values)) = (
+                    prepared.locale.as_deref(),
+                    prepared.localized_values.as_ref(),
+                ) {
+                    persist_localized_values(&txn, tenant_id, entity_type, entity_id, loc, values)
+                        .await
+                        .map_err(map_flex_host_error)?;
+                }
+                txn.commit().await?;
+                Ok(())
+            }
+            #[cfg(feature = "mod-product")]
+            "product" => {
+                let txn = db.begin().await?;
+                let schema = load_schema(db, tenant_id, entity_type)
+                    .await
+                    .map_err(map_flex_host_error)?;
+                let product = rustok_product::entities::product::Entity::find_by_id(entity_id)
+                    .filter(rustok_product::entities::product::Column::TenantId.eq(tenant_id))
+                    .one(&txn)
+                    .await?
+                    .ok_or(Error::NotFound)?;
+                let entity = attached_ref(tenant_id, entity_type, entity_id);
+                let prepared = prepare_attached_values_update(
+                    &txn,
+                    entity,
+                    schema.clone(),
+                    locale,
+                    &product.metadata,
+                    payload,
+                )
+                .await
+                .map_err(map_flex_host_error)?;
+
+                let new_metadata = match prepared.metadata {
+                    Some(flex_meta) => {
+                        merge_reserved_donor_patch(&schema, &product.metadata, &flex_meta)
+                    }
+                    None => product.metadata.clone(),
+                };
+
+                let mut active: rustok_product::entities::product::ActiveModel =
+                    product.into();
+                active.metadata = sea_orm::ActiveValue::Set(new_metadata);
+                active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
+                active.update(&txn).await?;
+
+                if let (Some(loc), Some(values)) = (
+                    prepared.locale.as_deref(),
+                    prepared.localized_values.as_ref(),
+                ) {
+                    persist_localized_values(&txn, tenant_id, entity_type, entity_id, loc, values)
+                        .await
+                        .map_err(map_flex_host_error)?;
+                }
+                txn.commit().await?;
+                Ok(())
+            }
+            #[cfg(feature = "mod-order")]
+            "order" => {
+                let txn = db.begin().await?;
+                let schema = load_schema(db, tenant_id, entity_type)
+                    .await
+                    .map_err(map_flex_host_error)?;
+                let order = rustok_order::entities::order::Entity::find_by_id(entity_id)
+                    .filter(rustok_order::entities::order::Column::TenantId.eq(tenant_id))
+                    .one(&txn)
+                    .await?
+                    .ok_or(Error::NotFound)?;
+                let entity = attached_ref(tenant_id, entity_type, entity_id);
+                let prepared = prepare_attached_values_update(
+                    &txn,
+                    entity,
+                    schema.clone(),
+                    locale,
+                    &order.metadata,
+                    payload,
+                )
+                .await
+                .map_err(map_flex_host_error)?;
+
+                let new_metadata = match prepared.metadata {
+                    Some(flex_meta) => {
+                        merge_reserved_donor_patch(&schema, &order.metadata, &flex_meta)
+                    }
+                    None => order.metadata.clone(),
+                };
+
+                let mut active: rustok_order::entities::order::ActiveModel = order.into();
+                active.metadata = sea_orm::ActiveValue::Set(new_metadata);
+                active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
+                active.update(&txn).await?;
+
+                if let (Some(loc), Some(values)) = (
+                    prepared.locale.as_deref(),
+                    prepared.localized_values.as_ref(),
+                ) {
+                    persist_localized_values(&txn, tenant_id, entity_type, entity_id, loc, values)
+                        .await
+                        .map_err(map_flex_host_error)?;
+                }
+                txn.commit().await?;
+                Ok(())
+            }
+            #[cfg(feature = "mod-forum")]
+            "topic" => {
+                let txn = db.begin().await?;
+                let schema = load_schema(db, tenant_id, entity_type)
+                    .await
+                    .map_err(map_flex_host_error)?;
+                let topic = rustok_forum::entities::forum_topic::Entity::find_by_id(entity_id)
+                    .filter(rustok_forum::entities::forum_topic::Column::TenantId.eq(tenant_id))
+                    .one(&txn)
+                    .await?
+                    .ok_or(Error::NotFound)?;
+                let entity = attached_ref(tenant_id, entity_type, entity_id);
+                let prepared = prepare_attached_values_update(
+                    &txn,
+                    entity,
+                    schema.clone(),
+                    locale,
+                    &topic.metadata,
+                    payload,
+                )
+                .await
+                .map_err(map_flex_host_error)?;
+
+                let new_metadata = match prepared.metadata {
+                    Some(flex_meta) => {
+                        merge_reserved_donor_patch(&schema, &topic.metadata, &flex_meta)
+                    }
+                    None => topic.metadata.clone(),
+                };
+
+                let mut active: rustok_forum::entities::forum_topic::ActiveModel =
+                    topic.into();
+                active.metadata = sea_orm::ActiveValue::Set(new_metadata);
+                active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
+                active.update(&txn).await?;
+
+                if let (Some(loc), Some(values)) = (
+                    prepared.locale.as_deref(),
+                    prepared.localized_values.as_ref(),
+                ) {
+                    persist_localized_values(&txn, tenant_id, entity_type, entity_id, loc, values)
+                        .await
+                        .map_err(map_flex_host_error)?;
+                }
+                txn.commit().await?;
+                Ok(())
+            }
             #[cfg(feature = "mod-taxonomy")]
             TAXONOMY_CATEGORY_ENTITY_TYPE => {
                 let txn = db.begin().await?;
@@ -248,19 +557,98 @@ impl FlexAttachedValuesService {
         preferred_locale: &str,
         tenant_default_locale: &str,
     ) -> ServerResult<Option<Value>> {
-        ensure_registered_owner_exists(db, tenant_id, entity_type, entity_id).await?;
         let schema = load_schema(db, tenant_id, entity_type)
             .await
             .map_err(map_flex_host_error)?;
-        resolve_generic_attached_values(
-            db,
-            attached_ref(tenant_id, entity_type, entity_id),
-            schema,
-            preferred_locale,
-            tenant_default_locale,
-        )
-        .await
-        .map_err(map_flex_host_error)
+        match entity_type {
+            "user" => {
+                let user = crate::models::_entities::users::Entity::find_by_id(entity_id)
+                    .filter(crate::models::_entities::users::Column::TenantId.eq(tenant_id))
+                    .one(db)
+                    .await?
+                    .ok_or(Error::NotFound)?;
+                resolve_attached_payload(
+                    db,
+                    attached_ref(tenant_id, entity_type, entity_id),
+                    schema,
+                    &user.metadata,
+                    preferred_locale,
+                    tenant_default_locale,
+                )
+                .await
+                .map_err(map_flex_host_error)
+            }
+            #[cfg(feature = "mod-product")]
+            "product" => {
+                let product = rustok_product::entities::product::Entity::find_by_id(entity_id)
+                    .filter(rustok_product::entities::product::Column::TenantId.eq(tenant_id))
+                    .one(db)
+                    .await?
+                    .ok_or(Error::NotFound)?;
+                resolve_attached_payload(
+                    db,
+                    attached_ref(tenant_id, entity_type, entity_id),
+                    schema,
+                    &product.metadata,
+                    preferred_locale,
+                    tenant_default_locale,
+                )
+                .await
+                .map_err(map_flex_host_error)
+            }
+            #[cfg(feature = "mod-order")]
+            "order" => {
+                let order = rustok_order::entities::order::Entity::find_by_id(entity_id)
+                    .filter(rustok_order::entities::order::Column::TenantId.eq(tenant_id))
+                    .one(db)
+                    .await?
+                    .ok_or(Error::NotFound)?;
+                resolve_attached_payload(
+                    db,
+                    attached_ref(tenant_id, entity_type, entity_id),
+                    schema,
+                    &order.metadata,
+                    preferred_locale,
+                    tenant_default_locale,
+                )
+                .await
+                .map_err(map_flex_host_error)
+            }
+            #[cfg(feature = "mod-forum")]
+            "topic" => {
+                let topic = rustok_forum::entities::forum_topic::Entity::find_by_id(entity_id)
+                    .filter(rustok_forum::entities::forum_topic::Column::TenantId.eq(tenant_id))
+                    .one(db)
+                    .await?
+                    .ok_or(Error::NotFound)?;
+                resolve_attached_payload(
+                    db,
+                    attached_ref(tenant_id, entity_type, entity_id),
+                    schema,
+                    &topic.metadata,
+                    preferred_locale,
+                    tenant_default_locale,
+                )
+                .await
+                .map_err(map_flex_host_error)
+            }
+            #[cfg(feature = "mod-taxonomy")]
+            TAXONOMY_CATEGORY_ENTITY_TYPE => {
+                ensure_registered_owner_exists(db, tenant_id, entity_type, entity_id).await?;
+                resolve_generic_attached_values(
+                    db,
+                    attached_ref(tenant_id, entity_type, entity_id),
+                    schema,
+                    preferred_locale,
+                    tenant_default_locale,
+                )
+                .await
+                .map_err(map_flex_host_error)
+            }
+            other => Err(Error::BadRequest(format!(
+                "generic Flex owner adapter is not registered for {other}"
+            ))),
+        }
     }
 
     pub async fn delete_registered_generic_values(
@@ -270,6 +658,99 @@ impl FlexAttachedValuesService {
         entity_id: Uuid,
     ) -> ServerResult<()> {
         match entity_type {
+            "user" => {
+                let txn = db.begin().await?;
+                let user = crate::models::_entities::users::Entity::find_by_id(entity_id)
+                    .filter(crate::models::_entities::users::Column::TenantId.eq(tenant_id))
+                    .one(&txn)
+                    .await?
+                    .ok_or(Error::NotFound)?;
+                let schema = load_schema(db, tenant_id, entity_type)
+                    .await
+                    .map_err(map_flex_host_error)?;
+                let (reserved, _) = split_donor_metadata(&schema, &user.metadata);
+                let mut active: crate::models::_entities::users::ActiveModel = user.into();
+                active.metadata = sea_orm::ActiveValue::Set(serde_json::Value::Object(reserved));
+                active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
+                active.update(&txn).await?;
+
+                delete_attached_localized_values(&txn, tenant_id, entity_type, entity_id)
+                    .await
+                    .map_err(map_flex_host_error)?;
+                txn.commit().await?;
+                Ok(())
+            }
+            #[cfg(feature = "mod-product")]
+            "product" => {
+                let txn = db.begin().await?;
+                let product = rustok_product::entities::product::Entity::find_by_id(entity_id)
+                    .filter(rustok_product::entities::product::Column::TenantId.eq(tenant_id))
+                    .one(&txn)
+                    .await?
+                    .ok_or(Error::NotFound)?;
+                let schema = load_schema(db, tenant_id, entity_type)
+                    .await
+                    .map_err(map_flex_host_error)?;
+                let (reserved, _) = split_donor_metadata(&schema, &product.metadata);
+                let mut active: rustok_product::entities::product::ActiveModel =
+                    product.into();
+                active.metadata = sea_orm::ActiveValue::Set(serde_json::Value::Object(reserved));
+                active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
+                active.update(&txn).await?;
+
+                delete_attached_localized_values(&txn, tenant_id, entity_type, entity_id)
+                    .await
+                    .map_err(map_flex_host_error)?;
+                txn.commit().await?;
+                Ok(())
+            }
+            #[cfg(feature = "mod-order")]
+            "order" => {
+                let txn = db.begin().await?;
+                let order = rustok_order::entities::order::Entity::find_by_id(entity_id)
+                    .filter(rustok_order::entities::order::Column::TenantId.eq(tenant_id))
+                    .one(&txn)
+                    .await?
+                    .ok_or(Error::NotFound)?;
+                let schema = load_schema(db, tenant_id, entity_type)
+                    .await
+                    .map_err(map_flex_host_error)?;
+                let (reserved, _) = split_donor_metadata(&schema, &order.metadata);
+                let mut active: rustok_order::entities::order::ActiveModel = order.into();
+                active.metadata = sea_orm::ActiveValue::Set(serde_json::Value::Object(reserved));
+                active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
+                active.update(&txn).await?;
+
+                delete_attached_localized_values(&txn, tenant_id, entity_type, entity_id)
+                    .await
+                    .map_err(map_flex_host_error)?;
+                txn.commit().await?;
+                Ok(())
+            }
+            #[cfg(feature = "mod-forum")]
+            "topic" => {
+                let txn = db.begin().await?;
+                let topic = rustok_forum::entities::forum_topic::Entity::find_by_id(entity_id)
+                    .filter(rustok_forum::entities::forum_topic::Column::TenantId.eq(tenant_id))
+                    .one(&txn)
+                    .await?
+                    .ok_or(Error::NotFound)?;
+                let schema = load_schema(db, tenant_id, entity_type)
+                    .await
+                    .map_err(map_flex_host_error)?;
+                let (reserved, _) = split_donor_metadata(&schema, &topic.metadata);
+                let mut active: rustok_forum::entities::forum_topic::ActiveModel =
+                    topic.into();
+                active.metadata = sea_orm::ActiveValue::Set(serde_json::Value::Object(reserved));
+                active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
+                active.update(&txn).await?;
+
+                delete_attached_localized_values(&txn, tenant_id, entity_type, entity_id)
+                    .await
+                    .map_err(map_flex_host_error)?;
+                txn.commit().await?;
+                Ok(())
+            }
             #[cfg(feature = "mod-taxonomy")]
             TAXONOMY_CATEGORY_ENTITY_TYPE => {
                 let txn = db.begin().await?;
@@ -506,6 +987,57 @@ where
     C: ConnectionTrait,
 {
     match entity_type {
+        "user" => {
+            let exists = crate::models::_entities::users::Entity::find_by_id(entity_id)
+                .filter(crate::models::_entities::users::Column::TenantId.eq(tenant_id))
+                .one(db)
+                .await?
+                .is_some();
+            if exists {
+                Ok(())
+            } else {
+                Err(Error::NotFound)
+            }
+        }
+        #[cfg(feature = "mod-product")]
+        "product" => {
+            let exists = rustok_product::entities::product::Entity::find_by_id(entity_id)
+                .filter(rustok_product::entities::product::Column::TenantId.eq(tenant_id))
+                .one(db)
+                .await?
+                .is_some();
+            if exists {
+                Ok(())
+            } else {
+                Err(Error::NotFound)
+            }
+        }
+        #[cfg(feature = "mod-order")]
+        "order" => {
+            let exists = rustok_order::entities::order::Entity::find_by_id(entity_id)
+                .filter(rustok_order::entities::order::Column::TenantId.eq(tenant_id))
+                .one(db)
+                .await?
+                .is_some();
+            if exists {
+                Ok(())
+            } else {
+                Err(Error::NotFound)
+            }
+        }
+        #[cfg(feature = "mod-forum")]
+        "topic" => {
+            let exists = rustok_forum::entities::forum_topic::Entity::find_by_id(entity_id)
+                .filter(rustok_forum::entities::forum_topic::Column::TenantId.eq(tenant_id))
+                .one(db)
+                .await?
+                .is_some();
+            if exists {
+                Ok(())
+            } else {
+                Err(Error::NotFound)
+            }
+        }
         #[cfg(feature = "mod-taxonomy")]
         TAXONOMY_CATEGORY_ENTITY_TYPE => {
             let exists = rustok_taxonomy::taxonomy_term_identity_exists(
@@ -520,7 +1052,11 @@ where
                     "Taxonomy Flex owner identity lookup failed: {error}"
                 ))
             })?;
-            if exists { Ok(()) } else { Err(Error::NotFound) }
+            if exists {
+                Ok(())
+            } else {
+                Err(Error::NotFound)
+            }
         }
         other => Err(Error::BadRequest(format!(
             "generic Flex owner adapter is not registered for {other}"

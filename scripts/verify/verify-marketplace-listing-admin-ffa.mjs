@@ -33,7 +33,7 @@ const read = (file) => {
     failures.push(`${file}: missing`);
     return "";
   }
-  return fs.readFileSync(absolute, "utf8");
+  return fs.readFileSync(absolute, "utf8").replace(/\r\n/g, "\n");
 };
 const contains = (source, marker, file) => {
   if (!source.includes(marker)) failures.push(`${file}: missing ${marker}`);

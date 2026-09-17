@@ -116,7 +116,10 @@ pub(crate) fn convert_create_product_input(
         shipping_profile_slug: input.shipping_profile_slug,
         primary_category_id: input.primary_category_id,
         tags: input.tags.unwrap_or_default(),
-        metadata: serde_json::Value::Object(Default::default()),
+        metadata: input
+            .custom_fields
+            .map(|cf| cf.0)
+            .unwrap_or_else(|| serde_json::Value::Object(Default::default())),
         publish: input.publish.unwrap_or(false),
     })
 }

@@ -12,6 +12,7 @@ blog-error-savePost = Не удалось сохранить пост
 blog-error-updateStatus = Не удалось обновить статус поста
 blog-error-validationBadge = Валидация
 blog-form-body = Содержимое
+blog-form-content = Содержимое
 blog-form-create = Создать пост
 blog-form-createNewInstead = Создать новый вместо этого
 blog-form-createTitle = Создать пост

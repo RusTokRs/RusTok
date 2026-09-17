@@ -20,6 +20,7 @@ pub struct RequestContext {
     pub channel_slug: Option<String>,
     pub channel_resolution_source: Option<ChannelResolutionSource>,
     pub locale: String,
+    pub correlation_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -82,6 +83,16 @@ where
             .get::<ChannelContextExtension>()
             .map(|ext| &ext.0);
 
+        let correlation_id = parts
+            .headers
+            .get("x-correlation-id")
+            .or_else(|| parts.headers.get("x-request-id"))
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+
         Ok(RequestContext {
             tenant_id,
             user_id,
@@ -90,6 +101,7 @@ where
             channel_resolution_source: channel_context
                 .map(|channel| channel.resolution_source.clone()),
             locale,
+            correlation_id,
         })
     }
 }

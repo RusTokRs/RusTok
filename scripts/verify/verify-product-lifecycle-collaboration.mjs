@@ -101,7 +101,7 @@ const startupValidationBlock = manifestManager.slice(
 const compensationBlock = between(
   lifecycleWriter,
   'pub async fn compensate_failed_operation(',
-  '\n    /// Persists a static module settings value',
+  '\n    pub async fn update_static_normalized_settings(',
   'owner compensation block',
 );
 
@@ -161,7 +161,7 @@ for (const [source, value, label] of [
   [lifecycleExecutor, 'pub requested_override_enabled: Option<bool>', 'executor exact override target'],
   [lifecycleExecutor, 'record_operation_override_state(', 'executor recovery-state retention'],
   [lifecycleExecutor, 'apply_tenant_override_enabled(', 'executor tri-state persistence'],
-  [lifecycleWriter, 'Some(enabled),', 'normal toggle explicit override target'],
+  [lifecycleWriter, 'Some(command.enabled),', 'normal toggle explicit override target'],
   [lifecycleWriter, 'None => next_overrides.retain(|value| value.module_slug != module_slug)', 'policy inherited override projection'],
   [compensationBlock, 'let reverse_enabled = !plan.requested_enabled;', 'inverse compensation lifecycle direction'],
   [compensationBlock, 'plan.previous_override_enabled', 'exact compensation target'],

@@ -495,6 +495,7 @@ fn graphql_request(
             channel_slug: None,
             channel_resolution_source: None,
             locale: "en".to_string(),
+            correlation_id: "test-workflow".to_string(),
         })
 }
 

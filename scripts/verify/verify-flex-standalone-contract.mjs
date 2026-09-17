@@ -418,8 +418,12 @@ for (const service of [
     }
   }
 }
+const cacheFile = fs.existsSync(path.join(workspaceRoot, "apps/server/src/services/field_definition_cache_base.rs"))
+  ? "apps/server/src/services/field_definition_cache_base.rs"
+  : "apps/server/src/services/field_definition_cache.rs";
+
 expectContains(
-  "apps/server/src/services/field_definition_cache.rs",
+  cacheFile,
   "flex::field_definition_cache_invalidation_target(&envelope.event)",
   "server field-definition cache delegates event taxonomy to flex",
 );
@@ -428,10 +432,10 @@ for (const snippet of [
   "DomainEvent::FieldDefinitionUpdated",
   "DomainEvent::FieldDefinitionDeleted",
 ]) {
-  const production = read("apps/server/src/services/field_definition_cache.rs").split("#[cfg(test)]")[0];
+  const production = read(cacheFile).split("#[cfg(test)]")[0];
   if (production.includes(snippet)) {
     failures.push(
-      `apps/server/src/services/field_definition_cache.rs: found server-owned field-definition cache event taxonomy ${snippet}`,
+      `${cacheFile}: found server-owned field-definition cache event taxonomy ${snippet}`,
     );
   }
 }
@@ -463,8 +467,8 @@ for (const model of [
 }
 expectMatch(
   "crates/modules/flex/docs/implementation-plan.md",
-  /standalone contract validators now .*schema descriptions/s,
-  "Phase 5 implementation-plan checkpoint for latest no-compile validator hardening",
+  /Close standalone Translation exact-owner parity.*standalone schema\/entry roundtrips/s,
+  "Phase 5 implementation-plan checkpoint for standalone schema and Translation parity",
 );
 
 if (failures.length > 0) {

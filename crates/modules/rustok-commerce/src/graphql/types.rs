@@ -46,6 +46,8 @@ pub struct GqlProduct {
     pub shipping_profile_slug: Option<String>,
     pub primary_category_id: Option<Uuid>,
     pub tags: Vec<String>,
+    /// Optional custom fields validated against the tenant's active schema.
+    pub custom_fields: Option<Json<serde_json::Value>>,
     pub created_at: String,
     pub updated_at: String,
     pub published_at: Option<String>,
@@ -927,6 +929,8 @@ pub struct CreateProductInput {
     pub shipping_profile_slug: Option<String>,
     pub primary_category_id: Option<Uuid>,
     pub tags: Option<Vec<String>>,
+    /// Optional custom fields validated against the tenant's active schema.
+    pub custom_fields: Option<Json<serde_json::Value>>,
     pub publish: Option<bool>,
 }
 
@@ -1095,6 +1099,8 @@ pub struct UpdateProductInput {
     pub shipping_profile_slug: Option<String>,
     pub primary_category_id: Option<Uuid>,
     pub tags: Option<Vec<String>>,
+    /// Optional custom fields patch — merged into existing metadata.
+    pub custom_fields: Option<Json<serde_json::Value>>,
     pub status: Option<GqlProductStatus>,
 }
 
@@ -1638,6 +1644,16 @@ pub struct UpdateShippingProfileInputObject {
 
 impl From<dto::ProductResponse> for GqlProduct {
     fn from(product: dto::ProductResponse) -> Self {
+        let custom_fields = if product.metadata.is_null()
+            || product
+                .metadata
+                .as_object()
+                .is_some_and(|fields| fields.is_empty())
+        {
+            None
+        } else {
+            Some(Json(product.metadata))
+        };
         Self {
             id: product.id,
             status: product.status.into(),
@@ -1647,6 +1663,7 @@ impl From<dto::ProductResponse> for GqlProduct {
             shipping_profile_slug: product.shipping_profile_slug,
             primary_category_id: product.primary_category_id,
             tags: product.tags,
+            custom_fields,
             created_at: product.created_at.to_rfc3339(),
             updated_at: product.updated_at.to_rfc3339(),
             published_at: product.published_at.map(|value| value.to_rfc3339()),

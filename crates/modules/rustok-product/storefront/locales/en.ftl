@@ -2,8 +2,22 @@ product-badge = product
 product-common-sellerId = seller id
 product-common-sellerUnassigned = seller id: unassigned
 product-error-load = Failed to load storefront product data
+product-list-allCategories = All categories
+product-list-attributeFiltersHelp = Use filterable attribute codes as code=value, separated by semicolons.
+product-list-attributeFiltersLabel = Attribute filters
+product-list-attributeFiltersPlaceholder = color=red;weight=12.5
+product-list-categoryLabel = Category
 product-list-empty = No published products are available yet.
 product-list-open = Open
+product-list-searchLabel = Search catalog
+product-list-searchPlaceholder = Search published products
+product-list-searchSubmit = Apply
+product-list-sortAscending = Oldest first
+product-list-sortByLabel = Sort by
+product-list-sortCreatedAt = Creation date
+product-list-sortDescending = Newest first
+product-list-sortDirectionLabel = Direction
+product-list-sortPublishedAt = Publication date
 product-list-title = Published products
 product-list-total = { $count } total
 product-list-vendorFallback = Independent label
