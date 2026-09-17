@@ -709,22 +709,27 @@ fn validate_definition_shape(definition: &FieldDefinition) -> Result<(), FlexErr
     Ok(())
 }
 
+/// Validate localized text maps (e.g. labels, descriptions, error messages).
+///
+/// Both mandatory maps (`require_non_empty_map = true`) and optional maps that were explicitly
+/// provided as `Some(map)` (`require_non_empty_map = false`) must not be empty, but they produce
+/// distinct error messages for clearer client feedback.
 fn validate_localized_text_map(
     field_key: &str,
     label: &str,
     values: &std::collections::HashMap<String, String>,
     require_non_empty_map: bool,
 ) -> Result<(), FlexError> {
-    if require_non_empty_map && values.is_empty() {
-        return Err(FlexError::InvalidFieldKey(format!(
-            "field '{field_key}' must have at least one localized {label}"
-        )));
-    }
-
-    if !require_non_empty_map && values.is_empty() {
-        return Err(FlexError::InvalidFieldKey(format!(
-            "field '{field_key}' {label} must not be an empty localized map"
-        )));
+    if values.is_empty() {
+        if require_non_empty_map {
+            return Err(FlexError::InvalidFieldKey(format!(
+                "field '{field_key}' must have at least one localized {label}"
+            )));
+        } else {
+            return Err(FlexError::InvalidFieldKey(format!(
+                "field '{field_key}' {label} must not be an empty localized map"
+            )));
+        }
     }
 
     for (locale, value) in values {

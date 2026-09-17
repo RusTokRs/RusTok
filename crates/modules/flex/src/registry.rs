@@ -222,10 +222,7 @@ pub fn field_definition_position_or_next(position: Option<i32>, active_count: u6
 
 /// Stable persisted string form for a field definition type.
 pub fn field_definition_type_name(field_type: FieldType) -> String {
-    serde_json::to_value(field_type)
-        .ok()
-        .and_then(|v| v.as_str().map(ToOwned::to_owned))
-        .unwrap_or_default()
+    field_type.as_str().to_string()
 }
 
 pub fn field_definition_label_json(label: &HashMap<String, String>) -> JsonValue {

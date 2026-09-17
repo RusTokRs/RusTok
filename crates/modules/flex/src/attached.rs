@@ -141,6 +141,16 @@ pub fn merge_reserved_donor_patch(
     existing
 }
 
+/// Merge unmanaged/reserved donor metadata with a Flex custom fields payload.
+pub fn merge_donor_flex_metadata(
+    schema: &CustomFieldsSchema,
+    existing_metadata: &Value,
+    flex_patch: &Value,
+) -> Value {
+    let (reserved, _) = split_donor_metadata(schema, existing_metadata);
+    merge_reserved_donor_metadata(reserved, Some(flex_patch.clone()))
+}
+
 pub async fn resolve_attached_payload<C>(
     db: &C,
     entity: AttachedEntityRef<'_>,
@@ -222,14 +232,22 @@ where
         existing_by_key.insert(row.field_key.clone(), row);
     }
 
-    for (field_key, row) in &existing_by_key {
-        if !desired.contains_key(field_key) {
-            let model: ActiveModel = row.clone().into();
-            model
-                .delete(db)
-                .await
-                .map_err(|error| FlexError::Database(error.to_string()))?;
-        }
+    let keys_to_delete: Vec<String> = existing_by_key
+        .keys()
+        .filter(|key| !desired.contains_key(*key))
+        .cloned()
+        .collect();
+
+    if !keys_to_delete.is_empty() {
+        Entity::delete_many()
+            .filter(Column::TenantId.eq(tenant_id))
+            .filter(Column::EntityType.eq(entity_type))
+            .filter(Column::EntityId.eq(entity_id))
+            .filter(Column::Locale.eq(locale.as_str()))
+            .filter(Column::FieldKey.is_in(keys_to_delete))
+            .exec(db)
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?;
     }
 
     for (field_key, value) in desired {
@@ -496,14 +514,15 @@ mod tests {
     use sea_orm::{
         ActiveModelTrait, ConnectionTrait, Database, DatabaseBackend, EntityTrait, Set, Statement,
     };
-    use serde_json::json;
+    use serde_json::{Map, json};
     use uuid::Uuid;
 
     use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, FlexError};
 
     use super::{
         ActiveModel, AttachedEntityRef, Entity, delete_attached_localized_values,
-        prepare_attached_values_create, prepare_attached_values_update, split_existing_metadata,
+        merge_reserved_donor_metadata, prepare_attached_values_create,
+        prepare_attached_values_update, split_donor_metadata, split_existing_metadata,
     };
 
     fn definition(field_key: &str, is_localized: bool) -> FieldDefinition {

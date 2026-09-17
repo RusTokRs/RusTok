@@ -173,6 +173,26 @@ pub enum FieldType {
 }
 
 impl FieldType {
+    /// Returns the canonical snake_case string representation of this field type.
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Textarea => "textarea",
+            Self::Integer => "integer",
+            Self::Decimal => "decimal",
+            Self::Boolean => "boolean",
+            Self::Date => "date",
+            Self::DateTime => "date_time",
+            Self::Url => "url",
+            Self::Email => "email",
+            Self::Phone => "phone",
+            Self::Select => "select",
+            Self::MultiSelect => "multi_select",
+            Self::Color => "color",
+            Self::Json => "json",
+        }
+    }
+
     /// Returns `true` if this type requires `options` in [`ValidationRule`].
     pub fn requires_options(&self) -> bool {
         matches!(self, Self::Select | Self::MultiSelect)
@@ -350,6 +370,7 @@ pub struct FieldValidationError {
 ///
 /// The definitions can come from any source: a database table, a config file,
 /// or a JSONB column. The schema is stateless and cheap to clone.
+#[derive(Clone, Debug)]
 pub struct CustomFieldsSchema {
     definitions: Vec<FieldDefinition>,
 }

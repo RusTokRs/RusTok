@@ -558,8 +558,5 @@ pub mod flex_attached_translation_progress_owner;
 pub mod flex_attached_values;
 pub mod flex_schema_translation_owner;
 pub mod flex_schema_translation_progress_owner;
-#[path = "flex_standalone_service_journaled.rs"]
 pub mod flex_standalone_service;
-#[path = "flex_standalone_service.rs"]
-mod flex_standalone_service_legacy;
 pub mod flex_standalone_translation_owner;

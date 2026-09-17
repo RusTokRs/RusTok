@@ -10,7 +10,7 @@ use flex::{
     TAXONOMY_CATEGORY_ENTITY_TYPE, delete_attached_localized_values,
     delete_generic_attached_values, load_exact_locale_values, load_generic_attached_shared_values,
     load_localized_values_by_locale, lock_attached_translation_schema_in_tx, map_flex_error,
-    merge_reserved_donor_patch, persist_localized_values, persist_prepared_generic_attached_values,
+    merge_donor_flex_metadata, persist_localized_values, persist_prepared_generic_attached_values,
     prepare_attached_values_create, prepare_attached_values_update,
     prepare_generic_attached_values_update, record_flex_attached_translation_deleted_in_tx,
     resolve_attached_payload, resolve_generic_attached_values, split_donor_metadata,
@@ -139,7 +139,7 @@ impl FlexAttachedValuesService {
                     .map_err(map_flex_host_error)?;
                 if let Some(flex_meta) = prepared.metadata.as_ref() {
                     let new_metadata =
-                        merge_reserved_donor_patch(&schema, &user.metadata, flex_meta);
+                        merge_donor_flex_metadata(&schema, &user.metadata, flex_meta);
                     let mut active: crate::models::_entities::users::ActiveModel = user.into();
                     active.metadata = sea_orm::ActiveValue::Set(new_metadata);
                     active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
@@ -169,7 +169,7 @@ impl FlexAttachedValuesService {
                     .map_err(map_flex_host_error)?;
                 if let Some(flex_meta) = prepared.metadata.as_ref() {
                     let new_metadata =
-                        merge_reserved_donor_patch(&schema, &product.metadata, flex_meta);
+                        merge_donor_flex_metadata(&schema, &product.metadata, flex_meta);
                     let mut active: rustok_product::entities::product::ActiveModel =
                         product.into();
                     active.metadata = sea_orm::ActiveValue::Set(new_metadata);
@@ -200,7 +200,7 @@ impl FlexAttachedValuesService {
                     .map_err(map_flex_host_error)?;
                 if let Some(flex_meta) = prepared.metadata.as_ref() {
                     let new_metadata =
-                        merge_reserved_donor_patch(&schema, &order.metadata, flex_meta);
+                        merge_donor_flex_metadata(&schema, &order.metadata, flex_meta);
                     let mut active: rustok_order::entities::order::ActiveModel = order.into();
                     active.metadata = sea_orm::ActiveValue::Set(new_metadata);
                     active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
@@ -230,7 +230,7 @@ impl FlexAttachedValuesService {
                     .map_err(map_flex_host_error)?;
                 if let Some(flex_meta) = prepared.metadata.as_ref() {
                     let new_metadata =
-                        merge_reserved_donor_patch(&schema, &topic.metadata, flex_meta);
+                        merge_donor_flex_metadata(&schema, &topic.metadata, flex_meta);
                     let mut active: rustok_forum::entities::forum_topic::ActiveModel =
                         topic.into();
                     active.metadata = sea_orm::ActiveValue::Set(new_metadata);
@@ -331,9 +331,9 @@ impl FlexAttachedValuesService {
                 .await
                 .map_err(map_flex_host_error)?;
 
-                let new_metadata = match prepared.metadata {
+                let new_metadata = match prepared.metadata.as_ref() {
                     Some(flex_meta) => {
-                        merge_reserved_donor_patch(&schema, &user.metadata, &flex_meta)
+                        merge_donor_flex_metadata(&schema, &user.metadata, flex_meta)
                     }
                     None => user.metadata.clone(),
                 };
@@ -377,9 +377,9 @@ impl FlexAttachedValuesService {
                 .await
                 .map_err(map_flex_host_error)?;
 
-                let new_metadata = match prepared.metadata {
+                let new_metadata = match prepared.metadata.as_ref() {
                     Some(flex_meta) => {
-                        merge_reserved_donor_patch(&schema, &product.metadata, &flex_meta)
+                        merge_donor_flex_metadata(&schema, &product.metadata, flex_meta)
                     }
                     None => product.metadata.clone(),
                 };
@@ -424,9 +424,9 @@ impl FlexAttachedValuesService {
                 .await
                 .map_err(map_flex_host_error)?;
 
-                let new_metadata = match prepared.metadata {
+                let new_metadata = match prepared.metadata.as_ref() {
                     Some(flex_meta) => {
-                        merge_reserved_donor_patch(&schema, &order.metadata, &flex_meta)
+                        merge_donor_flex_metadata(&schema, &order.metadata, flex_meta)
                     }
                     None => order.metadata.clone(),
                 };
@@ -470,9 +470,9 @@ impl FlexAttachedValuesService {
                 .await
                 .map_err(map_flex_host_error)?;
 
-                let new_metadata = match prepared.metadata {
+                let new_metadata = match prepared.metadata.as_ref() {
                     Some(flex_meta) => {
-                        merge_reserved_donor_patch(&schema, &topic.metadata, &flex_meta)
+                        merge_donor_flex_metadata(&schema, &topic.metadata, flex_meta)
                     }
                     None => topic.metadata.clone(),
                 };
