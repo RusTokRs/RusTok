@@ -45,11 +45,18 @@ pub fn normalize_admin_locale(locale: Option<&str>) -> &'static str {
     }
 }
 
-/// Parses and normalizes a BCP 47 language identifier, replacing underscores with hyphens.
+/// Parses and normalizes the extension-free BCP 47 subset represented by
+/// [`LanguageIdentifier`], replacing underscores with hyphens.
 ///
-/// Raw inputs longer than 64 bytes are rejected before trimming or normalization work.
-/// BCP 47 language identifiers are ASCII, so the byte limit matches the shared Next.js
-/// locale policy for valid tags while keeping request-scope lookup work bounded.
+/// Unicode extension sequences (`-u-...`) and private-use sequences (`-x-...`)
+/// are intentionally not part of Rust catalog identity and are therefore rejected
+/// instead of being silently stripped. Hosts that need extension-aware selection
+/// must resolve that policy before passing the effective catalog locale here.
+///
+/// Raw inputs longer than 64 bytes are rejected before trimming or normalization
+/// work. BCP 47 language identifiers are ASCII, so the byte limit matches the
+/// shared Next.js locale policy for valid core tags while keeping request-scope
+/// lookup work bounded.
 pub fn normalize_locale_tag(locale: &str) -> Option<String> {
     parse_locale_tag(locale).map(|langid| langid.to_string())
 }
@@ -66,6 +73,8 @@ pub fn normalize_locale_tag(locale: &str) -> Option<String> {
 /// canonicalizes variants as an ordered set, so peeling the serialized tag one
 /// hyphen at a time can manufacture an arbitrary partial-variant parent. The
 /// fallback therefore removes all variants together before region and script.
+/// Extension-bearing tags are rejected as a whole; this function never strips an
+/// extension to manufacture a Rust catalog candidate.
 pub fn locale_candidates(locale: Option<&str>, default_locale: &str) -> Vec<String> {
     let mut candidates = Vec::new();
 

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  createFluentBundle,
   normalizeLocaleTag,
   resolveAcceptLanguage,
   validateI18nConfig,
@@ -100,4 +101,87 @@ test('oversized configuration diagnostics do not retain locale payloads', () => 
       return true;
     }
   );
+});
+
+test('configuration rejects duplicate canonical locale identities', () => {
+  for (const locales of [
+    ['en-US', 'en_US'],
+    ['EN-us', 'en-US'],
+    ['sr-Latn-RS', 'sr_latn_rs'],
+  ]) {
+    assert.throws(
+      () => validateI18nConfig({ locales, defaultLocale: locales[0] }),
+      (error) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /Duplicate locale identity in "locales"/);
+        return true;
+      },
+      `canonical duplicates must be rejected: ${locales.join(', ')}`
+    );
+  }
+});
+
+test('configuration keeps distinct locale identities and canonical default membership', () => {
+  assert.doesNotThrow(() =>
+    validateI18nConfig({ locales: ['en-US', 'en-GB', 'sr-Latn-RS'], defaultLocale: 'en_US' })
+  );
+});
+
+test('malformed runtime config values produce controlled bounded errors', () => {
+  for (const invalidLocale of [null, undefined, 42, true, {}, []]) {
+    assert.throws(
+      () => validateI18nConfig({ locales: [invalidLocale], defaultLocale: 'en' }),
+      (error) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.name, 'Error');
+        assert.match(error.message, /Invalid locale tag in "locales": "<non-string locale:/);
+        return true;
+      }
+    );
+  }
+
+  for (const invalidDefault of [null, undefined, 42, true, {}, []]) {
+    assert.throws(
+      () => validateI18nConfig({ locales: ['en'], defaultLocale: invalidDefault }),
+      (error) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.name, 'Error');
+        assert.match(error.message, /Invalid "defaultLocale": "<non-string locale:/);
+        return true;
+      }
+    );
+  }
+});
+
+test('low-level Fluent bundle construction uses the shared locale boundary', () => {
+  const bundle = createFluentBundle('ru_RU', 'title = Заголовок');
+  assert.deepEqual(bundle.locales, ['ru-RU']);
+
+  assert.throws(
+    () => createFluentBundle('not@a@locale', 'title = Title'),
+    /Invalid Fluent bundle locale/
+  );
+
+  const oversized = `en-${'a'.repeat(512)}`;
+  assert.throws(
+    () => createFluentBundle(oversized, 'title = Title'),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.message.includes(oversized), false);
+      assert.match(error.message, new RegExp(`oversized locale: ${oversized.length} code units`));
+      return true;
+    }
+  );
+
+  for (const invalidLocale of [null, undefined, 42, true, {}, []]) {
+    assert.throws(
+      () => createFluentBundle(invalidLocale, 'title = Title'),
+      (error) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.name, 'Error');
+        assert.match(error.message, /Invalid Fluent bundle locale: "<non-string locale:/);
+        return true;
+      }
+    );
+  }
 });

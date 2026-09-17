@@ -1,7 +1,7 @@
 import type { FluentBundle, FluentFunction } from '@fluent/bundle';
 import type React from 'react';
 import type { FluentArgs, FluentVariable, RichTranslationValues, Translations } from './types';
-import { buildKeyCandidates } from './utils';
+import { buildKeyCandidates, canonicalizeLocale } from './utils';
 import { parseRichText } from './rich';
 import {
   getCachedFluentBundle,
@@ -17,12 +17,33 @@ export {
   type CreateFluentBundleOptions,
 };
 
+function fluentBundleLocaleDiagnostic(locale: unknown): string {
+  if (typeof locale !== 'string') {
+    const kind = locale === null ? 'null' : typeof locale;
+    return `<non-string locale: ${kind}>`;
+  }
+  if (locale.length > 64) {
+    return `<oversized locale: ${locale.length} code units>`;
+  }
+  return locale;
+}
+
 export function createFluentBundle(
   locale: string,
   ftlSource: string | readonly string[],
   options: CreateFluentBundleOptions = {}
 ): FluentBundle {
-  return getCachedFluentBundle(locale, ftlSource, options);
+  // Low-level bundle construction follows the same locale contract as the
+  // high-level runtime: bound raw input, canonicalize aliases such as ru_RU,
+  // and reject malformed identities before they reach Fluent or Intl helpers.
+  const canonicalLocale = canonicalizeLocale(locale);
+  if (!canonicalLocale) {
+    throw new Error(
+      `[next-fluent] Invalid Fluent bundle locale: "${fluentBundleLocaleDiagnostic(locale)}"`
+    );
+  }
+
+  return getCachedFluentBundle(canonicalLocale, ftlSource, options);
 }
 
 export interface CreateTranslatorOptions {

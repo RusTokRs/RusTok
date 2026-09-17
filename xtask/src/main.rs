@@ -14,6 +14,7 @@ use std::time::Duration;
 use toml::Value as TomlValue;
 
 mod docs_registry_contracts;
+mod i18n_api_inventory;
 mod install_dev;
 mod manifest_io;
 mod manifest_validation;
@@ -70,6 +71,7 @@ mod xtask_types;
 use crate::manifest_validation::to_pascal_case;
 use crate::xtask_types::*;
 use docs_registry_contracts::*;
+use i18n_api_inventory::*;
 use install_dev::*;
 use manifest_io::*;
 use module_boundary_contracts::*;
@@ -132,6 +134,7 @@ fn main() -> Result<()> {
         "validate-manifest" => validate_manifest()?,
         "install-dev" => install_dev(&args[2..])?,
         "list-modules" => list_modules()?,
+        "i18n-api-inventory" => i18n_api_inventory(&args[2..])?,
         "module" => module_command(&args[2..])?,
         _ => {
             eprintln!("Unknown command: {}", args[1]);
@@ -151,6 +154,7 @@ fn print_usage() {
     println!("  validate-manifest   Validate modules.toml and rustok-module.toml files");
     println!("  install-dev         Bootstrap local non-Docker development install");
     println!("  list-modules        List all configured modules");
+    println!("  i18n-api-inventory  Report workspace usages of compatibility-only rustok-ui-i18n APIs");
     println!("  module validate     Validate module publish-readiness contracts");
     println!("  module test         Run or preview local module smoke checks");
     println!("  module stage-run    Execute a local follow-up validation stage and report it");
