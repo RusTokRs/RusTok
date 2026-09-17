@@ -849,9 +849,8 @@ mod tests {
     use chrono::Utc;
     use flex::FlexStandaloneService;
     use rustok_core::field_schema::{FieldDefinition, FieldType};
-    use rustok_migrations::SqliteTestMigrator as Migrator;
-    use rustok_test_utils::db::setup_test_db_with_migrations;
-    use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
+    use rustok_test_utils::db::setup_test_db;
+    use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
     use serde_json::json;
     use std::collections::{HashMap, HashSet};
     use uuid::Uuid;
@@ -866,6 +865,71 @@ mod tests {
             created_at: now,
             updated_at: now,
         }
+    }
+
+    async fn setup_standalone_test_db() -> DatabaseConnection {
+        let db = setup_test_db().await;
+
+        db.execute_unprepared(
+            r#"
+            CREATE TABLE IF NOT EXISTS tenants (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                slug TEXT NOT NULL UNIQUE,
+                domain TEXT,
+                settings JSON NOT NULL DEFAULT '{}',
+                default_locale TEXT NOT NULL DEFAULT 'en',
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS flex_schemas (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                slug TEXT NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
+                description TEXT,
+                fields_config JSON NOT NULL DEFAULT '[]',
+                settings JSON NOT NULL DEFAULT '{}',
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS flex_schema_translations (
+                schema_id TEXT NOT NULL,
+                locale TEXT NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (schema_id, locale)
+            );
+            CREATE TABLE IF NOT EXISTS flex_entries (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                schema_id TEXT NOT NULL,
+                entity_type TEXT,
+                entity_id TEXT,
+                data JSON NOT NULL DEFAULT '{}',
+                status TEXT NOT NULL DEFAULT 'draft',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS flex_entry_localized_values (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                entry_id TEXT NOT NULL,
+                locale TEXT NOT NULL,
+                data JSON NOT NULL DEFAULT '{}',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            "#,
+        )
+        .await
+        .expect("create tables for standalone flex tests");
+
+        db
     }
 
     #[test]
@@ -978,18 +1042,12 @@ mod tests {
 
     #[tokio::test]
     async fn create_entry_moves_localized_values_to_parallel_rows() {
-        let db = setup_test_db_with_migrations::<Migrator>().await;
-        let builder = db.get_database_backend();
-        let schema = sea_orm::Schema::new(builder);
-        let mut stmt = schema.create_table_from_entity(flex_entry_localized_values::Entity);
-        stmt.if_not_exists();
-        db.execute_raw(builder.build(&stmt))
-            .await
-            .expect("create flex_entry_localized_values table for standalone flex tests");
+        let db = setup_standalone_test_db().await;
         let service = FlexStandaloneSeaOrmService::new(db.clone());
         let tenant_id = Uuid::new_v4();
         let schema_id = Uuid::new_v4();
 
+        let now = Utc::now().fixed_offset();
         tenants::ActiveModel {
             id: Set(tenant_id),
             name: Set("Flex Tenant".to_string()),
@@ -998,8 +1056,8 @@ mod tests {
             settings: Set(json!({})),
             default_locale: Set("ru".to_string()),
             is_active: Set(true),
-            created_at: sea_orm::ActiveValue::NotSet,
-            updated_at: sea_orm::ActiveValue::NotSet,
+            created_at: Set(now),
+            updated_at: Set(now),
         }
         .insert(&db)
         .await
@@ -1090,18 +1148,12 @@ mod tests {
 
     #[tokio::test]
     async fn update_entry_preserves_omitted_localized_fields_when_patching_shared() {
-        let db = setup_test_db_with_migrations::<Migrator>().await;
-        let builder = db.get_database_backend();
-        let schema = sea_orm::Schema::new(builder);
-        let mut stmt = schema.create_table_from_entity(flex_entry_localized_values::Entity);
-        stmt.if_not_exists();
-        db.execute_raw(builder.build(&stmt))
-            .await
-            .expect("create flex_entry_localized_values table for standalone flex tests");
+        let db = setup_standalone_test_db().await;
         let service = FlexStandaloneSeaOrmService::new(db.clone());
         let tenant_id = Uuid::new_v4();
         let schema_id = Uuid::new_v4();
 
+        let now = Utc::now().fixed_offset();
         tenants::ActiveModel {
             id: Set(tenant_id),
             name: Set("Flex Tenant".to_string()),
@@ -1110,8 +1162,8 @@ mod tests {
             settings: Set(json!({})),
             default_locale: Set("ru".to_string()),
             is_active: Set(true),
-            created_at: sea_orm::ActiveValue::NotSet,
-            updated_at: sea_orm::ActiveValue::NotSet,
+            created_at: Set(now),
+            updated_at: Set(now),
         }
         .insert(&db)
         .await
@@ -1211,19 +1263,13 @@ mod tests {
 
     #[tokio::test]
     async fn update_entry_does_not_seed_default_locale_from_another_locale() {
-        let db = setup_test_db_with_migrations::<Migrator>().await;
-        let builder = db.get_database_backend();
-        let schema = sea_orm::Schema::new(builder);
-        let mut stmt = schema.create_table_from_entity(flex_entry_localized_values::Entity);
-        stmt.if_not_exists();
-        db.execute_raw(builder.build(&stmt))
-            .await
-            .expect("create flex_entry_localized_values table for standalone flex tests");
+        let db = setup_standalone_test_db().await;
         let service = FlexStandaloneSeaOrmService::new(db.clone());
         let tenant_id = Uuid::new_v4();
         let schema_id = Uuid::new_v4();
         let entry_id = Uuid::new_v4();
 
+        let now = Utc::now().fixed_offset();
         tenants::ActiveModel {
             id: Set(tenant_id),
             name: Set("Flex Tenant".to_string()),
@@ -1232,8 +1278,8 @@ mod tests {
             settings: Set(json!({})),
             default_locale: Set("en".to_string()),
             is_active: Set(true),
-            created_at: sea_orm::ActiveValue::NotSet,
-            updated_at: sea_orm::ActiveValue::NotSet,
+            created_at: Set(now),
+            updated_at: Set(now),
         }
         .insert(&db)
         .await
