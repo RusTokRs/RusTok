@@ -413,6 +413,14 @@ mod tests {
     }
 
     #[test]
+    fn persisted_hierarchy_validation_is_reclassified_as_invariant() {
+        let error = storage_category_tree_error(BlogError::validation(
+            "Blog category hierarchy cycle",
+        ));
+        assert!(matches!(error, BlogError::Invariant(_)));
+    }
+
+    #[test]
     fn rejects_missing_parent_and_unbounded_tree() {
         let root = Uuid::from_u128(1);
         let missing = Uuid::from_u128(99);
