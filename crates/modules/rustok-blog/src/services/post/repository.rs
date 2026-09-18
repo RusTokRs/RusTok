@@ -184,8 +184,8 @@ impl PostService {
                 active.update(txn).await.map_err(BlogError::from)?;
             }
             None => {
-                let title =
-                    title.ok_or_else(|| BlogError::validation("Title is required for a new locale"))?;
+                let title = title
+                    .ok_or_else(|| BlogError::validation("Title is required for a new locale"))?;
                 validate_title(&title)?;
                 let article_body = article_body
                     .ok_or_else(|| BlogError::validation("Content is required for a new locale"))?;
@@ -215,8 +215,6 @@ impl PostService {
 
         Ok(())
     }
-
-
 }
 
 pub(crate) async fn load_post_subject_snapshot(

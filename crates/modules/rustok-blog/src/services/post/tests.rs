@@ -64,11 +64,8 @@ fn post_list_query_clamps_bounds() {
 
 #[test]
 fn channel_visibility_normalizes_and_filters_blog_channel_lists() {
-    let channel_slugs = normalize_channel_slugs(&[
-        " Web ".to_string(),
-        "mobile".to_string(),
-        "web".to_string(),
-    ]);
+    let channel_slugs =
+        normalize_channel_slugs(&[" Web ".to_string(), "mobile".to_string(), "web".to_string()]);
 
     assert_eq!(channel_slugs, vec!["mobile".to_string(), "web".to_string()]);
     assert!(is_post_visible_for_channel(&channel_slugs, Some("web")));

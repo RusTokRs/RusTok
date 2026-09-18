@@ -213,10 +213,7 @@ impl PostService {
                     post.id
                 ))
             })?;
-            let tags = tags_map
-                .get(&post.id)
-                .cloned()
-                .unwrap_or_default();
+            let tags = tags_map.get(&post.id).cloned().unwrap_or_default();
 
             items.push(PostSummary {
                 id: post.id,
@@ -234,10 +231,7 @@ impl PostService {
                     .and_then(|category_id| category_names_map.get(&category_id).cloned()),
                 tags,
                 featured_image_url: post.featured_image_url.clone(),
-                channel_slugs: channel_slugs_map
-                    .get(&post.id)
-                    .cloned()
-                    .unwrap_or_default(),
+                channel_slugs: channel_slugs_map.get(&post.id).cloned().unwrap_or_default(),
                 comment_count: post.comment_count as i64,
                 published_at: post.published_at.map(Into::into),
                 created_at: post.created_at.into(),
@@ -341,10 +335,7 @@ impl PostService {
                     post.id
                 ))
             })?;
-            let tags = tags_map
-                .get(&post.id)
-                .cloned()
-                .unwrap_or_default();
+            let tags = tags_map.get(&post.id).cloned().unwrap_or_default();
 
             items.push(PostSummary {
                 id: post.id,
@@ -362,10 +353,7 @@ impl PostService {
                     .and_then(|category_id| category_names_map.get(&category_id).cloned()),
                 tags,
                 featured_image_url: post.featured_image_url.clone(),
-                channel_slugs: channel_slugs_map
-                    .get(&post.id)
-                    .cloned()
-                    .unwrap_or_default(),
+                channel_slugs: channel_slugs_map.get(&post.id).cloned().unwrap_or_default(),
                 comment_count: post.comment_count as i64,
                 published_at: post.published_at.map(Into::into),
                 created_at: post.created_at.into(),
@@ -498,10 +486,7 @@ impl PostService {
             status: storage_to_status(&post.status)?,
             category_id: post.category_id,
             category_name,
-            tags: tags_map
-                .get(&post.id)
-                .cloned()
-                .unwrap_or_default(),
+            tags: tags_map.get(&post.id).cloned().unwrap_or_default(),
             featured_image_url: post.featured_image_url,
             seo_title: translation.seo_title.clone(),
             seo_description: translation.seo_description.clone(),

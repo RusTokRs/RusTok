@@ -234,7 +234,10 @@ impl PostService {
             .filter(blog_post::Column::Version.eq(version));
 
         if let Some(slug) = normalized_slug {
-            update = update.col_expr(blog_post::Column::Slug, sea_orm::sea_query::Expr::value(slug));
+            update = update.col_expr(
+                blog_post::Column::Slug,
+                sea_orm::sea_query::Expr::value(slug),
+            );
         }
         match category_id {
             Patch::Keep => {}
@@ -319,8 +322,7 @@ impl PostService {
         } else {
             DomainEvent::BlogPostUpdated {
                 post_id,
-                locale: locale
-                    .expect("localized-only update requires a canonical locale"),
+                locale: locale.expect("localized-only update requires a canonical locale"),
             }
         };
         self.event_bus

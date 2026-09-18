@@ -17,8 +17,7 @@ const UNPUBLISH_POST_MUTATION: &str =
     "mutation UnpublishPost($id: UUID!) { unpublishPost(id: $id) }";
 const ARCHIVE_POST_MUTATION: &str =
     "mutation ArchivePost($id: UUID!, $reason: String) { archivePost(id: $id, reason: $reason) }";
-const RESTORE_POST_MUTATION: &str =
-    "mutation RestorePost($id: UUID!) { restorePost(id: $id) }";
+const RESTORE_POST_MUTATION: &str = "mutation RestorePost($id: UUID!) { restorePost(id: $id) }";
 const DELETE_POST_MUTATION: &str = "mutation DeletePost($id: UUID!) { deletePost(id: $id) }";
 
 #[derive(Debug, Deserialize)]
@@ -131,7 +130,6 @@ struct ArchivePostVariables {
     id: String,
     reason: Option<String>,
 }
-
 
 async fn request<V, T>(
     query: &str,

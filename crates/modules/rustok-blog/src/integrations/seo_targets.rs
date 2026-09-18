@@ -12,7 +12,9 @@ use rustok_seo_targets::{
 use url::Url;
 
 use crate::state_machine::BlogPostStatus;
-use crate::{BlogError, PostListQuery, PostResponse, PostService, PostSortField, PostSortOrder, PostSummary};
+use crate::{
+    BlogError, PostListQuery, PostResponse, PostService, PostSortField, PostSortOrder, PostSummary,
+};
 
 const BULK_FETCH_SIZE: u32 = 48;
 
@@ -54,7 +56,8 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
                     Some(request.default_locale),
                 )
                 .await,
-        )? else {
+        )?
+        else {
             return Ok(None);
         };
 
@@ -225,7 +228,8 @@ async fn load_post_summary(
                 Some(default_locale),
             )
             .await,
-    )? else {
+    )?
+    else {
         return Ok(None);
     };
     let mapped = map_post_response(post);
@@ -254,7 +258,8 @@ async fn load_post_sitemap_candidate(
                 Some(default_locale),
             )
             .await,
-    )? else {
+    )?
+    else {
         return Ok(None);
     };
     let mapped = map_post_response(post);
