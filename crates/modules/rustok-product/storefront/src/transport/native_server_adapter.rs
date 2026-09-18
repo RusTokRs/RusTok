@@ -42,6 +42,11 @@ impl From<ServerFnError> for ApiError {
 }
 
 #[cfg(feature = "ssr")]
+fn map_product_internal_error() -> ServerFnError {
+    ServerFnError::new(rustok_product::ProductPublicError::internal().to_string())
+}
+
+#[cfg(feature = "ssr")]
 fn map_product_service_error(
     error: rustok_product::CommerceError,
     operation: &'static str,
@@ -307,7 +312,7 @@ async fn storefront_catalog_search_options_native(
 ) -> Result<ProductCatalogSearchOptions, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
+        use leptos::prelude::use_context;
         use rustok_api::HostRuntimeContext;
         use rustok_outbox::TransactionalEventBus;
         use rustok_product::ProductCatalogSchemaService;
@@ -315,17 +320,14 @@ async fn storefront_catalog_search_options_native(
         if locale.trim().is_empty() {
             return Err(ServerFnError::new("locale is required"));
         }
-        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let runtime_ctx = use_context::<HostRuntimeContext>()
+            .ok_or_else(map_product_internal_error)?;
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
-            .ok_or_else(|| {
-                ServerFnError::new(
-                    "product/storefront catalog search options requires TransactionalEventBus in host runtime context",
-                )
-            })?;
+            .ok_or_else(map_product_internal_error)?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|_| map_product_internal_error())?;
         let service = ProductCatalogSchemaService::new(runtime_ctx.db_clone(), event_bus);
         let category_options = service
             .list_categories(tenant.id, locale.trim())
@@ -383,28 +385,25 @@ async fn storefront_products_native(
 ) -> Result<StorefrontProductsData, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
+        use leptos::prelude::use_context;
         use rustok_api::HostRuntimeContext;
         use rustok_outbox::TransactionalEventBus;
         use rustok_pricing::{PriceResolutionContext, PricingService};
         use rustok_product::CatalogService;
         use uuid::Uuid;
 
-        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let runtime_ctx = use_context::<HostRuntimeContext>()
+            .ok_or_else(map_product_internal_error)?;
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
-            .ok_or_else(|| {
-                ServerFnError::new(
-                    "product/storefront-data requires TransactionalEventBus in host runtime context",
-                )
-            })?;
+            .ok_or_else(map_product_internal_error)?;
         let db = runtime_ctx.db_clone();
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .ok();
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|_| map_product_internal_error())?;
         let requested_locale = resolve_requested_locale(
             locale,
             request_context.as_ref().map(|ctx| ctx.locale.as_str()),
