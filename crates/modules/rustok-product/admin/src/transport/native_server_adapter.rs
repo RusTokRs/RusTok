@@ -241,6 +241,11 @@ fn parse_optional_uuid(
 }
 
 #[cfg(feature = "ssr")]
+fn map_product_internal_error() -> ServerFnError {
+    ServerFnError::new(rustok_product::ProductPublicError::internal().to_string())
+}
+
+#[cfg(feature = "ssr")]
 fn map_product_service_error(
     error: rustok_product::CommerceError,
     operation: &'static str,
@@ -491,11 +496,7 @@ fn service_from_context(
 ) -> Result<rustok_product::ProductCatalogSchemaService, ServerFnError> {
     let event_bus = runtime_ctx
         .shared_get::<rustok_outbox::TransactionalEventBus>()
-        .ok_or_else(|| {
-            ServerFnError::new(
-                "product/admin native transport requires TransactionalEventBus in host runtime context",
-            )
-        })?;
+        .ok_or_else(map_product_internal_error)?;
     Ok(rustok_product::ProductCatalogSchemaService::new(
         runtime_ctx.db_clone(),
         event_bus,
@@ -511,14 +512,20 @@ async fn native_context() -> Result<
     ),
     ServerFnError,
 > {
-    let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+    let runtime_ctx = leptos::prelude::use_context::<rustok_api::HostRuntimeContext>()
+        .ok_or_else(map_product_internal_error)?;
     let service = service_from_context(&runtime_ctx)?;
     let auth = leptos_axum::extract::<rustok_api::AuthContext>()
         .await
-        .map_err(ServerFnError::new)?;
+        .map_err(|_| ServerFnError::new("Authentication required"))?;
     let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
         .await
-        .map_err(ServerFnError::new)?;
+        .map_err(|_| map_product_internal_error())?;
+    if auth.tenant_id != tenant.id {
+        return Err(ServerFnError::new(
+            "Authenticated actor is not bound to the current tenant",
+        ));
+    }
     Ok((service, auth, tenant))
 }
 
