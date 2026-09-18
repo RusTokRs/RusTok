@@ -91,11 +91,11 @@ struct NativeContext {
 
 #[cfg(feature = "ssr")]
 async fn native_context() -> Result<NativeContext, ServerFnError> {
-    use leptos::prelude::expect_context;
+    use leptos::prelude::use_context;
     use rustok_api::HostRuntimeContext;
     use rustok_outbox::TransactionalEventBus;
 
-    let runtime = expect_context::<HostRuntimeContext>();
+    let runtime = use_context::<HostRuntimeContext>().ok_or_else(public_internal_error)?;
     let auth = leptos_axum::extract::<rustok_api::AuthContext>()
         .await
         .map_err(|_| ServerFnError::new("Authentication required"))?;
