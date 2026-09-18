@@ -30,6 +30,22 @@ const profiles = [
   },
 ];
 
+
+const uiProfiles = [
+  {
+    crate: "rustok-blog-admin",
+    source: "crates/modules/rustok-blog/admin/src",
+    requiredDirectories: ["core", "transport", "ui"],
+    maxRustFileBytes: 40 * 1024,
+  },
+  {
+    crate: "rustok-blog-storefront",
+    source: "crates/modules/rustok-blog/storefront/src",
+    requiredDirectories: ["core", "transport", "ui"],
+    maxRustFileBytes: 40 * 1024,
+  },
+];
+
 const failures = [];
 
 function fail(message) {
@@ -177,6 +193,47 @@ for (const profile of profiles) {
     ],
     "service",
   );
+}
+
+for (const profile of uiProfiles) {
+  const sourceRoot = join(repoRoot, profile.source);
+  if (!existsSync(sourceRoot)) {
+    fail(`${profile.crate}: missing UI source root ${profile.source}`);
+    continue;
+  }
+
+  for (const directory of profile.requiredDirectories) {
+    const path = join(sourceRoot, directory);
+    if (!existsSync(path) || !statSync(path).isDirectory()) {
+      fail(`${profile.crate}: missing canonical UI source slot ${directory}/`);
+    }
+  }
+
+  for (const file of rustFiles(sourceRoot)) {
+    const size = statSync(file).size;
+    if (size > profile.maxRustFileBytes) {
+      fail(
+        `${relative(repoRoot, file)}: ${size} bytes exceeds the canonical module-owned UI limit of ${profile.maxRustFileBytes} bytes; split commands, presentation, components, tests, or transport responsibilities`,
+      );
+    }
+  }
+}
+
+const adminCore = readFileSync(
+  join(repoRoot, "crates/modules/rustok-blog/admin/src/core.rs"),
+  "utf8",
+);
+for (const marker of ["mod commands;", "mod presentation;", "#[cfg(test)]\nmod tests;"]) {
+  if (!adminCore.includes(marker)) {
+    fail(`rustok-blog-admin: core.rs must remain a facade over canonical core responsibilities; missing ${marker}`);
+  }
+}
+const adminUi = readFileSync(
+  join(repoRoot, "crates/modules/rustok-blog/admin/src/ui/mod.rs"),
+  "utf8",
+);
+if (!adminUi.includes("mod components;")) {
+  fail("rustok-blog-admin: reusable render components must live outside the primary Leptos controller");
 }
 
 const retiredBlogPhysicalPaths = [

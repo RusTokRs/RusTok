@@ -30,6 +30,23 @@ The initial strict reference is `rustok-blog`. A module should be enrolled only
 after its physical move is complete; enrollment is a one-way architecture gate,
 not an opt-in alternate style.
 
+## Canonical reference-contract verification
+
+For a module that is used as a migration/reference template, run both guards:
+
+```bash
+npm run verify:module-source-layout
+npm run verify:module-reference-contract
+```
+
+The first guard checks physical ownership and file/layer boundaries. The second
+checks semantic reference invariants such as truthful locale writes, explicit
+nullable patches, predecessor CAS, tenant authority, lifecycle enforcement,
+derived-revision isolation, safe public errors, private persistence entities,
+owner-service integration seams, and FBA write command identity.
+
+A clean layout with a failing reference-contract guard is not a canonical module.
+
 ## Module Validation
 
 For module manifest or ownership changes:

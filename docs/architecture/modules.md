@@ -151,6 +151,8 @@ defined in the backend implementation guide and
 [ADR 2026-09-18](../../DECISIONS/2026-09-18-canonical-native-module-source-layout.md).
 The physical layout does not transfer semantic ownership: domain, services,
 persistence, integrations and transports remain facets of one module owner.
+Semantic eligibility as a reference is defined separately by the
+[canonical native module reference contract](../../DECISIONS/2026-09-18-canonical-native-module-reference-contract.md).
 
 `rustok-blog` is the first strict reference implementation. Existing modules are
 migrated incrementally and are enrolled in

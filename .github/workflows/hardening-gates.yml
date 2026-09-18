@@ -30,6 +30,8 @@ jobs:
           node-version: 22
       - name: Verify canonical native module source layout
         run: npm run verify:module-source-layout
+      - name: Verify canonical module reference contract
+        run: npm run verify:module-reference-contract
       - name: Verify module manifest documentation parity
         run: node scripts/verify/verify-module-manifest-docs-drift.mjs
       - name: Verify security advisory exceptions
