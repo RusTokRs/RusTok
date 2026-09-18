@@ -50,7 +50,7 @@ impl BlogCategoryDeleteCleanup {
         lock_category_tree_in_tx(txn, tenant_id).await?;
 
         if self.blog_category_id != taxonomy_category_id {
-            return Err(BlogError::validation(format!(
+            return Err(BlogError::invariant(format!(
                 "Blog category {} does not match delete target {}",
                 self.blog_category_id, taxonomy_category_id
             )));
@@ -135,8 +135,8 @@ async fn lock_category_tree_in_tx(txn: &DatabaseTransaction, tenant_id: Uuid) ->
             Ok(())
         }
         DatabaseBackend::Sqlite => Ok(()),
-        backend => Err(BlogError::validation(format!(
-            "Blog category hierarchy writes do not support {backend:?}"
+        backend => Err(BlogError::invariant(format!(
+            "Blog category hierarchy writes do not support storage backend {backend:?}"
         ))),
     }
 }
@@ -198,7 +198,7 @@ async fn canonicalize_siblings_in_tx(
     let mut sibling_ids = Vec::with_capacity(siblings.len());
     for (index, sibling) in siblings.into_iter().enumerate() {
         let desired_position = i32::try_from(index)
-            .map_err(|_| BlogError::validation("Category sibling position exceeds i32 range"))?;
+            .map_err(|_| BlogError::invariant("Persisted category sibling position exceeds i32 range"))?;
         sibling_ids.push(sibling.term_id);
         if sibling.position == desired_position {
             continue;
@@ -213,6 +213,12 @@ async fn canonicalize_siblings_in_tx(
 fn map_blog_error(error: BlogError) -> TaxonomyError {
     match error {
         BlogError::Database(error) => TaxonomyError::Database(error),
-        other => TaxonomyError::validation(format!("Blog Category delete cleanup failed: {other}")),
+        BlogError::CategoryNotFound(category_id) => TaxonomyError::TermNotFound(category_id),
+        BlogError::Conflict(message) => TaxonomyError::conflict(message),
+        BlogError::Forbidden(message) => TaxonomyError::forbidden(message),
+        BlogError::Validation(message) => TaxonomyError::validation(message),
+        other => TaxonomyError::internal(format!(
+            "Blog Category delete cleanup failed: {other:?}"
+        )),
     }
 }

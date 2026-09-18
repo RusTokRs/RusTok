@@ -72,7 +72,8 @@ impl CategoryCommandService {
             .iter()
             .map(|(id, (parent, _))| (*id, *parent))
             .collect::<HashMap<_, _>>();
-        let old_depths = validate_and_compute_depths(&parent_by_id)?;
+        let old_depths = validate_and_compute_depths(&parent_by_id)
+            .map_err(storage_category_tree_error)?;
         parent_by_id.insert(category_id, input.parent_id);
         let desired_depths = validate_and_compute_depths(&parent_by_id)?;
 
@@ -155,13 +156,13 @@ impl CategoryCommandService {
             &old_depths,
             &desired_depths,
             &touched,
-        ));
+        )?);
 
         let moved = updated
             .iter()
             .find(|placement| placement.id == category_id)
             .cloned()
-            .ok_or_else(|| BlogError::validation("Moved category placement was not persisted"))?;
+            .ok_or_else(|| BlogError::invariant("Moved category placement was not persisted"))?;
 
         txn.commit().await?;
         Ok(MoveCategoryResponse { moved, updated })
@@ -180,8 +181,8 @@ async fn lock_category_tree_in_tx(txn: &DatabaseTransaction, tenant_id: Uuid) ->
             Ok(())
         }
         DatabaseBackend::Sqlite => Ok(()),
-        backend => Err(BlogError::validation(format!(
-            "Blog category hierarchy commands do not support {backend:?}"
+        backend => Err(BlogError::invariant(format!(
+            "Blog category hierarchy commands do not support storage backend {backend:?}"
         ))),
     }
 }
@@ -197,8 +198,8 @@ async fn load_categories_in_tx(
         .all(txn)
         .await?;
     if categories.len() > MAX_BLOG_CATEGORY_TREE_NODES as usize {
-        return Err(BlogError::validation(format!(
-            "Blog category tree exceeds the bounded limit of {MAX_BLOG_CATEGORY_TREE_NODES} nodes"
+        return Err(BlogError::invariant(format!(
+            "Persisted Blog category tree exceeds the bounded limit of {MAX_BLOG_CATEGORY_TREE_NODES} nodes"
         )));
     }
     Ok(categories)
@@ -249,7 +250,7 @@ async fn persist_sibling_order(
         let position = i32::try_from(position)
             .map_err(|_| BlogError::validation("Category sibling position exceeds i32 range"))?;
         let depth = *desired_depths.get(&category_id).ok_or_else(|| {
-            BlogError::validation(format!(
+            BlogError::invariant(format!(
                 "Blog category depth was not computed for category {category_id}"
             ))
         })?;
@@ -295,7 +296,7 @@ fn persist_descendant_depth_changes(
     old_depths: &HashMap<Uuid, i32>,
     desired_depths: &HashMap<Uuid, i32>,
     touched: &HashSet<Uuid>,
-) -> Vec<CategoryPlacementResponse> {
+) -> BlogResult<Vec<CategoryPlacementResponse>> {
     let mut placements = Vec::new();
     let mut category_ids = blog_ids.iter().copied().collect::<Vec<_>>();
     category_ids.sort();
@@ -305,8 +306,16 @@ fn persist_descendant_depth_changes(
             continue;
         }
         let (parent_id, position) = placement_by_id[&category_id];
-        let old_depth = old_depths.get(&category_id).copied().unwrap_or(0);
-        let desired_depth = desired_depths.get(&category_id).copied().unwrap_or(0);
+        let old_depth = old_depths.get(&category_id).copied().ok_or_else(|| {
+            BlogError::invariant(format!(
+                "Persisted Blog category depth is missing for category {category_id}"
+            ))
+        })?;
+        let desired_depth = desired_depths.get(&category_id).copied().ok_or_else(|| {
+            BlogError::invariant(format!(
+                "Desired Blog category depth is missing for category {category_id}"
+            ))
+        })?;
         if old_depth != desired_depth {
             placements.push(CategoryPlacementResponse {
                 id: category_id,
@@ -316,7 +325,16 @@ fn persist_descendant_depth_changes(
             });
         }
     }
-    placements
+    Ok(placements)
+}
+
+fn storage_category_tree_error(error: BlogError) -> BlogError {
+    match error {
+        BlogError::Validation(message) => BlogError::invariant(format!(
+            "Persisted Blog category hierarchy is invalid: {message}"
+        )),
+        other => other,
+    }
 }
 
 fn validate_and_compute_depths(
@@ -392,6 +410,14 @@ mod tests {
 
         let cycle = HashMap::from([(root, Some(child)), (child, Some(root))]);
         assert!(validate_and_compute_depths(&cycle).is_err());
+    }
+
+    #[test]
+    fn persisted_hierarchy_validation_is_reclassified_as_invariant() {
+        let error = storage_category_tree_error(BlogError::validation(
+            "Blog category hierarchy cycle",
+        ));
+        assert!(matches!(error, BlogError::Invariant(_)));
     }
 
     #[test]

@@ -36,6 +36,8 @@ pub enum ProfileError {
     PresentationUnavailable,
     #[error("profile event publication is temporarily unavailable")]
     EventPublishUnavailable,
+    #[error("profile taxonomy dependency is temporarily unavailable")]
+    TaxonomyUnavailable(String),
     #[error(transparent)]
     Database(#[from] DbErr),
 }
@@ -58,6 +60,7 @@ impl ProfileError {
             Self::Validation(_) => "profiles.validation_failed",
             Self::PresentationUnavailable => "profiles.presentation_unavailable",
             Self::EventPublishUnavailable => "profiles.event_publish_unavailable",
+            Self::TaxonomyUnavailable(_) => "profiles.taxonomy_unavailable",
             Self::Database(_) => "profiles.storage_unavailable",
         }
     }
@@ -65,7 +68,10 @@ impl ProfileError {
     pub const fn is_retryable(&self) -> bool {
         matches!(
             self,
-            Self::PresentationUnavailable | Self::EventPublishUnavailable | Self::Database(_)
+            Self::PresentationUnavailable
+                | Self::EventPublishUnavailable
+                | Self::TaxonomyUnavailable(_)
+                | Self::Database(_)
         )
     }
 }
@@ -74,6 +80,7 @@ impl From<rustok_taxonomy::TaxonomyError> for ProfileError {
     fn from(value: rustok_taxonomy::TaxonomyError) -> Self {
         match value {
             rustok_taxonomy::TaxonomyError::Database(err) => Self::Database(err),
+            rustok_taxonomy::TaxonomyError::Internal(message) => Self::TaxonomyUnavailable(message),
             rustok_taxonomy::TaxonomyError::Validation(message)
             | rustok_taxonomy::TaxonomyError::DuplicateCanonicalKey(message)
             | rustok_taxonomy::TaxonomyError::DuplicateSlug(message)
@@ -112,6 +119,11 @@ mod tests {
     fn only_availability_failures_are_retryable() {
         assert!(ProfileError::PresentationUnavailable.is_retryable());
         assert!(ProfileError::EventPublishUnavailable.is_retryable());
+        assert!(ProfileError::TaxonomyUnavailable("private detail".into()).is_retryable());
+        assert_eq!(
+            ProfileError::TaxonomyUnavailable("private detail".into()).code(),
+            "profiles.taxonomy_unavailable"
+        );
         assert!(!ProfileError::InvalidHandle.is_retryable());
     }
 }

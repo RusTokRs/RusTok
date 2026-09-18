@@ -6,6 +6,9 @@ pub enum TaxonomyError {
     #[error("Database error: {0}")]
     Database(#[from] sea_orm::DbErr),
 
+    #[error("Taxonomy internal operation failed")]
+    Internal(String),
+
     #[error("Taxonomy term not found: {0}")]
     TermNotFound(Uuid),
 
@@ -34,6 +37,10 @@ pub enum TaxonomyError {
 pub type TaxonomyResult<T> = Result<T, TaxonomyError>;
 
 impl TaxonomyError {
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self::Internal(message.into())
+    }
+
     pub fn forbidden(message: impl Into<String>) -> Self {
         Self::Forbidden(message.into())
     }
@@ -44,5 +51,18 @@ impl TaxonomyError {
 
     pub fn conflict(message: impl Into<String>) -> Self {
         Self::Conflict(message.into())
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::TaxonomyError;
+
+    #[test]
+    fn internal_error_display_is_redacted() {
+        let error = TaxonomyError::internal("postgresql://private-host/secret");
+        assert_eq!(error.to_string(), "Taxonomy internal operation failed");
+        assert!(!error.to_string().contains("private-host"));
     }
 }

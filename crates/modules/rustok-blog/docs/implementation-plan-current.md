@@ -1,6 +1,6 @@
 # rustok-blog canonical implementation cursor
 
-Status: `canonical_reference_v1_hardening_in_progress_after_taxonomy_cat_17`.
+Status: `canonical_reference_v1_source_certified_execution_evidence_pending`.
 
 This document is the canonical **current** source cursor for `rustok-blog`.
 `crates/modules/rustok-blog/docs/implementation-plan.md` and the standalone
@@ -34,11 +34,23 @@ The hardened contract now requires:
 - stable Comments write `command_id` across retries while FBA remains honestly
   `boundary_ready`;
 - module-owned UI separation into core commands/presentation/tests, transport,
-  and render components.
+  and render components;
+- one owner permission namespace for Blog post reads/writes (`BlogPosts`, never the
+  generic `Posts` resource as a privileged-read fallback);
+- storage/canonical-projection corruption classified as internal invariant failures,
+  including persisted status decoding and missing/duplicate Taxonomy Category rows;
+- typed Taxonomy dependency failures preserving 404/409/internal semantics across
+  the Blog boundary;
+- native admin/storefront server functions using fallible host-context lookup and
+  redacted owner-owned internal errors rather than raw runtime/dependency details.
 
 The machine gates are `npm run verify:module-source-layout` and
 `npm run verify:module-reference-contract`. The semantic contract is documented
 in `DECISIONS/2026-09-18-canonical-native-module-reference-contract.md`.
+
+The final source audit after #4072 is complete at the architecture/source level.
+Maintainer-owned compile/test/runtime evidence remains separate; this status does not
+promote Comments FBA beyond `boundary_ready`.
 
 Blog FBA registry schema v14 and Comments projection evidence schema v5 encode
 the corrected derived-state contract. Runtime/remote evidence is still pending,

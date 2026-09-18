@@ -53,16 +53,16 @@ async fn create_blog_comment_native(
 ) -> Result<BlogCommentDetail, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
+        use leptos::prelude::use_context;
         use rustok_api::{Action, HostRuntimeContext, Permission, Resource};
         use rustok_outbox::TransactionalEventBus;
 
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|_| ServerFnError::new("Authentication required"))?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|_| public_internal_error())?;
         if auth.tenant_id != tenant.id {
             return Err(ServerFnError::new(
                 "Blog comment creation must use the current authenticated tenant",
@@ -75,7 +75,8 @@ async fn create_blog_comment_native(
             return Err(ServerFnError::new("comments:create required"));
         }
 
-        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let runtime_ctx =
+            use_context::<HostRuntimeContext>().ok_or_else(public_internal_error)?;
         match rustok_api::is_tenant_module_enabled(runtime_ctx.db(), tenant.id, MODULE_SLUG).await {
             Ok(true) => {}
             Ok(false) => return Err(ServerFnError::new("Blog module is not enabled")),
@@ -87,11 +88,7 @@ async fn create_blog_comment_native(
         }
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
-            .ok_or_else(|| {
-                ServerFnError::new(
-                    "blog/comment-create requires TransactionalEventBus in host runtime context",
-                )
-            })?;
+            .ok_or_else(public_internal_error)?;
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .ok();
@@ -168,6 +165,12 @@ fn public_blog_error(error: rustok_blog::BlogError) -> ServerFnError {
     ServerFnError::new(format!("{}: {}", public.code, public.message))
 }
 
+#[cfg(feature = "ssr")]
+fn public_internal_error() -> ServerFnError {
+    let public = rustok_blog::BlogPublicError::internal();
+    ServerFnError::new(format!("{}: {}", public.code, public.message))
+}
+
 #[server(prefix = "/api/fn", endpoint = "blog/storefront-data")]
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 async fn storefront_blog_native(
@@ -178,7 +181,7 @@ async fn storefront_blog_native(
 ) -> Result<StorefrontBlogData, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
+        use leptos::prelude::use_context;
         use rustok_api::HostRuntimeContext;
         use rustok_blog::{
             BlogPostStatus, PostListQuery, PostService, PostSortField, PostSortOrder,
@@ -188,14 +191,11 @@ async fn storefront_blog_native(
         use rustok_outbox::TransactionalEventBus;
         use rustok_tenant::TenantService;
 
-        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let runtime_ctx =
+            use_context::<HostRuntimeContext>().ok_or_else(public_internal_error)?;
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
-            .ok_or_else(|| {
-                ServerFnError::new(
-                    "blog/storefront-data requires TransactionalEventBus in host runtime context",
-                )
-            })?;
+            .ok_or_else(public_internal_error)?;
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .ok();
@@ -210,15 +210,11 @@ async fn storefront_blog_native(
                 .as_deref()
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
-                .ok_or_else(|| {
-                    ServerFnError::new(
-                        "blog/storefront-data requires tenant context or tenant slug",
-                    )
-                })?;
+                .ok_or_else(public_internal_error)?;
             let tenant = TenantService::new(runtime_ctx.db_clone())
                 .get_tenant_by_slug(slug)
                 .await
-                .map_err(|_| ServerFnError::new("Tenant lookup failed"))?;
+                .map_err(|_| public_internal_error())?;
             (tenant.id, tenant.default_locale)
         };
 

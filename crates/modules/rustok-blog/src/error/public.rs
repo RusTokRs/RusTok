@@ -12,6 +12,17 @@ pub struct BlogPublicError {
     pub message: String,
 }
 
+impl BlogPublicError {
+    /// Safe descriptor for host/runtime failures that must not expose infrastructure details.
+    pub fn internal() -> Self {
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            code: ErrorKind::Internal.error_code().to_string(),
+            message: "The Blog operation could not be completed".to_string(),
+        }
+    }
+}
+
 impl From<BlogError> for BlogPublicError {
     fn from(error: BlogError) -> Self {
         let rich: RichError = error.into();
@@ -81,5 +92,19 @@ mod tests {
         let conflict = to_http_error(BlogError::conflict("internal predecessor detail"));
         assert_eq!(conflict.status, StatusCode::CONFLICT);
         assert!(!conflict.message.contains("predecessor"));
+    }
+
+    #[test]
+    fn invariant_and_native_internal_details_are_redacted() {
+        let invariant = to_http_error(BlogError::invariant(
+            "persisted-status=secret-corruption-marker",
+        ));
+        assert_eq!(invariant.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(!invariant.message.contains("secret-corruption-marker"));
+
+        let native = BlogPublicError::internal();
+        assert_eq!(native.status, StatusCode::INTERNAL_SERVER_ERROR.as_u16());
+        assert!(!native.message.contains("runtime"));
+        assert!(!native.message.contains("database"));
     }
 }

@@ -209,6 +209,7 @@ fn map_profile_error(error: ProfileError) -> async_graphql::Error {
         ProfileError::LocalizedCopyNotFound(_)
         | ProfileError::PresentationUnavailable
         | ProfileError::EventPublishUnavailable
+        | ProfileError::TaxonomyUnavailable(_)
         | ProfileError::Database(_) => <FieldError as GraphQLError>::internal_error(&message),
     }
 }

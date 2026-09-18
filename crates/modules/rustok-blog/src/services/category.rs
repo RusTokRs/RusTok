@@ -258,8 +258,8 @@ async fn lock_category_tree_in_tx(txn: &DatabaseTransaction, tenant_id: Uuid) ->
             Ok(())
         }
         DatabaseBackend::Sqlite => Ok(()),
-        backend => Err(BlogError::validation(format!(
-            "Blog category hierarchy writes do not support {backend:?}"
+        backend => Err(BlogError::invariant(format!(
+            "Blog category hierarchy writes do not support storage backend {backend:?}"
         ))),
     }
 }

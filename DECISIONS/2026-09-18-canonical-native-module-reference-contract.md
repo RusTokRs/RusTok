@@ -2,7 +2,7 @@
 
 - Date: 2026-09-18
 - Decision status: Accepted
-- Implementation status: Blog reference v1 in progress
+- Implementation status: Blog reference v1 source-certified; maintainer execution evidence remains pending
 - Owners: platform architecture / module owners
 - Extends: [Canonical native module source layout](./2026-09-18-canonical-native-module-source-layout.md)
 - Extends: [Multilingual DB storage via parallel localized records](./2026-04-05-multilingual-db-storage-parallel-localized-records.md)
@@ -39,6 +39,10 @@ physical layout and these semantic invariants are machine-guarded.
 The request/runtime `TenantContext` is authoritative. Optional tenant arguments
 may confirm the current tenant but may never switch it. Authenticated actor tenant
 and current tenant must match on both read and write paths.
+
+Authorization must use the owner module's registered permission resource consistently.
+For Blog post owner state that resource is `BlogPosts`; generic `Posts` authority must
+not silently replace or supplement it on privileged reads.
 
 ### Multilingual provenance
 
@@ -78,10 +82,22 @@ Owner errors keep internal context, but every public transport maps them through
 one owner-controlled safe descriptor. Database, connector, host and SQL details
 must not be rendered through `Display` at HTTP, GraphQL, or native UI boundaries.
 
+Persisted-state decoding failures, missing canonical cross-owner projections, broken
+host composition and unsupported storage/runtime state are internal invariants, not
+client validation. Typed dependency boundaries preserve semantic error classes such
+as not-found, conflict, forbidden, validation and internal failure instead of
+collapsing them into a generic 400 response.
+
+Native server-function adapters resolve host context fallibly and use the same safe
+owner descriptor; they must not panic on missing composition state or expose runtime
+type/dependency names.
+
 ### Reads and pagination
 
 - Violated storage invariants fail closed; readers do not manufacture empty valid
   objects.
+- Canonical cross-owner projections are part of the storage contract: missing or
+  duplicate canonical identities fail as internal invariants rather than validation.
 - Offset pagination uses deterministic ordering with a stable unique tie-breaker.
 - Sort/filter fields are typed or validated; unknown values are not silently
   reinterpreted.
@@ -116,6 +132,10 @@ responsibility rather than arbitrary line ranges.
 `crates/modules/rustok-blog` is reference v1. Its backend source layout is
 guarded by `npm run verify:module-source-layout`; its semantic invariants are
 guarded by `npm run verify:module-reference-contract`.
+
+The final post-#4072 source audit classifies Blog reference v1 as source-certified.
+That certification does not claim maintainer-owned compile/runtime evidence and does
+not change any FBA evidence level.
 
 A module must not be migrated by mechanically copying Blog files. It should copy
 the responsibility vocabulary and invariants, then implement its own owner

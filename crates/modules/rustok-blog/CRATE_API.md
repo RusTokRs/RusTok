@@ -140,6 +140,10 @@ GraphQL tenant arguments may only match the current tenant; they cannot switch
 tenants. Authenticated actor tenant mismatch fails closed on both queries and
 mutations.
 
+Privileged Blog post reads use the same owner permission resource as Blog writes:
+`Resource::BlogPosts`. The generic platform `Resource::Posts` permission is not a
+fallback authority for Blog drafts or archived posts.
+
 ## Public error contract
 
 Internal services return `BlogError`. Public HTTP/GraphQL/native boundaries map
@@ -148,6 +152,12 @@ through the owner-controlled `BlogPublicError` descriptor.
 Database/connector/internal details are redacted. Typed not-found, conflict,
 forbidden, validation and business errors retain their public status/code
 semantics.
+
+Persisted enum decoding, missing/duplicate canonical Taxonomy Category projections,
+unsupported storage backends and broken host composition are internal failures, not
+client validation. Taxonomy dependency errors preserve not-found/conflict/internal
+classification when crossing back into Blog. Native server functions never render
+raw owner/dependency errors and resolve host runtime context fallibly.
 
 ## Integration boundary
 

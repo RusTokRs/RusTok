@@ -50,7 +50,7 @@ pub(crate) fn enforce_create_author(
 /// scopes or the request-effective permission snapshot.
 pub(crate) fn can_read_non_public_posts(security: &SecurityContext) -> bool {
     matches!(
-        security.get_scope(Resource::Posts, Action::Read),
+        security.get_scope(Resource::BlogPosts, Action::Read),
         PermissionScope::All
     )
 }
@@ -73,7 +73,7 @@ mod tests {
         let tenant_wide = SecurityContext::from_permissions(
             UserRole::Manager,
             Some(uuid::Uuid::new_v4()),
-            [Permission::POSTS_READ],
+            [Permission::BLOG_POSTS_READ],
         );
         assert!(can_read_non_public_posts(&tenant_wide));
     }

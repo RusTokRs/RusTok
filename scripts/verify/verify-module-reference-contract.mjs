@@ -65,6 +65,42 @@ forbid("crates/modules/rustok-blog/src/services/post/commands.rs", [
   "PLATFORM_FALLBACK_LOCALE",
 ]);
 
+requireAll("crates/modules/rustok-blog/src/services/post/mod.rs", [
+  "other => Err(BlogError::invariant(format!(",
+  '"Unknown persisted Blog post status: {other}"',
+]);
+forbid("crates/modules/rustok-blog/src/services/post/mod.rs", [
+  '"Unknown blog post status: {other}"',
+]);
+
+requireAll("crates/modules/rustok-blog/src/services/rbac.rs", [
+  "Resource::BlogPosts, Action::Read",
+  "Permission::BLOG_POSTS_READ",
+]);
+forbid("crates/modules/rustok-blog/src/services/rbac.rs", [
+  "Resource::Posts, Action::Read",
+  "Permission::POSTS_READ",
+]);
+
+requireAll("crates/modules/rustok-blog/src/services/category_owner.rs", [
+  'BlogError::invariant(\n                "Blog Category delete requires host-composed Taxonomy capability cleanup"',
+  '"Blog Category Taxonomy projection coverage is incomplete"',
+  '"Blog Category Taxonomy projection contains duplicate identities"',
+]);
+requireAll("crates/modules/rustok-blog/src/services/category_name_projection.rs", [
+  "BlogError::invariant(",
+  ".map_err(BlogError::from)?",
+]);
+requireAll("crates/modules/rustok-blog/src/services/category_command.rs", [
+  ".map_err(storage_category_tree_error)?",
+  'BlogError::invariant("Moved category placement was not persisted")',
+  "Persisted Blog category depth is missing",
+]);
+requireAll("crates/modules/rustok-blog/src/services/category_delete.rs", [
+  "TaxonomyError::internal(format!(",
+  "BlogError::CategoryNotFound(category_id) => TaxonomyError::TermNotFound(category_id)",
+]);
+
 requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
   '"Title is required for a new locale"',
   '"Content is required for a new locale"',
@@ -106,6 +142,22 @@ requireAll("crates/modules/rustok-blog/src/error/public.rs", [
   "ErrorKind::Database | ErrorKind::Internal",
   '"The Blog operation could not be completed"',
 ]);
+
+requireAll("crates/modules/rustok-blog/src/error/public.rs", [
+  "pub fn internal() -> Self",
+  "StatusCode::INTERNAL_SERVER_ERROR.as_u16()",
+]);
+requireAll("crates/modules/rustok-blog/src/error/mod.rs", [
+  "TaxonomyTermNotFound(Uuid)",
+  "TaxonomyError::Internal(message) => Self::Invariant",
+  "TaxonomyError::Conflict(message) => Self::Conflict(message)",
+  "TaxonomyError::TermNotFound(term_id)",
+]);
+requireAll("crates/modules/rustok-taxonomy/src/error.rs", [
+  '#[error("Taxonomy internal operation failed")]',
+  "Internal(String)",
+  "pub fn internal(message: impl Into<String>) -> Self",
+]);
 requireAll("crates/modules/rustok-blog/src/dto/comment.rs", [
   "pub command_id: Uuid",
   "Stable identity of this logical create command. Reuse across retries.",
@@ -124,7 +176,25 @@ requireAll("crates/modules/rustok-blog/admin/src/transport/graphql_adapter.rs", 
 ]);
 requireAll("crates/modules/rustok-blog/admin/src/transport/native_server_adapter.rs", [
   "draft.version.ok_or_else",
+  "fn public_internal_error() -> ServerFnError",
+  "Err(error) => Err(public_blog_error(error))",
+  "use_context::<HostRuntimeContext>().ok_or_else(public_internal_error)?",
 ]);
+requireAll("crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs", [
+  "fn public_internal_error() -> ServerFnError",
+  "use_context::<HostRuntimeContext>().ok_or_else(public_internal_error)?",
+]);
+for (const path of [
+  "crates/modules/rustok-blog/admin/src/transport/native_server_adapter.rs",
+  "crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs",
+]) {
+  forbid(path, [
+    "expect_context::<HostRuntimeContext>()",
+    ".map_err(ServerFnError::new)?",
+    "TransactionalEventBus in host runtime context",
+    "Err(error) => Err(ServerFnError::new(error))",
+  ]);
+}
 
 forbid("crates/modules/rustok-blog/src/lib.rs", [
   "pub mod entities;",

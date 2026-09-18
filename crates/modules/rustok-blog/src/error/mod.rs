@@ -26,6 +26,9 @@ pub enum BlogError {
     #[error("Tag not found: {0}")]
     TagNotFound(Uuid),
 
+    #[error("Taxonomy term not found: {0}")]
+    TaxonomyTermNotFound(Uuid),
+
     #[error("Duplicate slug: {slug} already exists")]
     DuplicateSlug { slug: String },
 
@@ -109,6 +112,12 @@ impl From<BlogError> for RichError {
                     .with_field("tag_id", id.to_string())
                     .with_error_code("TAG_NOT_FOUND")
             }
+            BlogError::TaxonomyTermNotFound(id) => {
+                RichError::new(ErrorKind::NotFound, format!("Taxonomy term {} not found", id))
+                    .with_user_message("The requested taxonomy term does not exist")
+                    .with_field("term_id", id.to_string())
+                    .with_error_code("TAXONOMY_TERM_NOT_FOUND")
+            }
             BlogError::DuplicateSlug { slug } => {
                 RichError::new(ErrorKind::Conflict, format!("Slug '{slug}' already exists"))
                     .with_user_message("A post with this URL slug already exists")
@@ -116,7 +125,7 @@ impl From<BlogError> for RichError {
                     .with_error_code("DUPLICATE_SLUG")
             }
             BlogError::Conflict(message) => RichError::new(ErrorKind::Conflict, message)
-                .with_user_message("The blog category changed before the request could be applied")
+                .with_user_message("The Blog resource changed before the request could be applied")
                 .with_error_code("BLOG_CONFLICT"),
             BlogError::CategoryTranslationRevisionExhausted {
                 category_id,
@@ -267,17 +276,20 @@ impl From<rustok_taxonomy::TaxonomyError> for BlogError {
     fn from(value: rustok_taxonomy::TaxonomyError) -> Self {
         match value {
             rustok_taxonomy::TaxonomyError::Database(err) => Self::Database(err),
+            rustok_taxonomy::TaxonomyError::Internal(message) => Self::Invariant(format!(
+                "Taxonomy dependency failed: {message}"
+            )),
             rustok_taxonomy::TaxonomyError::Forbidden(message) => Self::Forbidden(message),
-            rustok_taxonomy::TaxonomyError::Validation(message)
-            | rustok_taxonomy::TaxonomyError::DuplicateCanonicalKey(message)
+            rustok_taxonomy::TaxonomyError::Validation(message) => Self::Validation(message),
+            rustok_taxonomy::TaxonomyError::DuplicateCanonicalKey(message)
             | rustok_taxonomy::TaxonomyError::DuplicateSlug(message)
             | rustok_taxonomy::TaxonomyError::DuplicateAlias(message)
-            | rustok_taxonomy::TaxonomyError::Conflict(message) => Self::Validation(message),
+            | rustok_taxonomy::TaxonomyError::Conflict(message) => Self::Conflict(message),
             rustok_taxonomy::TaxonomyError::TermNotFound(term_id) => {
-                Self::Validation(format!("Taxonomy term not found: {term_id}"))
+                Self::TaxonomyTermNotFound(term_id)
             }
             rustok_taxonomy::TaxonomyError::TranslationRevisionExhausted { term_id, locale } => {
-                Self::Validation(format!(
+                Self::Conflict(format!(
                     "Taxonomy translation revision is exhausted for term {term_id} and locale {locale}"
                 ))
             }
@@ -317,5 +329,21 @@ mod tests {
 
         assert_eq!(rich.kind, ErrorKind::BusinessLogic);
         assert_eq!(rich.error_code, Some("CANNOT_DELETE_PUBLISHED".to_string()));
+    }
+
+    #[test]
+    fn taxonomy_error_classes_survive_the_blog_boundary() {
+        let missing: BlogError = rustok_taxonomy::TaxonomyError::TermNotFound(Uuid::new_v4()).into();
+        let missing: RichError = missing.into();
+        assert_eq!(missing.kind, ErrorKind::NotFound);
+        assert_eq!(missing.status_code, 404);
+
+        let conflict: BlogError = rustok_taxonomy::TaxonomyError::Conflict(
+            "internal taxonomy predecessor detail".to_string(),
+        )
+        .into();
+        let conflict: RichError = conflict.into();
+        assert_eq!(conflict.kind, ErrorKind::Conflict);
+        assert_eq!(conflict.status_code, 409);
     }
 }
