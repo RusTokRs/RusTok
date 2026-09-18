@@ -17,7 +17,7 @@
     "delivery_entity": "crates/modules/rustok-blog/src/entities/blog_comment_projection_delivery.rs",
     "delivery_migration": "crates/modules/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs",
     "migration_registry": "crates/modules/rustok-blog/src/migrations/mod.rs",
-    "module_registration": "crates/modules/rustok-blog/src/lib.rs",
+    "module_registration": "crates/modules/rustok-blog/src/module.rs",
     "consumer_registry": "crates/modules/rustok-blog/contracts/blog-fba-registry.json"
   },
   "source_harness": {
@@ -36,9 +36,9 @@
   "host_registration_harness": {
     "status": "executable_no_run",
     "runtime_status": "not_run",
-    "path": "crates/modules/rustok-blog/src/lib.rs",
-    "module": "tests",
-    "command": "cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing",
+    "path": "crates/modules/rustok-blog/src/module.rs",
+    "module": "module::tests",
+    "command": "cargo test -p rustok-blog --lib module::tests::module_registers_comment_projection_handler_with_host_routing",
     "scope": "module_registry_handler_identity_and_routing_only",
     "cases": [
       "module_registers_comment_projection_handler_with_host_routing"
@@ -206,7 +206,7 @@
   ],
   "runtime_promotion_requirements": [
     "execute cargo test -p rustok-blog --lib services::comment_projection::tests and retain classifier, counter, and deterministic retry-policy output",
-    "execute cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing",
+    "execute cargo test -p rustok-blog --lib module::tests::module_registers_comment_projection_handler_with_host_routing",
     "execute the env-gated PostgreSQL dispatcher case and retain EventBus/EventDispatcher delivery output",
     "execute the env-gated PostgreSQL concurrency case and retain four-connection convergence output",
     "execute the env-gated PostgreSQL retry-limit case and retain its eight-attempt, rollback, and same-envelope recovery output",

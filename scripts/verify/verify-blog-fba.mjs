@@ -288,7 +288,7 @@ hasAll(projectionRestartHarness, [
 hasNone(projectionRestartHarness, ['#[ignore]', 'runtime_verified'], 'blog comment projection restart target');
 const migration = read('crates/modules/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs');
 hasAll(migration, ['BlogCommentProjectionDeliveries', 'EventId', 'TenantId', 'PostId'], 'blog comment projection migration');
-const moduleSource = read('crates/modules/rustok-blog/src/lib.rs');
+const moduleSource = read('crates/modules/rustok-blog/src/module.rs');
 hasAll(moduleSource, ['fn register_event_listeners(', 'BlogCommentProjectionHandler::new(ctx.db.clone())'], 'blog event-listener registration');
 
 const plan = read('crates/modules/rustok-blog/docs/implementation-plan.md');

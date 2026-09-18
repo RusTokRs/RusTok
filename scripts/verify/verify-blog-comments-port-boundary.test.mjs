@@ -30,7 +30,7 @@ const files = {
   consumerRegistry: 'crates/modules/rustok-blog/contracts/blog-fba-registry.json',
   facade: 'crates/modules/rustok-blog/src/lib.rs',
   service: 'crates/modules/rustok-blog/src/services/comment.rs',
-  snapshot: 'crates/modules/rustok-blog/src/public_comments_snapshot.rs',
+  snapshot: 'crates/modules/rustok-blog/src/integrations/public_comments_snapshot.rs',
   httpRuntime: 'crates/modules/rustok-blog/src/controllers/mod.rs',
   httpController: 'crates/modules/rustok-blog/src/controllers/comments.rs',
   manifest: 'crates/modules/rustok-blog/rustok-module.toml',

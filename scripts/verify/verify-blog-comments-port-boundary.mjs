@@ -49,7 +49,7 @@ function sameSet(actual, expected) {
 const evidencePath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
 const fallbackEvidencePath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json';
 const servicePath = 'crates/modules/rustok-blog/src/services/comment.rs';
-const snapshotPolicyPath = 'crates/modules/rustok-blog/src/public_comments_snapshot.rs';
+const snapshotPolicyPath = 'crates/modules/rustok-blog/src/integrations/public_comments_snapshot.rs';
 const graphqlRuntimePath = 'crates/modules/rustok-blog/src/graphql/runtime_data.rs';
 const graphqlOwnerPath = 'crates/modules/rustok-blog/src/graphql/types.rs';
 const storefrontModelPath = 'crates/modules/rustok-blog/storefront/src/model.rs';

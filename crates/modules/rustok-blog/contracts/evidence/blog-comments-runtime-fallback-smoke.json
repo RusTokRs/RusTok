@@ -11,7 +11,7 @@
   "source_contract": {
     "consumer_service": "crates/modules/rustok-blog/src/services/comment.rs",
     "consumer_error_mapping": "crates/modules/rustok-blog/src/services/comment.rs",
-    "public_snapshot_policy": "crates/modules/rustok-blog/src/public_comments_snapshot.rs",
+    "public_snapshot_policy": "crates/modules/rustok-blog/src/integrations/public_comments_snapshot.rs",
     "storefront_write_surface_inventory": "crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json",
     "provider_port_registry": "crates/modules/rustok-comments/contracts/comments-fba-registry.json",
     "graphql_runtime": "crates/modules/rustok-blog/src/graphql/runtime_data.rs",
