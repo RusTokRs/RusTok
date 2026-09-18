@@ -197,23 +197,32 @@ impl PostService {
         let mut items = Vec::with_capacity(posts.len());
         for post in posts {
             let translations = translations_map.get(&post.id).cloned().unwrap_or_default();
+            if translations.is_empty() {
+                return Err(BlogError::invariant(format!(
+                    "Blog post {} has no localized records",
+                    post.id
+                )));
+            }
             let resolved =
                 resolve_translation_record(&translations, &locale, fallback_locale.as_deref());
-            let translation = resolved.translation;
+            let translation = resolved.translation.ok_or_else(|| {
+                BlogError::invariant(format!(
+                    "Blog post {} locale resolver returned no translation from a non-empty set",
+                    post.id
+                ))
+            })?;
             let tags = tags_map
                 .get(&post.id)
                 .cloned()
-                .unwrap_or_else(|| extract_tags(&post.metadata));
+                .unwrap_or_default();
 
             items.push(PostSummary {
                 id: post.id,
-                title: translation
-                    .map(|item| item.title.clone())
-                    .unwrap_or_default(),
+                title: translation.title.clone(),
                 slug: post.slug.clone(),
                 locale: locale.clone(),
                 effective_locale: resolved.effective_locale,
-                excerpt: translation.and_then(|item| item.excerpt.clone()),
+                excerpt: translation.excerpt.clone(),
                 status: storage_to_status(&post.status)?,
                 author_id: post.author_id,
                 author_name: None,
@@ -316,23 +325,32 @@ impl PostService {
         let mut items = Vec::with_capacity(posts.len());
         for post in posts {
             let translations = translations_map.get(&post.id).cloned().unwrap_or_default();
+            if translations.is_empty() {
+                return Err(BlogError::invariant(format!(
+                    "Blog post {} has no localized records",
+                    post.id
+                )));
+            }
             let resolved =
                 resolve_translation_record(&translations, &locale, fallback_locale.as_deref());
-            let translation = resolved.translation;
+            let translation = resolved.translation.ok_or_else(|| {
+                BlogError::invariant(format!(
+                    "Blog post {} locale resolver returned no translation from a non-empty set",
+                    post.id
+                ))
+            })?;
             let tags = tags_map
                 .get(&post.id)
                 .cloned()
-                .unwrap_or_else(|| extract_tags(&post.metadata));
+                .unwrap_or_default();
 
             items.push(PostSummary {
                 id: post.id,
-                title: translation
-                    .map(|item| item.title.clone())
-                    .unwrap_or_default(),
+                title: translation.title.clone(),
                 slug: post.slug.clone(),
                 locale: locale.clone(),
                 effective_locale: resolved.effective_locale,
-                excerpt: translation.and_then(|item| item.excerpt.clone()),
+                excerpt: translation.excerpt.clone(),
                 status: storage_to_status(&post.status)?,
                 author_id: post.author_id,
                 author_name: None,
@@ -447,21 +465,26 @@ impl PostService {
         } else {
             None
         };
+        if translations.is_empty() {
+            return Err(BlogError::invariant(format!(
+                "Blog post {} has no localized records",
+                post.id
+            )));
+        }
         let resolved = resolve_translation_record(&translations, locale, fallback_locale);
-        let translation = resolved.translation;
-        let body = match translation {
-            Some(item) => item.body.clone(),
-            None => canonical_article_body(&RichTextDocument::empty())?,
-        };
-        let (content, content_plain_text) = project_stored_article(&body)?;
+        let translation = resolved.translation.ok_or_else(|| {
+            BlogError::invariant(format!(
+                "Blog post {} locale resolver returned no translation from a non-empty set",
+                post.id
+            ))
+        })?;
+        let (content, content_plain_text) = project_stored_article(&translation.body)?;
 
         Ok(PostResponse {
             id: post.id,
             tenant_id: post.tenant_id,
             author_id: post.author_id,
-            title: translation
-                .map(|item| item.title.clone())
-                .unwrap_or_default(),
+            title: translation.title.clone(),
             slug: post.slug,
             requested_locale: locale.to_string(),
             locale: locale.to_string(),
@@ -476,16 +499,12 @@ impl PostService {
             tags: tags_map
                 .get(&post.id)
                 .cloned()
-                .unwrap_or_else(|| extract_tags(&post.metadata)),
+                .unwrap_or_default(),
             featured_image_url: post.featured_image_url,
-            seo_title: translation.and_then(|item| item.seo_title.clone()),
-            seo_description: translation.and_then(|item| item.seo_description.clone()),
-            channel_slugs: if channel_slugs.is_empty() {
-                extract_channel_slugs(&post.metadata)
-            } else {
-                channel_slugs
-            },
-            metadata: post.metadata,
+            seo_title: translation.seo_title.clone(),
+            seo_description: translation.seo_description.clone(),
+            channel_slugs,
+            metadata: scrub_reserved_metadata(post.metadata),
             comment_count: post.comment_count as i64,
             view_count: post.view_count as i64,
             created_at: post.created_at.into(),

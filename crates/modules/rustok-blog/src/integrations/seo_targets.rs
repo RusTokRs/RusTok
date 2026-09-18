@@ -12,7 +12,7 @@ use rustok_seo_targets::{
 use url::Url;
 
 use crate::state_machine::BlogPostStatus;
-use crate::{PostListQuery, PostResponse, PostService, PostSummary};
+use crate::{BlogError, PostListQuery, PostResponse, PostService, PostSortField, PostSortOrder, PostSummary};
 
 const BULK_FETCH_SIZE: u32 = 48;
 
@@ -44,17 +44,17 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
         request: SeoTargetLoadRequest<'_>,
     ) -> AnyResult<Option<SeoLoadedTargetRecord>> {
         let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let post = service
-            .get_post_with_locale_fallback(
-                request.tenant_id,
-                SecurityContext::system(),
-                request.target_id,
-                request.locale,
-                Some(request.default_locale),
-            )
-            .await
-            .ok();
-        let Some(post) = post else {
+        let Some(post) = optional_post(
+            service
+                .get_post_with_locale_fallback(
+                    request.tenant_id,
+                    SecurityContext::system(),
+                    request.target_id,
+                    request.locale,
+                    Some(request.default_locale),
+                )
+                .await,
+        )? else {
             return Ok(None);
         };
 
@@ -117,12 +117,11 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
                         category_id: None,
                         tag: None,
                         author_id: None,
-                        search: None,
                         locale: Some(request.locale.to_string()),
                         page: Some(page_number),
                         per_page: Some(BULK_FETCH_SIZE),
-                        sort_by: Some("published_at".to_string()),
-                        sort_order: Some("desc".to_string()),
+                        sort_by: Some(PostSortField::PublishedAt),
+                        sort_order: Some(PostSortOrder::Desc),
                     },
                     Some(request.default_locale),
                 )
@@ -172,12 +171,11 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
                         category_id: None,
                         tag: None,
                         author_id: None,
-                        search: None,
                         locale: Some(request.default_locale.to_string()),
                         page: Some(page_number),
                         per_page: Some(BULK_FETCH_SIZE),
-                        sort_by: Some("published_at".to_string()),
-                        sort_order: Some("desc".to_string()),
+                        sort_by: Some(PostSortField::PublishedAt),
+                        sort_order: Some(PostSortOrder::Desc),
                     },
                     Some(request.default_locale),
                     None,
@@ -217,17 +215,17 @@ async fn load_post_summary(
     default_locale: &str,
     item: PostSummary,
 ) -> AnyResult<Option<SeoBulkSummaryRecord>> {
-    let post = service
-        .get_post_with_locale_fallback(
-            tenant_id,
-            SecurityContext::system(),
-            item.id,
-            locale,
-            Some(default_locale),
-        )
-        .await
-        .ok();
-    let Some(post) = post else {
+    let Some(post) = optional_post(
+        service
+            .get_post_with_locale_fallback(
+                tenant_id,
+                SecurityContext::system(),
+                item.id,
+                locale,
+                Some(default_locale),
+            )
+            .await,
+    )? else {
         return Ok(None);
     };
     let mapped = map_post_response(post);
@@ -246,17 +244,17 @@ async fn load_post_sitemap_candidate(
     default_locale: &str,
     item: PostSummary,
 ) -> AnyResult<Option<SeoSitemapCandidateRecord>> {
-    let post = service
-        .get_post_with_locale_fallback(
-            tenant_id,
-            SecurityContext::system(),
-            item.id,
-            default_locale,
-            Some(default_locale),
-        )
-        .await
-        .ok();
-    let Some(post) = post else {
+    let Some(post) = optional_post(
+        service
+            .get_post_with_locale_fallback(
+                tenant_id,
+                SecurityContext::system(),
+                item.id,
+                default_locale,
+                Some(default_locale),
+            )
+            .await,
+    )? else {
         return Ok(None);
     };
     let mapped = map_post_response(post);
@@ -266,6 +264,14 @@ async fn load_post_sitemap_candidate(
         locale: mapped.effective_locale,
         route: mapped.canonical_route,
     }))
+}
+
+fn optional_post(result: crate::BlogResult<PostResponse>) -> AnyResult<Option<PostResponse>> {
+    match result {
+        Ok(post) => Ok(Some(post)),
+        Err(BlogError::PostNotFound(_)) => Ok(None),
+        Err(error) => Err(anyhow::anyhow!("Blog SEO owner read failed: {error}")),
+    }
 }
 
 fn map_post_response(post: PostResponse) -> SeoLoadedTargetRecord {

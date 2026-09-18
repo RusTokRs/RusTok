@@ -7,15 +7,14 @@ use rustok_reactions_api::{
     ReactionSelectionPolicy, ReactionSourceSlug, ReactionSubjectAuthorization, ReactionSubjectKind,
     ReactionSubjectProvider, ReactionSubjectProviderFactory, ReactionSubjectRequest,
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::DatabaseConnection;
 
-use crate::entities::{blog_post, blog_post_channel_visibility};
-use crate::services::is_post_visible_for_channel;
+use crate::BlogPostStatus;
+use crate::services::{is_post_visible_for_channel, load_post_subject_snapshot};
 
 pub const BLOG_REACTION_SOURCE: &str = "blog";
 pub const BLOG_POST_REACTION_KIND: &str = "post";
 pub const BLOG_REACTION_V1_KEY: &str = "like";
-const BLOG_POST_PUBLISHED_STATUS: &str = "published";
 
 #[derive(Clone, Default)]
 pub struct BlogReactionSubjectProviderFactory;
@@ -49,35 +48,24 @@ impl BlogReactionSubjectProvider {
         request: &ReactionSubjectRequest,
     ) -> ReactionProviderResult<ReactionSubjectAuthorization> {
         let subject = &request.subject;
-        let Some(post) = blog_post::Entity::find()
-            .filter(blog_post::Column::TenantId.eq(subject.tenant_id()))
-            .filter(blog_post::Column::Id.eq(subject.subject_id()))
-            .one(&self.db)
-            .await
-            .map_err(database_error)?
+        let Some(snapshot) = load_post_subject_snapshot(
+            &self.db,
+            subject.tenant_id(),
+            subject.subject_id(),
+        )
+        .await
+        .map_err(owner_read_error)?
         else {
             return Ok(ReactionSubjectAuthorization::Unavailable);
         };
 
-        if post.status != BLOG_POST_PUBLISHED_STATUS {
+        if snapshot.status != BlogPostStatus::Published
+            || !is_post_visible_for_channel(&snapshot.channel_slugs, context.channel.as_deref())
+        {
             return Ok(ReactionSubjectAuthorization::Unavailable);
         }
 
-        let channel_slugs = blog_post_channel_visibility::Entity::find()
-            .filter(blog_post_channel_visibility::Column::TenantId.eq(subject.tenant_id()))
-            .filter(blog_post_channel_visibility::Column::PostId.eq(post.id))
-            .order_by_asc(blog_post_channel_visibility::Column::ChannelSlug)
-            .all(&self.db)
-            .await
-            .map_err(database_error)?
-            .into_iter()
-            .map(|row| row.channel_slug)
-            .collect::<Vec<_>>();
-        if !is_post_visible_for_channel(&channel_slugs, context.channel.as_deref()) {
-            return Ok(ReactionSubjectAuthorization::Unavailable);
-        }
-
-        let current_revision = blog_post_revision(post.version)?;
+        let current_revision = blog_post_revision(snapshot.version)?;
         if subject.subject_revision() != current_revision {
             return Err(ReactionProviderError::Conflict);
         }
@@ -154,7 +142,7 @@ fn blog_post_reaction_kind() -> ReactionSubjectKind {
         .expect("Blog post reaction kind constant must remain valid")
 }
 
-fn database_error(_error: sea_orm::DbErr) -> ReactionProviderError {
+fn owner_read_error(_error: crate::BlogError) -> ReactionProviderError {
     ReactionProviderError::Internal { retryable: true }
 }
 

@@ -40,7 +40,7 @@ impl BlogQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = query_tenant_id(ctx, tenant, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let service = PostService::new(db.clone(), event_bus.clone());
@@ -59,7 +59,7 @@ impl BlogQuery {
             | Err(BlogError::Content(rustok_content::ContentError::NodeNotFound(_))) => {
                 return Ok(None);
             }
-            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
+            Err(err) => return Err(crate::public_error::to_graphql_error(err)),
         };
 
         if is_public_request(ctx)
@@ -99,7 +99,7 @@ impl BlogQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = query_tenant_id(ctx, tenant, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let service = PostService::new(db.clone(), event_bus.clone());
@@ -112,7 +112,7 @@ impl BlogQuery {
                 Some(tenant.default_locale.as_str()),
             )
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+            .map_err(|err| crate::public_error::to_graphql_error(err))?;
 
         if let Some(post) = post.filter(|post| {
             is_post_visible_for_request(
@@ -149,7 +149,7 @@ impl BlogQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = query_tenant_id(ctx, tenant, tenant_id)?;
 
         let filter = filter.unwrap_or(PostsFilter {
             status: None,
@@ -238,6 +238,26 @@ impl BlogQuery {
     }
 }
 
+fn query_tenant_id(
+    ctx: &Context<'_>,
+    tenant: &TenantContext,
+    requested: Option<Uuid>,
+) -> Result<Uuid> {
+    if requested.is_some_and(|tenant_id| tenant_id != tenant.id) {
+        return Err(<async_graphql::FieldError as rustok_api::graphql::GraphQLError>::permission_denied(
+            "Blog queries must use the current tenant",
+        ));
+    }
+    if let Some(auth) = ctx.data_opt::<AuthContext>()
+        && auth.tenant_id != tenant.id
+    {
+        return Err(<async_graphql::FieldError as rustok_api::graphql::GraphQLError>::permission_denied(
+            "Authenticated actor is not bound to the current tenant",
+        ));
+    }
+    Ok(tenant.id)
+}
+
 fn request_security_context(ctx: &Context<'_>) -> SecurityContext {
     ctx.data_opt::<AuthContext>()
         .map(|auth| {
@@ -310,7 +330,7 @@ async fn list_public_visible_posts(
             public_channel_slug,
         )
         .await
-        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+        .map_err(|err| crate::public_error::to_graphql_error(err))?;
     let author_profiles = load_author_profiles_map(
         ctx,
         db,
@@ -405,7 +425,7 @@ where
             Some(tenant_default_locale),
         )
         .await
-        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+        .map_err(|err| crate::public_error::to_graphql_error(err))?;
 
     Ok(profiles
         .into_iter()

@@ -11,23 +11,20 @@
 /// State Diagram:
 /// ```text
 ///   ┌───────┐
-///   │ Draft │──────────────────┐
-///   └───┬───┘                  │
-///       │ publish()            │ archive()
-///       ↓                      │
-///   ┌───────────┐              │
-///   │ Published │──────────────┤
-///   └─────┬─────┘              │
-///         │ unpublish()        │ archive()
-///         │                    ↓
+///   │ Draft │
+///   └───┬───┘
+///       │ publish()
+///       ↓
+///   ┌───────────┐
+///   │ Published │──────────────┐
+///   └─────┬─────┘              │ archive()
+///         │ unpublish()        ↓
 ///         └─────────→   ┌──────────┐
-///                       │ Archived │
-///                       └──────────┘
-///                          │ restore()
-///                          ↓
-///                       ┌───────┐
-///                       │ Draft │
-///                       └───────┘
+///              Draft    │ Archived │
+///                       └────┬─────┘
+///                            │ restore()
+///                            ↓
+///                         Draft
 /// ```
 ///
 /// Usage:
@@ -344,6 +341,23 @@ pub enum BlogPostStatus {
     Archived,
 }
 
+impl BlogPostStatus {
+    /// Runtime counterpart of the type-state transition graph.
+    ///
+    /// Persistence-backed commands MUST consult this table before mutating
+    /// stored status so the production write path cannot drift from the
+    /// compile-time state machine above.
+    pub const fn can_transition_to(self, next: Self) -> bool {
+        matches!(
+            (self, next),
+            (Self::Draft, Self::Published)
+                | (Self::Published, Self::Draft)
+                | (Self::Published, Self::Archived)
+                | (Self::Archived, Self::Draft)
+        )
+    }
+}
+
 /// Convert type-safe state to database enum
 pub trait ToBlogPostStatus {
     fn to_status(&self) -> BlogPostStatus;
@@ -545,6 +559,18 @@ mod tests {
 
         assert_eq!(post.category_id, Some(category_id));
         assert_eq!(post.tags, vec!["rust", "blog"]);
+    }
+
+    #[test]
+    fn runtime_transition_table_matches_type_state_graph() {
+        assert!(BlogPostStatus::Draft.can_transition_to(BlogPostStatus::Published));
+        assert!(BlogPostStatus::Published.can_transition_to(BlogPostStatus::Draft));
+        assert!(BlogPostStatus::Published.can_transition_to(BlogPostStatus::Archived));
+        assert!(BlogPostStatus::Archived.can_transition_to(BlogPostStatus::Draft));
+
+        assert!(!BlogPostStatus::Draft.can_transition_to(BlogPostStatus::Archived));
+        assert!(!BlogPostStatus::Archived.can_transition_to(BlogPostStatus::Published));
+        assert!(!BlogPostStatus::Draft.can_transition_to(BlogPostStatus::Draft));
     }
 
     #[test]

@@ -8,6 +8,7 @@
 mod domain;
 mod integrations;
 mod module;
+mod public_error;
 
 pub mod controllers;
 pub mod dto;
@@ -23,7 +24,8 @@ pub use dto::{
     CategoryListItem, CategoryListResponse, CategoryResponse, CommentListItem, CommentResponse,
     CreateCategoryInput, CreateCommentInput, CreatePostInput, CreateTagInput, ListCategoriesFilter,
     ListCommentsFilter, ListTagsFilter, ModerateCommentInput, ModerateCommentStatus, PostListQuery,
-    PostListResponse, PostResponse, PostSummary, TagListItem, TagResponse, UpdateCategoryInput,
+    PostListResponse, PostResponse, PostSortField, PostSortOrder, PostSummary, TagListItem,
+    TagResponse, UpdateCategoryInput,
     UpdateCommentInput, UpdatePostInput, UpdateTagInput,
 };
 pub use entities::*;

@@ -1,6 +1,6 @@
-use async_graphql::{ComplexObject, Context, Enum, FieldError, InputObject, Result, SimpleObject};
+use async_graphql::{ComplexObject, Context, Enum, FieldError, InputObject, MaybeUndefined, Result, SimpleObject};
 use rustok_api::{
-    AuthContext, Permission, RichTextDocument, RichTextView, TenantContext, graphql::GraphQLError,
+    AuthContext, Patch, Permission, RichTextDocument, RichTextView, TenantContext, graphql::GraphQLError,
     has_any_effective_permission,
 };
 use rustok_core::SecurityContext;
@@ -114,6 +114,7 @@ pub struct GqlPost {
     pub seo_title: Option<String>,
     pub seo_description: Option<String>,
     pub channel_slugs: Vec<String>,
+    pub version: i32,
 }
 
 #[derive(SimpleObject)]
@@ -338,15 +339,15 @@ pub struct UpdatePostInput {
     pub locale: Option<String>,
     pub title: Option<String>,
     pub content: Option<RichTextDocument>,
-    pub excerpt: Option<String>,
+    pub excerpt: MaybeUndefined<String>,
     pub slug: Option<String>,
-    pub status: Option<GqlContentStatus>,
     pub tags: Option<Vec<String>>,
-    pub category_id: Option<Uuid>,
-    pub featured_image_url: Option<String>,
-    pub seo_title: Option<String>,
-    pub seo_description: Option<String>,
+    pub category_id: MaybeUndefined<Uuid>,
+    pub featured_image_url: MaybeUndefined<String>,
+    pub seo_title: MaybeUndefined<String>,
+    pub seo_description: MaybeUndefined<String>,
     pub channel_slugs: Option<Vec<String>>,
+    pub version: i32,
 }
 
 #[derive(InputObject)]
@@ -386,6 +387,7 @@ impl From<PostResponse> for GqlPost {
             seo_title: post.seo_title,
             seo_description: post.seo_description,
             channel_slugs: post.channel_slugs,
+            version: post.version,
         }
     }
 }
@@ -489,47 +491,59 @@ impl From<UpdatePostInput> for DomainUpdatePostInput {
             locale: input.locale,
             title: input.title,
             content: input.content,
-            excerpt: input.excerpt,
+            excerpt: graphql_patch(input.excerpt),
             slug: input.slug,
             tags: input.tags,
-            category_id: input.category_id,
-            featured_image_url: input.featured_image_url,
-            seo_title: input.seo_title,
-            seo_description: input.seo_description,
+            category_id: graphql_patch(input.category_id),
+            featured_image_url: graphql_patch(input.featured_image_url),
+            seo_title: graphql_patch(input.seo_title),
+            seo_description: graphql_patch(input.seo_description),
             channel_slugs: input.channel_slugs,
             metadata: None,
-            version: None,
+            version: input.version,
         }
+    }
+}
+
+fn graphql_patch<T>(value: MaybeUndefined<T>) -> Patch<T> {
+    match value {
+        MaybeUndefined::Undefined => Patch::Keep,
+        MaybeUndefined::Null => Patch::Clear,
+        MaybeUndefined::Value(value) => Patch::Set(value),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{DomainUpdatePostInput, UpdatePostInput};
-    use rustok_api::RichTextDocument;
+    use async_graphql::MaybeUndefined;
+    use rustok_api::{Patch, RichTextDocument};
     use uuid::Uuid;
 
     #[test]
-    fn update_post_input_conversion_preserves_canonical_content() {
+    fn update_post_input_conversion_preserves_patch_and_revision_semantics() {
         let canonical = RichTextDocument::single_paragraph("canonical update");
         let input = UpdatePostInput {
             locale: Some("ru".to_string()),
             title: Some("Заголовок".to_string()),
             content: Some(canonical.clone()),
-            excerpt: Some("excerpt".to_string()),
+            excerpt: MaybeUndefined::Null,
             slug: Some("post".to_string()),
-            status: None,
             tags: Some(vec!["tag".to_string()]),
-            category_id: Some(Uuid::nil()),
-            featured_image_url: Some("https://example.test/image.png".to_string()),
-            seo_title: Some("SEO".to_string()),
-            seo_description: Some("description".to_string()),
+            category_id: MaybeUndefined::Value(Uuid::nil()),
+            featured_image_url: MaybeUndefined::Undefined,
+            seo_title: MaybeUndefined::Value("SEO".to_string()),
+            seo_description: MaybeUndefined::Null,
             channel_slugs: Some(vec!["web".to_string()]),
+            version: 7,
         };
         let domain: DomainUpdatePostInput = input.into();
         assert_eq!(domain.content, Some(canonical));
-        assert_eq!(domain.category_id, Some(Uuid::nil()));
+        assert_eq!(domain.excerpt, Patch::Clear);
+        assert_eq!(domain.category_id, Patch::Set(Uuid::nil()));
+        assert_eq!(domain.featured_image_url, Patch::Keep);
+        assert_eq!(domain.seo_description, Patch::Clear);
         assert!(domain.metadata.is_none());
-        assert!(domain.version.is_none());
+        assert_eq!(domain.version, 7);
     }
 }

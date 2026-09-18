@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use rustok_api::{RichTextDocument, RichTextView};
+use rustok_api::{Patch, RichTextDocument, RichTextView};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -29,25 +29,34 @@ pub struct CreatePostInput {
     pub metadata: Option<Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct UpdatePostInput {
     pub locale: Option<String>,
     #[schema(max_length = 512)]
     pub title: Option<String>,
     pub content: Option<RichTextDocument>,
-    #[schema(max_length = 1000)]
-    pub excerpt: Option<String>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    #[schema(value_type = Option<String>, max_length = 1000)]
+    pub excerpt: Patch<String>,
     #[schema(max_length = 255)]
     pub slug: Option<String>,
     #[schema(max_items = 20)]
     pub tags: Option<Vec<String>>,
-    pub category_id: Option<Uuid>,
-    pub featured_image_url: Option<String>,
-    pub seo_title: Option<String>,
-    pub seo_description: Option<String>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    #[schema(value_type = Option<Uuid>)]
+    pub category_id: Patch<Uuid>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    #[schema(value_type = Option<String>)]
+    pub featured_image_url: Patch<String>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    #[schema(value_type = Option<String>)]
+    pub seo_title: Patch<String>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    #[schema(value_type = Option<String>)]
+    pub seo_description: Patch<String>,
     pub channel_slugs: Option<Vec<String>>,
     pub metadata: Option<Value>,
-    pub version: Option<i32>,
+    pub version: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -129,22 +138,36 @@ pub struct PostSummary {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PostSortField {
+    PublishedAt,
+    UpdatedAt,
+    #[default]
+    CreatedAt,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PostSortOrder {
+    Asc,
+    #[default]
+    Desc,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, IntoParams, Default)]
 pub struct PostListQuery {
     pub status: Option<BlogPostStatus>,
     pub category_id: Option<Uuid>,
     pub tag: Option<String>,
     pub author_id: Option<Uuid>,
-    pub search: Option<String>,
     pub locale: Option<String>,
     #[schema(default = 1)]
     pub page: Option<u32>,
     #[schema(default = 20, maximum = 100)]
     pub per_page: Option<u32>,
-    #[schema(default = "created_at")]
-    pub sort_by: Option<String>,
-    #[schema(default = "desc")]
-    pub sort_order: Option<String>,
+    pub sort_by: Option<PostSortField>,
+    pub sort_order: Option<PostSortOrder>,
 }
 
 impl PostListQuery {
