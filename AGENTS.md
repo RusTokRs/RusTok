@@ -39,7 +39,7 @@ Before changing repository content, contributors and agents MUST:
 2. Read the relevant component README.md and local docs/README.md or implementation plan.
 3. Before creating or renaming modules, crates, packages, folders, files, public types, query keys, config keys, or documentation, follow the Naming Contract in docs/standards/coding.md.
 4. For new modules or major module refactors, read docs/modules/module-authoring.md before changing code.
-5. Before frontend changes, read that frontend's AI_AGENT_RULES.md and the relevant module UI documentation.
+5. Before frontend or client-application changes, read that application's `AI_AGENT_RULES.md` when present and the relevant module UI/client documentation.
 6. Resolve ownership through docs/modules/registry.md and local component documentation.
 7. Inspect active ADRs that govern the affected boundary before proposing a competing model.
 8. Capture the current main commit SHA before starting work.
@@ -57,6 +57,8 @@ The minimum change-surface review for a non-trivial change is:
 - UI and operator surfaces;
 - fixtures, seeds, tests, scripts, generated/reference artifacts;
 - current documentation and ADR impact.
+
+Before implementing helpers, formatters, validators, data transformers, UI components, or new dependencies, inspect the target manifest and the workspace-level dependency catalog first (`Cargo.toml`, `package.json`, `pubspec.yaml`, or equivalent). Reuse an existing canonical internal library or already-approved dependency when it owns the required semantics; do not reinvent a local helper or add a redundant dependency merely because it is convenient.
 
 Do not patch the first visible caller until the owning contract and affected surfaces are understood.
 
@@ -114,6 +116,7 @@ Rules:
 - Shared libraries MUST have a clear owner, stable responsibility, and dependency direction.
 - Do not put code into rustok-core, rustok-api, rustok-ui-core, or another shared crate merely because more than one consumer exists.
 - Host applications compose owner-owned entrypoints; they do not absorb module-owned business rules.
+- Cross-crate dependencies and imports MUST comply with `scripts/architecture_rules.toml`. When a change touches crate/layer boundaries, run `python scripts/architecture_dependency_guard.py` or the current canonical replacement documented by the verification runbook.
 
 ### Reuse and abstraction
 
@@ -140,52 +143,6 @@ Write-side correctness takes priority over convenience.
 
 ### Database invariants
 
-<<<<<<< HEAD
-1. Always start by reading [`docs/index.md`](docs/index.md).
-2. **Before modifying any frontend or client application code, read the `AI_AGENT_RULES.md` file in that application's root directory** (`apps/admin/AI_AGENT_RULES.md`, `apps/storefront/AI_AGENT_RULES.md`, `apps/next-admin/AI_AGENT_RULES.md`, `apps/next-frontend/AI_AGENT_RULES.md`, or any mobile/Flutter app under `apps/*`). These files contain critical rules about internal libraries, FFA structure, i18n, and forbidden patterns.
-3. For new modules or major module refactors, read [`docs/modules/module-authoring.md`](docs/modules/module-authoring.md) before changing code.
-4. Do not create a new document when an existing one is suitable — extend it instead.
-5. Documentation must reflect the actual state of the code.
-6. Never bypass or disable pre-commit/pre-push hooks. Fix the root cause of failures.
-7. Do not edit CI/CD workflow files unless explicitly requested.
-8. Do not modify other branches — only work on the assigned task branch.
-9. For Leptos apps and module-owned Leptos UI packages, use native `#[server]` functions as the default internal data layer and keep GraphQL in parallel for public/headless-capable surfaces. Documented native-only operator/bootstrap exceptions are allowed only when no GraphQL/REST contract exists yet and the module plan records the parity or exemption decision.
-10. Do not invent package-local i18n contracts. Server locale selection is canonical; module-owned UI packages must consume the host-provided effective locale (`UiRouteContext.locale` for Leptos, host/runtime locale providers for Next) instead of introducing their own query/header/cookie fallback chains.
-11. For modules with UI and/or transport boundary changes, keep FFA/FBA documentation in sync: update the module-local `docs/implementation-plan.md` FFA/FBA status block and the central registry entry in `docs/modules/registry.md` within the same change.
-12. If a module's UI is planned but not implemented yet, keep a `not_started` FFA/FBA status block in the module plan and a matching `not_started` row in the central readiness board; when UI first appears, update both local and central statuses in the same PR with initial verification evidence.
-13. Module-owned UI packages may expose only their owning module or capability surface. Do not place MCP, Alloy, commerce, catalog, AI, or other module/operator screens inside an unrelated module UI package. Cross-module workflows must be composed by the host from separate owner-owned entrypoints, not merged into another module. If a UI needs another module's data, consume that module's public transport contract only and document the dependency in the owner module plan.
-14. When adding UI for a module or capability, keep the required surfaces in parity: Next/admin where applicable and the Leptos FFA version with native `#[server]` functions plus the target parallel GraphQL/REST contract. Do not ship a Next-only operator surface when the module's admin UI contract requires Leptos FFA parity; document any native-only operator/bootstrap exception in the module plan.
-15. Follow the repository-wide [initial implementation and zero-legacy policy](#initial-implementation-and-zero-legacy-policy). Required current platform contracts, such as parallel GraphQL support, are intentional target surfaces and are not legacy compatibility paths.
-16. All repository artifacts, including code, documentation, commit messages, comments, examples, and generated files, must be written in **English only**. The sole exception is `README.ru.md` (localized Russian translation of the main README). Direct conversation with the user should follow the user's preferred language.
-17. **DO NOT duplicate code across modules.** If a pattern appears in 2+ modules or 2+ hosts, extract it into a shared library:
-    - UI primitives → `crates/ui/leptos-ui/`
-    - Framework-agnostic UI route/query/input/busy contracts -> `crates/ui/rustok-ui-core/`
-    - Routing/query helpers → `crates/ui/leptos-ui-routing/`
-    - Framework-agnostic UI i18n → `crates/ui/rustok-ui-i18n/`
-    - Framework-agnostic GraphQL client → `crates/ui/rustok-graphql/`
-    - Leptos GraphQL hooks adapter → `crates/ui/rustok-graphql-leptos/`
-    - Framework-agnostic UI transport path/error/result evidence -> `crates/ui/rustok-ui-transport/`
-    - Framework-agnostic contracts → `crates/libs/rustok-api/`
-    - Domain-specific cross-module UI → `crates/modules/rustok-<capability>-<surface>-support/`
-    - Before writing reusable code, check existing libraries in `crates/ui/leptos-*` and `crates/libs/rustok-*/`. See [Module UI Package Implementation Guide](docs/UI/module-package-implementation.md#when-to-extract-shared-libraries) for extraction decision matrix.
-18. When diagnosing a failed GitHub Actions run, first execute `powershell -ExecutionPolicy Bypass -File scripts/ci/download-failed-logs.ps1` and inspect the refreshed local `errors/` directory. Do not rely on stale logs from an earlier run.
-19. **Inspect manifests before implementing utilities, models, or UI logic:**
-    Before writing helper functions, data transformers, formatting routines, validators, or UI components, always inspect package manifests to see which dependencies and submodules are already available:
-    - **Rust crates**: inspect the target crate's `Cargo.toml` and root workspace dependencies in root `Cargo.toml` (`[workspace.dependencies]`).
-    - **Web / Next.js apps**: inspect the package's `package.json` and workspace root dependencies.
-    - **Flutter / Dart apps**: inspect `pubspec.yaml` and workspace shared packages.
-    Reuse existing internal libraries (`crates/libs/*`, `crates/ui/*`, shared packages) and approved third-party packages already present in dependencies instead of reinventing functionality, writing ad-hoc helpers, or introducing redundant dependencies.
-20. **Respect architecture boundaries and dependency constraints:**
-    Follow strict crate and layer isolation as defined in [`scripts/architecture_rules.toml`](scripts/architecture_rules.toml). Do not introduce unauthorized cross-domain crate dependencies, and never import internal segments (`entities`, `entity`, `internal`, `infrastructure`, `repository`, `adapter`) into backend application crates (`rustok-server`) or other domains unless explicitly permitted in architecture rules. Run `python scripts/architecture_dependency_guard.py` when touching cross-crate boundaries.
-21. **No `.unwrap()`, `.expect()`, or `panic!` in production code:**
-    All non-test Rust code must use idiomatic error handling (`Result<T, E>`, `?`, `thiserror`, `rustok-core::error`). Never use `.unwrap()`, `.expect()`, or `panic!` in library, domain, or server code unless an invariant is physically guaranteed and documented with an inline reason comment.
-22. **Structured observability over ad-hoc logging:**
-    Do not commit `println!`, `dbg!`, or `console.log`. Use structured logging via `tracing` (`tracing::info!`, `tracing::warn!`, `tracing::error!`, etc.) for backend and Rust code, and host-provided logging infrastructure for web and mobile clients.
-23. **Do not manually edit generated files:**
-    Never modify files containing `@generated` or `DO NOT EDIT` markers (such as GraphQL schemas/types, protobuf definitions, or generated ORM models). Always update the source schema, query, or contract, and run the designated code generation scripts under `scripts/generate/`.
-24. **Database schema and entity parity:**
-    When modifying database tables or schemas, ensure SeaORM entities and migrations are updated atomically in the same change. Adhere to the zero-legacy policy: amend unreleased migrations directly rather than creating redundant fixup migrations.
-=======
 When PostgreSQL can enforce an invariant reliably, the invariant SHOULD be enforced in the database in addition to typed domain validation where useful.
 
 Use the appropriate mechanism:
@@ -197,6 +154,14 @@ Use the appropriate mechanism:
 - advisory or row locks where they are part of the canonical concurrency design.
 
 Do not rely only on service-layer discipline for tenant ownership, uniqueness, referential integrity, impossible state combinations, or identity constraints that the database can enforce.
+
+### Schema and entity parity
+
+Database schema, migrations, ORM/entity definitions, typed DTOs, and generated schema artifacts MUST describe one canonical model.
+
+- When a table or column changes, update its owning entity/model and affected typed contracts atomically.
+- For unreleased schema work, amend the canonical pending migration instead of adding a compatibility fixup solely to preserve repository history.
+- Do not manually edit files marked `@generated`, `DO NOT EDIT`, or equivalent. Change the owning schema/source and run the canonical generator.
 
 ### Atomicity
 
@@ -306,6 +271,8 @@ Correctness and ownership come first, but obvious scalability hazards are not ac
 Observability is part of the runtime contract for important failure modes.
 New asynchronous, external, or operational boundaries SHOULD define the structured logs, metrics, traces, and correlation identifiers needed to diagnose failure without leaking secrets.
 
+Production code MUST use the platform logging/telemetry facilities. Do not commit ad-hoc `println!`, `dbg!`, or `console.log` diagnostics in runtime paths.
+
 ## 11. Architecture decisions and implementation plans
 
 Non-trivial architecture changes MUST be captured in DECISIONS/ using an ADR.
@@ -392,6 +359,8 @@ If required target behavior exists but is unwired, wire it through the real owne
 If the code is not part of the target architecture, delete it and its stale tests, fixtures, configuration, and documentation.
 
 Generated code and genuinely externally-invoked symbols that static analysis cannot observe may use the narrowest justified expectation/suppression with an explicit reason and evidence of the external entry path.
+
+Production Rust code MUST use typed error propagation. `.unwrap()`, `.expect()`, and `panic!` are prohibited in non-test runtime/domain/library code unless the condition is a physically guaranteed invariant and the call site carries an inline reason explaining that guarantee.
 
 Source-marker and compile-only checks MAY supplement behavior tests but MUST NOT substitute for missing runtime functionality.
 
@@ -480,4 +449,3 @@ All automated agents MUST follow the complete repository governance above and ad
 8. Keep module-owned UI and transport boundaries aligned with docs/modules/module-authoring.md and frontend-local rules.
 9. Do not treat required parallel platform surfaces as legacy merely because more than one transport or host exists; distinguish intentional target surfaces from obsolete duplicate implementations.
 10. Communicate concrete blockers and unverified checks explicitly rather than hiding them with stubs, fallbacks, compatibility layers, or optimistic completion claims.
->>>>>>> 5b1f0589c7a76b7e48047738ada737ad7f13a56a
