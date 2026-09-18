@@ -1,48 +1,73 @@
-# Blog category hierarchy contract
+# Blog Category hierarchy contract
 
-Blog owns its category hierarchy. `rustok-taxonomy` remains the shared flat vocabulary for tags and does not own Blog parent/child edges, ordering, cycle policy, or materialized depth.
+Taxonomy owns canonical Blog Category hierarchy placement. Blog owns the
+`blog_categories` membership/settings/revision row and the Blog command policy
+that is allowed to mutate Taxonomy's module-scoped hierarchy for Blog categories.
+
+There is no second Blog hierarchy table and no materialized Blog-owned
+`parent_id`, `position`, or `depth` persistence.
 
 ## Structural commands
 
-Localized category updates own `name`, `slug`, `description`, and settings. `UpdateCategoryInput.position` is retained only for compatibility decoding and is rejected by `CategoryService::update`; moving or reordering an existing category is a distinct structural operation:
+Localized Category updates own localized copy through Taxonomy plus Blog
+membership settings. `UpdateCategoryInput.position` is retained only for
+compatibility decoding and is rejected by `CategoryService::update`.
+
+Moving or reordering an existing category is the explicit command:
 
 `POST /api/blog/categories/{id}/move`
 
 with `MoveCategoryInput { parent_id, position }`.
 
-`parent_id = null` means move to the root level. `position` is the zero-based position inside the destination sibling list. The command requires `blog_categories:manage`.
+`parent_id = null` means root. `position` is a zero-based insertion index in
+the destination sibling list. The command requires `blog_categories:manage`.
 
-Category creation also treats `CreateCategoryInput.position` as a zero-based insertion index, not an arbitrary persisted scalar. Under the same tenant tree lock it validates the parent, rejects an index beyond the destination sibling count, canonicalizes existing sibling positions, and inserts the new category at the requested position. Creation refuses a 513th tenant category so every admitted tree remains operable by the bounded runtime hierarchy command.
+Creation uses the same tenant-scoped tree lock, validates the Blog membership
+parent, shifts canonical Taxonomy sibling positions and writes the same-ID
+Taxonomy Category/hierarchy in the owner transaction. A tenant is bounded to 512
+Blog categories for this structural command path.
 
-Category deletion is leaf-only. The retained production hierarchy foreign key already uses `ON DELETE RESTRICT`; the owner service enforces the same rule explicitly before deleting a row, so SQLite cannot leave dangling children when its existing table cannot be retrofitted with that foreign key. After a leaf deletion, the service compacts remaining sibling positions before commit. A parent becomes deletable only after its children have been moved or deleted.
+Delete is leaf-only. Taxonomy owns the outer canonical delete transaction; the
+Blog cleanup removes Blog membership, removes the Blog-scoped hierarchy
+placement, compacts the remaining canonical Taxonomy sibling positions, emits
+the Blog reindex signal, and then delegates host-composed capability cleanup.
+Any cleanup failure rolls the whole transaction back.
 
 ## Invariants
 
-Structural create, move, and delete operations execute inside one database transaction and:
+Structural create, move, and delete:
 
-- keep the admitted tenant-local tree bounded to a maximum of 512 nodes;
-- serialize PostgreSQL create/move/delete hierarchy writes with the same tenant-scoped transaction advisory lock; the entity insert hook also takes that lock before deriving child depth, while SQLite relies on its transaction writer serialization;
-- reject a missing/cross-tenant parent, self-parenting, descendant-parent cycles, an already-invalid hierarchy, out-of-range insertion/destination positions, and deletion of a non-leaf category;
-- canonicalize affected sibling positions after create, move, and leaf delete;
-- recompute materialized `depth` from the complete post-move parent map and persist every descendant whose depth changes;
-- retain the existing Blog-wide `ReindexRequested` event for category delete, where removing category name/slug changes Blog search projection inputs.
+- serialize PostgreSQL hierarchy writes with the same
+  `blog-category-tree:{tenant_id}` transaction advisory lock;
+- reject missing/cross-tenant parents, self-parenting, descendant cycles,
+  invalid existing trees and out-of-range sibling positions;
+- keep sibling positions dense and deterministic with category id as a stable
+  tie-breaker;
+- keep the tree bounded to 512 Blog memberships;
+- write canonical placement only in
+  `taxonomy_category_hierarchy`;
+- recompute response `depth` from the canonical Taxonomy parent map; depth is
+  not duplicated in Blog persistence;
+- keep localized copy and structural placement separate.
 
-Hierarchy move is deliberately projection-neutral: the Blog search projector consumes localized category name/slug, not parent/position/depth, so a move does not emit a full-tenant reindex event. This avoids turning structural reordering into unnecessary search rebuild work.
+The move command is projection-neutral because Blog Search does not index
+parent/position/depth. Create/update copy changes and delete retain their
+appropriate Blog reindex behavior.
 
-The 512-node bound is an execution-safety limit, not a newly invented category-depth policy. The retained hierarchy migration remains the storage/bootstrap authority for tenant-parent foreign-key integrity and legacy cycle/depth validation. Runtime create/move/delete semantics are owner-service policy rather than Taxonomy policy.
+## Ownership consequences
 
-`CategoryService::update` no longer writes `position`, even when the compatibility field is absent. That prevents a stale localized update from overwriting a concurrent structural move and leaves hierarchy placement with one owner-side write path for existing categories.
+`blog_categories` contains Blog membership/settings/revision only. Direct
+hierarchy fields must not be reintroduced there.
 
-## Translation boundary
+Taxonomy owns canonical localized Category identity, route history and hierarchy
+placement. Blog remains the command/orchestration owner for Blog-specific
+membership semantics and RBAC, but it does not become a second storage owner.
 
-A hierarchy move or leaf delete does not move category hierarchy into Taxonomy. Structural moves do not rewrite localized category rows, choose a locale, or create a Taxonomy term. Translation CAS/revision evidence therefore remains owned by localized category mutations; the move command updates only `parent_id`, `position`, `depth`, and `updated_at`, while deletion retains its existing category translation lifecycle evidence before the owner row is removed.
-
-The existing translation-target regression performs its source-copy update without a structural `position` mutation, proving translation revision advancement remains independent from hierarchy placement.
+Structural moves do not rewrite localized category rows or invent a locale.
 
 ## Verification
 
 - `node scripts/verify/verify-blog-category-hierarchy-command.mjs`
-- `cargo test --locked -p rustok-blog --lib category_command::tests -- --nocapture`
 - `cargo test --locked -p rustok-blog --test category_hierarchy -- --nocapture`
-- `cargo test --locked -p rustok-blog --lib category_update_advances_exact_locale_and_owner_change_revisions -- --nocapture`
+- `cargo test --locked -p rustok-blog --test category_taxonomy_delete_lifecycle -- --nocapture`
 - `.github/workflows/blog-category-hierarchy-contract.yml`

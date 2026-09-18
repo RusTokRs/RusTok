@@ -86,7 +86,7 @@ impl BlogCategoryDeleteCleanup {
             .exec(txn)
             .await?;
 
-        let _sibling_ids = canonicalize_siblings_in_tx(txn, tenant_id, parent_id).await?;
+        canonicalize_siblings_in_tx(txn, tenant_id, parent_id).await?;
 
         self.event_bus
             .publish_in_tx(
