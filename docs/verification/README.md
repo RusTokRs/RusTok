@@ -31,6 +31,20 @@ Execution plans and remediation backlogs should not live in this section as an e
 - [RBAC, Server and Runtime Module Verification](./rbac-server-modules-verification-plan.md)
 - [Leptos Library Verification](./leptos-libraries-verification-plan.md)
 
+## ADR Governance Verification
+
+Architecture-decision registry drift is checked with:
+
+```bash
+npm run verify:adrs
+```
+
+The verifier checks that every dated file in `DECISIONS/` is indexed exactly
+once, registry statuses use the canonical decision/implementation vocabularies,
+supersession links resolve, and ADRs created under the current governance
+contract contain the required ownership, invariant, failure, cutover, and
+verification sections.
+
 ## Minimum Verification Path for Platform Modules
 
 For scoped platform modules, the canonical local path is:
