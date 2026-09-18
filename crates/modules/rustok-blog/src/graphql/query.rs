@@ -319,12 +319,11 @@ async fn list_public_visible_posts(
                 category_id: None,
                 tag: None,
                 author_id: filter.author_id,
-                search: None,
                 locale: Some(locale.clone()),
                 page: Some(filter.page.unwrap_or(1) as u32),
                 per_page: Some(filter.per_page.unwrap_or(20) as u32),
-                sort_by: Some("published_at".to_string()),
-                sort_order: Some("desc".to_string()),
+                sort_by: Some(crate::PostSortField::PublishedAt),
+                sort_order: Some(crate::PostSortOrder::Desc),
             },
             Some(default_locale),
             public_channel_slug,
@@ -548,6 +547,7 @@ mod tests {
             channel_slug: Some(channel_slug.to_string()),
             channel_resolution_source: Some(ChannelResolutionSource::Host),
             locale: "en".to_string(),
+            correlation_id: Uuid::new_v4(),
         }
     }
 
@@ -702,6 +702,7 @@ mod tests {
             channel_slug: Some("blog-web".to_string()),
             channel_resolution_source: Some(ChannelResolutionSource::Query),
             locale: "en".to_string(),
+            correlation_id: Uuid::new_v4(),
         };
 
         let error = ensure_public_blog_channel_enabled(&db, Some(&request_context), false)
