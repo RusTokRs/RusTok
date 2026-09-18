@@ -78,16 +78,14 @@ pub fn normalize_locale_tag(locale: &str) -> Option<String> {
 pub fn locale_candidates(locale: Option<&str>, default_locale: &str) -> Vec<String> {
     let mut candidates = Vec::new();
 
-    push_locale_candidate(&mut candidates, locale);
-    push_locale_candidate(&mut candidates, Some(default_locale));
-    push_locale_candidate(&mut candidates, Some("en"));
+    push_locale_candidate_internal(&mut candidates, locale);
+    push_locale_candidate_internal(&mut candidates, Some(default_locale));
+    push_locale_candidate_internal(&mut candidates, Some("en"));
 
     candidates
 }
 
-/// Pushes a normalized locale and its progressively less-specific structural
-/// parents to the candidate list.
-pub fn push_locale_candidate(candidates: &mut Vec<String>, locale: Option<&str>) {
+fn push_locale_candidate_internal(candidates: &mut Vec<String>, locale: Option<&str>) {
     let Some(mut langid) = locale.and_then(parse_locale_tag) else {
         return;
     };
@@ -110,14 +108,32 @@ pub fn push_locale_candidate(candidates: &mut Vec<String>, locale: Option<&str>)
     }
 }
 
-fn push_langid_candidate(candidates: &mut Vec<String>, langid: &LanguageIdentifier) {
-    let locale = langid.to_string();
-    push_unique(candidates, &locale);
+/// Pushes a normalized locale and its progressively less-specific structural
+/// parents to the candidate list.
+#[deprecated(
+    since = "0.1.0",
+    note = "Use `locale_candidates` instead. This internal helper will be made private before 1.0."
+)]
+pub fn push_locale_candidate(candidates: &mut Vec<String>, locale: Option<&str>) {
+    push_locale_candidate_internal(candidates, locale);
 }
 
-/// Appends `locale` to `candidates` only if not already present.
-pub fn push_unique(candidates: &mut Vec<String>, locale: &str) {
+fn push_langid_candidate(candidates: &mut Vec<String>, langid: &LanguageIdentifier) {
+    let locale = langid.to_string();
+    push_unique_internal(candidates, &locale);
+}
+
+fn push_unique_internal(candidates: &mut Vec<String>, locale: &str) {
     if !candidates.iter().any(|candidate| candidate == locale) {
         candidates.push(locale.to_string());
     }
+}
+
+/// Appends `locale` to `candidates` only if not already present.
+#[deprecated(
+    since = "0.1.0",
+    note = "Internal helper; will be made private before 1.0."
+)]
+pub fn push_unique(candidates: &mut Vec<String>, locale: &str) {
+    push_unique_internal(candidates, locale);
 }

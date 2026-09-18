@@ -8,8 +8,8 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-use rustok_ui_i18n::bundle::build_fluent_catalog_report;
 use rustok_ui_i18n::BundleBuildError;
+use rustok_ui_i18n::bundle::build_fluent_catalog_report;
 
 #[test]
 fn lenient_report_retains_every_skipped_entry_reason_in_input_order() {
@@ -78,10 +78,8 @@ fn unparseable_locale_does_not_reserve_a_different_valid_identity() {
 
 #[test]
 fn clean_lenient_report_can_be_consumed_without_diagnostics() {
-    let report = build_fluent_catalog_report(&[
-        ("en", "title = Title\n"),
-        ("ru", "title = Заголовок\n"),
-    ]);
+    let report =
+        build_fluent_catalog_report(&[("en", "title = Title\n"), ("ru", "title = Заголовок\n")]);
 
     assert!(report.is_clean());
     let (catalog, diagnostics) = report.into_parts();

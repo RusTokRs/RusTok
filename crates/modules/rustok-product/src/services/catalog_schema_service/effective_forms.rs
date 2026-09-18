@@ -211,7 +211,9 @@ impl ProductCatalogSchemaService {
                 ca.is_disabled,
                 ca.position,
                 ca.visibility_overrides,
-                ca.validation_overrides
+                ca.validation_overrides,
+                ca.variant_axis_policy,
+                ca.default_variant_axis
             FROM category_attributes ca
             LEFT JOIN category_attribute_groups cag ON cag.id = ca.group_id
             WHERE ca.tenant_id = $1
@@ -236,6 +238,8 @@ impl ProductCatalogSchemaService {
                     position: row.position,
                     visibility_overrides: parse_visibility_overrides(row.visibility_overrides)?,
                     validation_overrides: row.validation_overrides,
+                    variant_axis_policy: row.variant_axis_policy,
+                    default_variant_axis: row.default_variant_axis,
                 });
         }
 
@@ -299,7 +303,9 @@ impl ProductCatalogSchemaService {
                 psa.is_disabled,
                 psa.position,
                 psa.visibility_overrides,
-                psa.validation_overrides
+                psa.validation_overrides,
+                psa.variant_axis_policy,
+                psa.default_variant_axis
             FROM product_attribute_schema_attributes psa
             LEFT JOIN product_attribute_schema_groups psag ON psag.id = psa.group_id
             WHERE psa.tenant_id = $1
@@ -323,6 +329,8 @@ impl ProductCatalogSchemaService {
                     visibility_overrides: parse_visibility_overrides(row.visibility_overrides)?,
                     validation_overrides: row.validation_overrides,
                     source: EffectiveAttributeSource::Schema,
+                    variant_axis_policy: row.variant_axis_policy.unwrap_or_else(|| "forbidden".to_string()),
+                    default_variant_axis: row.default_variant_axis.unwrap_or(false),
                 });
         }
 

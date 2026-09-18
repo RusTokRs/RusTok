@@ -11,10 +11,8 @@
 use std::fmt::Write as _;
 use std::hint::black_box;
 
-use criterion::{criterion_group, criterion_main, Criterion};
-use rustok_ui_i18n::{
-    build_fluent_catalog, fluent_args, locale_candidates, UiTranslator,
-};
+use criterion::{Criterion, criterion_group, criterion_main};
+use rustok_ui_i18n::{UiTranslator, build_fluent_catalog, fluent_args, locale_candidates};
 
 const EN: &str = r#"
 title = English title
@@ -77,9 +75,7 @@ fn benchmark_lookup(c: &mut Criterion) {
     });
 
     c.bench_function("i18n/prepared_locale/construct", |b| {
-        b.iter(|| {
-            black_box(translator.for_locale(black_box(Some("ru-RU"))))
-        })
+        b.iter(|| black_box(translator.for_locale(black_box(Some("ru-RU")))))
     });
 
     c.bench_function("i18n/dynamic_locale/direct_key", |b| {

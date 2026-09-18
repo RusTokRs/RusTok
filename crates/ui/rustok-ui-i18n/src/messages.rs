@@ -14,11 +14,10 @@ use fluent_bundle::FluentArgs;
 use unic_langid::LanguageIdentifier;
 
 use crate::bundle::{
-    build_fluent_catalog_report, try_build_fluent_catalog, FluentCatalog,
-    FluentCatalogBuildReport,
+    FluentCatalog, FluentCatalogBuildReport, build_fluent_catalog_report, try_build_fluent_catalog,
 };
 use crate::error::{BundleBuildError, I18nError};
-use crate::locale::{locale_candidates, MAX_LOCALE_TAG_LEN};
+use crate::locale::{MAX_LOCALE_TAG_LEN, locale_candidates};
 
 /// Ephemeral translator facade over a borrowed `FluentCatalog`.
 pub struct UiTranslator<'a> {
@@ -43,11 +42,7 @@ impl<'a> UiTranslator<'a> {
         UiLocaleTranslator::new(self.fluent_catalog, locale, self.default_locale)
     }
 
-    pub fn try_resolve(
-        &self,
-        locale: Option<&str>,
-        key: &str,
-    ) -> Result<String, I18nError> {
+    pub fn try_resolve(&self, locale: Option<&str>, key: &str) -> Result<String, I18nError> {
         try_resolve_fluent_message(self.fluent_catalog, locale, self.default_locale, key, None)
     }
 
@@ -65,13 +60,7 @@ impl<'a> UiTranslator<'a> {
         key: &str,
         args: Option<&FluentArgs<'args>>,
     ) -> Result<String, I18nError> {
-        try_resolve_fluent_message(
-            self.fluent_catalog,
-            locale,
-            self.default_locale,
-            key,
-            args,
-        )
+        try_resolve_fluent_message(self.fluent_catalog, locale, self.default_locale, key, args)
     }
 
     pub fn format_message<'args>(
@@ -224,7 +213,8 @@ impl PreparedUiMessages {
         args: Option<&FluentArgs<'args>>,
         fallback: &str,
     ) -> String {
-        self.translator().format_message(locale, key, args, fallback)
+        self.translator()
+            .format_message(locale, key, args, fallback)
     }
 
     /// Resolves a simple translation key with an explicit literal fallback.
@@ -294,7 +284,8 @@ impl UiMessages {
 
             match normalize_default_locale(self.default_locale) {
                 Ok(default_locale) => {
-                    if let Err(error) = ensure_default_locale_present(report.catalog(), &default_locale)
+                    if let Err(error) =
+                        ensure_default_locale_present(report.catalog(), &default_locale)
                     {
                         tracing::error!(
                             %error,
@@ -393,9 +384,13 @@ impl UiMessages {
         args: Option<&FluentArgs<'args>>,
         fallback: &str,
     ) -> String {
-        if let Some(msg) =
-            resolve_fluent_message(self.fluent_catalog(), locale, self.default_locale, key, args)
-        {
+        if let Some(msg) = resolve_fluent_message(
+            self.fluent_catalog(),
+            locale,
+            self.default_locale,
+            key,
+            args,
+        ) {
             return msg;
         }
 

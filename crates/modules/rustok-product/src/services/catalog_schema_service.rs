@@ -743,6 +743,8 @@ struct CategoryAttributeRow {
     position: Option<i32>,
     visibility_overrides: Value,
     validation_overrides: Value,
+    variant_axis_policy: Option<String>,
+    default_variant_axis: Option<bool>,
 }
 
 #[derive(FromQueryResult)]
@@ -768,6 +770,8 @@ struct SchemaAttributeRow {
     position: i32,
     visibility_overrides: Value,
     validation_overrides: Value,
+    variant_axis_policy: Option<String>,
+    default_variant_axis: Option<bool>,
 }
 
 fn parse_visibility_overrides(value: Value) -> CommerceResult<AttributeVisibilityOverrides> {

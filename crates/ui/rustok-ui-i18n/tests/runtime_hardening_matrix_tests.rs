@@ -12,12 +12,12 @@ use std::sync::{Arc, Barrier};
 use std::thread;
 
 use rustok_ui_i18n::{
-    build_fluent_bundle, build_fluent_catalog, fluent_args, locale_candidates,
-    try_build_fluent_catalog, BundleBuildError, UiMessages,
+    BundleBuildError, UiMessages, build_fluent_bundle, build_fluent_catalog, fluent_args,
+    locale_candidates, try_build_fluent_catalog,
 };
 
 fn strip_bidi_isolates(value: &str) -> String {
-    value.replace('\u{2068}', "").replace('\u{2069}', "")
+    value.replace(['\u{2068}', '\u{2069}'], "")
 }
 
 #[test]
@@ -98,7 +98,9 @@ items = { $count ->
     }
 
     for handle in handles {
-        handle.join().expect("concurrent first lookup thread panicked");
+        handle
+            .join()
+            .expect("concurrent first lookup thread panicked");
     }
 
     assert_eq!(MESSAGES.fluent_catalog().len(), 2);

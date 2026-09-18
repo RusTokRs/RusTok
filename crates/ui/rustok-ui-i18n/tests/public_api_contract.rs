@@ -30,3 +30,19 @@ fn prelude_exposes_the_supported_high_level_consumer_surface() {
     let locale_translator: UiLocaleTranslator<'_> = prepared.for_locale(Some("en"));
     assert_eq!(locale_translator.t("hello", "fallback"), "Hello");
 }
+
+#[test]
+#[allow(deprecated)]
+fn deprecated_compatibility_symbols_remain_callable_before_1_0() {
+    use rustok_ui_i18n::{LanguageIdentifier, push_locale_candidate, push_unique};
+
+    let mut candidates = Vec::new();
+    push_locale_candidate(&mut candidates, Some("en-US"));
+    assert_eq!(candidates, vec!["en-US", "en"]);
+
+    push_unique(&mut candidates, "fr");
+    assert_eq!(candidates, vec!["en-US", "en", "fr"]);
+
+    let parsed: Result<LanguageIdentifier, _> = "en-US".parse();
+    assert!(parsed.is_ok());
+}

@@ -12,14 +12,14 @@ use std::sync::Arc;
 use std::thread;
 
 use rustok_ui_i18n::{
-    build_fluent_bundle, fluent_args, locale_candidates, normalize_admin_locale,
-    normalize_locale_tag, BundleBuildError, UiMessages,
+    BundleBuildError, UiMessages, build_fluent_bundle, fluent_args, locale_candidates,
+    normalize_admin_locale, normalize_locale_tag,
 };
 
 fn assert_send_sync<T: Send + Sync>() {}
 
 fn without_bidi_isolates(value: &str) -> String {
-    value.replace('\u{2068}', "").replace('\u{2069}', "")
+    value.replace(['\u{2068}', '\u{2069}'], "")
 }
 
 #[test]
@@ -78,7 +78,10 @@ fn normalize_locale_tag_contract() {
     assert_eq!(normalize_locale_tag("en"), Some("en".to_string()));
     assert_eq!(normalize_locale_tag("ru_RU"), Some("ru-RU".to_string()));
     assert_eq!(normalize_locale_tag("es-ES"), Some("es-ES".to_string()));
-    assert_eq!(normalize_locale_tag("zh_Hans_CN"), Some("zh-Hans-CN".to_string()));
+    assert_eq!(
+        normalize_locale_tag("zh_Hans_CN"),
+        Some("zh-Hans-CN".to_string())
+    );
     assert_eq!(normalize_locale_tag("   "), None);
     assert_eq!(normalize_locale_tag(""), None);
     assert_eq!(normalize_locale_tag("invalid!tag!"), None);
@@ -166,11 +169,7 @@ fn multi_bundle_fallback_chain() {
 
     static MESSAGES: UiMessages = UiMessages::new(
         "en",
-        &[
-            ("ru-RU", FTL_RU_RU),
-            ("ru", FTL_RU),
-            ("en", FTL_EN),
-        ],
+        &[("ru-RU", FTL_RU_RU), ("ru", FTL_RU), ("en", FTL_EN)],
     );
 
     // 1. Regional override resolves to regional bundle

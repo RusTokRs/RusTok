@@ -16,10 +16,7 @@ fn oversized_locale_is_rejected_before_entering_fallback_chain() {
     assert!(oversized.len() > 64);
 
     assert_eq!(normalize_locale_tag(&oversized), None);
-    assert_eq!(
-        locale_candidates(Some(&oversized), "ru"),
-        vec!["ru", "en"]
-    );
+    assert_eq!(locale_candidates(Some(&oversized), "ru"), vec!["ru", "en"]);
 }
 
 #[test]
