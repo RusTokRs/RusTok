@@ -8,12 +8,13 @@ This slice hardens the Product-owned native catalog-list server-function adapter
 
 - `crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs`.
 
-It covers missing host-composed `TransactionalEventBus`, optional request-context diagnostics, and tenant-context extraction. Product catalog query validation and service failures continue to use the existing Product public-error mapper.
+It covers missing `HostRuntimeContext`, missing host-composed `TransactionalEventBus`, optional request-context diagnostics, and tenant-context extraction. Product catalog query validation and service failures continue to use the existing Product public-error mapper.
 
 ## Delivered source contract
 
-The native adapter now returns static public messages for:
+The native adapter now resolves `HostRuntimeContext` fallibly and returns static public messages for:
 
+- missing host runtime context;
 - missing `TransactionalEventBus` runtime composition;
 - tenant-context extraction failure.
 
@@ -49,7 +50,7 @@ This slice does not change:
 - static runtime and tenant-context public envelopes;
 - optional request-context preservation and diagnostics;
 - correlation, channel, locale, owner, code, and boundary logging;
-- removal of raw runtime/context public mappings;
+- fallible host-context lookup and removal of panic/raw runtime/context public mappings;
 - unchanged Product public-error mapper calls;
 - source-only validation flags.
 
