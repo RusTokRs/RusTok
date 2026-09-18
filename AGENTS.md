@@ -117,6 +117,7 @@ Rules:
 - Do not put code into rustok-core, rustok-api, rustok-ui-core, or another shared crate merely because more than one consumer exists.
 - Host applications compose owner-owned entrypoints; they do not absorb module-owned business rules.
 - Cross-crate dependencies and imports MUST comply with `scripts/architecture_rules.toml`. When a change touches crate/layer boundaries, run `python scripts/architecture_dependency_guard.py` or the current canonical replacement documented by the verification runbook.
+- New native modules and major native-module source refactors MUST follow the canonical physical layout in `docs/backend/module-backend-implementation.md`. `rustok-blog` is the initial strict reference; enrolled reference modules MUST pass `npm run verify:module-source-layout`. Do not treat historical per-module layout as an alternate convention.
 
 ### Reuse and abstraction
 

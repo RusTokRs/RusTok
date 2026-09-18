@@ -14,6 +14,7 @@ pub mod categories;
 #[cfg(feature = "comment-assets")]
 mod comment_assets;
 pub mod comments;
+pub mod openapi;
 pub mod posts;
 
 #[derive(Clone)]

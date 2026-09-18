@@ -17,6 +17,19 @@ Use `verify-axum-runtime.mjs` to confirm that the server and standalone CLI
 entrypoints retain their explicit target boundaries. If a file is intentionally
 removed or split, update the marker list instead of preserving stale checks.
 
+## Canonical source-layout verification
+
+For a new module or a major module refactor, run the canonical physical-layout
+guard for every enrolled reference module:
+
+```bash
+npm run verify:module-source-layout
+```
+
+The initial strict reference is `rustok-blog`. A module should be enrolled only
+after its physical move is complete; enrollment is a one-way architecture gate,
+not an opt-in alternate style.
+
 ## Module Validation
 
 For module manifest or ownership changes:

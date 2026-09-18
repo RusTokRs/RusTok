@@ -1,6 +1,6 @@
 # rustok-blog canonical implementation cursor
 
-Status: `canonical_source_cursor_actualized_through_taxonomy_cat_17_docs`.
+Status: `canonical_source_cursor_actualized_through_taxonomy_cat_17_docs_and_native_layout_v1`.
 
 This document is the canonical **current** source cursor for `rustok-blog`.
 `crates/modules/rustok-blog/docs/implementation-plan.md` and the standalone
@@ -151,6 +151,29 @@ name retired provider/storage concepts in historical context. Any future stale
 live claim discovered outside these owner-scoped surfaces is a new independent
 documentation gap and must be handled from a fresh `main` under the owning
 module's boundary.
+
+## Canonical native-module layout baseline
+
+The Blog backend is now the first strict reference implementation of the canonical
+native module physical layout. This is an architecture-only source move: Blog
+ownership, storage, wire contracts, transaction boundaries, event identities, and
+Taxonomy/Comments integrations are unchanged.
+
+Current source placement is:
+
+- `module.rs` for module/runtime registration;
+- `domain/` for the state machine and article richtext policy;
+- `services/` for use cases, with `PostService` decomposed into bounded
+  command/query/repository/helper/test files;
+- `entities/` plus `migrations/` for persistence;
+- `integrations/` for SEO, reactions, and public-comment snapshot adapters;
+- `graphql/` plus `controllers/` for transport adapters;
+- thin `lib.rs` facade with stable compatibility re-exports.
+
+The baseline is guarded by `npm run verify:module-source-layout`. Other existing
+modules are not grandfathered as alternate standards; they should be migrated in
+bounded follow-up PRs from fresh `main` and enrolled in the verifier after their
+physical layout conforms.
 
 ## Next cursor
 

@@ -144,6 +144,21 @@ Backend module file ownership follows the same split:
 - `apps/server` mounts and composes owner-owned entrypoints, but must not become the owner
   of module services, DTOs, command providers or business policy.
 
+## Canonical physical source layout
+
+Native platform modules use the canonical responsibility-oriented source vocabulary
+defined in the backend implementation guide and
+[ADR 2026-09-18](../../DECISIONS/2026-09-18-canonical-native-module-source-layout.md).
+The physical layout does not transfer semantic ownership: domain, services,
+persistence, integrations and transports remain facets of one module owner.
+
+`rustok-blog` is the first strict reference implementation. Existing modules are
+migrated incrementally and are enrolled in
+`npm run verify:module-source-layout` only after their bounded refactor is
+complete. Shared/support libraries follow the same responsibility separation but
+do not create module-only lifecycle or migration scaffolding when it is not part
+of their contract.
+
 ## UI Composition Policy
 
 If a module provides UI, that UI remains module-owned:

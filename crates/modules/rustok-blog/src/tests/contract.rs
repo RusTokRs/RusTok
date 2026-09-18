@@ -1,6 +1,6 @@
 #[test]
 fn crate_api_defines_minimal_contract_sections() {
-    let api = include_str!("../CRATE_API.md");
+    let api = include_str!("../../CRATE_API.md");
     for marker in [
         "## Minimum Contract Set",
         "### Input DTOs/Commands",
