@@ -24,6 +24,7 @@ pub mod module_policy;
 pub mod module_registry_contract;
 pub mod module_transition;
 pub mod module_work;
+pub mod patch;
 pub mod permissions;
 pub mod platform_build;
 pub mod ports;
@@ -93,6 +94,7 @@ pub use module_work::{
     ModuleWorkError, ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource,
 };
 pub use permissions::{Action, Permission, Resource};
+pub use patch::Patch;
 pub use platform_build::{
     PlatformBuildSnapshot, PlatformBuildStage, PlatformBuildStatus, PlatformDeploymentProfile,
 };
