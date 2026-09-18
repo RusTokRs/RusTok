@@ -53,3 +53,16 @@ impl TaxonomyError {
         Self::Conflict(message.into())
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::TaxonomyError;
+
+    #[test]
+    fn internal_error_display_is_redacted() {
+        let error = TaxonomyError::internal("postgresql://private-host/secret");
+        assert_eq!(error.to_string(), "Taxonomy internal operation failed");
+        assert!(!error.to_string().contains("private-host"));
+    }
+}
