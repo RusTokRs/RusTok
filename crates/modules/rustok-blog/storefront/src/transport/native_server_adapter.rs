@@ -53,7 +53,7 @@ async fn create_blog_comment_native(
 ) -> Result<BlogCommentDetail, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
+        use leptos::prelude::use_context;
         use rustok_api::{Action, HostRuntimeContext, Permission, Resource};
         use rustok_outbox::TransactionalEventBus;
 
@@ -75,7 +75,8 @@ async fn create_blog_comment_native(
             return Err(ServerFnError::new("comments:create required"));
         }
 
-        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let runtime_ctx =
+            use_context::<HostRuntimeContext>().ok_or_else(public_internal_error)?;
         match rustok_api::is_tenant_module_enabled(runtime_ctx.db(), tenant.id, MODULE_SLUG).await {
             Ok(true) => {}
             Ok(false) => return Err(ServerFnError::new("Blog module is not enabled")),
@@ -180,7 +181,7 @@ async fn storefront_blog_native(
 ) -> Result<StorefrontBlogData, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
+        use leptos::prelude::use_context;
         use rustok_api::HostRuntimeContext;
         use rustok_blog::{
             BlogPostStatus, PostListQuery, PostService, PostSortField, PostSortOrder,
@@ -190,7 +191,8 @@ async fn storefront_blog_native(
         use rustok_outbox::TransactionalEventBus;
         use rustok_tenant::TenantService;
 
-        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let runtime_ctx =
+            use_context::<HostRuntimeContext>().ok_or_else(public_internal_error)?;
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(public_internal_error)?;
@@ -208,7 +210,7 @@ async fn storefront_blog_native(
                 .as_deref()
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
-.ok_or_else(public_internal_error)?;
+                .ok_or_else(public_internal_error)?;
             let tenant = TenantService::new(runtime_ctx.db_clone())
                 .get_tenant_by_slug(slug)
                 .await
