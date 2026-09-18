@@ -53,7 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
-| [2026-09-18](./2026-09-18-unified-variant-axis-architecture.md) | Unified variant axis architecture | Accepted | Not started | — |
+| [2026-09-18](./2026-09-18-unified-variant-axis-architecture.md) | Unified variant axis architecture | Accepted | Not started | Extends [Product category-bound attribute schemas](./2026-07-01-product-category-bound-attribute-schemas.md), [Product storage integrity](./2026-07-11-product-storage-integrity-and-request-trust.md), and [Channel binding policy](./2026-07-22-channel-binding-policy-boundary.md) |
 | [2026-09-06](./2026-09-06-crates-workspace-layout-split.md) | Categorized workspace layout for crates | Accepted | Not tracked | — |
 | [2026-08-22](./2026-08-22-taxonomy-category-flex-ownership.md) | Taxonomy owns shared Categories; Flex owns runtime custom fields | Accepted | Not tracked | — |
 | [2026-08-22](./2026-08-22-module-command-context-evidence.md) | Typed module command-context evidence | Accepted | Not tracked | — |
@@ -82,7 +82,7 @@ Non-ADR plans and research documents do not belong in this registry.
 | [2026-07-22](./2026-07-22-artifact-data-snapshot-restore.md) | Durable artifact-data snapshot and guarded restore | Accepted | Not tracked | — |
 | [2026-07-21](./2026-07-21-language-agnostic-legacy-locale-provenance.md) | Truthful locale provenance for legacy localized rows | Accepted | Not tracked | — |
 | [2026-07-21](./2026-07-21-groups-owner-and-feature-provider-boundary.md) | Groups owner and feature-provider boundary | Accepted | Not tracked | — |
-| [2026-07-18](./2026-07-18-storage-physical-owner-media-facade.md) | Storage as the physical file owner and Media as the media facade | Superseded | Not applicable | — |
+| [2026-07-18](./2026-07-18-storage-physical-owner-media-facade.md) | Storage as the physical file owner and Media as the media facade | Superseded | Not applicable | Superseded by [Direct object-store runtime and owner-local lifecycle](./2026-07-22-direct-object-store-runtime-owner-local-lifecycle.md) |
 | [2026-07-18](./2026-07-18-repository-connector-module-github-first.md) | Repository connector module with GitHub as the first provider | Accepted | Not tracked | — |
 | [2026-07-18](./2026-07-18-rag-postgres-capability-profiles.md) | Athanor-owned RAG data plane | Accepted | Not tracked | — |
 | [2026-07-18](./2026-07-18-artifact-declarative-ddl-boundary.md) | Artifact declarative DDL boundary | Accepted | Not tracked | — |
