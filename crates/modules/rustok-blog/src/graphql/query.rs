@@ -1,7 +1,7 @@
-use async_graphql::{Context, ErrorExtensions, Object, Result, dataloader::DataLoader};
+use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result, dataloader::DataLoader};
 use rustok_api::{
     AuthContext, RequestContext, TenantContext,
-    graphql::{require_module_enabled, resolve_graphql_locale},
+    graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
 };
 use rustok_channel::ChannelService;
 use rustok_core::SecurityContext;
@@ -187,16 +187,16 @@ impl BlogQuery {
                     category_id: None,
                     tag: None,
                     author_id: filter.author_id,
-                    search: None,
                     locale: Some(locale.clone()),
                     page: Some(filter.page.unwrap_or(1) as u32),
                     per_page: Some(filter.per_page.unwrap_or(20) as u32),
-                    sort_by: Some("created_at".to_string()),
-                    sort_order: Some("desc".to_string()),
+                    sort_by: Some(crate::PostSortField::CreatedAt),
+                    sort_order: Some(crate::PostSortOrder::Desc),
                 },
                 Some(tenant.default_locale.as_str()),
             )
-            .await?;
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
         metrics::record_read_path_query(
             "graphql",
             "blog.posts",
@@ -425,7 +425,11 @@ where
             Some(tenant_default_locale),
         )
         .await
-        .map_err(|err| crate::error::public::to_graphql_error(err))?;
+        .map_err(|_| {
+            <FieldError as GraphQLError>::internal_error(
+                "Unable to load Blog author profiles",
+            )
+        })?;
 
     Ok(profiles
         .into_iter()

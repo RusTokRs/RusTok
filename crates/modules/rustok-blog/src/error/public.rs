@@ -57,12 +57,6 @@ pub(crate) fn to_graphql_error(error: BlogError) -> GraphqlError {
     })
 }
 
-impl From<BlogError> for GraphqlError {
-    fn from(error: BlogError) -> Self {
-        to_graphql_error(error)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

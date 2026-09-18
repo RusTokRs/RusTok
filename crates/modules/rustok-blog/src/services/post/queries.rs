@@ -1,3 +1,5 @@
+use rustok_api::PLATFORM_FALLBACK_LOCALE;
+
 use super::*;
 
 impl PostService {
@@ -235,7 +237,7 @@ impl PostService {
                 channel_slugs: channel_slugs_map
                     .get(&post.id)
                     .cloned()
-                    .unwrap_or_else(|| extract_channel_slugs(&post.metadata)),
+                    .unwrap_or_default(),
                 comment_count: post.comment_count as i64,
                 published_at: post.published_at.map(Into::into),
                 created_at: post.created_at.into(),
@@ -363,7 +365,7 @@ impl PostService {
                 channel_slugs: channel_slugs_map
                     .get(&post.id)
                     .cloned()
-                    .unwrap_or_else(|| extract_channel_slugs(&post.metadata)),
+                    .unwrap_or_default(),
                 comment_count: post.comment_count as i64,
                 published_at: post.published_at.map(Into::into),
                 created_at: post.created_at.into(),
@@ -492,7 +494,7 @@ impl PostService {
             available_locales: available_locales_from(&translations, |item| item.locale.as_str()),
             content,
             content_plain_text,
-            excerpt: translation.and_then(|item| item.excerpt.clone()),
+            excerpt: translation.excerpt.clone(),
             status: storage_to_status(&post.status)?,
             category_id: post.category_id,
             category_name,

@@ -16,7 +16,7 @@ struct PostTranslationUpsertInput {
     now: chrono::DateTime<chrono::Utc>,
 }
 
-use rustok_api::{Action, Patch, Resource, RichTextDocument};
+use rustok_api::{Action, Patch, Resource};
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };
@@ -59,6 +59,8 @@ struct ResolvedTranslationRecord<'a> {
 mod commands;
 mod queries;
 mod repository;
+
+pub(crate) use repository::load_post_subject_snapshot;
 
 #[cfg(test)]
 mod tests;

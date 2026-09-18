@@ -50,7 +50,8 @@ impl BlogMutation {
                 ),
                 input.into(),
             )
-            .await?;
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
 
         Ok(post_id)
     }
@@ -85,7 +86,8 @@ impl BlogMutation {
                 ),
                 input.into(),
             )
-            .await?;
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
 
         Ok(true)
     }
@@ -118,7 +120,8 @@ impl BlogMutation {
                     &auth.permissions,
                 ),
             )
-            .await?;
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
 
         Ok(true)
     }
@@ -151,7 +154,8 @@ impl BlogMutation {
                     &auth.permissions,
                 ),
             )
-            .await?;
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
 
         Ok(true)
     }
@@ -184,7 +188,8 @@ impl BlogMutation {
                     &auth.permissions,
                 ),
             )
-            .await?;
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
 
         Ok(true)
     }
@@ -219,7 +224,8 @@ impl BlogMutation {
                 ),
                 reason,
             )
-            .await?;
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
 
         Ok(true)
     }
@@ -251,7 +257,8 @@ impl BlogMutation {
                     &auth.permissions,
                 ),
             )
-            .await?;
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
 
         Ok(true)
     }
@@ -292,7 +299,8 @@ impl BlogMutation {
                 public_channel_slug,
                 input.into(),
             )
-            .await?;
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
 
         Ok(comment.into())
     }
@@ -339,7 +347,8 @@ impl BlogMutation {
                 },
                 Some(tenant.default_locale.as_str()),
             )
-            .await?;
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
 
         Ok(true)
     }
