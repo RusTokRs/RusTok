@@ -56,6 +56,7 @@ mod m20260913_000029_add_product_attribute_value_translation_target;
 mod m20260913_000030_add_product_variant_attribute_value_translation_target;
 mod m20260913_000031_add_product_category_seo_translation_target;
 mod m20260916_000032_clean_product_category_canonical_taxonomy;
+mod m20260918_000033_create_variant_axes_and_invariants;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -120,6 +121,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         ),
         Box::new(m20260913_000031_add_product_category_seo_translation_target::Migration),
         Box::new(m20260916_000032_clean_product_category_canonical_taxonomy::Migration),
+        Box::new(m20260918_000033_create_variant_axes_and_invariants::Migration),
     ]
 }
 
@@ -161,6 +163,14 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260916_000032_clean_product_category_canonical_taxonomy",
             vec!["m20260822_000010_create_taxonomy_category_hierarchy"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260918_000033_create_variant_axes_and_invariants",
+            vec![
+                "m20260701_000002_add_product_catalog_tenant_consistency_constraints",
+                "m20260711_000002_enforce_product_tenant_integrity",
+                "m20260711_000003_enforce_catalog_value_invariants",
+            ],
         ),
     ]
 }
