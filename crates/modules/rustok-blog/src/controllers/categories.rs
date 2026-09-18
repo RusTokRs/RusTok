@@ -12,12 +12,12 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use super::BlogHttpRuntime;
+use crate::CategoryService;
 use crate::dto::{
     CategoryListResponse, CategoryResponse, CreateCategoryInput, ListCategoriesFilter,
     MoveCategoryInput, MoveCategoryResponse, UpdateCategoryInput,
 };
 use crate::services::CategoryCommandService;
-use crate::CategoryService;
 
 fn security_context(auth: &AuthContext) -> rustok_core::SecurityContext {
     rustok_core::security_context_from_access_token(
@@ -45,7 +45,6 @@ fn category_service(runtime: &BlogHttpRuntime) -> CategoryService {
 fn category_command_service(runtime: &BlogHttpRuntime) -> CategoryCommandService {
     CategoryCommandService::new(runtime.db_clone())
 }
-
 
 #[utoipa::path(
     get,

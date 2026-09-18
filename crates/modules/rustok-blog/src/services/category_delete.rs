@@ -63,9 +63,10 @@ impl BlogCategoryDeleteCleanup {
             .ok_or_else(|| BlogError::category_not_found(self.blog_category_id))?;
         ensure_category_is_leaf_in_tx(txn, tenant_id, self.blog_category_id).await?;
 
-        let placement = taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, self.blog_category_id))
-            .one(txn)
-            .await?;
+        let placement =
+            taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, self.blog_category_id))
+                .one(txn)
+                .await?;
         let parent_id = placement.and_then(|p| p.parent_term_id);
 
         let deleted = blog_category::Entity::delete_many()
