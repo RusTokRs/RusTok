@@ -62,6 +62,8 @@ for (const [value, label] of [
   ['map_product_service_error(error, "storefront_catalog_list")', "catalog service mapper operation"],
   ["native_server_adapter::fetch_products(request).await?", "detail transport composition"],
   ["data.products = products;", "catalog result composition"],
+  ["use_context::<HostRuntimeContext>()", "fallible host runtime context lookup"],
+  ['map_runtime_dependency_error("HostRuntimeContext")', "host runtime public safety mapper"],
 ]) requireText(source, value, label);
 
 for (const [value, label] of [
@@ -87,6 +89,7 @@ if (countText(source, "ServerFnError::new(\"Product catalog context is unavailab
 
 for (const value of [
   ".map_err(ServerFnError::new)?",
+  "expect_context::<HostRuntimeContext>()",
   "product/storefront catalog list requires TransactionalEventBus in host runtime context",
   ".await\n            .ok();",
 ]) forbidText(source, value, "raw Product catalog native context mapping");
