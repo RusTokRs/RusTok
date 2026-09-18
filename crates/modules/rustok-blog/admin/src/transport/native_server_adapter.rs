@@ -98,10 +98,10 @@ async fn native_context() -> Result<NativeContext, ServerFnError> {
     let runtime = expect_context::<HostRuntimeContext>();
     let auth = leptos_axum::extract::<rustok_api::AuthContext>()
         .await
-        .map_err(ServerFnError::new)?;
+        .map_err(|_| ServerFnError::new("Authentication required"))?;
     let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
         .await
-        .map_err(ServerFnError::new)?;
+        .map_err(|_| public_internal_error())?;
     if auth.tenant_id != tenant.id {
         return Err(ServerFnError::new(
             "Authenticated actor is not bound to the current tenant",
@@ -109,9 +109,7 @@ async fn native_context() -> Result<NativeContext, ServerFnError> {
     }
     let event_bus = runtime
         .shared_get::<TransactionalEventBus>()
-        .ok_or_else(|| {
-            ServerFnError::new("blog/admin requires TransactionalEventBus in host runtime context")
-        })?;
+        .ok_or_else(public_internal_error)?;
     let comments_thread_port = runtime.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>();
 
     Ok(NativeContext {
@@ -147,6 +145,12 @@ fn security_context(auth: &rustok_api::AuthContext) -> rustok_core::SecurityCont
 #[cfg(feature = "ssr")]
 fn public_blog_error(error: rustok_blog::BlogError) -> ServerFnError {
     let public = rustok_blog::BlogPublicError::from(error);
+    ServerFnError::new(format!("{}: {}", public.code, public.message))
+}
+
+#[cfg(feature = "ssr")]
+fn public_internal_error() -> ServerFnError {
+    let public = rustok_blog::BlogPublicError::internal();
     ServerFnError::new(format!("{}: {}", public.code, public.message))
 }
 
@@ -240,7 +244,7 @@ async fn blog_admin_post_native(
         {
             Ok(post) => Ok(Some(map_post_detail(post))),
             Err(BlogError::PostNotFound(_)) => Ok(None),
-            Err(error) => Err(ServerFnError::new(error)),
+            Err(error) => Err(public_blog_error(error)),
         }
     }
     #[cfg(not(feature = "ssr"))]
