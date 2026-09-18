@@ -59,7 +59,6 @@ pub(crate) async fn create_test_product(catalog: &CatalogService, tenant_id: Uui
             meta_title: None,
             meta_description: None,
         }],
-        options: vec![],
         variants: vec![CreateVariantInput {
             sku: Some(format!(
                 "SKU-{}",
@@ -67,9 +66,7 @@ pub(crate) async fn create_test_product(catalog: &CatalogService, tenant_id: Uui
             )),
             barcode: None,
             shipping_profile_slug: None,
-            option1: Some("Default".to_string()),
-            option2: None,
-            option3: None,
+            axis_values: vec![],
             prices: vec![PriceInput {
                 currency_code: "USD".to_string(),
                 channel_id: None,
@@ -114,7 +111,6 @@ pub(crate) async fn create_test_product_with_seller(
             meta_title: None,
             meta_description: None,
         }],
-        options: vec![],
         variants: vec![CreateVariantInput {
             sku: Some(format!(
                 "SELLER-{}",
@@ -122,9 +118,7 @@ pub(crate) async fn create_test_product_with_seller(
             )),
             barcode: None,
             shipping_profile_slug: Some("default".to_string()),
-            option1: Some("Default".to_string()),
-            option2: None,
-            option3: None,
+            axis_values: vec![],
             prices: vec![PriceInput {
                 currency_code: "USD".to_string(),
                 channel_id: None,

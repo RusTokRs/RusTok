@@ -581,9 +581,7 @@ mod tests {
             barcode: None,
             shipping_profile_slug: None,
             title: "Variant".to_string(),
-            option1: None,
-            option2: None,
-            option3: None,
+            combination_identity: None,
             prices,
             effective_price,
         }

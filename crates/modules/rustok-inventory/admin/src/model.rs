@@ -77,9 +77,8 @@ pub struct InventoryVariant {
     #[serde(rename = "shippingProfileSlug")]
     pub shipping_profile_slug: Option<String>,
     pub title: String,
-    pub option1: Option<String>,
-    pub option2: Option<String>,
-    pub option3: Option<String>,
+    #[serde(rename = "combinationIdentity")]
+    pub combination_identity: Option<String>,
     pub prices: Vec<InventoryPrice>,
     #[serde(rename = "inventoryQuantity")]
     pub inventory_quantity: i32,
@@ -289,9 +288,7 @@ mod tests {
                     "barcode": null,
                     "shippingProfileSlug": "bulky",
                     "title": "Blue / M",
-                    "option1": "Blue",
-                    "option2": "M",
-                    "option3": null,
+                    "combinationIdentity": "color:blue|size:m",
                     "prices": [
                         {
                             "currencyCode": "USD",

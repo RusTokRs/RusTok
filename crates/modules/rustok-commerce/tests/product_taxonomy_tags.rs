@@ -46,7 +46,6 @@ fn create_test_product_input(tags: &[&str]) -> CreateProductInput {
             meta_title: None,
             meta_description: None,
         }],
-        options: vec![],
         variants: vec![CreateVariantInput {
             sku: Some(format!(
                 "SKU-{}",
@@ -54,9 +53,7 @@ fn create_test_product_input(tags: &[&str]) -> CreateProductInput {
             )),
             barcode: None,
             shipping_profile_slug: None,
-            option1: Some("Default".to_string()),
-            option2: None,
-            option3: None,
+            axis_values: vec![],
             prices: vec![PriceInput {
                 currency_code: "USD".to_string(),
                 channel_id: None,

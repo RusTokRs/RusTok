@@ -822,9 +822,7 @@ fn map_native_detail(value: rustok_pricing::AdminPricingProductDetail) -> Pricin
                 barcode: variant.barcode,
                 shipping_profile_slug: variant.shipping_profile_slug,
                 title: variant.title,
-                option1: variant.option1,
-                option2: variant.option2,
-                option3: variant.option3,
+                combination_identity: variant.combination_identity,
                 prices: variant
                     .prices
                     .into_iter()
@@ -1382,14 +1380,11 @@ mod tests {
                         meta_title: None,
                         meta_description: None,
                     }],
-                    options: vec![],
                     variants: vec![rustok_product::dto::CreateVariantInput {
                         sku: Some("PRICE-TIER-1".to_string()),
                         barcode: None,
                         shipping_profile_slug: None,
-                        option1: Some("Default".to_string()),
-                        option2: None,
-                        option3: None,
+                        axis_values: vec![],
                         prices: vec![rustok_product::dto::PriceInput {
                             currency_code: "USD".to_string(),
                             channel_id: None,

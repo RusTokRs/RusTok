@@ -24,8 +24,7 @@ use rustok_payment::services::{PaymentRefundCreationService, PaymentService};
 use rustok_pricing::PricingService;
 use rustok_product::CatalogService;
 use rustok_product::dto::{
-    CreateProductInput, CreateVariantInput, PriceInput, ProductOptionInput,
-    ProductOptionTranslationInput, ProductTranslationInput,
+    CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput,
 };
 use rustok_region::dto::{CreateRegionInput, RegionTranslationInput};
 use rustok_region::services::RegionService;
@@ -463,13 +462,10 @@ async fn ecommerce_migrations_create_expected_tables() {
         "product_translations",
         "product_images",
         "product_image_translations",
-        "product_options",
-        "product_option_translations",
-        "product_option_values",
-        "product_option_value_translations",
+        "product_variant_axes",
+        "product_variant_axis_values",
         "product_variants",
         "product_variant_translations",
-        "variant_option_values",
         "price_lists",
         "prices",
         "regions",
@@ -510,19 +506,15 @@ async fn catalog_service_supports_multilingual_catalog_data_on_migrated_schema()
         .expect("catalog create_product should work");
     assert!(created.translations.iter().any(|item| item.locale == "en"));
     assert!(created.translations.iter().any(|item| item.locale == "ru"));
-    assert_eq!(created.options.len(), 1);
     assert_eq!(created.variants[0].translations.len(), 2);
 
     let fetched = service
         .get_product(tenant_id, created.id)
         .await
         .expect("catalog get_product should work");
-    assert!(
-        fetched.options[0]
-            .translations
-            .iter()
-            .all(|translation| translation.values.len() == 2)
-    );
+    assert!(fetched.translations.iter().any(|item| item.locale == "en"));
+    assert!(fetched.translations.iter().any(|item| item.locale == "ru"));
+    assert_eq!(fetched.variants[0].translations.len(), 2);
 }
 
 async fn seed_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
@@ -589,27 +581,11 @@ fn create_product_input() -> CreateProductInput {
                 meta_description: Some("RU description".to_string()),
             },
         ],
-        options: vec![ProductOptionInput {
-            translations: vec![
-                ProductOptionTranslationInput {
-                    locale: "en".to_string(),
-                    name: "Size".to_string(),
-                    values: vec!["S".to_string(), "M".to_string()],
-                },
-                ProductOptionTranslationInput {
-                    locale: "ru".to_string(),
-                    name: "Размер".to_string(),
-                    values: vec!["S".to_string(), "M".to_string()],
-                },
-            ],
-        }],
         variants: vec![CreateVariantInput {
             sku: Some(format!("SKU-{}", Uuid::new_v4())),
             barcode: None,
             shipping_profile_slug: None,
-            option1: Some("Default".to_string()),
-            option2: None,
-            option3: None,
+            axis_values: vec![],
             prices: vec![PriceInput {
                 currency_code: "USD".to_string(),
                 channel_id: None,

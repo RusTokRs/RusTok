@@ -506,9 +506,7 @@ fn map_variant(
         barcode: value.barcode,
         shipping_profile_slug: value.shipping_profile_slug,
         title,
-        option1: value.option1,
-        option2: value.option2,
-        option3: value.option3,
+        combination_identity: value.combination_identity,
         prices: value
             .prices
             .into_iter()

@@ -113,9 +113,8 @@ pub struct PricingVariant {
     #[serde(rename = "shippingProfileSlug")]
     pub shipping_profile_slug: Option<String>,
     pub title: String,
-    pub option1: Option<String>,
-    pub option2: Option<String>,
-    pub option3: Option<String>,
+    #[serde(rename = "combinationIdentity")]
+    pub combination_identity: Option<String>,
     pub prices: Vec<PricingPrice>,
     #[serde(rename = "effectivePrice")]
     pub effective_price: Option<PricingEffectivePrice>,

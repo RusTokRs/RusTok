@@ -48,14 +48,11 @@ fn create_product_input(handle: &str, title: &str, sku: &str) -> CreateProductIn
             meta_title: None,
             meta_description: None,
         }],
-        options: vec![],
         variants: vec![CreateVariantInput {
             sku: Some(sku.to_string()),
             barcode: None,
             shipping_profile_slug: None,
-            option1: Some("Default".to_string()),
-            option2: None,
-            option3: None,
+            axis_values: vec![],
             prices: vec![PriceInput {
                 currency_code: "USD".to_string(),
                 channel_id: None,
@@ -206,9 +203,7 @@ async fn test_variant_creation_triggers_event() {
         sku: Some("VARIANT-SKU-002".to_string()),
         barcode: None,
         shipping_profile_slug: None,
-        option1: Some("Large".to_string()),
-        option2: None,
-        option3: None,
+        axis_values: vec![],
         prices: vec![PriceInput {
             currency_code: "USD".to_string(),
             channel_id: None,

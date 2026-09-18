@@ -39,9 +39,7 @@ product_variant_index_union AS (
         v.inventory_management,
         v.inventory_quantity,
         v.weight_unit,
-        v.option1,
-        v.option2,
-        v.option3,
+        v.combination_identity,
         v.position
     FROM product_variants v
     WHERE v.tenant_id = $1
@@ -63,9 +61,7 @@ product_variant_index_union AS (
         NULL::text AS inventory_management,
         NULL::integer AS inventory_quantity,
         NULL::text AS weight_unit,
-        NULL::text AS option1,
-        NULL::text AS option2,
-        NULL::text AS option3,
+        NULL::text AS combination_identity,
         NULL::integer AS position
     FROM product_variant_index_tombstones tombstone
     WHERE tombstone.tenant_id = $1
@@ -97,9 +93,7 @@ SELECT
     row.inventory_management,
     row.inventory_quantity,
     row.weight_unit,
-    row.option1,
-    row.option2,
-    row.option3,
+    row.combination_identity,
     row.position
 FROM product_variant_index_rows row
 "#;
@@ -182,9 +176,13 @@ fn product_variant_schema() -> Result<IndexSchema, ProductVariantIndexBridgeErro
                 true,
             )?,
             scalar_field("weight_unit", IndexValueType::String, true, false, false)?,
-            scalar_field("option1", IndexValueType::String, true, true, false)?,
-            scalar_field("option2", IndexValueType::String, true, true, false)?,
-            scalar_field("option3", IndexValueType::String, true, true, false)?,
+            scalar_field(
+                "combination_identity",
+                IndexValueType::String,
+                true,
+                true,
+                false,
+            )?,
             scalar_field("position", IndexValueType::Integer, false, true, true)?,
         ],
         links: Vec::new(),
@@ -428,9 +426,7 @@ struct ProductVariantLiveFields {
     inventory_management: String,
     inventory_quantity: i64,
     weight_unit: Option<String>,
-    option1: Option<String>,
-    option2: Option<String>,
-    option3: Option<String>,
+    combination_identity: Option<String>,
     position: i64,
 }
 
@@ -498,9 +494,7 @@ impl ProductVariantRow {
                         .map_err(|_| ProductVariantIndexBridgeError::InvalidRow)?,
                 ),
                 weight_unit: optional_string(&row, "weight_unit")?,
-                option1: optional_string(&row, "option1")?,
-                option2: optional_string(&row, "option2")?,
-                option3: optional_string(&row, "option3")?,
+                combination_identity: optional_string(&row, "combination_identity")?,
                 position: i64::from(
                     row.try_get::<i32>("", "position")
                         .map_err(|_| ProductVariantIndexBridgeError::InvalidRow)?,
@@ -570,16 +564,8 @@ impl ProductVariantRow {
                 optional_string_value(live.weight_unit.take()),
             ),
             (
-                field_name("option1")?,
-                optional_string_value(live.option1.take()),
-            ),
-            (
-                field_name("option2")?,
-                optional_string_value(live.option2.take()),
-            ),
-            (
-                field_name("option3")?,
-                optional_string_value(live.option3.take()),
+                field_name("combination_identity")?,
+                optional_string_value(live.combination_identity.take()),
             ),
             (field_name("position")?, IndexValue::Integer(live.position)),
         ]);
@@ -649,7 +635,7 @@ mod tests {
     fn canonical_product_variant_schema_contains_identity_once() {
         let schema = product_variant_schema().unwrap();
         assert_eq!(schema.reference, product_variant_schema_ref().unwrap());
-        assert_eq!(schema.fields.len(), 15);
+        assert_eq!(schema.fields.len(), 13);
         assert!(
             schema
                 .fields

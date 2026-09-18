@@ -755,7 +755,6 @@ async fn test_get_variant_prices_empty() {
             meta_title: None,
             meta_description: None,
         }],
-        options: vec![],
         variants: vec![CreateVariantInput {
             sku: Some(format!(
                 "SKU-{}",
@@ -763,9 +762,7 @@ async fn test_get_variant_prices_empty() {
             )),
             barcode: None,
             shipping_profile_slug: None,
-            option1: Some("Default".to_string()),
-            option2: None,
-            option3: None,
+            axis_values: vec![],
             prices: vec![],
             inventory_quantity: 0,
             inventory_policy: "deny".to_string(),

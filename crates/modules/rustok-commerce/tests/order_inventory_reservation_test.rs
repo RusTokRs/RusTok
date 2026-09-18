@@ -93,15 +93,11 @@ async fn create_product_and_variant(catalog: &CatalogService, tenant_id: Uuid) -
                     handle: Some(unique_slug("reserved-product")),
                     meta_title: None,
                     meta_description: None,
-                }],
-                options: Vec::new(),
                 variants: vec![CreateVariantInput {
                     sku: Some(format!("RESERVE-{}", Uuid::new_v4())),
                     barcode: None,
                     shipping_profile_slug: None,
-                    option1: Some("Default".to_string()),
-                    option2: None,
-                    option3: None,
+                    axis_values: vec![],
                     prices: vec![PriceInput {
                         currency_code: "USD".to_string(),
                         channel_id: None,
