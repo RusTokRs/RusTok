@@ -19,10 +19,7 @@ use std::fmt;
 #[derive(Debug)]
 pub enum BundleBuildError {
     /// The specified locale string exceeds the supported bounded input length.
-    LocaleTooLong {
-        length: usize,
-        max_len: usize,
-    },
+    LocaleTooLong { length: usize, max_len: usize },
     /// The specified locale string failed to parse into a valid LanguageIdentifier.
     InvalidLocale {
         locale: String,
@@ -36,10 +33,7 @@ pub enum BundleBuildError {
     /// The configured default locale has no exact catalog entry.
     MissingDefaultLocale { locale: String },
     /// The FTL resource syntax is invalid.
-    FluentParse {
-        locale: String,
-        errors: Vec<String>,
-    },
+    FluentParse { locale: String, errors: Vec<String> },
     /// Failed to add resource to bundle.
     AddResource {
         locale: String,
@@ -65,13 +59,19 @@ impl fmt::Display for BundleBuildError {
                 write!(f, "Invalid default locale '{locale}': {source}")
             }
             Self::MissingDefaultLocale { locale } => {
-                write!(f, "Default locale '{locale}' is not present in the Fluent catalog")
+                write!(
+                    f,
+                    "Default locale '{locale}' is not present in the Fluent catalog"
+                )
             }
             Self::FluentParse { locale, errors } => {
                 write!(f, "Fluent parse errors for locale '{locale}': {errors:?}")
             }
             Self::AddResource { locale, errors } => {
-                write!(f, "Failed to add resource for locale '{locale}': {errors:?}")
+                write!(
+                    f,
+                    "Failed to add resource for locale '{locale}': {errors:?}"
+                )
             }
             Self::DuplicateLocale { locale } => {
                 write!(f, "Duplicate Fluent catalog locale '{locale}'")
@@ -101,10 +101,7 @@ pub enum I18nError {
     /// Bundle construction failed.
     BundleBuild(BundleBuildError),
     /// Message key was not found.
-    MessageNotFound {
-        locale: String,
-        key: String,
-    },
+    MessageNotFound { locale: String, key: String },
     /// Message formatting encountered errors.
     FormattingFailed {
         locale: String,
@@ -120,8 +117,15 @@ impl fmt::Display for I18nError {
             Self::MessageNotFound { locale, key } => {
                 write!(f, "Message '{key}' not found for locale '{locale}'")
             }
-            Self::FormattingFailed { locale, key, errors } => {
-                write!(f, "Formatting errors for message '{key}' in locale '{locale}': {errors:?}")
+            Self::FormattingFailed {
+                locale,
+                key,
+                errors,
+            } => {
+                write!(
+                    f,
+                    "Formatting errors for message '{key}' in locale '{locale}': {errors:?}"
+                )
             }
         }
     }

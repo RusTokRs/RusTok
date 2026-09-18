@@ -149,9 +149,7 @@ pub struct AdminPricingVariant {
     pub barcode: Option<String>,
     pub shipping_profile_slug: Option<String>,
     pub title: String,
-    pub option1: Option<String>,
-    pub option2: Option<String>,
-    pub option3: Option<String>,
+    pub combination_identity: Option<String>,
     pub prices: Vec<AdminPricingPrice>,
 }
 
@@ -2089,9 +2087,7 @@ fn map_admin_detail(
                 barcode: variant.barcode,
                 shipping_profile_slug: variant.shipping_profile_slug,
                 title: variant.title,
-                option1: variant.option1,
-                option2: variant.option2,
-                option3: variant.option3,
+                combination_identity: variant.combination_identity,
                 prices: prices_by_variant
                     .remove(&variant.id)
                     .map(|prices| {

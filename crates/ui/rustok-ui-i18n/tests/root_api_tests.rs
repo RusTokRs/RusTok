@@ -22,10 +22,7 @@ fn prepared_runtime_types_are_available_from_crate_root() {
 fn root_api_supports_prepare_then_prepare_locale_flow() {
     static MESSAGES: UiMessages = UiMessages::new(
         "en",
-        &[
-            ("en", "title = English\n"),
-            ("ru", "title = Русский\n"),
-        ],
+        &[("en", "title = English\n"), ("ru", "title = Русский\n")],
     );
 
     let prepared: PreparedUiMessages = MESSAGES.prepare().expect("catalog should prepare");

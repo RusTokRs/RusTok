@@ -9,7 +9,7 @@
  */
 
 use rustok_ui_i18n::messages::UiLocaleTranslator;
-use rustok_ui_i18n::{fluent_args, I18nError, UiMessages};
+use rustok_ui_i18n::{I18nError, UiMessages, fluent_args};
 
 fn assert_send_sync<T: Send + Sync>() {}
 
@@ -75,12 +75,7 @@ fn prepared_and_per_lookup_paths_are_semantically_equivalent() {
     );
     assert_eq!(
         strip_bidi_isolates(&prepared.format("welcome", Some(&args), "fallback")),
-        strip_bidi_isolates(&MESSAGES.format(
-            Some("ru-RU"),
-            "welcome",
-            Some(&args),
-            "fallback",
-        ))
+        strip_bidi_isolates(&MESSAGES.format(Some("ru-RU"), "welcome", Some(&args), "fallback",))
     );
     assert_eq!(prepared.t("missing", "fallback"), "fallback");
 }
@@ -110,10 +105,7 @@ fn prepared_locale_strict_path_reports_actual_formatting_locale() {
 fn prepared_catalog_can_prepare_a_locale_without_revalidating_bundles() {
     static MESSAGES: UiMessages = UiMessages::new(
         "en",
-        &[
-            ("en", "title = English\n"),
-            ("ru", "title = Русский\n"),
-        ],
+        &[("en", "title = English\n"), ("ru", "title = Русский\n")],
     );
 
     let catalog = MESSAGES.prepare().expect("catalog should validate");

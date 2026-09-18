@@ -12,10 +12,8 @@ use rustok_ui_i18n::UiMessages;
 
 #[test]
 fn dotted_and_kebab_spellings_share_one_message_identity() {
-    static MESSAGES: UiMessages = UiMessages::new(
-        "en",
-        &[("en", "account-profile-title = Profile title\n")],
-    );
+    static MESSAGES: UiMessages =
+        UiMessages::new("en", &[("en", "account-profile-title = Profile title\n")]);
 
     assert_eq!(
         MESSAGES.t(Some("en"), "account.profile.title", "fallback"),

@@ -9,7 +9,7 @@
  */
 
 use rustok_ui_i18n::bundle::build_fluent_catalog_report;
-use rustok_ui_i18n::{try_build_fluent_catalog, BundleBuildError, UiTranslator};
+use rustok_ui_i18n::{BundleBuildError, UiTranslator, try_build_fluent_catalog};
 
 #[test]
 fn thousand_message_resource_resolves_across_the_catalog() {
@@ -52,8 +52,14 @@ fn strict_catalog_handles_many_locale_bundles_without_collision() {
     assert_eq!(catalog.len(), LOCALE_COUNT);
 
     let translator = UiTranslator::new(&catalog, "en-001");
-    assert_eq!(translator.t(Some("en-001"), "title", "fallback"), "Region 001");
-    assert_eq!(translator.t(Some("en-064"), "title", "fallback"), "Region 064");
+    assert_eq!(
+        translator.t(Some("en-001"), "title", "fallback"),
+        "Region 001"
+    );
+    assert_eq!(
+        translator.t(Some("en-064"), "title", "fallback"),
+        "Region 064"
+    );
 }
 
 #[test]

@@ -10,8 +10,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use fluent_bundle::concurrent::FluentBundle;
 use fluent_bundle::FluentResource;
+use fluent_bundle::concurrent::FluentBundle;
 use unic_langid::LanguageIdentifier;
 
 use crate::error::BundleBuildError;
@@ -88,11 +88,12 @@ fn build_fluent_bundle_from_parsed(
 ) -> Result<FluentBundle<FluentResource>, BundleBuildError> {
     let mut bundle = FluentBundle::new_concurrent(vec![langid]);
     bundle.set_use_isolating(true);
-    let resource = FluentResource::try_new(ftl_source.to_string())
-        .map_err(|(_, errors)| BundleBuildError::FluentParse {
+    let resource = FluentResource::try_new(ftl_source.to_string()).map_err(|(_, errors)| {
+        BundleBuildError::FluentParse {
             locale: normalized_locale.to_string(),
             errors: errors.into_iter().map(|e| format!("{e:?}")).collect(),
-        })?;
+        }
+    })?;
     bundle
         .add_resource(resource)
         .map_err(|errors| BundleBuildError::AddResource {
@@ -178,11 +179,7 @@ pub fn build_fluent_catalog_report(bundles: &[(&str, &str)]) -> FluentCatalogBui
             Err(error) => {
                 match &error {
                     BundleBuildError::LocaleTooLong { length, max_len } => {
-                        tracing::error!(
-                            length,
-                            max_len,
-                            "Skipping oversized Fluent locale"
-                        );
+                        tracing::error!(length, max_len, "Skipping oversized Fluent locale");
                     }
                     _ => {
                         tracing::error!(%error, locale = *locale, "Skipping invalid Fluent locale");

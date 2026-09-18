@@ -29,8 +29,7 @@ static MESSAGES: UiMessages = UiMessages::new(
 );
 static MISSING_DEFAULT: UiMessages = UiMessages::new("fr", &[("en", EN)]);
 static INVALID_DEFAULT: UiMessages = UiMessages::new("!", &[("en", EN)]);
-static OVERSIZED_DEFAULT_MESSAGES: UiMessages =
-    UiMessages::new(OVERSIZED_DEFAULT, &[("en", EN)]);
+static OVERSIZED_DEFAULT_MESSAGES: UiMessages = UiMessages::new(OVERSIZED_DEFAULT, &[("en", EN)]);
 
 #[test]
 fn lazy_initialization_retains_diagnostics_without_rebuilding_catalog() {
@@ -59,7 +58,10 @@ fn lazy_initialization_retains_diagnostics_without_rebuilding_catalog() {
     assert_eq!(MESSAGES.t(Some("en"), "title", "fallback"), "Title");
     assert_eq!(MESSAGES.t(Some("ru-RU"), "title", "fallback"), "Первый");
 
-    assert_eq!(MESSAGES.initialization_diagnostics().as_ptr(), diagnostics_ptr);
+    assert_eq!(
+        MESSAGES.initialization_diagnostics().as_ptr(),
+        diagnostics_ptr
+    );
     assert_eq!(MESSAGES.fluent_catalog() as *const _, catalog_ptr);
 }
 
@@ -109,7 +111,10 @@ fn lazy_initialization_keeps_oversized_default_diagnostics_bounded() {
         other => panic!("expected LocaleTooLong, got {other:?}"),
     }
     assert!(!diagnostics[0].to_string().contains(OVERSIZED_DEFAULT));
-    assert_eq!(OVERSIZED_DEFAULT_MESSAGES.t(None, "title", "fallback"), "Title");
+    assert_eq!(
+        OVERSIZED_DEFAULT_MESSAGES.t(None, "title", "fallback"),
+        "Title"
+    );
 }
 
 #[test]

@@ -9,7 +9,7 @@
  */
 
 use rustok_ui_i18n::messages::PreparedUiMessages;
-use rustok_ui_i18n::{fluent_args, BundleBuildError, I18nError, UiMessages};
+use rustok_ui_i18n::{BundleBuildError, I18nError, UiMessages, fluent_args};
 
 fn assert_send_sync<T: Send + Sync>() {}
 
@@ -24,10 +24,7 @@ fn prepared_catalog_is_send_and_sync() {
 
 #[test]
 fn validate_rejects_invalid_default_locale() {
-    static MESSAGES: UiMessages = UiMessages::new(
-        "not@a@locale",
-        &[("en", "title = Title\n")],
-    );
+    static MESSAGES: UiMessages = UiMessages::new("not@a@locale", &[("en", "title = Title\n")]);
 
     let error = match MESSAGES.validate() {
         Ok(()) => panic!("invalid default locale must fail strict validation"),
@@ -43,10 +40,7 @@ fn validate_rejects_invalid_default_locale() {
 
 #[test]
 fn validate_rejects_default_locale_missing_from_catalog() {
-    static MESSAGES: UiMessages = UiMessages::new(
-        "fr",
-        &[("en", "title = Title\n")],
-    );
+    static MESSAGES: UiMessages = UiMessages::new("fr", &[("en", "title = Title\n")]);
 
     let error = MESSAGES
         .validate()
@@ -60,13 +54,12 @@ fn validate_rejects_default_locale_missing_from_catalog() {
 
 #[test]
 fn prepare_rejects_default_locale_missing_from_catalog() {
-    static MESSAGES: UiMessages = UiMessages::new(
-        "en-US",
-        &[("en", "title = Title\n")],
-    );
+    static MESSAGES: UiMessages = UiMessages::new("en-US", &[("en", "title = Title\n")]);
 
     let error = match MESSAGES.prepare() {
-        Ok(_) => panic!("prepared runtime must not silently downgrade its configured default locale"),
+        Ok(_) => {
+            panic!("prepared runtime must not silently downgrade its configured default locale")
+        }
         Err(error) => error,
     };
 
@@ -78,10 +71,7 @@ fn prepare_rejects_default_locale_missing_from_catalog() {
 
 #[test]
 fn strict_default_locale_membership_uses_normalized_catalog_keys() {
-    static MESSAGES: UiMessages = UiMessages::new(
-        "en_US",
-        &[("en-US", "title = Title\n")],
-    );
+    static MESSAGES: UiMessages = UiMessages::new("en_US", &[("en-US", "title = Title\n")]);
 
     MESSAGES
         .validate()
@@ -97,10 +87,7 @@ fn strict_default_locale_membership_uses_normalized_catalog_keys() {
 fn prepare_rejects_malformed_catalog_instead_of_skipping_it() {
     static MESSAGES: UiMessages = UiMessages::new(
         "en",
-        &[
-            ("en", "title = Title\n"),
-            ("ru", "broken fluent resource"),
-        ],
+        &[("en", "title = Title\n"), ("ru", "broken fluent resource")],
     );
 
     let error = match MESSAGES.prepare() {
@@ -115,10 +102,7 @@ fn prepare_rejects_malformed_catalog_instead_of_skipping_it() {
 fn prepare_rejects_duplicate_normalized_locales() {
     static MESSAGES: UiMessages = UiMessages::new(
         "en-US",
-        &[
-            ("en_US", "title = First\n"),
-            ("en-US", "title = Second\n"),
-        ],
+        &[("en_US", "title = First\n"), ("en-US", "title = Second\n")],
     );
 
     let error = match MESSAGES.prepare() {
@@ -137,7 +121,10 @@ fn prepared_catalog_serves_from_the_validated_catalog() {
     static MESSAGES: UiMessages = UiMessages::new(
         "en",
         &[
-            ("en", "welcome = Welcome, { $name }!\nonly-en = English fallback\n"),
+            (
+                "en",
+                "welcome = Welcome, { $name }!\nonly-en = English fallback\n",
+            ),
             ("ru", "welcome = Привет, { $name }!\n"),
         ],
     );
@@ -151,12 +138,7 @@ fn prepared_catalog_serves_from_the_validated_catalog() {
 
     let args = fluent_args!(name = "Иван");
     assert_eq!(
-        strip_bidi_isolates(&prepared.format(
-            Some("ru-RU"),
-            "welcome",
-            Some(&args),
-            "fallback",
-        )),
+        strip_bidi_isolates(&prepared.format(Some("ru-RU"), "welcome", Some(&args), "fallback",)),
         "Привет, Иван!"
     );
     assert_eq!(
@@ -167,10 +149,8 @@ fn prepared_catalog_serves_from_the_validated_catalog() {
 
 #[test]
 fn prepared_try_format_preserves_strict_formatting_errors() {
-    static MESSAGES: UiMessages = UiMessages::new(
-        "en",
-        &[("en", "welcome = Welcome, { $name }!\n")],
-    );
+    static MESSAGES: UiMessages =
+        UiMessages::new("en", &[("en", "welcome = Welcome, { $name }!\n")]);
     let prepared = MESSAGES.prepare().expect("catalog should be valid");
 
     let error = prepared
@@ -184,10 +164,7 @@ fn prepared_try_format_preserves_strict_formatting_errors() {
 fn lenient_ui_messages_path_remains_backward_compatible() {
     static MESSAGES: UiMessages = UiMessages::new(
         "en",
-        &[
-            ("en", "title = Title\n"),
-            ("ru", "broken fluent resource"),
-        ],
+        &[("en", "title = Title\n"), ("ru", "broken fluent resource")],
     );
 
     // Existing UI callers can still use the lazy lenient path: the invalid RU

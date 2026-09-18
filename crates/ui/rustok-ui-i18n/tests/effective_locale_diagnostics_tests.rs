@@ -14,10 +14,7 @@ use rustok_ui_i18n::{I18nError, UiMessages};
 fn prepared_and_per_lookup_missing_errors_report_same_canonical_effective_locale() {
     static MESSAGES: UiMessages = UiMessages::new(
         "en",
-        &[
-            ("en", "title = English\n"),
-            ("ru", "title = Русский\n"),
-        ],
+        &[("en", "title = English\n"), ("ru", "title = Русский\n")],
     );
 
     let prepared = MESSAGES.for_locale(Some("ru_RU"));

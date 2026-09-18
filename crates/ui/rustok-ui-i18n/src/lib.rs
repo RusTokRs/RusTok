@@ -17,10 +17,14 @@ pub mod messages;
 pub mod prelude;
 
 pub use fluent_bundle::{FluentArgs, FluentValue};
+#[deprecated(
+    since = "0.1.0",
+    note = "Pass standard BCP-47 locale strings or use `unic_langid` directly if low-level parsing is needed."
+)]
 pub use unic_langid::LanguageIdentifier;
 
 pub use bundle::{
-    build_fluent_bundle, build_fluent_catalog, try_build_fluent_catalog, FluentCatalog,
+    FluentCatalog, build_fluent_bundle, build_fluent_catalog, try_build_fluent_catalog,
 };
 pub use error::{BundleBuildError, I18nError};
 pub use locale::{
@@ -28,8 +32,8 @@ pub use locale::{
     push_unique,
 };
 pub use messages::{
-    resolve_fluent_message, try_resolve_fluent_message, with_kebab_key, PreparedUiMessages,
-    UiLocaleTranslator, UiMessages, UiTranslator,
+    PreparedUiMessages, UiLocaleTranslator, UiMessages, UiTranslator, resolve_fluent_message,
+    try_resolve_fluent_message, with_kebab_key,
 };
 
 #[cfg(test)]
@@ -146,21 +150,15 @@ items-count = { $count ->
 
         let args = fluent_args!["name" => "Alice"];
         assert_eq!(
-            without_bidi_isolates(&MESSAGES.format(
-                Some("en"),
-                "welcome",
-                Some(&args),
-                "Fallback",
-            )),
+            without_bidi_isolates(
+                &MESSAGES.format(Some("en"), "welcome", Some(&args), "Fallback",)
+            ),
             "Welcome, Alice!"
         );
         assert_eq!(
-            without_bidi_isolates(&MESSAGES.format(
-                Some("ru"),
-                "welcome",
-                Some(&args),
-                "Fallback",
-            )),
+            without_bidi_isolates(
+                &MESSAGES.format(Some("ru"), "welcome", Some(&args), "Fallback",)
+            ),
             "Добро пожаловать, Alice!"
         );
 
@@ -259,9 +257,14 @@ items-count = { $count ->
             let content = fs::read_to_string(&file_path)
                 .unwrap_or_else(|e| panic!("Failed to read {file_path:?}: {e}"));
             let filename = file_path.file_name().unwrap().to_str().unwrap();
-            let locale = if filename.starts_with("ru") { "ru" } else { "en" };
-            build_fluent_bundle(locale, &content)
-                .unwrap_or_else(|e| panic!("Failed to parse Fluent resource in {file_path:?}: {e}"));
+            let locale = if filename.starts_with("ru") {
+                "ru"
+            } else {
+                "en"
+            };
+            build_fluent_bundle(locale, &content).unwrap_or_else(|e| {
+                panic!("Failed to parse Fluent resource in {file_path:?}: {e}")
+            });
         }
     }
 

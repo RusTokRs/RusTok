@@ -11,7 +11,8 @@
 use std::collections::HashSet;
 
 use proptest::prelude::*;
-use rustok_ui_i18n::{locale_candidates, normalize_locale_tag, LanguageIdentifier};
+use rustok_ui_i18n::{locale_candidates, normalize_locale_tag};
+use unic_langid::LanguageIdentifier;
 
 fn bounded_text() -> impl Strategy<Value = String> {
     prop::collection::vec(any::<char>(), 0..=96)

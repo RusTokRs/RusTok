@@ -9,8 +9,8 @@
  */
 
 use rustok_ui_i18n::{
-    build_fluent_catalog, fluent_args, locale_candidates, normalize_locale_tag,
-    try_build_fluent_catalog, BundleBuildError, I18nError, UiMessages, UiTranslator,
+    BundleBuildError, I18nError, UiMessages, UiTranslator, build_fluent_catalog, fluent_args,
+    locale_candidates, normalize_locale_tag, try_build_fluent_catalog,
 };
 
 fn strip_bidi_isolates(value: &str) -> String {
@@ -32,8 +32,14 @@ fn fallback_chain_preserves_script_region_and_variant_levels() {
 
 #[test]
 fn locale_contract_is_language_identifier_not_extension_preserving_locale() {
-    assert_eq!(normalize_locale_tag("zh_hant_tw"), Some("zh-Hant-TW".to_string()));
-    assert_eq!(normalize_locale_tag("de-DE-1901"), Some("de-DE-1901".to_string()));
+    assert_eq!(
+        normalize_locale_tag("zh_hant_tw"),
+        Some("zh-Hant-TW".to_string())
+    );
+    assert_eq!(
+        normalize_locale_tag("de-DE-1901"),
+        Some("de-DE-1901".to_string())
+    );
 
     // `unic_langid::LanguageIdentifier` intentionally models language/script/
     // region/variants rather than a full extension-preserving BCP-47 locale.
@@ -58,13 +64,14 @@ fn strict_catalog_rejects_duplicate_normalized_locales() {
 
 #[test]
 fn lenient_catalog_keeps_first_duplicate_locale() {
-    let catalog = build_fluent_catalog(&[
-        ("en_US", "title = First\n"),
-        ("en-US", "title = Second\n"),
-    ]);
+    let catalog =
+        build_fluent_catalog(&[("en_US", "title = First\n"), ("en-US", "title = Second\n")]);
     let translator = UiTranslator::new(&catalog, "en-US");
 
-    assert_eq!(translator.resolve(Some("en-US"), "title").as_deref(), Some("First"));
+    assert_eq!(
+        translator.resolve(Some("en-US"), "title").as_deref(),
+        Some("First")
+    );
 }
 
 #[test]
@@ -81,25 +88,30 @@ fn strict_catalog_rejects_malformed_ftl() {
 fn ui_messages_validate_fails_closed_on_invalid_embedded_catalog() {
     static MESSAGES: UiMessages = UiMessages::new(
         "en",
-        &[
-            ("en", "title = Valid\n"),
-            ("ru", "broken fluent resource"),
-        ],
+        &[("en", "title = Valid\n"), ("ru", "broken fluent resource")],
     );
 
-    assert!(matches!(MESSAGES.validate(), Err(BundleBuildError::FluentParse { .. })));
+    assert!(matches!(
+        MESSAGES.validate(),
+        Err(BundleBuildError::FluentParse { .. })
+    ));
 }
 
 #[test]
 fn strict_format_reports_missing_variable_as_formatting_error() {
-    static MESSAGES: UiMessages = UiMessages::new("en", &[("en", "welcome = Welcome, { $name }!\n")]);
+    static MESSAGES: UiMessages =
+        UiMessages::new("en", &[("en", "welcome = Welcome, { $name }!\n")]);
 
     let error = MESSAGES
         .try_format(Some("en"), "welcome", None)
         .expect_err("missing Fluent variables must not return partial output in strict mode");
 
     match error {
-        I18nError::FormattingFailed { locale, key, errors } => {
+        I18nError::FormattingFailed {
+            locale,
+            key,
+            errors,
+        } => {
             assert_eq!(locale, "en");
             assert_eq!(key, "welcome");
             assert!(!errors.is_empty());
@@ -110,7 +122,8 @@ fn strict_format_reports_missing_variable_as_formatting_error() {
 
 #[test]
 fn lenient_format_uses_literal_fallback_instead_of_partial_output() {
-    static MESSAGES: UiMessages = UiMessages::new("en", &[("en", "welcome = Welcome, { $name }!\n")]);
+    static MESSAGES: UiMessages =
+        UiMessages::new("en", &[("en", "welcome = Welcome, { $name }!\n")]);
 
     assert_eq!(
         MESSAGES.format(Some("en"), "welcome", None, "Safe fallback"),
