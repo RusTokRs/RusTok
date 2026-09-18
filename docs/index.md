@@ -29,7 +29,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 
 ## Required Starting Documents
 
-- [Architecture Quick Reference](../ARCHITECTURE.md)
+- [Architecture Quick Reference](../ARCHITECTURE.md)\n- [ADR Registry](../DECISIONS/README.md)
 - [Platform Overview](./architecture/overview.md)
 - [Architecture Principles](./architecture/principles.md)
 - [API and Surface Contracts](./architecture/api.md)
