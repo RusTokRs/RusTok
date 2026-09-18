@@ -2,6 +2,16 @@
 
 ## Current state
 
+### Accepted variant-axis target
+
+[Unified variant axis architecture](../../../../DECISIONS/2026-09-18-unified-variant-axis-architecture.md)
+is the accepted target for Product variant identity. The ADR registry currently
+marks the cutover as `Not started`: the legacy option vocabulary may still
+exist in current code, but it must not be extended as the target model. The
+implementation slice must follow the ADR's atomic zero-legacy cutover and
+verification contract.
+
+
 `rustok-product` owns the catalog, variants, category-bound attribute schemas,
 typed attribute values, and product admin/storefront packages. Product UI uses
 owner-owned core, transport, and Leptos adapter layers. Native server functions

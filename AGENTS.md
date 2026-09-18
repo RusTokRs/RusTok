@@ -39,7 +39,7 @@ Before changing repository content, contributors and agents MUST:
 2. Read the relevant component README.md and local docs/README.md or implementation plan.
 3. Before creating or renaming modules, crates, packages, folders, files, public types, query keys, config keys, or documentation, follow the Naming Contract in docs/standards/coding.md.
 4. For new modules or major module refactors, read docs/modules/module-authoring.md before changing code.
-5. Before frontend or client application changes, read that application's AI_AGENT_RULES.md (e.g. apps/admin/AI_AGENT_RULES.md, apps/storefront/AI_AGENT_RULES.md, apps/next-admin/AI_AGENT_RULES.md, apps/next-frontend/AI_AGENT_RULES.md, or any mobile/Flutter app under apps/*) and the relevant module UI documentation.
+5. Before frontend or client-application changes, read that application's `AI_AGENT_RULES.md` when present and the relevant module UI/client documentation.
 6. Resolve ownership through docs/modules/registry.md and local component documentation.
 7. Inspect active ADRs that govern the affected boundary before proposing a competing model.
 8. Capture the current main commit SHA before starting work.
@@ -57,6 +57,8 @@ The minimum change-surface review for a non-trivial change is:
 - UI and operator surfaces;
 - fixtures, seeds, tests, scripts, generated/reference artifacts;
 - current documentation and ADR impact.
+
+Before implementing helpers, formatters, validators, data transformers, UI components, or new dependencies, inspect the target manifest and the workspace-level dependency catalog first (`Cargo.toml`, `package.json`, `pubspec.yaml`, or equivalent). Reuse an existing canonical internal library or already-approved dependency when it owns the required semantics; do not reinvent a local helper or add a redundant dependency merely because it is convenient.
 
 Do not patch the first visible caller until the owning contract and affected surfaces are understood.
 
@@ -103,7 +105,7 @@ Ownership is semantic, not merely directory-based.
 
 - Platform foundation: crates/libs/*, apps/server composition, and shared infrastructure.
 - Domain modules: crates/modules/*.
-- Frontends: apps/admin, apps/storefront, apps/next-admin, apps/next-frontend, and client/mobile applications under apps/*.
+- Frontends: apps/admin, apps/storefront, apps/next-admin, apps/next-frontend.
 - Operational tooling: scripts/, deployment/configuration files, observability tooling.
 - Detailed ownership is defined in docs/modules/registry.md and component-local docs.
 
@@ -114,6 +116,7 @@ Rules:
 - Shared libraries MUST have a clear owner, stable responsibility, and dependency direction.
 - Do not put code into rustok-core, rustok-api, rustok-ui-core, or another shared crate merely because more than one consumer exists.
 - Host applications compose owner-owned entrypoints; they do not absorb module-owned business rules.
+- Cross-crate dependencies and imports MUST comply with `scripts/architecture_rules.toml`. When a change touches crate/layer boundaries, run `python scripts/architecture_dependency_guard.py` or the current canonical replacement documented by the verification runbook.
 
 ### Reuse and abstraction
 
@@ -151,6 +154,14 @@ Use the appropriate mechanism:
 - advisory or row locks where they are part of the canonical concurrency design.
 
 Do not rely only on service-layer discipline for tenant ownership, uniqueness, referential integrity, impossible state combinations, or identity constraints that the database can enforce.
+
+### Schema and entity parity
+
+Database schema, migrations, ORM/entity definitions, typed DTOs, and generated schema artifacts MUST describe one canonical model.
+
+- When a table or column changes, update its owning entity/model and affected typed contracts atomically.
+- For unreleased schema work, amend the canonical pending migration instead of adding a compatibility fixup solely to preserve repository history.
+- Do not manually edit files marked `@generated`, `DO NOT EDIT`, or equivalent. Change the owning schema/source and run the canonical generator.
 
 ### Atomicity
 
@@ -260,6 +271,8 @@ Correctness and ownership come first, but obvious scalability hazards are not ac
 Observability is part of the runtime contract for important failure modes.
 New asynchronous, external, or operational boundaries SHOULD define the structured logs, metrics, traces, and correlation identifiers needed to diagnose failure without leaking secrets.
 
+Production code MUST use the platform logging/telemetry facilities. Do not commit ad-hoc `println!`, `dbg!`, or `console.log` diagnostics in runtime paths.
+
 ## 11. Architecture decisions and implementation plans
 
 Non-trivial architecture changes MUST be captured in DECISIONS/ using an ADR.
@@ -347,6 +360,8 @@ If the code is not part of the target architecture, delete it and its stale test
 
 Generated code and genuinely externally-invoked symbols that static analysis cannot observe may use the narrowest justified expectation/suppression with an explicit reason and evidence of the external entry path.
 
+Production Rust code MUST use typed error propagation. `.unwrap()`, `.expect()`, and `panic!` are prohibited in non-test runtime/domain/library code unless the condition is a physically guaranteed invariant and the call site carries an inline reason explaining that guarantee.
+
 Source-marker and compile-only checks MAY supplement behavior tests but MUST NOT substitute for missing runtime functionality.
 
 ## 15. Verification strategy
@@ -425,7 +440,7 @@ This root file SHOULD remain focused on stable repository-wide invariants and po
 All automated agents MUST follow the complete repository governance above and additionally:
 
 1. Read docs/index.md before repository work.
-2. Read local AI_AGENT_RULES.md before modifying any frontend or client application code (`apps/admin/AI_AGENT_RULES.md`, `apps/storefront/AI_AGENT_RULES.md`, `apps/next-admin/AI_AGENT_RULES.md`, `apps/next-frontend/AI_AGENT_RULES.md`, or any mobile/Flutter app under `apps/*`).
+2. Read local AI_AGENT_RULES.md before frontend modifications.
 3. Use the current main as the normal starting point and follow the multi-agent concurrency protocol.
 4. Do not create a new documentation file when an existing canonical document is suitable.
 5. Do not modify another agent's branch.
@@ -434,19 +449,3 @@ All automated agents MUST follow the complete repository governance above and ad
 8. Keep module-owned UI and transport boundaries aligned with docs/modules/module-authoring.md and frontend-local rules.
 9. Do not treat required parallel platform surfaces as legacy merely because more than one transport or host exists; distinguish intentional target surfaces from obsolete duplicate implementations.
 10. Communicate concrete blockers and unverified checks explicitly rather than hiding them with stubs, fallbacks, compatibility layers, or optimistic completion claims.
-11. **Inspect manifests before implementing utilities, models, or UI logic:**
-    Before writing helper functions, data transformers, formatting routines, validators, or UI components, always inspect package manifests to see which dependencies and submodules are already available:
-    - **Rust crates**: inspect the target crate's `Cargo.toml` and root workspace dependencies in root `Cargo.toml` (`[workspace.dependencies]`).
-    - **Web / Next.js apps**: inspect the package's `package.json` and workspace root dependencies.
-    - **Flutter / Dart apps**: inspect `pubspec.yaml` and workspace shared packages.
-    Reuse existing internal libraries (`crates/libs/*`, `crates/ui/*`, shared packages) and approved third-party packages already present in dependencies instead of reinventing functionality, writing ad-hoc helpers, or introducing redundant dependencies.
-12. **Respect architecture boundaries and dependency constraints:**
-    Follow strict crate and layer isolation as defined in [`scripts/architecture_rules.toml`](scripts/architecture_rules.toml). Do not introduce unauthorized cross-domain crate dependencies, and never import internal segments (`entities`, `entity`, `internal`, `infrastructure`, `repository`, `adapter`) into backend application crates (`rustok-server`) or other domains unless explicitly permitted in architecture rules. Run `python scripts/architecture_dependency_guard.py` when touching cross-crate boundaries.
-13. **No `.unwrap()`, `.expect()`, or `panic!` in production code:**
-    All non-test Rust code must use idiomatic error handling (`Result<T, E>`, `?`, `thiserror`, `rustok-core::error`). Never use `.unwrap()`, `.expect()`, or `panic!` in library, domain, or server code unless an invariant is physically guaranteed and documented with an inline reason comment.
-14. **Structured observability over ad-hoc logging:**
-    Do not commit `println!`, `dbg!`, or `console.log`. Use structured logging via `tracing` (`tracing::info!`, `tracing::warn!`, `tracing::error!`, etc.) for backend and Rust code, and host-provided logging infrastructure for web and mobile clients.
-15. **Do not manually edit generated files:**
-    Never modify files containing `@generated` or `DO NOT EDIT` markers (such as GraphQL schemas/types, protobuf definitions, or generated ORM models). Always update the source schema, query, or contract, and run the designated code generation scripts under `scripts/generate/`.
-16. **Database schema and entity parity:**
-    When modifying database tables or schemas, ensure SeaORM entities and migrations are updated atomically in the same change. Adhere to the zero-legacy policy: amend unreleased migrations directly rather than creating redundant fixup migrations.

@@ -22,32 +22,40 @@ Consequences:
 - Platform modules live in a single runtime
 - Boundaries between modules are defined by contracts, not by processes
 
-## 2. Platform Modules Have Only `Core` and `Optional`
+## 2. Tenant Lifecycle Classification Is `Core` or `Optional`
 
-A platform module is defined through `modules.toml` and can belong only to:
+For normal `runtime = "module"` entries in `modules.toml`, tenant lifecycle
+classification has exactly two states:
 
-- `Core`
-- `Optional`
+- `Core` — required and not tenant-disableable;
+- `Optional` — part of the selected build/runtime composition and eligible for
+  tenant lifecycle policy.
 
-`Core` modules always participate in the runtime.
-`Optional` modules participate in build/runtime composition and can be managed at
-the tenant level.
+`runtime = "extension"` is **not** a third `ModuleKind`. It is a separate
+runtime-composition mode for deployment-scoped capability contributions that are
+not materialized as tenant-toggled `ModuleRegistry` entries.
 
-Support/capability crates do not form a third taxonomy of platform modules.
+A support/capability crate that is not a manifest runtime entry has no tenant
+lifecycle classification merely because it exists in the workspace.
 
-## 3. Role, Taxonomy and Crate-packaging Must Not Be Mixed
+## 3. Role, Tenant Lifecycle, Runtime Composition, and Packaging Are Separate
 
-Three axes must be distinguished:
+Four independent dimensions must not be collapsed into one label:
 
-- Architectural role: module / shared library / capability crate / host
-- Runtime taxonomy: `Core` / `Optional`
-- Technical packaging: `crate`
+- **Architectural role:** domain module / capability / shared library / host / worker.
+- **Tenant lifecycle:** `Core` / `Optional` for tenant-managed module entries,
+  or not tenant-toggleable when the concept does not participate in tenant module
+  lifecycle.
+- **Runtime composition:** `module` / `extension` as declared by
+  `modules.toml`.
+- **Technical packaging:** Rust crate/package/binary.
 
 It follows that:
 
-- `crate != platform module`
-- `ModuleRegistry != architectural taxonomy`
-- Bootstrap wiring != domain logic ownership
+- `crate != platform module`;
+- `runtime = "extension" != ModuleKind::Optional/Core`;
+- `ModuleRegistry != architectural taxonomy`;
+- bootstrap/composition wiring != domain logic ownership.
 
 ## 4. Source of Truth for Platform Composition is `modules.toml`
 
@@ -120,21 +128,22 @@ If a module provides UI:
 - GraphQL remains a parallel transport contract
 - Locale is selected by the host/runtime layer, not by a package-local fallback chain
 
-## 10. Capability Crates Do Not Replace Module Taxonomy
+## 10. Capability Extensions Do Not Create a Third Tenant Module Kind
 
-Capability/support crates like:
+Capability/support crates such as `alloy`, `rustok-mcp`, `rustok-ai`,
+`rustok-telemetry`, and `flex` are classified by their actual manifest/runtime
+contract, not by naming convention.
 
-- `alloy`
-- `rustok-mcp`
-- `rustok-ai`
-- `rustok-telemetry`
-- `flex`
-
-must not be described as regular tenant-toggled platform modules if they are not
-declared as platform modules in `modules.toml`.
-
-And the reverse is also true: if a component is declared as a platform module, it must
-live in the `Core/Optional` taxonomy.
+- A capability crate outside `modules.toml` is not automatically a platform
+  module.
+- A `runtime = "extension"` manifest entry is a deployment-scoped contribution
+  composed through the canonical runtime-extension seam and is not a tenant
+  lifecycle member.
+- A normal `runtime = "module"` entry uses the `Core/Optional` tenant lifecycle
+  classification.
+- Moving a capability between these composition modes is an architectural
+  boundary change and must update manifests, runtime registration, owner docs,
+  verification, and ADRs when non-trivial.
 
 ## 11. Documentation Must Reflect Code
 

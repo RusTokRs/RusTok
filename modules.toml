@@ -1,20 +1,20 @@
 # RusToK Module Manifest
-# Этот файл определяет состав модулей для сборки
-# Изменение = пересборка проекта
+# This file defines the module composition for the selected build.
+# Changing composition requires rebuilding the platform.
 
 schema = 2
 app = "rustok-server"
 
 # ───────────────────────────────────────────────
-# Build: как собирать и что встраивать в сервер
+# Build: target profile and host embedding
 # ───────────────────────────────────────────────
 [build]
 target = "x86_64-unknown-linux-gnu"
 profile = "release"
 
 [build.server]
-embed_admin = true           # Встроить Leptos admin в бинарник сервера
-embed_storefront = true      # Встроить Leptos storefront в бинарник сервера
+embed_admin = true           # Embed the Leptos admin in the server binary
+embed_storefront = true      # Embed the Leptos storefront in the server binary
 
 [build.admin]
 stack = "leptos"             # "leptos" | "next"
@@ -28,7 +28,7 @@ public_url = "http://localhost:3000"
 redirect_uris = ["http://localhost:3000/auth/callback"]
 
 # ───────────────────────────────────────────────
-# Modules: состав модулей платформы
+# Modules: selected platform composition
 # ───────────────────────────────────────────────
 [modules]
 # Core modules (required and always active)
