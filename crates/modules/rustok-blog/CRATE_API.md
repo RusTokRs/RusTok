@@ -1,7 +1,21 @@
 # rustok-blog / CRATE_API
 
 ## Public Modules
-`controllers`, `dto`, `entities`, `error`, `graphql`, `locale`, `services`, `state_machine`.
+`controllers`, `dto`, `entities`, `error`, `graphql`, `openapi`,
+`public_comments_snapshot`, `richtext`, `services`, and `state_machine`.
+
+## Canonical physical layout
+
+Physical layout is not an additional public API. `domain/` and `integrations/`
+are internal responsibility containers; stable public paths such as
+`rustok_blog::state_machine`, `rustok_blog::richtext`,
+`rustok_blog::public_comments_snapshot`, and `rustok_blog::openapi` are
+preserved by deliberate facade re-exports from `src/lib.rs`.
+
+`src/module.rs` owns module/runtime registration. Application logic belongs in
+`src/services/`; persistence stays in `src/entities/` and
+`src/migrations/`; GraphQL/HTTP code stays in `src/graphql/` and
+`src/controllers/`.
 
 ## Primary Public Types and Signatures
 

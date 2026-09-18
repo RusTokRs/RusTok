@@ -19,3 +19,6 @@ pub use comment_projection::BlogCommentProjectionHandler;
 pub use post::PostService;
 pub(crate) use post::is_post_visible_for_channel;
 pub use tag::TagService;
+
+#[cfg(test)]
+mod tag_tenant_integrity_tests;

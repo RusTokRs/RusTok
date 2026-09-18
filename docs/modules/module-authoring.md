@@ -213,6 +213,18 @@ Do not put CLI adapters into the domain crate, do not put module business logic 
 `apps/server`, and do not collect every third-party module command in one central crate. The
 future platform CLI aggregates module-local providers through an explicit registry.
 
+### 2.1 Follow the Canonical Native Source Layout
+
+For a new native module or a major source refactor, follow
+[`module-backend-implementation.md`](../backend/module-backend-implementation.md)
+exactly. `rustok-blog` is the first strict reference implementation. Do not
+copy the historical flat shape of another module and do not treat the standalone
+WASI `rustok-module-template` as a native server-module template.
+
+Unused slots are omitted. When a responsibility grows, split it below its
+canonical owner directory rather than inventing a new top-level convention.
+Run `npm run verify:module-source-layout` for enrolled reference modules.
+
 ### 3. Data and Migrations Follow the Common Storage Contract
 
 You cannot invent your own storage schema for text, locale and identity.

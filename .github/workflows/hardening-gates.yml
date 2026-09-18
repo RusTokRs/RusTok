@@ -28,6 +28,8 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22
+      - name: Verify canonical native module source layout
+        run: npm run verify:module-source-layout
       - name: Verify module manifest documentation parity
         run: node scripts/verify/verify-module-manifest-docs-drift.mjs
       - name: Verify security advisory exceptions

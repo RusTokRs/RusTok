@@ -160,6 +160,7 @@ from complete operation safety and retention through serving cutover.
 
 ## Architecture and Foundation
 
+- [ADR: Canonical native module source layout](../DECISIONS/2026-09-18-canonical-native-module-source-layout.md) — one responsibility-oriented physical vocabulary for native modules, with `rustok-blog` as the first strict reference implementation.
 - [ADR: Typed module command-context evidence](../DECISIONS/2026-08-22-module-command-context-evidence.md) — one UUID-backed command identity preserved by lifecycle, tenant/platform registry-staging and platform-composition receipts, and events.
 - [ADR: Static module lifecycle revision aggregate](../DECISIONS/2026-08-20-static-module-lifecycle-revision.md) — one durable revision and execution claim for static enablement, settings, and lifecycle recovery.
 - [ADR: Shared retention policy](../DECISIONS/2026-08-15-shared-retention-policy.md) — closed owner lifecycle, deadline, and legal-hold vocabulary for retained evidence.

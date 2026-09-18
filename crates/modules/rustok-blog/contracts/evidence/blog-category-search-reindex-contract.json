@@ -12,10 +12,10 @@
     "platform_permissions": "crates/libs/rustok-api/src/permissions.rs",
     "platform_rbac": "crates/libs/rustok-core/src/rbac.rs",
     "oauth_scope_policy": "crates/libs/rustok-api/src/context/auth.rs",
-    "module_permissions": "crates/modules/rustok-blog/src/lib.rs",
+    "module_permissions": "crates/modules/rustok-blog/src/module.rs",
     "http_adapter": "crates/modules/rustok-blog/src/controllers/categories.rs",
     "router": "crates/modules/rustok-blog/src/controllers/mod.rs",
-    "openapi": "crates/modules/rustok-blog/src/openapi.rs",
+    "openapi": "crates/modules/rustok-blog/src/controllers/openapi.rs",
     "search_projector": "crates/modules/rustok-search/src/blog_projector.rs",
     "search_ingestion": "crates/modules/rustok-search/src/ingestion.rs"
   },

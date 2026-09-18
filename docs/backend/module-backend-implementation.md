@@ -18,58 +18,99 @@ Before changing backend code:
 
 ## Target Module Layout
 
-A backend module should keep these responsibilities separate. Small modules may use fewer
-files, but the ownership split must remain clear.
+Native platform modules use one responsibility-oriented physical vocabulary. Small
+modules omit responsibilities they do not have; empty scaffolding is forbidden.
+Large responsibilities become nested submodules below the owning slot rather than
+new top-level naming conventions.
 
 ```text
 crates/modules/rustok-<module>/
   Cargo.toml
   README.md
+  CRATE_API.md                      public Rust owner contract when the crate publishes one
   rustok-module.toml
-  contracts/                         published FBA/OpenAPI/GraphQL evidence, no runtime code
-    fba-*.json                       provider/consumer evidence when the boundary is promoted
-    openapi*.json                    owner-owned REST contract artifacts, when published
-    graphql*.graphql                 owner-owned GraphQL contract artifacts, when published
+  contracts/                       published FBA/OpenAPI/GraphQL evidence, no runtime code
   docs/
     README.md
     implementation-plan.md
   src/
-    lib.rs                           module wiring and public re-exports only
-    module.rs                        RusToKModule implementation
-    models.rs or entity/             persistence models
-    migrations/                      module-owned migrations
-    services/                        domain/application services
-    ports.rs                         FBA ports when there is a real consumer boundary
-    events.rs                        domain event types and helpers
-    graphql/                         owner-owned GraphQL roots/DTOs when published
-    rest/ or controllers/            owner-owned HTTP DTOs/handlers when published
-    runtime.rs                       narrow module runtime state, if needed
-  admin/                             optional module-owned Leptos admin UI adapter package
-  storefront/                        optional module-owned Leptos storefront UI adapter package
-  cli/                               optional external CLI adapter package
-    Cargo.toml
-    src/
-      lib.rs                         command provider exports, no domain logic
-      commands.rs                    command request mapping and outcomes
+    lib.rs                         crate facade: docs, declarations, deliberate re-exports
+    module.rs                      RusToKModule/MigrationSource/runtime registration
+    error.rs                       owner error contract
+    domain/                        state machines, value objects, invariant/policy code
+    dto/                           owner request/response and command/query data contracts
+    entities/                      persistence mappings when the module owns tables
+    services/                      application/domain use cases and transactions
+    ports/                         owner-defined cross-boundary ports, only when consumed
+    integrations/                  adapters to SEO/reactions/index/translation/etc.
+    migrations/                    owner migrations and dependency descriptors
+    graphql/                       owner GraphQL adapters when published
+    controllers/ or rest/          owner HTTP adapters when published
+    runtime.rs                     optional narrow reusable runtime state
+    tests/                         crate-private contract tests needing private access
+  tests/                           public-API integration tests
+  admin/                           optional module-owned Leptos admin UI adapter package
+  storefront/                      optional module-owned Leptos storefront UI adapter package
+  cli/                             optional external CLI adapter package
 ```
 
-`apps/server` mounts and composes the module. It must not become the place where module
-queries, mutations, DTOs or business policies accumulate.
+The responsibility meaning is normative:
 
-The `cli/`, `admin/` and `storefront/` directories are ownership-local adapter packages.
-They sit next to the module so a large ecosystem of third-party modules can keep all of its
-adapters discoverable in one module folder. They are not part of the domain crate. A
-production server build must be able to include the module domain crate without linking the
-module CLI adapter.
+| Responsibility | Canonical slot | Dependency rule |
+|---|---|---|
+| Module metadata, migration export, runtime capability/listener registration | `src/module.rs` | Composition only; no business policy |
+| Pure domain state/invariants/policies | `src/domain/` | Must not depend on SeaORM, Axum, GraphQL, Leptos or `rustok-web` |
+| Owner application/use-case logic | `src/services/` | May use domain/DTO/entity/port contracts; must not depend on transport frameworks |
+| Stable cross-owner API | `src/ports/` | Add only for a real consumer boundary |
+| Persistence mappings/migrations | `src/entities/`, `src/migrations/` | No transport ownership |
+| Capability adapters owned by the module | `src/integrations/` | Adapt owner services/ports to another capability; do not become a second source of truth |
+| GraphQL/HTTP | `src/graphql/`, `src/controllers/` or `src/rest/` | Thin mapping into owner services/ports |
+| Crate facade | `src/lib.rs` | Documentation, module declarations and deliberate public re-exports only |
+
+A responsibility may become a directory of feature submodules when it grows. Split
+by stable behavior (for example commands, queries, repository/projection, policy)
+rather than arbitrary numbered files. For modules enrolled as canonical references,
+the layout verifier also keeps individual Rust source files bounded; the initial
+reference profile uses 32 KiB and requires a documented verifier exception for a
+larger file.
+
+Do not add generic root dumping grounds such as `common.rs`, `misc.rs` or
+`utils.rs` for unrelated behavior. A helper belongs with the responsibility whose
+semantics it implements.
+
+`rustok-blog` is the first canonical native-module reference implementation.
+Its physical layout is checked by `npm run verify:module-source-layout`. Existing
+modules adopt the target incrementally in bounded mechanical PRs and become strict
+when enrolled in that verifier; historical layout is not an alternative standard.
+
+Shared/support libraries follow the same responsibility principles but are not
+forced into module-only concepts. A shared crate keeps a thin `lib.rs` and uses
+explicit `model/` or `types/`, `service/` or `runtime/`, `ports/`, and
+`adapters/`/`integrations/` only when those responsibilities exist. It must
+not invent `module.rs`, `rustok-module.toml`, migrations, or module lifecycle
+registration merely to resemble a platform module.
+
+The existing `rustok-module-template` renders standalone WASI Component Model
+modules, not native server modules, and is not the reference for this physical
+layout.
+
+The `cli/`, `admin/` and `storefront/` directories are ownership-local
+adapter packages. They sit next to the module for discoverability but are not part
+of the domain crate. A production server build must be able to include the module
+domain crate without linking the module CLI adapter.
 
 Use these placement rules:
 
 | Thing Being Added | Place It In |
 |---|---|
-| Domain entity, invariant, service, command object | `src/models.rs`, `src/entity/`, `src/services/` |
-| Cross-module stable backend port | `src/ports.rs` or `src/ports/` |
-| Domain event | `src/events.rs` or `src/events/` |
+| Domain state machine, value object or invariant | `src/domain/` |
+| Owner DTO/command/query data contract | `src/dto/` |
+| Application/domain service or transactional use case | `src/services/` |
+| Cross-module stable backend port | `src/ports/` |
+| Domain event | owner service/event module under the narrowest responsibility; extract `src/events/` when it becomes a real family |
+| Module/runtime registration | `src/module.rs` |
 | Module runtime handle bundle | `src/runtime.rs` |
+| Capability integration adapter | `src/integrations/` |
 | GraphQL root/resolver/DTO owned by the module | `src/graphql/` |
 | REST handler/DTO owned by the module | `src/rest/` or `src/controllers/` |
 | OpenAPI/GraphQL/FBA evidence artifact | `contracts/` |

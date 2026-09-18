@@ -44,11 +44,11 @@ const serviceExportPath = 'crates/modules/rustok-blog/src/services/mod.rs';
 const entityPath = 'crates/modules/rustok-blog/src/entities/blog_comment_projection_delivery.rs';
 const migrationPath = 'crates/modules/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs';
 const migrationRegistryPath = 'crates/modules/rustok-blog/src/migrations/mod.rs';
-const modulePath = 'crates/modules/rustok-blog/src/lib.rs';
+const modulePath = 'crates/modules/rustok-blog/src/module.rs';
 const registryPath = 'crates/modules/rustok-blog/contracts/blog-fba-registry.json';
 const planPath = 'crates/modules/rustok-blog/docs/implementation-plan.md';
 const harnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
-const hostRegistrationHarnessCommand = 'cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing';
+const hostRegistrationHarnessCommand = 'cargo test -p rustok-blog --lib module::tests::module_registers_comment_projection_handler_with_host_routing';
 const dispatcherHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact';
 const concurrencyHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --exact';
 const retryLimitHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears -- --exact';
@@ -399,7 +399,7 @@ if (evidence) {
     hostRegistration.status !== 'executable_no_run' ||
     hostRegistration.runtime_status !== 'not_run' ||
     hostRegistration.path !== modulePath ||
-    hostRegistration.module !== 'tests' ||
+    hostRegistration.module !== 'module::tests' ||
     hostRegistration.command !== hostRegistrationHarnessCommand ||
     hostRegistration.scope !== 'module_registry_handler_identity_and_routing_only'
   ) {
@@ -620,7 +620,7 @@ for (const marker of [
   'services::comment_projection::tests',
   'ProjectionUpdateDecision',
   'seven retry decisions',
-  'tests::module_registers_comment_projection_handler_with_host_routing',
+  'module::tests::module_registers_comment_projection_handler_with_host_routing',
   'event_dispatcher_routes_registered_handler_and_commits_projection',
   'concurrent_created_events_converge_without_lost_updates',
   'optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears',

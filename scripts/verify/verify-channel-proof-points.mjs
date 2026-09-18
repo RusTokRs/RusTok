@@ -58,7 +58,7 @@ assertAll('crates/modules/rustok-blog/src/graphql/query.rs', [
   'is_post_visible_for_channel',
   'public_request_rejects_disabled_blog_channel_binding',
 ]);
-assertAll('crates/modules/rustok-blog/src/seo_targets.rs', [
+assertAll('crates/modules/rustok-blog/src/integrations/seo_targets.rs', [
   'channel_visible',
   'normalize_channel_slug',
   'request.channel_slug',
