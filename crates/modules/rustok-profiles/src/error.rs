@@ -119,6 +119,11 @@ mod tests {
     fn only_availability_failures_are_retryable() {
         assert!(ProfileError::PresentationUnavailable.is_retryable());
         assert!(ProfileError::EventPublishUnavailable.is_retryable());
+        assert!(ProfileError::TaxonomyUnavailable("private detail".into()).is_retryable());
+        assert_eq!(
+            ProfileError::TaxonomyUnavailable("private detail".into()).code(),
+            "profiles.taxonomy_unavailable"
+        );
         assert!(!ProfileError::InvalidHandle.is_retryable());
     }
 }
