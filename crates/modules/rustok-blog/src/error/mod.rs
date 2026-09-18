@@ -276,6 +276,9 @@ impl From<rustok_taxonomy::TaxonomyError> for BlogError {
     fn from(value: rustok_taxonomy::TaxonomyError) -> Self {
         match value {
             rustok_taxonomy::TaxonomyError::Database(err) => Self::Database(err),
+            rustok_taxonomy::TaxonomyError::Internal(message) => Self::Invariant(format!(
+                "Taxonomy dependency failed: {message}"
+            )),
             rustok_taxonomy::TaxonomyError::Forbidden(message) => Self::Forbidden(message),
             rustok_taxonomy::TaxonomyError::Validation(message) => Self::Validation(message),
             rustok_taxonomy::TaxonomyError::DuplicateCanonicalKey(message)
