@@ -82,6 +82,13 @@ fn slug_normalization_is_stable() {
     assert_eq!(normalize_slug("  many   spaces  "), "many-spaces");
 }
 
+#[test]
+fn unknown_persisted_post_status_is_an_invariant_failure() {
+    let error = storage_to_status("corrupt-status")
+        .expect_err("unknown persisted status must fail closed");
+    assert!(matches!(error, BlogError::Invariant(_)));
+}
+
 #[tokio::test]
 async fn post_lifecycle_uses_blog_owned_tables() {
     let db = setup_test_db().await;
