@@ -129,6 +129,8 @@ async fn setup_database() -> TestResult<DatabaseConnection> {
             position INTEGER NULL,
             visibility_overrides TEXT NOT NULL DEFAULT '{}',
             validation_overrides TEXT NOT NULL DEFAULT '{}',
+            variant_axis_policy TEXT NOT NULL DEFAULT 'forbidden',
+            default_variant_axis INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
@@ -154,6 +156,8 @@ async fn setup_database() -> TestResult<DatabaseConnection> {
             position INTEGER NULL,
             visibility_overrides TEXT NOT NULL DEFAULT '{}',
             validation_overrides TEXT NOT NULL DEFAULT '{}',
+            variant_axis_policy TEXT NOT NULL DEFAULT 'forbidden',
+            default_variant_axis INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );

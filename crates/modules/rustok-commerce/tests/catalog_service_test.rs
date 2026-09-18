@@ -1254,7 +1254,7 @@ async fn test_multiple_variants_different_prices() {
     let product = result.unwrap();
     assert_eq!(product.variants.len(), 2);
 
-    // Find variants by their option1 value (used as title)
+    // Find variants by their price amount
     let cheap = product
         .variants
         .iter()

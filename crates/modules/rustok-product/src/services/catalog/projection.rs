@@ -125,7 +125,7 @@ pub async fn load_variant_axis_values<C: ConnectionTrait>(
         JOIN product_attributes a ON a.id = pvav.attribute_id AND a.tenant_id = pvav.tenant_id
         JOIN product_attribute_options pao ON pao.id = pvao.option_id AND pao.tenant_id = pvao.tenant_id
         LEFT JOIN product_attribute_option_translations paot ON paot.option_id = pao.id AND paot.locale = $2
-        WHERE pvav.tenant_id = $1 AND pvav.variant_id IN ({placeholders})
+        WHERE pvav.tenant_id = $1 AND pvav.detached_at IS NULL AND pvav.variant_id IN ({placeholders})
         ORDER BY pvav.attribute_id ASC
         "#
     );

@@ -1914,7 +1914,7 @@ fn ProductVariantsPanel(
                     <thead>
                         <tr class="border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                             <th class="py-2.5 px-3">"SKU"</th>
-                            <th class="py-2.5 px-3">"Options"</th>
+                            <th class="py-2.5 px-3">"Variant Axes"</th>
                             <th class="py-2.5 px-3">"Price"</th>
                             <th class="py-2.5 px-3">"Stock"</th>
                             <th class="py-2.5 px-3">"Policy"</th>

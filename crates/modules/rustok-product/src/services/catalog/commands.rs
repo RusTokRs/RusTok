@@ -31,6 +31,7 @@ impl CatalogService {
             warn!("Product creation rejected: no variants");
             return Err(CommerceError::NoVariants);
         }
+        validate_variant_axes_and_combinations(&input.variant_axes, &input.variants)?;
         self.validate_primary_category(tenant_id, input.primary_category_id)
             .await?;
         if input.publish {
@@ -809,7 +810,7 @@ impl CatalogService {
         let variant_model = entities::product_variant::Entity::find_by_id(variant_id)
             .one(&txn)
             .await?
-            .unwrap();
+            .ok_or(CommerceError::VariantNotFound(variant_id))?;
         let variant_title = generate_variant_title(&variant_model);
 
         let mut variant_translation_models = Vec::new();
@@ -916,27 +917,50 @@ impl CatalogService {
             .map_err(|error| map_product_unique_violation(error, "", "", input.sku.as_deref()))?;
 
         if let Some(ref axis_values) = input.axis_values {
-            let existing_vals: Vec<IdRow> = IdRow::find_by_statement(Statement::from_sql_and_values(
-                txn.get_database_backend(),
-                "SELECT id FROM product_variant_attribute_values WHERE tenant_id = $1 AND variant_id = $2",
-                vec![tenant_id.into(), variant_id.into()],
-            ))
-            .all(&txn)
-            .await
-            .unwrap_or_default();
-            for ev in existing_vals {
-                txn.execute_raw(Statement::from_sql_and_values(
+            let configured_axis_attribute_ids: Vec<Uuid> =
+                entities::product_variant_axis::Entity::find()
+                    .filter(entities::product_variant_axis::Column::ProductId.eq(product_id))
+                    .filter(entities::product_variant_axis::Column::TenantId.eq(tenant_id))
+                    .all(&txn)
+                    .await?
+                    .into_iter()
+                    .map(|a| a.attribute_id)
+                    .collect();
+
+            if !configured_axis_attribute_ids.is_empty() {
+                let placeholders = (0..configured_axis_attribute_ids.len())
+                    .map(|i| format!("${}", i + 3))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let query = format!(
+                    "SELECT id FROM product_variant_attribute_values WHERE tenant_id = $1 AND variant_id = $2 AND attribute_id IN ({placeholders})"
+                );
+                let mut params = vec![tenant_id.into(), variant_id.into()];
+                for aid in configured_axis_attribute_ids {
+                    params.push(aid.into());
+                }
+                let existing_vals: Vec<IdRow> = IdRow::find_by_statement(Statement::from_sql_and_values(
                     txn.get_database_backend(),
-                    "DELETE FROM product_variant_attribute_value_options WHERE tenant_id = $1 AND value_id = $2",
-                    vec![tenant_id.into(), ev.id.into()],
+                    &query,
+                    params,
                 ))
-                .await?;
-                txn.execute_raw(Statement::from_sql_and_values(
-                    txn.get_database_backend(),
-                    "DELETE FROM product_variant_attribute_values WHERE tenant_id = $1 AND id = $2",
-                    vec![tenant_id.into(), ev.id.into()],
-                ))
-                .await?;
+                .all(&txn)
+                .await
+                .unwrap_or_default();
+                for ev in existing_vals {
+                    txn.execute_raw(Statement::from_sql_and_values(
+                        txn.get_database_backend(),
+                        "DELETE FROM product_variant_attribute_value_options WHERE tenant_id = $1 AND value_id = $2",
+                        vec![tenant_id.into(), ev.id.into()],
+                    ))
+                    .await?;
+                    txn.execute_raw(Statement::from_sql_and_values(
+                        txn.get_database_backend(),
+                        "DELETE FROM product_variant_attribute_values WHERE tenant_id = $1 AND id = $2",
+                        vec![tenant_id.into(), ev.id.into()],
+                    ))
+                    .await?;
+                }
             }
 
             assign_variant_axis_values_in_tx(&txn, tenant_id, variant_id, axis_values).await?;
@@ -944,7 +968,7 @@ impl CatalogService {
             let variant_model = entities::product_variant::Entity::find_by_id(variant_id)
                 .one(&txn)
                 .await?
-                .unwrap();
+                .ok_or(CommerceError::VariantNotFound(variant_id))?;
             let variant_title = generate_variant_title(&variant_model);
             entities::variant_translation::Entity::update_many()
                 .filter(entities::variant_translation::Column::VariantId.eq(variant_id))
@@ -1362,6 +1386,43 @@ impl CatalogService {
             .await?
             .ok_or(CommerceError::ProductNotFound(product_id))?;
 
+        let existing_variants = entities::product_variant::Entity::find()
+            .filter(entities::product_variant::Column::ProductId.eq(product_id))
+            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
+            .all(&txn)
+            .await?;
+
+        if input.axes.is_empty() && existing_variants.len() > 1 {
+            return Err(CommerceError::Validation(
+                "Cannot remove all variant axes from a product with multiple variants. Consolidate to a single variant first.".into(),
+            ));
+        }
+
+        let mut seen_attrs = HashSet::new();
+        for axis in &input.axes {
+            if !seen_attrs.insert(axis.attribute_id) {
+                return Err(CommerceError::Validation(format!(
+                    "Duplicate attribute_id `{}` in variant axes",
+                    axis.attribute_id
+                )));
+            }
+            if axis.allowed_option_ids.is_empty() {
+                return Err(CommerceError::Validation(format!(
+                    "Variant axis `{}` must have at least one allowed option",
+                    axis.attribute_id
+                )));
+            }
+            let mut seen_opts = HashSet::new();
+            for opt in &axis.allowed_option_ids {
+                if !seen_opts.insert(*opt) {
+                    return Err(CommerceError::Validation(format!(
+                        "Duplicate option_id `{}` in allowed options for axis `{}`",
+                        opt, axis.attribute_id
+                    )));
+                }
+            }
+        }
+
         let existing_axis_ids: Vec<Uuid> = entities::product_variant_axis::Entity::find()
             .filter(entities::product_variant_axis::Column::ProductId.eq(product_id))
             .filter(entities::product_variant_axis::Column::TenantId.eq(tenant_id))
@@ -1442,7 +1503,7 @@ pub(crate) async fn assign_variant_axis_values_in_tx(
             ) VALUES ($1, $2, $3, $4, NULL)
             ON CONFLICT (tenant_id, variant_id, attribute_id) DO UPDATE SET
                 detached_at = NULL,
-                updated_at = now()
+                updated_at = CURRENT_TIMESTAMP
             RETURNING id
             "#,
             vec![
@@ -1485,20 +1546,118 @@ pub(crate) async fn assign_variant_axis_values_in_tx(
         .await?;
     }
 
-    if txn.get_database_backend() != sea_orm::DbBackend::Postgres {
-        let combination_identity = if axis_values.is_empty() {
-            None
-        } else {
-            let mut sorted = axis_values.to_vec();
-            sorted.sort_by_key(|v| v.attribute_id);
-            Some(sorted.iter().map(|v| format!("{}:{}", v.attribute_id, v.option_id)).collect::<Vec<_>>().join(";"))
-        };
-        txn.execute_raw(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            "UPDATE product_variants SET combination_identity = $1 WHERE tenant_id = $2 AND id = $3",
-            vec![combination_identity.into(), tenant_id.into(), variant_id.into()],
-        ))
-        .await?;
+    let combination_identity = if axis_values.is_empty() {
+        None
+    } else {
+        let mut sorted = axis_values.to_vec();
+        sorted.sort_by_key(|v| v.attribute_id);
+        Some(
+            sorted
+                .iter()
+                .map(|v| format!("{}:{}", v.attribute_id, v.option_id))
+                .collect::<Vec<_>>()
+                .join(";"),
+        )
+    };
+    txn.execute_raw(Statement::from_sql_and_values(
+        txn.get_database_backend(),
+        "UPDATE product_variants SET combination_identity = $1 WHERE tenant_id = $2 AND id = $3",
+        vec![combination_identity.into(), tenant_id.into(), variant_id.into()],
+    ))
+    .await?;
+
+    Ok(())
+}
+
+pub(crate) fn validate_variant_axes_and_combinations(
+    variant_axes: &[VariantAxisInput],
+    variants: &[CreateVariantInput],
+) -> CommerceResult<()> {
+    if variant_axes.is_empty() {
+        return Ok(());
+    }
+
+    let mut seen_attrs = HashSet::new();
+    for axis in variant_axes {
+        if !seen_attrs.insert(axis.attribute_id) {
+            return Err(CommerceError::Validation(format!(
+                "Duplicate attribute_id `{}` in variant axes configuration",
+                axis.attribute_id
+            )));
+        }
+        if axis.allowed_option_ids.is_empty() {
+            return Err(CommerceError::Validation(format!(
+                "Variant axis `{}` must have at least one allowed option",
+                axis.attribute_id
+            )));
+        }
+        let mut seen_opts = HashSet::new();
+        for opt in &axis.allowed_option_ids {
+            if !seen_opts.insert(*opt) {
+                return Err(CommerceError::Validation(format!(
+                    "Duplicate option_id `{}` in allowed options for axis `{}`",
+                    opt, axis.attribute_id
+                )));
+            }
+        }
+    }
+
+    let mut seen_combinations = HashSet::new();
+    for (idx, variant) in variants.iter().enumerate() {
+        if variant.axis_values.is_empty() {
+            return Err(CommerceError::Validation(format!(
+                "Variant at index {} is missing axis values for configured axes",
+                idx
+            )));
+        }
+        if variant.axis_values.len() != variant_axes.len() {
+            return Err(CommerceError::Validation(format!(
+                "Variant at index {} has {} axis assignments, expected {}",
+                idx,
+                variant.axis_values.len(),
+                variant_axes.len()
+            )));
+        }
+
+        let mut variant_axis_attrs = HashSet::new();
+        let mut sorted_pairs = Vec::new();
+        for val in &variant.axis_values {
+            if !variant_axis_attrs.insert(val.attribute_id) {
+                return Err(CommerceError::Validation(format!(
+                    "Variant at index {} has duplicate assignment for axis `{}`",
+                    idx, val.attribute_id
+                )));
+            }
+            let axis = variant_axes
+                .iter()
+                .find(|a| a.attribute_id == val.attribute_id)
+                .ok_or_else(|| {
+                    CommerceError::Validation(format!(
+                        "Variant at index {} assigns unknown axis `{}`",
+                        idx, val.attribute_id
+                    ))
+                })?;
+            if !axis.allowed_option_ids.contains(&val.option_id) {
+                return Err(CommerceError::Validation(format!(
+                    "Option `{}` is not allowed for axis `{}` in variant at index {}",
+                    val.option_id, val.attribute_id, idx
+                )));
+            }
+            sorted_pairs.push((val.attribute_id, val.option_id));
+        }
+
+        sorted_pairs.sort_by_key(|(attr, _)| *attr);
+        let combination_key: String = sorted_pairs
+            .into_iter()
+            .map(|(a, o)| format!("{a}:{o}"))
+            .collect::<Vec<_>>()
+            .join(";");
+
+        if !seen_combinations.insert(combination_key.clone()) {
+            return Err(CommerceError::Validation(format!(
+                "Duplicate variant combination `{combination_key}` in product variants"
+            )));
+        }
     }
 
     Ok(())

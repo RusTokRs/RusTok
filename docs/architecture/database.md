@@ -249,7 +249,9 @@ Commerce storage remains a split-domain family, but the top-level base consists 
 - `variant_translations`
 - `prices`
 - `product_images`
-- `product_options`
+- `product_variant_axes`
+- `product_variant_axis_values`
+- `product_attribute_groups`
 - `cart_line_item_translations`
 - `order_line_item_translations`
 

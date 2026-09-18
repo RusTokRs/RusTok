@@ -6,7 +6,7 @@
 
 ## Responsibilities
 
-- Product entities, translations, options, variants, and product-owned migrations.
+- Product entities, translations, variant axes, variants, and product-owned migrations.
 - PostgreSQL target-schema enforcement removes unused compatibility columns,
   requires Media-owned image identifiers, preserves decimal variant weights,
   and maintains an indexed globally visible storefront page path.
@@ -193,8 +193,8 @@ See also `docs/README.md`, the Index
 [M7 bounded Product reconciliation contract](../rustok-index/docs/m7-product-reconciliation.md).
 
 
-The accepted target for variant identity is the
+The canonical architecture for variant identity and configuration is the
 [Unified variant axis architecture](../../../DECISIONS/2026-09-18-unified-variant-axis-architecture.md).
-Its registry implementation status is authoritative; until that cutover is
-implemented, current legacy option code is runtime reality but not the target
-architecture.
+Variants are defined along configured product axes (`product_variant_axes` and `product_variant_axis_values`),
+with combination identity (`combination_identity`) and completeness invariants maintained and verified at the
+database layer. Legacy Shopify-style `option1/2/3` columns and `product_options` tables have been completely eliminated.

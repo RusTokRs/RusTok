@@ -405,6 +405,7 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     )
     .await;
     ensure_field_definition_tables(db).await;
+    ensure_product_attribute_tables(db).await;
     create_entity_table(
         db,
         &builder,
@@ -447,6 +448,88 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         ))
         .await
         .expect("failed to create translation change journal test table");
+    }
+}
+
+async fn ensure_product_attribute_tables(db: &DatabaseConnection) {
+    for sql in [
+        "CREATE TABLE IF NOT EXISTS product_attributes (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            code TEXT NOT NULL,
+            value_type TEXT NOT NULL,
+            scope TEXT NOT NULL DEFAULT 'product',
+            is_localized INTEGER NOT NULL DEFAULT 0,
+            is_filterable INTEGER NOT NULL DEFAULT 0,
+            is_searchable INTEGER NOT NULL DEFAULT 0,
+            is_sortable INTEGER NOT NULL DEFAULT 0,
+            is_comparable INTEGER NOT NULL DEFAULT 0,
+            show_on_storefront INTEGER NOT NULL DEFAULT 1,
+            show_in_admin_grid INTEGER NOT NULL DEFAULT 0,
+            search_weight INTEGER NOT NULL DEFAULT 1,
+            filter_display TEXT,
+            facet_mode TEXT,
+            position INTEGER NOT NULL DEFAULT 0,
+            validation TEXT NOT NULL DEFAULT '{}',
+            default_value TEXT,
+            metadata TEXT NOT NULL DEFAULT '{}',
+            archived_at TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+        "CREATE TABLE IF NOT EXISTS product_attribute_translations (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            attribute_id TEXT NOT NULL,
+            locale TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+        "CREATE TABLE IF NOT EXISTS product_attribute_options (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            attribute_id TEXT NOT NULL,
+            code TEXT NOT NULL,
+            color_hex TEXT,
+            position INTEGER NOT NULL DEFAULT 0,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            metadata TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+        "CREATE TABLE IF NOT EXISTS product_attribute_option_translations (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            option_id TEXT NOT NULL,
+            locale TEXT NOT NULL,
+            label TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+        "CREATE TABLE IF NOT EXISTS product_variant_attribute_values (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            variant_id TEXT NOT NULL,
+            attribute_id TEXT NOT NULL,
+            detached_at TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+        "CREATE TABLE IF NOT EXISTS product_variant_attribute_value_options (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            value_id TEXT NOT NULL,
+            option_id TEXT NOT NULL
+        )",
+    ] {
+        db.execute_raw(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            sql.to_string(),
+        ))
+        .await
+        .expect("failed to create product attribute test table");
     }
 }
 

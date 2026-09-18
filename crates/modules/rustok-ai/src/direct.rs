@@ -2240,18 +2240,16 @@ mod tests {
                 title TEXT NOT NULL, handle TEXT NOT NULL, description TEXT NULL, meta_title TEXT NULL, \
                 meta_description TEXT NULL\
              )",
-            "CREATE TABLE product_options (id TEXT PRIMARY KEY, product_id TEXT NOT NULL, position INTEGER NOT NULL)",
+            "CREATE TABLE product_variant_axes (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, product_id TEXT NOT NULL, attribute_id TEXT NOT NULL, position INTEGER NOT NULL)",
+            "CREATE TABLE product_variant_axis_values (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, axis_id TEXT NOT NULL, option_id TEXT NOT NULL, position INTEGER NOT NULL)",
             "CREATE TABLE product_variants (\
                 id TEXT PRIMARY KEY, product_id TEXT NOT NULL, tenant_id TEXT NOT NULL, sku TEXT NULL, \
                 barcode TEXT NULL, shipping_profile_slug TEXT NULL, ean TEXT NULL, upc TEXT NULL, \
                 inventory_policy TEXT NOT NULL, inventory_management TEXT NOT NULL, inventory_quantity INTEGER NOT NULL, \
-                weight TEXT NULL, weight_unit TEXT NULL, option1 TEXT NULL, option2 TEXT NULL, option3 TEXT NULL, \
+                weight TEXT NULL, weight_unit TEXT NULL, combination_identity TEXT NULL, \
                 position INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL\
              )",
             "CREATE TABLE product_images (id TEXT PRIMARY KEY, product_id TEXT NOT NULL, media_id TEXT NOT NULL, position INTEGER NOT NULL, alt_text TEXT NULL)",
-            "CREATE TABLE product_option_translations (id TEXT PRIMARY KEY, option_id TEXT NOT NULL, locale TEXT NOT NULL, title TEXT NOT NULL)",
-            "CREATE TABLE product_option_values (id TEXT PRIMARY KEY, option_id TEXT NOT NULL, position INTEGER NOT NULL, metadata TEXT NOT NULL)",
-            "CREATE TABLE product_option_value_translations (id TEXT PRIMARY KEY, value_id TEXT NOT NULL, locale TEXT NOT NULL, value TEXT NOT NULL)",
             "CREATE TABLE prices (\
                 id TEXT PRIMARY KEY, variant_id TEXT NOT NULL, price_list_id TEXT NULL, channel_id TEXT NULL, \
                 channel_slug TEXT NULL, currency_code TEXT NOT NULL, region_id TEXT NULL, amount_decimal TEXT NOT NULL, \
@@ -2273,6 +2271,41 @@ mod tests {
                 label TEXT NOT NULL, description TEXT NULL, is_localized BOOLEAN NOT NULL, is_required BOOLEAN NOT NULL, \
                 default_value TEXT NULL, validation TEXT NULL, position INTEGER NOT NULL, is_active BOOLEAN NOT NULL, \
                 created_at TEXT NOT NULL, updated_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE product_attributes (\
+                id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, code TEXT NOT NULL, value_type TEXT NOT NULL, \
+                scope TEXT NOT NULL DEFAULT 'product', is_localized INTEGER NOT NULL DEFAULT 0, \
+                is_filterable INTEGER NOT NULL DEFAULT 0, is_searchable INTEGER NOT NULL DEFAULT 0, \
+                is_sortable INTEGER NOT NULL DEFAULT 0, is_comparable INTEGER NOT NULL DEFAULT 0, \
+                show_on_storefront INTEGER NOT NULL DEFAULT 1, show_in_admin_grid INTEGER NOT NULL DEFAULT 0, \
+                search_weight INTEGER NOT NULL DEFAULT 1, filter_display TEXT, facet_mode TEXT, \
+                position INTEGER NOT NULL DEFAULT 0, validation TEXT NOT NULL DEFAULT '{}', default_value TEXT, \
+                metadata TEXT NOT NULL DEFAULT '{}', archived_at TEXT, \
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
+             )",
+            "CREATE TABLE product_attribute_translations (\
+                id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, attribute_id TEXT NOT NULL, locale TEXT NOT NULL, \
+                name TEXT NOT NULL, description TEXT, \
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
+             )",
+            "CREATE TABLE product_attribute_options (\
+                id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, attribute_id TEXT NOT NULL, code TEXT NOT NULL, \
+                color_hex TEXT, position INTEGER NOT NULL DEFAULT 0, is_default INTEGER NOT NULL DEFAULT 0, \
+                metadata TEXT NOT NULL DEFAULT '{}', \
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
+             )",
+            "CREATE TABLE product_attribute_option_translations (\
+                id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, option_id TEXT NOT NULL, locale TEXT NOT NULL, \
+                label TEXT NOT NULL, \
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
+             )",
+            "CREATE TABLE product_variant_attribute_values (\
+                id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, variant_id TEXT NOT NULL, attribute_id TEXT NOT NULL, \
+                detached_at TEXT, \
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
+             )",
+            "CREATE TABLE product_variant_attribute_value_options (\
+                id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, value_id TEXT NOT NULL, option_id TEXT NOT NULL\
              )",
         ] {
             database

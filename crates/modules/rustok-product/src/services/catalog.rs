@@ -100,6 +100,16 @@ fn map_product_unique_violation(
             locale: locale.to_owned(),
         };
     }
+    if message.contains("uq_product_variants_combination") {
+        return CommerceError::Validation(
+            "A variant with this axis combination already exists for this product".to_owned(),
+        );
+    }
+    if message.contains("uq_product_variants_default") {
+        return CommerceError::Validation(
+            "A default variant already exists for this product".to_owned(),
+        );
+    }
     CommerceError::Database(error)
 }
 
