@@ -64,11 +64,8 @@ fn post_list_query_clamps_bounds() {
 
 #[test]
 fn channel_visibility_normalizes_and_filters_blog_channel_lists() {
-    let channel_slugs = normalize_channel_slugs(&[
-        " Web ".to_string(),
-        "mobile".to_string(),
-        "web".to_string(),
-    ]);
+    let channel_slugs =
+        normalize_channel_slugs(&[" Web ".to_string(), "mobile".to_string(), "web".to_string()]);
 
     assert_eq!(channel_slugs, vec!["mobile".to_string(), "web".to_string()]);
     assert!(is_post_visible_for_channel(&channel_slugs, Some("web")));
@@ -252,11 +249,7 @@ async fn create_and_update_post_store_channel_visibility_in_typed_relation() {
                 seo_title: None,
                 seo_description: None,
                 channel_slugs: Some(vec![" Web ".to_string(), "mobile".to_string()]),
-                metadata: Some(serde_json::json!({
-                    "channel_visibility": {
-                        "allowed_channel_slugs": ["legacy"]
-                    }
-                })),
+                metadata: Some(serde_json::json!({"custom": "value"})),
             },
         )
         .await
@@ -270,10 +263,7 @@ async fn create_and_update_post_store_channel_visibility_in_typed_relation() {
         created.channel_slugs,
         vec!["mobile".to_string(), "web".to_string()]
     );
-    assert_eq!(
-        extract_channel_slugs(&created.metadata),
-        Vec::<String>::new()
-    );
+    assert_eq!(created.metadata["custom"], "value");
 
     post_service
         .update_post(
@@ -284,20 +274,16 @@ async fn create_and_update_post_store_channel_visibility_in_typed_relation() {
                 locale: Some("en".to_string()),
                 title: None,
                 content: None,
-                excerpt: None,
+                excerpt: Patch::Keep,
                 slug: None,
                 tags: None,
-                category_id: None,
-                featured_image_url: None,
-                seo_title: None,
-                seo_description: None,
+                category_id: Patch::Keep,
+                featured_image_url: Patch::Keep,
+                seo_title: Patch::Keep,
+                seo_description: Patch::Keep,
                 channel_slugs: Some(vec!["storefront".to_string()]),
-                metadata: Some(serde_json::json!({
-                    "channel_visibility": {
-                        "allowed_channel_slugs": ["legacy-again"]
-                    }
-                })),
-                version: Some(created.version),
+                metadata: Some(serde_json::json!({"custom": "next"})),
+                version: created.version,
             },
         )
         .await
@@ -308,10 +294,7 @@ async fn create_and_update_post_store_channel_visibility_in_typed_relation() {
         .await
         .expect("updated post should load");
     assert_eq!(updated.channel_slugs, vec!["storefront".to_string()]);
-    assert_eq!(
-        extract_channel_slugs(&updated.metadata),
-        Vec::<String>::new()
-    );
+    assert_eq!(updated.metadata["custom"], "next");
 }
 
 #[tokio::test]
@@ -367,8 +350,8 @@ async fn public_visible_listing_filters_by_typed_channel_relation() {
                 locale: Some("en".to_string()),
                 page: Some(1),
                 per_page: Some(10),
-                sort_by: Some("published_at".to_string()),
-                sort_order: Some("desc".to_string()),
+                sort_by: Some(PostSortField::PublishedAt),
+                sort_order: Some(PostSortOrder::Desc),
                 ..Default::default()
             },
             Some("en"),

@@ -4,7 +4,7 @@ use axum::{
 };
 use rustok_api::Permission;
 use rustok_api::{AuthContext, RequestContext, TenantContext};
-use rustok_web::{HttpError, HttpResult};
+use rustok_web::HttpResult;
 use uuid::Uuid;
 
 use super::{BlogHttpRuntime, posts::ensure_blog_permission};
@@ -63,7 +63,7 @@ pub async fn moderate_comment(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("blog_moderate_comment_failed", err.to_string()))?;
+        .map_err(crate::error::public::to_http_error)?;
 
     Ok(Json(comment))
 }

@@ -82,7 +82,12 @@ impl CategoryCommandService {
         let mut touched = HashSet::new();
 
         if source_parent_id == input.parent_id {
-            let mut siblings = sibling_ids(&blog_ids, &placement_by_id, source_parent_id, Some(category_id));
+            let mut siblings = sibling_ids(
+                &blog_ids,
+                &placement_by_id,
+                source_parent_id,
+                Some(category_id),
+            );
             if target_index > siblings.len() {
                 return Err(BlogError::validation(format!(
                     "Category position {} exceeds sibling count {}",
@@ -103,8 +108,14 @@ impl CategoryCommandService {
                 .await?,
             );
         } else {
-            let source_siblings = sibling_ids(&blog_ids, &placement_by_id, source_parent_id, Some(category_id));
-            let mut target_siblings = sibling_ids(&blog_ids, &placement_by_id, input.parent_id, None);
+            let source_siblings = sibling_ids(
+                &blog_ids,
+                &placement_by_id,
+                source_parent_id,
+                Some(category_id),
+            );
+            let mut target_siblings =
+                sibling_ids(&blog_ids, &placement_by_id, input.parent_id, None);
             if target_index > target_siblings.len() {
                 return Err(BlogError::validation(format!(
                     "Category position {} exceeds destination sibling count {}",
@@ -138,9 +149,13 @@ impl CategoryCommandService {
             );
         }
 
-        updated.extend(
-            persist_descendant_depth_changes(&blog_ids, &placement_by_id, &old_depths, &desired_depths, &touched),
-        );
+        updated.extend(persist_descendant_depth_changes(
+            &blog_ids,
+            &placement_by_id,
+            &old_depths,
+            &desired_depths,
+            &touched,
+        ));
 
         let moved = updated
             .iter()
@@ -189,10 +204,7 @@ async fn load_categories_in_tx(
     Ok(categories)
 }
 
-fn ensure_parent_exists(
-    blog_ids: &HashSet<Uuid>,
-    parent_id: Option<Uuid>,
-) -> BlogResult<()> {
+fn ensure_parent_exists(blog_ids: &HashSet<Uuid>, parent_id: Option<Uuid>) -> BlogResult<()> {
     if let Some(parent_id) = parent_id
         && !blog_ids.contains(&parent_id)
     {

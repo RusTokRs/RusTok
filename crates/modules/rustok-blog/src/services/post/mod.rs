@@ -9,14 +9,14 @@ use uuid::Uuid;
 
 struct PostTranslationUpsertInput {
     title: Option<String>,
-    excerpt: Option<String>,
-    seo_title: Option<String>,
-    seo_description: Option<String>,
+    excerpt: rustok_api::Patch<String>,
+    seo_title: rustok_api::Patch<String>,
+    seo_description: rustok_api::Patch<String>,
     article_body: Option<String>,
     now: chrono::DateTime<chrono::Utc>,
 }
 
-use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource, RichTextDocument};
+use rustok_api::{Action, Patch, Resource};
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };
@@ -26,7 +26,8 @@ use rustok_outbox::TransactionalEventBus;
 use serde_json::Value;
 
 use crate::dto::{
-    CreatePostInput, PostListQuery, PostListResponse, PostResponse, PostSummary, UpdatePostInput,
+    CreatePostInput, PostListQuery, PostListResponse, PostResponse, PostSortField, PostSortOrder,
+    PostSummary, UpdatePostInput,
 };
 use crate::entities::{blog_post, blog_post_channel_visibility, blog_post_translation};
 use crate::error::{BlogError, BlogResult};
@@ -43,6 +44,13 @@ pub struct PostService {
     event_bus: TransactionalEventBus,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct PostSubjectSnapshot {
+    pub(crate) status: BlogPostStatus,
+    pub(crate) channel_slugs: Vec<String>,
+    pub(crate) version: i32,
+}
+
 struct ResolvedTranslationRecord<'a> {
     translation: Option<&'a blog_post_translation::Model>,
     effective_locale: String,
@@ -51,6 +59,8 @@ struct ResolvedTranslationRecord<'a> {
 mod commands;
 mod queries;
 mod repository;
+
+pub(crate) use repository::load_post_subject_snapshot;
 
 #[cfg(test)]
 mod tests;
@@ -80,30 +90,27 @@ fn apply_post_sort(
     mut select: sea_orm::Select<blog_post::Entity>,
     query: &PostListQuery,
 ) -> sea_orm::Select<blog_post::Entity> {
-    let ascending = matches!(query.sort_order.as_deref(), Some("asc" | "ASC"));
-    match query.sort_by.as_deref() {
-        Some("published_at") => {
+    let ascending = matches!(query.sort_order.unwrap_or_default(), PostSortOrder::Asc);
+    let field = query.sort_by.unwrap_or_default();
+
+    macro_rules! order {
+        ($column:expr) => {{
             if ascending {
-                select = select.order_by_asc(blog_post::Column::PublishedAt);
+                select = select.order_by_asc($column);
+                select = select.order_by_asc(blog_post::Column::Id);
             } else {
-                select = select.order_by_desc(blog_post::Column::PublishedAt);
+                select = select.order_by_desc($column);
+                select = select.order_by_desc(blog_post::Column::Id);
             }
-        }
-        Some("updated_at") => {
-            if ascending {
-                select = select.order_by_asc(blog_post::Column::UpdatedAt);
-            } else {
-                select = select.order_by_desc(blog_post::Column::UpdatedAt);
-            }
-        }
-        _ => {
-            if ascending {
-                select = select.order_by_asc(blog_post::Column::CreatedAt);
-            } else {
-                select = select.order_by_desc(blog_post::Column::CreatedAt);
-            }
-        }
+        }};
     }
+
+    match field {
+        PostSortField::PublishedAt => order!(blog_post::Column::PublishedAt),
+        PostSortField::UpdatedAt => order!(blog_post::Column::UpdatedAt),
+        PostSortField::CreatedAt => order!(blog_post::Column::CreatedAt),
+    }
+
     select
 }
 
@@ -157,90 +164,46 @@ fn normalize_slug(slug: &str) -> String {
     normalized.trim_matches('-').to_string()
 }
 
-fn build_post_metadata(
-    metadata: Option<Value>,
-    tags: Option<Vec<String>>,
-    category_id: Option<Uuid>,
-    featured_image_url: Option<String>,
-    seo_title: Option<String>,
-    seo_description: Option<String>,
-) -> Value {
-    let mut metadata = metadata.unwrap_or_else(|| serde_json::json!({}));
-    if !metadata.is_object() {
-        metadata = serde_json::json!({});
+const RESERVED_POST_METADATA_KEYS: &[&str] = &[
+    "tags",
+    "category_id",
+    "featured_image_url",
+    "seo_title",
+    "seo_description",
+    "channel_visibility",
+    "channel_slugs",
+];
+
+fn normalize_custom_metadata(metadata: Option<Value>) -> BlogResult<Value> {
+    let metadata = metadata.unwrap_or_else(|| serde_json::json!({}));
+    let Value::Object(map) = metadata else {
+        return Err(BlogError::validation("Post metadata must be a JSON object"));
+    };
+
+    if let Some(key) = RESERVED_POST_METADATA_KEYS
+        .iter()
+        .find(|key| map.contains_key(**key))
+    {
+        return Err(BlogError::validation(format!(
+            "Post metadata key '{key}' is reserved by a canonical typed field"
+        )));
     }
-    if let Some(tags) = tags {
-        set_metadata_array(&mut metadata, "tags", tags);
+
+    Ok(Value::Object(map))
+}
+
+fn scrub_reserved_metadata(mut metadata: Value) -> Value {
+    let Some(map) = metadata.as_object_mut() else {
+        return serde_json::json!({});
+    };
+    for key in RESERVED_POST_METADATA_KEYS {
+        map.remove(*key);
     }
-    if let Some(category_id) = category_id {
-        set_metadata_uuid(&mut metadata, "category_id", category_id);
-    }
-    if let Some(featured_image_url) = featured_image_url {
-        set_metadata_string(&mut metadata, "featured_image_url", &featured_image_url);
-    }
-    if let Some(seo_title) = seo_title {
-        set_metadata_string(&mut metadata, "seo_title", &seo_title);
-    }
-    if let Some(seo_description) = seo_description {
-        set_metadata_string(&mut metadata, "seo_description", &seo_description);
-    }
-    strip_channel_visibility_metadata(&mut metadata);
     metadata
 }
 
-fn set_metadata_array(metadata: &mut Value, key: &str, values: Vec<String>) {
-    ensure_metadata_object(metadata).insert(key.to_string(), serde_json::json!(values));
-}
-
-fn set_metadata_uuid(metadata: &mut Value, key: &str, value: Uuid) {
-    ensure_metadata_object(metadata).insert(key.to_string(), serde_json::json!(value));
-}
-
-fn set_metadata_string(metadata: &mut Value, key: &str, value: &str) {
-    ensure_metadata_object(metadata).insert(key.to_string(), serde_json::json!(value));
-}
-
-fn ensure_metadata_object(metadata: &mut Value) -> &mut serde_json::Map<String, Value> {
-    if !metadata.is_object() {
-        *metadata = serde_json::json!({});
-    }
-    metadata
-        .as_object_mut()
-        .expect("metadata must be an object after normalization")
-}
-
-fn merge_metadata(base: &mut Value, patch: Value) {
-    match patch {
-        Value::Object(patch_map) => {
-            let base_map = ensure_metadata_object(base);
-            for (key, value) in patch_map {
-                base_map.insert(key, value);
-            }
-        }
-        other => *base = other,
-    }
-}
-
-fn strip_channel_visibility_metadata(metadata: &mut Value) {
-    if let Some(object) = metadata.as_object_mut() {
-        object.remove("channel_visibility");
-    }
-}
-
-pub(crate) fn extract_channel_slugs(metadata: &Value) -> Vec<String> {
-    metadata
-        .get("channel_visibility")
-        .and_then(|value| value.get("allowed_channel_slugs"))
-        .and_then(|value| value.as_array())
-        .map(|items| {
-            normalize_channel_slugs(
-                &items
-                    .iter()
-                    .filter_map(|item| item.as_str().map(ToOwned::to_owned))
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .unwrap_or_default()
+fn metadata_changed(previous: &Value, next: &Value) -> bool {
+    previous != next
 }
 
 pub(crate) fn is_post_visible_for_channel(
@@ -316,19 +279,6 @@ fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
         .map(str::trim)
         .filter(|slug| !slug.is_empty())
         .map(|slug| slug.to_ascii_lowercase())
-}
-
-fn extract_tags(metadata: &Value) -> Vec<String> {
-    metadata
-        .get("tags")
-        .and_then(|value| value.as_array())
-        .map(|values| {
-            values
-                .iter()
-                .filter_map(|value| value.as_str().map(ToOwned::to_owned))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default()
 }
 
 pub(crate) fn storage_to_status(status: &str) -> BlogResult<BlogPostStatus> {

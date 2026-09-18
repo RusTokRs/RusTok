@@ -3,7 +3,6 @@ use std::sync::Arc;
 use rustok_blog::dto::{
     CategoryPlacementResponse, CreateCategoryInput, MoveCategoryInput, UpdateCategoryInput,
 };
-use rustok_blog::entities::blog_category;
 use rustok_blog::services::{CategoryCommandService, CategoryService};
 use rustok_blog::{BlogError, BlogModule};
 use rustok_comments::CommentsModule;
@@ -314,14 +313,13 @@ async fn delete_rejects_non_leaf_and_compacts_remaining_siblings() {
         .delete(tenant_id, child_b, admin())
         .await
         .expect("leaf deletion should succeed");
-    assert!(
-        blog_category::Entity::find_by_id(child_b)
-            .filter(blog_category::Column::TenantId.eq(tenant_id))
-            .one(&db)
+    assert!(matches!(
+        category_service
+            .get(tenant_id, admin(), child_b, "en")
             .await
-            .expect("deleted category read should succeed")
-            .is_none()
-    );
+            .expect_err("deleted category must disappear from the owner API"),
+        BlogError::CategoryNotFound(_)
+    ));
     assert_eq!(load_category(&db, tenant_id, child_a).await.position, 0);
     assert_eq!(load_category(&db, tenant_id, child_c).await.position, 1);
 

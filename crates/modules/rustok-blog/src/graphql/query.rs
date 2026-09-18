@@ -1,7 +1,7 @@
-use async_graphql::{Context, ErrorExtensions, Object, Result, dataloader::DataLoader};
+use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result, dataloader::DataLoader};
 use rustok_api::{
     AuthContext, RequestContext, TenantContext,
-    graphql::{require_module_enabled, resolve_graphql_locale},
+    graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
 };
 use rustok_channel::ChannelService;
 use rustok_core::SecurityContext;
@@ -40,7 +40,7 @@ impl BlogQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = query_tenant_id(ctx, tenant, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let service = PostService::new(db.clone(), event_bus.clone());
@@ -59,7 +59,7 @@ impl BlogQuery {
             | Err(BlogError::Content(rustok_content::ContentError::NodeNotFound(_))) => {
                 return Ok(None);
             }
-            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
+            Err(err) => return Err(crate::error::public::to_graphql_error(err)),
         };
 
         if is_public_request(ctx)
@@ -99,7 +99,7 @@ impl BlogQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = query_tenant_id(ctx, tenant, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let service = PostService::new(db.clone(), event_bus.clone());
@@ -112,7 +112,7 @@ impl BlogQuery {
                 Some(tenant.default_locale.as_str()),
             )
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+            .map_err(|err| crate::error::public::to_graphql_error(err))?;
 
         if let Some(post) = post.filter(|post| {
             is_post_visible_for_request(
@@ -149,7 +149,7 @@ impl BlogQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = query_tenant_id(ctx, tenant, tenant_id)?;
 
         let filter = filter.unwrap_or(PostsFilter {
             status: None,
@@ -187,16 +187,16 @@ impl BlogQuery {
                     category_id: None,
                     tag: None,
                     author_id: filter.author_id,
-                    search: None,
                     locale: Some(locale.clone()),
                     page: Some(filter.page.unwrap_or(1) as u32),
                     per_page: Some(filter.per_page.unwrap_or(20) as u32),
-                    sort_by: Some("created_at".to_string()),
-                    sort_order: Some("desc".to_string()),
+                    sort_by: Some(crate::PostSortField::CreatedAt),
+                    sort_order: Some(crate::PostSortOrder::Desc),
                 },
                 Some(tenant.default_locale.as_str()),
             )
-            .await?;
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
         metrics::record_read_path_query(
             "graphql",
             "blog.posts",
@@ -236,6 +236,30 @@ impl BlogQuery {
             total: result.total,
         })
     }
+}
+
+fn query_tenant_id(
+    ctx: &Context<'_>,
+    tenant: &TenantContext,
+    requested: Option<Uuid>,
+) -> Result<Uuid> {
+    if requested.is_some_and(|tenant_id| tenant_id != tenant.id) {
+        return Err(
+            <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::permission_denied(
+                "Blog queries must use the current tenant",
+            ),
+        );
+    }
+    if let Some(auth) = ctx.data_opt::<AuthContext>()
+        && auth.tenant_id != tenant.id
+    {
+        return Err(
+            <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::permission_denied(
+                "Authenticated actor is not bound to the current tenant",
+            ),
+        );
+    }
+    Ok(tenant.id)
 }
 
 fn request_security_context(ctx: &Context<'_>) -> SecurityContext {
@@ -299,18 +323,17 @@ async fn list_public_visible_posts(
                 category_id: None,
                 tag: None,
                 author_id: filter.author_id,
-                search: None,
                 locale: Some(locale.clone()),
                 page: Some(filter.page.unwrap_or(1) as u32),
                 per_page: Some(filter.per_page.unwrap_or(20) as u32),
-                sort_by: Some("published_at".to_string()),
-                sort_order: Some("desc".to_string()),
+                sort_by: Some(crate::PostSortField::PublishedAt),
+                sort_order: Some(crate::PostSortOrder::Desc),
             },
             Some(default_locale),
             public_channel_slug,
         )
         .await
-        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+        .map_err(|err| crate::error::public::to_graphql_error(err))?;
     let author_profiles = load_author_profiles_map(
         ctx,
         db,
@@ -405,7 +428,9 @@ where
             Some(tenant_default_locale),
         )
         .await
-        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+        .map_err(|_| {
+            <FieldError as GraphQLError>::internal_error("Unable to load Blog author profiles")
+        })?;
 
     Ok(profiles
         .into_iter()
@@ -524,6 +549,7 @@ mod tests {
             channel_slug: Some(channel_slug.to_string()),
             channel_resolution_source: Some(ChannelResolutionSource::Host),
             locale: "en".to_string(),
+            correlation_id: Uuid::new_v4(),
         }
     }
 
@@ -678,6 +704,7 @@ mod tests {
             channel_slug: Some("blog-web".to_string()),
             channel_resolution_source: Some(ChannelResolutionSource::Query),
             locale: "en".to_string(),
+            correlation_id: Uuid::new_v4(),
         };
 
         let error = ensure_public_blog_channel_enabled(&db, Some(&request_context), false)

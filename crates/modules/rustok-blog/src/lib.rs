@@ -11,7 +11,7 @@ mod module;
 
 pub mod controllers;
 pub mod dto;
-pub mod entities;
+mod entities;
 pub mod error;
 pub mod graphql;
 pub mod migrations;
@@ -20,14 +20,14 @@ pub mod services;
 pub use controllers::openapi;
 pub use domain::{richtext, state_machine};
 pub use dto::{
-    CategoryListItem, CategoryListResponse, CategoryResponse, CommentListItem, CommentResponse,
-    CreateCategoryInput, CreateCommentInput, CreatePostInput, CreateTagInput, ListCategoriesFilter,
-    ListCommentsFilter, ListTagsFilter, ModerateCommentInput, ModerateCommentStatus, PostListQuery,
-    PostListResponse, PostResponse, PostSummary, TagListItem, TagResponse, UpdateCategoryInput,
-    UpdateCommentInput, UpdatePostInput, UpdateTagInput,
+    ArchivePostInput, CategoryListItem, CategoryListResponse, CategoryResponse, CommentListItem,
+    CommentResponse, CreateCategoryInput, CreateCommentInput, CreatePostInput, CreateTagInput,
+    ListCategoriesFilter, ListCommentsFilter, ListTagsFilter, ModerateCommentInput,
+    ModerateCommentStatus, PostListQuery, PostListResponse, PostResponse, PostSortField,
+    PostSortOrder, PostSummary, TagListItem, TagResponse, UpdateCategoryInput, UpdateCommentInput,
+    UpdatePostInput, UpdateTagInput,
 };
-pub use entities::*;
-pub use error::{BlogError, BlogResult};
+pub use error::{BlogError, BlogPublicError, BlogResult};
 pub use graphql::{BlogMutation, BlogQuery};
 pub use integrations::public_comments_snapshot;
 pub use integrations::public_comments_snapshot::{

@@ -8,7 +8,7 @@ use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostList};
 pub type ApiError = GraphqlHttpError;
 
 const BLOG_POSTS_QUERY: &str = "query BlogPostsAdmin($filter: PostsFilter) { posts(filter: $filter) { total items { id title effectiveLocale slug excerpt status createdAt publishedAt } } }";
-const BLOG_POST_QUERY: &str = "query BlogPostAdmin($id: UUID!, $locale: String) { post(id: $id, locale: $locale) { id requestedLocale effectiveLocale availableLocales title slug excerpt content { document html } contentPlainText status createdAt updatedAt publishedAt tags featuredImageUrl seoTitle seoDescription } }";
+const BLOG_POST_QUERY: &str = "query BlogPostAdmin($id: UUID!, $locale: String) { post(id: $id, locale: $locale) { id requestedLocale effectiveLocale availableLocales title slug excerpt content { document html } contentPlainText status createdAt updatedAt publishedAt tags featuredImageUrl seoTitle seoDescription version } }";
 const CREATE_POST_MUTATION: &str =
     "mutation CreatePost($input: CreatePostInput!) { createPost(input: $input) }";
 const UPDATE_POST_MUTATION: &str = "mutation UpdatePost($id: UUID!, $input: UpdatePostInput!) { updatePost(id: $id, input: $input) }";
@@ -17,6 +17,7 @@ const UNPUBLISH_POST_MUTATION: &str =
     "mutation UnpublishPost($id: UUID!) { unpublishPost(id: $id) }";
 const ARCHIVE_POST_MUTATION: &str =
     "mutation ArchivePost($id: UUID!, $reason: String) { archivePost(id: $id, reason: $reason) }";
+const RESTORE_POST_MUTATION: &str = "mutation RestorePost($id: UUID!) { restorePost(id: $id) }";
 const DELETE_POST_MUTATION: &str = "mutation DeletePost($id: UUID!) { deletePost(id: $id) }";
 
 #[derive(Debug, Deserialize)]
@@ -45,6 +46,8 @@ struct BoolMutationResponse {
     unpublish_post: bool,
     #[serde(default, rename = "archivePost")]
     archive_post: bool,
+    #[serde(default, rename = "restorePost")]
+    restore_post: bool,
     #[serde(default, rename = "deletePost")]
     delete_post: bool,
 }
@@ -106,14 +109,15 @@ struct UpdatePostInput {
     excerpt: Option<String>,
     slug: Option<String>,
     tags: Option<Vec<String>>,
-    #[serde(rename = "categoryId")]
+    #[serde(rename = "categoryId", skip_serializing_if = "Option::is_none")]
     category_id: Option<String>,
-    #[serde(rename = "featuredImageUrl")]
+    #[serde(rename = "featuredImageUrl", skip_serializing_if = "Option::is_none")]
     featured_image_url: Option<String>,
-    #[serde(rename = "seoTitle")]
+    #[serde(rename = "seoTitle", skip_serializing_if = "Option::is_none")]
     seo_title: Option<String>,
-    #[serde(rename = "seoDescription")]
+    #[serde(rename = "seoDescription", skip_serializing_if = "Option::is_none")]
     seo_description: Option<String>,
+    version: i32,
 }
 
 #[derive(Debug, Serialize)]
@@ -126,7 +130,6 @@ struct ArchivePostVariables {
     id: String,
     reason: Option<String>,
 }
-
 
 async fn request<V, T>(
     query: &str,
@@ -236,13 +239,18 @@ pub async fn update_post(
                 locale: Some(draft.locale.clone()),
                 title: Some(draft.title),
                 content: Some(draft.content),
-                excerpt: Some(draft.excerpt),
+                excerpt: core::optional_text(draft.excerpt.as_str()),
                 slug: Some(draft.slug),
                 tags: Some(draft.tags),
                 category_id: None,
                 featured_image_url: None,
                 seo_title: None,
                 seo_description: None,
+                version: draft.version.ok_or_else(|| {
+                    GraphqlHttpError::Graphql(
+                        "Blog post revision is missing; reload before saving".into(),
+                    )
+                })?,
             },
         },
         token.clone(),
@@ -337,6 +345,31 @@ pub async fn archive_post(
     fetch_post(token, tenant_slug, id, locale)
         .await?
         .ok_or_else(|| GraphqlHttpError::Graphql("Archived post could not be reloaded".into()))
+}
+
+pub async fn restore_post(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    locale: Option<String>,
+) -> Result<BlogPostDetail, ApiError> {
+    let response: BoolMutationResponse = request(
+        RESTORE_POST_MUTATION,
+        PostIdVariables { id: id.clone() },
+        token.clone(),
+        tenant_slug.clone(),
+    )
+    .await?;
+
+    if !response.restore_post {
+        return Err(GraphqlHttpError::Graphql(
+            "Restore post returned false".into(),
+        ));
+    }
+
+    fetch_post(token, tenant_slug, id, locale)
+        .await?
+        .ok_or_else(|| GraphqlHttpError::Graphql("Restored post could not be reloaded".into()))
 }
 
 pub async fn delete_post(

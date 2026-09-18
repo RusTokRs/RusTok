@@ -1,6 +1,6 @@
 # rustok-blog canonical implementation cursor
 
-Status: `canonical_source_cursor_actualized_through_taxonomy_cat_17_docs_and_native_layout_v1`.
+Status: `canonical_reference_v1_hardening_in_progress_after_taxonomy_cat_17`.
 
 This document is the canonical **current** source cursor for `rustok-blog`.
 `crates/modules/rustok-blog/docs/implementation-plan.md` and the standalone
@@ -10,6 +10,39 @@ Category Translation provider, Blog Category translation donor tables, or a
 pending slice-98 PostgreSQL execution gate are superseded by this file. The
 owner-scoped documentation cleanup that followed the source cutover is complete
 through TAXONOMY-CAT-17.
+
+## Canonical reference v1 hardening
+
+The first post-layout certification audit found semantic defects that are unsafe
+to propagate into other modules. The active reference therefore includes both
+physical and semantic gates.
+
+The hardened contract now requires:
+
+- truthful locale write provenance: read fallback never supplies a write locale,
+  and a new locale never copies localized text from another locale;
+- `rustok_api::Patch<T>` for nullable edit semantics;
+- mandatory predecessor `version` and compare-and-swap post updates;
+- production lifecycle commands using the domain transition table, including an
+  explicit Archived -> Draft restore command;
+- derived Comments counters that preserve Blog business `version` and
+  `updated_at` and publish locale-neutral reindex requests;
+- current-tenant authority on GraphQL reads and writes;
+- one redacted Blog public-error mapping boundary;
+- private persistence entities and integrations that consume owner service state;
+- deterministic typed list ordering and fail-closed missing-translation reads;
+- stable Comments write `command_id` across retries while FBA remains honestly
+  `boundary_ready`;
+- module-owned UI separation into core commands/presentation/tests, transport,
+  and render components.
+
+The machine gates are `npm run verify:module-source-layout` and
+`npm run verify:module-reference-contract`. The semantic contract is documented
+in `DECISIONS/2026-09-18-canonical-native-module-reference-contract.md`.
+
+Blog FBA registry schema v14 and Comments projection evidence schema v5 encode
+the corrected derived-state contract. Runtime/remote evidence is still pending,
+so this hardening does not claim `transport_verified`.
 
 ## Current Category ownership
 
@@ -154,10 +187,11 @@ module's boundary.
 
 ## Canonical native-module layout baseline
 
-The Blog backend is now the first strict reference implementation of the canonical
-native module physical layout. This is an architecture-only source move: Blog
-ownership, storage, wire contracts, transaction boundaries, event identities, and
-Taxonomy/Comments integrations are unchanged.
+The Blog backend is the first strict reference implementation of the canonical
+native module physical layout. The initial move was architecture-only; the
+subsequent reference-v1 certification deliberately hardens owner mutation,
+multilingual, concurrency, lifecycle, event, transport-error and integration
+contracts before the structure is propagated to other modules.
 
 Current source placement is:
 

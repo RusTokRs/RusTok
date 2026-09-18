@@ -20,8 +20,6 @@ use super::configured_tenant_slug;
 
 #[cfg(feature = "ssr")]
 const MODULE_SLUG: &str = "blog";
-#[cfg(feature = "ssr")]
-use rustok_api::PLATFORM_FALLBACK_LOCALE;
 
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 pub async fn fetch_blog(
@@ -81,10 +79,10 @@ async fn create_blog_comment_native(
         match rustok_api::is_tenant_module_enabled(runtime_ctx.db(), tenant.id, MODULE_SLUG).await {
             Ok(true) => {}
             Ok(false) => return Err(ServerFnError::new("Blog module is not enabled")),
-            Err(error) => {
-                return Err(ServerFnError::new(format!(
-                    "Blog module state is unavailable: {error}"
-                )));
+            Err(_error) => {
+                return Err(ServerFnError::new(
+                    "Blog module state is temporarily unavailable",
+                ));
             }
         }
         let event_bus = runtime_ctx
@@ -99,6 +97,8 @@ async fn create_blog_comment_native(
             .ok();
         require_blog_channel_enabled(&runtime_ctx, request_context.as_ref()).await?;
 
+        let command_id = uuid::Uuid::parse_str(request.command_id.trim())
+            .map_err(|_| ServerFnError::new("Invalid command_id"))?;
         let post_id = uuid::Uuid::parse_str(request.post_id.trim())
             .map_err(|_| ServerFnError::new("Invalid post_id"))?;
         let parent_comment_id = request
@@ -130,13 +130,14 @@ async fn create_blog_comment_native(
                 post_id,
                 public_channel_slug,
                 rustok_blog::CreateCommentInput {
+                    command_id,
                     locale,
                     content: request.content,
                     parent_comment_id,
                 },
             )
             .await
-            .map_err(|error| ServerFnError::new(error.to_string()))?;
+            .map_err(public_blog_error)?;
 
         Ok(map_comment_detail(comment))
     }
@@ -161,6 +162,12 @@ async fn fetch_storefront_blog_server(
         .map_err(ApiError::from)
 }
 
+#[cfg(feature = "ssr")]
+fn public_blog_error(error: rustok_blog::BlogError) -> ServerFnError {
+    let public = rustok_blog::BlogPublicError::from(error);
+    ServerFnError::new(format!("{}: {}", public.code, public.message))
+}
+
 #[server(prefix = "/api/fn", endpoint = "blog/storefront-data")]
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 async fn storefront_blog_native(
@@ -174,8 +181,8 @@ async fn storefront_blog_native(
         use leptos::prelude::expect_context;
         use rustok_api::HostRuntimeContext;
         use rustok_blog::{
-            BlogPostStatus, PostListQuery, PostService, PublicCommentsSnapshotStore,
-            list_public_comments_with_snapshot,
+            BlogPostStatus, PostListQuery, PostService, PostSortField, PostSortOrder,
+            PublicCommentsSnapshotStore, list_public_comments_with_snapshot,
         };
         use rustok_core::SecurityContext;
         use rustok_outbox::TransactionalEventBus;
@@ -211,13 +218,8 @@ async fn storefront_blog_native(
             let tenant = TenantService::new(runtime_ctx.db_clone())
                 .get_tenant_by_slug(slug)
                 .await
-                .map_err(ServerFnError::new)?;
-            let fallback = request_context
-                .as_ref()
-                .map(|ctx| ctx.locale.clone())
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
-            (tenant.id, fallback)
+                .map_err(|_| ServerFnError::new("Tenant lookup failed"))?;
+            (tenant.id, tenant.default_locale)
         };
 
         require_blog_channel_enabled(&runtime_ctx, request_context.as_ref()).await?;
@@ -244,7 +246,7 @@ async fn storefront_blog_native(
                 Some(fallback_locale.as_str()),
             )
             .await
-            .map_err(ServerFnError::new)?
+            .map_err(public_blog_error)?
             .filter(|post| {
                 is_visible_for_public_channel(&post.channel_slugs, public_channel_slug.as_deref())
             });
@@ -263,7 +265,7 @@ async fn storefront_blog_native(
                 COMMENTS_PAGE_SIZE,
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(public_blog_error)?;
             let public_comments = BlogCommentList {
                 availability: map_comments_availability(public_comments.availability),
                 cached_snapshot: public_comments.cached_snapshot,
@@ -287,18 +289,17 @@ async fn storefront_blog_native(
                     category_id: None,
                     tag: None,
                     author_id: None,
-                    search: None,
                     locale: Some(requested_locale),
                     page: Some(1),
                     per_page: Some(6),
-                    sort_by: Some("published_at".to_string()),
-                    sort_order: Some("desc".to_string()),
+                    sort_by: Some(PostSortField::PublishedAt),
+                    sort_order: Some(PostSortOrder::Desc),
                 },
                 Some(fallback_locale.as_str()),
                 public_channel_slug.as_deref(),
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(public_blog_error)?;
 
         Ok(StorefrontBlogData {
             selected_post,
@@ -350,7 +351,7 @@ async fn require_blog_channel_enabled(
     let enabled = ChannelService::new(runtime_ctx.db_clone())
         .is_module_enabled(channel_id, MODULE_SLUG)
         .await
-        .map_err(ServerFnError::new)?;
+        .map_err(|_| ServerFnError::new("Blog channel state is temporarily unavailable"))?;
     if enabled {
         Ok(())
     } else {

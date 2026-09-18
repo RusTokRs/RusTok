@@ -92,10 +92,9 @@ for (const marker of [
   'delta: 1',
   'DomainEvent::CommentDeleted',
   'delta: -1',
-  'fn next_comment_projection_state(comment_count: i32, version: i32, delta: i32)',
+  'fn next_comment_count(comment_count: i32, delta: i32)',
   'comment_count.saturating_add(delta).max(0)',
-  'version.saturating_add(1)',
-  'fn projection_update_decision(',
+    'fn projection_update_decision(',
   'attempt_index: usize',
   'rows_affected: u64',
   'else if attempt_index + 1 < MAX_PROJECTION_UPDATE_ATTEMPTS',
@@ -108,11 +107,11 @@ for (const marker of [
   'comment_id: Set(change.comment_id)',
   '.insert(&txn)',
   '.publish_in_tx(',
-  'DomainEvent::BlogPostUpdated',
+  'DomainEvent::ReindexRequested',
   'txn.commit().await?;',
   'Column::TenantId.eq(tenant_id)',
-  'Column::Version.eq(post.version)',
-  'next_comment_projection_state(post.comment_count, post.version, delta)',
+  'Column::CommentCount.eq(post.comment_count)',
+  'next_comment_count(post.comment_count, delta)',
   'for attempt_index in 0..MAX_PROJECTION_UPDATE_ATTEMPTS',
   'match projection_update_decision(attempt_index, result.rows_affected)',
   'Error::NotFound',
@@ -121,7 +120,7 @@ for (const marker of [
   '#[cfg(test)]',
   'fn classifies_blog_comment_lifecycle_events()',
   'fn ignores_non_blog_targets_and_unrelated_events()',
-  'fn counter_transition_is_non_negative_and_saturating()',
+  'fn counter_transition_is_non_negative_and_does_not_touch_business_revision()',
   'fn optimistic_retry_policy_applies_success_without_retry()',
   'fn optimistic_retry_policy_allows_seven_retries_then_stops_on_eighth_conflict()',
   'MAX_PROJECTION_UPDATE_ATTEMPTS - 1',
@@ -130,6 +129,9 @@ for (const marker of [
   requireMarker(handler, marker, handlerPath);
 }
 requireNoMarker(handler, 'public.blog_posts', handlerPath);
+requireNoMarker(handler, 'blog_post::Column::Version', handlerPath);
+requireNoMarker(handler, 'blog_post::Column::UpdatedAt', handlerPath);
+requireNoMarker(handler, 'DomainEvent::BlogPostUpdated', handlerPath);
 
 const handlesStart = handler.indexOf('fn handles(&self, event: &DomainEvent) -> bool');
 const handleStart = handler.indexOf('async fn handle(&self, envelope: &EventEnvelope)', handlesStart);
@@ -349,7 +351,7 @@ for (const marker of [
 requireNoMarker(moduleSource, 'handler.handle(&', `${modulePath}: host registration harness`);
 
 if (evidence) {
-  if (evidence.schema_version !== 4) failures.push(`${evidencePath}: schema_version drift`);
+  if (evidence.schema_version !== 5) failures.push(`${evidencePath}: schema_version drift`);
   if (
     evidence.module !== 'blog' ||
     evidence.surface !== 'comments_event_projection' ||
@@ -561,7 +563,7 @@ if (evidence) {
 }
 
 if (registry) {
-  if (registry.schema_version !== 13) failures.push(`${registryPath}: schema_version drift`);
+  if (registry.schema_version !== 14) failures.push(`${registryPath}: schema_version drift`);
   if (registry.evidence?.comments_event_projection !== evidencePath) {
     failures.push(`${registryPath}: comments event projection evidence path drift`);
   }

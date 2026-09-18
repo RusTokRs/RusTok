@@ -73,8 +73,7 @@ requireMarkers("crates/modules/rustok-blog/src/services/category_delete.rs", [
   "ensure_category_is_leaf_in_tx(txn, tenant_id, self.blog_category_id).await?",
   "Category must be a leaf before deletion; move or delete its children first",
   "blog_category::Entity::delete_many()",
-  "canonicalize_siblings_in_tx(txn, tenant_id, category.parent_id).await?",
-  "sync_category_structures_in_tx(txn, tenant_id, &sibling_ids).await?",
+  "canonicalize_siblings_in_tx(txn, tenant_id, parent_id).await?",
   "publish_in_tx",
 ]);
 const leafCheck = deleteCleanup.indexOf("ensure_category_is_leaf_in_tx");
@@ -118,11 +117,10 @@ rejectMarkers("crates/modules/rustok-blog/src/services/category_command.rs", [
   "publish_in_tx",
 ]);
 
-requireMarkers("crates/modules/rustok-blog/src/entities/blog_category.rs", [
-  "lock_category_tree_for_insert(db, tenant_id).await?",
-  "pg_advisory_xact_lock",
-  'format!("blog-category-tree:{tenant_id}")',
-  "child_depth(parent.depth, parent_id)?",
+rejectMarkers("crates/modules/rustok-blog/src/entities/blog_category.rs", [
+  "parent_id",
+  "position",
+  "depth",
 ]);
 
 requireMarkers("crates/modules/rustok-blog/src/controllers/categories.rs", [
@@ -182,7 +180,7 @@ requireMarkers("crates/modules/rustok-blog/tests/category_taxonomy_mutation_resp
 ]);
 
 requireMarkers("crates/modules/rustok-blog/docs/category-hierarchy-contract.md", [
-  "Blog owns its category hierarchy",
+  "Taxonomy owns canonical Blog Category hierarchy placement",
   "POST /api/blog/categories/{id}/move",
   "zero-based insertion index",
   "maximum of 512 nodes",
@@ -191,7 +189,7 @@ requireMarkers("crates/modules/rustok-blog/docs/category-hierarchy-contract.md",
   "projection-neutral",
   "compacts remaining sibling positions",
   "one owner-side write path",
-  "recompute materialized `depth`",
+  "recompute response `depth` from the canonical Taxonomy parent map",
   "Structural moves do not rewrite localized category rows",
 ]);
 

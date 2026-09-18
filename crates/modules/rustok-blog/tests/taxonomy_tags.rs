@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use rustok_blog::{
     BlogModule, CreatePostInput, ListTagsFilter, PostService, TagService, UpdateTagInput,
-    entities::blog_post_tag,
 };
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_events::{DomainEvent, EventEnvelope};
@@ -12,8 +11,8 @@ use rustok_taxonomy::{
     entities::{taxonomy_term, taxonomy_term_translation},
 };
 use sea_orm::{
-    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder,
+    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
+    EntityTrait, QueryFilter, QueryOrder, Statement,
 };
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
@@ -110,13 +109,6 @@ async fn post_tags_create_blog_scoped_taxonomy_terms_and_usage_counts() {
     assert!(post.tags.contains(&"rust".to_string()));
     assert!(post.tags.contains(&"backend".to_string()));
 
-    let post_tags = blog_post_tag::Entity::find()
-        .filter(blog_post_tag::Column::PostId.eq(post_id))
-        .all(&db)
-        .await
-        .expect("post tag relations should load");
-    assert_eq!(post_tags.len(), 2);
-
     let terms = taxonomy_term::Entity::find()
         .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
         .all(&db)
@@ -195,15 +187,23 @@ async fn post_tag_sync_reuses_existing_global_taxonomy_term() {
         .await
         .expect("post should be created");
 
-    let attached_term_ids = blog_post_tag::Entity::find()
-        .filter(blog_post_tag::Column::PostId.eq(post_id))
-        .all(&db)
+    let (visible_tags, _) = TagService::new(db.clone())
+        .list_tags(
+            tenant_id,
+            admin(),
+            ListTagsFilter {
+                locale: Some("en".to_string()),
+                page: 1,
+                per_page: 100,
+            },
+        )
         .await
-        .expect("blog post tags should load")
-        .into_iter()
-        .map(|row| row.tag_id)
-        .collect::<Vec<_>>();
-    assert!(attached_term_ids.contains(&global_rust_term_id));
+        .expect("Blog tag projection should load");
+    let rust_tag = visible_tags
+        .iter()
+        .find(|tag| tag.name == "rust")
+        .expect("reused global rust tag should be visible");
+    assert_eq!(rust_tag.id, global_rust_term_id);
 
     let blog_scoped_terms = taxonomy_term::Entity::find()
         .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
@@ -245,13 +245,13 @@ async fn post_read_does_not_resurrect_metadata_tags_after_relations_are_removed(
         .await
         .expect("post should be created");
 
-    blog_post_tag::Entity::delete_many()
-        .filter(blog_post_tag::Column::PostId.eq(post_id))
-        .exec(&db)
-        .await
-        .expect(
-            "test should remove canonical relations while leaving compatibility metadata intact",
-        );
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "DELETE FROM blog_post_tags WHERE post_id = ?",
+        [post_id.into()],
+    ))
+    .await
+    .expect("test should remove canonical relations directly at the persistence boundary");
 
     let post = post_service
         .get_post(tenant_id, security, post_id, "en")
@@ -289,13 +289,23 @@ async fn tag_update_commits_dictionary_change_and_blog_reindex_together() {
         )
         .await
         .expect("post should be created");
-    let tag_id = blog_post_tag::Entity::find()
-        .filter(blog_post_tag::Column::PostId.eq(post_id))
-        .one(&db)
+    let (visible_tags, _) = tag_service
+        .list_tags(
+            tenant_id,
+            security.clone(),
+            ListTagsFilter {
+                locale: Some("en".to_string()),
+                page: 1,
+                per_page: 100,
+            },
+        )
         .await
-        .expect("relation lookup should work")
-        .expect("post should have one tag")
-        .tag_id;
+        .expect("Blog tag projection should load");
+    let tag_id = visible_tags
+        .iter()
+        .find(|tag| tag.name == "rust")
+        .expect("post should expose the rust tag")
+        .id;
 
     let updated = tag_service
         .update_tag(
@@ -364,13 +374,23 @@ async fn tag_update_rolls_back_when_blog_reindex_outbox_write_fails() {
         )
         .await
         .expect("post should be created");
-    let tag_id = blog_post_tag::Entity::find()
-        .filter(blog_post_tag::Column::PostId.eq(post_id))
-        .one(&db)
+    let (visible_tags, _) = tag_service
+        .list_tags(
+            tenant_id,
+            security.clone(),
+            ListTagsFilter {
+                locale: Some("en".to_string()),
+                page: 1,
+                per_page: 100,
+            },
+        )
         .await
-        .expect("relation lookup should work")
-        .expect("post should have one tag")
-        .tag_id;
+        .expect("Blog tag projection should load");
+    let tag_id = visible_tags
+        .iter()
+        .find(|tag| tag.name == "rust")
+        .expect("post should expose the rust tag")
+        .id;
 
     db.execute_unprepared("DROP TABLE sys_events")
         .await
@@ -440,13 +460,23 @@ async fn tag_delete_relies_on_taxonomy_fk_cascade_and_retains_reindex() {
         )
         .await
         .expect("post should be created");
-    let tag_id = blog_post_tag::Entity::find()
-        .filter(blog_post_tag::Column::PostId.eq(post_id))
-        .one(&db)
+    let (visible_tags, _) = tag_service
+        .list_tags(
+            tenant_id,
+            security.clone(),
+            ListTagsFilter {
+                locale: Some("en".to_string()),
+                page: 1,
+                per_page: 100,
+            },
+        )
         .await
-        .expect("relation lookup should work")
-        .expect("post should have one tag")
-        .tag_id;
+        .expect("Blog tag projection should load");
+    let tag_id = visible_tags
+        .iter()
+        .find(|tag| tag.name == "rust")
+        .expect("post should expose the rust tag")
+        .id;
 
     tag_service
         .delete_tag(tenant_id, tag_id, security)
@@ -460,14 +490,11 @@ async fn tag_delete_relies_on_taxonomy_fk_cascade_and_retains_reindex() {
             .expect("term lookup should work")
             .is_none()
     );
-    assert!(
-        blog_post_tag::Entity::find()
-            .filter(blog_post_tag::Column::TagId.eq(tag_id))
-            .one(&db)
-            .await
-            .expect("relation lookup should work")
-            .is_none()
-    );
+    let post = post_service
+        .get_post(tenant_id, admin(), post_id, "en")
+        .await
+        .expect("post should still be readable after tag deletion");
+    assert!(post.tags.is_empty());
     assert_eq!(
         SysEvents::find()
             .all(&db)

@@ -126,10 +126,7 @@ impl PostService {
         }
 
         if query.one(txn).await.map_err(BlogError::from)?.is_some() {
-            return Err(BlogError::duplicate_slug(
-                slug.to_string(),
-                PLATFORM_FALLBACK_LOCALE.to_string(),
-            ));
+            return Err(BlogError::duplicate_slug(slug.to_string()));
         }
 
         Ok(())
@@ -160,19 +157,25 @@ impl PostService {
 
         match existing {
             Some(existing) => {
-                let mut active: blog_post_translation::ActiveModel = existing.clone().into();
+                let mut active: blog_post_translation::ActiveModel = existing.into();
                 if let Some(title) = title {
                     validate_title(&title)?;
                     active.title = Set(title);
                 }
-                if excerpt.is_some() {
-                    active.excerpt = Set(excerpt);
+                match excerpt {
+                    Patch::Keep => {}
+                    Patch::Set(value) => active.excerpt = Set(Some(value)),
+                    Patch::Clear => active.excerpt = Set(None),
                 }
-                if seo_title.is_some() {
-                    active.seo_title = Set(seo_title);
+                match seo_title {
+                    Patch::Keep => {}
+                    Patch::Set(value) => active.seo_title = Set(Some(value)),
+                    Patch::Clear => active.seo_title = Set(None),
                 }
-                if seo_description.is_some() {
-                    active.seo_description = Set(seo_description);
+                match seo_description {
+                    Patch::Keep => {}
+                    Patch::Set(value) => active.seo_description = Set(Some(value)),
+                    Patch::Clear => active.seo_description = Set(None),
                 }
                 if let Some(article_body) = article_body {
                     active.body = Set(article_body);
@@ -181,35 +184,25 @@ impl PostService {
                 active.update(txn).await.map_err(BlogError::from)?;
             }
             None => {
-                let baseline = self
-                    .translation_seed_in_tx(txn, post_id)
-                    .await
-                    .map_err(BlogError::from)?;
                 let title = title
-                    .or_else(|| baseline.as_ref().map(|item| item.title.clone()))
                     .ok_or_else(|| BlogError::validation("Title is required for a new locale"))?;
                 validate_title(&title)?;
-                let excerpt =
-                    excerpt.or_else(|| baseline.as_ref().and_then(|item| item.excerpt.clone()));
-                let seo_title =
-                    seo_title.or_else(|| baseline.as_ref().and_then(|item| item.seo_title.clone()));
-                let seo_description = seo_description.or_else(|| {
-                    baseline
-                        .as_ref()
-                        .and_then(|item| item.seo_description.clone())
-                });
                 let article_body = article_body
-                    .or_else(|| baseline.as_ref().map(|item| item.body.clone()))
                     .ok_or_else(|| BlogError::validation("Content is required for a new locale"))?;
+
+                let optional = |patch: Patch<String>| match patch {
+                    Patch::Keep | Patch::Clear => None,
+                    Patch::Set(value) => Some(value),
+                };
 
                 blog_post_translation::ActiveModel {
                     id: Set(Uuid::new_v4()),
                     post_id: Set(post_id),
                     locale: Set(locale),
                     title: Set(title),
-                    excerpt: Set(excerpt),
-                    seo_title: Set(seo_title),
-                    seo_description: Set(seo_description),
+                    excerpt: Set(optional(excerpt)),
+                    seo_title: Set(optional(seo_title)),
+                    seo_description: Set(optional(seo_description)),
                     body: Set(article_body),
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
@@ -222,18 +215,36 @@ impl PostService {
 
         Ok(())
     }
+}
 
-    pub(super) async fn translation_seed_in_tx(
-        &self,
-        txn: &DatabaseTransaction,
-        post_id: Uuid,
-    ) -> Result<Option<blog_post_translation::Model>, sea_orm::DbErr> {
-        blog_post_translation::Entity::find()
-            .filter(blog_post_translation::Column::PostId.eq(post_id))
-            .order_by_asc(blog_post_translation::Column::CreatedAt)
-            .one(txn)
-            .await
-    }
+pub(crate) async fn load_post_subject_snapshot(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    post_id: Uuid,
+) -> BlogResult<Option<PostSubjectSnapshot>> {
+    let Some(post) = blog_post::Entity::find_by_id(post_id)
+        .filter(blog_post::Column::TenantId.eq(tenant_id))
+        .one(db)
+        .await
+        .map_err(BlogError::from)?
+    else {
+        return Ok(None);
+    };
 
+    let channel_slugs = blog_post_channel_visibility::Entity::find()
+        .filter(blog_post_channel_visibility::Column::TenantId.eq(tenant_id))
+        .filter(blog_post_channel_visibility::Column::PostId.eq(post_id))
+        .order_by_asc(blog_post_channel_visibility::Column::ChannelSlug)
+        .all(db)
+        .await
+        .map_err(BlogError::from)?
+        .into_iter()
+        .map(|row| row.channel_slug)
+        .collect();
 
+    Ok(Some(PostSubjectSnapshot {
+        status: storage_to_status(&post.status)?,
+        channel_slugs,
+        version: post.version,
+    }))
 }
