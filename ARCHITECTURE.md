@@ -1,68 +1,114 @@
 # RusTok Architecture Quick Reference
 
-This document provides a 1-page high-level architecture map for developers and AI agents operating in the RusTok repository.
+This document is the short current-state architecture map for contributors and
+AI agents. `AGENTS.md`, active ADRs, and owner-local documentation define the
+detailed contracts.
 
 ---
 
-## 1. High-Level System Layers
+## 1. Platform Shape
 
+RusToK is a **modular monolith by default**. Domain ownership is separated by
+contracts even when owners execute in one process.
+
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│ Host applications                                                    │
+│ apps/server — composition root / Axum / runtime context             │
+│ apps/admin + apps/storefront — RusToK-owned Leptos hosts            │
+│ apps/next-admin + apps/next-frontend — optional public-API clients  │
+└───────────────────────────────┬──────────────────────────────────────┘
+                                │ composes owner entrypoints
+┌───────────────────────────────▼──────────────────────────────────────┐
+│ crates/modules/*                                                     │
+│ domain owners, core/optional module entries, capability extensions   │
+│ modules.toml — selected build/runtime composition                    │
+└───────────────────────────────┬──────────────────────────────────────┘
+                                │ depends on stable foundation seams
+┌───────────────────────────────▼──────────────────────────────────────┐
+│ crates/libs/* | crates/ui/* | crates/utils/* | crates/workers/*      │
+│ shared contracts/runtime | UI foundations | tooling | worker hosts   │
+└──────────────────────────────────────────────────────────────────────┘
 ```
-                      ┌────────────────────────────────────────────────────────┐
-                      │              Host Applications                         │
-                      │  apps/server (Composition Root)                        │
-                      │  apps/admin | apps/storefront (Leptos SSR)             │
-                      │  apps/next-admin | apps/next-frontend (Next.js)        │
-                      └──────────────────────────┬─────────────────────────────┘
-                                                 │
-                      ┌──────────────────────────▼─────────────────────────────┐
-                      │              crates/modules/*                          │
-                      │  modules.toml (Manifest Composition)                   │
-                      │  Core & Domain Modules: auth, tenant, rbac, commerce,   │
-                      │                         product, pages, blog, forum... │
-                      │  External Integrations: ai, mcp, alloy, iggy           │
-                      └──────────────────────────┬─────────────────────────────┘
-                                                 │
-                      ┌──────────────────────────▼─────────────────────────────┐
-                      │  Platform Libraries, UI, Utils & Workers               │
-                      │  crates/libs/*    : rustok-core, api, events, runtime  │
-                      │  crates/ui/*      : leptos-ui, ui-core, graphql        │
-                      │  crates/utils/*   : rustok-cli, build, migrations      │
-                      │  crates/workers/* : rustok-sandbox, artifact nodes     │
-                      └────────────────────────────────────────────────────────┘
-```
+
+A module may have an external provider/transport profile **only when its owner
+actually publishes that port, transport adapter, service host, security
+boundary, and verification evidence**. Remote execution is not a universal
+microservice switch and must never silently fall back to another authority.
 
 ---
 
-## 2. Key Entry Points & Files
+## 2. Composition Axes
 
-| What | Canonical Path | Description |
-|---|---|---|
-| **Module Manifest** | [`modules.toml`](modules.toml) | Declarative build composition & module taxonomy |
-| **Composition Root** | [`apps/server/src/main.rs`](apps/server/src/main.rs) | Main Axum HTTP server, GraphQL, & runtime registry |
-| **API & Port Contracts** | [`crates/libs/rustok-api/src/ports.rs`](crates/libs/rustok-api/src/ports.rs) | `PortContext`, `PortActor`, and transport-agnostic errors |
-| **Read Index Engine** | [`crates/modules/rustok-index/docs/README.md`](crates/modules/rustok-index/docs/README.md) | PostgreSQL `JSONB` CQRS read model & keyset cursors |
-| **Transactional Outbox** | [`crates/modules/rustok-outbox/docs/README.md`](crates/modules/rustok-outbox/docs/README.md) | Atomic `sys_events` delivery & Iggy stream replay |
-| **Sandboxed Scripting** | [`crates/modules/alloy/README.md`](crates/modules/alloy/README.md) | Dynamic Rhai/WASM hooks & ETL data sanitization |
-| **AI & MCP Agent Server** | [`crates/modules/rustok-mcp/README.md`](crates/modules/rustok-mcp/README.md) | Model Context Protocol server for AI agent operations |
-| **Documentation Map** | [`docs/index.md`](docs/index.md) | Canonical index of all architecture & module docs |
-| **Module & Owner Map** | [`docs/modules/registry.md`](docs/modules/registry.md) | Complete FFA/FBA readiness board and evidence links |
+Do not collapse these independent concepts:
 
----
+| Axis | Meaning |
+| --- | --- |
+| Architectural role | domain module, capability, shared library, host, worker |
+| Tenant lifecycle | `Core` or `Optional` for tenant-managed module entries |
+| Runtime composition | `runtime = "module"` or `runtime = "extension"` |
+| Packaging | crate, package, binary, generated artifact |
 
-## 3. Core Design Invariants
+`runtime = "extension"` is a deployment-scoped capability contribution, not a
+third tenant `ModuleKind`.
 
-1. **Safety by Design**: Every domain invocation receives a `PortContext` with mandatory `tenant_id`, `actor`, OpenTelemetry trace identifiers, and `deadline_ms` timeout propagation.
-2. **AI Permission Intersection**: AI agent runs operate under `AgentPrincipal` where effective permissions are calculated as $\text{User Permissions} \cap \text{Agent Descriptor Permissions}$.
-3. **Fluid Topology (FBA)**: Business logic is written once in pure Rust traits. Modules can run in-process (embedded monolith) or as remote **gRPC** microservices by changing runtime provider flags (`RUSTOK_*_PROVIDER=grpc`).
-4. **Fluid Frontend (FFA)**: UI view-models and state machines live in framework-agnostic Rust crates (`rustok-ui-core`). Leptos views (`#[server]` functions) and Next.js / Flutter clients consume identical domain logic without code rewrite.
-5. **No Code Duplication**: Shared UI primitives live in `crates/ui/leptos-ui/`, UI routing in `crates/ui/leptos-ui-routing/`, and transport helpers in `crates/ui/rustok-ui-transport/`.
+The composition source of truth is [`modules.toml`](modules.toml), synchronized
+with each owner manifest, runtime registration, and owner documentation.
 
 ---
 
-## 4. Where to Read More
+## 3. Key Entry Points
 
-- [Platform Architecture Overview](docs/architecture/overview.md)
+| What | Canonical path | Contract |
+| --- | --- | --- |
+| Repository governance | [`AGENTS.md`](AGENTS.md) | source-of-truth, cutover, concurrency, verification rules |
+| Documentation map | [`docs/index.md`](docs/index.md) | canonical documentation entry point |
+| ADR registry | [`DECISIONS/README.md`](DECISIONS/README.md) | current architecture-decision and implementation status |
+| Module composition | [`modules.toml`](modules.toml) | selected runtime/build graph |
+| Module manifest contract | [`docs/modules/manifest.md`](docs/modules/manifest.md) | `modules.toml` / `rustok-module.toml` semantics |
+| Composition root | [`apps/server`](apps/server) | host wiring, transport, auth/session integration |
+| API/port contracts | [`crates/libs/rustok-api`](crates/libs/rustok-api) | stable cross-boundary request/error/context contracts |
+| Transactional outbox | [`crates/modules/rustok-outbox`](crates/modules/rustok-outbox) | durable write + event publication path |
+| Index engine | [`crates/modules/rustok-index`](crates/modules/rustok-index) | generic relational derived index/read substrate |
+| Verification entry | [`docs/verification/README.md`](docs/verification/README.md) | change-driven canonical verification routes |
+
+---
+
+## 4. Core Invariants
+
+1. **One canonical owner/source of truth.** Other representations are adapters,
+   overlays, projections, caches, indexes, or derived state.
+2. **Owner boundaries beat process boundaries.** Embedded execution does not
+   permit consumers to query another owner's private tables or repositories.
+3. **Write-side correctness is transactional.** Tenant integrity, database
+   invariants, revisions, and required outbox facts are atomic where causally
+   coupled.
+4. **Read-side state is derived and rebuildable.** Index/search/projection
+   models may denormalize but may not become competing write authorities or
+   invent domain combinations that do not exist.
+5. **Effective request context is typed.** Tenant, channel, locale, principal,
+   policy, deadline, and trace dimensions are resolved by their canonical owner
+   and propagated explicitly.
+6. **UI remains owner-owned.** Leptos uses native `#[server]` paths for the
+   internal SSR/hydrate surface where applicable; GraphQL/REST remain the public
+   headless contracts required by the owner. Optional Next clients consume those
+   public contracts rather than owning domain logic.
+7. **Reuse follows semantics.** Similar code triggers an abstraction review;
+   shared libraries are created only for a real common contract and dependency
+   direction.
+8. **Zero legacy before release.** Internal replacements are canonical,
+   unversioned cutovers without dual read/write or compatibility families unless
+   an explicit external consumer requires a bounded bridge.
+
+---
+
+## 5. Where to Read More
+
 - [Architecture Principles](docs/architecture/principles.md)
+- [Platform Architecture Overview](docs/architecture/overview.md)
+- [Module Architecture](docs/architecture/modules.md)
+- [Module Authoring](docs/modules/module-authoring.md)
 - [API Architecture](docs/architecture/api.md)
+- [Database Architecture](docs/architecture/database.md)
 - [Routing Architecture](docs/architecture/routing.md)
-- [Glossary of Platform Terms](docs/glossary.md)
+- [Platform Glossary](docs/glossary.md)

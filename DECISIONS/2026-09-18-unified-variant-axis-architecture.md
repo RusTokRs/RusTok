@@ -1,7 +1,12 @@
 # Unified variant axis architecture
 
 - Date: 2026-09-18
-- Status: Accepted
+- Decision status: Accepted
+- Implementation status: Not started
+- Owners: `rustok-product` / Product platform owner
+- Extends: `2026-07-01-product-category-bound-attribute-schemas.md`, `2026-07-11-product-storage-integrity-and-request-trust.md`, `2026-07-22-channel-binding-policy-boundary.md`
+- Supersedes: None
+- Superseded by: None
 
 ## Context
 
@@ -305,6 +310,170 @@ Since RusToK is a pre-release initial implementation with no publicly deployed
 migration history, pending migrations that create the legacy option tables are
 amended directly to produce the target schema. No backfill migration is
 created to import data from a model that has no external consumers.
+
+## Sources of truth and ownership
+
+- `rustok-product` owns canonical product attribute definitions, canonical
+  discrete attribute options, product-level variant-axis configuration, variant
+  identity semantics, and the actual variant EAV assignments.
+- `product_attributes` and `product_attribute_options` are the only
+  attribute/value ontology.
+- `product_variant_axes` and `product_variant_axis_values` are configuration,
+  not actual assignment.
+- `product_variant_attribute_values` and
+  `product_variant_attribute_value_options` remain authoritative for actual
+  per-variant values.
+- `combination_identity` is database-maintained derived state and never a
+  second write authority.
+- `rustok-channel` owns channel identity/resolution; Product owns Product
+  channel overlays that reference canonical Product entities.
+- Product/search/storefront projections are derived and rebuildable. Pricing,
+  inventory, and orders continue to identify variants by stable `variant.id`.
+
+## Invariants
+
+### Allowed states
+
+- A product may have zero or more eligible configured axes.
+- A configured axis selects one canonical `select` attribute from the
+  effective product schema.
+- Axis allowed values are a product-owned subset of that attribute's canonical
+  options.
+- A product may materialize any sparse subset of the configured value space.
+- Channel overlays may hide or reorder canonical groups, attributes, options,
+  and variants without changing their canonical identity.
+
+### Forbidden states
+
+- A second ProductOption/ProductOptionValue ontology.
+- An axis value whose option belongs to a different attribute.
+- Cross-tenant Product/Attribute/Option/Axis references.
+- A variant missing a configured identity axis or carrying an extra identity
+  axis.
+- More than one option for one configured select axis on one variant.
+- Two variants of the same product with the same canonical combination.
+- More than one default/no-axis variant for a product.
+- Channel-specific axis identity or channel-specific combination identity.
+- Silent axis/category changes that delete or invalidate business-owned variant
+  data.
+- Hash-only uniqueness as the source of variant-combination correctness.
+
+## Non-goals
+
+This decision does not:
+
+- make Cartesian matrix generation automatic domain behavior;
+- replace the stable variant UUID used by pricing, inventory, orders, or other
+  downstream owners;
+- move general custom-field semantics from the canonical Product attribute
+  system into variant configuration;
+- define channel resolution itself;
+- create a second assignment table alongside canonical variant EAV;
+- require every allowed axis value to have a currently materialized variant.
+
+## Data, transaction, and concurrency boundary
+
+Axis configuration changes, affected variant assignments, derived combination
+identity, revision invalidation, and required Product event/outbox effects form
+one atomic domain mutation where they are causally coupled.
+
+PostgreSQL is the final authority for tenant referential integrity, option
+ownership, exact combination uniqueness, no-axis uniqueness, select
+cardinality, and deferred commit-time axis completeness. The service layer owns
+effective-schema/policy eligibility and actionable conflict diagnostics.
+
+Axis reconfiguration uses explicit optimistic/revision semantics from the
+Product owner where concurrent writes can race; last-write-wins must not bypass
+the canonical revision boundary. Retryable commands must either be naturally
+idempotent or use the Product owner's canonical receipt/idempotency mechanism
+when such a receipt is part of the surrounding write contract.
+
+## Context dimensions
+
+- **Tenant:** every canonical Product/Attribute/Option/Axis reference is
+  tenant-scoped and database protected.
+- **Primary category:** determines the effective attribute schema and therefore
+  axis eligibility/policy.
+- **Channel:** affects visibility, availability, ordering, and presentation
+  overlays only; it never changes canonical variant identity.
+- **Locale:** affects translated labels/copy, not attribute, option, axis, or
+  combination identity.
+- **Principal/auth/policy:** mutation authorization is resolved from canonical
+  request context and is not accepted from Product input payloads.
+- **Trace/correlation:** follows the existing Product write/event pipeline.
+
+## Events and projections
+
+Variant-axis mutations use the existing Product root-event, revision,
+refresh-ledger, and transactional outbox architecture. No parallel event bus,
+outbox, or variant-config publication mechanism is introduced.
+
+Any mutation that can change storefront variant selection or search semantics
+invalidates the affected Product projection and required Variant projections.
+Projection/search representations must preserve actual combination correlation
+and must be deterministically rebuildable from Product-owned authoritative
+state.
+
+## Failure semantics
+
+- Invalid axis eligibility, option ownership, tenant ownership, duplicate
+  combination, or completeness violations are rejected.
+- A category transition that conflicts with configured axes is rejected with
+  structured diagnostics.
+- Removing an axis/value that is used by existing variants is rejected unless
+  the caller invokes an explicit reconciliation/destructive command whose
+  consequences are part of that command contract.
+- Missing channel overlay data does not redefine canonical identity.
+- Persistence, event, or revision failure rolls back the complete atomic
+  mutation; no best-effort repair path is the correctness mechanism.
+
+## Migration and cutover
+
+The cutover is zero-legacy and repository-atomic. Pending unreleased Product
+migrations are consolidated into the canonical target schema rather than
+preserving a historical internal option model through backfill/fixup
+migrations. Every repository-owned caller, transport, UI, fixture, seed,
+translation target, verifier, and current document moves in the same cutover.
+
+This ADR supersedes the legacy option subsystem as a target architecture, but
+does not rewrite historical ADR text that records why earlier structures
+existed.
+
+## Alternatives considered
+
+- **Keep `product_options` beside attributes:** rejected because it creates two
+  competing vocabularies and duplicate localization/integrity paths.
+- **Add a separate variant-axis assignment table:** rejected because canonical
+  variant EAV already owns actual values and a second assignment store would
+  create dual authority.
+- **Use a hash as combination identity:** rejected because collision-free
+  semantic uniqueness must not depend on a probabilistic accelerator.
+- **Derive allowed axis values from existing variants:** rejected because
+  configuration constrains variants; current materialization does not define
+  the allowed space.
+- **Make channels redefine axes/combinations:** rejected because stable variant
+  identity must not depend on presentation/assortment context.
+- **Automatically materialize the Cartesian product:** rejected because sparse
+  variants are canonical and matrix generation is an operator convenience.
+
+## Verification
+
+Implementation is not complete until evidence proves, at minimum:
+
+- tenant-composite foreign keys reject cross-tenant axis configuration;
+- option/attribute ownership is database-enforced;
+- deferred completeness accepts atomic reconfiguration but rejects an invalid
+  committed variant;
+- database-maintained `combination_identity` exactly matches canonical EAV;
+- duplicate combinations and multiple no-axis/default variants are rejected;
+- category policy and category-transition conflicts fail closed;
+- destructive axis/value changes never silently remove variant-owned data;
+- Product/Variant revision and projection invalidation occurs on all
+  identity-relevant mutations;
+- search/storefront projections preserve real variant combination correlation;
+- channel overlays affect availability/presentation without changing identity;
+- repository-wide stale-name scans find no executable/current references to the
+  retired option subsystem after cutover.
 
 ## Consequences
 

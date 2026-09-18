@@ -191,3 +191,10 @@ See also `docs/README.md`, the Index
 [M7 Product tombstone replay contract](../rustok-index/docs/m7-product-tombstone-source.md),
 [M7 Product graph projection ledger](docs/index-graph-projection-ledger.md), and
 [M7 bounded Product reconciliation contract](../rustok-index/docs/m7-product-reconciliation.md).
+
+
+The accepted target for variant identity is the
+[Unified variant axis architecture](../../../DECISIONS/2026-09-18-unified-variant-axis-architecture.md).
+Its registry implementation status is authoritative; until that cutover is
+implemented, current legacy option code is runtime reality but not the target
+architecture.

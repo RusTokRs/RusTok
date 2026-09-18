@@ -91,6 +91,12 @@ Every platform module (Core, Optional, or Capability extension) must declare its
 A stateless module or one without persistent tables must record an explicit `data boundary: none`.
 This removes ambiguity between "reviewed and not applicable" and "not reviewed."
 
+The readiness label `Runtime kind` is a release/rollback reporting field, not a
+third `RusToKModule::kind()` taxonomy. `Core` and `Optional` describe
+tenant-lifecycle module entries; `Extension` means the manifest entry uses
+`runtime = "extension"` and is composed through the deployment-scoped extension
+seam rather than the tenant-toggled `ModuleRegistry`.
+
 Before any module PR is merged:
 1. Provide the canonical `## Release and Data Rollback Readiness` block in `docs/implementation-plan.md` specifying:
    - `Runtime kind`: Core | Optional | Extension

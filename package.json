@@ -1,5 +1,6 @@
 {
   "scripts": {
+    "verify:adrs": "node scripts/verify/verify-adrs.mjs",
     "audit:deps": "cargo machete",
     "audit:deadcode": "npx knip --directory apps/next-admin",
     "audit:clones": "npx jscpd crates/ apps/ --min-tokens 50",
