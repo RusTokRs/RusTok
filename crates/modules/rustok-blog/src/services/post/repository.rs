@@ -1,7 +1,11 @@
 use super::*;
 
 impl PostService {
-    pub(super) async fn find_post(&self, tenant_id: Uuid, post_id: Uuid) -> BlogResult<blog_post::Model> {
+    pub(super) async fn find_post(
+        &self,
+        tenant_id: Uuid,
+        post_id: Uuid,
+    ) -> BlogResult<blog_post::Model> {
         blog_post::Entity::find_by_id(post_id)
             .filter(blog_post::Column::TenantId.eq(tenant_id))
             .one(&self.db)
