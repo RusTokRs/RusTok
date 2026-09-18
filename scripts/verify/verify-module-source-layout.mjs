@@ -56,7 +56,10 @@ function textContractFiles(directory) {
       files.push(...textContractFiles(path));
     } else if (
       entry.isFile() &&
-      (entry.name.endsWith(".mjs") || entry.name.endsWith(".json"))
+      (entry.name.endsWith(".mjs") ||
+        entry.name.endsWith(".json") ||
+        entry.name.endsWith(".yml") ||
+        entry.name.endsWith(".yaml"))
     ) {
       files.push(path);
     }
@@ -184,13 +187,14 @@ const retiredBlogPhysicalPaths = [
 for (const root of [
   join(repoRoot, "scripts/verify"),
   join(repoRoot, "crates/modules/rustok-blog/contracts"),
+  join(repoRoot, ".github/workflows"),
 ]) {
   for (const file of textContractFiles(root)) {
     const source = readFileSync(file, "utf8");
     for (const retiredPath of retiredBlogPhysicalPaths) {
       if (source.includes(retiredPath)) {
         fail(
-          `${relative(repoRoot, file)}: active verifier/evidence still references retired Blog path ${retiredPath}`,
+          `${relative(repoRoot, file)}: active verifier/evidence/workflow still references retired Blog path ${retiredPath}`,
         );
       }
     }
