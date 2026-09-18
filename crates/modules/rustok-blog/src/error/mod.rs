@@ -1,3 +1,6 @@
+pub(crate) mod public;
+pub use public::BlogPublicError;
+
 use rustok_core::error::{Error as CoreError, ErrorKind, RichError};
 use thiserror::Error;
 use uuid::Uuid;

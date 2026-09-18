@@ -197,7 +197,7 @@ impl GqlPost {
             per_page.unwrap_or(20),
         )
         .await
-        .map_err(crate::public_error::to_graphql_error)?;
+        .map_err(crate::error::public::to_graphql_error)?;
 
         Ok(GqlPublicCommentList {
             availability: read.availability.into(),
@@ -238,7 +238,7 @@ impl GqlPost {
                 Some(request_tenant.default_locale.as_str()),
             )
             .await
-            .map_err(crate::public_error::to_graphql_error)?;
+            .map_err(crate::error::public::to_graphql_error)?;
 
         Ok(GqlModerationCommentList {
             items: items.into_iter().map(Into::into).collect(),

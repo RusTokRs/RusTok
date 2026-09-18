@@ -75,7 +75,7 @@ pub async fn list_categories(
     let (items, total) = category_service(&runtime)
         .list(tenant.id, security_context(&auth), filter)
         .await
-        .map_err(crate::public_error::to_http_error)?;
+        .map_err(crate::error::public::to_http_error)?;
 
     Ok(Json(CategoryListResponse {
         items,
@@ -117,7 +117,7 @@ pub async fn get_category(
     let category = category_service(&runtime)
         .get(tenant.id, security_context(&auth), id, locale)
         .await
-        .map_err(crate::public_error::to_http_error)?;
+        .map_err(crate::error::public::to_http_error)?;
 
     Ok(Json(category))
 }
@@ -146,7 +146,7 @@ pub async fn create_category(
     let category_id = category_service(&runtime)
         .create(tenant.id, security_context(&auth), input)
         .await
-        .map_err(crate::public_error::to_http_error)?;
+        .map_err(crate::error::public::to_http_error)?;
 
     Ok((StatusCode::CREATED, Json(category_id)))
 }
@@ -177,7 +177,7 @@ pub async fn update_category(
     let category = category_service(&runtime)
         .update(tenant.id, id, security_context(&auth), input)
         .await
-        .map_err(crate::public_error::to_http_error)?;
+        .map_err(crate::error::public::to_http_error)?;
 
     Ok(Json(category))
 }
@@ -208,7 +208,7 @@ pub async fn move_category(
     let response = category_command_service(&runtime)
         .move_category(tenant.id, id, security_context(&auth), input)
         .await
-        .map_err(crate::public_error::to_http_error)?;
+        .map_err(crate::error::public::to_http_error)?;
 
     Ok(Json(response))
 }
@@ -236,7 +236,7 @@ pub async fn delete_category(
     category_service(&runtime)
         .delete(tenant.id, id, security_context(&auth))
         .await
-        .map_err(crate::public_error::to_http_error)?;
+        .map_err(crate::error::public::to_http_error)?;
 
     Ok(StatusCode::NO_CONTENT)
 }

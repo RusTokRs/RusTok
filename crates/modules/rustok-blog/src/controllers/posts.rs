@@ -59,7 +59,7 @@ pub async fn list_posts(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(crate::public_error::to_http_error)?;
+        .map_err(crate::error::public::to_http_error)?;
     metrics::record_read_path_query(
         "http",
         "blog.list_posts",
@@ -123,7 +123,7 @@ pub async fn get_post(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(crate::public_error::to_http_error)?;
+        .map_err(crate::error::public::to_http_error)?;
     Ok(Json(post))
 }
 
@@ -156,7 +156,7 @@ pub async fn create_post(
     let post_id = service
         .create_post(tenant.id, security_context(&auth), input)
         .await
-        .map_err(crate::public_error::to_http_error)?;
+        .map_err(crate::error::public::to_http_error)?;
     Ok((StatusCode::CREATED, Json(post_id)))
 }
 
@@ -193,7 +193,7 @@ pub async fn update_post(
     service
         .update_post(tenant.id, id, security_context(&auth), input)
         .await
-        .map_err(crate::public_error::to_http_error)?;
+        .map_err(crate::error::public::to_http_error)?;
     Ok(())
 }
 
@@ -228,7 +228,7 @@ pub async fn delete_post(
     service
         .delete_post(tenant.id, id, security_context(&auth))
         .await
-        .map_err(crate::public_error::to_http_error)?;
+        .map_err(crate::error::public::to_http_error)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -263,7 +263,7 @@ pub async fn publish_post(
     service
         .publish_post(tenant.id, id, security_context(&auth))
         .await
-        .map_err(crate::public_error::to_http_error)?;
+        .map_err(crate::error::public::to_http_error)?;
     Ok(())
 }
 
@@ -298,7 +298,7 @@ pub async fn unpublish_post(
     service
         .unpublish_post(tenant.id, id, security_context(&auth))
         .await
-        .map_err(crate::public_error::to_http_error)?;
+        .map_err(crate::error::public::to_http_error)?;
     Ok(())
 }
 
@@ -345,7 +345,7 @@ pub async fn archive_post(
     PostService::new(runtime.db_clone(), runtime.event_bus())
         .archive_post(tenant.id, id, security_context(&auth), input.reason)
         .await
-        .map_err(crate::public_error::to_http_error)
+        .map_err(crate::error::public::to_http_error)
 }
 
 #[utoipa::path(
@@ -377,5 +377,5 @@ pub async fn restore_post(
     PostService::new(runtime.db_clone(), runtime.event_bus())
         .restore_post(tenant.id, id, security_context(&auth))
         .await
-        .map_err(crate::public_error::to_http_error)
+        .map_err(crate::error::public::to_http_error)
 }

@@ -63,7 +63,7 @@ pub async fn moderate_comment(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(crate::public_error::to_http_error)?;
+        .map_err(crate::error::public::to_http_error)?;
 
     Ok(Json(comment))
 }

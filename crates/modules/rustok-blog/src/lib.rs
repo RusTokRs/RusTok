@@ -8,11 +8,10 @@
 mod domain;
 mod integrations;
 mod module;
-mod public_error;
 
 pub mod controllers;
 pub mod dto;
-pub mod entities;
+mod entities;
 pub mod error;
 pub mod graphql;
 pub mod migrations;
@@ -29,8 +28,7 @@ pub use dto::{
     TagResponse, UpdateCategoryInput,
     UpdateCommentInput, UpdatePostInput, UpdateTagInput,
 };
-pub use entities::*;
-pub use error::{BlogError, BlogResult};
+pub use error::{BlogError, BlogPublicError, BlogResult};
 pub use graphql::{BlogMutation, BlogQuery};
 pub use integrations::public_comments_snapshot;
 pub use integrations::public_comments_snapshot::{
@@ -42,7 +40,6 @@ pub use integrations::reaction_subject::{
     BlogReactionSubjectProviderFactory,
 };
 pub use module::BlogModule;
-pub use public_error::BlogPublicError;
 pub use rustok_comments::CommentsThreadPort;
 pub use services::{CategoryService, CommentService, PostService, TagService};
 pub use state_machine::{

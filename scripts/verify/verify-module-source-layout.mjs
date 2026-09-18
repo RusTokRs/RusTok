@@ -18,13 +18,14 @@ const profiles = [
       "domain",
       "dto",
       "entities",
+      "error",
       "graphql",
       "integrations",
       "migrations",
       "services",
       "tests",
     ],
-    allowedRootRustFiles: new Set(["error.rs", "lib.rs", "module.rs"]),
+    allowedRootRustFiles: new Set(["lib.rs", "module.rs"]),
     maxRustFileBytes: 32 * 1024,
   },
 ];
@@ -124,6 +125,12 @@ for (const profile of profiles) {
     }
   }
 
+  if (lib.includes("pub mod entities;") || lib.includes("pub use entities::")) {
+    fail(
+      `${profile.crate}: persistence entities must remain private implementation details; expose DTOs/services/ports instead`,
+    );
+  }
+
   if (!lib.includes("mod module;") || !lib.includes("pub use module::BlogModule;")) {
     fail(
       `${profile.crate}: lib.rs must expose BlogModule through the canonical module.rs wiring slot`,
@@ -173,6 +180,8 @@ for (const profile of profiles) {
 }
 
 const retiredBlogPhysicalPaths = [
+  "crates/modules/rustok-blog/src/" + "error.rs",
+  "crates/modules/rustok-blog/src/" + "public_error.rs",
   "crates/modules/rustok-blog/src/" + "openapi.rs",
   "crates/modules/rustok-blog/src/" + "richtext.rs",
   "crates/modules/rustok-blog/src/" + "state_machine.rs",
