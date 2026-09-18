@@ -1697,8 +1697,7 @@ fn ProductVariantsPanel(
     let (show_add, set_show_add) = signal(false);
     let (sku, set_sku) = signal(String::new());
     let (barcode, set_barcode) = signal(String::new());
-    let (option1, set_option1) = signal(String::new());
-    let (option2, set_option2) = signal(String::new());
+    let (selected_axis_values, set_selected_axis_values) = signal(Vec::<(String, String)>::new());
     let (amount, set_amount) = signal(String::new());
     let (inventory_quantity, set_inventory_quantity) = signal(0_i32);
     let (inventory_policy, set_inventory_policy) = signal("DENY".to_string());
@@ -1740,13 +1739,20 @@ fn ProductVariantsPanel(
             let price_val = amount.get_untracked().trim().to_string();
             let price_val = if price_val.is_empty() { "0.00".to_string() } else { price_val };
 
+            let axis_values = selected_axis_values
+                .get_untracked()
+                .into_iter()
+                .map(|(attribute_id, option_id)| crate::model::VariantAxisValueDraft {
+                    attribute_id,
+                    option_id,
+                })
+                .collect();
+
             let draft = VariantDraft {
                 sku: text_or_none(sku.get_untracked()),
                 barcode: text_or_none(barcode.get_untracked()),
                 shipping_profile_slug: None,
-                option1: text_or_none(option1.get_untracked()),
-                option2: text_or_none(option2.get_untracked()),
-                option3: None,
+                axis_values,
                 prices: vec![VariantPriceDraft {
                     currency_code: default_currency_for_add.clone(),
                     amount: price_val,
@@ -1772,8 +1778,7 @@ fn ProductVariantsPanel(
                     Ok(_) => {
                         set_sku.set(String::new());
                         set_barcode.set(String::new());
-                        set_option1.set(String::new());
-                        set_option2.set(String::new());
+                        set_selected_axis_values.set(Vec::new());
                         set_amount.set(String::new());
                         set_inventory_quantity.set(0);
                         set_show_add.set(false);
@@ -1822,20 +1827,46 @@ fn ProductVariantsPanel(
                             on:input=move |ev| set_barcode.set(event_target_value(&ev))
                         />
                     </div>
-                    <div class="grid gap-3 md:grid-cols-2">
-                        <input
-                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
-                            placeholder="Option 1 (e.g. Size)"
-                            prop:value=move || option1.get()
-                            on:input=move |ev| set_option1.set(event_target_value(&ev))
-                        />
-                        <input
-                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
-                            placeholder="Option 2 (e.g. Color)"
-                            prop:value=move || option2.get()
-                            on:input=move |ev| set_option2.set(event_target_value(&ev))
-                        />
-                    </div>
+                    {if !product.variant_axes.is_empty() {
+                        view! {
+                            <div class="grid gap-3 md:grid-cols-2">
+                                {product.variant_axes.iter().map(|axis| {
+                                    let attr_id = axis.attribute_id.clone();
+                                    let attr_name = axis.name.clone();
+                                    let allowed = axis.allowed_values.clone();
+                                    view! {
+                                        <div>
+                                            <label class="block text-xs font-medium text-muted-foreground mb-1">{attr_name.clone()}</label>
+                                            <select
+                                                class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                                                on:change={
+                                                    let attr_id = attr_id.clone();
+                                                    move |ev| {
+                                                        let val = event_target_value(&ev);
+                                                        set_selected_axis_values.update(|entries| {
+                                                            entries.retain(|(aid, _)| aid != &attr_id);
+                                                            if !val.is_empty() {
+                                                                entries.push((attr_id.clone(), val));
+                                                            }
+                                                        });
+                                                    }
+                                                }
+                                            >
+                                                <option value="">{format!("Select {}", attr_name)}</option>
+                                                {allowed.into_iter().map(|opt| {
+                                                    view! {
+                                                        <option value=opt.option_id>{opt.value}</option>
+                                                    }
+                                                }).collect_view()}
+                                            </select>
+                                        </div>
+                                    }
+                                }).collect_view()}
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! { <div /> }.into_any()
+                    }}
                     <div class="grid gap-3 md:grid-cols-3">
                         <input
                             class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
@@ -1938,9 +1969,7 @@ fn ProductVariantsPanel(
                                         sku: text_or_none(edit_sku.get_untracked()),
                                         barcode: None,
                                         shipping_profile_slug: None,
-                                        option1: None,
-                                        option2: None,
-                                        option3: None,
+                                        axis_values: Vec::new(),
                                         prices: vec![VariantPriceDraft {
                                             currency_code: default_curr.clone(),
                                             amount: edit_price.get_untracked(),

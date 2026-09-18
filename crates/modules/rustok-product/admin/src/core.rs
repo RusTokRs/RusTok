@@ -1863,13 +1863,14 @@ pub(crate) fn build_variant_row_view_models(
         .variants
         .iter()
         .map(|v| {
-            let options: Vec<&str> = [v.option1.as_deref(), v.option2.as_deref(), v.option3.as_deref()]
-                .into_iter()
-                .flatten()
+            let options: Vec<&str> = v
+                .axis_values
+                .iter()
+                .filter_map(|av| av.label.as_deref().or(av.code.as_deref()))
                 .filter(|opt| !opt.trim().is_empty())
                 .collect();
             let options_summary = if options.is_empty() {
-                "—".to_string()
+                v.combination_identity.clone().unwrap_or_else(|| "—".to_string())
             } else {
                 options.join(" / ")
             };
@@ -1999,16 +2000,15 @@ mod tests {
                 meta_title: None,
                 meta_description: None,
             }],
-            options: Vec::new(),
+            variant_axes: Vec::new(),
             variants: vec![crate::model::ProductVariant {
                 id: "variant-1".to_string(),
                 sku: Some("COAT-1".to_string()),
                 barcode: Some("123".to_string()),
                 shipping_profile_slug: None,
                 title: "Default".to_string(),
-                option1: None,
-                option2: None,
-                option3: None,
+                combination_identity: None,
+                axis_values: Vec::new(),
                 prices: vec![crate::model::ProductPrice {
                     currency_code: "EUR".to_string(),
                     amount: "12.00".to_string(),
@@ -2337,16 +2337,15 @@ mod tests {
                 meta_title: None,
                 meta_description: None,
             }],
-            options: Vec::new(),
+            variant_axes: Vec::new(),
             variants: vec![crate::model::ProductVariant {
                 id: "variant-1".to_string(),
                 sku: Some("COAT-1".to_string()),
                 barcode: Some("123".to_string()),
                 shipping_profile_slug: None,
                 title: "Default".to_string(),
-                option1: None,
-                option2: None,
-                option3: None,
+                combination_identity: None,
+                axis_values: Vec::new(),
                 prices: vec![crate::model::ProductPrice {
                     currency_code: "EUR".to_string(),
                     amount: "12.00".to_string(),
@@ -2764,16 +2763,15 @@ mod tests {
                 meta_title: None,
                 meta_description: None,
             }],
-            options: Vec::new(),
+            variant_axes: Vec::new(),
             variants: vec![crate::model::ProductVariant {
                 id: "variant-1".to_string(),
                 sku: None,
                 barcode: None,
                 shipping_profile_slug: None,
                 title: "Default".to_string(),
-                option1: None,
-                option2: None,
-                option3: None,
+                combination_identity: None,
+                axis_values: Vec::new(),
                 prices: vec![crate::model::ProductPrice {
                     currency_code: "USD".to_string(),
                     amount: "10.00".to_string(),
@@ -2905,9 +2903,21 @@ mod tests {
             barcode: None,
             shipping_profile_slug: None,
             title: "Medium".to_string(),
-            option1: Some("Black".to_string()),
-            option2: Some("M".to_string()),
-            option3: None,
+            combination_identity: Some("Black/M".to_string()),
+            axis_values: vec![
+                crate::model::VariantAxisValue {
+                    attribute_id: "color".to_string(),
+                    option_id: "black".to_string(),
+                    code: Some("color".to_string()),
+                    label: Some("Black".to_string()),
+                },
+                crate::model::VariantAxisValue {
+                    attribute_id: "size".to_string(),
+                    option_id: "m".to_string(),
+                    code: Some("size".to_string()),
+                    label: Some("M".to_string()),
+                },
+            ],
             prices: vec![crate::model::ProductPrice {
                 currency_code: "USD".to_string(),
                 amount: "120.00".to_string(),

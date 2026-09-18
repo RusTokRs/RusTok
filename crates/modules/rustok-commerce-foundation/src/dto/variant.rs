@@ -17,12 +17,6 @@ pub struct CreateVariantInput {
         message = "Shipping profile slug must be max 100 characters"
     ))]
     pub shipping_profile_slug: Option<String>,
-    #[validate(length(max = 255, message = "Option value must be max 255 characters"))]
-    pub option1: Option<String>,
-    #[validate(length(max = 255, message = "Option value must be max 255 characters"))]
-    pub option2: Option<String>,
-    #[validate(length(max = 255, message = "Option value must be max 255 characters"))]
-    pub option3: Option<String>,
     #[validate(nested)]
     pub prices: Vec<PriceInput>,
     #[serde(default)]
@@ -89,9 +83,7 @@ pub struct VariantResponse {
     pub title: String,
     #[serde(default)]
     pub translations: Vec<VariantTranslationResponse>,
-    pub option1: Option<String>,
-    pub option2: Option<String>,
-    pub option3: Option<String>,
+    pub combination_identity: Option<String>,
     pub prices: Vec<PriceResponse>,
     pub inventory_quantity: i32,
     pub inventory_policy: String,

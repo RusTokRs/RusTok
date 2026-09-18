@@ -16,6 +16,9 @@ mod transport;
 mod ui;
 
 pub use legacy_transport::*;
-pub use model::{ProductCatalogSearchOption, ProductCatalogSearchOptions};
+pub use model::{
+    AxisAllowedValue, ProductCatalogSearchOption, ProductCatalogSearchOptions, SetVariantAxesDraft,
+    VariantAxisConfig, VariantAxisDraft, VariantAxisValue, VariantAxisValueDraft,
+};
 pub use product_schema_graphql::*;
 pub use ui::catalog_admin::ProductAdmin;

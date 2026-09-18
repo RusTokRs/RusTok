@@ -13,8 +13,6 @@ pub struct CreateProductInput {
     #[validate(nested)]
     pub translations: Vec<ProductTranslationInput>,
     #[serde(default)]
-    pub options: Vec<ProductOptionInput>,
-    #[validate(nested)]
     pub variants: Vec<CreateVariantInput>,
     #[validate(length(max = 100, message = "Seller ID must be max 100 characters"))]
     pub seller_id: Option<String>,
@@ -56,13 +54,6 @@ pub struct ProductTranslationInput {
     pub meta_description: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
-pub struct ProductOptionInput {
-    #[validate(length(min = 1, message = "At least one option translation required"))]
-    #[validate(nested)]
-    pub translations: Vec<ProductOptionTranslationInput>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, Validate)]
 pub struct UpdateProductInput {
     #[validate(nested)]
@@ -101,7 +92,6 @@ pub struct ProductResponse {
     pub updated_at: chrono::DateTime<chrono::Utc>,
     pub published_at: Option<chrono::DateTime<chrono::Utc>>,
     pub translations: Vec<ProductTranslationResponse>,
-    pub options: Vec<ProductOptionResponse>,
     pub variants: Vec<VariantResponse>,
     pub images: Vec<ProductImageResponse>,
 }
@@ -117,16 +107,6 @@ pub struct ProductTranslationResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct ProductOptionResponse {
-    pub id: Uuid,
-    pub name: String,
-    pub values: Vec<String>,
-    pub position: i32,
-    #[serde(default)]
-    pub translations: Vec<ProductOptionTranslationResponse>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ProductImageResponse {
     pub id: Uuid,
     pub media_id: Uuid,
@@ -135,27 +115,6 @@ pub struct ProductImageResponse {
     pub position: i32,
     #[serde(default)]
     pub translations: Vec<ProductImageTranslationResponse>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct ProductOptionTranslationResponse {
-    pub locale: String,
-    pub name: String,
-    pub values: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
-pub struct ProductOptionTranslationInput {
-    #[validate(length(
-        min = 2,
-        max = 5,
-        message = "Locale must be 2-5 characters (e.g. 'en', 'en-US')"
-    ))]
-    pub locale: String,
-    #[validate(length(min = 1, max = 255, message = "Option name must be 1-255 characters"))]
-    pub name: String,
-    #[validate(length(min = 1, message = "At least one option value required"))]
-    pub values: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

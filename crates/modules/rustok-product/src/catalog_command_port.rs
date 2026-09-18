@@ -4,8 +4,8 @@ use uuid::Uuid;
 
 use crate::dto::{
     AddProductImageInput, CreateProductInput, CreateVariantInput, ProductImageResponse,
-    ProductResponse, UpdateProductImageInput, UpdateProductInput, UpdateVariantInput,
-    VariantResponse,
+    ProductResponse, SetVariantAxesInput, UpdateProductImageInput, UpdateProductInput,
+    UpdateVariantInput, VariantAxisConfigResponse, VariantResponse,
 };
 use crate::{CatalogService, CommerceError};
 
@@ -21,6 +21,13 @@ pub trait ProductCatalogCommandPort: Send + Sync {
         context: PortContext,
         input: CreateProductInput,
     ) -> Result<ProductResponse, PortError>;
+
+    async fn set_variant_axes(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        input: SetVariantAxesInput,
+    ) -> Result<Vec<VariantAxisConfigResponse>, PortError>;
 
     async fn update_product(
         &self,
@@ -101,6 +108,19 @@ impl ProductCatalogCommandPort for CatalogService {
         let operation = "create_product";
         let (tenant_id, actor_id) = command_scope(&context, operation)?;
         self.create_product(tenant_id, actor_id, input)
+            .await
+            .map_err(|error| product_command_error(&context, operation, error))
+    }
+
+    async fn set_variant_axes(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        input: SetVariantAxesInput,
+    ) -> Result<Vec<VariantAxisConfigResponse>, PortError> {
+        let operation = "set_variant_axes";
+        let (tenant_id, actor_id) = command_scope(&context, operation)?;
+        self.set_variant_axes(tenant_id, actor_id, product_id, input)
             .await
             .map_err(|error| product_command_error(&context, operation, error))
     }

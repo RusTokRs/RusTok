@@ -47,20 +47,14 @@ pub(crate) fn convert_create_product_input(
         })
         .collect();
 
-    let options = input
-        .options
+    let variant_axes = input
+        .variant_axes
         .unwrap_or_default()
         .into_iter()
-        .map(|option| crate::dto::ProductOptionInput {
-            translations: option
-                .translations
-                .into_iter()
-                .map(|translation| crate::dto::ProductOptionTranslationInput {
-                    locale: translation.locale,
-                    name: translation.name,
-                    values: translation.values,
-                })
-                .collect(),
+        .map(|axis| crate::dto::VariantAxisInput {
+            attribute_id: axis.attribute_id,
+            position: axis.position.unwrap_or(0),
+            allowed_option_ids: axis.allowed_option_ids.unwrap_or_default(),
         })
         .collect();
 
@@ -88,13 +82,21 @@ pub(crate) fn convert_create_product_input(
                 })
                 .collect::<Result<Vec<_>>>()?;
 
+            let axis_values = variant
+                .axis_values
+                .unwrap_or_default()
+                .into_iter()
+                .map(|val| crate::dto::VariantAxisValueInput {
+                    attribute_id: val.attribute_id,
+                    option_id: val.option_id,
+                })
+                .collect();
+
             Ok(crate::dto::CreateVariantInput {
                 sku: variant.sku,
                 barcode: variant.barcode,
                 shipping_profile_slug: variant.shipping_profile_slug,
-                option1: variant.option1,
-                option2: variant.option2,
-                option3: variant.option3,
+                axis_values,
                 prices,
                 inventory_quantity: variant.inventory_quantity.unwrap_or(0),
                 inventory_policy: variant
@@ -108,7 +110,7 @@ pub(crate) fn convert_create_product_input(
 
     Ok(crate::dto::CreateProductInput {
         translations,
-        options,
+        variant_axes,
         variants,
         seller_id: input.seller_id,
         vendor: input.vendor,
@@ -147,13 +149,21 @@ pub(crate) fn convert_create_variant_input(
         })
         .collect::<Result<Vec<_>>>()?;
 
+    let axis_values = input
+        .axis_values
+        .unwrap_or_default()
+        .into_iter()
+        .map(|val| crate::dto::VariantAxisValueInput {
+            attribute_id: val.attribute_id,
+            option_id: val.option_id,
+        })
+        .collect();
+
     Ok(crate::dto::CreateVariantInput {
         sku: input.sku,
         barcode: input.barcode,
         shipping_profile_slug: input.shipping_profile_slug,
-        option1: input.option1,
-        option2: input.option2,
-        option3: input.option3,
+        axis_values,
         prices,
         inventory_quantity: input.inventory_quantity.unwrap_or(0),
         inventory_policy: input
@@ -192,6 +202,16 @@ pub(crate) fn convert_update_variant_input(
         None => None,
     };
 
+    let axis_values = input.axis_values.map(|values| {
+        values
+            .into_iter()
+            .map(|val| crate::dto::VariantAxisValueInput {
+                attribute_id: val.attribute_id,
+                option_id: val.option_id,
+            })
+            .collect()
+    });
+
     Ok(crate::dto::UpdateVariantInput {
         sku: input.sku,
         barcode: input.barcode,
@@ -201,9 +221,7 @@ pub(crate) fn convert_update_variant_input(
         inventory_policy: input.inventory_policy,
         weight: None,
         weight_unit: None,
-        option1: input.option1,
-        option2: input.option2,
-        option3: input.option3,
+        axis_values,
     })
 }
 

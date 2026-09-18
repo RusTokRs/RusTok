@@ -12,11 +12,11 @@ const PRODUCT_ADMIN_MUTATION_GRAPHQL_BOUNDARY: &str = "product_admin_primary_gra
 const PRODUCT_ADMIN_HTTP_PUBLIC_MESSAGE: &str = "Product admin service is temporarily unavailable";
 const PRODUCT_ADMIN_GRAPHQL_PUBLIC_MESSAGE: &str = "Product admin request could not be completed";
 
-const CREATE_PRODUCT_MUTATION: &str = "mutation ProductAdminCreateProduct($idempotencyKey: String!, $input: CreateProductInput!) { createProduct(idempotencyKey: $idempotencyKey, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } images { id mediaId url altText position } } }";
-const UPDATE_PRODUCT_MUTATION: &str = "mutation ProductAdminUpdateProduct($idempotencyKey: String!, $id: UUID!, $input: UpdateProductInput!) { updateProduct(idempotencyKey: $idempotencyKey, id: $id, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } images { id mediaId url altText position } } }";
+const CREATE_PRODUCT_MUTATION: &str = "mutation ProductAdminCreateProduct($idempotencyKey: String!, $input: CreateProductInput!) { createProduct(idempotencyKey: $idempotencyKey, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } images { id mediaId url altText position } } }";
+const UPDATE_PRODUCT_MUTATION: &str = "mutation ProductAdminUpdateProduct($idempotencyKey: String!, $id: UUID!, $input: UpdateProductInput!) { updateProduct(idempotencyKey: $idempotencyKey, id: $id, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } images { id mediaId url altText position } } }";
 const DELETE_PRODUCT_MUTATION: &str = "mutation ProductAdminDeleteProduct($idempotencyKey: String!, $id: UUID!) { deleteProduct(idempotencyKey: $idempotencyKey, id: $id) }";
-const CREATE_VARIANT_MUTATION: &str = "mutation ProductAdminCreateVariant($idempotencyKey: String!, $productId: UUID!, $input: CreateVariantInput!) { createProductVariant(idempotencyKey: $idempotencyKey, productId: $productId, input: $input) { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } }";
-const UPDATE_VARIANT_MUTATION: &str = "mutation ProductAdminUpdateVariant($idempotencyKey: String!, $id: UUID!, $input: UpdateVariantInput!) { updateProductVariant(idempotencyKey: $idempotencyKey, id: $id, input: $input) { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } }";
+const CREATE_VARIANT_MUTATION: &str = "mutation ProductAdminCreateVariant($idempotencyKey: String!, $productId: UUID!, $input: CreateVariantInput!) { createProductVariant(idempotencyKey: $idempotencyKey, productId: $productId, input: $input) { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } }";
+const UPDATE_VARIANT_MUTATION: &str = "mutation ProductAdminUpdateVariant($idempotencyKey: String!, $id: UUID!, $input: UpdateVariantInput!) { updateProductVariant(idempotencyKey: $idempotencyKey, id: $id, input: $input) { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } }";
 const DELETE_VARIANT_MUTATION: &str = "mutation ProductAdminDeleteVariant($idempotencyKey: String!, $id: UUID!) { deleteProductVariant(idempotencyKey: $idempotencyKey, id: $id) }";
 const ADD_PRODUCT_IMAGE_MUTATION: &str = "mutation ProductAdminAddImage($idempotencyKey: String!, $productId: UUID!, $input: AddProductImageInput!) { addProductImage(idempotencyKey: $idempotencyKey, productId: $productId, input: $input) { id mediaId url altText position } }";
 const UPDATE_PRODUCT_IMAGE_MUTATION: &str = "mutation ProductAdminUpdateImage($idempotencyKey: String!, $productId: UUID!, $id: UUID!, $input: UpdateProductImageInput!) { updateProductImage(idempotencyKey: $idempotencyKey, productId: $productId, id: $id, input: $input) { id mediaId url altText position } }";
@@ -168,14 +168,30 @@ struct ReorderProductImagesVariables {
 }
 
 #[derive(Debug, Serialize)]
+struct VariantAxisValueInput {
+    #[serde(rename = "attributeId")]
+    attribute_id: String,
+    #[serde(rename = "optionId")]
+    option_id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct VariantAxisInput {
+    #[serde(rename = "attributeId")]
+    attribute_id: String,
+    position: Option<i32>,
+    #[serde(rename = "allowedOptionIds", skip_serializing_if = "Option::is_none")]
+    allowed_option_ids: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize)]
 struct UpdateVariantInput {
     sku: Option<String>,
     barcode: Option<String>,
     #[serde(rename = "shippingProfileSlug")]
     shipping_profile_slug: Option<String>,
-    option1: Option<String>,
-    option2: Option<String>,
-    option3: Option<String>,
+    #[serde(rename = "axisValues", skip_serializing_if = "Option::is_none")]
+    axis_values: Option<Vec<VariantAxisValueInput>>,
     prices: Option<Vec<PriceInput>>,
     #[serde(rename = "inventoryQuantity")]
     inventory_quantity: Option<i32>,
@@ -204,7 +220,8 @@ struct UpdateProductImageInput {
 #[derive(Debug, Serialize)]
 struct CreateProductInput {
     translations: Vec<ProductTranslationInput>,
-    options: Vec<ProductOptionInput>,
+    #[serde(rename = "variantAxes", skip_serializing_if = "Option::is_none")]
+    variant_axes: Option<Vec<VariantAxisInput>>,
     variants: Vec<CreateVariantInput>,
     #[serde(rename = "sellerId")]
     seller_id: Option<String>,
@@ -246,26 +263,13 @@ struct ProductTranslationInput {
 }
 
 #[derive(Debug, Serialize)]
-struct ProductOptionInput {
-    translations: Vec<ProductOptionTranslationInput>,
-}
-
-#[derive(Debug, Serialize)]
-struct ProductOptionTranslationInput {
-    locale: String,
-    name: String,
-    values: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
 struct CreateVariantInput {
     sku: Option<String>,
     barcode: Option<String>,
     #[serde(rename = "shippingProfileSlug")]
     shipping_profile_slug: Option<String>,
-    option1: Option<String>,
-    option2: Option<String>,
-    option3: Option<String>,
+    #[serde(rename = "axisValues", skip_serializing_if = "Option::is_none")]
+    axis_values: Option<Vec<VariantAxisValueInput>>,
     prices: Vec<PriceInput>,
     #[serde(rename = "inventoryQuantity")]
     inventory_quantity: Option<i32>,
@@ -605,9 +609,20 @@ pub(crate) async fn create_product_variant(
         sku: draft.sku.as_deref().and_then(optional_text),
         barcode: draft.barcode.as_deref().and_then(optional_text),
         shipping_profile_slug: draft.shipping_profile_slug.as_deref().and_then(optional_text),
-        option1: draft.option1.as_deref().and_then(optional_text),
-        option2: draft.option2.as_deref().and_then(optional_text),
-        option3: draft.option3.as_deref().and_then(optional_text),
+        axis_values: if draft.axis_values.is_empty() {
+            None
+        } else {
+            Some(
+                draft
+                    .axis_values
+                    .into_iter()
+                    .map(|av| VariantAxisValueInput {
+                        attribute_id: av.attribute_id,
+                        option_id: av.option_id,
+                    })
+                    .collect(),
+            )
+        },
         prices: draft
             .prices
             .into_iter()
@@ -674,9 +689,20 @@ pub(crate) async fn update_product_variant(
         sku: draft.sku.as_deref().and_then(optional_text),
         barcode: draft.barcode.as_deref().and_then(optional_text),
         shipping_profile_slug: draft.shipping_profile_slug.as_deref().and_then(optional_text),
-        option1: draft.option1.as_deref().and_then(optional_text),
-        option2: draft.option2.as_deref().and_then(optional_text),
-        option3: draft.option3.as_deref().and_then(optional_text),
+        axis_values: if draft.axis_values.is_empty() {
+            None
+        } else {
+            Some(
+                draft
+                    .axis_values
+                    .into_iter()
+                    .map(|av| VariantAxisValueInput {
+                        attribute_id: av.attribute_id,
+                        option_id: av.option_id,
+                    })
+                    .collect(),
+            )
+        },
         prices,
         inventory_quantity: draft.inventory_quantity,
         inventory_policy: draft.inventory_policy.as_deref().and_then(optional_text),
@@ -883,14 +909,12 @@ pub(crate) async fn reorder_product_images(
 fn build_create_product_input(draft: ProductDraft) -> CreateProductInput {
     CreateProductInput {
         translations: vec![build_translation_input(&draft)],
-        options: Vec::new(),
+        variant_axes: None,
         variants: vec![CreateVariantInput {
             sku: optional_text(draft.sku.as_str()),
             barcode: optional_text(draft.barcode.as_str()),
             shipping_profile_slug: None,
-            option1: None,
-            option2: None,
-            option3: None,
+            axis_values: None,
             prices: vec![PriceInput {
                 currency_code: if draft.currency_code.trim().is_empty() {
                     "USD".to_string()

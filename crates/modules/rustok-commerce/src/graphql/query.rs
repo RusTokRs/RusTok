@@ -1854,6 +1854,8 @@ impl CommerceQuery {
                 is_disabled: attribute.is_disabled,
                 position: attribute.position,
                 source: effective_attribute_source_name(attribute.source).to_string(),
+                variant_axis_policy: attribute.variant_axis_policy.as_str().to_string(),
+                default_variant_axis: attribute.default_variant_axis,
             })
             .collect();
 

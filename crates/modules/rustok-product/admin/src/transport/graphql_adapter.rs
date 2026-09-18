@@ -18,16 +18,16 @@ pub type ApiError = GraphqlHttpError;
 const BOOTSTRAP_QUERY: &str =
     "query ProductAdminBootstrap { currentTenant { id slug name } me { id email name } }";
 const PRODUCTS_QUERY: &str = "query ProductAdminProducts($tenantId: UUID!, $locale: String, $filter: ProductsFilter) { products(tenantId: $tenantId, locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle sellerId vendor productType shippingProfileSlug tags createdAt publishedAt } } }";
-const PRODUCT_QUERY: &str = "query ProductAdminProduct($tenantId: UUID!, $id: UUID!, $locale: String) { product(tenantId: $tenantId, id: $id, locale: $locale) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } } }";
+const PRODUCT_QUERY: &str = "query ProductAdminProduct($tenantId: UUID!, $id: UUID!, $locale: String) { product(tenantId: $tenantId, id: $id, locale: $locale) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } } }";
 const PRODUCT_PRICING_QUERY: &str = "query ProductAdminPricingProduct($tenantId: UUID!, $id: UUID!, $locale: String, $currencyCode: String, $quantity: Int) { adminPricingProduct(tenantId: $tenantId, id: $id, locale: $locale, currencyCode: $currencyCode, quantity: $quantity) { variants { id prices { currencyCode amount compareAtAmount discountPercent onSale } effectivePrice { currencyCode amount compareAtAmount discountPercent onSale priceListId channelId channelSlug } } } }";
 const SHIPPING_PROFILES_QUERY: &str = "query ProductAdminShippingProfiles($tenantId: UUID!, $filter: ShippingProfilesFilter) { shippingProfiles(tenantId: $tenantId, filter: $filter) { total page perPage hasNext items { id tenantId slug name description active metadata createdAt updatedAt } } }";
 const PRODUCT_ATTRIBUTES_QUERY: &str = "query ProductAdminAttributes($tenantId: UUID!, $locale: String!) { productAttributes(tenantId: $tenantId, locale: $locale) { total items { id code valueType isLocalized isFilterable isSearchable isSortable showOnStorefront label } } }";
 const CATALOG_CATEGORIES_QUERY: &str = "query ProductAdminCatalogCategories($tenantId: UUID!, $locale: String!) { catalogCategories(tenantId: $tenantId, locale: $locale) { total items { id parentId code slug path kind name } } }";
 const ATTRIBUTE_SCHEMAS_QUERY: &str = "query ProductAdminAttributeSchemas($tenantId: UUID!, $locale: String!) { productAttributeSchemas(tenantId: $tenantId, locale: $locale) { total items { id code name } } }";
-const EFFECTIVE_FORM_QUERY: &str = "query ProductAdminEffectiveForm($tenantId: UUID!, $productId: UUID, $categoryId: UUID, $locale: String!) { productEffectiveForm(tenantId: $tenantId, productId: $productId, categoryId: $categoryId, locale: $locale) { categoryId detachedAttributeIds attributes { attributeId code label valueType isLocalized options { id code label position } groupCode groupLabel isRequired isDisabled position source } } }";
+const EFFECTIVE_FORM_QUERY: &str = "query ProductAdminEffectiveForm($tenantId: UUID!, $productId: UUID, $categoryId: UUID, $locale: String!) { productEffectiveForm(tenantId: $tenantId, productId: $productId, categoryId: $categoryId, locale: $locale) { categoryId detachedAttributeIds attributes { attributeId code label valueType isLocalized options { id code label position } groupCode groupLabel isRequired isDisabled position source variantAxisPolicy defaultVariantAxis } } }";
 const ATTRIBUTE_VALUES_QUERY: &str = "query ProductAdminAttributeValues($tenantId: UUID!, $productId: UUID!, $locale: String!) { productAttributeValues(tenantId: $tenantId, productId: $productId, locale: $locale) { attributeId kind text integer decimal boolean date datetime optionId optionIds json detached } }";
-const CREATE_PRODUCT_MUTATION: &str = "mutation ProductAdminCreateProduct($input: CreateProductInput!) { createProduct(input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } } }";
-const UPDATE_PRODUCT_MUTATION: &str = "mutation ProductAdminUpdateProduct($id: UUID!, $input: UpdateProductInput!) { updateProduct(id: $id, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } } }";
+const CREATE_PRODUCT_MUTATION: &str = "mutation ProductAdminCreateProduct($input: CreateProductInput!) { createProduct(input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } } }";
+const UPDATE_PRODUCT_MUTATION: &str = "mutation ProductAdminUpdateProduct($id: UUID!, $input: UpdateProductInput!) { updateProduct(id: $id, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } } }";
 const DELETE_PRODUCT_MUTATION: &str =
     "mutation ProductAdminDeleteProduct($id: UUID!) { deleteProduct(id: $id) }";
 const CREATE_PRODUCT_ATTRIBUTE_MUTATION: &str = "mutation ProductAdminCreateAttribute($locale: String!, $input: CreateProductAttributeInput!) { createProductAttribute(locale: $locale, input: $input) }";
@@ -284,7 +284,8 @@ struct ShippingProfilesFilter {
 #[derive(Debug, Serialize)]
 struct CreateProductInput {
     translations: Vec<ProductTranslationInput>,
-    options: Vec<ProductOptionInput>,
+    #[serde(rename = "variantAxes", skip_serializing_if = "Option::is_none")]
+    variant_axes: Option<Vec<VariantAxisInput>>,
     variants: Vec<CreateVariantInput>,
     #[serde(rename = "sellerId")]
     seller_id: Option<String>,
@@ -326,15 +327,20 @@ struct ProductTranslationInput {
 }
 
 #[derive(Debug, Serialize)]
-struct ProductOptionInput {
-    translations: Vec<ProductOptionTranslationInput>,
+struct VariantAxisInput {
+    #[serde(rename = "attributeId")]
+    attribute_id: String,
+    position: Option<i32>,
+    #[serde(rename = "allowedOptionIds", skip_serializing_if = "Option::is_none")]
+    allowed_option_ids: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]
-struct ProductOptionTranslationInput {
-    locale: String,
-    name: String,
-    values: Vec<String>,
+struct VariantAxisValueInput {
+    #[serde(rename = "attributeId")]
+    attribute_id: String,
+    #[serde(rename = "optionId")]
+    option_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -343,9 +349,8 @@ struct CreateVariantInput {
     barcode: Option<String>,
     #[serde(rename = "shippingProfileSlug")]
     shipping_profile_slug: Option<String>,
-    option1: Option<String>,
-    option2: Option<String>,
-    option3: Option<String>,
+    #[serde(rename = "axisValues", skip_serializing_if = "Option::is_none")]
+    axis_values: Option<Vec<VariantAxisValueInput>>,
     prices: Vec<PriceInput>,
     #[serde(rename = "inventoryQuantity")]
     inventory_quantity: Option<i32>,
@@ -988,14 +993,12 @@ pub(super) async fn delete_product(
 fn build_create_product_input(draft: ProductDraft) -> CreateProductInput {
     CreateProductInput {
         translations: vec![build_translation_input(&draft)],
-        options: Vec::new(),
+        variant_axes: None,
         variants: vec![CreateVariantInput {
             sku: optional_text(draft.sku.as_str()),
             barcode: optional_text(draft.barcode.as_str()),
             shipping_profile_slug: None,
-            option1: None,
-            option2: None,
-            option3: None,
+            axis_values: None,
             prices: vec![PriceInput {
                 currency_code: if draft.currency_code.trim().is_empty() {
                     "USD".to_string()

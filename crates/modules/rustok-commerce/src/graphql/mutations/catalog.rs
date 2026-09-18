@@ -306,6 +306,49 @@ impl CommerceCatalogMutation {
         Ok(product.into())
     }
 
+    async fn set_product_variant_axes(
+        &self,
+        ctx: &Context<'_>,
+        idempotency_key: String,
+        product_id: Uuid,
+        input: SetVariantAxesInputObject,
+    ) -> Result<Vec<GqlVariantAxisConfig>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+
+        let axes = input
+            .axes
+            .into_iter()
+            .map(|axis| rustok_product::dto::VariantAxisInput {
+                attribute_id: axis.attribute_id,
+                position: axis.position.unwrap_or(0),
+                allowed_option_ids: axis.allowed_option_ids.unwrap_or_default(),
+            })
+            .collect();
+        let domain_input = rustok_product::dto::SetVariantAxesInput { axes };
+        let port_context = product_command_context(
+            ctx,
+            (tenant_id, user_id),
+            Some(product_id),
+            idempotency_key,
+            "set_product_variant_axes",
+        )?;
+        let axes = product_command_runtime(ctx)?
+            .command_port()
+            .set_variant_axes(port_context.clone(), product_id, domain_input)
+            .await
+            .map_err(|error| {
+                product_command_port_error(&port_context, error, "set_product_variant_axes")
+            })?;
+
+        Ok(axes.into_iter().map(Into::into).collect())
+    }
+
     async fn publish_product(
         &self,
         ctx: &Context<'_>,

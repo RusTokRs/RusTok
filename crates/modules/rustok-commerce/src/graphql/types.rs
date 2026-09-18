@@ -52,7 +52,7 @@ pub struct GqlProduct {
     pub updated_at: String,
     pub published_at: Option<String>,
     pub translations: Vec<GqlProductTranslation>,
-    pub options: Vec<GqlProductOption>,
+    pub variant_axes: Vec<GqlVariantAxisConfig>,
     pub variants: Vec<GqlVariant>,
     pub images: Vec<GqlProductImage>,
 }
@@ -68,11 +68,28 @@ pub struct GqlProductTranslation {
 }
 
 #[derive(SimpleObject)]
-pub struct GqlProductOption {
+pub struct GqlVariantAxisConfig {
     pub id: Uuid,
+    pub attribute_id: Uuid,
+    pub code: String,
     pub name: String,
-    pub values: Vec<String>,
     pub position: i32,
+    pub allowed_values: Vec<GqlAxisAllowedValue>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlAxisAllowedValue {
+    pub option_id: Uuid,
+    pub value: String,
+    pub position: i32,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlVariantAxisValue {
+    pub attribute_id: Uuid,
+    pub option_id: Uuid,
+    pub code: Option<String>,
+    pub label: Option<String>,
 }
 
 /// Catalog variant snapshot returned by the generic product roots.
@@ -83,9 +100,8 @@ pub struct GqlVariant {
     pub barcode: Option<String>,
     pub shipping_profile_slug: Option<String>,
     pub title: String,
-    pub option1: Option<String>,
-    pub option2: Option<String>,
-    pub option3: Option<String>,
+    pub combination_identity: Option<String>,
+    pub axis_values: Vec<GqlVariantAxisValue>,
     /// Catalog-side compatibility price snapshot.
     ///
     /// This field is kept for catalog/product consumers and legacy fallbacks, but
@@ -230,6 +246,8 @@ pub struct GqlProductEffectiveFormAttribute {
     pub is_disabled: bool,
     pub position: i32,
     pub source: String,
+    pub variant_axis_policy: String,
+    pub default_variant_axis: bool,
 }
 
 #[derive(SimpleObject)]
@@ -444,9 +462,7 @@ pub struct GqlPricingVariant {
     pub barcode: Option<String>,
     pub shipping_profile_slug: Option<String>,
     pub title: String,
-    pub option1: Option<String>,
-    pub option2: Option<String>,
-    pub option3: Option<String>,
+    pub combination_identity: Option<String>,
     pub prices: Vec<GqlPricingPrice>,
     pub effective_price: Option<GqlPricingEffectivePrice>,
 }
@@ -921,7 +937,7 @@ pub struct GqlFulfillmentList {
 #[derive(InputObject)]
 pub struct CreateProductInput {
     pub translations: Vec<ProductTranslationInput>,
-    pub options: Option<Vec<ProductOptionInput>>,
+    pub variant_axes: Option<Vec<VariantAxisInputObject>>,
     pub variants: Vec<CreateVariantInput>,
     pub seller_id: Option<String>,
     pub vendor: Option<String>,
@@ -1057,15 +1073,21 @@ pub struct ProductAttributeValuePatchInput {
 }
 
 #[derive(InputObject)]
-pub struct ProductOptionInput {
-    pub translations: Vec<ProductOptionTranslationInput>,
+pub struct VariantAxisInputObject {
+    pub attribute_id: Uuid,
+    pub position: Option<i32>,
+    pub allowed_option_ids: Option<Vec<Uuid>>,
 }
 
 #[derive(InputObject)]
-pub struct ProductOptionTranslationInput {
-    pub locale: String,
-    pub name: String,
-    pub values: Vec<String>,
+pub struct VariantAxisValueInputObject {
+    pub attribute_id: Uuid,
+    pub option_id: Uuid,
+}
+
+#[derive(InputObject)]
+pub struct SetVariantAxesInputObject {
+    pub axes: Vec<VariantAxisInputObject>,
 }
 
 #[derive(InputObject)]
@@ -1073,9 +1095,7 @@ pub struct CreateVariantInput {
     pub sku: Option<String>,
     pub barcode: Option<String>,
     pub shipping_profile_slug: Option<String>,
-    pub option1: Option<String>,
-    pub option2: Option<String>,
-    pub option3: Option<String>,
+    pub axis_values: Option<Vec<VariantAxisValueInputObject>>,
     pub prices: Vec<PriceInput>,
     pub inventory_quantity: Option<i32>,
     pub inventory_policy: Option<String>,
@@ -1109,9 +1129,7 @@ pub struct UpdateVariantInput {
     pub sku: Option<String>,
     pub barcode: Option<String>,
     pub shipping_profile_slug: Option<String>,
-    pub option1: Option<String>,
-    pub option2: Option<String>,
-    pub option3: Option<String>,
+    pub axis_values: Option<Vec<VariantAxisValueInputObject>>,
     pub prices: Option<Vec<PriceInput>>,
     pub inventory_quantity: Option<i32>,
     pub inventory_policy: Option<String>,
@@ -1672,10 +1690,10 @@ impl From<dto::ProductResponse> for GqlProduct {
                 .into_iter()
                 .map(GqlProductTranslation::from)
                 .collect(),
-            options: product
-                .options
+            variant_axes: product
+                .variant_axes
                 .into_iter()
-                .map(GqlProductOption::from)
+                .map(GqlVariantAxisConfig::from)
                 .collect(),
             variants: product.variants.into_iter().map(GqlVariant::from).collect(),
             images: product
@@ -1700,13 +1718,40 @@ impl From<dto::ProductTranslationResponse> for GqlProductTranslation {
     }
 }
 
-impl From<dto::ProductOptionResponse> for GqlProductOption {
-    fn from(option: dto::ProductOptionResponse) -> Self {
+impl From<dto::VariantAxisConfigResponse> for GqlVariantAxisConfig {
+    fn from(axis: dto::VariantAxisConfigResponse) -> Self {
         Self {
-            id: option.id,
-            name: option.name,
-            values: option.values,
-            position: option.position,
+            id: axis.id,
+            attribute_id: axis.attribute_id,
+            code: axis.code,
+            name: axis.name,
+            position: axis.position,
+            allowed_values: axis
+                .allowed_values
+                .into_iter()
+                .map(GqlAxisAllowedValue::from)
+                .collect(),
+        }
+    }
+}
+
+impl From<dto::AxisAllowedValueResponse> for GqlAxisAllowedValue {
+    fn from(val: dto::AxisAllowedValueResponse) -> Self {
+        Self {
+            option_id: val.option_id,
+            value: val.value,
+            position: val.position,
+        }
+    }
+}
+
+impl From<dto::VariantAxisValueResponse> for GqlVariantAxisValue {
+    fn from(val: dto::VariantAxisValueResponse) -> Self {
+        Self {
+            attribute_id: val.attribute_id,
+            option_id: val.option_id,
+            code: val.code,
+            label: val.label,
         }
     }
 }
@@ -1822,9 +1867,12 @@ impl From<dto::VariantResponse> for GqlVariant {
             barcode: variant.barcode,
             shipping_profile_slug: variant.shipping_profile_slug,
             title: variant.title,
-            option1: variant.option1,
-            option2: variant.option2,
-            option3: variant.option3,
+            combination_identity: variant.combination_identity,
+            axis_values: variant
+                .axis_values
+                .into_iter()
+                .map(GqlVariantAxisValue::from)
+                .collect(),
             prices: variant.prices.into_iter().map(GqlPrice::from).collect(),
             inventory_quantity: variant.inventory_quantity,
             inventory_policy: variant.inventory_policy,
@@ -2122,9 +2170,7 @@ impl From<rustok_pricing::AdminPricingVariant> for GqlPricingVariant {
             barcode: value.barcode,
             shipping_profile_slug: value.shipping_profile_slug,
             title: value.title,
-            option1: value.option1,
-            option2: value.option2,
-            option3: value.option3,
+            combination_identity: value.combination_identity,
             prices: value.prices.into_iter().map(Into::into).collect(),
             effective_price: None,
         }
@@ -2139,9 +2185,7 @@ impl From<rustok_pricing::StorefrontPricingVariant> for GqlPricingVariant {
             barcode: None,
             shipping_profile_slug: None,
             title: value.title,
-            option1: None,
-            option2: None,
-            option3: None,
+            combination_identity: None,
             prices: value.prices.into_iter().map(Into::into).collect(),
             effective_price: None,
         }

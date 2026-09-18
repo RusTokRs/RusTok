@@ -52,8 +52,6 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(has_many = "super::product_variant::Entity")]
     Variants,
-    #[sea_orm(has_many = "super::product_option::Entity")]
-    Options,
     #[sea_orm(has_many = "super::product_image::Entity")]
     Images,
 }
@@ -61,12 +59,6 @@ pub enum Relation {
 impl Related<super::product_variant::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Variants.def()
-    }
-}
-
-impl Related<super::product_option::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Options.def()
     }
 }
 

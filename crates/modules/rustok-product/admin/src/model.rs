@@ -75,7 +75,8 @@ pub struct ProductDetail {
     #[serde(rename = "publishedAt")]
     pub published_at: Option<String>,
     pub translations: Vec<ProductTranslation>,
-    pub options: Vec<ProductOption>,
+    #[serde(rename = "variantAxes", default)]
+    pub variant_axes: Vec<VariantAxisConfig>,
     pub variants: Vec<ProductVariant>,
     #[serde(default)]
     pub images: Vec<ProductImage>,
@@ -141,11 +142,33 @@ pub struct ProductTranslation {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ProductOption {
+pub struct VariantAxisConfig {
     pub id: String,
+    #[serde(rename = "attributeId")]
+    pub attribute_id: String,
+    pub code: String,
     pub name: String,
-    pub values: Vec<String>,
     pub position: i32,
+    #[serde(rename = "allowedValues", default)]
+    pub allowed_values: Vec<AxisAllowedValue>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct AxisAllowedValue {
+    #[serde(rename = "optionId")]
+    pub option_id: String,
+    pub value: String,
+    pub position: i32,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct VariantAxisValue {
+    #[serde(rename = "attributeId")]
+    pub attribute_id: String,
+    #[serde(rename = "optionId")]
+    pub option_id: String,
+    pub code: Option<String>,
+    pub label: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -156,9 +179,10 @@ pub struct ProductVariant {
     #[serde(rename = "shippingProfileSlug")]
     pub shipping_profile_slug: Option<String>,
     pub title: String,
-    pub option1: Option<String>,
-    pub option2: Option<String>,
-    pub option3: Option<String>,
+    #[serde(rename = "combinationIdentity")]
+    pub combination_identity: Option<String>,
+    #[serde(rename = "axisValues", default)]
+    pub axis_values: Vec<VariantAxisValue>,
     pub prices: Vec<ProductPrice>,
     #[serde(rename = "inventoryQuantity")]
     pub inventory_quantity: i32,
@@ -191,14 +215,35 @@ pub struct ProductImage {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct VariantAxisValueDraft {
+    #[serde(rename = "attributeId")]
+    pub attribute_id: String,
+    #[serde(rename = "optionId")]
+    pub option_id: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct VariantAxisDraft {
+    #[serde(rename = "attributeId")]
+    pub attribute_id: String,
+    pub position: Option<i32>,
+    #[serde(rename = "allowedOptionIds", default)]
+    pub allowed_option_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct SetVariantAxesDraft {
+    pub axes: Vec<VariantAxisDraft>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct VariantDraft {
     pub sku: Option<String>,
     pub barcode: Option<String>,
     #[serde(rename = "shippingProfileSlug")]
     pub shipping_profile_slug: Option<String>,
-    pub option1: Option<String>,
-    pub option2: Option<String>,
-    pub option3: Option<String>,
+    #[serde(rename = "axisValues", default)]
+    pub axis_values: Vec<VariantAxisValueDraft>,
     pub prices: Vec<VariantPriceDraft>,
     #[serde(rename = "inventoryQuantity")]
     pub inventory_quantity: Option<i32>,
@@ -378,6 +423,14 @@ pub struct ProductEffectiveFormAttribute {
     pub is_disabled: bool,
     pub position: i32,
     pub source: String,
+    #[serde(rename = "variantAxisPolicy", default = "default_variant_axis_policy")]
+    pub variant_axis_policy: String,
+    #[serde(rename = "defaultVariantAxis", default)]
+    pub default_variant_axis: bool,
+}
+
+fn default_variant_axis_policy() -> String {
+    "forbidden".to_string()
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
