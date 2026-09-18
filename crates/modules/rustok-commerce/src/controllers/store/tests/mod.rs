@@ -94,6 +94,7 @@ fn sample_request_context(locale: &str) -> RequestContext {
     RequestContext {
         tenant_id: Uuid::new_v4(),
         user_id: None,
+        correlation_id: "test-correlation-id".to_string(),
         channel_id: None,
         channel_slug: None,
         channel_resolution_source: None,
@@ -200,14 +201,12 @@ pub(crate) fn storefront_product_input() -> CreateProductInput {
                 meta_description: None,
             },
         ],
-        options: vec![],
+        variant_axes: vec![],
         variants: vec![CreateVariantInput {
             sku: Some("STOREFRONT-SKU-1".to_string()),
             barcode: None,
             shipping_profile_slug: None,
-            option1: Some("Default".to_string()),
-            option2: None,
-            option3: None,
+            axis_values: vec![],
             prices: vec![PriceInput {
                 currency_code: "EUR".to_string(),
                 channel_id: None,

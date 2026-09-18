@@ -604,6 +604,8 @@ mod tests {
             visibility_overrides: AttributeVisibilityOverrides::default(),
             validation_overrides: Value::Object(Default::default()),
             source: EffectiveAttributeSource::Schema,
+            variant_axis_policy: "forbidden".to_string(),
+            default_variant_axis: false,
         }
     }
 
@@ -647,6 +649,8 @@ mod tests {
                 ..Default::default()
             },
             validation_overrides: Value::Object(Default::default()),
+            variant_axis_policy: None,
+            default_variant_axis: None,
         });
 
         let categories = HashMap::from([(parent_id, parent), (child_id, child)]);
@@ -699,6 +703,8 @@ mod tests {
             position: None,
             visibility_overrides: AttributeVisibilityOverrides::default(),
             validation_overrides: Value::Object(Default::default()),
+            variant_axis_policy: None,
+            default_variant_axis: None,
         });
 
         let categories = HashMap::from([(parent_id, parent), (child_id, child)]);
@@ -735,6 +741,8 @@ mod tests {
             position: Some(2),
             visibility_overrides: AttributeVisibilityOverrides::default(),
             validation_overrides: Value::Object(Default::default()),
+            variant_axis_policy: None,
+            default_variant_axis: None,
         });
 
         let categories = HashMap::from([(clone_id, clone)]);

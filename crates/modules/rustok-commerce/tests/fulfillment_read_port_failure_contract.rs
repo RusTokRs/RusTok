@@ -141,6 +141,7 @@ fn request_context(tenant_id: Uuid) -> RequestContext {
     RequestContext {
         tenant_id,
         user_id: None,
+        correlation_id: "test-correlation-id".to_string(),
         channel_id: None,
         channel_slug: None,
         channel_resolution_source: None,

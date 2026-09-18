@@ -25,9 +25,9 @@ use rustok_payment::entities::{
 };
 use rustok_pricing::entities::{price, price_list, price_list_translation};
 use rustok_product::entities::{
-    product, product_image, product_image_translation, product_option, product_option_translation,
-    product_option_value, product_option_value_translation, product_tag, product_translation,
-    product_variant, variant_translation,
+    product, product_attribute_group, product_image, product_image_translation, product_tag,
+    product_translation, product_variant, product_variant_axis, product_variant_axis_value,
+    variant_translation,
 };
 use rustok_region::entities::{region, region_country_tax_policy, region_translation};
 use rustok_taxonomy::entities::{
@@ -97,25 +97,19 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     create_entity_table(
         db,
         &builder,
-        schema.create_table_from_entity(product_option::Entity),
+        schema.create_table_from_entity(product_variant_axis::Entity),
     )
     .await;
     create_entity_table(
         db,
         &builder,
-        schema.create_table_from_entity(product_option_translation::Entity),
+        schema.create_table_from_entity(product_variant_axis_value::Entity),
     )
     .await;
     create_entity_table(
         db,
         &builder,
-        schema.create_table_from_entity(product_option_value::Entity),
-    )
-    .await;
-    create_entity_table(
-        db,
-        &builder,
-        schema.create_table_from_entity(product_option_value_translation::Entity),
+        schema.create_table_from_entity(product_attribute_group::Entity),
     )
     .await;
     create_entity_table(

@@ -93,6 +93,8 @@ async fn create_product_and_variant(catalog: &CatalogService, tenant_id: Uuid) -
                     handle: Some(unique_slug("reserved-product")),
                     meta_title: None,
                     meta_description: None,
+                }],
+                variant_axes: vec![],
                 variants: vec![CreateVariantInput {
                     sku: Some(format!("RESERVE-{}", Uuid::new_v4())),
                     barcode: None,

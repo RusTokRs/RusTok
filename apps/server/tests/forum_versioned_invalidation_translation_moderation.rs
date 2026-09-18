@@ -1245,6 +1245,7 @@ async fn assert_storefront_exact(
             request_context: Some(RequestContext {
                 tenant_id: fixture.tenant_id,
                 user_id: None,
+                correlation_id: "test-correlation-id".to_string(),
                 channel_id: None,
                 channel_slug: None,
                 channel_resolution_source: None,

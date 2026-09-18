@@ -48,6 +48,7 @@ fn create_product_input(handle: &str, title: &str, sku: &str) -> CreateProductIn
             meta_title: None,
             meta_description: None,
         }],
+        variant_axes: vec![],
         variants: vec![CreateVariantInput {
             sku: Some(sku.to_string()),
             barcode: None,

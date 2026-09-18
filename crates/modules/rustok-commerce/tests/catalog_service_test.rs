@@ -65,7 +65,7 @@ fn create_test_product_input() -> CreateProductInput {
             meta_title: None,
             meta_description: None,
         }],
-        options: vec![],
+        variant_axes: vec![],
         variants: vec![CreateVariantInput {
             sku: Some(format!(
                 "SKU-{}",
@@ -73,9 +73,7 @@ fn create_test_product_input() -> CreateProductInput {
             )),
             barcode: None,
             shipping_profile_slug: None,
-            option1: Some("Default".to_string()),
-            option2: None,
-            option3: None,
+            axis_values: vec![],
             prices: vec![PriceInput {
                 currency_code: "USD".to_string(),
                 channel_id: None,
@@ -581,7 +579,7 @@ async fn test_create_product_with_multiple_translations() {
 // =============================================================================
 
 #[tokio::test]
-async fn test_create_product_populates_option_and_variant_translation_groups() {
+async fn test_create_product_populates_variant_translation_groups() {
     let (_db, service) = setup().await;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -589,47 +587,22 @@ async fn test_create_product_populates_option_and_variant_translation_groups() {
     let mut input = create_test_product_input();
     input.translations.push(ProductTranslationInput {
         locale: "ru".to_string(),
-        title: "Р СћР ВµРЎРѓРЎвЂљР С•Р Р†РЎвЂ№Р в„– Р С—РЎР‚Р С•Р Т‘РЎС“Р С”РЎвЂљ".to_string(),
+        title: "Тестовый продукт".to_string(),
         description: Some(
-            "Р В РЎС“РЎРѓРЎРѓР С”Р В°РЎРЏ Р В»Р С•Р С”Р В°Р В»Р С‘Р В·Р В°РЎвЂ Р С‘РЎРЏ"
+            "Русская локализация"
                 .to_string(),
         ),
         handle: Some(unique_slug("test-product-ru")),
         meta_title: None,
         meta_description: None,
     });
-    input.options = vec![rustok_product::dto::ProductOptionInput {
-        translations: vec![rustok_product::dto::ProductOptionTranslationInput {
-            locale: "en".to_string(),
-            name: "Size".to_string(),
-            values: vec!["S".to_string(), "M".to_string()],
-        }],
-    }];
 
     let product = service
         .create_product(tenant_id, actor_id, input)
         .await
         .expect("product with translation groups should be created");
 
-    assert_eq!(product.options.len(), 1);
-    assert_eq!(product.options[0].translations.len(), 2);
-    assert!(
-        product.options[0]
-            .translations
-            .iter()
-            .any(|item| item.locale == "en"
-                && item.name == "Size"
-                && item.values == vec!["S", "M"])
-    );
-    assert!(
-        product.options[0]
-            .translations
-            .iter()
-            .any(|item| item.locale == "ru"
-                && item.name == "Size"
-                && item.values == vec!["S", "M"])
-    );
-
+    assert_eq!(product.translations.len(), 2);
     assert_eq!(product.variants.len(), 1);
     assert_eq!(product.variants[0].translations.len(), 2);
     assert!(
@@ -729,9 +702,7 @@ async fn test_create_product_with_multiple_variants() {
         )),
         barcode: None,
         shipping_profile_slug: None,
-        option1: Some("Small".to_string()),
-        option2: None,
-        option3: None,
+        axis_values: vec![],
         prices: vec![PriceInput {
             currency_code: "USD".to_string(),
             channel_id: None,
@@ -751,9 +722,7 @@ async fn test_create_product_with_multiple_variants() {
         )),
         barcode: None,
         shipping_profile_slug: None,
-        option1: Some("Large".to_string()),
-        option2: None,
-        option3: None,
+        axis_values: vec![],
         prices: vec![PriceInput {
             currency_code: "USD".to_string(),
             channel_id: None,
@@ -773,8 +742,14 @@ async fn test_create_product_with_multiple_variants() {
     let product = result.unwrap();
     assert_eq!(product.variants.len(), 3);
 
-    let small = product.variants.iter().find(|v| v.title == "Small");
-    let large = product.variants.iter().find(|v| v.title == "Large");
+    let small = product
+        .variants
+        .iter()
+        .find(|v| v.prices.iter().any(|p| p.amount == Decimal::from_str("79.99").unwrap()));
+    let large = product
+        .variants
+        .iter()
+        .find(|v| v.prices.iter().any(|p| p.amount == Decimal::from_str("119.99").unwrap()));
 
     assert!(small.is_some());
     assert!(large.is_some());
@@ -1259,9 +1234,7 @@ async fn test_multiple_variants_different_prices() {
         )),
         barcode: None,
         shipping_profile_slug: None,
-        option1: Some("Premium".to_string()),
-        option2: None,
-        option3: None,
+        axis_values: vec![],
         prices: vec![PriceInput {
             currency_code: "USD".to_string(),
             channel_id: None,

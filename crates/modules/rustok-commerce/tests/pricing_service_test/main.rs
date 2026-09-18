@@ -59,6 +59,7 @@ pub(crate) async fn create_test_product(catalog: &CatalogService, tenant_id: Uui
             meta_title: None,
             meta_description: None,
         }],
+        variant_axes: vec![],
         variants: vec![CreateVariantInput {
             sku: Some(format!(
                 "SKU-{}",
@@ -111,6 +112,7 @@ pub(crate) async fn create_test_product_with_seller(
             meta_title: None,
             meta_description: None,
         }],
+        variant_axes: vec![],
         variants: vec![CreateVariantInput {
             sku: Some(format!(
                 "SELLER-{}",

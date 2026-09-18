@@ -755,6 +755,7 @@ async fn test_get_variant_prices_empty() {
             meta_title: None,
             meta_description: None,
         }],
+        variant_axes: vec![],
         variants: vec![CreateVariantInput {
             sku: Some(format!(
                 "SKU-{}",

@@ -411,6 +411,7 @@ async fn store_product_transport_uses_channel_visible_inventory() {
     let request_context = RequestContext {
         tenant_id,
         user_id: None,
+        correlation_id: "test-correlation-id".to_string(),
         channel_id: Some(channel.id),
         channel_slug: Some(channel.slug.clone()),
         channel_resolution_source: Some(ChannelResolutionSource::Host),

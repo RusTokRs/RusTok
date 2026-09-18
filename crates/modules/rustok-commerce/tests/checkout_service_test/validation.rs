@@ -648,14 +648,12 @@ async fn complete_checkout_allows_backorder_variant_when_channel_inventory_hidde
             meta_title: None,
             meta_description: None,
         }],
-        options: vec![],
+        variant_axes: vec![],
         variants: vec![CreateVariantInput {
             sku: Some(format!("BKORD-CHAN-{}", Uuid::new_v4())),
             barcode: None,
             shipping_profile_slug: None,
-            option1: Some("Default".to_string()),
-            option2: None,
-            option3: None,
+            axis_values: vec![],
             prices: vec![PriceInput {
                 currency_code: "USD".to_string(),
                 channel_id: None,

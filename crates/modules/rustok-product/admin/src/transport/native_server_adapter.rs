@@ -806,6 +806,8 @@ async fn product_admin_effective_form_native(
                     is_disabled: binding.is_disabled,
                     position: binding.position,
                     source: effective_attribute_source_name(binding.source).to_string(),
+                    variant_axis_policy: binding.variant_axis_policy,
+                    default_variant_axis: binding.default_variant_axis,
                 })
             })
             .collect::<Result<Vec<_>, ServerFnError>>()?;

@@ -46,6 +46,7 @@ fn create_test_product_input(tags: &[&str]) -> CreateProductInput {
             meta_title: None,
             meta_description: None,
         }],
+        variant_axes: vec![],
         variants: vec![CreateVariantInput {
             sku: Some(format!(
                 "SKU-{}",

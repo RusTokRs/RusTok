@@ -155,14 +155,12 @@ fn create_product_input() -> CreateProductInput {
                 meta_description: None,
             },
         ],
-        options: vec![],
+        variant_axes: vec![],
         variants: vec![CreateVariantInput {
             sku: Some("PARITY-SKU-1".to_string()),
             barcode: None,
             shipping_profile_slug: None,
-            option1: Some("Default".to_string()),
-            option2: None,
-            option3: None,
+            axis_values: vec![],
             prices: vec![PriceInput {
                 currency_code: "EUR".to_string(),
                 channel_id: None,
@@ -202,6 +200,7 @@ fn request_context(tenant_id: Uuid, locale: &str) -> RequestContext {
     RequestContext {
         tenant_id,
         user_id: None,
+        correlation_id: "test-correlation-id".to_string(),
         channel_id: None,
         channel_slug: None,
         channel_resolution_source: None,
@@ -218,6 +217,7 @@ fn request_context_with_channel(
     RequestContext {
         tenant_id,
         user_id: None,
+        correlation_id: "test-correlation-id".to_string(),
         channel_id: Some(channel_id),
         channel_slug: Some(channel_slug.to_string()),
         channel_resolution_source: None,
