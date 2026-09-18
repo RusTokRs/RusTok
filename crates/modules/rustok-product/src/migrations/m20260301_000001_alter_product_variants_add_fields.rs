@@ -1,4 +1,5 @@
 use sea_orm_migration::prelude::*;
+use sea_orm_migration::sea_orm::DatabaseBackend;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -60,27 +61,7 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(ProductVariants::Table)
                     .add_column_if_not_exists(
-                        ColumnDef::new(ProductVariants::Option1).string_len(255),
-                    )
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(ProductVariants::Table)
-                    .add_column_if_not_exists(
-                        ColumnDef::new(ProductVariants::Option2).string_len(255),
-                    )
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(ProductVariants::Table)
-                    .add_column_if_not_exists(
-                        ColumnDef::new(ProductVariants::Option3).string_len(255),
+                        ColumnDef::new(ProductVariants::CombinationIdentity).text(),
                     )
                     .to_owned(),
             )
@@ -109,10 +90,38 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        if manager.get_database_backend() == DatabaseBackend::Postgres {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    r#"
+                    CREATE UNIQUE INDEX IF NOT EXISTS uq_product_variants_combination
+                        ON product_variants (product_id, combination_identity)
+                        WHERE combination_identity IS NOT NULL;
+                    CREATE UNIQUE INDEX IF NOT EXISTS uq_product_variants_default
+                        ON product_variants (product_id)
+                        WHERE combination_identity IS NULL;
+                    "#,
+                )
+                .await?;
+        }
+
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        if manager.get_database_backend() == DatabaseBackend::Postgres {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    r#"
+                    DROP INDEX IF EXISTS uq_product_variants_default;
+                    DROP INDEX IF EXISTS uq_product_variants_combination;
+                    "#,
+                )
+                .await?;
+        }
+
         manager
             .alter_table(
                 Table::alter()
@@ -149,23 +158,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(ProductVariants::Table)
-                    .drop_column(ProductVariants::Option1)
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(ProductVariants::Table)
-                    .drop_column(ProductVariants::Option2)
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(ProductVariants::Table)
-                    .drop_column(ProductVariants::Option3)
+                    .drop_column(ProductVariants::CombinationIdentity)
                     .to_owned(),
             )
             .await?;
@@ -188,8 +181,6 @@ enum ProductVariants {
     InventoryManagement,
     InventoryQuantity,
     WeightUnit,
-    Option1,
-    Option2,
-    Option3,
+    CombinationIdentity,
     Position,
 }

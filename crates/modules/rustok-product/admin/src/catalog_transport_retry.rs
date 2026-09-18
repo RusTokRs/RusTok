@@ -16,10 +16,6 @@ pub(crate) use crate::legacy_transport::{
 pub(crate) use crate::product_schema_graphql::{
     clear_detached_product_attribute_values, save_product_attribute_values,
 };
-pub(crate) use crate::product_lifecycle_graphql::{
-    add_product_relation, fetch_product_relations, remove_product_relation,
-    reorder_product_relations,
-};
 
 type RetryIdentity = ProductAdminLifecycleRetryIdentity<String>;
 

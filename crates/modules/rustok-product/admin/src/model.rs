@@ -533,32 +533,3 @@ pub struct BindCategoryAttributeDraft {
     pub position: Option<i32>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct ProductRelationItem {
-    pub id: String,
-    #[serde(rename = "productId")]
-    pub product_id: String,
-    #[serde(rename = "relatedProductId")]
-    pub related_product_id: String,
-    #[serde(rename = "relationType")]
-    pub relation_type: String,
-    pub position: i32,
-    pub metadata: serde_json::Value,
-    #[serde(rename = "createdAt")]
-    pub created_at: String,
-    #[serde(rename = "updatedAt")]
-    pub updated_at: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct CreateProductRelationDraft {
-    #[serde(rename = "productId")]
-    pub product_id: String,
-    #[serde(rename = "relatedProductId")]
-    pub related_product_id: String,
-    #[serde(rename = "relationType")]
-    pub relation_type: String,
-    pub position: Option<i32>,
-    pub metadata: Option<serde_json::Value>,
-}
-

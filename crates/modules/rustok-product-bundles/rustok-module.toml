@@ -18,6 +18,8 @@ entry_type = "ProductBundlesModule"
 leptos_crate = "rustok-product-bundles-admin"
 route_segment = "bundles"
 nav_label = "Bundles"
+nav_group = "Commerce"
+nav_order = 17
 
 [provides.admin_ui.i18n]
 default_locale = "en"

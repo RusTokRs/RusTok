@@ -197,6 +197,7 @@ from complete operation safety and retention through serving cutover.
 - [ADR: Neutral Sandbox Foundation](../DECISIONS/2026-07-11-neutral-sandbox-foundation.md) — one sandbox contract for Alloy-authored Rhai, WebAssembly module artifacts and future sidecars
 - [ADR: Exact Sandbox Artifact Installation Identity](../DECISIONS/2026-07-17-sandbox-artifact-installation-identity.md) — exact owner-selected identity for dynamic artifact capability scope resolution
 - [ADR: Product Storage Integrity and Request Trust](../DECISIONS/2026-07-11-product-storage-integrity-and-request-trust.md) — PostgreSQL product storage, tenant-composite integrity, canonical primary category and request-bound product writes
+- [ADR: Unified Variant Axis Architecture](../DECISIONS/2026-09-18-unified-variant-axis-architecture.md) — single canonical attribute ontology, variant axis as contextual role, category-bound axis policy, product-level axis configuration, database-enforced combination identity, atomic axis mutation, and zero-legacy cutover of the option subsystem
 - [ADR: Shared API Contract Ownership](../DECISIONS/2026-07-01-port-contract-ownership-and-runtime-feature-boundary.md) — `Port*`, permission and locale contracts in `rustok-api`, one-way graph `rustok-core -> rustok-api` and owner-owned outbox adapter
 - [ADR: Media and Search Extraction Boundaries](../DECISIONS/2026-07-16-media-search-extraction-boundaries.md) — whole-module remote pilots with search connectors kept inside `rustok-search`
 - [Channels](./architecture/channels.md)

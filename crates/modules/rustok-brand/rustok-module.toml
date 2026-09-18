@@ -18,6 +18,8 @@ entry_type = "BrandModule"
 leptos_crate = "rustok-brand-admin"
 route_segment = "brands"
 nav_label = "Brands"
+nav_group = "Commerce"
+nav_order = 15
 
 [provides.admin_ui.i18n]
 default_locale = "en"

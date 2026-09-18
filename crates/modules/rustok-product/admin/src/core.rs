@@ -580,58 +580,6 @@ pub(crate) fn build_product_media_panel_copy(locale: Option<&str>) -> ProductMed
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ProductRelationsPanelCopy {
-    pub title: String,
-    pub subtitle: String,
-    pub tab_cross_sell: String,
-    pub tab_up_sell: String,
-    pub tab_related: String,
-    pub tab_accessory: String,
-    pub tab_alternative: String,
-    pub add: String,
-    pub target_product_id: String,
-    pub position: String,
-    pub empty: String,
-    pub remove: String,
-    pub move_up: String,
-    pub move_down: String,
-}
-
-pub(crate) fn build_product_relations_panel_copy(
-    locale: Option<&str>,
-) -> ProductRelationsPanelCopy {
-    ProductRelationsPanelCopy {
-        title: t(locale, "product.relations.title", "Product Relations"),
-        subtitle: t(
-            locale,
-            "product.relations.subtitle",
-            "Cross-sells, up-sells, accessories, and merchandising associations.",
-        ),
-        tab_cross_sell: t(locale, "product.relations.tabCrossSell", "Cross-sell"),
-        tab_up_sell: t(locale, "product.relations.tabUpSell", "Up-sell"),
-        tab_related: t(locale, "product.relations.tabRelated", "Related"),
-        tab_accessory: t(locale, "product.relations.tabAccessory", "Accessories"),
-        tab_alternative: t(locale, "product.relations.tabAlternative", "Alternatives"),
-        add: t(locale, "product.relations.add", "Add relation"),
-        target_product_id: t(
-            locale,
-            "product.relations.targetProductId",
-            "Target Product ID (UUID)",
-        ),
-        position: t(locale, "product.relations.position", "Position"),
-        empty: t(
-            locale,
-            "product.relations.empty",
-            "No relations configured for this type.",
-        ),
-        remove: t(locale, "product.relations.remove", "Remove"),
-        move_up: t(locale, "product.relations.moveUp", "Move up"),
-        move_down: t(locale, "product.relations.moveDown", "Move down"),
-    }
-}
-
-
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct ProductAttributeEditorState {
     entries: HashMap<String, ProductAttributeEditorEntry>,

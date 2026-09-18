@@ -166,7 +166,7 @@ not lint suppression.
 Rules mandatory for all automated agents operating in this repository:
 
 1. Always start by reading [`docs/index.md`](docs/index.md).
-2. **Before modifying any frontend code, read the `AI_AGENT_RULES.md` file in that frontend's root directory** (`apps/admin/AI_AGENT_RULES.md`, `apps/storefront/AI_AGENT_RULES.md`, `apps/next-admin/AI_AGENT_RULES.md`, `apps/next-frontend/AI_AGENT_RULES.md`). These files contain critical rules about internal libraries, FFA structure, i18n, and forbidden patterns.
+2. **Before modifying any frontend or client application code, read the `AI_AGENT_RULES.md` file in that application's root directory** (`apps/admin/AI_AGENT_RULES.md`, `apps/storefront/AI_AGENT_RULES.md`, `apps/next-admin/AI_AGENT_RULES.md`, `apps/next-frontend/AI_AGENT_RULES.md`, or any mobile/Flutter app under `apps/*`). These files contain critical rules about internal libraries, FFA structure, i18n, and forbidden patterns.
 3. For new modules or major module refactors, read [`docs/modules/module-authoring.md`](docs/modules/module-authoring.md) before changing code.
 4. Do not create a new document when an existing one is suitable — extend it instead.
 5. Documentation must reflect the actual state of the code.
@@ -193,3 +193,19 @@ Rules mandatory for all automated agents operating in this repository:
     - Domain-specific cross-module UI → `crates/modules/rustok-<capability>-<surface>-support/`
     - Before writing reusable code, check existing libraries in `crates/ui/leptos-*` and `crates/libs/rustok-*/`. See [Module UI Package Implementation Guide](docs/UI/module-package-implementation.md#when-to-extract-shared-libraries) for extraction decision matrix.
 18. When diagnosing a failed GitHub Actions run, first execute `powershell -ExecutionPolicy Bypass -File scripts/ci/download-failed-logs.ps1` and inspect the refreshed local `errors/` directory. Do not rely on stale logs from an earlier run.
+19. **Inspect manifests before implementing utilities, models, or UI logic:**
+    Before writing helper functions, data transformers, formatting routines, validators, or UI components, always inspect package manifests to see which dependencies and submodules are already available:
+    - **Rust crates**: inspect the target crate's `Cargo.toml` and root workspace dependencies in root `Cargo.toml` (`[workspace.dependencies]`).
+    - **Web / Next.js apps**: inspect the package's `package.json` and workspace root dependencies.
+    - **Flutter / Dart apps**: inspect `pubspec.yaml` and workspace shared packages.
+    Reuse existing internal libraries (`crates/libs/*`, `crates/ui/*`, shared packages) and approved third-party packages already present in dependencies instead of reinventing functionality, writing ad-hoc helpers, or introducing redundant dependencies.
+20. **Respect architecture boundaries and dependency constraints:**
+    Follow strict crate and layer isolation as defined in [`scripts/architecture_rules.toml`](scripts/architecture_rules.toml). Do not introduce unauthorized cross-domain crate dependencies, and never import internal segments (`entities`, `entity`, `internal`, `infrastructure`, `repository`, `adapter`) into backend application crates (`rustok-server`) or other domains unless explicitly permitted in architecture rules. Run `python scripts/architecture_dependency_guard.py` when touching cross-crate boundaries.
+21. **No `.unwrap()`, `.expect()`, or `panic!` in production code:**
+    All non-test Rust code must use idiomatic error handling (`Result<T, E>`, `?`, `thiserror`, `rustok-core::error`). Never use `.unwrap()`, `.expect()`, or `panic!` in library, domain, or server code unless an invariant is physically guaranteed and documented with an inline reason comment.
+22. **Structured observability over ad-hoc logging:**
+    Do not commit `println!`, `dbg!`, or `console.log`. Use structured logging via `tracing` (`tracing::info!`, `tracing::warn!`, `tracing::error!`, etc.) for backend and Rust code, and host-provided logging infrastructure for web and mobile clients.
+23. **Do not manually edit generated files:**
+    Never modify files containing `@generated` or `DO NOT EDIT` markers (such as GraphQL schemas/types, protobuf definitions, or generated ORM models). Always update the source schema, query, or contract, and run the designated code generation scripts under `scripts/generate/`.
+24. **Database schema and entity parity:**
+    When modifying database tables or schemas, ensure SeaORM entities and migrations are updated atomically in the same change. Adhere to the zero-legacy policy: amend unreleased migrations directly rather than creating redundant fixup migrations.

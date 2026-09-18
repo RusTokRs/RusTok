@@ -10,13 +10,14 @@ crate-type = ["rlib"]
 
 [features]
 default = []
-hydrate = ["leptos/hydrate"]
+hydrate = ["leptos/hydrate", "rustok-product-relations-admin/hydrate"]
 ssr = [
   "leptos/ssr",
   "dep:leptos_axum",
   "dep:rustok-product",
   "dep:rustok-outbox",
   "rustok-api/server",
+  "rustok-product-relations-admin/ssr",
 ]
 
 [dependencies]
@@ -32,6 +33,7 @@ rustok-ui-i18n.workspace = true
 leptos-ui-routing.workspace = true
 rustok-product = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
+rustok-product-relations-admin = { path = "../../rustok-product-relations/admin", default-features = false }
 rustok-seo-targets = { path = "../../rustok-seo-targets", default-features = false }
 rustok-seo-admin-support.workspace = true
 serde = { workspace = true, features = ["derive"] }

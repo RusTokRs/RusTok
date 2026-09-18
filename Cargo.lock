@@ -16707,6 +16707,7 @@ dependencies = [
  "rustok-graphql",
  "rustok-outbox",
  "rustok-product",
+ "rustok-product-relations-admin",
  "rustok-seo-admin-support",
  "rustok-seo-targets",
  "rustok-ui-core",

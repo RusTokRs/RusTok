@@ -18,6 +18,8 @@ entry_type = "ProductRelationsModule"
 leptos_crate = "rustok-product-relations-admin"
 route_segment = "product-relations"
 nav_label = "Product Relations"
+nav_group = "Commerce"
+nav_order = 16
 
 [provides.admin_ui.i18n]
 default_locale = "en"
