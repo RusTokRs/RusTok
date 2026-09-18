@@ -24,6 +24,11 @@ pub(super) async fn fetch_products(
 }
 
 #[cfg(feature = "ssr")]
+fn map_product_internal_error() -> ServerFnError {
+    ServerFnError::new(rustok_product::ProductPublicError::internal().to_string())
+}
+
+#[cfg(feature = "ssr")]
 fn map_product_service_error(
     error: rustok_product::CommerceError,
     operation: &'static str,
@@ -77,20 +82,17 @@ async fn product_admin_catalog_list_native(
     {
         use rustok_product::{AdminProductListQuery, CatalogService};
 
-        let runtime_ctx = expect_context::<rustok_api::HostRuntimeContext>();
+        let runtime_ctx = use_context::<rustok_api::HostRuntimeContext>()
+            .ok_or_else(map_product_internal_error)?;
         let event_bus = runtime_ctx
             .shared_get::<rustok_outbox::TransactionalEventBus>()
-            .ok_or_else(|| {
-                ServerFnError::new(
-                    "product/admin catalog list requires TransactionalEventBus in host runtime context",
-                )
-            })?;
+            .ok_or_else(map_product_internal_error)?;
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|_| ServerFnError::new("Authentication required"))?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|_| map_product_internal_error())?;
         if !rustok_api::has_any_effective_permission(
             &auth.permissions,
             &[
