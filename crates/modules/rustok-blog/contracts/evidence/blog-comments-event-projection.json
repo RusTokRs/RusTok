@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "module": "blog",
   "surface": "comments_event_projection",
   "status": "source_verified_no_compile",
@@ -141,11 +141,11 @@
     },
     {
       "name": "atomic_counter_delivery_outbox",
-      "expected": "the optimistic counter update, delivery insert, and BlogPostUpdated outbox publication share one database transaction"
+      "expected": "the optimistic derived counter update, delivery insert, and neutral Blog reindex request share one database transaction"
     },
     {
       "name": "tenant_scoped_optimistic_update",
-      "expected": "the post lookup and update require tenant identity and the observed post version, with a bounded retry loop"
+      "expected": "the post lookup and counter update require tenant identity and the observed comment_count, with a bounded retry loop; business version is not a projection concurrency token"
     },
     {
       "name": "bounded_optimistic_retry_policy",
@@ -161,7 +161,7 @@
     },
     {
       "name": "non_negative_count",
-      "expected": "the pure counter transition floors deletes at zero and saturates count and version overflow"
+      "expected": "the pure counter transition floors deletes at zero and saturates comment_count without changing the Blog business revision"
     },
     {
       "name": "host_registration_routing_harness",
@@ -173,7 +173,7 @@
     },
     {
       "name": "postgres_concurrent_unique_deliveries",
-      "expected": "four handler instances start behind one barrier on four independent PostgreSQL connections, deliver unique envelopes to one post, and require count four, version five, four ledger rows, and four outbox rows without claiming observed retry count"
+      "expected": "four handler instances start behind one barrier on four independent PostgreSQL connections, deliver unique envelopes to one post, and require count four, unchanged business version one, four ledger rows, and four reindex outbox rows without claiming observed retry count"
     },
     {
       "name": "postgres_duplicate_delivery",
@@ -181,7 +181,7 @@
     },
     {
       "name": "postgres_out_of_order_delete_create",
-      "expected": "the retained PostgreSQL target delivers delete before create and expects a non-negative count with monotonic versions"
+      "expected": "the retained PostgreSQL target delivers delete before create and expects a non-negative count while the Blog business version remains unchanged"
     },
     {
       "name": "postgres_missing_post_recovery",
@@ -205,7 +205,7 @@
     }
   ],
   "runtime_promotion_requirements": [
-    "execute cargo test -p rustok-blog --lib services::comment_projection::tests and retain classifier, counter, and deterministic retry-policy output",
+    "execute cargo test -p rustok-blog --lib services::comment_projection::tests and retain classifier, counter, unchanged-business-revision, and deterministic retry-policy output",
     "execute cargo test -p rustok-blog --lib module::tests::module_registers_comment_projection_handler_with_host_routing",
     "execute the env-gated PostgreSQL dispatcher case and retain EventBus/EventDispatcher delivery output",
     "execute the env-gated PostgreSQL concurrency case and retain four-connection convergence output",
@@ -214,7 +214,7 @@
     "execute the env-gated same-process restart case and retain its output",
     "execute the env-gated process-restart case and retain both child-process exits plus final durable assertions",
     "retain proof that duplicate and out-of-order comment.created/comment.deleted deliveries match the source harness assertions",
-    "retain proof that the counter, delivery ledger, and BlogPostUpdated outbox row commit or roll back together",
+    "retain proof that the counter, delivery ledger, and neutral Blog reindex outbox row commit or roll back together",
     "retain missing-post retry and later recovery evidence",
     "retain naturally contended PostgreSQL retry-frequency evidence separately from the deterministic zero-row retry-limit harness",
     "retain full server-host restart recovery evidence separately from the test-process harness"

@@ -138,7 +138,7 @@ async fn concurrent_duplicate_envelope_commits_once_and_replays_cleanly() -> Tes
 
     assert_eq!(
         load_post_state(&test_db.db, tenant_id, post_id).await?,
-        (1, 2)
+        (1, 1)
     );
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
@@ -152,7 +152,7 @@ async fn concurrent_duplicate_envelope_commits_once_and_replays_cleanly() -> Tes
 
     assert_eq!(
         load_post_state(&test_db.db, tenant_id, post_id).await?,
-        (1, 2)
+        (1, 1)
     );
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
