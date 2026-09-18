@@ -171,12 +171,13 @@ async fn storefront_catalog_list_native(
 ) -> Result<ProductList, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
+        use leptos::prelude::use_context;
         use rustok_api::HostRuntimeContext;
         use rustok_outbox::TransactionalEventBus;
         use rustok_product::{CatalogService, StorefrontProductListQuery};
 
-        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let runtime_ctx = use_context::<HostRuntimeContext>()
+            .ok_or_else(|| map_runtime_dependency_error("HostRuntimeContext"))?;
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(|| map_runtime_dependency_error("TransactionalEventBus"))?;
