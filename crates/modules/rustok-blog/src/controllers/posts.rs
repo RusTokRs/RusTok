@@ -11,7 +11,9 @@ use std::{collections::HashMap, time::Instant};
 use uuid::Uuid;
 
 use super::BlogHttpRuntime;
-use crate::{ArchivePostInput, CreatePostInput, PostListQuery, PostResponse, PostService, UpdatePostInput};
+use crate::{
+    ArchivePostInput, CreatePostInput, PostListQuery, PostResponse, PostService, UpdatePostInput,
+};
 
 fn security_context(auth: &AuthContext) -> rustok_core::SecurityContext {
     rustok_core::security_context_from_access_token(

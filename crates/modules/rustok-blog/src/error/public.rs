@@ -44,8 +44,7 @@ impl From<BlogError> for BlogPublicError {
 
 pub(crate) fn to_http_error(error: BlogError) -> HttpError {
     let public = BlogPublicError::from(error);
-    let status =
-        StatusCode::from_u16(public.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    let status = StatusCode::from_u16(public.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     HttpError::new(status, public.code, public.message)
 }
 

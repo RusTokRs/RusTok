@@ -48,13 +48,10 @@ impl BlogReactionSubjectProvider {
         request: &ReactionSubjectRequest,
     ) -> ReactionProviderResult<ReactionSubjectAuthorization> {
         let subject = &request.subject;
-        let Some(snapshot) = load_post_subject_snapshot(
-            &self.db,
-            subject.tenant_id(),
-            subject.subject_id(),
-        )
-        .await
-        .map_err(owner_read_error)?
+        let Some(snapshot) =
+            load_post_subject_snapshot(&self.db, subject.tenant_id(), subject.subject_id())
+                .await
+                .map_err(owner_read_error)?
         else {
             return Ok(ReactionSubjectAuthorization::Unavailable);
         };

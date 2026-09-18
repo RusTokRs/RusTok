@@ -109,13 +109,12 @@ impl From<BlogError> for RichError {
                     .with_field("tag_id", id.to_string())
                     .with_error_code("TAG_NOT_FOUND")
             }
-            BlogError::DuplicateSlug { slug } => RichError::new(
-                ErrorKind::Conflict,
-                format!("Slug '{slug}' already exists"),
-            )
-            .with_user_message("A post with this URL slug already exists")
-            .with_field("slug", slug)
-            .with_error_code("DUPLICATE_SLUG"),
+            BlogError::DuplicateSlug { slug } => {
+                RichError::new(ErrorKind::Conflict, format!("Slug '{slug}' already exists"))
+                    .with_user_message("A post with this URL slug already exists")
+                    .with_field("slug", slug)
+                    .with_error_code("DUPLICATE_SLUG")
+            }
             BlogError::Conflict(message) => RichError::new(ErrorKind::Conflict, message)
                 .with_user_message("The blog category changed before the request could be applied")
                 .with_error_code("BLOG_CONFLICT"),

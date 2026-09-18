@@ -244,16 +244,20 @@ fn query_tenant_id(
     requested: Option<Uuid>,
 ) -> Result<Uuid> {
     if requested.is_some_and(|tenant_id| tenant_id != tenant.id) {
-        return Err(<async_graphql::FieldError as rustok_api::graphql::GraphQLError>::permission_denied(
-            "Blog queries must use the current tenant",
-        ));
+        return Err(
+            <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::permission_denied(
+                "Blog queries must use the current tenant",
+            ),
+        );
     }
     if let Some(auth) = ctx.data_opt::<AuthContext>()
         && auth.tenant_id != tenant.id
     {
-        return Err(<async_graphql::FieldError as rustok_api::graphql::GraphQLError>::permission_denied(
-            "Authenticated actor is not bound to the current tenant",
-        ));
+        return Err(
+            <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::permission_denied(
+                "Authenticated actor is not bound to the current tenant",
+            ),
+        );
     }
     Ok(tenant.id)
 }
@@ -425,9 +429,7 @@ where
         )
         .await
         .map_err(|_| {
-            <FieldError as GraphQLError>::internal_error(
-                "Unable to load Blog author profiles",
-            )
+            <FieldError as GraphQLError>::internal_error("Unable to load Blog author profiles")
         })?;
 
     Ok(profiles

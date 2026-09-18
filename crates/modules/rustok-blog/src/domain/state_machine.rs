@@ -330,9 +330,7 @@ impl<S> BlogPost<S> {
 // ============================================================================
 
 /// Blog post status enum for database storage
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, Default,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum BlogPostStatus {
     #[default]

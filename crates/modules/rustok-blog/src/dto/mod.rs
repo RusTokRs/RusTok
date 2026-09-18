@@ -17,7 +17,7 @@ pub use comment::{
     ModerateCommentStatus, UpdateCommentInput,
 };
 pub use post::{
-    ArchivePostInput, CreatePostInput, PostListQuery, PostListResponse, PostResponse, PostSortField,
-    PostSortOrder, PostSummary, UpdatePostInput,
+    ArchivePostInput, CreatePostInput, PostListQuery, PostListResponse, PostResponse,
+    PostSortField, PostSortOrder, PostSummary, UpdatePostInput,
 };
 pub use tag::{CreateTagInput, ListTagsFilter, TagListItem, TagResponse, UpdateTagInput};
