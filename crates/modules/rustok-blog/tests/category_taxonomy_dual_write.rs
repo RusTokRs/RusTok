@@ -12,9 +12,7 @@ use rustok_taxonomy::{
     entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation},
     sync_module_category_with_owned_aliases_in_tx,
 };
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 

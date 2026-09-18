@@ -41,9 +41,11 @@ Structural create, move, and delete:
   `blog-category-tree:{tenant_id}` transaction advisory lock;
 - reject missing/cross-tenant parents, self-parenting, descendant cycles,
   invalid existing trees and out-of-range sibling positions;
+- retain Taxonomy's `ON DELETE RESTRICT` parent/child protection in addition to the Blog leaf check;
+- compacts remaining sibling positions after a leaf delete;
 - keep sibling positions dense and deterministic with category id as a stable
   tie-breaker;
-- keep the tree bounded to 512 Blog memberships;
+- keep the tree bounded to a maximum of 512 nodes / Blog memberships;
 - write canonical placement only in
   `taxonomy_category_hierarchy`;
 - recompute response `depth` from the canonical Taxonomy parent map; depth is
@@ -63,7 +65,7 @@ Taxonomy owns canonical localized Category identity, route history and hierarchy
 placement. Blog remains the command/orchestration owner for Blog-specific
 membership semantics and RBAC, but it does not become a second storage owner.
 
-Structural moves do not rewrite localized category rows or invent a locale.
+Structural moves do not rewrite localized category rows or invent a locale. Existing-category placement has one owner-side write path: `CategoryCommandService`.
 
 ## Verification
 
