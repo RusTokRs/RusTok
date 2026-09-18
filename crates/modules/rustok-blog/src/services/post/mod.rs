@@ -286,8 +286,8 @@ pub(crate) fn storage_to_status(status: &str) -> BlogResult<BlogPostStatus> {
         "draft" => Ok(BlogPostStatus::Draft),
         "published" => Ok(BlogPostStatus::Published),
         "archived" => Ok(BlogPostStatus::Archived),
-        other => Err(BlogError::validation(format!(
-            "Unknown blog post status: {other}"
+        other => Err(BlogError::invariant(format!(
+            "Unknown persisted Blog post status: {other}"
         ))),
     }
 }
