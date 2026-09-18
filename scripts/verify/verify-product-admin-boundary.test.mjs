@@ -124,13 +124,17 @@ ${includeServerEndpoint ? '#[server(prefix = "/api/fn", endpoint = "bad")] async
 `;
 }
 
-function nativeAdapterSource() {
+function nativeAdapterSource({ panicHostContext = false } = {}) {
   return `
 use leptos::prelude::*;
-use rustok_product::ProductCatalogSchemaService;
-expect_context::<rustok_api::HostRuntimeContext>();
+use rustok_product::{ProductCatalogSchemaService, ProductPublicError};
+${panicHostContext
+  ? "expect_context::<rustok_api::HostRuntimeContext>();"
+  : "use_context::<rustok_api::HostRuntimeContext>();"}
 shared_get::<rustok_outbox::TransactionalEventBus>();
 runtime_ctx.db_clone();
+let _safe = ProductPublicError::internal();
+if auth.tenant_id != tenant.id {}
 
 pub async fn fetch_effective_product_form(locale: String) {}
 pub async fn fetch_product_attribute_values(locale: String) {}
@@ -169,6 +173,23 @@ async fn product_admin_set_category_schema_mode_native(tenant_id: String) { let 
 async fn product_admin_bind_schema_attribute_native(tenant_id: String) { let _service = ProductCatalogSchemaService::new; }
 #[server(prefix = "/api/fn", endpoint = "product/admin/bind-category-attribute")]
 async fn product_admin_bind_category_attribute_native(tenant_id: String) { let _service = ProductCatalogSchemaService::new; }
+`;
+}
+
+function adminCatalogNativeSource({ panicHostContext = false } = {}) {
+  return `
+use leptos::prelude::*;
+use rustok_product::ProductPublicError;
+
+#[server(prefix = "/api/fn", endpoint = "product/admin/catalog-list")]
+async fn product_admin_catalog_list_native() {
+  ${panicHostContext
+    ? "expect_context::<rustok_api::HostRuntimeContext>();"
+    : "use_context::<rustok_api::HostRuntimeContext>();"}
+  shared_get::<rustok_outbox::TransactionalEventBus>();
+  let _safe = ProductPublicError::internal();
+  if auth.tenant_id != tenant.id {}
+}
 `;
 }
 
@@ -285,7 +306,8 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/modules/rustok-product/admin/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/modules/rustok-product/admin/src/transport.rs", transportSource(options));
   writeFixtureFile(root, "crates/modules/rustok-product/admin/src/transport/graphql_adapter.rs", apiSource(options));
-  writeFixtureFile(root, "crates/modules/rustok-product/admin/src/transport/native_server_adapter.rs", nativeAdapterSource());
+  writeFixtureFile(root, "crates/modules/rustok-product/admin/src/transport/native_server_adapter.rs", nativeAdapterSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-product/admin/src/transport/admin_catalog_native.rs", adminCatalogNativeSource(options));
   writeFixtureFile(root, "crates/modules/rustok-product/admin/Cargo.toml", "[package]\nname = \"rustok-product-admin-fixture\"\nversion = \"0.1.0\"\n");
   if (options.legacyApi) writeFixtureFile(root, "crates/modules/rustok-product/admin/src/api.rs", apiSource(options));
   writeFixtureFile(root, "crates/modules/rustok-commerce/src/graphql/query.rs", commerceQuerySource());
@@ -317,6 +339,17 @@ test("product admin boundary verifier passes canonical fixture", () => {
     const result = runVerifier(root);
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.match(result.stdout, /product admin boundary verification passed/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("product admin boundary verifier rejects panic host-context lookup", () => {
+  const root = withFixture({ panicHostContext: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected panic host-context fixture to fail");
+    assert.match(result.stderr, /raw\/panic host context pattern/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

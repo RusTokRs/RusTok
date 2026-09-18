@@ -171,9 +171,19 @@ assertContains(catalogQueries, "pub async fn list_published_products_with_query"
 assertContains(catalogQueries, "product_title_search_condition", `${catalogQueriesPath}: Product owner service must execute title search server-side`);
 assertContains(nativeServerAdapter, "#[server", `${nativeServerAdapterPath}: native server adapter must keep native server-function endpoint`);
 assertNotContains(nativeServerAdapter, "GraphqlRequest", `${nativeServerAdapterPath}: native adapter must not execute the parallel GraphQL contract`);
-assertContains(nativeServerAdapter, "expect_context::<HostRuntimeContext>()", `${nativeServerAdapterPath}: native server adapter must use host runtime context`);
+assertContains(nativeServerAdapter, "use_context::<HostRuntimeContext>()", `${nativeServerAdapterPath}: native server adapter must resolve host runtime context fallibly`);
+assertContains(nativeServerAdapter, "ProductPublicError::internal()", `${nativeServerAdapterPath}: native server adapter must use owner-safe internal errors`);
 assertContains(nativeServerAdapter, "shared_get::<TransactionalEventBus>()", `${nativeServerAdapterPath}: native server adapter must receive event bus through host runtime context`);
 assertContains(nativeServerAdapter, "runtime_ctx.db_clone()", `${nativeServerAdapterPath}: native server adapter must receive DB through host runtime context`);
+for (const marker of [
+  "expect_context::<HostRuntimeContext>()",
+  ".map_err(ServerFnError::new)?",
+  "TransactionalEventBus in host runtime context",
+]) {
+  assertNotContains(nativeServerAdapter, marker, `${nativeServerAdapterPath}: native server adapter must forbid raw/panic host context pattern ${marker}`);
+}
+assertContains(catalogListNative, "use_context::<HostRuntimeContext>()", `${catalogListNativePath}: native catalog list must resolve host runtime context fallibly`);
+assertNotContains(catalogListNative, "expect_context::<HostRuntimeContext>()", `${catalogListNativePath}: native catalog list must not panic on missing host context`);
 assertContains(implementationPlan, "verify-product-storefront-boundary.mjs", `${implementationPlanPath}: local plan must mention the product storefront fast boundary guardrail`);
 assertContains(registry, "verify-product-storefront-boundary.mjs", `${registryPath}: central readiness board must mention the product storefront fast boundary guardrail`);
 assertContains(packageJson, "verify:product:storefront-boundary", `${packagePath}: package scripts must expose product storefront boundary verification`);
