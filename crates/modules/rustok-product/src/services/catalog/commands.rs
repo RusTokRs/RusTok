@@ -1,4 +1,5 @@
 use super::*;
+use sea_orm::{DatabaseTransaction, FromQueryResult};
 
 impl CatalogService {
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id))]
@@ -11,7 +12,7 @@ impl CatalogService {
         debug!(
             translations_count = input.translations.len(),
             variants_count = input.variants.len(),
-            options_count = input.options.len(),
+            axes_count = input.variant_axes.len(),
             publish = input.publish,
             "Creating product"
         );
@@ -651,50 +652,26 @@ impl CatalogService {
             .exec(&txn)
             .await?;
 
-        let option_ids: Vec<Uuid> = entities::product_option::Entity::find()
-            .filter(entities::product_option::Column::ProductId.eq(product_id))
+        let axis_ids: Vec<Uuid> = entities::product_variant_axis::Entity::find()
+            .filter(entities::product_variant_axis::Column::ProductId.eq(product_id))
+            .filter(entities::product_variant_axis::Column::TenantId.eq(tenant_id))
             .all(&txn)
             .await?
             .into_iter()
-            .map(|option| option.id)
+            .map(|axis| axis.id)
             .collect();
-        if !option_ids.is_empty() {
-            let option_value_ids: Vec<Uuid> = entities::product_option_value::Entity::find()
-                .filter(entities::product_option_value::Column::OptionId.is_in(option_ids.clone()))
-                .all(&txn)
-                .await?
-                .into_iter()
-                .map(|value| value.id)
-                .collect();
 
-            if !option_value_ids.is_empty() {
-                entities::product_option_value_translation::Entity::delete_many()
-                    .filter(
-                        entities::product_option_value_translation::Column::ValueId
-                            .is_in(option_value_ids.clone()),
-                    )
-                    .exec(&txn)
-                    .await?;
+        if !axis_ids.is_empty() {
+            entities::product_variant_axis_value::Entity::delete_many()
+                .filter(entities::product_variant_axis_value::Column::AxisId.is_in(axis_ids.clone()))
+                .exec(&txn)
+                .await?;
 
-                entities::product_option_value::Entity::delete_many()
-                    .filter(entities::product_option_value::Column::Id.is_in(option_value_ids))
-                    .exec(&txn)
-                    .await?;
-            }
-
-            entities::product_option_translation::Entity::delete_many()
-                .filter(
-                    entities::product_option_translation::Column::OptionId
-                        .is_in(option_ids.clone()),
-                )
+            entities::product_variant_axis::Entity::delete_many()
+                .filter(entities::product_variant_axis::Column::Id.is_in(axis_ids))
                 .exec(&txn)
                 .await?;
         }
-
-        entities::product_option::Entity::delete_many()
-            .filter(entities::product_option::Column::ProductId.eq(product_id))
-            .exec(&txn)
-            .await?;
 
         let image_ids: Vec<Uuid> = entities::product_image::Entity::find()
             .filter(entities::product_image::Column::ProductId.eq(product_id))
@@ -729,7 +706,6 @@ impl CatalogService {
             tenant_id,
             Some(actor_id),
             product_id,
-            &option_ids,
             &image_ids,
         )
         .await?;
@@ -801,9 +777,7 @@ impl CatalogService {
             inventory_quantity: Set(0),
             weight: Set(input.weight),
             weight_unit: Set(input.weight_unit.clone()),
-            option1: Set(input.option1.clone()),
-            option2: Set(input.option2.clone()),
-            option3: Set(input.option3.clone()),
+            combination_identity: Set(None),
             position: Set(next_position),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
@@ -813,6 +787,10 @@ impl CatalogService {
             .insert(&txn)
             .await
             .map_err(|error| map_product_unique_violation(error, "", "", input.sku.as_deref()))?;
+
+        if !input.axis_values.is_empty() {
+            assign_variant_axis_values_in_tx(&txn, tenant_id, variant_id, &input.axis_values).await?;
+        }
 
         let default_stock_location =
             BootstrapService::ensure_default_location_in_tx(&txn, tenant_id).await?;
@@ -828,11 +806,11 @@ impl CatalogService {
         )
         .await?;
 
-        let variant_title = generate_variant_title_from_inputs(
-            input.option1.as_deref(),
-            input.option2.as_deref(),
-            input.option3.as_deref(),
-        );
+        let variant_model = entities::product_variant::Entity::find_by_id(variant_id)
+            .one(&txn)
+            .await?
+            .unwrap();
+        let variant_title = generate_variant_title(&variant_model);
 
         let mut variant_translation_models = Vec::new();
         for locale in &existing_locales {
@@ -932,29 +910,42 @@ impl CatalogService {
         if let Some(weight_unit) = input.weight_unit {
             active.weight_unit = Set(Some(weight_unit));
         }
-        let options_changed =
-            input.option1.is_some() || input.option2.is_some() || input.option3.is_some();
-        if let Some(option1) = input.option1.clone() {
-            active.option1 = Set(Some(option1));
-        }
-        if let Some(option2) = input.option2.clone() {
-            active.option2 = Set(Some(option2));
-        }
-        if let Some(option3) = input.option3.clone() {
-            active.option3 = Set(Some(option3));
-        }
-
-        let updated_variant = active
+        let _updated_variant = active
             .update(&txn)
             .await
             .map_err(|error| map_product_unique_violation(error, "", "", input.sku.as_deref()))?;
 
-        if options_changed {
-            let variant_title = generate_variant_title_from_inputs(
-                updated_variant.option1.as_deref(),
-                updated_variant.option2.as_deref(),
-                updated_variant.option3.as_deref(),
-            );
+        if let Some(ref axis_values) = input.axis_values {
+            let existing_vals: Vec<IdRow> = IdRow::find_by_statement(Statement::from_sql_and_values(
+                txn.get_database_backend(),
+                "SELECT id FROM product_variant_attribute_values WHERE tenant_id = $1 AND variant_id = $2",
+                vec![tenant_id.into(), variant_id.into()],
+            ))
+            .all(&txn)
+            .await
+            .unwrap_or_default();
+            for ev in existing_vals {
+                txn.execute_raw(Statement::from_sql_and_values(
+                    txn.get_database_backend(),
+                    "DELETE FROM product_variant_attribute_value_options WHERE tenant_id = $1 AND value_id = $2",
+                    vec![tenant_id.into(), ev.id.into()],
+                ))
+                .await?;
+                txn.execute_raw(Statement::from_sql_and_values(
+                    txn.get_database_backend(),
+                    "DELETE FROM product_variant_attribute_values WHERE tenant_id = $1 AND id = $2",
+                    vec![tenant_id.into(), ev.id.into()],
+                ))
+                .await?;
+            }
+
+            assign_variant_axis_values_in_tx(&txn, tenant_id, variant_id, axis_values).await?;
+
+            let variant_model = entities::product_variant::Entity::find_by_id(variant_id)
+                .one(&txn)
+                .await?
+                .unwrap();
+            let variant_title = generate_variant_title(&variant_model);
             entities::variant_translation::Entity::update_many()
                 .filter(entities::variant_translation::Column::VariantId.eq(variant_id))
                 .col_expr(
@@ -1348,4 +1339,168 @@ impl CatalogService {
 
         Ok(())
     }
+
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, product_id = %product_id))]
+    pub async fn set_variant_axes(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        product_id: Uuid,
+        input: SetVariantAxesInput,
+    ) -> CommerceResult<Vec<VariantAxisConfigResponse>> {
+        debug!("Setting variant axes for product");
+
+        input
+            .validate()
+            .map_err(|e| CommerceError::Validation(e.to_string()))?;
+
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+
+        let _product = entities::product::Entity::find_by_id(product_id)
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
+            .one(&txn)
+            .await?
+            .ok_or(CommerceError::ProductNotFound(product_id))?;
+
+        let existing_axis_ids: Vec<Uuid> = entities::product_variant_axis::Entity::find()
+            .filter(entities::product_variant_axis::Column::ProductId.eq(product_id))
+            .filter(entities::product_variant_axis::Column::TenantId.eq(tenant_id))
+            .all(&txn)
+            .await?
+            .into_iter()
+            .map(|a| a.id)
+            .collect();
+
+        if !existing_axis_ids.is_empty() {
+            entities::product_variant_axis_value::Entity::delete_many()
+                .filter(entities::product_variant_axis_value::Column::AxisId.is_in(existing_axis_ids.clone()))
+                .exec(&txn)
+                .await?;
+
+            entities::product_variant_axis::Entity::delete_many()
+                .filter(entities::product_variant_axis::Column::Id.is_in(existing_axis_ids))
+                .exec(&txn)
+                .await?;
+        }
+
+        let now = Utc::now();
+        for (pos, axis_input) in input.axes.iter().enumerate() {
+            let axis_id = generate_id();
+            let axis = entities::product_variant_axis::ActiveModel {
+                id: Set(axis_id),
+                tenant_id: Set(tenant_id),
+                product_id: Set(product_id),
+                attribute_id: Set(axis_input.attribute_id),
+                position: Set(if axis_input.position != 0 { axis_input.position } else { pos as i32 }),
+                created_at: Set(now.into()),
+            };
+            axis.insert(&txn).await?;
+
+            for (val_pos, option_id) in axis_input.allowed_option_ids.iter().enumerate() {
+                let axis_val = entities::product_variant_axis_value::ActiveModel {
+                    id: Set(generate_id()),
+                    tenant_id: Set(tenant_id),
+                    axis_id: Set(axis_id),
+                    option_id: Set(*option_id),
+                    position: Set(val_pos as i32),
+                    created_at: Set(now.into()),
+                };
+                axis_val.insert(&txn).await?;
+            }
+        }
+
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::ProductUpdated { product_id },
+        )
+        .await?;
+
+        txn.commit().await?;
+
+        self.get_product_variant_axes(tenant_id, product_id, PLATFORM_FALLBACK_LOCALE).await
+    }
 }
+
+#[derive(sea_orm::FromQueryResult)]
+struct IdRow {
+    id: Uuid,
+}
+
+pub(crate) async fn assign_variant_axis_values_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    variant_id: Uuid,
+    axis_values: &[VariantAxisValueInput],
+) -> CommerceResult<()> {
+    for val in axis_values {
+        let row = IdRow::find_by_statement(Statement::from_sql_and_values(
+            txn.get_database_backend(),
+            r#"
+            INSERT INTO product_variant_attribute_values (
+                id, tenant_id, variant_id, attribute_id, detached_at
+            ) VALUES ($1, $2, $3, $4, NULL)
+            ON CONFLICT (tenant_id, variant_id, attribute_id) DO UPDATE SET
+                detached_at = NULL,
+                updated_at = now()
+            RETURNING id
+            "#,
+            vec![
+                generate_id().into(),
+                tenant_id.into(),
+                variant_id.into(),
+                val.attribute_id.into(),
+            ],
+        ))
+        .one(txn)
+        .await?;
+
+        let value_id = match row {
+            Some(r) => r.id,
+            None => {
+                IdRow::find_by_statement(Statement::from_sql_and_values(
+                    txn.get_database_backend(),
+                    "SELECT id FROM product_variant_attribute_values WHERE tenant_id = $1 AND variant_id = $2 AND attribute_id = $3",
+                    vec![tenant_id.into(), variant_id.into(), val.attribute_id.into()],
+                ))
+                .one(txn)
+                .await?
+                .map(|r| r.id)
+                .unwrap_or_else(generate_id)
+            }
+        };
+
+        txn.execute_raw(Statement::from_sql_and_values(
+            txn.get_database_backend(),
+            "DELETE FROM product_variant_attribute_value_options WHERE tenant_id = $1 AND value_id = $2",
+            vec![tenant_id.into(), value_id.into()],
+        ))
+        .await?;
+
+        txn.execute_raw(Statement::from_sql_and_values(
+            txn.get_database_backend(),
+            "INSERT INTO product_variant_attribute_value_options (tenant_id, value_id, option_id) VALUES ($1, $2, $3)",
+            vec![tenant_id.into(), value_id.into(), val.option_id.into()],
+        ))
+        .await?;
+    }
+
+    if txn.get_database_backend() != sea_orm::DbBackend::Postgres {
+        let combination_identity = if axis_values.is_empty() {
+            None
+        } else {
+            let mut sorted = axis_values.to_vec();
+            sorted.sort_by_key(|v| v.attribute_id);
+            Some(sorted.iter().map(|v| format!("{}:{}", v.attribute_id, v.option_id)).collect::<Vec<_>>().join(";"))
+        };
+        txn.execute_raw(Statement::from_sql_and_values(
+            txn.get_database_backend(),
+            "UPDATE product_variants SET combination_identity = $1 WHERE tenant_id = $2 AND id = $3",
+            vec![combination_identity.into(), tenant_id.into(), variant_id.into()],
+        ))
+        .await?;
+    }
+
+    Ok(())
+}
+

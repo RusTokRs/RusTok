@@ -3,7 +3,7 @@ use crate::dto::{
 };
 use crate::entities;
 use crate::error::{CommerceError, CommerceResult};
-use rustok_api::{PLATFORM_FALLBACK_LOCALE, locale_tags_match, normalize_locale_tag};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, locale_tags_match};
 use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition};
 pub use rustok_inventory::{is_metadata_visible_for_public_channel, normalize_public_channel_slug};
 use sea_orm::{
@@ -11,7 +11,7 @@ use sea_orm::{
     QueryFilter, QueryOrder, Value as SqlValue, sea_query::Expr,
 };
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 

@@ -128,7 +128,7 @@ impl ProductWriteTransaction {
         actor_id: Option<Uuid>,
         event: DomainEvent,
     ) -> CommerceResult<()> {
-        self.publish_internal(tenant_id, actor_id, event, None, None)
+        self.publish_internal(tenant_id, actor_id, event, None)
             .await
     }
 

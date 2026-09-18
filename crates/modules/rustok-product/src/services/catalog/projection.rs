@@ -1,4 +1,163 @@
 use super::*;
+use sea_orm::FromQueryResult;
+
+#[derive(FromQueryResult)]
+struct AxisRow {
+    id: Uuid,
+    product_id: Uuid,
+    attribute_id: Uuid,
+    position: i32,
+    code: String,
+    name: Option<String>,
+}
+
+#[derive(FromQueryResult)]
+struct AxisValueRow {
+    axis_id: Uuid,
+    option_id: Uuid,
+    position: i32,
+    code: String,
+    label: Option<String>,
+}
+
+#[derive(FromQueryResult)]
+struct VariantAxisValueRow {
+    variant_id: Uuid,
+    attribute_id: Uuid,
+    option_id: Uuid,
+    attribute_code: String,
+    label: Option<String>,
+}
+
+pub async fn load_product_variant_axes<C: ConnectionTrait>(
+    db: &C,
+    tenant_id: Uuid,
+    product_id: Uuid,
+    locale: &str,
+) -> CommerceResult<Vec<VariantAxisConfigResponse>> {
+    let axes = AxisRow::find_by_statement(Statement::from_sql_and_values(
+        db.get_database_backend(),
+        r#"
+        SELECT ax.id, ax.product_id, ax.attribute_id, ax.position, a.code, pat.name
+        FROM product_variant_axes ax
+        JOIN product_attributes a ON a.id = ax.attribute_id AND a.tenant_id = ax.tenant_id
+        LEFT JOIN product_attribute_translations pat ON pat.attribute_id = a.id AND pat.locale = $3
+        WHERE ax.tenant_id = $1 AND ax.product_id = $2
+        ORDER BY ax.position ASC
+        "#,
+        vec![tenant_id.into(), product_id.into(), locale.into()],
+    ))
+    .all(db)
+    .await?;
+
+    if axes.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let values = AxisValueRow::find_by_statement(Statement::from_sql_and_values(
+        db.get_database_backend(),
+        r#"
+        SELECT av.axis_id, av.option_id, av.position, pao.code, paot.label
+        FROM product_variant_axis_values av
+        JOIN product_variant_axes ax ON ax.id = av.axis_id AND ax.tenant_id = av.tenant_id
+        JOIN product_attribute_options pao ON pao.id = av.option_id AND pao.tenant_id = av.tenant_id
+        LEFT JOIN product_attribute_option_translations paot ON paot.option_id = pao.id AND paot.locale = $3
+        WHERE av.tenant_id = $1 AND ax.product_id = $2
+        ORDER BY av.position ASC
+        "#,
+        vec![tenant_id.into(), product_id.into(), locale.into()],
+    ))
+    .all(db)
+    .await?;
+
+    let mut values_by_axis: HashMap<Uuid, Vec<AxisAllowedValueResponse>> = HashMap::new();
+    for val in values {
+        let label = val.label.unwrap_or(val.code);
+        values_by_axis
+            .entry(val.axis_id)
+            .or_default()
+            .push(AxisAllowedValueResponse {
+                option_id: val.option_id,
+                value: label,
+                position: val.position,
+            });
+    }
+
+    Ok(axes
+        .into_iter()
+        .map(|ax| {
+            let name = ax.name.unwrap_or_else(|| ax.code.clone());
+            let allowed_values = values_by_axis.remove(&ax.id).unwrap_or_default();
+            VariantAxisConfigResponse {
+                id: ax.id,
+                product_id: ax.product_id,
+                attribute_id: ax.attribute_id,
+                code: ax.code,
+                name,
+                position: ax.position,
+                allowed_values,
+            }
+        })
+        .collect())
+}
+
+pub async fn load_variant_axis_values<C: ConnectionTrait>(
+    db: &C,
+    tenant_id: Uuid,
+    variant_ids: &[Uuid],
+    locale: &str,
+) -> CommerceResult<HashMap<Uuid, Vec<VariantAxisValueResponse>>> {
+    if variant_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let placeholders = variant_ids
+        .iter()
+        .enumerate()
+        .map(|(i, _)| format!("${}", i + 3))
+        .collect::<Vec<_>>()
+        .join(",");
+    let query = format!(
+        r#"
+        SELECT pvav.variant_id, pvav.attribute_id, pvao.option_id, a.code as attribute_code, paot.label
+        FROM product_variant_attribute_values pvav
+        JOIN product_variant_attribute_value_options pvao ON pvao.tenant_id = pvav.tenant_id AND pvao.value_id = pvav.id
+        JOIN product_attributes a ON a.id = pvav.attribute_id AND a.tenant_id = pvav.tenant_id
+        JOIN product_attribute_options pao ON pao.id = pvao.option_id AND pao.tenant_id = pvao.tenant_id
+        LEFT JOIN product_attribute_option_translations paot ON paot.option_id = pao.id AND paot.locale = $2
+        WHERE pvav.tenant_id = $1 AND pvav.variant_id IN ({placeholders})
+        ORDER BY pvav.attribute_id ASC
+        "#
+    );
+
+    let mut values = vec![tenant_id.into(), locale.into()];
+    for id in variant_ids {
+        values.push((*id).into());
+    }
+
+    let rows = VariantAxisValueRow::find_by_statement(Statement::from_sql_and_values(
+        db.get_database_backend(),
+        &query,
+        values,
+    ))
+    .all(db)
+    .await?;
+
+    let mut result: HashMap<Uuid, Vec<VariantAxisValueResponse>> = HashMap::new();
+    for row in rows {
+        result
+            .entry(row.variant_id)
+            .or_default()
+            .push(VariantAxisValueResponse {
+                attribute_id: row.attribute_id,
+                option_id: row.option_id,
+                code: Some(row.attribute_code),
+                label: row.label,
+            });
+    }
+
+    Ok(result)
+}
 
 fn resolve_image_alt_text(
     translations: &[entities::product_image_translation::Model],
@@ -29,6 +188,15 @@ impl CatalogService {
             .await
     }
 
+    pub async fn get_product_variant_axes(
+        &self,
+        tenant_id: Uuid,
+        product_id: Uuid,
+        locale: &str,
+    ) -> CommerceResult<Vec<VariantAxisConfigResponse>> {
+        load_product_variant_axes(&self.db, tenant_id, product_id, locale).await
+    }
+
     #[instrument(skip(self))]
     pub async fn get_product_with_locale_fallback(
         &self,
@@ -49,7 +217,7 @@ impl CatalogService {
             })?;
 
         let tag_locale = locale;
-        let (translations, options, variants, images, product_tags, resolved_metadata) = tokio::try_join!(
+        let (translations, variant_axes, variants, images, product_tags, resolved_metadata) = tokio::try_join!(
             async {
                 Ok::<_, CommerceError>(
                     entities::product_translation::Entity::find()
@@ -58,15 +226,7 @@ impl CatalogService {
                         .await?,
                 )
             },
-            async {
-                Ok::<_, CommerceError>(
-                    entities::product_option::Entity::find()
-                        .filter(entities::product_option::Column::ProductId.eq(product_id))
-                        .order_by_asc(entities::product_option::Column::Position)
-                        .all(&self.db)
-                        .await?,
-                )
-            },
+            load_product_variant_axes(&self.db, tenant_id, product_id, locale),
             async {
                 Ok::<_, CommerceError>(
                     entities::product_variant::Entity::find()
@@ -101,57 +261,8 @@ impl CatalogService {
             ),
         )?;
 
-        let option_ids: Vec<Uuid> = options.iter().map(|option| option.id).collect();
-        let (option_translations, option_values) = tokio::try_join!(
-            async {
-                if option_ids.is_empty() {
-                    Ok::<_, CommerceError>(Vec::new())
-                } else {
-                    Ok::<_, CommerceError>(
-                        entities::product_option_translation::Entity::find()
-                            .filter(
-                                entities::product_option_translation::Column::OptionId
-                                    .is_in(option_ids.clone()),
-                            )
-                            .order_by_asc(entities::product_option_translation::Column::Locale)
-                            .all(&self.db)
-                            .await?,
-                    )
-                }
-            },
-            async {
-                if option_ids.is_empty() {
-                    Ok::<_, CommerceError>(Vec::new())
-                } else {
-                    Ok::<_, CommerceError>(
-                        entities::product_option_value::Entity::find()
-                            .filter(
-                                entities::product_option_value::Column::OptionId
-                                    .is_in(option_ids.clone()),
-                            )
-                            .order_by_asc(entities::product_option_value::Column::Position)
-                            .all(&self.db)
-                            .await?,
-                    )
-                }
-            },
-        )?;
-        let option_value_ids: Vec<Uuid> = option_values.iter().map(|value| value.id).collect();
-        let option_value_translations = if !option_value_ids.is_empty() {
-            entities::product_option_value_translation::Entity::find()
-                .filter(
-                    entities::product_option_value_translation::Column::ValueId
-                        .is_in(option_value_ids),
-                )
-                .order_by_asc(entities::product_option_value_translation::Column::Locale)
-                .all(&self.db)
-                .await?
-        } else {
-            Vec::new()
-        };
-
         let variant_ids: Vec<Uuid> = variants.iter().map(|v| v.id).collect();
-        let (all_prices, variant_translations, available_inventory_by_variant) = tokio::try_join!(
+        let (all_prices, variant_translations, available_inventory_by_variant, mut axis_values_by_variant) = tokio::try_join!(
             async {
                 if variant_ids.is_empty() {
                     Ok::<_, CommerceError>(Vec::new())
@@ -182,6 +293,7 @@ impl CatalogService {
                     .await
                     .map_err(CommerceError::from)
             },
+            load_variant_axis_values(&self.db, tenant_id, &variant_ids, locale),
         )?;
 
         let mut prices_by_variant: HashMap<
@@ -194,34 +306,7 @@ impl CatalogService {
                 .or_default()
                 .push(price);
         }
-        let mut option_translations_by_option: HashMap<
-            Uuid,
-            Vec<entities::product_option_translation::Model>,
-        > = HashMap::new();
-        for translation in option_translations {
-            option_translations_by_option
-                .entry(translation.option_id)
-                .or_default()
-                .push(translation);
-        }
-        let mut option_values_by_option: HashMap<Uuid, Vec<entities::product_option_value::Model>> =
-            HashMap::new();
-        for value in option_values {
-            option_values_by_option
-                .entry(value.option_id)
-                .or_default()
-                .push(value);
-        }
-        let mut option_value_translations_by_value: HashMap<
-            Uuid,
-            Vec<entities::product_option_value_translation::Model>,
-        > = HashMap::new();
-        for translation in option_value_translations {
-            option_value_translations_by_value
-                .entry(translation.value_id)
-                .or_default()
-                .push(translation);
-        }
+
         let mut variant_translations_by_variant: HashMap<
             Uuid,
             Vec<entities::variant_translation::Model>,
@@ -273,9 +358,10 @@ impl CatalogService {
                             title: translation.title,
                         })
                         .collect(),
-                    option1: variant.option1,
-                    option2: variant.option2,
-                    option3: variant.option3,
+                    combination_identity: variant.combination_identity,
+                    axis_values: axis_values_by_variant
+                        .remove(&variant.id)
+                        .unwrap_or_default(),
                     prices: price_responses,
                     inventory_quantity: available_inventory,
                     inventory_policy: variant.inventory_policy.clone(),
@@ -336,32 +422,7 @@ impl CatalogService {
                     meta_description: translation.meta_description,
                 })
                 .collect(),
-            options: options
-                .into_iter()
-                .map(|option| {
-                    let option_id = option.id;
-                    let translations = build_option_translations(
-                        option_translations_by_option
-                            .remove(&option_id)
-                            .unwrap_or_default(),
-                        option_values_by_option
-                            .remove(&option_id)
-                            .unwrap_or_default(),
-                        &option_value_translations_by_value,
-                    );
-
-                    let (name, values) =
-                        resolve_option_display(&translations, locale, fallback_locale);
-
-                    ProductOptionResponse {
-                        id: option_id,
-                        name,
-                        values,
-                        position: option.position,
-                        translations,
-                    }
-                })
-                .collect(),
+            variant_axes,
             variants: variant_responses,
             images: images
                 .into_iter()
@@ -409,9 +470,10 @@ impl CatalogService {
             .await?
             .ok_or(CommerceError::VariantNotFound(variant_id))?;
 
-        let (prices, translations, available_inventory_by_variant) = tokio::try_join!(
+        let variant_ids = [variant_id];
+        let (prices, translations, available_inventory_by_variant, mut axis_values_by_variant) = tokio::try_join!(
             async {
-                PricingBootstrapService::load_prices_for_variants(&self.db, &[variant_id])
+                PricingBootstrapService::load_prices_for_variants(&self.db, &variant_ids)
                     .await
                     .map_err(CommerceError::from)
             },
@@ -425,10 +487,11 @@ impl CatalogService {
                 )
             },
             async {
-                BootstrapService::load_available_quantities(&self.db, &[variant_id])
+                BootstrapService::load_available_quantities(&self.db, &variant_ids)
                     .await
                     .map_err(CommerceError::from)
             },
+            load_variant_axis_values(&self.db, tenant_id, &variant_ids, PLATFORM_FALLBACK_LOCALE),
         )?;
 
         let price_responses: Vec<PriceResponse> = prices
@@ -464,9 +527,10 @@ impl CatalogService {
                     title: translation.title,
                 })
                 .collect(),
-            option1: variant.option1,
-            option2: variant.option2,
-            option3: variant.option3,
+            combination_identity: variant.combination_identity,
+            axis_values: axis_values_by_variant
+                .remove(&variant_id)
+                .unwrap_or_default(),
             prices: price_responses,
             inventory_quantity: available_inventory,
             inventory_policy: variant.inventory_policy.clone(),

@@ -325,6 +325,14 @@ pub struct AttributeBinding {
     #[serde(default = "empty_json_object")]
     pub validation_overrides: Value,
     pub source: EffectiveAttributeSource,
+    #[serde(default = "default_axis_policy")]
+    pub variant_axis_policy: String,
+    #[serde(default)]
+    pub default_variant_axis: bool,
+}
+
+fn default_axis_policy() -> String {
+    "forbidden".to_string()
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -339,6 +347,10 @@ pub struct CategoryAttributeBinding {
     pub visibility_overrides: AttributeVisibilityOverrides,
     #[serde(default = "empty_json_object")]
     pub validation_overrides: Value,
+    #[serde(default)]
+    pub variant_axis_policy: Option<String>,
+    #[serde(default)]
+    pub default_variant_axis: Option<bool>,
 }
 
 fn empty_json_object() -> Value {
@@ -503,6 +515,11 @@ fn apply_local_category_bindings(
                         visibility_overrides: local.visibility_overrides.clone(),
                         validation_overrides: local.validation_overrides.clone(),
                         source: EffectiveAttributeSource::CategoryLocal,
+                        variant_axis_policy: local
+                            .variant_axis_policy
+                            .clone()
+                            .unwrap_or_else(default_axis_policy),
+                        default_variant_axis: local.default_variant_axis.unwrap_or(false),
                     });
                 }
             }
@@ -533,6 +550,12 @@ fn apply_override(bindings: &mut [AttributeBinding], local: &CategoryAttributeBi
         }
         if let Some(position) = local.position {
             binding.position = position;
+        }
+        if let Some(policy) = &local.variant_axis_policy {
+            binding.variant_axis_policy = policy.clone();
+        }
+        if let Some(default_axis) = local.default_variant_axis {
+            binding.default_variant_axis = default_axis;
         }
         binding.is_disabled = local.is_disabled;
         binding
