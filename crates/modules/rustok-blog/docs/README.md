@@ -44,6 +44,24 @@ when later bounded migrations retire an earlier design.
 - canonical Taxonomy ownership for Blog Category localized copy, routes and
   Category projection.
 
+## Canonical source layout
+
+Blog is the first strict native-module source-layout reference. Physical placement
+is responsibility-oriented while public Rust paths remain deliberate owner API:
+
+- module/runtime registration: `src/module.rs`;
+- domain policy: `src/domain/`;
+- owner DTOs: `src/dto/`;
+- persistence: `src/entities/` and `src/migrations/`;
+- application services: `src/services/`;
+- platform capability adapters: `src/integrations/`;
+- GraphQL and HTTP adapters: `src/graphql/` and `src/controllers/`;
+- crate facade and stable re-exports: `src/lib.rs`.
+
+Unused canonical slots are not created. Nested feature modules are preferred when
+a responsibility grows, and the enrolled reference profile is checked by
+`npm run verify:module-source-layout`.
+
 ## Multilingual storage contract
 
 Blog post localization remains owner-local:

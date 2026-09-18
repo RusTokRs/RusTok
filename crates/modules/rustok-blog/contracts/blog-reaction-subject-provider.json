@@ -4,10 +4,14 @@
   "contract": "blog_reaction_subject_provider_v1",
   "status": "source_ready_maintainer_execution_pending",
   "source": "blog",
-  "supported_kinds": ["post"],
+  "supported_kinds": [
+    "post"
+  ],
   "catalog": {
     "selection": "single",
-    "keys": ["like"]
+    "keys": [
+      "like"
+    ]
   },
   "visibility": {
     "lifecycle": "published",
@@ -20,8 +24,9 @@
     "must_be_positive": true
   },
   "required_files": [
-    "crates/modules/rustok-blog/src/reaction_subject.rs",
-    "crates/modules/rustok-blog/src/lib.rs",
+    "crates/modules/rustok-blog/src/integrations/reaction_subject.rs",
+    "crates/modules/rustok-blog/src/integrations/mod.rs",
+    "crates/modules/rustok-blog/src/module.rs",
     "crates/modules/rustok-blog/Cargo.toml",
     "crates/modules/rustok-reactions/docs/implementation-plan.md",
     "scripts/verify/verify-blog-reaction-subject-provider.mjs"

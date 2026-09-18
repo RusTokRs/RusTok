@@ -7,6 +7,31 @@ Blog-owned post-term relations, and comment integration via `rustok-comments`.
 Shared vocabulary and canonical Blog Category localized identity are provided by
 `rustok-taxonomy` through explicit owner boundaries.
 
+## Canonical native module reference layout
+
+`rustok-blog` is the first enrolled reference implementation for the canonical
+native module source layout defined by
+[`docs/backend/module-backend-implementation.md`](../../../docs/backend/module-backend-implementation.md)
+and the canonical layout ADR.
+
+The physical source tree separates module wiring, domain policy, application
+services, persistence, integrations, and transports without changing the public
+Blog contract:
+
+- `src/module.rs` owns `RusToKModule` / `MigrationSource` wiring;
+- `src/domain/` owns the Blog state machine and article richtext policy;
+- `src/services/` owns application/use-case orchestration;
+- `src/entities/` and `src/migrations/` own Blog persistence;
+- `src/integrations/` owns SEO, reaction, and public-comment snapshot adapters;
+- `src/graphql/` and `src/controllers/` are thin owner transport adapters;
+- `src/lib.rs` is a facade that preserves deliberate public re-exports.
+
+Large responsibilities are nested below their owner slot. In particular,
+`PostService` is split into command, query, repository/projection, helper-policy,
+and test files instead of one shared source hotspot.
+
+The source shape is guarded by `npm run verify:module-source-layout`.
+
 ## Responsibilities
 
 - Provide `BlogModule` metadata for the runtime registry.
