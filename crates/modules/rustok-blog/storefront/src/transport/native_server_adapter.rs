@@ -59,10 +59,10 @@ async fn create_blog_comment_native(
 
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|_| ServerFnError::new("Authentication required"))?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|_| public_internal_error())?;
         if auth.tenant_id != tenant.id {
             return Err(ServerFnError::new(
                 "Blog comment creation must use the current authenticated tenant",
@@ -87,11 +87,7 @@ async fn create_blog_comment_native(
         }
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
-            .ok_or_else(|| {
-                ServerFnError::new(
-                    "blog/comment-create requires TransactionalEventBus in host runtime context",
-                )
-            })?;
+            .ok_or_else(public_internal_error)?;
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .ok();
@@ -168,6 +164,12 @@ fn public_blog_error(error: rustok_blog::BlogError) -> ServerFnError {
     ServerFnError::new(format!("{}: {}", public.code, public.message))
 }
 
+#[cfg(feature = "ssr")]
+fn public_internal_error() -> ServerFnError {
+    let public = rustok_blog::BlogPublicError::internal();
+    ServerFnError::new(format!("{}: {}", public.code, public.message))
+}
+
 #[server(prefix = "/api/fn", endpoint = "blog/storefront-data")]
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 async fn storefront_blog_native(
@@ -191,11 +193,7 @@ async fn storefront_blog_native(
         let runtime_ctx = expect_context::<HostRuntimeContext>();
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
-            .ok_or_else(|| {
-                ServerFnError::new(
-                    "blog/storefront-data requires TransactionalEventBus in host runtime context",
-                )
-            })?;
+            .ok_or_else(public_internal_error)?;
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .ok();
@@ -210,15 +208,11 @@ async fn storefront_blog_native(
                 .as_deref()
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
-                .ok_or_else(|| {
-                    ServerFnError::new(
-                        "blog/storefront-data requires tenant context or tenant slug",
-                    )
-                })?;
+.ok_or_else(public_internal_error)?;
             let tenant = TenantService::new(runtime_ctx.db_clone())
                 .get_tenant_by_slug(slug)
                 .await
-                .map_err(|_| ServerFnError::new("Tenant lookup failed"))?;
+                .map_err(|_| public_internal_error())?;
             (tenant.id, tenant.default_locale)
         };
 
