@@ -99,7 +99,7 @@ impl CategoryService {
     ) -> BlogResult<()> {
         enforce_scope(&security, Resource::BlogCategories, Action::Delete)?;
         let capability_cleanup = self.category_delete_cleanup.clone().ok_or_else(|| {
-            BlogError::validation(
+            BlogError::invariant(
                 "Blog Category delete requires host-composed Taxonomy capability cleanup",
             )
         })?;
@@ -139,8 +139,8 @@ impl CategoryService {
             .all(&self.db)
             .await?;
         if categories.len() > MAX_BLOG_CATEGORY_TREE_NODES as usize {
-            return Err(BlogError::validation(format!(
-                "Blog category tree exceeds the bounded limit of {MAX_BLOG_CATEGORY_TREE_NODES} nodes"
+            return Err(BlogError::invariant(format!(
+                "Persisted Blog category tree exceeds the bounded limit of {MAX_BLOG_CATEGORY_TREE_NODES} nodes"
             )));
         }
         if categories.is_empty() {
@@ -163,7 +163,7 @@ impl CategoryService {
             )
             .await?;
         if canonical.len() != categories.len() {
-            return Err(BlogError::validation(
+            return Err(BlogError::invariant(
                 "Blog Category Taxonomy projection coverage is incomplete",
             ));
         }
@@ -173,7 +173,7 @@ impl CategoryService {
             .map(|category| (category.id, category))
             .collect::<HashMap<_, _>>();
         if canonical_by_id.len() != categories.len() {
-            return Err(BlogError::validation(
+            return Err(BlogError::invariant(
                 "Blog Category Taxonomy projection contains duplicate identities",
             ));
         }
@@ -182,7 +182,7 @@ impl CategoryService {
             .into_iter()
             .map(|category| {
                 let canonical = canonical_by_id.get(&category.id).ok_or_else(|| {
-                    BlogError::validation(format!(
+                    BlogError::invariant(format!(
                         "Blog category {} Taxonomy projection is missing",
                         category.id
                     ))
@@ -246,7 +246,7 @@ impl CategoryService {
             .into_iter()
             .next()
             .ok_or_else(|| {
-                BlogError::validation(format!(
+                BlogError::invariant(format!(
                     "Blog category {category_id} points to a missing Taxonomy Category"
                 ))
             })?;
