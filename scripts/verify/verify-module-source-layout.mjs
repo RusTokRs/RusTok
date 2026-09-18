@@ -48,6 +48,22 @@ function rustFiles(directory) {
   return files;
 }
 
+function textContractFiles(directory) {
+  const files = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...textContractFiles(path));
+    } else if (
+      entry.isFile() &&
+      (entry.name.endsWith(".mjs") || entry.name.endsWith(".json"))
+    ) {
+      files.push(path);
+    }
+  }
+  return files;
+}
+
 function assertNoForbiddenImports(files, patterns, layer) {
   for (const file of files) {
     const source = readFileSync(file, "utf8");
@@ -151,6 +167,34 @@ for (const profile of profiles) {
     ],
     "service",
   );
+}
+
+const retiredBlogPhysicalPaths = [
+  "crates/modules/rustok-blog/src/" + "openapi.rs",
+  "crates/modules/rustok-blog/src/" + "richtext.rs",
+  "crates/modules/rustok-blog/src/" + "state_machine.rs",
+  "crates/modules/rustok-blog/src/" + "reaction_subject.rs",
+  "crates/modules/rustok-blog/src/" + "seo_targets.rs",
+  "crates/modules/rustok-blog/src/" + "public_comments_snapshot.rs",
+  "crates/modules/rustok-blog/src/services/" + "post.rs",
+  "crates/modules/rustok-blog/src/" + "contract_tests.rs",
+  "crates/modules/rustok-blog/src/" + "tag_tenant_integrity_tests.rs",
+];
+
+for (const root of [
+  join(repoRoot, "scripts/verify"),
+  join(repoRoot, "crates/modules/rustok-blog/contracts"),
+]) {
+  for (const file of textContractFiles(root)) {
+    const source = readFileSync(file, "utf8");
+    for (const retiredPath of retiredBlogPhysicalPaths) {
+      if (source.includes(retiredPath)) {
+        fail(
+          `${relative(repoRoot, file)}: active verifier/evidence still references retired Blog path ${retiredPath}`,
+        );
+      }
+    }
+  }
 }
 
 if (failures.length > 0) {

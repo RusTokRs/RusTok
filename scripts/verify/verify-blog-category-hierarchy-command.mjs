@@ -138,7 +138,7 @@ requireMarkers("crates/modules/rustok-blog/src/controllers/mod.rs", [
   "post(categories::move_category)",
 ]);
 
-requireMarkers("crates/modules/rustok-blog/src/openapi.rs", [
+requireMarkers("crates/modules/rustok-blog/src/controllers/openapi.rs", [
   "crate::controllers::categories::move_category",
   "crate::dto::MoveCategoryInput",
   "crate::dto::CategoryPlacementResponse",

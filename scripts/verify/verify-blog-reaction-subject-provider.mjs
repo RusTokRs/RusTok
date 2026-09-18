@@ -39,8 +39,9 @@ if (JSON.stringify(contract.catalog.keys) !== JSON.stringify(["like"])) {
 
 for (const relativePath of contract.required_files) read(relativePath);
 
-const provider = read("crates/modules/rustok-blog/src/reaction_subject.rs");
-const blogLib = read("crates/modules/rustok-blog/src/lib.rs");
+const provider = read("crates/modules/rustok-blog/src/integrations/reaction_subject.rs");
+const integrationModule = read("crates/modules/rustok-blog/src/integrations/mod.rs");
+const moduleSource = read("crates/modules/rustok-blog/src/module.rs");
 const blogCargo = read("crates/modules/rustok-blog/Cargo.toml");
 const reactionsPlan = compact(read("crates/modules/rustok-reactions/docs/implementation-plan.md"));
 
@@ -58,13 +59,15 @@ if (/^rustok-reactions\s*=/mu.test(blogCargo)) {
   fail("Blog must not depend on the Reactions owner crate");
 }
 
+if (!integrationModule.includes("pub mod reaction_subject;")) {
+  fail("Blog integration registry is missing pub mod reaction_subject;");
+}
 for (const fragment of [
-  "mod reaction_subject;",
   "register_reaction_subject_provider_factory",
   "BlogReactionSubjectProviderFactory",
   '&["content", "comments", "taxonomy", "outbox"]',
 ]) {
-  if (!blogLib.includes(fragment)) fail(`Blog module registration is missing ${fragment}`);
+  if (!moduleSource.includes(fragment)) fail(`Blog module registration is missing ${fragment}`);
 }
 
 for (const fragment of [
