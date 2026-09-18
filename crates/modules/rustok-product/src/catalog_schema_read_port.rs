@@ -52,6 +52,8 @@ pub struct ProductEffectiveFormAttributeProjection {
     pub is_disabled: bool,
     pub position: i32,
     pub source: EffectiveAttributeSource,
+    pub variant_axis_policy: String,
+    pub default_variant_axis: bool,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -278,6 +280,8 @@ impl ProductCatalogSchemaReadPort for ProductCatalogSchemaService {
                 is_disabled: binding.is_disabled,
                 position: binding.position,
                 source: binding.source,
+                variant_axis_policy: binding.variant_axis_policy,
+                default_variant_axis: binding.default_variant_axis,
             });
         }
 

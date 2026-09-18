@@ -14,7 +14,7 @@ use rustok_ui_i18n::{fluent_args, BundleBuildError, I18nError, UiMessages};
 fn assert_send_sync<T: Send + Sync>() {}
 
 fn strip_bidi_isolates(value: &str) -> String {
-    value.replace('\u{2068}', "").replace('\u{2069}', "")
+    value.replace(['\u{2068}', '\u{2069}'], "")
 }
 
 #[test]
