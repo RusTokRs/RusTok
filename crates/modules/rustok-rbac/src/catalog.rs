@@ -27,7 +27,7 @@ impl TenantRbacCatalog for BuiltinTenantRbacCatalog {
                 permission_slugs.sort();
                 TenantRbacRole {
                     slug: role.to_string(),
-                    display_name: role_display_name(role.clone()).to_string(),
+                    display_name: role_display_name(role).to_string(),
                     permission_slugs,
                 }
             })
@@ -43,20 +43,24 @@ impl TenantRbacCatalog for BuiltinTenantRbacCatalog {
         permission_slugs
             .into_iter()
             .map(|slug| TenantRbacPermission {
-                display_name: slug.replace(':', " / "),
+                display_name: permission_display_name(&slug),
                 slug,
             })
             .collect()
     }
 }
 
-fn role_display_name(role: UserRole) -> &'static str {
+pub(crate) fn role_display_name(role: &UserRole) -> &'static str {
     match role {
         UserRole::SuperAdmin => "Super Admin",
         UserRole::Admin => "Admin",
         UserRole::Manager => "Manager",
         UserRole::Customer => "Customer",
     }
+}
+
+pub(crate) fn permission_display_name(slug: &str) -> String {
+    slug.replace(':', " / ")
 }
 
 #[cfg(test)]
