@@ -99,6 +99,8 @@ if (evidence.status !== "product_storefront_catalog_native_error_safety_source_u
 }
 for (const [key, expected] of Object.entries({
   runtime_dependency_static_public_envelope: true,
+  host_runtime_context_fallible: true,
+  host_runtime_context_failure_public_safe: true,
   tenant_context_static_public_envelope: true,
   optional_request_context_preserved: true,
   optional_request_context_failure_logged: true,
