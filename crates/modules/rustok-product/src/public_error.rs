@@ -10,6 +10,17 @@ pub struct ProductPublicError {
     pub correlation_id: Uuid,
 }
 
+impl ProductPublicError {
+    pub fn internal() -> Self {
+        Self {
+            message: "Product operation could not be completed safely",
+            code: "PRODUCT_OPERATION_FAILED",
+            retryable: false,
+            correlation_id: Uuid::new_v4(),
+        }
+    }
+}
+
 impl std::fmt::Display for ProductPublicError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -177,6 +188,17 @@ mod tests {
     use crate::CommerceError;
 
     #[test]
+    #[test]
+    fn generic_internal_descriptor_contains_no_runtime_details() {
+        let public = super::ProductPublicError::internal();
+        let rendered = public.to_string();
+
+        assert_eq!(public.code, "PRODUCT_OPERATION_FAILED");
+        assert!(!public.retryable);
+        assert!(!rendered.contains("HostRuntimeContext"));
+        assert!(!rendered.contains("TransactionalEventBus"));
+    }
+
     fn database_details_are_redacted_from_public_product_errors() {
         let error = CommerceError::Database(sea_orm::DbErr::Custom(
             "password=private host=internal".to_owned(),
