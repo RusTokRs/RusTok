@@ -334,7 +334,7 @@ impl<S> BlogPost<S> {
 
 /// Blog post status enum for database storage
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sea_orm::EnumIter, ToSchema, Default,
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, Default,
 )]
 #[serde(rename_all = "lowercase")]
 pub enum BlogPostStatus {
@@ -372,7 +372,7 @@ impl ToBlogPostStatus for BlogPost<Archived> {
 // ============================================================================
 
 /// Comment status enum for database storage
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sea_orm::EnumIter, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum CommentStatus {
     #[default]
