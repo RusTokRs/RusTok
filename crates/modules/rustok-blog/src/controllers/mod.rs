@@ -85,6 +85,8 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
             "/api/blog/posts/{id}/unpublish",
             post(posts::unpublish_post),
         )
+        .route("/api/blog/posts/{id}/archive", post(posts::archive_post))
+        .route("/api/blog/posts/{id}/restore", post(posts::restore_post))
         .route(
             "/api/blog/categories",
             get(categories::list_categories).post(categories::create_category),

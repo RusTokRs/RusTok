@@ -82,9 +82,7 @@ impl CommentService {
         }
 
         let locale = input.locale.clone();
-        // A create call has no comment id yet. Use a per-command nonce so two
-        // independent comments on the same post never share an idempotency key.
-        let command_id = Uuid::new_v4();
+        let command_id = input.command_id;
         let record = self
             .comments_thread_port
             .create_comment(

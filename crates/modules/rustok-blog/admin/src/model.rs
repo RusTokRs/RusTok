@@ -51,6 +51,7 @@ pub struct BlogPostDetail {
     pub seo_title: Option<String>,
     #[serde(rename = "seoDescription")]
     pub seo_description: Option<String>,
+    pub version: i32,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -96,6 +97,7 @@ impl BlogModerationStatus {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogPostDraft {
     pub locale: String,
+    pub version: Option<i32>,
     pub title: String,
     pub slug: String,
     pub excerpt: String,

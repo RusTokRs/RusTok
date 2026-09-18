@@ -5,41 +5,62 @@ use rustok_web::HttpError;
 
 use crate::BlogError;
 
-fn safe_parts(error: BlogError) -> (u16, String, String) {
-    let rich: RichError = error.into();
-    let status = rich.status_code;
-    let code = rich
-        .error_code
-        .unwrap_or_else(|| rich.kind.error_code().to_string());
-    let message = rich.user_message.unwrap_or_else(|| match rich.kind {
-        ErrorKind::Validation => "Invalid Blog request".to_string(),
-        ErrorKind::Unauthenticated => "Authentication required".to_string(),
-        ErrorKind::Forbidden => "Access denied".to_string(),
-        ErrorKind::NotFound => "The requested Blog resource was not found".to_string(),
-        ErrorKind::Conflict => "The Blog resource changed concurrently".to_string(),
-        ErrorKind::RateLimited => "Too many Blog requests".to_string(),
-        ErrorKind::Database | ErrorKind::Internal => {
-            "The Blog operation could not be completed".to_string()
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPublicError {
+    pub status: u16,
+    pub code: String,
+    pub message: String,
+}
+
+impl From<BlogError> for BlogPublicError {
+    fn from(error: BlogError) -> Self {
+        let rich: RichError = error.into();
+        let status = rich.status_code;
+        let code = rich
+            .error_code
+            .unwrap_or_else(|| rich.kind.error_code().to_string());
+        let message = rich.user_message.unwrap_or_else(|| match rich.kind {
+            ErrorKind::Validation => "Invalid Blog request".to_string(),
+            ErrorKind::Unauthenticated => "Authentication required".to_string(),
+            ErrorKind::Forbidden => "Access denied".to_string(),
+            ErrorKind::NotFound => "The requested Blog resource was not found".to_string(),
+            ErrorKind::Conflict => "The Blog resource changed concurrently".to_string(),
+            ErrorKind::RateLimited => "Too many Blog requests".to_string(),
+            ErrorKind::Database | ErrorKind::Internal => {
+                "The Blog operation could not be completed".to_string()
+            }
+            ErrorKind::ExternalService => "A required Blog dependency is unavailable".to_string(),
+            ErrorKind::Timeout => "A required Blog dependency timed out".to_string(),
+            ErrorKind::BusinessLogic => "The Blog operation is not allowed".to_string(),
+        });
+
+        Self {
+            status,
+            code,
+            message,
         }
-        ErrorKind::ExternalService => "A required Blog dependency is unavailable".to_string(),
-        ErrorKind::Timeout => "A required Blog dependency timed out".to_string(),
-        ErrorKind::BusinessLogic => "The Blog operation is not allowed".to_string(),
-    });
-    (status, code, message)
+    }
 }
 
 pub(crate) fn to_http_error(error: BlogError) -> HttpError {
-    let (status, code, message) = safe_parts(error);
-    let status = StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-    HttpError::new(status, code, message)
+    let public = BlogPublicError::from(error);
+    let status =
+        StatusCode::from_u16(public.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    HttpError::new(status, public.code, public.message)
 }
 
 pub(crate) fn to_graphql_error(error: BlogError) -> GraphqlError {
-    let (status, code, message) = safe_parts(error);
-    GraphqlError::new(message).extend_with(|_, extensions| {
-        extensions.set("code", code);
-        extensions.set("httpStatus", status);
+    let public = BlogPublicError::from(error);
+    GraphqlError::new(public.message).extend_with(|_, extensions| {
+        extensions.set("code", public.code);
+        extensions.set("httpStatus", public.status);
     })
+}
+
+impl From<BlogError> for GraphqlError {
+    fn from(error: BlogError) -> Self {
+        to_graphql_error(error)
+    }
 }
 
 #[cfg(test)]

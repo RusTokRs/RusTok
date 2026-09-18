@@ -49,6 +49,7 @@ pub fn BlogAdmin() -> impl IntoView {
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (editing_post_id, set_editing_post_id) = signal(Option::<String>::None);
+    let (editing_version, set_editing_version) = signal(Option::<i32>::None);
     let (title, set_title) = signal(String::new());
     let (slug, set_slug) = signal(String::new());
     let (excerpt, set_excerpt) = signal(String::new());
@@ -63,6 +64,7 @@ pub fn BlogAdmin() -> impl IntoView {
         move |_| {
             reset_form(
                 set_editing_post_id,
+                set_editing_version,
                 set_title,
                 set_slug,
                 set_excerpt,
@@ -156,6 +158,7 @@ pub fn BlogAdmin() -> impl IntoView {
                             if view_model.apply_returned_post_to_form {
                                 apply_post_to_form(
                                     set_editing_post_id,
+                                    set_editing_version,
                                     set_title,
                                     set_slug,
                                     set_excerpt,
@@ -223,6 +226,7 @@ pub fn BlogAdmin() -> impl IntoView {
         let tags_value = tags_input.get_untracked();
         let draft = core::build_blog_post_draft(core::BlogPostFormInput {
             locale: &locale_value,
+            version: editing_version.get_untracked(),
             title: &title_value,
             slug: &slug_value,
             excerpt: &excerpt_value,
@@ -268,6 +272,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     if result_view.apply_returned_post_to_form {
                         apply_post_to_form(
                             set_editing_post_id,
+                            set_editing_version,
                             set_title,
                             set_slug,
                             set_excerpt,
@@ -343,6 +348,7 @@ pub fn BlogAdmin() -> impl IntoView {
                         if result_view.apply_returned_post_to_form {
                             apply_post_to_form(
                                 set_editing_post_id,
+                                set_editing_version,
                                 set_title,
                                 set_slug,
                                 set_excerpt,
@@ -400,6 +406,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     if result_view.apply_returned_post_to_form {
                         apply_post_to_form(
                             set_editing_post_id,
+                            set_editing_version,
                             set_title,
                             set_slug,
                             set_excerpt,
@@ -420,6 +427,63 @@ pub fn BlogAdmin() -> impl IntoView {
                             ui_locale.as_deref(),
                             "blog.error.archivePost",
                             "Failed to archive post",
+                        ),
+                        &err.to_string(),
+                    )));
+                }
+            }
+
+            set_busy_key.set(None);
+        });
+    });
+
+    let restore_post_locale = ui_locale.clone();
+    let restore_post = Callback::new(move |(post_id, post_locale): (String, String)| {
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
+        let ui_locale = restore_post_locale.clone();
+        let command = core::prepare_blog_post_restore_command(post_id, post_locale.as_str());
+        set_submit_error.set(None);
+        set_busy_key.set(Some(command.busy_key.clone()));
+
+        spawn_local(async move {
+            match transport::restore_post(
+                token_value,
+                tenant_value,
+                command.post_id.clone(),
+                command.locale.clone(),
+            )
+            .await
+            {
+                Ok(post) => {
+                    let result_view = core::blog_post_mutation_result_view(
+                        editing_post_id.get_untracked().as_deref(),
+                        post.id.as_str(),
+                    );
+                    if result_view.apply_returned_post_to_form {
+                        apply_post_to_form(
+                            set_editing_post_id,
+                            set_editing_version,
+                            set_title,
+                            set_slug,
+                            set_excerpt,
+                            set_content,
+                            set_locale,
+                            set_tags_input,
+                            set_publish_now,
+                            &post,
+                        );
+                    }
+                    if result_view.refresh_posts {
+                        set_refresh_nonce.update(|value| *value += 1);
+                    }
+                }
+                Err(err) => {
+                    set_submit_error.set(Some(core::blog_post_transport_failure_issue(
+                        &t(
+                            ui_locale.as_deref(),
+                            "blog.error.restorePost",
+                            "Failed to restore post",
                         ),
                         &err.to_string(),
                     )));
@@ -827,6 +891,7 @@ fn BlogPostsTable(
     on_edit: Callback<(String, String)>,
     on_toggle_publish: Callback<(String, bool, String)>,
     on_archive: Callback<(String, String)>,
+    on_restore: Callback<(String, String)>,
     on_delete: Callback<String>,
 ) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
@@ -854,6 +919,7 @@ fn BlogPostsTable(
             unpublish: t(locale.as_deref(), "blog.table.unpublish", "Unpublish"),
             publish: t(locale.as_deref(), "blog.table.publish", "Publish"),
             archive: t(locale.as_deref(), "blog.table.archive", "Archive"),
+            restore: t(locale.as_deref(), "blog.table.restore", "Restore"),
             delete: t(locale.as_deref(), "blog.table.delete", "Delete"),
         },
     );
@@ -891,10 +957,12 @@ fn BlogPostsTable(
                                 let post_id_edit = row.post_id.clone();
                                 let post_id_publish = row.post_id.clone();
                                 let post_id_archive = row.post_id.clone();
+                                let post_id_restore = row.post_id.clone();
                                 let post_id_delete = row.post_id.clone();
                                 let post_locale_edit = row.locale.clone();
                                 let post_locale_publish = row.locale.clone();
                                 let post_locale_archive = row.locale.clone();
+                                let post_locale_restore = row.locale.clone();
 
                                 view! {
                                     <tr class=table_classes.row>
@@ -921,20 +989,27 @@ fn BlogPostsTable(
                                                 >
                                                     {row.edit_label.clone()}
                                                 </button>
-                                                <button
-                                                    type="button"
-                                                    class=table_classes.primary_action_button
-                                                    disabled=row.is_busy
-                                                    on:click={
-                                                        move |_| on_toggle_publish.run((
-                                                            post_id_publish.clone(),
-                                                            row.next_publish_state,
-                                                            post_locale_publish.clone(),
-                                                        ))
+                                                {if row.show_publish_action {
+                                                    view! {
+                                                        <button
+                                                            type="button"
+                                                            class=table_classes.primary_action_button
+                                                            disabled=row.is_busy
+                                                            on:click={
+                                                                move |_| on_toggle_publish.run((
+                                                                    post_id_publish.clone(),
+                                                                    row.next_publish_state,
+                                                                    post_locale_publish.clone(),
+                                                                ))
+                                                            }
+                                                        >
+                                                            {row.publish_label.clone()}
+                                                        </button>
                                                     }
-                                                >
-                                                    {row.publish_label.clone()}
-                                                </button>
+                                                    .into_any()
+                                                } else {
+                                                    ().into_any()
+                                                }}
                                                 {if row.show_archive_action {
                                                     view! {
                                                         <button
@@ -946,6 +1021,23 @@ fn BlogPostsTable(
                                                             }
                                                         >
                                                             {row.archive_label.clone()}
+                                                        </button>
+                                                    }
+                                                    .into_any()
+                                                } else {
+                                                    ().into_any()
+                                                }}
+                                                {if row.show_restore_action {
+                                                    view! {
+                                                        <button
+                                                            type="button"
+                                                            class=table_classes.primary_action_button
+                                                            disabled=row.is_busy
+                                                            on:click={
+                                                                move |_| on_restore.run((post_id_restore.clone(), post_locale_restore.clone()))
+                                                            }
+                                                        >
+                                                            {row.restore_label.clone()}
                                                         </button>
                                                     }
                                                     .into_any()
@@ -989,6 +1081,7 @@ fn StatusBadge(status: String) -> impl IntoView {
 #[allow(clippy::too_many_arguments)]
 fn apply_post_to_form(
     set_editing_post_id: WriteSignal<Option<String>>,
+    set_editing_version: WriteSignal<Option<i32>>,
     set_title: WriteSignal<String>,
     set_slug: WriteSignal<String>,
     set_excerpt: WriteSignal<String>,
@@ -1000,6 +1093,7 @@ fn apply_post_to_form(
 ) {
     apply_form_state(
         set_editing_post_id,
+        set_editing_version,
         set_title,
         set_slug,
         set_excerpt,
@@ -1014,6 +1108,7 @@ fn apply_post_to_form(
 #[allow(clippy::too_many_arguments)]
 fn reset_form(
     set_editing_post_id: WriteSignal<Option<String>>,
+    set_editing_version: WriteSignal<Option<i32>>,
     set_title: WriteSignal<String>,
     set_slug: WriteSignal<String>,
     set_excerpt: WriteSignal<String>,
@@ -1025,6 +1120,7 @@ fn reset_form(
 ) {
     apply_form_state(
         set_editing_post_id,
+        set_editing_version,
         set_title,
         set_slug,
         set_excerpt,
@@ -1039,6 +1135,7 @@ fn reset_form(
 #[allow(clippy::too_many_arguments)]
 fn apply_form_state(
     set_editing_post_id: WriteSignal<Option<String>>,
+    set_editing_version: WriteSignal<Option<i32>>,
     set_title: WriteSignal<String>,
     set_slug: WriteSignal<String>,
     set_excerpt: WriteSignal<String>,
@@ -1049,6 +1146,7 @@ fn apply_form_state(
     state: core::BlogPostEditorFormState,
 ) {
     set_editing_post_id.set(state.editing_post_id);
+    set_editing_version.set(state.version);
     set_title.set(state.title);
     set_slug.set(state.slug);
     set_excerpt.set(state.excerpt);

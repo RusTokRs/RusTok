@@ -121,3 +121,26 @@ mod tests {
         assert_eq!(issue.message, "Failed to save page: validation error");
     }
 }
+
+/// Creates a stable opaque identifier for one logical write command.
+///
+/// UI code should allocate this once when the user submits an operation and
+/// reuse it across transport retries. Owners can derive idempotency keys from
+/// it without conflating tracing/correlation identity with command identity.
+pub fn new_command_id() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+
+#[cfg(test)]
+mod command_id_tests {
+    use super::new_command_id;
+
+    #[test]
+    fn command_ids_are_non_empty_and_unique() {
+        let first = new_command_id();
+        let second = new_command_id();
+        assert!(!first.is_empty());
+        assert_ne!(first, second);
+        assert!(uuid::Uuid::parse_str(&first).is_ok());
+    }
+}

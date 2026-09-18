@@ -74,6 +74,10 @@ pub fn busy_key_for_archive(post_id: &str) -> String {
     ui_busy_key_with_id("archive", post_id)
 }
 
+pub fn busy_key_for_restore(post_id: &str) -> String {
+    ui_busy_key_with_id("restore", post_id)
+}
+
 pub fn busy_key_for_delete(post_id: &str) -> String {
     ui_busy_key_with_id("delete", post_id)
 }
@@ -228,8 +232,16 @@ pub fn publish_action_label(
     }
 }
 
-pub fn should_show_archive_action(is_archived: bool) -> bool {
+pub fn should_show_archive_action(is_published: bool) -> bool {
+    is_published
+}
+
+pub fn should_show_publish_action(is_archived: bool) -> bool {
     !is_archived
+}
+
+pub fn should_show_restore_action(is_archived: bool) -> bool {
+    is_archived
 }
 
 pub fn next_publish_state(is_published: bool) -> bool {
@@ -247,6 +259,7 @@ pub fn locale_arg(locale: &str) -> Option<String> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlogPostFormInput<'a> {
     pub locale: &'a str,
+    pub version: Option<i32>,
     pub title: &'a str,
     pub slug: &'a str,
     pub excerpt: &'a str,
@@ -258,6 +271,7 @@ pub struct BlogPostFormInput<'a> {
 pub fn build_blog_post_draft(input: BlogPostFormInput<'_>) -> BlogPostDraft {
     BlogPostDraft {
         locale: trimmed_text(input.locale),
+        version: input.version,
         title: trimmed_text(input.title),
         slug: trimmed_text(input.slug),
         excerpt: trimmed_text(input.excerpt),
@@ -270,6 +284,7 @@ pub fn build_blog_post_draft(input: BlogPostFormInput<'_>) -> BlogPostDraft {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlogPostEditorFormState {
     pub editing_post_id: Option<String>,
+    pub version: Option<i32>,
     pub title: String,
     pub slug: String,
     pub excerpt: String,
@@ -283,6 +298,7 @@ impl BlogPostEditorFormState {
     pub fn empty(default_locale: &str) -> Self {
         Self {
             editing_post_id: None,
+            version: None,
             title: String::new(),
             slug: String::new(),
             excerpt: String::new(),
@@ -296,6 +312,7 @@ impl BlogPostEditorFormState {
     pub fn from_post(post: &BlogPostDetail) -> Self {
         Self {
             editing_post_id: Some(post.id.clone()),
+            version: Some(post.version),
             title: post.title.clone(),
             slug: optional_text_or_default(post.slug.clone()),
             excerpt: optional_text_or_default(post.excerpt.clone()),
@@ -350,7 +367,14 @@ pub fn prepare_blog_post_save_command(
 
     let busy_key = busy_key_for_save(editing_post_id.as_deref());
     let operation = match editing_post_id_if_editing_mode(editing_post_id) {
-        Some(post_id) => BlogPostSaveOperation::Update { post_id },
+        Some(post_id) => {
+            if draft.version.is_none() {
+                return Err(WritePathIssue::new(
+                    "The Blog post revision is missing; reload before saving",
+                ));
+            }
+            BlogPostSaveOperation::Update { post_id }
+        }
         None => BlogPostSaveOperation::Create,
     };
 
@@ -374,10 +398,13 @@ pub struct BlogPostAdminTableRowViewModel {
     pub is_published: bool,
     pub is_archived: bool,
     pub next_publish_state: bool,
+    pub show_publish_action: bool,
     pub show_archive_action: bool,
+    pub show_restore_action: bool,
     pub edit_label: String,
     pub publish_label: String,
     pub archive_label: String,
+    pub restore_label: String,
     pub delete_label: String,
 }
 
@@ -390,6 +417,7 @@ pub struct BlogPostAdminTableRowLabels<'a> {
     pub unpublish: &'a str,
     pub publish: &'a str,
     pub archive: &'a str,
+    pub restore: &'a str,
     pub delete: &'a str,
 }
 
@@ -404,7 +432,9 @@ pub fn blog_post_admin_table_row_view(
     let is_busy = row_is_busy_for_post(busy_key, post_id.as_str());
     let is_published = is_published_status(post.status.as_str());
     let is_archived = is_archived_status(post.status.as_str());
-    let show_archive_action = should_show_archive_action(is_archived);
+    let show_publish_action = should_show_publish_action(is_archived);
+    let show_archive_action = should_show_archive_action(is_published);
+    let show_restore_action = should_show_restore_action(is_archived);
 
     BlogPostAdminTableRowViewModel {
         post_id,
@@ -418,7 +448,9 @@ pub fn blog_post_admin_table_row_view(
         is_published,
         is_archived,
         next_publish_state: next_publish_state(is_published),
+        show_publish_action,
         show_archive_action,
+        show_restore_action,
         edit_label: edit_action_label(
             is_editing,
             labels.editing.to_string(),
@@ -430,6 +462,7 @@ pub fn blog_post_admin_table_row_view(
             labels.publish.to_string(),
         ),
         archive_label: labels.archive.to_string(),
+        restore_label: labels.restore.to_string(),
         delete_label: labels.delete.to_string(),
     }
 }
@@ -514,6 +547,7 @@ pub struct BlogPostAdminPostsTableLabels {
     pub unpublish: String,
     pub publish: String,
     pub archive: String,
+    pub restore: String,
     pub delete: String,
 }
 
@@ -544,6 +578,7 @@ pub fn blog_post_admin_posts_table_view_from_items(
         unpublish: labels.unpublish.as_str(),
         publish: labels.publish.as_str(),
         archive: labels.archive.as_str(),
+        restore: labels.restore.as_str(),
         delete: labels.delete.as_str(),
     };
     let rows = items
@@ -920,6 +955,17 @@ pub fn prepare_blog_post_archive_command(
     }
 }
 
+pub fn prepare_blog_post_restore_command(
+    post_id: String,
+    post_locale: &str,
+) -> BlogPostArchiveCommand {
+    BlogPostArchiveCommand {
+        busy_key: busy_key_for_restore(post_id.as_str()),
+        post_id,
+        locale: locale_arg(post_locale),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlogPostLoadResultViewModel {
     pub apply_returned_post_to_form: bool,
@@ -1127,6 +1173,7 @@ mod tests {
     fn blog_post_draft_builder_normalizes_form_state_without_ui_runtime() {
         let content = RichTextDocument::empty();
         let draft = build_blog_post_draft(BlogPostFormInput {
+            version: None,
             locale: " ru ",
             title: "  Launch Notes  ",
             slug: " launch-notes ",
@@ -1179,11 +1226,13 @@ mod tests {
             featured_image_url: None,
             seo_title: None,
             seo_description: None,
+            version: 9,
         };
 
         let state = BlogPostEditorFormState::from_post(&post);
 
         assert_eq!(state.editing_post_id, Some("post-1".to_string()));
+        assert_eq!(state.version, Some(9));
         assert_eq!(state.slug, "launch");
         assert_eq!(state.excerpt, "");
         assert_eq!(state.content, RichTextDocument::empty());
@@ -1195,6 +1244,7 @@ mod tests {
     fn prepare_save_command_rejects_missing_required_fields() {
         let content = RichTextDocument::empty();
         let draft = build_blog_post_draft(BlogPostFormInput {
+            version: None,
             locale: "en",
             title: "   ",
             slug: "draft",
@@ -1215,6 +1265,7 @@ mod tests {
     fn prepare_save_command_selects_create_operation() {
         let content = RichTextDocument::single_paragraph("Hello world");
         let draft = build_blog_post_draft(BlogPostFormInput {
+            version: None,
             locale: "en",
             title: "Launch",
             slug: "launch",
@@ -1237,6 +1288,7 @@ mod tests {
     fn prepare_save_command_selects_update_operation() {
         let content = RichTextDocument::single_paragraph("Hello world");
         let draft = build_blog_post_draft(BlogPostFormInput {
+            version: Some(7),
             locale: "en",
             title: "Launch",
             slug: "launch",
@@ -1279,6 +1331,11 @@ mod tests {
         assert_eq!(archive.post_id, "post-3");
         assert_eq!(archive.locale, Some("de".to_string()));
         assert_eq!(archive.busy_key, "archive:post-3");
+
+        let restore = prepare_blog_post_restore_command("post-5".to_string(), "fr");
+        assert_eq!(restore.post_id, "post-5");
+        assert_eq!(restore.locale, Some("fr".to_string()));
+        assert_eq!(restore.busy_key, "restore:post-5");
 
         let delete = prepare_blog_post_delete_command("post-4".to_string());
         assert_eq!(delete.post_id, "post-4");
@@ -1407,6 +1464,7 @@ mod tests {
                 unpublish: "Unpublish",
                 publish: "Publish",
                 archive: "Archive",
+                restore: "Restore",
                 delete: "Delete",
             },
         );
@@ -1419,7 +1477,9 @@ mod tests {
         assert!(row.is_published);
         assert!(!row.is_archived);
         assert!(!row.next_publish_state);
+        assert!(row.show_publish_action);
         assert!(row.show_archive_action);
+        assert!(!row.show_restore_action);
         assert_eq!(row.edit_label, "Editing");
         assert_eq!(row.publish_label, "Unpublish");
         assert_eq!(row.archive_label, "Archive");
@@ -1463,6 +1523,7 @@ mod tests {
         assert_eq!(busy_key_for_save(None), "create".to_string());
         assert_eq!(busy_key_for_publish("1"), "publish:1".to_string());
         assert_eq!(busy_key_for_archive("1"), "archive:1".to_string());
+        assert_eq!(busy_key_for_restore("1"), "restore:1".to_string());
         assert_eq!(busy_key_for_delete("1"), "delete:1".to_string());
         assert!(is_save_busy(Some("create")));
         assert!(is_save_busy(Some("save:1")));
@@ -1564,8 +1625,12 @@ mod tests {
             publish_action_label(false, "Unpublish".to_string(), "Publish".to_string()),
             "Publish".to_string()
         );
-        assert!(should_show_archive_action(false));
-        assert!(!should_show_archive_action(true));
+        assert!(!should_show_archive_action(false));
+        assert!(should_show_archive_action(true));
+        assert!(should_show_publish_action(false));
+        assert!(!should_show_publish_action(true));
+        assert!(!should_show_restore_action(false));
+        assert!(should_show_restore_action(true));
         assert!(!next_publish_state(true));
         assert!(next_publish_state(false));
         assert!(should_publish_now(true));

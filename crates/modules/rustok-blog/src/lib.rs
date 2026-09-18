@@ -21,8 +21,9 @@ pub mod services;
 pub use controllers::openapi;
 pub use domain::{richtext, state_machine};
 pub use dto::{
-    CategoryListItem, CategoryListResponse, CategoryResponse, CommentListItem, CommentResponse,
-    CreateCategoryInput, CreateCommentInput, CreatePostInput, CreateTagInput, ListCategoriesFilter,
+    ArchivePostInput, CategoryListItem, CategoryListResponse, CategoryResponse, CommentListItem,
+    CommentResponse, CreateCategoryInput, CreateCommentInput, CreatePostInput, CreateTagInput,
+    ListCategoriesFilter,
     ListCommentsFilter, ListTagsFilter, ModerateCommentInput, ModerateCommentStatus, PostListQuery,
     PostListResponse, PostResponse, PostSortField, PostSortOrder, PostSummary, TagListItem,
     TagResponse, UpdateCategoryInput,
@@ -41,6 +42,7 @@ pub use integrations::reaction_subject::{
     BlogReactionSubjectProviderFactory,
 };
 pub use module::BlogModule;
+pub use public_error::BlogPublicError;
 pub use rustok_comments::CommentsThreadPort;
 pub use services::{CategoryService, CommentService, PostService, TagService};
 pub use state_machine::{

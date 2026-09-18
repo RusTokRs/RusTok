@@ -116,4 +116,6 @@ pub use tenant_rbac::{
     SharedTenantRbacCatalog, TenantRbacCatalog, TenantRbacCatalogError, TenantRbacPermission,
     TenantRbacRole,
 };
-pub use write_path_feedback::{WritePathIssue, WritePathIssueKind, classify_write_path_issue};
+pub use write_path_feedback::{
+    WritePathIssue, WritePathIssueKind, classify_write_path_issue, new_command_id,
+};

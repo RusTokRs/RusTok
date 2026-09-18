@@ -207,3 +207,8 @@ impl PostListResponse {
         }
     }
 }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
+pub struct ArchivePostInput {
+    pub reason: Option<String>,
+}

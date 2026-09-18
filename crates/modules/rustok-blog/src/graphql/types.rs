@@ -197,7 +197,7 @@ impl GqlPost {
             per_page.unwrap_or(20),
         )
         .await
-        .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        .map_err(crate::public_error::to_graphql_error)?;
 
         Ok(GqlPublicCommentList {
             availability: read.availability.into(),
@@ -238,7 +238,7 @@ impl GqlPost {
                 Some(request_tenant.default_locale.as_str()),
             )
             .await
-            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+            .map_err(crate::public_error::to_graphql_error)?;
 
         Ok(GqlModerationCommentList {
             items: items.into_iter().map(Into::into).collect(),
@@ -329,6 +329,7 @@ pub struct CreatePostInput {
 #[derive(InputObject)]
 #[graphql(name = "CreateBlogCommentInput")]
 pub struct GqlCreateBlogCommentInput {
+    pub command_id: Uuid,
     pub locale: String,
     pub content: RichTextDocument,
     pub parent_comment_id: Option<Uuid>,
@@ -426,6 +427,7 @@ impl From<CommentResponse> for GqlBlogComment {
 impl From<GqlCreateBlogCommentInput> for DomainCreateCommentInput {
     fn from(input: GqlCreateBlogCommentInput) -> Self {
         Self {
+            command_id: input.command_id,
             locale: input.locale,
             content: input.content,
             parent_comment_id: input.parent_comment_id,

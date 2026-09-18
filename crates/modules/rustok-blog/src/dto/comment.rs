@@ -6,6 +6,8 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateCommentInput {
+    /// Stable identity of this logical create command. Reuse across retries.
+    pub command_id: Uuid,
     pub locale: String,
     pub content: RichTextDocument,
     pub parent_comment_id: Option<Uuid>,

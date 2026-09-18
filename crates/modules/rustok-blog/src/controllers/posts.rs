@@ -11,7 +11,7 @@ use std::{collections::HashMap, time::Instant};
 use uuid::Uuid;
 
 use super::BlogHttpRuntime;
-use crate::{CreatePostInput, PostListQuery, PostResponse, PostService, UpdatePostInput};
+use crate::{ArchivePostInput, CreatePostInput, PostListQuery, PostResponse, PostService, UpdatePostInput};
 
 fn security_context(auth: &AuthContext) -> rustok_core::SecurityContext {
     rustok_core::security_context_from_access_token(
@@ -59,7 +59,7 @@ pub async fn list_posts(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("blog_list_posts_failed", err.to_string()))?;
+        .map_err(crate::public_error::to_http_error)?;
     metrics::record_read_path_query(
         "http",
         "blog.list_posts",
@@ -123,7 +123,7 @@ pub async fn get_post(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("blog_get_post_failed", err.to_string()))?;
+        .map_err(crate::public_error::to_http_error)?;
     Ok(Json(post))
 }
 
@@ -156,7 +156,7 @@ pub async fn create_post(
     let post_id = service
         .create_post(tenant.id, security_context(&auth), input)
         .await
-        .map_err(|err| HttpError::bad_request("blog_create_post_failed", err.to_string()))?;
+        .map_err(crate::public_error::to_http_error)?;
     Ok((StatusCode::CREATED, Json(post_id)))
 }
 
@@ -193,7 +193,7 @@ pub async fn update_post(
     service
         .update_post(tenant.id, id, security_context(&auth), input)
         .await
-        .map_err(|err| HttpError::bad_request("blog_update_post_failed", err.to_string()))?;
+        .map_err(crate::public_error::to_http_error)?;
     Ok(())
 }
 
@@ -228,7 +228,7 @@ pub async fn delete_post(
     service
         .delete_post(tenant.id, id, security_context(&auth))
         .await
-        .map_err(|err| HttpError::bad_request("blog_delete_post_failed", err.to_string()))?;
+        .map_err(crate::public_error::to_http_error)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -263,7 +263,7 @@ pub async fn publish_post(
     service
         .publish_post(tenant.id, id, security_context(&auth))
         .await
-        .map_err(|err| HttpError::bad_request("blog_publish_post_failed", err.to_string()))?;
+        .map_err(crate::public_error::to_http_error)?;
     Ok(())
 }
 
@@ -298,7 +298,7 @@ pub async fn unpublish_post(
     service
         .unpublish_post(tenant.id, id, security_context(&auth))
         .await
-        .map_err(|err| HttpError::bad_request("blog_unpublish_post_failed", err.to_string()))?;
+        .map_err(crate::public_error::to_http_error)?;
     Ok(())
 }
 
@@ -312,4 +312,70 @@ pub(super) fn ensure_blog_permission(
     }
 
     Ok(())
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/blog/posts/{id}/archive",
+    tag = "blog",
+    params(("id" = Uuid, Path, description = "Post ID")),
+    request_body = ArchivePostInput,
+    responses(
+        (status = 200, description = "Post archived"),
+        (status = 400, description = "Invalid lifecycle transition"),
+        (status = 404, description = "Post not found"),
+        (status = 409, description = "Concurrent modification"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn archive_post(
+    State(runtime): State<BlogHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<ArchivePostInput>,
+) -> HttpResult<()> {
+    ensure_blog_permission(
+        &auth,
+        &[Permission::BLOG_POSTS_PUBLISH],
+        "Permission denied: blog_posts:publish required",
+    )?;
+
+    PostService::new(runtime.db_clone(), runtime.event_bus())
+        .archive_post(tenant.id, id, security_context(&auth), input.reason)
+        .await
+        .map_err(crate::public_error::to_http_error)
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/blog/posts/{id}/restore",
+    tag = "blog",
+    params(("id" = Uuid, Path, description = "Post ID")),
+    responses(
+        (status = 200, description = "Post restored to draft"),
+        (status = 400, description = "Invalid lifecycle transition"),
+        (status = 404, description = "Post not found"),
+        (status = 409, description = "Concurrent modification"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn restore_post(
+    State(runtime): State<BlogHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+) -> HttpResult<()> {
+    ensure_blog_permission(
+        &auth,
+        &[Permission::BLOG_POSTS_PUBLISH],
+        "Permission denied: blog_posts:publish required",
+    )?;
+
+    PostService::new(runtime.db_clone(), runtime.event_bus())
+        .restore_post(tenant.id, id, security_context(&auth))
+        .await
+        .map_err(crate::public_error::to_http_error)
 }

@@ -224,6 +224,38 @@ impl BlogMutation {
         Ok(true)
     }
 
+    async fn restore_post(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Option<Uuid>,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_blog_permission(
+            ctx,
+            &[Permission::BLOG_POSTS_PUBLISH],
+            "Permission denied: blog_posts:publish required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        PostService::new(db.clone(), event_bus.clone())
+            .restore_post(
+                tenant_id,
+                id,
+                rustok_core::security_context_from_access_token(
+                    auth.user_id,
+                    &auth.grant_type,
+                    &auth.permissions,
+                ),
+            )
+            .await?;
+
+        Ok(true)
+    }
+
     async fn create_blog_comment(
         &self,
         ctx: &Context<'_>,
