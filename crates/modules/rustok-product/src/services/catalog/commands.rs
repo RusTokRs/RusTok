@@ -144,92 +144,33 @@ impl CatalogService {
             "Product translations inserted"
         );
 
-        let mut option_models = Vec::with_capacity(input.options.len());
-        let mut option_translation_models = Vec::new();
-        let mut option_value_models = Vec::new();
-        let mut option_value_translation_models = Vec::new();
-        for (position, opt_input) in input.options.iter().enumerate() {
-            let option_id = generate_id();
-            let option_translations = normalize_option_translations(&opt_input.translations)?;
-            let option_translations = expand_option_translations_for_product_locales(
-                option_translations,
-                &translation_locales,
-            );
-            let base_values = option_translations
-                .first()
-                .map(|item| item.values.clone())
-                .unwrap_or_default();
-            ensure_option_values_consistent(&option_translations, &base_values)?;
-            option_models.push(entities::product_option::ActiveModel {
-                id: Set(option_id),
+        for (position, axis_input) in input.variant_axes.iter().enumerate() {
+            let axis_id = generate_id();
+            let axis = entities::product_variant_axis::ActiveModel {
+                id: Set(axis_id),
+                tenant_id: Set(tenant_id),
                 product_id: Set(product_id),
-                position: Set(position as i32),
-            });
+                attribute_id: Set(axis_input.attribute_id),
+                position: Set(if axis_input.position != 0 { axis_input.position } else { position as i32 }),
+                created_at: Set(now.into()),
+            };
+            axis.insert(&txn).await?;
 
-            for translation in &option_translations {
-                option_translation_models.push(entities::product_option_translation::ActiveModel {
+            for (val_pos, option_id) in axis_input.allowed_option_ids.iter().enumerate() {
+                let axis_val = entities::product_variant_axis_value::ActiveModel {
                     id: Set(generate_id()),
-                    option_id: Set(option_id),
-                    locale: Set(translation.locale.clone()),
-                    title: Set(translation.name.clone()),
-                });
+                    tenant_id: Set(tenant_id),
+                    axis_id: Set(axis_id),
+                    option_id: Set(*option_id),
+                    position: Set(val_pos as i32),
+                    created_at: Set(now.into()),
+                };
+                axis_val.insert(&txn).await?;
             }
-
-            let mut option_value_ids = Vec::with_capacity(base_values.len());
-            for (value_position, _) in base_values.iter().enumerate() {
-                let option_value_id = generate_id();
-                option_value_models.push(entities::product_option_value::ActiveModel {
-                    id: Set(option_value_id),
-                    option_id: Set(option_id),
-                    position: Set(value_position as i32),
-                    metadata: Set(serde_json::json!({})),
-                });
-                option_value_ids.push(option_value_id);
-            }
-
-            for translation in &option_translations {
-                for (value_position, value_id) in option_value_ids.iter().enumerate() {
-                    let value = translation
-                        .values
-                        .get(value_position)
-                        .cloned()
-                        .unwrap_or_default();
-                    option_value_translation_models.push(
-                        entities::product_option_value_translation::ActiveModel {
-                            id: Set(generate_id()),
-                            value_id: Set(*value_id),
-                            locale: Set(translation.locale.clone()),
-                            value: Set(value),
-                        },
-                    );
-                }
-            }
-        }
-        if !option_models.is_empty() {
-            entities::product_option::Entity::insert_many(option_models)
-                .exec(&txn)
-                .await?;
-        }
-        if !option_translation_models.is_empty() {
-            entities::product_option_translation::Entity::insert_many(option_translation_models)
-                .exec(&txn)
-                .await?;
-        }
-        if !option_value_models.is_empty() {
-            entities::product_option_value::Entity::insert_many(option_value_models)
-                .exec(&txn)
-                .await?;
-        }
-        if !option_value_translation_models.is_empty() {
-            entities::product_option_value_translation::Entity::insert_many(
-                option_value_translation_models,
-            )
-            .exec(&txn)
-            .await?;
         }
         debug!(
-            options_count = input.options.len(),
-            "Product options inserted"
+            axes_count = input.variant_axes.len(),
+            "Product variant axes inserted"
         );
 
         let default_stock_location =
@@ -257,9 +198,7 @@ impl CatalogService {
                 inventory_quantity: Set(0),
                 weight: Set(var_input.weight),
                 weight_unit: Set(var_input.weight_unit.clone()),
-                option1: Set(var_input.option1.clone()),
-                option2: Set(var_input.option2.clone()),
-                option3: Set(var_input.option3.clone()),
+                combination_identity: Set(None),
                 position: Set(position as i32),
                 created_at: Set(now.into()),
                 updated_at: Set(now.into()),
@@ -267,6 +206,10 @@ impl CatalogService {
             variant.insert(&txn).await.map_err(|error| {
                 map_product_unique_violation(error, "", "", var_input.sku.as_deref())
             })?;
+
+            if !var_input.axis_values.is_empty() {
+                assign_variant_axis_values_in_tx(&txn, tenant_id, variant_id, &var_input.axis_values).await?;
+            }
 
             BootstrapService::create_initial_records_in_tx(
                 &txn,
@@ -279,11 +222,7 @@ impl CatalogService {
             )
             .await?;
 
-            let variant_title = generate_variant_title_from_inputs(
-                var_input.option1.as_deref(),
-                var_input.option2.as_deref(),
-                var_input.option3.as_deref(),
-            );
+            let variant_title = "Default".to_string();
             for locale in &translation_locales {
                 variant_translation_models.push(entities::variant_translation::ActiveModel {
                     id: Set(generate_id()),

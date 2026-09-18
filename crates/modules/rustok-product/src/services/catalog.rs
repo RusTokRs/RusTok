@@ -5,9 +5,6 @@ pub mod helpers;
 mod image_translation;
 mod image_translation_changes;
 mod image_translation_progress;
-mod option_translation;
-mod option_translation_changes;
-mod option_translation_progress;
 mod projection;
 mod queries;
 mod tags;
@@ -28,17 +25,6 @@ pub(crate) use image_translation_changes::record_product_image_translation_chang
 pub use image_translation_changes::{
     MAX_PRODUCT_IMAGE_TRANSLATION_CHANGE_PAGE, ProductImageTranslationChangeLifecycle,
     ProductImageTranslationChangeRecord,
-};
-pub use option_translation::{
-    ProductOptionTranslationExactLocaleApply, ProductOptionTranslationExactLocaleApplyReceipt,
-    ProductOptionTranslationExactLocaleError, ProductOptionTranslationExactLocaleRecord,
-    ProductOptionTranslationExactLocaleResult, ProductOptionTranslationExactLocaleSnapshot,
-    ProductOptionTranslationExactLocaleValueApply, ProductOptionTranslationExactLocaleValueRecord,
-};
-pub(crate) use option_translation_changes::record_product_option_translation_changes_in_tx;
-pub use option_translation_changes::{
-    MAX_PRODUCT_OPTION_TRANSLATION_CHANGE_PAGE, ProductOptionTranslationChangeLifecycle,
-    ProductOptionTranslationChangeRecord,
 };
 pub use translation::{
     ProductTranslationExactLocaleApply, ProductTranslationExactLocaleApplyReceipt,

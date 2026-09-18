@@ -1,7 +1,5 @@
 use crate::dto::{
-    ProductOptionTranslationInput, ProductOptionTranslationResponse,
-    ProductOptionTranslationResponse as ProductOptionTranslationResponseDto, ProductResponse,
-    ProductTranslationInput, ProductTranslationResponse,
+    ProductResponse, ProductTranslationInput, ProductTranslationResponse,
 };
 use crate::entities;
 use crate::error::{CommerceError, CommerceResult};
@@ -67,24 +65,17 @@ pub fn slugify(text: &str) -> String {
 }
 
 pub fn generate_variant_title(variant: &entities::product_variant::Model) -> String {
-    generate_variant_title_from_inputs(
-        variant.option1.as_deref(),
-        variant.option2.as_deref(),
-        variant.option3.as_deref(),
-    )
+    match &variant.combination_identity {
+        Some(identity) if !identity.is_empty() => identity.clone(),
+        _ => "Default".to_string(),
+    }
 }
 
-pub fn generate_variant_title_from_inputs(
-    option1: Option<&str>,
-    option2: Option<&str>,
-    option3: Option<&str>,
-) -> String {
-    let options: Vec<&str> = [option1, option2, option3].into_iter().flatten().collect();
-
-    if options.is_empty() {
+pub fn generate_variant_title_from_axis_values(values: &[&str]) -> String {
+    if values.is_empty() {
         "Default".to_string()
     } else {
-        options.join(" / ")
+        values.join(" / ")
     }
 }
 
@@ -236,159 +227,6 @@ pub fn normalize_update_product_metadata(
     }
 }
 
-pub fn build_option_translations(
-    translations: Vec<entities::product_option_translation::Model>,
-    option_values: Vec<entities::product_option_value::Model>,
-    option_value_translations_by_value: &HashMap<
-        Uuid,
-        Vec<entities::product_option_value_translation::Model>,
-    >,
-) -> Vec<ProductOptionTranslationResponse> {
-    translations
-        .into_iter()
-        .map(|translation| {
-            let values = option_values
-                .iter()
-                .map(|value| {
-                    option_value_translations_by_value
-                        .get(&value.id)
-                        .and_then(|items| {
-                            items
-                                .iter()
-                                .find(|item| locale_tags_match(&item.locale, &translation.locale))
-                                .map(|item| item.value.clone())
-                        })
-                        .or_else(|| {
-                            option_value_translations_by_value
-                                .get(&value.id)
-                                .and_then(|items| items.first())
-                                .map(|item| item.value.clone())
-                        })
-                        .unwrap_or_default()
-                })
-                .collect();
-
-            ProductOptionTranslationResponse {
-                locale: translation.locale,
-                name: translation.title,
-                values,
-            }
-        })
-        .collect()
-}
-
-pub fn expand_option_translations_for_product_locales(
-    mut translations: Vec<ProductOptionTranslationInput>,
-    product_locales: &[String],
-) -> Vec<ProductOptionTranslationInput> {
-    let Some(fallback) = translations.first().cloned() else {
-        return translations;
-    };
-
-    for locale in product_locales {
-        if translations
-            .iter()
-            .any(|translation| locale_tags_match(&translation.locale, locale))
-        {
-            continue;
-        }
-
-        translations.push(ProductOptionTranslationInput {
-            locale: locale.clone(),
-            name: fallback.name.clone(),
-            values: fallback.values.clone(),
-        });
-    }
-
-    translations
-}
-
-pub fn normalize_option_translations(
-    translations: &[ProductOptionTranslationInput],
-) -> CommerceResult<Vec<ProductOptionTranslationInput>> {
-    if translations.is_empty() {
-        return Err(CommerceError::Validation(
-            "At least one option translation is required".into(),
-        ));
-    }
-
-    let mut seen = HashSet::new();
-    let mut normalized = Vec::with_capacity(translations.len());
-    for translation in translations {
-        let locale = normalize_locale_tag(&translation.locale).ok_or_else(|| {
-            CommerceError::Validation("Invalid locale for option translation".into())
-        })?;
-        if !seen.insert(locale.clone()) {
-            return Err(CommerceError::Validation(
-                "Duplicate locale in option translations".into(),
-            ));
-        }
-        let name = translation.name.trim();
-        if name.is_empty() {
-            return Err(CommerceError::Validation(
-                "Option name cannot be empty".into(),
-            ));
-        }
-        if translation.values.is_empty() {
-            return Err(CommerceError::Validation(
-                "Option values cannot be empty".into(),
-            ));
-        }
-        normalized.push(ProductOptionTranslationInput {
-            locale,
-            name: name.to_string(),
-            values: translation
-                .values
-                .iter()
-                .map(|value| value.trim().to_string())
-                .collect(),
-        });
-    }
-    Ok(normalized)
-}
-
-pub fn ensure_option_values_consistent(
-    translations: &[ProductOptionTranslationInput],
-    base_values: &[String],
-) -> CommerceResult<()> {
-    for translation in translations {
-        if translation.values.len() != base_values.len() {
-            return Err(CommerceError::Validation(
-                "Option value count must be consistent across translations".into(),
-            ));
-        }
-    }
-    Ok(())
-}
-
-pub fn resolve_option_display(
-    translations: &[ProductOptionTranslationResponseDto],
-    requested_locale: &str,
-    fallback_locale: Option<&str>,
-) -> (String, Vec<String>) {
-    let requested = normalize_locale_tag(requested_locale);
-    let fallback = fallback_locale.and_then(normalize_locale_tag);
-
-    let resolved = requested
-        .as_deref()
-        .and_then(|locale| {
-            translations.iter().find(|translation| {
-                normalize_locale_tag(&translation.locale).as_deref() == Some(locale)
-            })
-        })
-        .or_else(|| {
-            fallback.as_deref().and_then(|locale| {
-                translations.iter().find(|translation| {
-                    normalize_locale_tag(&translation.locale).as_deref() == Some(locale)
-                })
-            })
-        })
-        .or_else(|| translations.first());
-
-    resolved
-        .map(|translation| (translation.name.clone(), translation.values.clone()))
-        .unwrap_or_else(|| ("".to_string(), Vec::new()))
-}
 
 pub async fn load_product_custom_fields_schema<C>(
     db: &C,

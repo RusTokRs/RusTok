@@ -5,7 +5,9 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
-use super::{CreateVariantInput, VariantResponse};
+use super::{
+    CreateVariantInput, VariantAxisConfigResponse, VariantAxisInput, VariantResponse,
+};
 use crate::entities::product::ProductStatus;
 
 fn deserialize_tenant_locale<'de, D>(deserializer: D) -> Result<String, D::Error>
@@ -31,7 +33,8 @@ pub struct CreateProductInput {
     #[validate(nested)]
     pub translations: Vec<ProductTranslationInput>,
     #[serde(default)]
-    pub options: Vec<ProductOptionInput>,
+    #[validate(nested)]
+    pub variant_axes: Vec<VariantAxisInput>,
     #[validate(nested)]
     pub variants: Vec<CreateVariantInput>,
     #[validate(length(max = 100, message = "Seller ID must be max 100 characters"))]
@@ -69,13 +72,6 @@ pub struct ProductTranslationInput {
     pub meta_title: Option<String>,
     #[validate(length(max = 500, message = "Meta description must be max 500 characters"))]
     pub meta_description: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
-pub struct ProductOptionInput {
-    #[validate(length(min = 1, message = "At least one option translation required"))]
-    #[validate(nested)]
-    pub translations: Vec<ProductOptionTranslationInput>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, Validate)]
@@ -116,7 +112,8 @@ pub struct ProductResponse {
     pub updated_at: chrono::DateTime<chrono::Utc>,
     pub published_at: Option<chrono::DateTime<chrono::Utc>>,
     pub translations: Vec<ProductTranslationResponse>,
-    pub options: Vec<ProductOptionResponse>,
+    #[serde(default)]
+    pub variant_axes: Vec<VariantAxisConfigResponse>,
     pub variants: Vec<VariantResponse>,
     pub images: Vec<ProductImageResponse>,
 }
@@ -132,16 +129,6 @@ pub struct ProductTranslationResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct ProductOptionResponse {
-    pub id: Uuid,
-    pub name: String,
-    pub values: Vec<String>,
-    pub position: i32,
-    #[serde(default)]
-    pub translations: Vec<ProductOptionTranslationResponse>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ProductImageResponse {
     pub id: Uuid,
     pub media_id: Uuid,
@@ -150,24 +137,6 @@ pub struct ProductImageResponse {
     pub position: i32,
     #[serde(default)]
     pub translations: Vec<ProductImageTranslationResponse>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct ProductOptionTranslationResponse {
-    pub locale: String,
-    pub name: String,
-    pub values: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
-pub struct ProductOptionTranslationInput {
-    #[serde(deserialize_with = "deserialize_tenant_locale")]
-    #[validate(custom(function = "validate_tenant_locale"))]
-    pub locale: String,
-    #[validate(length(min = 1, max = 255, message = "Option name must be 1-255 characters"))]
-    pub name: String,
-    #[validate(length(min = 1, message = "At least one option value required"))]
-    pub values: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -201,7 +170,7 @@ pub struct PriceResponse {
 
 #[cfg(test)]
 mod tests {
-    use super::{ProductOptionTranslationInput, ProductTranslationInput};
+    use super::ProductTranslationInput;
     use serde_json::json;
     use validator::Validate;
 
@@ -247,33 +216,6 @@ mod tests {
             description: None,
             meta_title: None,
             meta_description: None,
-        };
-        assert!(noncanonical_direct.validate().is_err());
-    }
-
-    #[test]
-    fn product_option_translation_input_uses_tenant_locale_contract() {
-        let input: ProductOptionTranslationInput = serde_json::from_value(json!({
-            "locale": "zh_hant_tw",
-            "name": "Size",
-            "values": ["Small"]
-        }))
-        .expect("canonical tenant locale");
-
-        assert_eq!(input.locale, "zh-Hant-TW");
-        assert!(input.validate().is_ok());
-
-        let invalid: Result<ProductOptionTranslationInput, _> = serde_json::from_value(json!({
-            "locale": "und",
-            "name": "Size",
-            "values": ["Small"]
-        }));
-        assert!(invalid.is_err());
-
-        let noncanonical_direct = ProductOptionTranslationInput {
-            locale: "zh_hant_tw".to_string(),
-            name: "Size".to_string(),
-            values: vec!["Small".to_string()],
         };
         assert!(noncanonical_direct.validate().is_err());
     }

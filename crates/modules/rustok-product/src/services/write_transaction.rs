@@ -9,7 +9,6 @@ use crate::{
     services::{
         catalog::{
             record_product_image_translation_changes_in_tx,
-            record_product_option_translation_changes_in_tx,
             record_product_translation_change_in_tx,
             record_product_variant_translation_changes_in_tx,
         },
@@ -138,14 +137,12 @@ impl ProductWriteTransaction {
         tenant_id: Uuid,
         actor_id: Option<Uuid>,
         product_id: Uuid,
-        deleted_option_ids: &[Uuid],
         deleted_image_ids: &[Uuid],
     ) -> CommerceResult<()> {
         self.publish_internal(
             tenant_id,
             actor_id,
             DomainEvent::ProductDeleted { product_id },
-            Some(deleted_option_ids),
             Some(deleted_image_ids),
         )
         .await
@@ -156,7 +153,6 @@ impl ProductWriteTransaction {
         tenant_id: Uuid,
         actor_id: Option<Uuid>,
         event: DomainEvent,
-        deleted_option_ids: Option<&[Uuid]>,
         deleted_image_ids: Option<&[Uuid]>,
     ) -> CommerceResult<()> {
         let product_attribute_id = product_index_revision_touch_target(&event);
@@ -198,19 +194,6 @@ impl ProductWriteTransaction {
                 tenant_id,
                 product_id,
                 root_event_id,
-            )
-            .await?;
-
-            // Option Translation revisions include parent Product lifecycle. Live lifecycle events
-            // therefore fan out through the exact post-command Option aggregates with semantic
-            // revision dedupe. Product deletion supplies the Option identities captured immediately
-            // before physical deletion, preserving first-delete evidence without a shadow tombstone.
-            record_product_option_translation_changes_in_tx(
-                &self.transaction,
-                tenant_id,
-                product_id,
-                root_event_id,
-                deleted_option_ids,
             )
             .await?;
 
