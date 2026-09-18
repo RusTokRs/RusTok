@@ -33,7 +33,7 @@
     "ffa_promoted": false,
     "fba_promoted": false
   },
-  "production_source": "crates/modules/rustok-blog/src/services/post.rs",
+  "production_source": "crates/modules/rustok-blog/src/services/post/queries.rs",
   "category_projection_source": "crates/modules/rustok-blog/src/services/category_name_projection.rs",
   "dto_source": "crates/modules/rustok-blog/src/dto/post.rs",
   "source_harness": {

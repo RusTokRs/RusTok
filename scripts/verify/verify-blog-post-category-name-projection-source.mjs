@@ -11,7 +11,7 @@ const failures = [];
 
 const files = {
   evidence: 'crates/modules/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json',
-  postService: 'crates/modules/rustok-blog/src/services/post.rs',
+  postService: 'crates/modules/rustok-blog/src/services/post/queries.rs',
   categoryProjection: 'crates/modules/rustok-blog/src/services/category_name_projection.rs',
   dto: 'crates/modules/rustok-blog/src/dto/post.rs',
   harness: 'crates/modules/rustok-blog/tests/post_category_name_projection.rs',

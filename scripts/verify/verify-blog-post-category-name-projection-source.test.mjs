@@ -22,7 +22,7 @@ const verifier = path.join(
 );
 const files = [
   'crates/modules/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json',
-  'crates/modules/rustok-blog/src/services/post.rs',
+  'crates/modules/rustok-blog/src/services/post/queries.rs',
   'crates/modules/rustok-blog/src/services/category_name_projection.rs',
   'crates/modules/rustok-blog/src/dto/post.rs',
   'crates/modules/rustok-blog/tests/post_category_name_projection.rs',
@@ -70,7 +70,7 @@ test('canonical Taxonomy category-name projection source passes', () => {
 test('rejects restoring permanent None category projection', () => {
   const root = fixture();
   try {
-    mutate(root, 'crates/modules/rustok-blog/src/services/post.rs', (source) =>
+    mutate(root, 'crates/modules/rustok-blog/src/services/post/queries.rs', (source) =>
       source.replace('category_name,', 'category_name: None,'),
     );
     expectFailure(root, 'permanent None detail projection must fail');
@@ -82,7 +82,7 @@ test('rejects restoring permanent None category projection', () => {
 test('rejects restoring legacy Blog category translation reads', () => {
   const root = fixture();
   try {
-    mutate(root, 'crates/modules/rustok-blog/src/services/post.rs', (source) =>
+    mutate(root, 'crates/modules/rustok-blog/src/services/post/queries.rs', (source) =>
       source.replace(
         'use crate::entities::{blog_post, blog_post_channel_visibility, blog_post_translation};',
         'use crate::entities::{blog_category_translation, blog_post, blog_post_channel_visibility, blog_post_translation};',

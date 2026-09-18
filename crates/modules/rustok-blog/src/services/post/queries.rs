@@ -405,4 +405,93 @@ impl PostService {
         };
         self.list_posts(tenant_id, security, query).await
     }
+
+    pub(super) async fn load_category_names_map(
+        &self,
+        tenant_id: Uuid,
+        category_ids: &[Uuid],
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> BlogResult<HashMap<Uuid, String>> {
+        crate::services::category_name_projection::load_category_names_map(
+            &self.db,
+            tenant_id,
+            category_ids,
+            locale,
+            fallback_locale,
+        )
+        .await
+    }
+
+    pub(super) async fn build_post_response(
+        &self,
+        post: blog_post::Model,
+        translations: Vec<blog_post_translation::Model>,
+        channel_slugs: Vec<String>,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> BlogResult<PostResponse> {
+        let tags_map = load_post_tags_map(
+            &self.db,
+            post.tenant_id,
+            &[post.id],
+            locale,
+            fallback_locale,
+        )
+        .await?;
+        let category_name = if let Some(category_id) = post.category_id {
+            self.load_category_names_map(post.tenant_id, &[category_id], locale, fallback_locale)
+                .await?
+                .get(&category_id)
+                .cloned()
+        } else {
+            None
+        };
+        let resolved = resolve_translation_record(&translations, locale, fallback_locale);
+        let translation = resolved.translation;
+        let body = match translation {
+            Some(item) => item.body.clone(),
+            None => canonical_article_body(&RichTextDocument::empty())?,
+        };
+        let (content, content_plain_text) = project_stored_article(&body)?;
+
+        Ok(PostResponse {
+            id: post.id,
+            tenant_id: post.tenant_id,
+            author_id: post.author_id,
+            title: translation
+                .map(|item| item.title.clone())
+                .unwrap_or_default(),
+            slug: post.slug,
+            requested_locale: locale.to_string(),
+            locale: locale.to_string(),
+            effective_locale: resolved.effective_locale,
+            available_locales: available_locales_from(&translations, |item| item.locale.as_str()),
+            content,
+            content_plain_text,
+            excerpt: translation.and_then(|item| item.excerpt.clone()),
+            status: storage_to_status(&post.status)?,
+            category_id: post.category_id,
+            category_name,
+            tags: tags_map
+                .get(&post.id)
+                .cloned()
+                .unwrap_or_else(|| extract_tags(&post.metadata)),
+            featured_image_url: post.featured_image_url,
+            seo_title: translation.and_then(|item| item.seo_title.clone()),
+            seo_description: translation.and_then(|item| item.seo_description.clone()),
+            channel_slugs: if channel_slugs.is_empty() {
+                extract_channel_slugs(&post.metadata)
+            } else {
+                channel_slugs
+            },
+            metadata: post.metadata,
+            comment_count: post.comment_count as i64,
+            view_count: post.view_count as i64,
+            created_at: post.created_at.into(),
+            updated_at: post.updated_at.into(),
+            published_at: post.published_at.map(Into::into),
+            version: post.version,
+        })
+    }
 }
