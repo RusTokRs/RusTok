@@ -133,6 +133,12 @@ requireAll("crates/modules/rustok-blog/src/services/category_delete.rs", [
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
+  "load_channel_slugs(
+        &self,
+        tenant_id: Uuid",
+  "load_channel_slugs_map(
+        &self,
+        tenant_id: Uuid",
   "validate_persisted_version",
   "next_persisted_version",
   '"invalid persisted version"',
@@ -157,6 +163,18 @@ requireAll("crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs", 
 forbid("crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs", [
   "map_taxonomy_error",
   "BlogError::Validation(format!(",
+]);
+
+requireAll("crates/modules/rustok-blog/src/migrations/m20260919_000024_enforce_blog_post_channel_visibility_tenant_integrity.rs", [
+  "fk_blog_post_channel_visibility_tenant_post",
+  "blog_post_channel_visibility_tenant_insert",
+  "blog_post_channel_visibility_tenant_update",
+  "invalid relations exist",
+]);
+requireAll("crates/modules/rustok-blog/src/migrations/mod.rs", [
+  "mod m20260919_000024_enforce_blog_post_channel_visibility_tenant_integrity;",
+  "Box::new(m20260919_000024_enforce_blog_post_channel_visibility_tenant_integrity::Migration)",
+  '"m20260919_000024_enforce_blog_post_channel_visibility_tenant_integrity"',
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/comment_projection.rs", [

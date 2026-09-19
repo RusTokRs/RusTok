@@ -16,6 +16,7 @@ mod m20260824_000020_backfill_blog_categories_to_taxonomy;
 mod m20260828_000021_retire_blog_category_legacy_storage;
 mod m20260916_000022_clean_blog_category_canonical_taxonomy;
 mod m20260919_000023_enforce_blog_post_category_tenant_integrity;
+mod m20260919_000024_enforce_blog_post_channel_visibility_tenant_integrity;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -40,6 +41,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260828_000021_retire_blog_category_legacy_storage::Migration),
         Box::new(m20260916_000022_clean_blog_category_canonical_taxonomy::Migration),
         Box::new(m20260919_000023_enforce_blog_post_category_tenant_integrity::Migration),
+        Box::new(m20260919_000024_enforce_blog_post_channel_visibility_tenant_integrity::Migration),
     ]
 }
 
@@ -82,6 +84,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260919_000023_enforce_blog_post_category_tenant_integrity",
             vec!["m20260916_000022_clean_blog_category_canonical_taxonomy"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260919_000024_enforce_blog_post_channel_visibility_tenant_integrity",
+            vec!["m20260919_000023_enforce_blog_post_category_tenant_integrity"],
         ),
     ]
 }
