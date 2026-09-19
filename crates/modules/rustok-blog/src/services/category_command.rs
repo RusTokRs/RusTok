@@ -60,12 +60,14 @@ impl CategoryCommandService {
             .filter(taxonomy_category_hierarchy::Column::TermId.is_in(blog_ids.iter().copied()))
             .all(&txn)
             .await?;
-        let mut placement_by_id = hierarchy_rows
+        let placement_by_id = hierarchy_rows
             .into_iter()
             .map(|row| (row.term_id, (row.parent_term_id, row.position)))
             .collect::<HashMap<_, _>>();
-        for id in &blog_ids {
-            placement_by_id.entry(*id).or_insert((None, 0));
+        if placement_by_id.len() != blog_ids.len() {
+            return Err(BlogError::invariant(
+                "Blog category Taxonomy hierarchy coverage is incomplete",
+            ));
         }
 
         let mut parent_by_id = placement_by_id
