@@ -151,7 +151,6 @@ pub async fn update_module_term_in_tx(
         }
     };
 
-    reconcile_route_keys_for_locale_in_tx(txn, tenant_id, term_id, &locale).await?;
     let resource_revision = next_term_revision(&term)?;
     let updated = taxonomy_term::Entity::update_many()
         .col_expr(
