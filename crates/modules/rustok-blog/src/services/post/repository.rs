@@ -1,6 +1,25 @@
 use super::*;
 
 impl PostService {
+    pub(super) fn next_persisted_version(version: i32) -> BlogResult<i32> {
+        version.checked_add(1).filter(|next| *next > 0).ok_or_else(|| {
+            BlogError::invariant(format!(
+                "Blog post version {} is invalid or exhausted",
+                version
+            ))
+        })
+    }
+
+    pub(super) fn validate_persisted_version(post: &blog_post::Model) -> BlogResult<()> {
+        if post.version > 0 {
+            return Ok(());
+        }
+        Err(BlogError::invariant(format!(
+            "Blog post {} has invalid persisted version {}",
+            post.id, post.version
+        )))
+    }
+
     pub(super) async fn find_post(
         &self,
         tenant_id: Uuid,
@@ -12,6 +31,10 @@ impl PostService {
             .await
             .map_err(BlogError::from)?
             .ok_or(BlogError::PostNotFound(post_id))
+            .and_then(|post| {
+                Self::validate_persisted_version(&post)?;
+                Ok(post)
+            })
     }
 
     pub(super) async fn load_translations(
@@ -230,6 +253,8 @@ pub(crate) async fn load_post_subject_snapshot(
     else {
         return Ok(None);
     };
+
+    PostService::validate_persisted_version(&post)?;
 
     let channel_slugs = blog_post_channel_visibility::Entity::find()
         .filter(blog_post_channel_visibility::Column::TenantId.eq(tenant_id))
