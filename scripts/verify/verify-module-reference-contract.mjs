@@ -149,7 +149,7 @@ requireAll("crates/modules/rustok-blog/src/services/category_delete.rs", [
   "blog_post::Column::CategoryId.eq(category_id)",
   "blog_post::Column::Version.eq(post.version)",
   "checked_add(1)",
-  '"Blog post {post.id} changed before category detachment could commit"',
+  '"Blog post {} changed before category detachment could commit"',
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
@@ -181,7 +181,7 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
   "lock_module_term_in_tx(",
   "detach_tag_from_posts_in_tx",
   "blog_post::Column::Version.eq(post.version)",
-  '"Blog post {post.id} changed before Tag detachment could commit"',
+  '"Blog post {} changed before Tag detachment could commit"',
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/category.rs", [
