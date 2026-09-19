@@ -258,8 +258,6 @@ pub async fn sync_module_category_in_tx(
         term.revision
     };
 
-    reconcile_route_keys_for_locale_in_tx(txn, tenant_id, input.category_id, &locale).await?;
-
     if resource_changed {
         record_translation_change_in_tx(
             txn,
