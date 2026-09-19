@@ -97,7 +97,7 @@ impl TagService {
         let term = self
             .find_visible_term(tenant_id, tag_id, PLATFORM_FALLBACK_LOCALE)
             .await?;
-        enforce_owned_scope(&security, Resource::Tags, Action::Update, term.id)?;
+        enforce_scope(&security, Resource::Tags, Action::Update)?;
         ensure_module_owned_term(&term)?;
 
         let locale = normalize_locale(&input.locale)?;
@@ -138,7 +138,7 @@ impl TagService {
         let term = self
             .find_visible_term(tenant_id, tag_id, PLATFORM_FALLBACK_LOCALE)
             .await?;
-        enforce_owned_scope(&security, Resource::Tags, Action::Delete, term.id)?;
+        enforce_scope(&security, Resource::Tags, Action::Delete)?;
         ensure_module_owned_term(&term)?;
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
