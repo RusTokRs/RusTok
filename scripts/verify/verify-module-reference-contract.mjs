@@ -385,6 +385,11 @@ requireAll("crates/modules/rustok-taxonomy/src/services.rs", [
 requireAll("crates/modules/rustok-channel/src/services/channel_service.rs", [
   "pub async fn is_module_enabled_for_tenant(",
 ]);
+requireAll("crates/modules/rustok-channel/src/services/channel_service.rs", [
+  "pub async fn is_module_enabled(",
+  "if !channel.is_active",
+  "pub async fn is_module_enabled_for_tenant(",
+]);
 requireAll("crates/modules/rustok-blog/src/graphql/query.rs", [
   "is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)",
 ]);
