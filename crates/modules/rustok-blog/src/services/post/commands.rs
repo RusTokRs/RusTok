@@ -29,6 +29,11 @@ impl PostService {
         validate_tags(&tags)?;
 
         let author_id = enforce_create_author(&security, Resource::BlogPosts, Action::Create)?;
+        let allow_tag_create =
+            !matches!(
+                security.get_scope(Resource::Tags, Action::Create),
+                rustok_core::PermissionScope::None
+            );
         if publish {
             enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;
         }
@@ -97,7 +102,16 @@ impl PostService {
 
         self.replace_channel_visibility_in_tx(&txn, tenant_id, post_id, &channel_slugs)
             .await?;
-        sync_post_tags_in_tx(&self.db, &txn, tenant_id, post_id, &tags, &locale).await?;
+        sync_post_tags_in_tx(
+            &self.db,
+            &txn,
+            tenant_id,
+            post_id,
+            &tags,
+            &locale,
+            allow_tag_create,
+        )
+        .await?;
 
         self.event_bus
             .publish_in_tx(
@@ -316,7 +330,19 @@ impl PostService {
             let locale = locale.as_deref().ok_or_else(|| {
                 BlogError::invariant("tag mutation reached persistence without a canonical locale")
             })?;
-            sync_post_tags_in_tx(&self.db, &txn, tenant_id, post_id, &tags, locale).await?;
+            sync_post_tags_in_tx(
+                &self.db,
+                &txn,
+                tenant_id,
+                post_id,
+                &tags,
+                locale,
+                !matches!(
+                    security.get_scope(Resource::Tags, Action::Create),
+                    rustok_core::PermissionScope::None
+                ),
+            )
+            .await?;
         }
 
         let event = if full_reindex {
