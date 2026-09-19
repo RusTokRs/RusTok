@@ -10,6 +10,35 @@ use super::{
 };
 use crate::domain::ProductStatus;
 
+fn validate_patch_string(value: &Patch<String>, min: usize, max: usize, field: &'static str) -> Result<(), ValidationError> {
+    if let Patch::Set(value) = value {
+        let len = value.chars().count();
+        if len < min || len > max {
+            let mut error = ValidationError::new(field);
+            error.add_param("min", &min);
+            error.add_param("max", &max);
+            return Err(error);
+        }
+    }
+    Ok(())
+}
+
+fn validate_patch_seller(value: &Patch<String>) -> Result<(), ValidationError> {
+    validate_patch_string(value, 0, 100, "seller_id")
+}
+
+fn validate_patch_vendor(value: &Patch<String>) -> Result<(), ValidationError> {
+    validate_patch_string(value, 0, 255, "vendor")
+}
+
+fn validate_patch_product_type(value: &Patch<String>) -> Result<(), ValidationError> {
+    validate_patch_string(value, 0, 255, "product_type")
+}
+
+fn validate_patch_shipping_profile(value: &Patch<String>) -> Result<(), ValidationError> {
+    validate_patch_string(value, 1, 64, "shipping_profile_slug")
+}
+
 fn deserialize_tenant_locale<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
@@ -37,17 +66,13 @@ pub struct CreateProductInput {
     pub variant_axes: Vec<VariantAxisInput>,
     #[validate(nested)]
     pub variants: Vec<CreateVariantInput>,
-    #[validate(length(max = 100, message = "Seller ID must be max 100 characters"))]
+    #[validate(custom(function = "validate_patch_seller"))]
     pub seller_id: Option<String>,
-    #[validate(length(max = 255, message = "Vendor must be max 255 characters"))]
+    #[validate(custom(function = "validate_patch_vendor"))]
     pub vendor: Option<String>,
-    #[validate(length(max = 255, message = "Product type must be max 255 characters"))]
+    #[validate(custom(function = "validate_patch_product_type"))]
     pub product_type: Option<String>,
-    #[validate(length(
-        min = 1,
-        max = 64,
-        message = "Shipping profile slug must be 1-64 characters"
-    ))]
+    #[validate(custom(function = "validate_patch_shipping_profile"))]
     pub shipping_profile_slug: Option<String>,
     pub primary_category_id: Option<Uuid>,
     #[serde(default)]
