@@ -493,6 +493,25 @@ requireAll("crates/modules/rustok-taxonomy/src/translation_evidence.rs", [
   'if evidence.operation != "delete"',
 ]);
 
+requireAll("crates/modules/rustok-blog/src/services/post/mod.rs", [
+  "const MAX_POST_METADATA_BYTES: usize = 64 * 1024;",
+  "const MAX_POST_CHANNEL_SLUGS: usize = 32;",
+  "const MAX_POST_CHANNEL_SLUG_BYTES: usize = 100;",
+  "Post metadata cannot exceed",
+  "A post cannot target more than",
+  "Channel slugs cannot exceed",
+]);
+
+requireAll("crates/modules/rustok-taxonomy/src/module_term_mutation.rs", [
+  "taxonomy_term_alias::Entity::delete_many()",
+  "if existing.slug != slug",
+  "let has_existing_alias = taxonomy_term_alias::Entity::find()",
+]);
+
+requireAll("crates/modules/rustok-taxonomy/src/owner_category_route_sync.rs", [
+  "aliases.remove(&next_slug);",
+]);
+
 if (failures.length > 0) {
   console.error("Canonical module reference-contract verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
