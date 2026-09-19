@@ -71,6 +71,7 @@ pub async fn sync_module_category_structure_with_owned_copy_in_tx(
     icon_key: Option<String>,
     color: Option<String>,
 ) -> TaxonomyResult<SyncModuleCategoryResult> {
+    crate::lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?;
     let module_scope = normalize_module_scope(module_scope)?;
     let translation = taxonomy_term_translation::Entity::find()
         .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
@@ -118,6 +119,7 @@ pub async fn sync_module_category_with_owned_aliases_in_tx(
     tenant_id: Uuid,
     mut input: SyncModuleCategoryInput,
 ) -> TaxonomyResult<SyncModuleCategoryResult> {
+    crate::lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?;
     let locale = normalize_term_locale(&input.locale)
         .ok_or_else(|| TaxonomyError::validation("Locale cannot be empty or invalid"))?;
     let next_slug = normalize_term_route_key(&input.slug)
