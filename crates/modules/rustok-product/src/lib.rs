@@ -8,14 +8,14 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-mod domain;
 mod catalog_command_port;
+mod domain;
 mod catalog_schema_read_port;
 mod catalog_schema_write_port;
 pub mod dto;
-mod module;
 mod entities;
 pub mod error;
+mod module;
 mod image_translation_progress_target;
 mod image_translation_target;
 mod migrations;
@@ -96,7 +96,7 @@ pub use storefront_tag_read_port::{
 };
 pub use translation_target::ProductTranslationTargetProvider;
 pub use variant_translation_progress_target::ProductVariantTranslationTargetProvider;
-
 pub use module::{ProductModule, ProductRuntimeSelected};
+
 #[cfg(test)]
 mod contract_tests;
