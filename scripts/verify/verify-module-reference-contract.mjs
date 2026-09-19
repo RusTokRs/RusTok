@@ -95,6 +95,19 @@ requireAll("crates/modules/rustok-blog/src/services/category_owner.rs", [
 requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   '"has no canonical Taxonomy hierarchy placement"',
 ]);
+requireAll("crates/modules/rustok-blog/src/migrations/m20260919_000023_enforce_blog_post_category_tenant_integrity.rs", [
+  "fk_blog_posts_tenant_category",
+  "ON DELETE SET NULL",
+  "blog_posts_category_tenant_insert",
+  "blog_posts_category_tenant_update",
+  "blog_categories_delete_null_post_category",
+  "invalid relations exist",
+]);
+requireAll("crates/modules/rustok-blog/src/migrations/mod.rs", [
+  "mod m20260919_000023_enforce_blog_post_category_tenant_integrity;",
+  "Box::new(m20260919_000023_enforce_blog_post_category_tenant_integrity::Migration)",
+  '"m20260919_000023_enforce_blog_post_category_tenant_integrity"',
+]);
 
 requireAll("crates/modules/rustok-blog/src/services/category_name_projection.rs", [
   "load_scoped_categories_strict",

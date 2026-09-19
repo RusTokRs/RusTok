@@ -12,7 +12,7 @@ use rustok_taxonomy::{
     TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyModule, TaxonomyResult,
     entities::{taxonomy_category_hierarchy, taxonomy_term},
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, Statement};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -83,6 +83,69 @@ fn create_input(name: &str, position: i32) -> CreateCategoryInput {
         position: Some(position),
         settings: serde_json::json!({}),
     }
+}
+
+#[tokio::test]
+async fn delete_category_detaches_posts_without_dangling_reference() {
+    let db = setup().await;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let (service, _events) = service(
+        &db,
+        Arc::new(RecordingCleanup {
+            calls: calls.clone(),
+            fail: false,
+        }),
+    );
+    let tenant_id = Uuid::new_v4();
+    let author_id = Uuid::new_v4();
+    let post_id = Uuid::new_v4();
+    let category_id = service
+        .create(tenant_id, admin(), create_input("Posts", 0))
+        .await
+        .expect("Blog Category should be created");
+
+    db.execute(Statement::from_sql_and_values(
+        db.get_database_backend(),
+        r#"
+        INSERT INTO blog_posts (
+            id, tenant_id, author_id, category_id, status, slug, metadata,
+            published_at, created_at, updated_at, archived_at,
+            comment_count, view_count, version
+        ) VALUES (
+            ?, ?, ?, ?, 'draft', ?, '{}', NULL,
+            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, 0, 0, 1
+        )
+        "#,
+        [
+            post_id.into(),
+            tenant_id.into(),
+            author_id.into(),
+            category_id.into(),
+            "category-delete-post".to_string().into(),
+        ],
+    ))
+    .await
+    .expect("post should reference the Blog Category");
+
+    service
+        .delete(tenant_id, category_id, admin())
+        .await
+        .expect("Blog Category delete should detach assigned posts safely");
+
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
+            db.get_database_backend(),
+            "SELECT category_id FROM blog_posts WHERE tenant_id = ? AND id = ?",
+            [tenant_id.into(), post_id.into()],
+        ))
+        .await
+        .expect("post lookup should succeed")
+        .expect("post should remain after category deletion");
+    let category_id: Option<Uuid> = row
+        .try_get("", "category_id")
+        .expect("post category_id should be readable");
+    assert!(category_id.is_none());
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
