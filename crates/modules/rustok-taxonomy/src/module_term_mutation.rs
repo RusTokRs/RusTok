@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
-use rustok_api::{Action, Resource};
 use rustok_content::normalize_locale_code;
-use rustok_core::{PermissionScope, SecurityContext};
+use rustok_core::SecurityContext;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter,
     QuerySelect,
@@ -14,6 +13,13 @@ use crate::entities::{taxonomy_term, taxonomy_term_translation};
 use crate::error::{TaxonomyError, TaxonomyResult};
 use crate::route_key_registry::ensure_route_key_available_in_tx;
 use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleTermCreateInput {
+    pub locale: String,
+    pub name: String,
+    pub slug: Option<String>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleTermUpdateInput {
@@ -33,19 +39,44 @@ pub struct ModuleTermMutationResult {
     pub created_at: DateTime<Utc>,
 }
 
+pub async fn create_module_term_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    kind: TaxonomyTermKind,
+    module_slug: &str,
+    input: ModuleTermCreateInput,
+) -> TaxonomyResult<Uuid> {
+    let module_scope = normalize_module_scope(module_slug)?;
+    let locale = normalize_locale(&input.locale)?;
+    validate_term_name(&input.name)?;
+    let normalized_slug = match input.slug.as_deref() {
+        Some(slug) => normalize_non_empty_slug(slug)?,
+        None => normalize_non_empty_slug(&input.name)?,
+    };
+
+    crate::services::create_module_term_record_in_tx(
+        txn,
+        crate::services::ModuleTerm {
+            tenant_id,
+            kind,
+            module_scope: &module_scope,
+            locale: &locale,
+            name: &input.name,
+            normalized_slug: &normalized_slug,
+        },
+    )
+    .await
+}
+
 pub async fn update_module_term_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     term_id: Uuid,
-    security: &SecurityContext,
+    _security: &SecurityContext,
     kind: TaxonomyTermKind,
     module_slug: &str,
     input: ModuleTermUpdateInput,
 ) -> TaxonomyResult<ModuleTermMutationResult> {
-    // The existing public update path requires Update and then Read when it
-    // materializes the response. Preserve that successful-call permission set.
-    enforce_scope(security, Resource::Taxonomy, Action::Update)?;
-    enforce_scope(security, Resource::Taxonomy, Action::Read)?;
 
     let module_scope = normalize_module_scope(module_slug)?;
     let locale = normalize_locale(&input.locale)?;
@@ -221,12 +252,10 @@ pub async fn delete_module_term_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     term_id: Uuid,
-    security: &SecurityContext,
+    _security: &SecurityContext,
     kind: TaxonomyTermKind,
     module_slug: &str,
 ) -> TaxonomyResult<()> {
-    enforce_scope(security, Resource::Taxonomy, Action::Delete)?;
-
     let module_scope = normalize_module_scope(module_slug)?;
     let term = find_module_term_in_tx(txn, tenant_id, term_id, kind, &module_scope).await?;
     let translations = taxonomy_term_translation::Entity::find()
@@ -294,17 +323,6 @@ async fn find_module_term_in_tx(
         .one(txn)
         .await?
         .ok_or(TaxonomyError::TermNotFound(term_id))
-}
-
-fn enforce_scope(
-    security: &SecurityContext,
-    resource: Resource,
-    action: Action,
-) -> TaxonomyResult<()> {
-    if matches!(security.get_scope(resource, action), PermissionScope::None) {
-        return Err(TaxonomyError::forbidden("Permission denied"));
-    }
-    Ok(())
 }
 
 fn normalize_locale(locale: &str) -> TaxonomyResult<String> {
