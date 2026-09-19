@@ -86,6 +86,11 @@ impl TaxonomyService {
         let translation_slug =
             normalize_non_empty_slug(input.slug.as_deref().unwrap_or(&input.name))?;
         let aliases = normalize_aliases(&input.aliases);
+        if aliases.iter().any(|alias| alias == &translation_slug) {
+            return Err(TaxonomyError::validation(
+                "Taxonomy alias cannot equal the current localized slug",
+            ));
+        }
 
         let txn = self.db.begin().await?;
         let scope = TermScope {
@@ -347,6 +352,21 @@ impl TaxonomyService {
 
         if let Some(aliases) = input.aliases.as_ref() {
             let aliases = normalize_aliases(aliases);
+            let canonical_slug = taxonomy_term_translation::Entity::find()
+                .filter(taxonomy_term_translation::Column::TermId.eq(term_id))
+                .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+                .filter(taxonomy_term_translation::Column::Locale.eq(&locale))
+                .one(&txn)
+                .await?
+                .map(|translation| translation.slug);
+            if canonical_slug
+                .as_deref()
+                .is_some_and(|slug| aliases.iter().any(|alias| alias == slug))
+            {
+                return Err(TaxonomyError::validation(
+                    "Taxonomy alias cannot equal the current localized slug",
+                ));
+            }
             self.ensure_aliases_available_in_tx(&txn, scope, &locale, &aliases, Some(term_id))
                 .await?;
             self.replace_aliases_in_tx(&txn, tenant_id, term_id, &locale, &aliases)
