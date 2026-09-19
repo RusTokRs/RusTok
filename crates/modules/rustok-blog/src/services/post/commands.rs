@@ -63,6 +63,7 @@ impl PostService {
             BlogPostStatus::Draft
         };
 
+        let slug_for_error = slug.clone();
         blog_post::ActiveModel {
             id: Set(post_id),
             tenant_id: Set(tenant_id),
@@ -82,7 +83,13 @@ impl PostService {
         }
         .insert(&txn)
         .await
-        .map_err(BlogError::from)?;
+        .map_err(|error| {
+            if PostService::is_unique_constraint(&error) {
+                BlogError::duplicate_slug(slug_for_error.clone())
+            } else {
+                BlogError::from(error)
+            }
+        })?;
 
         blog_post_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -295,7 +302,20 @@ impl PostService {
             );
         }
 
-        let result = update.exec(&txn).await.map_err(BlogError::from)?;
+        let normalized_slug_for_error = normalized_slug.clone();
+        let result = update.exec(&txn).await.map_err(|error| {
+            if normalized_slug_for_error.is_some()
+                && PostService::is_unique_constraint(&error)
+            {
+                BlogError::duplicate_slug(
+                    normalized_slug_for_error
+                        .clone()
+                        .unwrap_or_default(),
+                )
+            } else {
+                BlogError::from(error)
+            }
+        })?;
         if result.rows_affected != 1 {
             return Err(BlogError::conflict(
                 "Blog post changed concurrently before the update could be applied",
