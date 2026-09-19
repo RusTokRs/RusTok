@@ -11,9 +11,7 @@ use uuid::Uuid;
 use crate::dto::{TaxonomyScopeType, TaxonomyTermKind};
 use crate::entities::{taxonomy_term, taxonomy_term_translation};
 use crate::error::{TaxonomyError, TaxonomyResult};
-use crate::route_key_registry::{
-    ensure_route_key_available_in_tx, reconcile_route_keys_for_locale_in_tx,
-};
+use crate::route_key_registry::ensure_route_key_available_in_tx;
 use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
