@@ -130,6 +130,7 @@ requireAll("crates/modules/rustok-blog/src/services/category_delete.rs", [
   "BlogError::CategoryNotFound(category_id) => TaxonomyError::TermNotFound(category_id)",
   '"has no canonical Taxonomy hierarchy placement"',
   '"Blog category Taxonomy hierarchy placement disappeared before delete completed"',
+  "hierarchy_rows.len() != blog_category_ids.len()",
   '"Blog category Taxonomy hierarchy coverage is incomplete during sibling canonicalization"',
 ]);
 
@@ -145,6 +146,10 @@ requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
   '"invalid persisted version"',
   '"Title is required for a new locale"',
   '"Content is required for a new locale"',
+]);
+requireAll("crates/modules/rustok-blog/src/services/post/queries.rs", [
+  "pub async fn list_public_visible_with_locale_fallback(",
+  "Self::validate_persisted_version(&post)?",
 ]);
 forbid("crates/modules/rustok-blog/src/services/post/repository.rs", [
   "translation_seed_in_tx",
