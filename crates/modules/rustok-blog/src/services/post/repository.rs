@@ -1,6 +1,15 @@
 use super::*;
 
 impl PostService {
+    pub(super) fn next_persisted_version(version: i32) -> BlogResult<i32> {
+        version.checked_add(1).filter(|next| *next > 0).ok_or_else(|| {
+            BlogError::invariant(format!(
+                "Blog post version {} is invalid or exhausted",
+                version
+            ))
+        })
+    }
+
     pub(super) fn validate_persisted_version(post: &blog_post::Model) -> BlogResult<()> {
         if post.version > 0 {
             return Ok(());
