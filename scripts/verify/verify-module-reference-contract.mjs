@@ -532,6 +532,11 @@ requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
   "ensure_channel_slugs_exist_for_tenant_in_tx(",
 ]);
 
+requireAll("crates/modules/rustok-taxonomy/src/services.rs", [
+  "if input.scope_type == TaxonomyScopeType::Module",
+  "Module-owned Taxonomy terms must be created by the owning module",
+]);
+
 if (failures.length > 0) {
   console.error("Canonical module reference-contract verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
