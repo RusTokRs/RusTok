@@ -157,6 +157,16 @@ mod tests {
                 .iter()
                 .any(|p| p.resource == Resource::Categories)
         );
+        for action in [
+            Action::Create,
+            Action::Read,
+            Action::Update,
+            Action::Delete,
+            Action::List,
+            Action::Manage,
+        ] {
+            assert!(permissions.contains(&Permission::new(Resource::Tags, action)));
+        }
     }
 
     #[test]
