@@ -18,14 +18,31 @@ const profiles = [
       "domain",
       "dto",
       "entities",
+      "error",
       "graphql",
       "integrations",
       "migrations",
       "services",
       "tests",
     ],
-    allowedRootRustFiles: new Set(["error.rs", "lib.rs", "module.rs"]),
+    allowedRootRustFiles: new Set(["lib.rs", "module.rs"]),
     maxRustFileBytes: 32 * 1024,
+  },
+];
+
+
+const uiProfiles = [
+  {
+    crate: "rustok-blog-admin",
+    source: "crates/modules/rustok-blog/admin/src",
+    requiredDirectories: ["core", "transport", "ui"],
+    maxRustFileBytes: 40 * 1024,
+  },
+  {
+    crate: "rustok-blog-storefront",
+    source: "crates/modules/rustok-blog/storefront/src",
+    requiredDirectories: ["core", "transport", "ui"],
+    maxRustFileBytes: 40 * 1024,
   },
 ];
 
@@ -124,6 +141,12 @@ for (const profile of profiles) {
     }
   }
 
+  if (lib.includes("pub mod entities;") || lib.includes("pub use entities::")) {
+    fail(
+      `${profile.crate}: persistence entities must remain private implementation details; expose DTOs/services/ports instead`,
+    );
+  }
+
   if (!lib.includes("mod module;") || !lib.includes("pub use module::BlogModule;")) {
     fail(
       `${profile.crate}: lib.rs must expose BlogModule through the canonical module.rs wiring slot`,
@@ -172,7 +195,50 @@ for (const profile of profiles) {
   );
 }
 
+for (const profile of uiProfiles) {
+  const sourceRoot = join(repoRoot, profile.source);
+  if (!existsSync(sourceRoot)) {
+    fail(`${profile.crate}: missing UI source root ${profile.source}`);
+    continue;
+  }
+
+  for (const directory of profile.requiredDirectories) {
+    const path = join(sourceRoot, directory);
+    if (!existsSync(path) || !statSync(path).isDirectory()) {
+      fail(`${profile.crate}: missing canonical UI source slot ${directory}/`);
+    }
+  }
+
+  for (const file of rustFiles(sourceRoot)) {
+    const size = statSync(file).size;
+    if (size > profile.maxRustFileBytes) {
+      fail(
+        `${relative(repoRoot, file)}: ${size} bytes exceeds the canonical module-owned UI limit of ${profile.maxRustFileBytes} bytes; split commands, presentation, components, tests, or transport responsibilities`,
+      );
+    }
+  }
+}
+
+const adminCore = readFileSync(
+  join(repoRoot, "crates/modules/rustok-blog/admin/src/core.rs"),
+  "utf8",
+);
+for (const marker of ["mod commands;", "mod presentation;", "#[cfg(test)]\nmod tests;"]) {
+  if (!adminCore.includes(marker)) {
+    fail(`rustok-blog-admin: core.rs must remain a facade over canonical core responsibilities; missing ${marker}`);
+  }
+}
+const adminUi = readFileSync(
+  join(repoRoot, "crates/modules/rustok-blog/admin/src/ui/mod.rs"),
+  "utf8",
+);
+if (!adminUi.includes("mod components;")) {
+  fail("rustok-blog-admin: reusable render components must live outside the primary Leptos controller");
+}
+
 const retiredBlogPhysicalPaths = [
+  "crates/modules/rustok-blog/src/" + "error.rs",
+  "crates/modules/rustok-blog/src/" + "public_error.rs",
   "crates/modules/rustok-blog/src/" + "openapi.rs",
   "crates/modules/rustok-blog/src/" + "richtext.rs",
   "crates/modules/rustok-blog/src/" + "state_machine.rs",

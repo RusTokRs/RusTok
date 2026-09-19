@@ -143,6 +143,23 @@ pub async fn archive_post(
     .await
 }
 
+pub async fn restore_post(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    locale: Option<String>,
+) -> Result<BlogPostDetail, ApiError> {
+    let native_id = id.clone();
+    let native_locale = locale.clone();
+    execute_selected_transport(
+        "blog/admin/restore-post",
+        selected_transport_path(),
+        move || native_server_adapter::restore_post(native_id, native_locale),
+        move || graphql_adapter::restore_post(token, tenant_slug, id, locale),
+    )
+    .await
+}
+
 pub async fn delete_post(
     token: Option<String>,
     tenant_slug: Option<String>,

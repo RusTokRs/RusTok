@@ -10,6 +10,8 @@ use utoipa::OpenApi;
         crate::controllers::posts::delete_post,
         crate::controllers::posts::publish_post,
         crate::controllers::posts::unpublish_post,
+        crate::controllers::posts::archive_post,
+        crate::controllers::posts::restore_post,
         crate::controllers::categories::list_categories,
         crate::controllers::categories::get_category,
         crate::controllers::categories::create_category,
@@ -22,6 +24,7 @@ use utoipa::OpenApi;
         schemas(
             crate::dto::CreatePostInput,
             crate::dto::UpdatePostInput,
+            crate::dto::ArchivePostInput,
             crate::dto::PostResponse,
             crate::dto::PostSummary,
             crate::dto::PostListQuery,
@@ -39,6 +42,8 @@ use utoipa::OpenApi;
             crate::dto::ModerateCommentInput,
             crate::dto::ModerateCommentStatus,
             crate::state_machine::BlogPostStatus,
+            crate::dto::PostSortField,
+            crate::dto::PostSortOrder,
         )
     ),
     tags((name = "blog", description = "Blog endpoints"))

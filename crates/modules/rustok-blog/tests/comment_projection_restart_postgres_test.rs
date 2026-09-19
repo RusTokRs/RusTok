@@ -108,7 +108,7 @@ async fn restarted_handler_reuses_delivery_ledger_without_reapplying_counter() -
 
     assert_eq!(
         load_post_state(&restarted_db, tenant_id, post_id).await?,
-        (1, 2)
+        (1, 1)
     );
     assert_eq!(count_delivery(&restarted_db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&restarted_db).await?, 1);
@@ -159,7 +159,7 @@ async fn restarted_process_reuses_delivery_ledger_without_reapplying_counter() -
 
     assert_eq!(
         load_post_state(&test_db.db, tenant_id, post_id).await?,
-        (1, 2)
+        (1, 1)
     );
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);

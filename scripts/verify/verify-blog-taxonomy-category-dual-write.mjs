@@ -65,7 +65,11 @@ if (failures.length === 0) {
   requireMarker(sync, 'sync_module_category_with_owned_aliases_in_tx', 'Taxonomy-owned route history sync');
   requireMarker(sync, 'module_scope: BLOG_TAXONOMY_SCOPE.to_string()', 'module/blog scope');
   requireMarker(sync, 'canonical_key_for_blog_category', 'deterministic Blog Category canonical key');
-  requireMarker(sync, 'ensure_same_id_binding_in_tx', 'same-ID typed binding repair');
+  requireMarker(sync, 'sync_module_category_with_owned_aliases_in_tx', 'canonical Taxonomy owner sync delegation');
+  const taxonomyOwnerSync = read('crates/modules/rustok-taxonomy/src/owner_category_sync.rs');
+  requireMarker(taxonomyOwnerSync, 'ensure_category_identity(', 'same-ID Taxonomy identity guard');
+  requireMarker(taxonomyOwnerSync, 'existing.tenant_id != tenant_id', 'tenant-bound Taxonomy identity guard');
+  requireMarker(taxonomyOwnerSync, 'existing.canonical_key != canonical_key', 'canonical-key Taxonomy identity guard');
   requireMarker(sync, 'icon_key: None', 'no fabricated Taxonomy presentation');
   requireMarker(sync, 'color: None', 'no fabricated Taxonomy presentation');
 

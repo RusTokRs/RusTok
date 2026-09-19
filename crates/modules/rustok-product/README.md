@@ -1,5 +1,10 @@
 # rustok-product
 
+> Canonical large-module reference hardening is in progress.
+> See [docs/reference-hardening-current.md](docs/reference-hardening-current.md) for the current
+> Blog-v1 parity cursor. Existing Product capability/evidence documents remain authoritative for
+> their own runtime and feature scopes.
+>
 ## Purpose
 
 `rustok-product` is the default catalog submodule of the `Ecommerce` family.

@@ -4,10 +4,7 @@ use std::sync::{
 };
 
 use async_trait::async_trait;
-use rustok_blog::{
-    BlogModule, CategoryService, CreateCategoryInput,
-    entities::blog_category,
-};
+use rustok_blog::{BlogError, BlogModule, CategoryService, CreateCategoryInput};
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_events::EventEnvelope;
 use rustok_outbox::TransactionalEventBus;
@@ -116,13 +113,13 @@ async fn delete_removes_blog_binding_and_taxonomy_owner_and_replays_sibling_posi
         .expect("Blog delete should use Taxonomy owner lifecycle");
 
     assert_eq!(calls.load(Ordering::SeqCst), 1);
-    assert!(
-        blog_category::Entity::find_by_id(first)
-            .one(&db)
+    assert!(matches!(
+        service
+            .get(tenant_id, admin(), first, "en")
             .await
-            .expect("Blog Category lookup should succeed")
-            .is_none()
-    );
+            .expect_err("deleted Blog Category must disappear from owner reads"),
+        BlogError::CategoryNotFound(_)
+    ));
     assert!(
         taxonomy_term::Entity::find_by_id(first)
             .one(&db)
@@ -131,12 +128,10 @@ async fn delete_removes_blog_binding_and_taxonomy_owner_and_replays_sibling_posi
             .is_none()
     );
 
-    let _second_blog = blog_category::Entity::find_by_id(second)
-        .filter(blog_category::Column::TenantId.eq(tenant_id))
-        .one(&db)
+    service
+        .get(tenant_id, admin(), second, "en")
         .await
-        .expect("remaining Blog Category lookup should succeed")
-        .expect("remaining Blog Category should exist");
+        .expect("remaining Blog Category should exist through owner reads");
     let second_taxonomy = taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, second))
         .one(&db)
         .await
@@ -169,13 +164,10 @@ async fn host_cleanup_failure_rolls_back_blog_and_taxonomy_deletion() {
     assert!(error.to_string().contains("forced cleanup failure"));
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 
-    assert!(
-        blog_category::Entity::find_by_id(category_id)
-            .one(&db)
-            .await
-            .expect("Blog Category lookup should succeed")
-            .is_some()
-    );
+    service
+        .get(tenant_id, admin(), category_id, "en")
+        .await
+        .expect("rolled-back Blog Category must remain visible through owner reads");
     assert!(
         taxonomy_term::Entity::find_by_id(category_id)
             .one(&db)

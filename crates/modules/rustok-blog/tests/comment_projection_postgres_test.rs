@@ -98,7 +98,7 @@ async fn duplicate_delivery_updates_counter_and_outbox_once() -> TestResult<()> 
 
     assert_eq!(
         load_post_state(&test_db.db, tenant_id, post_id).await?,
-        (1, 2)
+        (1, 1)
     );
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
@@ -149,7 +149,7 @@ async fn event_dispatcher_routes_registered_handler_and_commits_projection() -> 
 
     assert_eq!(
         load_post_state(&test_db.db, tenant_id, post_id).await?,
-        (1, 2)
+        (1, 1)
     );
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
@@ -192,10 +192,7 @@ async fn concurrent_created_events_converge_without_lost_updates() -> TestResult
 
     assert_eq!(
         load_post_state(&test_db.db, tenant_id, post_id).await?,
-        (
-            CONCURRENT_PROJECTION_DELIVERIES as i32,
-            CONCURRENT_PROJECTION_DELIVERIES as i32 + 1,
-        )
+        (CONCURRENT_PROJECTION_DELIVERIES as i32, 1)
     );
     for envelope in &envelopes {
         assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
@@ -248,7 +245,7 @@ async fn optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears() -
 
     assert_eq!(
         load_post_state(&test_db.db, tenant_id, post_id).await?,
-        (1, 2)
+        (1, 1)
     );
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
@@ -281,7 +278,7 @@ async fn delete_before_create_stays_non_negative_and_replays_in_order() -> TestR
     handler.handle(&deleted).await?;
     assert_eq!(
         load_post_state(&test_db.db, tenant_id, post_id).await?,
-        (0, 2)
+        (0, 1)
     );
 
     let created = comment_created_envelope(tenant_id, actor_id, Uuid::new_v4(), post_id);
@@ -289,7 +286,7 @@ async fn delete_before_create_stays_non_negative_and_replays_in_order() -> TestR
 
     assert_eq!(
         load_post_state(&test_db.db, tenant_id, post_id).await?,
-        (1, 3)
+        (1, 1)
     );
     assert_eq!(count_delivery(&test_db.db, deleted.id).await?, 1);
     assert_eq!(count_delivery(&test_db.db, created.id).await?, 1);
@@ -323,7 +320,7 @@ async fn missing_post_replay_commits_only_after_source_appears() -> TestResult<(
 
     assert_eq!(
         load_post_state(&test_db.db, tenant_id, post_id).await?,
-        (1, 2)
+        (1, 1)
     );
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
@@ -365,7 +362,7 @@ async fn outbox_failure_rolls_back_counter_and_delivery_before_retry() -> TestRe
 
     assert_eq!(
         load_post_state(&test_db.db, tenant_id, post_id).await?,
-        (1, 2)
+        (1, 1)
     );
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
@@ -484,7 +481,7 @@ async fn install_retry_limit_probe(db: &DatabaseConnection) -> Result<(), sea_or
         $$;
 
         CREATE TRIGGER force_blog_projection_retry_limit
-        BEFORE UPDATE OF comment_count, version ON blog_posts
+        BEFORE UPDATE OF comment_count ON blog_posts
         FOR EACH ROW
         EXECUTE FUNCTION force_blog_projection_retry_limit();
         "#,

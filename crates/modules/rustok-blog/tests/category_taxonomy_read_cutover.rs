@@ -2,14 +2,11 @@ use std::sync::Arc;
 
 use rustok_blog::BlogModule;
 use rustok_blog::dto::{CreateCategoryInput, ListCategoriesFilter};
-use rustok_blog::entities::blog_category;
 use rustok_blog::services::CategoryService;
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-};
+use sea_orm::DatabaseConnection;
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -109,13 +106,6 @@ async fn public_get_and_list_use_taxonomy_copy_and_placement_after_storage_retir
         serde_json::json!({"layout": "blog-owned"}),
     )
     .await;
-
-    let _category = blog_category::Entity::find_by_id(child)
-        .filter(blog_category::Column::TenantId.eq(tenant_id))
-        .one(&db)
-        .await
-        .expect("Blog category read should succeed")
-        .expect("Blog category should exist");
 
     let read = service
         .get(tenant_id, admin(), child, "ar")

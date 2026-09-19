@@ -56,8 +56,8 @@ if (failures.length === 0) {
 
   requireMarker(
     cursor,
-    'canonical_source_cursor_actualized_through_taxonomy_cat_17_docs',
-    'CAT-17 documentation cursor status',
+    'canonical_reference_v1_hardening_in_progress_after_taxonomy_cat_17',
+    'post-CAT-17 canonical reference cursor status',
   );
   requireMarker(cursor, 'blog_category_taxonomy_cutover = source_complete_through_cat12');
   requireMarker(

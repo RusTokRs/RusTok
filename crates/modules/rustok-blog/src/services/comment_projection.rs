@@ -14,7 +14,6 @@ use uuid::Uuid;
 use crate::entities::{blog_comment_projection_delivery, blog_post};
 
 const BLOG_POST_TARGET_TYPE: &str = "blog_post";
-const FALLBACK_LOCALE: &str = "en";
 const MAX_PROJECTION_UPDATE_ATTEMPTS: usize = 8;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -57,11 +56,8 @@ fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionCha
     }
 }
 
-fn next_comment_projection_state(comment_count: i32, version: i32, delta: i32) -> (i32, i32) {
-    (
-        comment_count.saturating_add(delta).max(0),
-        version.saturating_add(1),
-    )
+fn next_comment_count(comment_count: i32, delta: i32) -> i32 {
+    comment_count.saturating_add(delta).max(0)
 }
 
 fn projection_update_decision(
@@ -79,9 +75,10 @@ fn projection_update_decision(
 
 /// Projects Comments lifecycle events into Blog-owned reply-count state.
 ///
-/// The delivery row, counter update, and BlogPostUpdated outbox record share one
-/// transaction. Missing Blog posts fail the delivery so the event runtime can
-/// retry instead of permanently acknowledging an out-of-order event.
+/// The delivery row, derived counter update, and reindex request share one
+/// transaction. Derived counters deliberately do not mutate the Blog business
+/// revision or content `updated_at`; otherwise an external Comments event could
+/// invalidate an editor CAS token or a Reaction subject revision.
 pub struct BlogCommentProjectionHandler {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
@@ -129,9 +126,9 @@ impl BlogCommentProjectionHandler {
                 &txn,
                 envelope.tenant_id,
                 envelope.actor_id,
-                DomainEvent::BlogPostUpdated {
-                    post_id: change.post_id,
-                    locale: FALLBACK_LOCALE.to_string(),
+                DomainEvent::ReindexRequested {
+                    target_type: "blog".to_string(),
+                    target_id: Some(change.post_id),
                 },
             )
             .await?;
@@ -157,21 +154,15 @@ async fn update_comment_count_in_tx(
             )));
         };
 
-        let (next_comment_count, next_version) =
-            next_comment_projection_state(post.comment_count, post.version, delta);
+        let next_comment_count = next_comment_count(post.comment_count, delta);
         let result = blog_post::Entity::update_many()
             .col_expr(
                 blog_post::Column::CommentCount,
                 Expr::value(next_comment_count),
             )
-            .col_expr(
-                blog_post::Column::UpdatedAt,
-                Expr::value(Utc::now().fixed_offset()),
-            )
-            .col_expr(blog_post::Column::Version, Expr::value(next_version))
             .filter(blog_post::Column::Id.eq(post_id))
             .filter(blog_post::Column::TenantId.eq(tenant_id))
-            .filter(blog_post::Column::Version.eq(post.version))
+            .filter(blog_post::Column::CommentCount.eq(post.comment_count))
             .exec(txn)
             .await?;
 
@@ -261,13 +252,10 @@ mod tests {
     }
 
     #[test]
-    fn counter_transition_is_non_negative_and_saturating() {
-        assert_eq!(next_comment_projection_state(4, 11, 1), (5, 12));
-        assert_eq!(next_comment_projection_state(0, 11, -1), (0, 12));
-        assert_eq!(
-            next_comment_projection_state(i32::MAX, i32::MAX, 1),
-            (i32::MAX, i32::MAX)
-        );
+    fn counter_transition_is_non_negative_and_does_not_touch_business_revision() {
+        assert_eq!(next_comment_count(4, 1), 5);
+        assert_eq!(next_comment_count(0, -1), 0);
+        assert_eq!(next_comment_count(i32::MAX, 1), i32::MAX);
     }
 
     #[test]

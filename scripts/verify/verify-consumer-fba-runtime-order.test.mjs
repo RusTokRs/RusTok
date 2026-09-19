@@ -11,7 +11,7 @@ const files = [
   'crates/modules/rustok-blog/rustok-module.toml',
   'crates/modules/rustok-blog/src/services/comment.rs',
   'crates/modules/rustok-blog/src/dto/comment.rs',
-  'crates/modules/rustok-blog/src/error.rs',
+  'crates/modules/rustok-blog/src/error/mod.rs',
   'crates/modules/rustok-comments/contracts/comments-fba-registry.json',
   'crates/modules/rustok-seo/contracts/seo-fba-registry.json',
   'crates/modules/rustok-seo/contracts/evidence/seo-media-consumer-runtime-order-smoke.json',

@@ -32,6 +32,26 @@ and test files instead of one shared source hotspot.
 
 The source shape is guarded by `npm run verify:module-source-layout`.
 
+## Canonical reference semantic contract
+
+Blog is not a reference merely because its folders are canonical. It is also the
+first implementation of the semantic reference contract in
+[`DECISIONS/2026-09-18-canonical-native-module-reference-contract.md`](../../../DECISIONS/2026-09-18-canonical-native-module-reference-contract.md).
+
+Key invariants include current-tenant authority, truthful locale provenance,
+explicit `Patch<T>` updates, mandatory edit CAS, one executable lifecycle
+policy, derived-state/business-revision separation, redacted public errors,
+private persistence entities, owner-service integration seams, deterministic
+pagination, and honest FBA readiness.
+
+The module-owned UI packages use a separate adapter profile:
+`core/` for commands/presentation/tests, `transport/` for GraphQL/native
+adapters, and `ui/` for render/controller components. Bundled UI locales are
+interface-copy coverage and do not restrict Blog content locales.
+
+Run both `npm run verify:module-source-layout` and
+`npm run verify:module-reference-contract` before using Blog as a template.
+
 ## Responsibilities
 
 - Provide `BlogModule` metadata for the runtime registry.

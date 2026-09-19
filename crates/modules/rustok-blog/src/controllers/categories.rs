@@ -12,12 +12,12 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use super::BlogHttpRuntime;
+use crate::CategoryService;
 use crate::dto::{
     CategoryListResponse, CategoryResponse, CreateCategoryInput, ListCategoriesFilter,
     MoveCategoryInput, MoveCategoryResponse, UpdateCategoryInput,
 };
 use crate::services::CategoryCommandService;
-use crate::{BlogError, CategoryService};
 
 fn security_context(auth: &AuthContext) -> rustok_core::SecurityContext {
     rustok_core::security_context_from_access_token(
@@ -44,20 +44,6 @@ fn category_service(runtime: &BlogHttpRuntime) -> CategoryService {
 
 fn category_command_service(runtime: &BlogHttpRuntime) -> CategoryCommandService {
     CategoryCommandService::new(runtime.db_clone())
-}
-
-fn map_category_error(error: BlogError) -> HttpError {
-    match error {
-        BlogError::CategoryNotFound(category_id) => HttpError::not_found(
-            "blog_category_not_found",
-            format!("Blog category {category_id} not found"),
-        ),
-        BlogError::Forbidden(message) => HttpError::forbidden("blog_category_forbidden", message),
-        BlogError::Validation(message) => {
-            HttpError::bad_request("blog_category_validation_failed", message)
-        }
-        _ => HttpError::internal("Unable to complete the Blog category operation"),
-    }
 }
 
 #[utoipa::path(
@@ -88,7 +74,7 @@ pub async fn list_categories(
     let (items, total) = category_service(&runtime)
         .list(tenant.id, security_context(&auth), filter)
         .await
-        .map_err(map_category_error)?;
+        .map_err(crate::error::public::to_http_error)?;
 
     Ok(Json(CategoryListResponse {
         items,
@@ -130,7 +116,7 @@ pub async fn get_category(
     let category = category_service(&runtime)
         .get(tenant.id, security_context(&auth), id, locale)
         .await
-        .map_err(map_category_error)?;
+        .map_err(crate::error::public::to_http_error)?;
 
     Ok(Json(category))
 }
@@ -159,7 +145,7 @@ pub async fn create_category(
     let category_id = category_service(&runtime)
         .create(tenant.id, security_context(&auth), input)
         .await
-        .map_err(map_category_error)?;
+        .map_err(crate::error::public::to_http_error)?;
 
     Ok((StatusCode::CREATED, Json(category_id)))
 }
@@ -190,7 +176,7 @@ pub async fn update_category(
     let category = category_service(&runtime)
         .update(tenant.id, id, security_context(&auth), input)
         .await
-        .map_err(map_category_error)?;
+        .map_err(crate::error::public::to_http_error)?;
 
     Ok(Json(category))
 }
@@ -221,7 +207,7 @@ pub async fn move_category(
     let response = category_command_service(&runtime)
         .move_category(tenant.id, id, security_context(&auth), input)
         .await
-        .map_err(map_category_error)?;
+        .map_err(crate::error::public::to_http_error)?;
 
     Ok(Json(response))
 }
@@ -249,7 +235,7 @@ pub async fn delete_category(
     category_service(&runtime)
         .delete(tenant.id, id, security_context(&auth))
         .await
-        .map_err(map_category_error)?;
+        .map_err(crate::error::public::to_http_error)?;
 
     Ok(StatusCode::NO_CONTENT)
 }

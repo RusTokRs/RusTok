@@ -1,5 +1,23 @@
 # rustok-blog implementation plan
 
+## Reference-v1 certification note
+
+The canonical Blog reference is now hardened beyond the original physical-layout
+move. Active semantics are guarded by `verify:module-reference-contract`:
+truthful locale writes, explicit nullable patches, mandatory post CAS, executable
+lifecycle policy, derived-counter/business-revision isolation, tenant authority,
+redacted public errors, private persistence and owner-service integration seams.
+
+Comments event projection now publishes a neutral Blog reindex request and leaves
+the post business revision unchanged. Current evidence is Comments projection
+schema v5 and Blog registry schema v14. Historical sections below that mention
+`BlogPostUpdated` projection publication, projection-driven post version
+increments, projection evidence schema v4, or Blog registry schema v13 describe
+older slices and are superseded by this note.
+
+FBA remains `boundary_ready`; this source hardening does not record remote
+transport or fallback runtime execution.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`

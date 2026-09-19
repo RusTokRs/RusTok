@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-30",
+  "generated_at": "2026-09-18",
   "status": "product_storefront_catalog_native_error_safety_source_unvalidated",
   "scope": "product-owned storefront catalog-list native server function",
   "source_contract": {
@@ -18,7 +18,9 @@
     "locale_fallback_changed": false,
     "channel_fallback_changed": false,
     "request_response_dto_changed": false,
-    "raw_context_error_public": false
+    "raw_context_error_public": false,
+    "host_runtime_context_fallible": true,
+    "host_runtime_context_failure_public_safe": true
   },
   "stable_public_messages": {
     "catalog_runtime_unavailable": "Product catalog is temporarily unavailable",

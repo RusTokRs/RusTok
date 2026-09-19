@@ -45,6 +45,7 @@ const transportPath = "crates/modules/rustok-product/admin/src/transport.rs";
 const legacyApiPath = "crates/modules/rustok-product/admin/src/api.rs";
 const graphqlAdapterPath = "crates/modules/rustok-product/admin/src/transport/graphql_adapter.rs";
 const nativeAdapterPath = "crates/modules/rustok-product/admin/src/transport/native_server_adapter.rs";
+const adminCatalogNativePath = "crates/modules/rustok-product/admin/src/transport/admin_catalog_native.rs";
 const cargoPath = "crates/modules/rustok-product/admin/Cargo.toml";
 const commerceQueryPath = "crates/modules/rustok-commerce/src/graphql/query.rs";
 const commerceCatalogMutationPath = "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs";
@@ -60,6 +61,7 @@ for (const filePath of [
   transportPath,
   graphqlAdapterPath,
   nativeAdapterPath,
+  adminCatalogNativePath,
   cargoPath,
   commerceQueryPath,
   commerceCatalogMutationPath,
@@ -80,6 +82,7 @@ const ui = readRepo(uiPath);
 const transport = readRepo(transportPath);
 const graphqlAdapter = readRepo(graphqlAdapterPath);
 const nativeAdapter = readRepo(nativeAdapterPath);
+const adminCatalogNative = readRepo(adminCatalogNativePath);
 const cargo = readRepo(cargoPath);
 const commerceQuery = readRepo(commerceQueryPath);
 const commerceCatalogMutation = readRepo(commerceCatalogMutationPath);
@@ -212,11 +215,32 @@ for (const marker of [
   "locale: String",
   "leptos_axum::extract::<rustok_api::AuthContext>",
   "leptos_axum::extract::<rustok_api::TenantContext>",
-  "expect_context::<rustok_api::HostRuntimeContext>()",
+  "use_context::<rustok_api::HostRuntimeContext>()",
+  "auth.tenant_id != tenant.id",
+  "ProductPublicError::internal()",
   "shared_get::<rustok_outbox::TransactionalEventBus>()",
   "runtime_ctx.db_clone()",
 ]) {
   assertContains(nativeAdapter, marker, `${nativeAdapterPath}: native server adapter must expose category-bound server function contract (${marker})`);
+}
+
+for (const marker of [
+  'endpoint = "product/admin/catalog-list"',
+  "use_context::<rustok_api::HostRuntimeContext>()",
+  "auth.tenant_id != tenant.id",
+  "ProductPublicError::internal()",
+  "shared_get::<rustok_outbox::TransactionalEventBus>()",
+]) {
+  assertContains(adminCatalogNative, marker, `${adminCatalogNativePath}: admin catalog native boundary must retain hardened owner context (${marker})`);
+}
+for (const source of [nativeAdapter, adminCatalogNative]) {
+  for (const marker of [
+    "expect_context::<rustok_api::HostRuntimeContext>()",
+    ".map_err(ServerFnError::new)?",
+    "TransactionalEventBus in host runtime context",
+  ]) {
+    assertNotContains(source, marker, `Product admin native boundary must forbid raw/panic host context pattern ${marker}`);
+  }
 }
 for (const marker of [/locale: Option<String>/, /unwrap_or_else\(\|\| "en"/, /PLATFORM_FALLBACK_LOCALE/]) {
   assertNotContains(nativeAdapter, marker, `${nativeAdapterPath}: native category-bound adapter must not invent optional/fallback locale`);

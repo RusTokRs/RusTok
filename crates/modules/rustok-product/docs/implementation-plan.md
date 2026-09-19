@@ -1,5 +1,10 @@
 # Implementation Plan for `rustok-product`
 
+> Canonical large-reference hardening is tracked in
+> [reference-hardening-current.md](./reference-hardening-current.md). That cursor is authoritative
+> for cross-module parity with the source-certified Blog v1 reference; this long-form plan remains
+> authoritative for Product-specific historical/runtime work.
+>
 ## Current state
 
 ### Accepted variant-axis target

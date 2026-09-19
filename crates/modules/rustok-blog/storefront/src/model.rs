@@ -69,6 +69,7 @@ pub struct BlogCommentListItem {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlogCommentCreateRequest {
+    pub command_id: String,
     pub post_id: String,
     pub locale: String,
     pub content: RichTextDocument,
@@ -78,6 +79,7 @@ pub struct BlogCommentCreateRequest {
 impl BlogCommentCreateRequest {
     pub fn for_post(post_id: String, locale: String, content: RichTextDocument) -> Self {
         Self {
+            command_id: rustok_api::new_command_id(),
             post_id,
             locale,
             content,

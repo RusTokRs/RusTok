@@ -33,9 +33,9 @@ pub(in crate::services) async fn load_category_names_map(
             fallback_locale,
         )
         .await
-        .map_err(map_taxonomy_error)?;
+        .map_err(BlogError::from)?;
     if canonical.len() != category_ids.len() {
-        return Err(BlogError::validation(
+        return Err(BlogError::invariant(
             "Blog post Category Taxonomy projection coverage is incomplete",
         ));
     }
@@ -45,7 +45,7 @@ pub(in crate::services) async fn load_category_names_map(
         .map(|category| (category.id, category))
         .collect::<HashMap<_, _>>();
     if canonical_by_id.len() != category_ids.len() {
-        return Err(BlogError::validation(
+        return Err(BlogError::invariant(
             "Blog post Category Taxonomy projection contains duplicate identities",
         ));
     }
@@ -54,7 +54,7 @@ pub(in crate::services) async fn load_category_names_map(
         .into_iter()
         .map(|category_id| {
             let canonical = canonical_by_id.get(&category_id).ok_or_else(|| {
-                BlogError::validation(format!(
+                BlogError::invariant(format!(
                     "Blog category {category_id} Taxonomy projection is missing"
                 ))
             })?;
@@ -63,11 +63,3 @@ pub(in crate::services) async fn load_category_names_map(
         .collect()
 }
 
-fn map_taxonomy_error(error: rustok_taxonomy::TaxonomyError) -> BlogError {
-    match error {
-        rustok_taxonomy::TaxonomyError::Database(error) => BlogError::Database(error),
-        other => BlogError::Validation(format!(
-            "Blog post Category Taxonomy projection failed: {other}"
-        )),
-    }
-}

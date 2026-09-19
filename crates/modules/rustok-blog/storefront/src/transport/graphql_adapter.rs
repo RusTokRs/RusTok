@@ -46,6 +46,8 @@ struct CreateBlogCommentVariables {
 
 #[derive(Debug, Serialize)]
 struct CreateBlogCommentInput {
+    #[serde(rename = "commandId")]
+    command_id: String,
     locale: String,
     content: RichTextDocument,
     #[serde(rename = "parentCommentId")]
@@ -115,6 +117,7 @@ pub async fn create_comment(
         CreateBlogCommentVariables {
             post_id: request_data.post_id,
             input: CreateBlogCommentInput {
+                command_id: request_data.command_id,
                 locale: request_data.locale,
                 content: request_data.content,
                 parent_comment_id: request_data.parent_comment_id,

@@ -1,3 +1,6 @@
+pub(crate) mod public;
+pub use public::BlogPublicError;
+
 use rustok_core::error::{Error as CoreError, ErrorKind, RichError};
 use thiserror::Error;
 use uuid::Uuid;
@@ -23,8 +26,11 @@ pub enum BlogError {
     #[error("Tag not found: {0}")]
     TagNotFound(Uuid),
 
-    #[error("Duplicate slug: {slug} already exists for locale {locale}")]
-    DuplicateSlug { slug: String, locale: String },
+    #[error("Taxonomy term not found: {0}")]
+    TaxonomyTermNotFound(Uuid),
+
+    #[error("Duplicate slug: {slug} already exists")]
+    DuplicateSlug { slug: String },
 
     #[error("Blog revision conflict: {0}")]
     Conflict(String),
@@ -39,6 +45,15 @@ pub enum BlogError {
 
     #[error("Cannot publish archived post")]
     CannotPublishArchived,
+
+    #[error("Invalid Blog post lifecycle transition: {from:?} -> {to:?}")]
+    InvalidTransition {
+        from: crate::BlogPostStatus,
+        to: crate::BlogPostStatus,
+    },
+
+    #[error("Blog storage invariant violated: {0}")]
+    Invariant(String),
 
     #[error("Author required")]
     AuthorRequired,
@@ -97,16 +112,20 @@ impl From<BlogError> for RichError {
                     .with_field("tag_id", id.to_string())
                     .with_error_code("TAG_NOT_FOUND")
             }
-            BlogError::DuplicateSlug { slug, locale } => RichError::new(
-                ErrorKind::Conflict,
-                format!("Slug '{}' already exists for locale '{}'", slug, locale),
-            )
-            .with_user_message("A post with this URL slug already exists")
-            .with_field("slug", slug)
-            .with_field("locale", locale)
-            .with_error_code("DUPLICATE_SLUG"),
+            BlogError::TaxonomyTermNotFound(id) => {
+                RichError::new(ErrorKind::NotFound, format!("Taxonomy term {} not found", id))
+                    .with_user_message("The requested taxonomy term does not exist")
+                    .with_field("term_id", id.to_string())
+                    .with_error_code("TAXONOMY_TERM_NOT_FOUND")
+            }
+            BlogError::DuplicateSlug { slug } => {
+                RichError::new(ErrorKind::Conflict, format!("Slug '{slug}' already exists"))
+                    .with_user_message("A post with this URL slug already exists")
+                    .with_field("slug", slug)
+                    .with_error_code("DUPLICATE_SLUG")
+            }
             BlogError::Conflict(message) => RichError::new(ErrorKind::Conflict, message)
-                .with_user_message("The blog category changed before the request could be applied")
+                .with_user_message("The Blog resource changed before the request could be applied")
                 .with_error_code("BLOG_CONFLICT"),
             BlogError::CategoryTranslationRevisionExhausted {
                 category_id,
@@ -129,6 +148,15 @@ impl From<BlogError> for RichError {
                     .with_user_message("Archived posts must be restored before publishing.")
                     .with_error_code("CANNOT_PUBLISH_ARCHIVED")
             }
+            BlogError::InvalidTransition { from, to } => RichError::new(
+                ErrorKind::BusinessLogic,
+                format!("Invalid Blog post lifecycle transition: {from:?} -> {to:?}"),
+            )
+            .with_user_message("The requested Blog post state transition is not allowed")
+            .with_error_code("BLOG_INVALID_TRANSITION"),
+            BlogError::Invariant(message) => RichError::new(ErrorKind::Internal, message)
+                .with_user_message("The Blog data is inconsistent")
+                .with_error_code("BLOG_INVARIANT_VIOLATION"),
             BlogError::AuthorRequired => RichError::new(ErrorKind::Validation, "Author required")
                 .with_user_message("An author must be specified for blog posts")
                 .with_error_code("AUTHOR_REQUIRED"),
@@ -216,11 +244,16 @@ impl BlogError {
     }
 
     /// Create a duplicate slug error
-    pub fn duplicate_slug(slug: impl Into<String>, locale: impl Into<String>) -> Self {
-        BlogError::DuplicateSlug {
-            slug: slug.into(),
-            locale: locale.into(),
-        }
+    pub fn duplicate_slug(slug: impl Into<String>) -> Self {
+        BlogError::DuplicateSlug { slug: slug.into() }
+    }
+
+    pub fn invalid_transition(from: crate::BlogPostStatus, to: crate::BlogPostStatus) -> Self {
+        BlogError::InvalidTransition { from, to }
+    }
+
+    pub fn invariant(message: impl Into<String>) -> Self {
+        BlogError::Invariant(message.into())
     }
 
     /// Create a revision conflict error.
@@ -243,17 +276,20 @@ impl From<rustok_taxonomy::TaxonomyError> for BlogError {
     fn from(value: rustok_taxonomy::TaxonomyError) -> Self {
         match value {
             rustok_taxonomy::TaxonomyError::Database(err) => Self::Database(err),
+            rustok_taxonomy::TaxonomyError::Internal(message) => Self::Invariant(format!(
+                "Taxonomy dependency failed: {message}"
+            )),
             rustok_taxonomy::TaxonomyError::Forbidden(message) => Self::Forbidden(message),
-            rustok_taxonomy::TaxonomyError::Validation(message)
-            | rustok_taxonomy::TaxonomyError::DuplicateCanonicalKey(message)
+            rustok_taxonomy::TaxonomyError::Validation(message) => Self::Validation(message),
+            rustok_taxonomy::TaxonomyError::DuplicateCanonicalKey(message)
             | rustok_taxonomy::TaxonomyError::DuplicateSlug(message)
             | rustok_taxonomy::TaxonomyError::DuplicateAlias(message)
-            | rustok_taxonomy::TaxonomyError::Conflict(message) => Self::Validation(message),
+            | rustok_taxonomy::TaxonomyError::Conflict(message) => Self::Conflict(message),
             rustok_taxonomy::TaxonomyError::TermNotFound(term_id) => {
-                Self::Validation(format!("Taxonomy term not found: {term_id}"))
+                Self::TaxonomyTermNotFound(term_id)
             }
             rustok_taxonomy::TaxonomyError::TranslationRevisionExhausted { term_id, locale } => {
-                Self::Validation(format!(
+                Self::Conflict(format!(
                     "Taxonomy translation revision is exhausted for term {term_id} and locale {locale}"
                 ))
             }
@@ -278,7 +314,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_slug_conversion() {
-        let err = BlogError::duplicate_slug("my-post", "en");
+        let err = BlogError::duplicate_slug("my-post");
         let rich: RichError = err.into();
 
         assert_eq!(rich.kind, ErrorKind::Conflict);
@@ -293,5 +329,21 @@ mod tests {
 
         assert_eq!(rich.kind, ErrorKind::BusinessLogic);
         assert_eq!(rich.error_code, Some("CANNOT_DELETE_PUBLISHED".to_string()));
+    }
+
+    #[test]
+    fn taxonomy_error_classes_survive_the_blog_boundary() {
+        let missing: BlogError = rustok_taxonomy::TaxonomyError::TermNotFound(Uuid::new_v4()).into();
+        let missing: RichError = missing.into();
+        assert_eq!(missing.kind, ErrorKind::NotFound);
+        assert_eq!(missing.status_code, 404);
+
+        let conflict: BlogError = rustok_taxonomy::TaxonomyError::Conflict(
+            "internal taxonomy predecessor detail".to_string(),
+        )
+        .into();
+        let conflict: RichError = conflict.into();
+        assert_eq!(conflict.kind, ErrorKind::Conflict);
+        assert_eq!(conflict.status_code, 409);
     }
 }

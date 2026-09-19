@@ -180,7 +180,7 @@ async fn event_dispatcher_replays_duplicate_envelope_without_double_commit() -> 
     assert_eq!(failed.load(Ordering::SeqCst), 0);
     assert_eq!(
         load_post_state(&test_db.db, tenant_id, post_id).await?,
-        (1, 2)
+        (1, 1)
     );
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);

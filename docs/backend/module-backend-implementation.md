@@ -36,7 +36,7 @@ crates/modules/rustok-<module>/
   src/
     lib.rs                         crate facade: docs, declarations, deliberate re-exports
     module.rs                      RusToKModule/MigrationSource/runtime registration
-    error.rs                       owner error contract
+    error.rs or error/             owner error contract + public mapping when needed
     domain/                        state machines, value objects, invariant/policy code
     dto/                           owner request/response and command/query data contracts
     entities/                      persistence mappings when the module owns tables
@@ -119,6 +119,49 @@ Use these placement rules:
 | Server route mounting only | `apps/server` |
 
 If a file starts mixing two rows from the table, split it before adding new behavior.
+
+## Canonical reference invariants
+
+Physical conformance is necessary but not sufficient. Enrolled reference modules
+also follow [the canonical native module reference contract](../../DECISIONS/2026-09-18-canonical-native-module-reference-contract.md).
+
+In particular:
+
+- request/runtime tenant context is authoritative on reads and writes;
+- runtime locale fallback never becomes stored write provenance;
+- nullable edits use explicit `Patch<T>` semantics;
+- aggregate revisions are predecessor-bound CAS inputs, not optional hints;
+- persistence entities are private;
+- lifecycle commands execute the domain transition table;
+- derived projections do not mutate owner business revisions;
+- public transports use owner-safe/redacted error mapping;
+- integrations call owner service/port seams instead of rebuilding policy from entities;
+- pagination is deterministic and every published input field has behavior.
+
+### Module-owned UI adapter profile
+
+Module-owned `admin/` and `storefront/` crates use a UI-specific profile rather
+than pretending to be backend domain crates:
+
+```text
+src/
+  lib.rs
+  model.rs
+  i18n.rs
+  core/
+    commands.rs
+    presentation.rs
+    tests.rs
+  transport/
+  ui/
+    components.rs
+    leptos.rs
+```
+
+Only responsibilities that exist are materialized. The Blog reference uses a
+40 KiB source ceiling for module-owned UI files; split by responsibility, never
+by arbitrary numbered chunks. UI translation bundles describe available
+interface copy, not allowed content locales.
 
 ## `lib.rs` and Module Wiring
 

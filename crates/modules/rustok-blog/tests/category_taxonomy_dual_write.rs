@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
 use rustok_blog::{
-    BlogError, BlogModule, CategoryService, CreateCategoryInput,
+    BlogError, BlogModule, CategoryService, CreateCategoryInput, ListCategoriesFilter,
     UpdateCategoryInput,
-    entities::blog_category,
 };
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_events::EventEnvelope;
@@ -13,9 +12,7 @@ use rustok_taxonomy::{
     entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation},
     sync_module_category_with_owned_aliases_in_tx,
 };
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, TransactionTrait,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -240,11 +237,19 @@ async fn taxonomy_route_conflict_rolls_back_blog_create() {
         .await
         .expect("Taxonomy route owner transaction should commit");
 
-    let before_categories = blog_category::Entity::find()
-        .filter(blog_category::Column::TenantId.eq(tenant_id))
-        .count(&db)
+    let before_categories = service
+        .list(
+            tenant_id,
+            admin(),
+            ListCategoriesFilter {
+                locale: Some("en".to_string()),
+                page: 1,
+                per_page: 100,
+            },
+        )
         .await
-        .expect("Blog category count should succeed");
+        .expect("Blog category list should succeed")
+        .1;
 
     let error = service
         .create(tenant_id, admin(), create_input("Reserved", "reserved"))
@@ -253,11 +258,19 @@ async fn taxonomy_route_conflict_rolls_back_blog_create() {
     assert!(matches!(error, BlogError::Validation(_)));
 
     assert_eq!(
-        blog_category::Entity::find()
-            .filter(blog_category::Column::TenantId.eq(tenant_id))
-            .count(&db)
+        service
+            .list(
+                tenant_id,
+                admin(),
+                ListCategoriesFilter {
+                    locale: Some("en".to_string()),
+                    page: 1,
+                    per_page: 100,
+                },
+            )
             .await
-            .expect("Blog category count after rollback should succeed"),
+            .expect("Blog category list after rollback should succeed")
+            .1,
         before_categories,
         "failed Taxonomy synchronization must roll back the Blog category row"
     );

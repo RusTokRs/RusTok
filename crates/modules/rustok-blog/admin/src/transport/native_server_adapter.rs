@@ -52,6 +52,13 @@ pub(super) async fn archive_post(
     blog_admin_archive_post_native(id, locale).await
 }
 
+pub(super) async fn restore_post(
+    id: String,
+    locale: Option<String>,
+) -> Result<BlogPostDetail, ServerFnError> {
+    blog_admin_restore_post_native(id, locale).await
+}
+
 pub(super) async fn delete_post(id: String) -> Result<bool, ServerFnError> {
     blog_admin_delete_post_native(id).await
 }
@@ -84,17 +91,17 @@ struct NativeContext {
 
 #[cfg(feature = "ssr")]
 async fn native_context() -> Result<NativeContext, ServerFnError> {
-    use leptos::prelude::expect_context;
+    use leptos::prelude::use_context;
     use rustok_api::HostRuntimeContext;
     use rustok_outbox::TransactionalEventBus;
 
-    let runtime = expect_context::<HostRuntimeContext>();
+    let runtime = use_context::<HostRuntimeContext>().ok_or_else(public_internal_error)?;
     let auth = leptos_axum::extract::<rustok_api::AuthContext>()
         .await
-        .map_err(ServerFnError::new)?;
+        .map_err(|_| ServerFnError::new("Authentication required"))?;
     let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
         .await
-        .map_err(ServerFnError::new)?;
+        .map_err(|_| public_internal_error())?;
     if auth.tenant_id != tenant.id {
         return Err(ServerFnError::new(
             "Authenticated actor is not bound to the current tenant",
@@ -102,9 +109,7 @@ async fn native_context() -> Result<NativeContext, ServerFnError> {
     }
     let event_bus = runtime
         .shared_get::<TransactionalEventBus>()
-        .ok_or_else(|| {
-            ServerFnError::new("blog/admin requires TransactionalEventBus in host runtime context")
-        })?;
+        .ok_or_else(public_internal_error)?;
     let comments_thread_port = runtime.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>();
 
     Ok(NativeContext {
@@ -138,6 +143,18 @@ fn security_context(auth: &rustok_api::AuthContext) -> rustok_core::SecurityCont
 }
 
 #[cfg(feature = "ssr")]
+fn public_blog_error(error: rustok_blog::BlogError) -> ServerFnError {
+    let public = rustok_blog::BlogPublicError::from(error);
+    ServerFnError::new(format!("{}: {}", public.code, public.message))
+}
+
+#[cfg(feature = "ssr")]
+fn public_internal_error() -> ServerFnError {
+    let public = rustok_blog::BlogPublicError::internal();
+    ServerFnError::new(format!("{}: {}", public.code, public.message))
+}
+
+#[cfg(feature = "ssr")]
 fn parse_uuid(value: &str, field: &str) -> Result<uuid::Uuid, ServerFnError> {
     uuid::Uuid::parse_str(value.trim()).map_err(|_| ServerFnError::new(format!("Invalid {field}")))
 }
@@ -168,7 +185,7 @@ fn requested_locale(locale: Option<String>, fallback: &str) -> String {
 async fn blog_admin_posts_native(locale: Option<String>) -> Result<BlogPostList, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_blog::{PostListQuery, PostService};
+        use rustok_blog::{PostListQuery, PostService, PostSortField, PostSortOrder};
 
         let context = native_context().await?;
         let locale = requested_locale(locale, context.tenant.default_locale.as_str());
@@ -180,14 +197,14 @@ async fn blog_admin_posts_native(locale: Option<String>) -> Result<BlogPostList,
                     locale: Some(locale),
                     page: Some(1),
                     per_page: Some(20),
-                    sort_by: Some("created_at".to_string()),
-                    sort_order: Some("desc".to_string()),
+                    sort_by: Some(PostSortField::CreatedAt),
+                    sort_order: Some(PostSortOrder::Desc),
                     ..Default::default()
                 },
                 Some(context.tenant.default_locale.as_str()),
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(public_blog_error)?;
 
         Ok(BlogPostList {
             items: result.items.into_iter().map(map_post_list_item).collect(),
@@ -227,7 +244,7 @@ async fn blog_admin_post_native(
         {
             Ok(post) => Ok(Some(map_post_detail(post))),
             Err(BlogError::PostNotFound(_)) => Ok(None),
-            Err(error) => Err(ServerFnError::new(error)),
+            Err(error) => Err(public_blog_error(error)),
         }
     }
     #[cfg(not(feature = "ssr"))]
@@ -271,7 +288,7 @@ async fn blog_admin_create_post_native(
                 },
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(public_blog_error)?;
         let post = service
             .get_post_with_locale_fallback(
                 context.tenant.id,
@@ -281,7 +298,7 @@ async fn blog_admin_create_post_native(
                 Some(context.tenant.default_locale.as_str()),
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(public_blog_error)?;
         Ok(map_post_detail(post))
     }
     #[cfg(not(feature = "ssr"))]
@@ -315,20 +332,24 @@ async fn blog_admin_update_post_native(
                     locale: Some(draft.locale),
                     title: Some(draft.title),
                     content: Some(draft.content),
-                    excerpt: Some(draft.excerpt),
+                    excerpt: optional_text(draft.excerpt)
+                        .map(rustok_api::Patch::Set)
+                        .unwrap_or(rustok_api::Patch::Clear),
                     slug: Some(draft.slug),
                     tags: Some(draft.tags),
-                    category_id: None,
-                    featured_image_url: None,
-                    seo_title: None,
-                    seo_description: None,
+                    category_id: rustok_api::Patch::Keep,
+                    featured_image_url: rustok_api::Patch::Keep,
+                    seo_title: rustok_api::Patch::Keep,
+                    seo_description: rustok_api::Patch::Keep,
                     channel_slugs: None,
                     metadata: None,
-                    version: None,
+                    version: draft.version.ok_or_else(|| {
+                        ServerFnError::new("Blog post revision is missing; reload before saving")
+                    })?,
                 },
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(public_blog_error)?;
         let post = service
             .get_post_with_locale_fallback(
                 context.tenant.id,
@@ -338,7 +359,7 @@ async fn blog_admin_update_post_native(
                 Some(context.tenant.default_locale.as_str()),
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(public_blog_error)?;
         Ok(map_post_detail(post))
     }
     #[cfg(not(feature = "ssr"))]
@@ -404,11 +425,30 @@ async fn blog_admin_archive_post_native(
     }
 }
 
+#[server(prefix = "/api/fn", endpoint = "blog/admin/restore-post")]
+async fn blog_admin_restore_post_native(
+    id: String,
+    locale: Option<String>,
+) -> Result<BlogPostDetail, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        update_status_and_reload(id, locale, StatusMutation::Restore).await
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (id, locale);
+        Err(ServerFnError::new(
+            "blog/admin/restore-post requires the `ssr` feature",
+        ))
+    }
+}
+
 #[cfg(feature = "ssr")]
 enum StatusMutation {
     Publish,
     Unpublish,
     Archive,
+    Restore,
 }
 
 #[cfg(feature = "ssr")]
@@ -445,8 +485,13 @@ async fn update_status_and_reload(
                 )
                 .await
         }
+        StatusMutation::Restore => {
+            service
+                .restore_post(context.tenant.id, post_id, security)
+                .await
+        }
     }
-    .map_err(ServerFnError::new)?;
+    .map_err(public_blog_error)?;
 
     let post = service
         .get_post_with_locale_fallback(
@@ -457,7 +502,7 @@ async fn update_status_and_reload(
             Some(context.tenant.default_locale.as_str()),
         )
         .await
-        .map_err(ServerFnError::new)?;
+        .map_err(public_blog_error)?;
     Ok(map_post_detail(post))
 }
 
@@ -472,7 +517,7 @@ async fn blog_admin_delete_post_native(id: String) -> Result<bool, ServerFnError
         PostService::new(context.db, context.event_bus)
             .delete_post(context.tenant.id, post_id, security_context(&context.auth))
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(public_blog_error)?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]
@@ -512,7 +557,7 @@ async fn blog_admin_moderation_comments_native(
                 Some(context.tenant.default_locale.as_str()),
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(public_blog_error)?;
 
         Ok(BlogModerationCommentList {
             items: items.into_iter().map(map_moderation_comment).collect(),
@@ -555,7 +600,7 @@ async fn blog_admin_moderate_comment_native(
                 Some(context.tenant.default_locale.as_str()),
             )
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(public_blog_error)?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]
@@ -617,6 +662,7 @@ fn map_post_detail(post: rustok_blog::PostResponse) -> BlogPostDetail {
         featured_image_url: post.featured_image_url,
         seo_title: post.seo_title,
         seo_description: post.seo_description,
+        version: post.version,
     }
 }
 

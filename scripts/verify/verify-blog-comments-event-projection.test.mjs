@@ -111,9 +111,8 @@ DomainEvent::CommentCreated
 delta: 1
 DomainEvent::CommentDeleted
 delta: -1
-fn next_comment_projection_state(comment_count: i32, version: i32, delta: i32)
+fn next_comment_count(comment_count: i32, delta: i32)
 comment_count.saturating_add(delta).max(0)
-version.saturating_add(1)
 ${retryHelperSource}
 ${missingSharedClassifier ? '' : 'let Some(change) = comment_projection_change(&envelope.event) else'}
 let txn = self.db.begin().await?;
@@ -122,11 +121,11 @@ update_comment_count_in_tx(&txn, envelope.tenant_id, change.post_id, change.delt
 event_id: Set(envelope.id)
 comment_id: Set(change.comment_id)
 .insert(&txn)
-${missingOutbox ? '' : '.publish_in_tx( DomainEvent::BlogPostUpdated'}
+${missingOutbox ? '' : '.publish_in_tx( DomainEvent::ReindexRequested'}
 txn.commit().await?;
 ${missingTenantScope ? '' : 'Column::TenantId.eq(tenant_id)'}
-Column::Version.eq(post.version)
-next_comment_projection_state(post.comment_count, post.version, delta)
+Column::CommentCount.eq(post.comment_count)
+next_comment_count(post.comment_count, delta)
 for attempt_index in 0..MAX_PROJECTION_UPDATE_ATTEMPTS
 ${retryLoopSource}
 Err(Error::External(format!(
@@ -139,7 +138,7 @@ async fn handle(&self, envelope: &EventEnvelope)
 #[cfg(test)]
 fn classifies_blog_comment_lifecycle_events()
 fn ignores_non_blog_targets_and_unrelated_events()
-${missingCounterHarness ? '' : 'fn counter_transition_is_non_negative_and_saturating()'}
+${missingCounterHarness ? '' : 'fn counter_transition_is_non_negative_and_does_not_touch_business_revision()'}
 ${retryHarnessSource}
 `,
   );
@@ -357,7 +356,7 @@ assert!(!handler.handles(&forum_created));
     root,
     evidencePath,
     JSON.stringify({
-      schema_version: 4,
+      schema_version: 5,
       module: 'blog',
       surface: 'comments_event_projection',
       status: statusDrift ? 'runtime_verified' : 'source_verified_no_compile',
@@ -500,7 +499,7 @@ assert!(!handler.handles(&forum_created));
     root,
     registryPath,
     JSON.stringify({
-      schema_version: 13,
+      schema_version: 14,
       evidence: { comments_event_projection: evidencePath },
       verification_chain: {
         source_gates: {

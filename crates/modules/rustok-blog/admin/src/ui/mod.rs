@@ -1,3 +1,4 @@
+mod components;
 pub mod leptos;
 mod richtext;
 

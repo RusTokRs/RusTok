@@ -50,7 +50,8 @@ impl BlogMutation {
                 ),
                 input.into(),
             )
-            .await?;
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
 
         Ok(post_id)
     }
@@ -85,7 +86,8 @@ impl BlogMutation {
                 ),
                 input.into(),
             )
-            .await?;
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
 
         Ok(true)
     }
@@ -118,7 +120,8 @@ impl BlogMutation {
                     &auth.permissions,
                 ),
             )
-            .await?;
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
 
         Ok(true)
     }
@@ -151,7 +154,8 @@ impl BlogMutation {
                     &auth.permissions,
                 ),
             )
-            .await?;
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
 
         Ok(true)
     }
@@ -184,7 +188,8 @@ impl BlogMutation {
                     &auth.permissions,
                 ),
             )
-            .await?;
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
 
         Ok(true)
     }
@@ -219,7 +224,41 @@ impl BlogMutation {
                 ),
                 reason,
             )
-            .await?;
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
+
+        Ok(true)
+    }
+
+    async fn restore_post(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Option<Uuid>,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_blog_permission(
+            ctx,
+            &[Permission::BLOG_POSTS_PUBLISH],
+            "Permission denied: blog_posts:publish required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        PostService::new(db.clone(), event_bus.clone())
+            .restore_post(
+                tenant_id,
+                id,
+                rustok_core::security_context_from_access_token(
+                    auth.user_id,
+                    &auth.grant_type,
+                    &auth.permissions,
+                ),
+            )
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
 
         Ok(true)
     }
@@ -260,7 +299,8 @@ impl BlogMutation {
                 public_channel_slug,
                 input.into(),
             )
-            .await?;
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
 
         Ok(comment.into())
     }
@@ -307,7 +347,8 @@ impl BlogMutation {
                 },
                 Some(tenant.default_locale.as_str()),
             )
-            .await?;
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
 
         Ok(true)
     }
