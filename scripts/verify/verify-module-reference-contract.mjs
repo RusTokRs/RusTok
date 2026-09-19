@@ -350,6 +350,48 @@ requireAll("crates/modules/rustok-taxonomy/src/category_hierarchy.rs", [
   "pg_advisory_xact_lock(hashtextextended($1, 0))",
 ]);
 
+requireAll("crates/modules/rustok-taxonomy/src/owner_category_read.rs", [
+  "Taxonomy Category hierarchy contains a missing or foreign-scope parent",
+  "Taxonomy Category hierarchy contains an invalid position or self-parent",
+]);
+requireAll("crates/modules/rustok-taxonomy/src/module_term_mutation.rs", [
+  ".filter(taxonomy_term::Column::ScopeValue.eq(module_scope))",
+  ".lock_exclusive()",
+]);
+requireAll("crates/modules/rustok-taxonomy/src/services.rs", [
+  "let Some(term) = taxonomy_term::Entity::find_by_id(route.term_id)",
+  ".lock_exclusive()",
+  "let Some(term) = taxonomy_term::Entity::find()",
+]);
+requireAll("crates/modules/rustok-channel/src/services/channel_service.rs", [
+  "pub async fn is_module_enabled_for_tenant(",
+]);
+requireAll("crates/modules/rustok-blog/src/graphql/query.rs", [
+  "is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)",
+]);
+requireAll("crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs", [
+  "is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)",
+  "request_context",
+  ".is_some_and(|context| context.tenant_id != tenant_id)",
+]);
+requireAll("crates/modules/rustok-comments/src/services.rs", [
+  "Comment position is exhausted for thread",
+  "active.comment_count = Set(thread.comment_count)",
+  ".lock_exclusive()",
+]);
+requireAll("crates/modules/rustok-comments/src/entities/comment_thread.rs", [
+  "self.last_commented_at = Set(live_comments.first().map(|comment| comment.created_at))",
+]);
+requireAll("crates/modules/rustok-blog/src/dto/post.rs", [
+  "saturating_add(u64::from(per_page).saturating_sub(1))",
+  "u32::try_from(total_pages).unwrap_or(u32::MAX)",
+]);
+requireAll("crates/modules/rustok-blog/src/error/public.rs", [
+  "let internal = matches!(rich.kind, ErrorKind::Database | ErrorKind::Internal)",
+  "ErrorKind::Internal.error_code().to_string()",
+  "The Blog operation could not be completed",
+]);
+
 if (failures.length > 0) {
   console.error("Canonical module reference-contract verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
