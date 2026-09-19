@@ -65,6 +65,11 @@ impl TaxonomyService {
         input: CreateTaxonomyTermInput,
     ) -> TaxonomyResult<Uuid> {
         enforce_scope(&security, Resource::Taxonomy, Action::Create)?;
+        if input.scope_type == TaxonomyScopeType::Module {
+            return Err(TaxonomyError::forbidden(
+                "Module-owned Taxonomy terms must be created by the owning module",
+            ));
+        }
 
         let locale = normalize_locale(&input.locale)?;
         let scope_value = normalize_scope_value(input.scope_type, input.scope_value.as_deref())?;
