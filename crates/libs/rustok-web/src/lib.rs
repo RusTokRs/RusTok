@@ -107,7 +107,7 @@ pub fn embedded_asset_response(
     bytes: &'static [u8],
     content_type: &'static str,
     cache_control: &'static str,
-    context: &'static str,
+    _context: &'static str,
 ) -> Response {
     let etag = content_etag(bytes);
     let not_modified = headers
@@ -122,21 +122,32 @@ pub fn embedded_asset_response(
         return builder
             .status(StatusCode::NOT_MODIFIED)
             .body(Body::empty())
-            .unwrap_or_else(|error| panic!("{context} headers are invalid: {error}"));
+            .unwrap_or_else(|_| {
+                Response::builder()
+                    .status(StatusCode::NOT_MODIFIED)
+                    .body(Body::empty())
+                    .unwrap_or_default()
+            });
     }
     builder
         .header(CONTENT_TYPE, content_type)
         .status(StatusCode::OK)
         .body(Body::from(bytes))
-        .unwrap_or_else(|error| panic!("{context} headers are invalid: {error}"))
+        .unwrap_or_else(|_| {
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from("Internal Server Error"))
+                .unwrap_or_default()
+        })
 }
 
 fn content_etag(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     let mut encoded = String::with_capacity(digest.len() * 2 + 2);
     encoded.push('"');
+    // INVARIANT: Formatting fixed Sha256 byte digest into in-memory String cannot fail.
     for byte in digest {
-        write!(&mut encoded, "{byte:02x}").expect("writing to String cannot fail");
+        let _ = write!(&mut encoded, "{byte:02x}");
     }
     encoded.push('"');
     encoded

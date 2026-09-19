@@ -45,8 +45,9 @@ impl ReleaseQualifiedAsset {
         let hash = Sha256::digest(&bytes);
         let mut digest = String::with_capacity(7 + hash.len() * 2);
         digest.push_str("sha256:");
+        // INVARIANT: Formatting fixed Sha256 byte digest into in-memory String cannot fail.
         for byte in hash {
-            write!(&mut digest, "{byte:02x}").expect("writing to String cannot fail");
+            let _ = write!(&mut digest, "{byte:02x}");
         }
         let etag = content_etag(&bytes);
         Self {

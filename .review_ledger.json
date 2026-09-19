@@ -8,7 +8,7 @@
       "path": "crates/libs/rustok-api",
       "category": "libs",
       "files": 35,
-      "loc": 6621,
+      "loc": 6627,
       "completed": true,
       "completed_at": "2026-09-18 19:46",
       "notes": "Audited richtext.rs: eliminated unwrap panic on empty strings, documented schema invariants"
@@ -68,10 +68,10 @@
       "path": "crates/libs/rustok-web",
       "category": "libs",
       "files": 2,
-      "loc": 730,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 742,
+      "completed": true,
+      "completed_at": "2026-09-19 06:50",
+      "notes": "Audited lib.rs and browser_assets.rs: eliminated panics and expects in response builders and hex formatting"
     },
     "crates/modules/alloy": {
       "name": "alloy",
@@ -218,7 +218,7 @@
       "path": "crates/modules/rustok-blog",
       "category": "modules",
       "files": 126,
-      "loc": 28934,
+      "loc": 29040,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -298,7 +298,7 @@
       "path": "crates/modules/rustok-channel",
       "category": "modules",
       "files": 47,
-      "loc": 11201,
+      "loc": 11238,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1398,7 +1398,7 @@
       "path": "crates/modules/rustok-taxonomy",
       "category": "modules",
       "files": 51,
-      "loc": 12974,
+      "loc": 13035,
       "completed": false,
       "completed_at": null,
       "notes": ""
