@@ -65,8 +65,8 @@ Run both `npm run verify:module-source-layout` and
 - Publish module-owned Leptos admin/storefront packages for installable UI
   surfaces.
 - Publish schema-driven tenant settings through `rustok-module.toml`.
-- Publish separate typed RBAC resources: `blog_posts:*` and
-  `blog_categories:*`.
+- Publish separate typed RBAC resources: `blog_posts:*`,
+  `blog_categories:*`, and the Blog-owned `tags:*` permission surface.
 - Keep Blog Category commands synchronized with canonical Taxonomy Category
   state without restoring retired Blog Category translation storage.
 
