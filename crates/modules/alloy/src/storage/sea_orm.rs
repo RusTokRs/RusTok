@@ -1856,7 +1856,11 @@ impl ScriptRegistry for SeaOrmStorage {
             .script
             .parent_release
             .clone()
-            .expect("validated imported draft must have a parent release");
+            .ok_or_else(|| {
+                ScriptError::InvalidLineage(
+                    "validated imported draft must have a parent release".into(),
+                )
+            })?;
         let now = Utc::now();
         command.script.version = 1;
         command.script.created_at = now;

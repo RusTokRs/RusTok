@@ -198,14 +198,20 @@ impl<S: ScriptRegistry + 'static> Scheduler<S> {
         }
     }
 
-    fn create_job(&self, script: &Script, cron_expr: &str) -> Result<ScheduledJob, String> {
-        let schedule =
-            Schedule::from_str(cron_expr).map_err(|err| format!("Invalid cron: {err}"))?;
+    fn create_job(
+        &self,
+        script: &Script,
+        cron_expr: &str,
+    ) -> Result<ScheduledJob, crate::error::ScriptError> {
+        let schedule = Schedule::from_str(cron_expr)
+            .map_err(|err| crate::error::ScriptError::InvalidTrigger(format!("Invalid cron: {err}")))?;
 
         let next_run = schedule
             .upcoming(Utc)
             .next()
-            .ok_or_else(|| "No upcoming schedule".to_string())?;
+            .ok_or_else(|| {
+                crate::error::ScriptError::InvalidTrigger("No upcoming schedule".to_string())
+            })?;
 
         Ok(ScheduledJob {
             script_id: script.id,

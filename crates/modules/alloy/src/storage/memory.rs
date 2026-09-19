@@ -107,22 +107,19 @@ impl InMemoryStorage {
         }
     }
 
-    fn source_revision(script: &Script) -> ScriptSourceRevision {
-        ScriptSourceRevision {
+    fn source_revision(script: &Script) -> ScriptResult<ScriptSourceRevision> {
+        Ok(ScriptSourceRevision {
             script_id: script.id,
             tenant_id: script.tenant_id,
             revision: script.version,
             parent_revision: script.version.checked_sub(1).filter(|parent| *parent > 0),
-            source_digest: script
-                .workspace
-                .digest()
-                .expect("saved workspace must have been validated"),
+            source_digest: script.workspace.digest()?,
             workspace: script.workspace.clone(),
             author_id: script.author_id.clone(),
             source_provenance: script.source_provenance.clone(),
             parent_release: script.parent_release.clone(),
             created_at: script.updated_at,
-        }
+        })
     }
 
     fn retention_state(
@@ -491,7 +488,11 @@ impl ScriptRegistry for InMemoryStorage {
             .ok_or_else(|| ScriptError::NotFound {
                 name: run_id.to_string(),
             })?;
-        let run = runs.get_mut(&key).expect("test run key was found");
+        // INVARIANT: `key` was resolved from `runs` via `find_map` above;
+        // the write lock is held continuously so the entry cannot vanish.
+        let run = runs.get_mut(&key).ok_or_else(|| ScriptError::NotFound {
+            name: run_id.to_string(),
+        })?;
         if run.status.is_terminal() {
             let terminal = run.clone();
             drop(runs);
@@ -547,7 +548,11 @@ impl ScriptRegistry for InMemoryStorage {
             .script
             .parent_release
             .clone()
-            .expect("validated imported draft must have a parent release");
+            .ok_or_else(|| {
+                ScriptError::InvalidLineage(
+                    "validated imported draft must have a parent release".into(),
+                )
+            })?;
         let key = (command.script.tenant_id, command.idempotency_key);
         let mut receipts = self.release_imports.write().await;
         let mut scripts = self.scripts.write().await;
@@ -591,7 +596,7 @@ impl ScriptRegistry for InMemoryStorage {
         command.script.created_at = now;
         command.script.updated_at = now;
         let script = command.script;
-        let revision = Self::source_revision(&script);
+        let revision = Self::source_revision(&script)?;
         scripts.insert(script.id, script.clone());
         revisions.insert((revision.script_id, revision.revision), revision);
         receipts.insert(
@@ -953,7 +958,7 @@ impl ScriptRegistry for InMemoryStorage {
 
         guard.insert(script.id, script.clone());
         drop(guard);
-        let revision = Self::source_revision(&script);
+        let revision = Self::source_revision(&script)?;
         self.source_revisions
             .write()
             .await
