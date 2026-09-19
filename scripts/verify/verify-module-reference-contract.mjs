@@ -180,6 +180,10 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
   "resolve_name_for_locale_chain",
 ]);
 
+requireAll("crates/modules/rustok-blog/src/services/category.rs", [
+  "ensure_hierarchy_coverage_in_tx(&txn, tenant_id).await?",
+  '"Blog category Taxonomy hierarchy coverage is incomplete before create"',
+]);
 requireAll("crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs", [
   ".map_err(BlogError::from)",
   "BLOG_TAXONOMY_SCOPE",
