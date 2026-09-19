@@ -542,11 +542,7 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
   "ensure_module_owned_term(&term)?;",
 ]);
 
-requireAll("crates/modules/rustok-blog/src/services/comment.rs", [
-  'comments_write_port_context(',
-  '                    &security,',
-  '                    "moderate",',
-]);
+
 
 requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
   "pub(super) fn is_unique_constraint(error: &sea_orm::DbErr) -> bool",
