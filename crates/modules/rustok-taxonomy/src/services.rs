@@ -881,7 +881,7 @@ impl TaxonomyService {
 
         let now = Utc::now();
         let term_id = Uuid::new_v4();
-        let created_term = taxonomy_term::ActiveModel {
+        let created_term = match taxonomy_term::ActiveModel {
             id: Set(term_id),
             tenant_id: Set(term.tenant_id),
             kind: Set(term.kind),
@@ -893,7 +893,16 @@ impl TaxonomyService {
             updated_at: Set(now.into()),
         }
         .insert(txn)
-        .await?;
+        .await
+        {
+            Ok(term) => term,
+            Err(error) if is_unique_constraint(&error) => {
+                return Err(TaxonomyError::DuplicateCanonicalKey(
+                    term.normalized_slug.to_string(),
+                ));
+            }
+            Err(error) => return Err(error.into()),
+        };
         let created_translation = taxonomy_term_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
             term_id: Set(term_id),
@@ -907,7 +916,16 @@ impl TaxonomyService {
             updated_at: Set(now.into()),
         }
         .insert(txn)
-        .await?;
+        .await
+        .map_err(|error| {
+            if is_unique_constraint(&error) {
+                TaxonomyError::conflict(
+                    "Module term localized copy was created concurrently",
+                )
+            } else {
+                error.into()
+            }
+        })?;
         record_translation_change_in_tx(
             txn,
             TranslationChangeEvidence {
