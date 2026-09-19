@@ -152,6 +152,22 @@ impl CommentService {
         security: SecurityContext,
         input: UpdateCommentInput,
     ) -> BlogResult<CommentResponse> {
+        let existing = self
+            .comments_thread_port
+            .get_comment(
+                comments_read_port_context(
+                    tenant_id,
+                    &SecurityContext::system(),
+                    input.locale.as_str(),
+                    comment_id,
+                )?,
+                comment_id,
+                None,
+            )
+            .await
+            .map_err(comments_port_error_to_blog_error)?;
+        Self::ensure_blog_target(&existing)?;
+
         let locale = input.locale.clone();
         let domain_input = DomainUpdateCommentInput {
             locale: locale.clone(),
