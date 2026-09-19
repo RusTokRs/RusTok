@@ -4,11 +4,11 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
+use rustok_taxonomy::{TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult, lock_category_hierarchy_writer_in_tx};
 use rustok_taxonomy::entities::taxonomy_category_hierarchy;
-use rustok_taxonomy::{TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Statement,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
+    DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use uuid::Uuid;
 
@@ -48,7 +48,7 @@ impl BlogCategoryDeleteCleanup {
         tenant_id: Uuid,
         taxonomy_category_id: Uuid,
     ) -> BlogResult<()> {
-        lock_category_tree_in_tx(txn, tenant_id).await?;
+        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?;
 
         if self.blog_category_id != taxonomy_category_id {
             return Err(BlogError::invariant(format!(
