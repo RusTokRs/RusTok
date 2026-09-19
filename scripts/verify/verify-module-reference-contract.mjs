@@ -417,6 +417,24 @@ requireAll("crates/modules/rustok-blog/src/graphql/mutation.rs", [
   '"Permission denied: comments:create required"',
 ]);
 
+requireAll("crates/modules/rustok-taxonomy/src/owner_read.rs", [
+  "pub async fn load_term_names_strict_for_module(",
+  "Taxonomy owner attachment references a term outside the allowed module/global scope",
+  "TaxonomyScopeType::Global",
+  "TaxonomyScopeType::Module",
+]);
+
+requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
+  "load_term_names_strict_for_module(",
+  "BLOG_SCOPE_VALUE",
+]);
+
+requireAll("crates/modules/rustok-blog/src/services/category.rs", [
+  "TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(",
+  "category_taxonomy_sync::BLOG_TAXONOMY_SCOPE",
+  "Blog category {category_id} is missing canonical Taxonomy ownership or hierarchy",
+]);
+
 if (failures.length > 0) {
   console.error("Canonical module reference-contract verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
