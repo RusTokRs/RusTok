@@ -1,5 +1,5 @@
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, Set, TransactionTrait,
 };
 use tracing::instrument;
@@ -251,6 +251,44 @@ impl ChannelService {
     /// Checks module availability while proving that the channel belongs to the
     /// caller-selected tenant. Consumers must use this form whenever both
     /// tenant and channel identifiers cross a transport boundary.
+    /// Verifies a set of channel slugs belongs to the selected tenant inside the
+    /// caller's transaction. This is intended for consumer modules that persist
+    /// slug-based visibility relations and cannot rely on a foreign key.
+    pub async fn ensure_channel_slugs_exist_for_tenant_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        channel_slugs: &[String],
+    ) -> ChannelResult<()> {
+        let requested = channel_slugs
+            .iter()
+            .map(|slug| slug.trim().to_ascii_lowercase())
+            .filter(|slug| !slug.is_empty())
+            .collect::<std::collections::BTreeSet<_>>();
+        if requested.is_empty() {
+            return Ok(());
+        }
+
+        let found = channel::Entity::find()
+            .filter(channel::Column::TenantId.eq(tenant_id))
+            .filter(channel::Column::Slug.is_in(requested.iter().cloned().collect::<Vec<_>>()))
+            .all(txn)
+            .await?;
+
+        if found.len() != requested.len() {
+            let missing = requested
+                .into_iter()
+                .find(|slug| !found.iter().any(|channel| channel.slug == *slug))
+                .unwrap_or_default();
+            return Err(ChannelError::InvalidTargetValue(format!(
+                "channel slug {} does not exist for this tenant",
+                missing
+            )));
+        }
+
+        Ok(())
+    }
+
     pub async fn is_module_enabled_for_tenant(
         &self,
         tenant_id: Uuid,
@@ -973,12 +1011,11 @@ impl ChannelService {
             .collect()
     }
 
-    async fn ensure_channel_exists(&self, channel_id: Uuid) -> ChannelResult<()> {
+    async fn ensure_channel_exists(&self, channel_id: Uuid) -> ChannelResult<channel::Model> {
         channel::Entity::find_by_id(channel_id)
             .one(&self.db)
             .await?
-            .ok_or(ChannelError::NotFound(channel_id))?;
-        Ok(())
+            .ok_or(ChannelError::NotFound(channel_id))
     }
 
     async fn default_channel_exists_for_tenant(&self, tenant_id: Uuid) -> ChannelResult<bool> {

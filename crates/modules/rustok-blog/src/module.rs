@@ -50,12 +50,12 @@ impl RusToKModule for BlogModule {
             Permission::BLOG_CATEGORIES_DELETE,
             Permission::BLOG_CATEGORIES_LIST,
             Permission::BLOG_CATEGORIES_MANAGE,
-            Permission::new(rustok_api::Resource::Tags, rustok_api::Action::Create),
-            Permission::new(rustok_api::Resource::Tags, rustok_api::Action::Read),
-            Permission::new(rustok_api::Resource::Tags, rustok_api::Action::Update),
-            Permission::new(rustok_api::Resource::Tags, rustok_api::Action::Delete),
-            Permission::new(rustok_api::Resource::Tags, rustok_api::Action::List),
-            Permission::new(rustok_api::Resource::Tags, rustok_api::Action::Manage),
+            Permission::TAGS_CREATE,
+            Permission::TAGS_READ,
+            Permission::TAGS_UPDATE,
+            Permission::TAGS_DELETE,
+            Permission::TAGS_LIST,
+            Permission::TAGS_MANAGE,
         ]
     }
 

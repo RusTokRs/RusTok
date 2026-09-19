@@ -68,6 +68,11 @@ impl TaxonomyService {
         input: CreateTaxonomyTermInput,
     ) -> TaxonomyResult<Uuid> {
         enforce_scope(&security, Resource::Taxonomy, Action::Create)?;
+        if input.scope_type == TaxonomyScopeType::Module {
+            return Err(TaxonomyError::forbidden(
+                "Module-owned Taxonomy terms must be created by the owning module",
+            ));
+        }
 
         let locale = normalize_locale(&input.locale)?;
         let scope_value = normalize_scope_value(input.scope_type, input.scope_value.as_deref())?;
@@ -377,7 +382,6 @@ impl TaxonomyService {
         }
 
         let resource_revision = self.update_term_revision_in_tx(&txn, &term, now).await?;
-        reconcile_route_keys_for_locale_in_tx(&txn, tenant_id, term_id, &locale).await?;
         record_translation_change_in_tx(
             &txn,
             TranslationChangeEvidence {
@@ -548,6 +552,70 @@ impl TaxonomyService {
             .collect();
 
         Ok((items, total))
+    }
+
+    /// Resolves labels through module-first/global fallback and creates a new term
+    /// only when the owning domain explicitly permits module-term creation.
+    #[instrument(skip(self, txn, labels))]
+    pub async fn ensure_module_terms_for_owner_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        module_slug: &str,
+        locale: &str,
+        labels: &[String],
+        allow_create: bool,
+    ) -> TaxonomyResult<Vec<Uuid>> {
+        let locale = normalize_locale(locale)?;
+        let module_scope = normalize_scope_value(TaxonomyScopeType::Module, Some(module_slug))?;
+        let mut term_ids = Vec::new();
+        let mut seen = HashSet::new();
+
+        for label in labels
+            .iter()
+            .map(|label| label.trim())
+            .filter(|label| !label.is_empty())
+        {
+            validate_term_name(label)?;
+            let normalized_slug = normalize_non_empty_slug(label)?;
+            let term_id = if let Some(term_id) = self
+                .find_term_id_for_module_in_tx(
+                    txn,
+                    tenant_id,
+                    kind,
+                    &module_scope,
+                    &locale,
+                    &normalized_slug,
+                )
+                .await?
+            {
+                term_id
+            } else if allow_create {
+                self.create_module_term_record_in_tx(
+                    txn,
+                    ModuleTerm {
+                        tenant_id,
+                        kind,
+                        module_scope: &module_scope,
+                        locale: &locale,
+                        name: label,
+                        normalized_slug: &normalized_slug,
+                    },
+                )
+                .await?
+            } else {
+                return Err(TaxonomyError::forbidden(
+                    "Creating module-owned taxonomy term requires the owning module permission",
+                ));
+            };
+
+            if seen.insert(term_id) {
+                term_ids.push(term_id);
+            }
+        }
+
+        Ok(term_ids)
     }
 
     #[instrument(skip(self, txn, labels))]
@@ -1091,13 +1159,6 @@ impl TaxonomyService {
         let resource_revision = self
             .update_term_revision_in_tx(txn, &term, Utc::now())
             .await?;
-        reconcile_route_keys_for_locale_in_tx(
-            txn,
-            tenant_id,
-            term_id,
-            input.target_locale.as_str(),
-        )
-        .await?;
         Ok(TaxonomyTranslationApplyResult {
             resource_revision,
             target_revision,

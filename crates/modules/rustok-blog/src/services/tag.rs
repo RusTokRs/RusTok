@@ -97,7 +97,7 @@ impl TagService {
         let term = self
             .find_visible_term(tenant_id, tag_id, PLATFORM_FALLBACK_LOCALE)
             .await?;
-        enforce_owned_scope(&security, Resource::Tags, Action::Update, term.id)?;
+        enforce_scope(&security, Resource::Tags, Action::Update)?;
         ensure_module_owned_term(&term)?;
 
         let locale = normalize_locale(&input.locale)?;
@@ -138,7 +138,7 @@ impl TagService {
         let term = self
             .find_visible_term(tenant_id, tag_id, PLATFORM_FALLBACK_LOCALE)
             .await?;
-        enforce_owned_scope(&security, Resource::Tags, Action::Delete, term.id)?;
+        enforce_scope(&security, Resource::Tags, Action::Delete)?;
         ensure_module_owned_term(&term)?;
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
@@ -428,6 +428,7 @@ pub(crate) async fn sync_post_tags_in_tx(
     post_id: Uuid,
     tag_names: &[String],
     locale: &str,
+    allow_create: bool,
 ) -> BlogResult<()> {
     let normalized_locale = normalize_locale(locale)?;
     let normalized_names = normalize_tag_names(tag_names);
@@ -443,13 +444,14 @@ pub(crate) async fn sync_post_tags_in_tx(
     }
 
     let term_ids = TaxonomyService::new(db.clone())
-        .ensure_terms_for_module_in_tx(
+        .ensure_module_terms_for_owner_in_tx(
             txn,
             tenant_id,
             TaxonomyTermKind::Tag,
             BLOG_SCOPE_VALUE,
             &normalized_locale,
             &normalized_names,
+            allow_create,
         )
         .await?;
 

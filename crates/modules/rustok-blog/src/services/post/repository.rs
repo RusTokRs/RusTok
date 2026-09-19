@@ -119,6 +119,14 @@ impl PostService {
         post_id: Uuid,
         channel_slugs: &[String],
     ) -> BlogResult<()> {
+        ChannelService::new(self.db.clone())
+            .ensure_channel_slugs_exist_for_tenant_in_tx(txn, tenant_id, channel_slugs)
+            .await
+            .map_err(|error| match error {
+                rustok_channel::ChannelError::Database(error) => BlogError::Database(error),
+                error => BlogError::validation(error.to_string()),
+            })?;
+
         blog_post_channel_visibility::Entity::delete_many()
             .filter(blog_post_channel_visibility::Column::TenantId.eq(tenant_id))
             .filter(blog_post_channel_visibility::Column::PostId.eq(post_id))
@@ -140,6 +148,13 @@ impl PostService {
         }
 
         Ok(())
+    }
+
+    pub(super) fn is_unique_constraint(error: &sea_orm::DbErr) -> bool {
+        matches!(
+            error.sql_err(),
+            Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+        )
     }
 
     pub(super) async fn ensure_slug_unique_in_tx(

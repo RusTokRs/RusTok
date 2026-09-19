@@ -29,6 +29,11 @@ impl PostService {
         validate_tags(&tags)?;
 
         let author_id = enforce_create_author(&security, Resource::BlogPosts, Action::Create)?;
+        let allow_tag_create =
+            !matches!(
+                security.get_scope(Resource::Tags, Action::Create),
+                rustok_core::PermissionScope::None
+            );
         if publish {
             enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;
         }
@@ -38,6 +43,11 @@ impl PostService {
         let slug = normalize_slug(slug.as_deref().unwrap_or(&title));
         if slug.is_empty() {
             return Err(BlogError::validation("Slug cannot be empty"));
+        }
+        if slug.len() > MAX_POST_SLUG_BYTES {
+            return Err(BlogError::validation(format!(
+                "Slug cannot exceed {MAX_POST_SLUG_BYTES} bytes"
+            )));
         }
 
         let now = chrono::Utc::now();
@@ -58,6 +68,7 @@ impl PostService {
             BlogPostStatus::Draft
         };
 
+        let slug_for_error = slug.clone();
         blog_post::ActiveModel {
             id: Set(post_id),
             tenant_id: Set(tenant_id),
@@ -77,7 +88,13 @@ impl PostService {
         }
         .insert(&txn)
         .await
-        .map_err(BlogError::from)?;
+        .map_err(|error| {
+            if PostService::is_unique_constraint(&error) {
+                BlogError::duplicate_slug(slug_for_error.clone())
+            } else {
+                BlogError::from(error)
+            }
+        })?;
 
         blog_post_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -97,7 +114,16 @@ impl PostService {
 
         self.replace_channel_visibility_in_tx(&txn, tenant_id, post_id, &channel_slugs)
             .await?;
-        sync_post_tags_in_tx(&self.db, &txn, tenant_id, post_id, &tags, &locale).await?;
+        sync_post_tags_in_tx(
+            &self.db,
+            &txn,
+            tenant_id,
+            post_id,
+            &tags,
+            &locale,
+            allow_tag_create,
+        )
+        .await?;
 
         self.event_bus
             .publish_in_tx(
@@ -191,6 +217,13 @@ impl PostService {
         if slug.is_some() && normalized_slug.is_none() {
             return Err(BlogError::validation("Slug cannot be empty"));
         }
+        if let Some(normalized_slug) = normalized_slug.as_deref()
+            && normalized_slug.len() > MAX_POST_SLUG_BYTES
+        {
+            return Err(BlogError::validation(format!(
+                "Slug cannot exceed {MAX_POST_SLUG_BYTES} bytes"
+            )));
+        }
 
         let next_metadata = match metadata {
             Some(metadata) => normalize_custom_metadata(Some(metadata))?,
@@ -281,7 +314,20 @@ impl PostService {
             );
         }
 
-        let result = update.exec(&txn).await.map_err(BlogError::from)?;
+        let normalized_slug_for_error = normalized_slug.clone();
+        let result = update.exec(&txn).await.map_err(|error| {
+            if normalized_slug_for_error.is_some()
+                && PostService::is_unique_constraint(&error)
+            {
+                BlogError::duplicate_slug(
+                    normalized_slug_for_error
+                        .clone()
+                        .unwrap_or_default(),
+                )
+            } else {
+                BlogError::from(error)
+            }
+        })?;
         if result.rows_affected != 1 {
             return Err(BlogError::conflict(
                 "Blog post changed concurrently before the update could be applied",
@@ -316,7 +362,19 @@ impl PostService {
             let locale = locale.as_deref().ok_or_else(|| {
                 BlogError::invariant("tag mutation reached persistence without a canonical locale")
             })?;
-            sync_post_tags_in_tx(&self.db, &txn, tenant_id, post_id, &tags, locale).await?;
+            sync_post_tags_in_tx(
+                &self.db,
+                &txn,
+                tenant_id,
+                post_id,
+                &tags,
+                locale,
+                !matches!(
+                    security.get_scope(Resource::Tags, Action::Create),
+                    rustok_core::PermissionScope::None
+                ),
+            )
+            .await?;
         }
 
         let event = if full_reindex {
@@ -441,6 +499,14 @@ impl PostService {
         security: SecurityContext,
         reason: Option<String>,
     ) -> BlogResult<()> {
+        if let Some(reason) = reason.as_deref()
+            && reason.chars().count() > MAX_POST_ARCHIVE_REASON_CHARS
+        {
+            return Err(BlogError::validation(format!(
+                "Archive reason cannot exceed {MAX_POST_ARCHIVE_REASON_CHARS} characters"
+            )));
+        }
+
         let post = self.find_post(tenant_id, post_id).await?;
         enforce_owned_scope(
             &security,

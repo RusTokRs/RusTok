@@ -512,6 +512,48 @@ requireAll("crates/modules/rustok-taxonomy/src/owner_category_route_sync.rs", [
   "aliases.remove(&next_slug);",
 ]);
 
+requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
+  "security.get_scope(Resource::Tags, Action::Create)",
+  "sync_post_tags_in_tx(",
+]);
+
+requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
+  "ensure_module_terms_for_owner_in_tx(",
+  "allow_create",
+]);
+
+requireAll("crates/modules/rustok-taxonomy/src/services.rs", [
+  "pub async fn ensure_module_terms_for_owner_in_tx(",
+  "allow_create",
+]);
+
+requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
+  "ensure_channel_slugs_exist_for_tenant_in_tx(",
+]);
+
+requireAll("crates/modules/rustok-taxonomy/src/services.rs", [
+  "if input.scope_type == TaxonomyScopeType::Module",
+  "Module-owned Taxonomy terms must be created by the owning module",
+]);
+
+requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
+  "enforce_scope(&security, Resource::Tags, Action::Update)?;",
+  "enforce_scope(&security, Resource::Tags, Action::Delete)?;",
+  "ensure_module_owned_term(&term)?;",
+]);
+
+
+
+requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
+  "pub(super) fn is_unique_constraint(error: &sea_orm::DbErr) -> bool",
+]);
+
+requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
+  "PostService::is_unique_constraint(&error)",
+  "const MAX_POST_SLUG_BYTES: usize = 255;",
+  "Slug cannot exceed",
+]);
+
 if (failures.length > 0) {
   console.error("Canonical module reference-contract verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);

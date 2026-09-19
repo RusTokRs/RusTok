@@ -213,5 +213,6 @@ impl PostListResponse {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
 pub struct ArchivePostInput {
+    #[schema(max_length = 1000)]
     pub reason: Option<String>,
 }
