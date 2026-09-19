@@ -19,6 +19,8 @@
     "projector": "crates/modules/rustok-search/src/blog_projector.rs",
     "search_migrations": "crates/modules/rustok-search/src/migrations/mod.rs",
     "source_guardrail": "scripts/verify/verify-search-blog-projection.mjs",
+    "blog_category_projection_source": "taxonomy_terms + taxonomy_term_translations",
+    "legacy_blog_category_translation_source": false,
     "blog_tag_attachment_source": "blog_post_tags",
     "tag_dictionary_source": "taxonomy_terms + taxonomy_term_translations",
     "blog_tag_relation_tenant_constrained": true,
