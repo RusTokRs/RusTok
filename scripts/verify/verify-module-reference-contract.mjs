@@ -392,6 +392,31 @@ requireAll("crates/modules/rustok-blog/src/error/public.rs", [
   "The Blog operation could not be completed",
 ]);
 
+requireAll("crates/modules/rustok-taxonomy/src/owner_category_route_sync.rs", [
+  "crate::lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?",
+]);
+forbid("crates/modules/rustok-taxonomy/src/owner_category_route_sync.rs", [
+  "serialize_category_hierarchy_writer",
+]);
+
+requireAll("crates/modules/rustok-taxonomy/src/owner_category_sync.rs", [
+  "lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?",
+]);
+forbid("crates/modules/rustok-taxonomy/src/owner_category_sync.rs", [
+  "serialize_category_hierarchy_writer",
+]);
+
+requireAll("crates/modules/rustok-taxonomy/src/category_delete.rs", [
+  "crate::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
+  ".lock_exclusive()",
+]);
+
+requireAll("crates/modules/rustok-blog/src/graphql/mutation.rs", [
+  "let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;",
+  "ensure_public_blog_channel_enabled(",
+  '"Permission denied: comments:create required"',
+]);
+
 if (failures.length > 0) {
   console.error("Canonical module reference-contract verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
