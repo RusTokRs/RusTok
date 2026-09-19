@@ -156,7 +156,11 @@ async fn delete_category_detaches_posts_without_dangling_reference() {
     let category_id: Option<Uuid> = row
         .try_get("", "category_id")
         .expect("post category_id should be readable");
+    let version: i32 = row
+        .try_get("", "version")
+        .expect("post version should be readable");
     assert!(category_id.is_none());
+    assert_eq!(version, 2);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
 
