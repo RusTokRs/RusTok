@@ -110,8 +110,6 @@ impl BlogSearchProjector {
                 AND to_regclass('taxonomy_terms') IS NOT NULL
                 AND to_regclass('taxonomy_term_translations') IS NOT NULL
                 AND to_regclass('blog_post_tags') IS NOT NULL
-                AND to_regclass('taxonomy_terms') IS NOT NULL
-                AND to_regclass('taxonomy_term_translations') IS NOT NULL
                 AS available
             "#
             .to_string(),
