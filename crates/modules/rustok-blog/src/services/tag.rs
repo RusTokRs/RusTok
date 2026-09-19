@@ -428,6 +428,7 @@ pub(crate) async fn sync_post_tags_in_tx(
     post_id: Uuid,
     tag_names: &[String],
     locale: &str,
+    allow_create: bool,
 ) -> BlogResult<()> {
     let normalized_locale = normalize_locale(locale)?;
     let normalized_names = normalize_tag_names(tag_names);
@@ -443,13 +444,14 @@ pub(crate) async fn sync_post_tags_in_tx(
     }
 
     let term_ids = TaxonomyService::new(db.clone())
-        .ensure_terms_for_module_in_tx(
+        .ensure_module_terms_for_owner_in_tx(
             txn,
             tenant_id,
             TaxonomyTermKind::Tag,
             BLOG_SCOPE_VALUE,
             &normalized_locale,
             &normalized_names,
+            allow_create,
         )
         .await?;
 
