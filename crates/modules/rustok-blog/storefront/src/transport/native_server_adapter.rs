@@ -218,6 +218,13 @@ async fn storefront_blog_native(
             (tenant.id, tenant.default_locale)
         };
 
+        if request_context
+            .as_ref()
+            .is_some_and(|context| context.tenant_id != tenant_id)
+        {
+            return Err(public_internal_error());
+        }
+
         require_blog_channel_enabled(&runtime_ctx, request_context.as_ref()).await?;
 
         let requested_locale = locale
@@ -351,10 +358,9 @@ async fn require_blog_channel_enabled(
     if enabled {
         Ok(())
     } else {
-        Err(ServerFnError::new(format!(
-            "Module '{MODULE_SLUG}' is not enabled for channel '{}'",
-            request_context.channel_slug.as_deref().unwrap_or("current"),
-        )))
+        Err(ServerFnError::new(
+            "Blog is not available for the current channel",
+        ))
     }
 }
 
