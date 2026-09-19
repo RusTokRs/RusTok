@@ -102,12 +102,24 @@ requireAll("crates/modules/rustok-blog/src/services/category_delete.rs", [
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
+  "validate_persisted_version",
+  "next_persisted_version",
+  '"invalid persisted version"',
   '"Title is required for a new locale"',
   '"Content is required for a new locale"',
 ]);
 forbid("crates/modules/rustok-blog/src/services/post/repository.rs", [
   "translation_seed_in_tx",
   "baseline.as_ref()",
+]);
+
+requireAll("crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs", [
+  ".map_err(BlogError::from)",
+  "BLOG_TAXONOMY_SCOPE",
+]);
+forbid("crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs", [
+  "map_taxonomy_error",
+  "BlogError::Validation(format!(
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/comment_projection.rs", [
