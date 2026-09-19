@@ -130,7 +130,7 @@ requireAll("crates/modules/rustok-blog/src/services/category_name_projection.rs"
   "Category without localized copy",
 ]);
 requireAll("crates/modules/rustok-blog/src/services/category_command.rs", [
-  "lock_category_tree_in_tx(&txn, tenant_id).await?",
+  "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
   ".map_err(storage_category_tree_error)?",
   'BlogError::invariant("Moved category placement was not persisted")',
   '"Blog category Taxonomy hierarchy coverage is incomplete"',
@@ -140,7 +140,7 @@ forbid("crates/modules/rustok-blog/src/services/category_command.rs", [
   "or_insert((None, 0))",
 ]);
 requireAll("crates/modules/rustok-blog/src/services/category_delete.rs", [
-  "lock_category_tree_in_tx(txn, tenant_id).await?",
+  "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?",
   "TaxonomyError::internal(format!(",
   "BlogError::CategoryNotFound(category_id) => TaxonomyError::TermNotFound(category_id)",
   '"has no canonical Taxonomy hierarchy placement"',
@@ -193,9 +193,12 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/category.rs", [
-  "lock_category_tree_in_tx(&txn, tenant_id).await?",
+  "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
   "ensure_hierarchy_coverage_in_tx(&txn, tenant_id).await?",
   '"Blog category Taxonomy hierarchy coverage is incomplete before create"',
+]);
+forbid("crates/modules/rustok-blog/src/services/category.rs", [
+  "blog-category-tree:",
 ]);
 requireAll("crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs", [
   ".map_err(BlogError::from)",
@@ -312,6 +315,18 @@ for (const path of [
 forbid("crates/modules/rustok-blog/src/lib.rs", [
   "pub mod entities;",
   "pub use entities::",
+]);
+
+forbid("crates/modules/rustok-blog/src/services/category_command.rs", [
+  "blog-category-tree:",
+]);
+forbid("crates/modules/rustok-blog/src/services/category_delete.rs", [
+  "blog-category-tree:",
+]);
+
+requireAll("crates/modules/rustok-taxonomy/src/category_hierarchy.rs", [
+  "pub async fn lock_category_hierarchy_writer_in_tx(",
+  "pg_advisory_xact_lock(hashtextextended($1, 0))",
 ]);
 
 if (failures.length > 0) {
