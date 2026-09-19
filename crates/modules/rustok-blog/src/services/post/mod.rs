@@ -229,7 +229,7 @@ pub(crate) fn is_post_visible_for_channel(
     !normalized.is_empty() && channel_slugs.iter().any(|item| item == &normalized)
 }
 
-fn normalize_channel_slugs(channel_slugs: &[String]) -> Vec<String> {
+fn normalize_channel_slugs(channel_slugs: &[String]) -> BlogResult<Vec<String>> {
     let mut normalized = channel_slugs
         .iter()
         .map(|item| item.trim().to_ascii_lowercase())
@@ -239,10 +239,20 @@ fn normalize_channel_slugs(channel_slugs: &[String]) -> Vec<String> {
     normalized.dedup();
 
     if normalized.len() > MAX_POST_CHANNEL_SLUGS {
-        normalized.truncate(MAX_POST_CHANNEL_SLUGS);
+        return Err(BlogError::validation(format!(
+            "A post cannot target more than {MAX_POST_CHANNEL_SLUGS} channels"
+        )));
     }
-    normalized.retain(|item| item.len() <= MAX_POST_CHANNEL_SLUG_BYTES);
-    normalized
+    if normalized
+        .iter()
+        .any(|item| item.len() > MAX_POST_CHANNEL_SLUG_BYTES)
+    {
+        return Err(BlogError::validation(format!(
+            "Channel slugs cannot exceed {MAX_POST_CHANNEL_SLUG_BYTES} bytes"
+        )));
+    }
+
+    Ok(normalized)
 }
 
 fn apply_public_post_channel_filter(
