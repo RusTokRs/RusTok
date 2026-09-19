@@ -63,6 +63,9 @@ requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
 ]);
 forbid("crates/modules/rustok-blog/src/services/post/commands.rs", [
   "PLATFORM_FALLBACK_LOCALE",
+  'expect("localized change requires a canonical locale")',
+  'expect("tag mutation requires a canonical locale")',
+  'expect("localized-only update requires a canonical locale")',
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/post/mod.rs", [
