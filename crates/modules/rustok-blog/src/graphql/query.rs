@@ -59,6 +59,7 @@ impl BlogQuery {
             | Err(BlogError::Content(rustok_content::ContentError::NodeNotFound(_))) => {
                 return Ok(None);
             }
+            Err(BlogError::Forbidden(_)) if is_public_request(ctx) => return Ok(None),
             Err(err) => return Err(crate::error::public::to_graphql_error(err)),
         };
 
