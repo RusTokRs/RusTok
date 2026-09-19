@@ -82,6 +82,20 @@ pub async fn update_module_term_in_tx(
             )
             .await?;
 
+            if existing.slug != slug {
+                taxonomy_term_alias::ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    term_id: Set(term_id),
+                    tenant_id: Set(tenant_id),
+                    locale: Set(locale.clone()),
+                    name: Set(existing.slug.clone()),
+                    slug: Set(existing.slug.clone()),
+                    created_at: Set(now.fixed_offset()),
+                }
+                .insert(txn)
+                .await?;
+            }
+
             let revision = next_translation_revision(term_id, &locale, existing.revision)?;
             let updated = taxonomy_term_translation::Entity::update_many()
                 .col_expr(
