@@ -290,6 +290,7 @@ async fn find_module_term_in_tx(
         .filter(taxonomy_term::Column::Kind.eq(kind))
         .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
         .filter(taxonomy_term::Column::ScopeValue.eq(module_scope))
+        .lock_exclusive()
         .one(txn)
         .await?
         .ok_or(TaxonomyError::TermNotFound(term_id))
