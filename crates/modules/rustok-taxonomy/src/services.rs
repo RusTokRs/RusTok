@@ -547,6 +547,70 @@ impl TaxonomyService {
         Ok((items, total))
     }
 
+    /// Ensures labels resolve to module-owned terms only. Missing terms are created
+    /// only when the owning domain explicitly permits creation.
+    #[instrument(skip(self, txn, labels))]
+    pub async fn ensure_module_terms_for_owner_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        module_slug: &str,
+        locale: &str,
+        labels: &[String],
+        allow_create: bool,
+    ) -> TaxonomyResult<Vec<Uuid>> {
+        let locale = normalize_locale(locale)?;
+        let module_scope = normalize_scope_value(TaxonomyScopeType::Module, Some(module_slug))?;
+        let mut term_ids = Vec::new();
+        let mut seen = HashSet::new();
+
+        for label in labels
+            .iter()
+            .map(|label| label.trim())
+            .filter(|label| !label.is_empty())
+        {
+            validate_term_name(label)?;
+            let normalized_slug = normalize_non_empty_slug(label)?;
+            let term_id = if let Some(term_id) = self
+                .find_module_term_id_in_tx(
+                    txn,
+                    tenant_id,
+                    kind,
+                    &module_scope,
+                    &locale,
+                    &normalized_slug,
+                )
+                .await?
+            {
+                term_id
+            } else if allow_create {
+                self.create_module_term_record_in_tx(
+                    txn,
+                    ModuleTerm {
+                        tenant_id,
+                        kind,
+                        module_scope: &module_scope,
+                        locale: &locale,
+                        name: label,
+                        normalized_slug: &normalized_slug,
+                    },
+                )
+                .await?
+            } else {
+                return Err(TaxonomyError::forbidden(
+                    "Creating module-owned taxonomy term requires the owning module permission",
+                ));
+            };
+
+            if seen.insert(term_id) {
+                term_ids.push(term_id);
+            }
+        }
+
+        Ok(term_ids)
+    }
+
     #[instrument(skip(self, txn, labels))]
     pub async fn ensure_terms_for_module_in_tx(
         &self,
@@ -817,6 +881,57 @@ impl TaxonomyService {
             .await?;
         }
         Ok(())
+    }
+
+    async fn find_module_term_id_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        module_scope: &str,
+        locale: &str,
+        route_key: &str,
+    ) -> TaxonomyResult<Option<Uuid>> {
+        for candidate_locale in locale_candidates(locale) {
+            if let Some(route) = taxonomy_term_route_key::Entity::find()
+                .filter(taxonomy_term_route_key::Column::TenantId.eq(tenant_id))
+                .filter(taxonomy_term_route_key::Column::Kind.eq(kind))
+                .filter(taxonomy_term_route_key::Column::ScopeType.eq(TaxonomyScopeType::Module))
+                .filter(taxonomy_term_route_key::Column::ScopeValue.eq(module_scope))
+                .filter(taxonomy_term_route_key::Column::Locale.eq(&candidate_locale))
+                .filter(taxonomy_term_route_key::Column::RouteKey.eq(route_key))
+                .one(txn)
+                .await?
+            {
+                let Some(term) = taxonomy_term::Entity::find_by_id(route.term_id)
+                    .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+                    .filter(taxonomy_term::Column::Kind.eq(kind))
+                    .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
+                    .filter(taxonomy_term::Column::ScopeValue.eq(module_scope))
+                    .lock_exclusive()
+                    .one(txn)
+                    .await?
+                else {
+                    continue;
+                };
+                return Ok(Some(term.id));
+            }
+        }
+
+        if let Some(term) = taxonomy_term::Entity::find()
+            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term::Column::Kind.eq(kind))
+            .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
+            .filter(taxonomy_term::Column::ScopeValue.eq(module_scope))
+            .filter(taxonomy_term::Column::CanonicalKey.eq(route_key))
+            .lock_exclusive()
+            .one(txn)
+            .await?
+        {
+            return Ok(Some(term.id));
+        }
+
+        Ok(None)
     }
 
     async fn find_term_id_for_module_in_tx(
