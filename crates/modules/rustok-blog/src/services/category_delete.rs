@@ -63,11 +63,16 @@ impl BlogCategoryDeleteCleanup {
             .ok_or_else(|| BlogError::category_not_found(self.blog_category_id))?;
         ensure_category_is_leaf_in_tx(txn, tenant_id, self.blog_category_id).await?;
 
-        let placement =
-            taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, self.blog_category_id))
-                .one(txn)
-                .await?;
-        let parent_id = placement.and_then(|p| p.parent_term_id);
+        let placement = taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, self.blog_category_id))
+            .one(txn)
+            .await?
+            .ok_or_else(|| {
+                BlogError::invariant(format!(
+                    "Blog category {} has no canonical Taxonomy hierarchy placement",
+                    self.blog_category_id
+                ))
+            })?;
+        let parent_id = placement.parent_term_id;
 
         let deleted = blog_category::Entity::delete_many()
             .filter(blog_category::Column::Id.eq(self.blog_category_id))
@@ -81,11 +86,16 @@ impl BlogCategoryDeleteCleanup {
             ));
         }
 
-        taxonomy_category_hierarchy::Entity::delete_many()
+        let deleted_placement = taxonomy_category_hierarchy::Entity::delete_many()
             .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
             .filter(taxonomy_category_hierarchy::Column::TermId.eq(self.blog_category_id))
             .exec(txn)
             .await?;
+        if deleted_placement.rows_affected != 1 {
+            return Err(BlogError::invariant(
+                "Blog category Taxonomy hierarchy placement disappeared before delete completed",
+            ));
+        }
 
         canonicalize_siblings_in_tx(txn, tenant_id, parent_id).await?;
 
