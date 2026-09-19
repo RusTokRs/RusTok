@@ -99,11 +99,17 @@ requireAll("crates/modules/rustok-blog/src/services/category_name_projection.rs"
 requireAll("crates/modules/rustok-blog/src/services/category_command.rs", [
   ".map_err(storage_category_tree_error)?",
   'BlogError::invariant("Moved category placement was not persisted")',
+  '"Blog category Taxonomy hierarchy coverage is incomplete"',
   "Persisted Blog category depth is missing",
+]);
+forbid("crates/modules/rustok-blog/src/services/category_command.rs", [
+  "or_insert((None, 0))",
 ]);
 requireAll("crates/modules/rustok-blog/src/services/category_delete.rs", [
   "TaxonomyError::internal(format!(",
   "BlogError::CategoryNotFound(category_id) => TaxonomyError::TermNotFound(category_id)",
+  '"has no canonical Taxonomy hierarchy placement"',
+  '"Blog category Taxonomy hierarchy placement disappeared before delete completed"',
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
