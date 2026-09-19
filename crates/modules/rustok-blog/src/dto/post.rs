@@ -196,7 +196,10 @@ pub struct PostListResponse {
 impl PostListResponse {
     pub fn new(items: Vec<PostSummary>, total: u64, query: &PostListQuery) -> Self {
         let per_page = query.per_page();
-        let total_pages = ((total as f64) / (per_page as f64)).ceil() as u32;
+        let total_pages = total
+            .saturating_add(u64::from(per_page).saturating_sub(1))
+            / u64::from(per_page);
+        let total_pages = u32::try_from(total_pages).unwrap_or(u32::MAX);
 
         Self {
             items,
