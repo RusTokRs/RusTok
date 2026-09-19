@@ -49,6 +49,26 @@ forbid("crates/modules/rustok-product/src/dto/product.rs", [
 requireAll("crates/modules/rustok-product/src/dto/product.rs", [
   "use crate::domain::ProductStatus;",
 ]);
+requireAll("crates/modules/rustok-product/src/dto/product.rs", [
+  "pub seller_id: Patch<String>",
+  "pub vendor: Patch<String>",
+  "pub product_type: Patch<String>",
+  "pub shipping_profile_slug: Patch<String>",
+  "pub primary_category_id: Patch<Uuid>",
+  "serde(default, skip_serializing_if = " + JSON.stringify("Patch::is_keep") + ")",
+]);
+forbid("crates/modules/rustok-product/src/dto/product.rs", [
+  "pub seller_id: Option<String>",
+  "pub vendor: Option<String>",
+  "pub product_type: Option<String>",
+  "pub shipping_profile_slug: Option<String>",
+  "pub primary_category_id: Option<Uuid>",
+]);
+requireAll("crates/modules/rustok-product/src/services/catalog/commands.rs", [
+  "Patch::Keep => {}",
+  "Patch::Clear => product_active.seller_id = Set(None)",
+  "requested_primary_category.flatten()",
+]);
 for (const path of rustFiles("crates/modules/rustok-product/src")) {
   forbid(path, ["pub mod entities;", "pub mod migrations;"]);
 }
