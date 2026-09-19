@@ -142,18 +142,9 @@ async fn ensure_category_is_leaf_in_tx(
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> BlogResult<()> {
-    let blog_category_ids = blog_category::Entity::find()
-        .filter(blog_category::Column::TenantId.eq(tenant_id))
-        .all(txn)
-        .await?
-        .into_iter()
-        .map(|c| c.id)
-        .collect::<Vec<_>>();
-
     let child = taxonomy_category_hierarchy::Entity::find()
         .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
         .filter(taxonomy_category_hierarchy::Column::ParentTermId.eq(category_id))
-        .filter(taxonomy_category_hierarchy::Column::TermId.is_in(blog_category_ids))
         .one(txn)
         .await?;
     if child.is_some() {
