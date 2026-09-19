@@ -15,7 +15,7 @@ use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{
-    CreateTaxonomyTermInput, ModuleTermMutationResult, ModuleTermUpdateInput, TaxonomyOwnerReader,
+    ModuleTermCreateInput, ModuleTermMutationResult, ModuleTermUpdateInput, TaxonomyOwnerReader,
     TaxonomyOwnerTerm, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
     delete_module_term_in_tx, lock_module_term_in_tx, update_module_term_in_tx,
 };
@@ -47,23 +47,23 @@ impl TagService {
         enforce_scope(&security, Resource::Tags, Action::Create)?;
         validate_tag_name(&input.name)?;
 
-        Ok(TaxonomyService::new(self.db.clone())
-            .create_term(
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
+        let tag_id = TaxonomyService::new(self.db.clone())
+            .create_module_term_in_tx(
+                &txn,
                 tenant_id,
-                security,
-                CreateTaxonomyTermInput {
-                    kind: TaxonomyTermKind::Tag,
-                    scope_type: TaxonomyScopeType::Module,
-                    scope_value: Some(BLOG_SCOPE_VALUE.to_string()),
+                TaxonomyTermKind::Tag,
+                BLOG_SCOPE_VALUE,
+                ModuleTermCreateInput {
                     locale: normalize_locale(&input.locale)?,
                     name: input.name,
                     slug: input.slug,
-                    canonical_key: None,
-                    description: None,
-                    aliases: vec![],
                 },
             )
-            .await?)
+            .await?;
+        publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
+        txn.commit().await.map_err(BlogError::from)?;
+        Ok(tag_id)
     }
 
     #[instrument(skip(self, security))]

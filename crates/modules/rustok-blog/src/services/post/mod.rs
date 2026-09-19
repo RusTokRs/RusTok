@@ -167,6 +167,10 @@ const RESERVED_POST_METADATA_KEYS: &[&str] = &[
     "channel_slugs",
 ];
 
+const MAX_POST_METADATA_BYTES: usize = 64 * 1024;
+const MAX_POST_CHANNEL_SLUGS: usize = 32;
+const MAX_POST_CHANNEL_SLUG_BYTES: usize = 100;
+
 fn normalize_custom_metadata(metadata: Option<Value>) -> BlogResult<Value> {
     let metadata = metadata.unwrap_or_else(|| serde_json::json!({}));
     let Value::Object(map) = metadata else {
@@ -182,7 +186,17 @@ fn normalize_custom_metadata(metadata: Option<Value>) -> BlogResult<Value> {
         )));
     }
 
-    Ok(Value::Object(map))
+    let normalized = Value::Object(map);
+    let encoded = serde_json::to_vec(&normalized).map_err(|_| {
+        BlogError::validation("Post metadata could not be serialized")
+    })?;
+    if encoded.len() > MAX_POST_METADATA_BYTES {
+        return Err(BlogError::validation(format!(
+            "Post metadata cannot exceed {MAX_POST_METADATA_BYTES} bytes"
+        )));
+    }
+
+    Ok(normalized)
 }
 
 fn scrub_reserved_metadata(mut metadata: Value) -> Value {
@@ -215,7 +229,7 @@ pub(crate) fn is_post_visible_for_channel(
     !normalized.is_empty() && channel_slugs.iter().any(|item| item == &normalized)
 }
 
-fn normalize_channel_slugs(channel_slugs: &[String]) -> Vec<String> {
+fn normalize_channel_slugs(channel_slugs: &[String]) -> BlogResult<Vec<String>> {
     let mut normalized = channel_slugs
         .iter()
         .map(|item| item.trim().to_ascii_lowercase())
@@ -223,7 +237,22 @@ fn normalize_channel_slugs(channel_slugs: &[String]) -> Vec<String> {
         .collect::<Vec<_>>();
     normalized.sort();
     normalized.dedup();
-    normalized
+
+    if normalized.len() > MAX_POST_CHANNEL_SLUGS {
+        return Err(BlogError::validation(format!(
+            "A post cannot target more than {MAX_POST_CHANNEL_SLUGS} channels"
+        )));
+    }
+    if normalized
+        .iter()
+        .any(|item| item.len() > MAX_POST_CHANNEL_SLUG_BYTES)
+    {
+        return Err(BlogError::validation(format!(
+            "Channel slugs cannot exceed {MAX_POST_CHANNEL_SLUG_BYTES} bytes"
+        )));
+    }
+
+    Ok(normalized)
 }
 
 fn apply_public_post_channel_filter(

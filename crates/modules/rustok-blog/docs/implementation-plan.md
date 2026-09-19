@@ -34,6 +34,10 @@ through the same-ID binding. Blog consumes `rustok-comments` through
 `CommentsThreadPort`; native `#[server]` and GraphQL remain parallel transports
 over the same owner services.
 
+Tag ownership is module-local: Blog authorizes `tags:*` mutations and delegates
+canonical term storage to the Taxonomy owner primitives. Generic Taxonomy
+mutation APIs must not be used to bypass Blog Tag authorization.
+
 The Blog article boundary is target-only richtext. Owner and GraphQL writes
 accept `rustok_api::RichTextDocument`; reads expose `rustok_api::RichTextView`
 and server-derived plain text under the fixed `article` profile. Production DTOs

@@ -50,6 +50,12 @@ impl RusToKModule for BlogModule {
             Permission::BLOG_CATEGORIES_DELETE,
             Permission::BLOG_CATEGORIES_LIST,
             Permission::BLOG_CATEGORIES_MANAGE,
+            Permission::new(rustok_api::Resource::Tags, rustok_api::Action::Create),
+            Permission::new(rustok_api::Resource::Tags, rustok_api::Action::Read),
+            Permission::new(rustok_api::Resource::Tags, rustok_api::Action::Update),
+            Permission::new(rustok_api::Resource::Tags, rustok_api::Action::Delete),
+            Permission::new(rustok_api::Resource::Tags, rustok_api::Action::List),
+            Permission::new(rustok_api::Resource::Tags, rustok_api::Action::Manage),
         ]
     }
 
@@ -151,6 +157,16 @@ mod tests {
                 .iter()
                 .any(|p| p.resource == Resource::Categories)
         );
+        for action in [
+            Action::Create,
+            Action::Read,
+            Action::Update,
+            Action::Delete,
+            Action::List,
+            Action::Manage,
+        ] {
+            assert!(permissions.contains(&Permission::new(Resource::Tags, action)));
+        }
     }
 
     #[test]

@@ -135,6 +135,7 @@ pub async fn sync_module_category_with_owned_aliases_in_tx(
         .map(|alias| alias.slug)
         .collect::<BTreeSet<_>>();
     aliases.extend(std::mem::take(&mut input.aliases));
+    aliases.remove(&next_slug);
 
     if let Some(existing) = taxonomy_term_translation::Entity::find()
         .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))

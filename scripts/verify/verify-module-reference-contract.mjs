@@ -213,6 +213,19 @@ requireAll("crates/modules/rustok-blog/src/module.rs", [
   '"dependencies"',
   '["content", "comments", "taxonomy", "outbox", "channel"]',
 ]);
+requireAll("crates/modules/rustok-blog/rustok-module.toml", [
+  'taxonomy = { version_req = ">=0.1.0" }',
+  'channel = { version_req = ">=0.1.0" }',
+]);
+requireAll("crates/modules/rustok-blog/src/module.rs", [
+  "Resource::Tags",
+  "Action::Create",
+  "Action::Read",
+  "Action::Update",
+  "Action::Delete",
+  "Action::List",
+  "Action::Manage",
+]);
 forbid("crates/modules/rustok-blog/src/services/category.rs", [
   "blog-category-tree:",
 ]);
@@ -362,7 +375,8 @@ requireAll("crates/modules/rustok-taxonomy/src/owner_category_read.rs", [
 requireAll("crates/modules/rustok-taxonomy/src/module_term_mutation.rs", [
   ".filter(taxonomy_term::Column::ScopeValue.eq(module_scope))",
   ".lock_exclusive()",
-]);\nrequireAll("crates/modules/rustok-taxonomy/src/services.rs", [
+]);
+requireAll("crates/modules/rustok-taxonomy/src/services.rs", [
   '"Module-owned Taxonomy terms must be updated by their owning module"',
   '"Module-owned Taxonomy terms must be deleted by their owning module"',
   ".lock_exclusive()",
@@ -373,6 +387,11 @@ requireAll("crates/modules/rustok-taxonomy/src/services.rs", [
   "let Some(term) = taxonomy_term::Entity::find()",
 ]);
 requireAll("crates/modules/rustok-channel/src/services/channel_service.rs", [
+  "pub async fn is_module_enabled_for_tenant(",
+]);
+requireAll("crates/modules/rustok-channel/src/services/channel_service.rs", [
+  "pub async fn is_module_enabled(",
+  "if !channel.is_active",
   "pub async fn is_module_enabled_for_tenant(",
 ]);
 requireAll("crates/modules/rustok-blog/src/graphql/query.rs", [
@@ -437,12 +456,60 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
   "load_term_names_strict_for_module(",
   "BLOG_SCOPE_VALUE",
 ]);
+requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
+  "enforce_scope(&security, Resource::Tags, Action::Create)?;",
+  ".create_module_term_in_tx(",
+  "publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)",
+]);
+forbid("crates/modules/rustok-blog/src/services/tag.rs", [
+  "CreateTaxonomyTermInput",
+  ".create_term(",
+]);
 
 requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   "TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(",
   "category_taxonomy_sync::BLOG_TAXONOMY_SCOPE",
   "Blog category {category_id} is missing canonical Taxonomy ownership or hierarchy",
   "Blog category {category_id} has no canonical localized copy",
+]);
+requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
+  "if publish {",
+  "enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;",
+]);
+requireAll("crates/modules/rustok-blog/src/services/post/mod.rs", [
+  "const MAX_POST_METADATA_BYTES: usize = 64 * 1024;",
+  "const MAX_POST_CHANNEL_SLUGS: usize = 32;",
+  "const MAX_POST_CHANNEL_SLUG_BYTES: usize = 100;",
+  "Post metadata cannot exceed",
+  "A post cannot target more than",
+]);
+
+requireAll("crates/modules/rustok-taxonomy/src/route_key_registry.rs", [
+  "localized taxonomy route key",
+  "is_unique_constraint(&error)",
+]);
+requireAll("crates/modules/rustok-taxonomy/src/translation_evidence.rs", [
+  "reconcile_route_keys_for_locale_in_tx(",
+  'if evidence.operation != "delete"',
+]);
+
+requireAll("crates/modules/rustok-blog/src/services/post/mod.rs", [
+  "const MAX_POST_METADATA_BYTES: usize = 64 * 1024;",
+  "const MAX_POST_CHANNEL_SLUGS: usize = 32;",
+  "const MAX_POST_CHANNEL_SLUG_BYTES: usize = 100;",
+  "Post metadata cannot exceed",
+  "A post cannot target more than",
+  "Channel slugs cannot exceed",
+]);
+
+requireAll("crates/modules/rustok-taxonomy/src/module_term_mutation.rs", [
+  "taxonomy_term_alias::Entity::delete_many()",
+  "if existing.slug != slug",
+  "let has_existing_alias = taxonomy_term_alias::Entity::find()",
+]);
+
+requireAll("crates/modules/rustok-taxonomy/src/owner_category_route_sync.rs", [
+  "aliases.remove(&next_slug);",
 ]);
 
 if (failures.length > 0) {

@@ -234,7 +234,10 @@ impl ChannelService {
         channel_id: Uuid,
         module_slug: &str,
     ) -> ChannelResult<bool> {
-        self.ensure_channel_exists(channel_id).await?;
+        let channel = self.ensure_channel_exists(channel_id).await?;
+        if !channel.is_active {
+            return Ok(false);
+        }
 
         let binding = channel_module_binding::Entity::find()
             .filter(channel_module_binding::Column::ChannelId.eq(channel_id))
@@ -259,6 +262,9 @@ impl ChannelService {
             .one(&self.db)
             .await?
             .ok_or(ChannelError::NotFound(channel_id))?;
+        if !channel.is_active {
+            return Ok(false);
+        }
 
         let binding = channel_module_binding::Entity::find()
             .filter(channel_module_binding::Column::ChannelId.eq(channel.id))

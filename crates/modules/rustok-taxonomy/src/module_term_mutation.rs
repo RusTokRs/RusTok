@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
-use rustok_api::{Action, Resource};
 use rustok_content::normalize_locale_code;
-use rustok_core::{PermissionScope, SecurityContext};
+use rustok_core::SecurityContext;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter,
     QuerySelect,
@@ -10,10 +9,17 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::dto::{TaxonomyScopeType, TaxonomyTermKind};
-use crate::entities::{taxonomy_term, taxonomy_term_translation};
+use crate::entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation};
 use crate::error::{TaxonomyError, TaxonomyResult};
 use crate::route_key_registry::ensure_route_key_available_in_tx;
 use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleTermCreateInput {
+    pub locale: String,
+    pub name: String,
+    pub slug: Option<String>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleTermUpdateInput {
@@ -37,15 +43,11 @@ pub async fn update_module_term_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     term_id: Uuid,
-    security: &SecurityContext,
+    _security: &SecurityContext,
     kind: TaxonomyTermKind,
     module_slug: &str,
     input: ModuleTermUpdateInput,
 ) -> TaxonomyResult<ModuleTermMutationResult> {
-    // The existing public update path requires Update and then Read when it
-    // materializes the response. Preserve that successful-call permission set.
-    enforce_scope(security, Resource::Taxonomy, Action::Update)?;
-    enforce_scope(security, Resource::Taxonomy, Action::Read)?;
 
     let module_scope = normalize_module_scope(module_slug)?;
     let locale = normalize_locale(&input.locale)?;
@@ -79,6 +81,38 @@ pub async fn update_module_term_in_tx(
                 Some(term_id),
             )
             .await?;
+
+            taxonomy_term_alias::Entity::delete_many()
+                .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
+                .filter(taxonomy_term_alias::Column::TermId.eq(term_id))
+                .filter(taxonomy_term_alias::Column::Locale.eq(&locale))
+                .filter(taxonomy_term_alias::Column::Slug.eq(&slug))
+                .exec(txn)
+                .await?;
+
+            if existing.slug != slug {
+                let has_existing_alias = taxonomy_term_alias::Entity::find()
+                    .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
+                    .filter(taxonomy_term_alias::Column::TermId.eq(term_id))
+                    .filter(taxonomy_term_alias::Column::Locale.eq(&locale))
+                    .filter(taxonomy_term_alias::Column::Slug.eq(&existing.slug))
+                    .one(txn)
+                    .await?
+                    .is_some();
+                if !has_existing_alias {
+                    taxonomy_term_alias::ActiveModel {
+                        id: Set(Uuid::new_v4()),
+                        term_id: Set(term_id),
+                        tenant_id: Set(tenant_id),
+                        locale: Set(locale.clone()),
+                        name: Set(existing.slug.clone()),
+                        slug: Set(existing.slug.clone()),
+                        created_at: Set(now.fixed_offset()),
+                    }
+                    .insert(txn)
+                    .await?;
+                }
+            }
 
             let revision = next_translation_revision(term_id, &locale, existing.revision)?;
             let updated = taxonomy_term_translation::Entity::update_many()
@@ -221,12 +255,10 @@ pub async fn delete_module_term_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     term_id: Uuid,
-    security: &SecurityContext,
+    _security: &SecurityContext,
     kind: TaxonomyTermKind,
     module_slug: &str,
 ) -> TaxonomyResult<()> {
-    enforce_scope(security, Resource::Taxonomy, Action::Delete)?;
-
     let module_scope = normalize_module_scope(module_slug)?;
     let term = find_module_term_in_tx(txn, tenant_id, term_id, kind, &module_scope).await?;
     let translations = taxonomy_term_translation::Entity::find()
@@ -294,17 +326,6 @@ async fn find_module_term_in_tx(
         .one(txn)
         .await?
         .ok_or(TaxonomyError::TermNotFound(term_id))
-}
-
-fn enforce_scope(
-    security: &SecurityContext,
-    resource: Resource,
-    action: Action,
-) -> TaxonomyResult<()> {
-    if matches!(security.get_scope(resource, action), PermissionScope::None) {
-        return Err(TaxonomyError::forbidden("Permission denied"));
-    }
-    Ok(())
 }
 
 fn normalize_locale(locale: &str) -> TaxonomyResult<String> {

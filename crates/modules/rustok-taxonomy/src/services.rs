@@ -24,7 +24,10 @@ use crate::entities::{
     taxonomy_term, taxonomy_term_alias, taxonomy_term_route_key, taxonomy_term_translation,
 };
 use crate::error::{TaxonomyError, TaxonomyResult};
-use crate::route_key_registry::ensure_route_key_available_in_tx;
+use crate::module_term_mutation::ModuleTermCreateInput;
+use crate::route_key_registry::{
+    ensure_route_key_available_in_tx, reconcile_route_keys_for_locale_in_tx,
+};
 use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
 
 pub struct TaxonomyService {
@@ -86,6 +89,11 @@ impl TaxonomyService {
         let translation_slug =
             normalize_non_empty_slug(input.slug.as_deref().unwrap_or(&input.name))?;
         let aliases = normalize_aliases(&input.aliases);
+        if aliases.iter().any(|alias| alias == &translation_slug) {
+            return Err(TaxonomyError::validation(
+                "Taxonomy alias cannot equal the current localized slug",
+            ));
+        }
 
         let txn = self.db.begin().await?;
         let scope = TermScope {
@@ -158,6 +166,43 @@ impl TaxonomyService {
 
         txn.commit().await?;
         Ok(term_id)
+    }
+
+    /// Create one module-owned term inside the caller transaction.
+    ///
+    /// Authorization belongs to the owning domain module. This primitive only validates the
+    /// requested module scope and persists the canonical Taxonomy term plus its first locale.
+    pub async fn create_module_term_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        module_slug: &str,
+        input: ModuleTermCreateInput,
+    ) -> TaxonomyResult<Uuid> {
+        let module_scope = normalize_scope_value(
+            TaxonomyScopeType::Module,
+            Some(module_slug),
+        )?;
+        let locale = normalize_locale(&input.locale)?;
+        validate_term_name(&input.name)?;
+        let normalized_slug = match input.slug.as_deref() {
+            Some(slug) => normalize_non_empty_slug(slug)?,
+            None => normalize_non_empty_slug(&input.name)?,
+        };
+
+        self.create_module_term_record_in_tx(
+            txn,
+            ModuleTerm {
+                tenant_id,
+                kind,
+                module_scope: &module_scope,
+                locale: &locale,
+                name: &input.name,
+                normalized_slug: &normalized_slug,
+            },
+        )
+        .await
     }
 
     #[instrument(skip(self, security))]
@@ -310,6 +355,21 @@ impl TaxonomyService {
 
         if let Some(aliases) = input.aliases.as_ref() {
             let aliases = normalize_aliases(aliases);
+            let canonical_slug = taxonomy_term_translation::Entity::find()
+                .filter(taxonomy_term_translation::Column::TermId.eq(term_id))
+                .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+                .filter(taxonomy_term_translation::Column::Locale.eq(&locale))
+                .one(&txn)
+                .await?
+                .map(|translation| translation.slug);
+            if canonical_slug
+                .as_deref()
+                .is_some_and(|slug| aliases.iter().any(|alias| alias == slug))
+            {
+                return Err(TaxonomyError::validation(
+                    "Taxonomy alias cannot equal the current localized slug",
+                ));
+            }
             self.ensure_aliases_available_in_tx(&txn, scope, &locale, &aliases, Some(term_id))
                 .await?;
             self.replace_aliases_in_tx(&txn, tenant_id, term_id, &locale, &aliases)
@@ -317,6 +377,7 @@ impl TaxonomyService {
         }
 
         let resource_revision = self.update_term_revision_in_tx(&txn, &term, now).await?;
+        reconcile_route_keys_for_locale_in_tx(&txn, tenant_id, term_id, &locale).await?;
         record_translation_change_in_tx(
             &txn,
             TranslationChangeEvidence {
@@ -524,7 +585,7 @@ impl TaxonomyService {
             {
                 term_id
             } else {
-                self.create_module_term_in_tx(
+                self.create_module_term_record_in_tx(
                     txn,
                     ModuleTerm {
                         tenant_id,
@@ -816,7 +877,7 @@ impl TaxonomyService {
         Ok(None)
     }
 
-    async fn create_module_term_in_tx(
+    async fn create_module_term_record_in_tx(
         &self,
         txn: &DatabaseTransaction,
         term: ModuleTerm<'_>,
@@ -843,7 +904,7 @@ impl TaxonomyService {
 
         let now = Utc::now();
         let term_id = Uuid::new_v4();
-        let created_term = taxonomy_term::ActiveModel {
+        let model = taxonomy_term::ActiveModel {
             id: Set(term_id),
             tenant_id: Set(term.tenant_id),
             kind: Set(term.kind),
@@ -853,9 +914,16 @@ impl TaxonomyService {
             revision: Set(1),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
-        }
-        .insert(txn)
-        .await?;
+        };
+        let created_term = match model.insert(txn).await {
+            Ok(term) => term,
+            Err(error) if is_unique_constraint(&error) => {
+                return Err(TaxonomyError::DuplicateCanonicalKey(
+                    term.normalized_slug.to_string(),
+                ));
+            }
+            Err(error) => return Err(error.into()),
+        };
         let created_translation = taxonomy_term_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
             term_id: Set(term_id),
@@ -869,7 +937,16 @@ impl TaxonomyService {
             updated_at: Set(now.into()),
         }
         .insert(txn)
-        .await?;
+        .await
+        .map_err(|error| {
+            if is_unique_constraint(&error) {
+                TaxonomyError::conflict(
+                    "Module term localized copy was created concurrently",
+                )
+            } else {
+                error.into()
+            }
+        })?;
         record_translation_change_in_tx(
             txn,
             TranslationChangeEvidence {
@@ -1014,6 +1091,13 @@ impl TaxonomyService {
         let resource_revision = self
             .update_term_revision_in_tx(txn, &term, Utc::now())
             .await?;
+        reconcile_route_keys_for_locale_in_tx(
+            txn,
+            tenant_id,
+            term_id,
+            input.target_locale.as_str(),
+        )
+        .await?;
         Ok(TaxonomyTranslationApplyResult {
             resource_revision,
             target_revision,

@@ -21,7 +21,8 @@ when later bounded migrations retire an earlier design.
   the module;
 - evolve Blog as a channel-aware and taxonomy-aware domain without shared-table
   ownership drift;
-- expose distinct `blog_posts:*` and `blog_categories:*` authority resources.
+- expose distinct `blog_posts:*` and `blog_categories:*` authority resources,
+  plus the Blog-owned `tags:*` surface used by `TagService`.
 
 ## Responsibility Zone
 

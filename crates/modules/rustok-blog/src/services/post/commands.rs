@@ -29,6 +29,9 @@ impl PostService {
         validate_tags(&tags)?;
 
         let author_id = enforce_create_author(&security, Resource::BlogPosts, Action::Create)?;
+        if publish {
+            enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;
+        }
         let content = normalize_article(content)?;
         let article_body = canonical_article_body(&content)?;
 
@@ -39,7 +42,7 @@ impl PostService {
 
         let now = chrono::Utc::now();
         let metadata = normalize_custom_metadata(metadata)?;
-        let channel_slugs = normalize_channel_slugs(channel_slugs.as_deref().unwrap_or(&[]));
+        let channel_slugs = normalize_channel_slugs(channel_slugs.as_deref().unwrap_or(&[]))?;
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         self.ensure_slug_unique_in_tx(&txn, tenant_id, &slug, None)
@@ -196,7 +199,8 @@ impl PostService {
         let metadata_changed = metadata_changed(&post.metadata, &next_metadata);
         let normalized_channels = channel_slugs
             .as_ref()
-            .map(|items| normalize_channel_slugs(items));
+            .map(|items| normalize_channel_slugs(items))
+            .transpose()?;
 
         let has_owner_change = normalized_slug.is_some()
             || category_id.is_changed()
