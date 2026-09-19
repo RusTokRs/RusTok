@@ -554,6 +554,16 @@ requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
   "Slug cannot exceed",
 ]);
 
+requireAll("crates/modules/rustok-blog/src/dto/post.rs", [
+  "#[schema(max_length = 1000)]",
+  "pub reason: Option<String>,",
+]);
+
+requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
+  "MAX_POST_ARCHIVE_REASON_CHARS",
+  "Archive reason cannot exceed",
+]);
+
 if (failures.length > 0) {
   console.error("Canonical module reference-contract verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
