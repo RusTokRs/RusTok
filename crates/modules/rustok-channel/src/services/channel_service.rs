@@ -1011,12 +1011,11 @@ impl ChannelService {
             .collect()
     }
 
-    async fn ensure_channel_exists(&self, channel_id: Uuid) -> ChannelResult<()> {
+    async fn ensure_channel_exists(&self, channel_id: Uuid) -> ChannelResult<channel::Model> {
         channel::Entity::find_by_id(channel_id)
             .one(&self.db)
             .await?
-            .ok_or(ChannelError::NotFound(channel_id))?;
-        Ok(())
+            .ok_or(ChannelError::NotFound(channel_id))
     }
 
     async fn default_channel_exists_for_tenant(&self, tenant_id: Uuid) -> ChannelResult<bool> {
