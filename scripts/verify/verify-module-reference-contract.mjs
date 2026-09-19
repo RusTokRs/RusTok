@@ -476,6 +476,13 @@ requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
   "if publish {",
   "enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;",
 ]);
+requireAll("crates/modules/rustok-blog/src/services/post/mod.rs", [
+  "const MAX_POST_METADATA_BYTES: usize = 64 * 1024;",
+  "const MAX_POST_CHANNEL_SLUGS: usize = 32;",
+  "const MAX_POST_CHANNEL_SLUG_BYTES: usize = 100;",
+  "Post metadata cannot exceed",
+  "A post cannot target more than",
+]);
 
 requireAll("crates/modules/rustok-taxonomy/src/route_key_registry.rs", [
   "localized taxonomy route key",
