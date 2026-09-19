@@ -89,10 +89,12 @@ requireAll("crates/modules/rustok-blog/src/services/category_owner.rs", [
   'BlogError::invariant(\n                "Blog Category delete requires host-composed Taxonomy capability cleanup"',
   '"Blog Category Taxonomy projection coverage is incomplete"',
   '"Blog Category Taxonomy projection contains duplicate identities"',
+  '"Blog Category Taxonomy projection contains Category without localized copy"',
 ]);
 requireAll("crates/modules/rustok-blog/src/services/category_name_projection.rs", [
   "BlogError::invariant(",
   ".map_err(BlogError::from)?",
+  "Category without localized copy",
 ]);
 requireAll("crates/modules/rustok-blog/src/services/category_command.rs", [
   ".map_err(storage_category_tree_error)?",
@@ -137,6 +139,7 @@ forbid("crates/modules/rustok-blog/src/services/comment_projection.rs", [
 ]);
 
 requireAll("crates/modules/rustok-blog/src/graphql/query.rs", [
+  "Err(BlogError::Forbidden(_)) if is_public_request(ctx) => return Ok(None)",
   "query_tenant_id(ctx, tenant, tenant_id)?",
   '"Blog queries must use the current tenant"',
 ]);
