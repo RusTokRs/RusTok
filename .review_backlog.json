@@ -1,7 +1,23 @@
 {
-  "scanned_at": "2026-09-19T01:44:25Z",
-  "total_findings": 0,
-  "by_tier": {},
-  "by_rule": {},
-  "findings": []
+  "scanned_at": "2026-09-19T06:49:59Z",
+  "total_findings": 1,
+  "by_tier": {
+    "2": 1
+  },
+  "by_rule": {
+    "METRIC-FN-LEN-01": 1
+  },
+  "findings": [
+    {
+      "id": "METRIC-FN-LEN-01-crates_libs_rustok-web_src_browser_assets.rs-179",
+      "rule_id": "METRIC-FN-LEN-01",
+      "tier": 2,
+      "severity": "info",
+      "file": "crates/libs/rustok-web/src/browser_assets.rs",
+      "line": 179,
+      "snippet": "fn resolve_asset() has 51 lines (limit: 40)",
+      "remediation": "Decompose complex multi-step functions into private helper methods or state machine transitions.",
+      "reference": "docs/standards/patterns-vs-antipatterns.md §2.8, docs/standards/coding.md §9.1"
+    }
+  ]
 }
