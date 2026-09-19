@@ -29,6 +29,9 @@ impl PostService {
         validate_tags(&tags)?;
 
         let author_id = enforce_create_author(&security, Resource::BlogPosts, Action::Create)?;
+        if publish {
+            enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;
+        }
         let content = normalize_article(content)?;
         let article_body = canonical_article_body(&content)?;
 
