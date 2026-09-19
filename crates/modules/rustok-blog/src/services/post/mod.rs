@@ -17,6 +17,7 @@ struct PostTranslationUpsertInput {
 }
 
 use rustok_api::{Action, Patch, Resource};
+use rustok_channel::ChannelService;
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };
