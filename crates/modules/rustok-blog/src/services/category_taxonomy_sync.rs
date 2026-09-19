@@ -19,7 +19,7 @@ pub(crate) async fn load_category_locale_copy_in_tx(
         locale,
     )
     .await
-    .map_err(map_taxonomy_error)
+    .map_err(BlogError::from)
 }
 
 pub(crate) async fn sync_category_copy_in_tx(
@@ -53,18 +53,28 @@ pub(crate) async fn sync_category_copy_in_tx(
     )
     .await
     .map(|_| ())
-    .map_err(map_taxonomy_error)
+    .map_err(BlogError::from)
 }
 
 pub(crate) fn canonical_key_for_blog_category(category_id: Uuid) -> String {
     format!("blog-category-{category_id}")
 }
 
-fn map_taxonomy_error(error: rustok_taxonomy::TaxonomyError) -> BlogError {
-    match error {
-        rustok_taxonomy::TaxonomyError::Database(error) => BlogError::Database(error),
-        other => BlogError::Validation(format!(
-            "Blog Category Taxonomy synchronization failed: {other}"
-        )),
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_taxonomy::TaxonomyError;
+
+    #[test]
+    fn taxonomy_sync_preserves_typed_dependency_error_mapping() {
+        let missing = BlogError::from(TaxonomyError::TermNotFound(Uuid::from_u128(1)));
+        assert!(matches!(missing, BlogError::TaxonomyTermNotFound(_)));
+
+        let conflict = BlogError::from(TaxonomyError::Conflict("conflict".to_string()));
+        assert!(matches!(conflict, BlogError::Conflict(_)));
+
+        let internal = BlogError::from(TaxonomyError::Internal("storage invariant".to_string()));
+        assert!(matches!(internal, BlogError::Invariant(_)));
     }
 }
