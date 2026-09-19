@@ -37,6 +37,16 @@ impl StorageRuntime {
         })
     }
 
+    /// Creates an in-memory storage runtime suitable for fallbacks, tests, and temporary stores.
+    pub fn in_memory() -> Self {
+        Self {
+            objects: Arc::new(object_store::memory::InMemory::new()),
+            signer: None,
+            kind: StorageKind::Local,
+            public_base_url: normalize_public_base_url(Some("/media")),
+        }
+    }
+
     pub fn with_signer(mut self, signer: Arc<dyn Signer>) -> Self {
         self.signer = Some(signer);
         self

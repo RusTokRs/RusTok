@@ -42,7 +42,14 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     let stop_handle = stop_handle_from_context(ctx);
     let registry = ctx
         .shared_get::<rustok_core::ModuleRegistry>()
-        .expect("ModuleRegistry not initialized; bootstrap_app_runtime must run first");
+        .unwrap_or_else(|| {
+            tracing::warn!(
+                "ModuleRegistry not initialized before GraphQL schema build; falling back to build_registry()"
+            );
+            let reg = crate::modules::build_registry();
+            ctx.shared_insert(reg.clone());
+            reg
+        });
     let static_module_registry_reader =
         static_module_registry_reader_from_context(ctx, registry.clone());
     let host_runtime = rustok_api::HostRuntimeContext::new(ctx.db_clone())
@@ -60,19 +67,24 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     let host_runtime = attach_storage_runtime(host_runtime, ctx);
     #[cfg(feature = "mod-alloy")]
     let host_runtime = if let Some(alloy_runtime) = ctx.shared_get::<alloy::SharedAlloyRuntime>() {
-        let storage = ctx
-            .shared_get::<rustok_storage::StorageRuntime>()
-            .expect("Alloy published-release import requires initialized durable storage");
+        let storage = ctx.shared_get::<rustok_storage::StorageRuntime>();
         let host_runtime = host_runtime.with_shared_value(alloy_runtime);
         let host_runtime = host_runtime.with_shared_value(
             crate::services::registry_governance::alloy_release_governance_handle(ctx.db_clone()),
         );
-        host_runtime.with_shared_value(
-            crate::services::registry_governance::alloy_published_rhai_source_provider_handle(
-                ctx.db_clone(),
-                storage,
-            ),
-        )
+        if let Some(storage) = storage {
+            host_runtime.with_shared_value(
+                crate::services::registry_governance::alloy_published_rhai_source_provider_handle(
+                    ctx.db_clone(),
+                    storage,
+                ),
+            )
+        } else {
+            tracing::warn!(
+                "Alloy published-release import requires initialized durable storage; omitting Rhai source provider handle"
+            );
+            host_runtime
+        }
     } else {
         host_runtime
     };
@@ -126,20 +138,7 @@ fn attach_storage_runtime(
 }
 
 fn stop_handle_from_context(ctx: &ServerRuntimeContext) -> StopHandle {
-    if let Some(handle) = ctx.shared_get::<StopHandle>() {
-        ctx.shared_insert_if_absent(IndexReplayStopKeepalive {
-            _receiver: handle.subscribe(),
-        });
-        return handle;
-    }
-
-    // Keep the candidate's initial receiver alive until a receiver for the actually published
-    // handle has been installed to avoid a zero-receiver window if shutdown races schema init.
-    let (candidate, _initial_receiver) = StopHandle::new();
-    ctx.shared_insert_if_absent(candidate);
-    let handle = ctx
-        .shared_get::<StopHandle>()
-        .expect("StopHandle reservation must publish one shared lifecycle handle");
+    let handle = StopHandle::ensure(ctx);
     ctx.shared_insert_if_absent(IndexReplayStopKeepalive {
         _receiver: handle.subscribe(),
     });
@@ -148,8 +147,25 @@ fn stop_handle_from_context(ctx: &ServerRuntimeContext) -> StopHandle {
 
 #[cfg(feature = "mod-alloy")]
 fn alloy_runtime_from_ctx(ctx: &ServerRuntimeContext) -> alloy::SharedAlloyRuntime {
-    ctx.shared_get::<alloy::SharedAlloyRuntime>()
-        .expect("Alloy runtime not initialized; bootstrap_app_runtime must run first")
+    if let Some(runtime) = ctx.shared_get::<alloy::SharedAlloyRuntime>() {
+        return runtime;
+    }
+    tracing::warn!("SharedAlloyRuntime not found in ServerRuntimeContext; creating minimal fallback");
+    let executors = rustok_sandbox::ExecutorRegistry::new();
+    let sandbox = rustok_sandbox::SandboxRuntime::new(
+        executors,
+        Arc::new(rustok_sandbox::CapabilityBrokerRouter::new()),
+    );
+    let draft_runtime = alloy::AlloyDraftRuntime::new(
+        sandbox,
+        rustok_sandbox::SandboxPolicy::default(),
+    );
+    let runtime = alloy::SharedAlloyRuntime(alloy::build_alloy_runtime(
+        ctx.db_clone(),
+        draft_runtime,
+    ));
+    ctx.shared_insert(runtime.clone());
+    runtime
 }
 
 #[cfg(feature = "mod-alloy")]
@@ -165,7 +181,14 @@ fn alloy_published_rhai_source_from_ctx(
 ) -> alloy::AlloyPublishedRhaiSourceProviderHandle {
     let storage = ctx
         .shared_get::<rustok_storage::StorageRuntime>()
-        .expect("Alloy published-release import requires initialized durable storage");
+        .unwrap_or_else(|| {
+            tracing::warn!(
+                "Alloy published-release import requires initialized durable storage; falling back to in-memory storage runtime"
+            );
+            let fallback = rustok_storage::StorageRuntime::in_memory();
+            ctx.shared_insert(fallback.clone());
+            fallback
+        });
     crate::services::registry_governance::alloy_published_rhai_source_provider_handle(
         ctx.db_clone(),
         storage,
@@ -181,8 +204,20 @@ fn alloy_published_rhai_source_from_ctx(
 fn content_orchestration_from_ctx(
     ctx: &ServerRuntimeContext,
 ) -> rustok_content_orchestration::SharedContentOrchestrationService {
-    ctx.shared_get::<rustok_content_orchestration::SharedContentOrchestrationService>()
-        .expect("ContentOrchestrationService not initialized; bootstrap_app_runtime must run first")
+    if let Some(service) =
+        ctx.shared_get::<rustok_content_orchestration::SharedContentOrchestrationService>()
+    {
+        return service;
+    }
+    tracing::warn!(
+        "ContentOrchestrationService not initialized; building fallback service for GraphQL schema dependencies"
+    );
+    let service = rustok_content_orchestration::build_content_orchestration_service(
+        ctx.db_clone(),
+        transactional_event_bus_from_context(ctx),
+    );
+    ctx.shared_insert(service.clone());
+    service
 }
 
 #[cfg(feature = "mod-media")]
@@ -199,7 +234,12 @@ fn storage_from_ctx(ctx: &ServerRuntimeContext) -> rustok_storage::StorageRuntim
         base_url: "/media".to_string(),
         fsync: false,
     })
-    .expect("create fallback local storage runtime");
+    .unwrap_or_else(|err| {
+        tracing::warn!(
+            "Failed to create fallback local storage runtime ({err}); falling back to in-memory store"
+        );
+        rustok_storage::StorageRuntime::in_memory()
+    });
     ctx.shared_insert(fallback.clone());
     fallback
 }

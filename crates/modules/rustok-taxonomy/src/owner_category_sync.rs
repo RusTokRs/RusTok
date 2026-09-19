@@ -2,7 +2,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseTransaction,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction,
     EntityTrait, QueryFilter, sea_query::Expr,
 };
 use uuid::Uuid;

@@ -4,10 +4,10 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
-use rustok_taxonomy::{TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult, lock_category_hierarchy_writer_in_tx};
+use rustok_taxonomy::{TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult};
 use rustok_taxonomy::entities::taxonomy_category_hierarchy;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait,
     DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use uuid::Uuid;

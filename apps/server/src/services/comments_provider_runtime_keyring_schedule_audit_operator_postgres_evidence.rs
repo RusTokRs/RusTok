@@ -1,6 +1,4 @@
-#[cfg(all(test, feature = "mod-blog"))]
-mod retained_postgres_evidence {
-    use std::{sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
     use anyhow::{Context, Result, anyhow, ensure};
     use async_trait::async_trait;
@@ -855,4 +853,3 @@ mod retained_postgres_evidence {
     fn map_handoff_error(error: CommentsTcpDelegationScheduleAuditHandoffError) -> anyhow::Error {
         anyhow!("retry-aware handoff claim failed: {error:?}")
     }
-}

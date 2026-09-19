@@ -49,10 +49,11 @@ pub(crate) fn enforce_create_author(
 /// role is descriptive only and cannot restore authority removed by OAuth
 /// scopes or the request-effective permission snapshot.
 pub(crate) fn can_read_non_public_posts(security: &SecurityContext) -> bool {
-    matches!(
-        security.get_scope(Resource::BlogPosts, Action::Read),
-        PermissionScope::All
-    )
+    !matches!(security.role, rustok_core::UserRole::Customer)
+        && matches!(
+            security.get_scope(Resource::BlogPosts, Action::Read),
+            PermissionScope::All
+        )
 }
 
 #[cfg(test)]

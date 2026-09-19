@@ -29,8 +29,9 @@ impl From<crate::entities::product_relation::Model> for ProductRelationDto {
     fn from(model: crate::entities::product_relation::Model) -> Self {
         let relation_type = model
             .relation_type
+            .as_str()
             .parse()
-            .unwrap_or_else(|_| RelationType::Custom(model.relation_type));
+            .unwrap_or(RelationType::Custom(model.relation_type));
         Self {
             id: model.id,
             tenant_id: model.tenant_id,

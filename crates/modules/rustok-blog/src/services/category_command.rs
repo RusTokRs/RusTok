@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait,
     DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
 use uuid::Uuid;

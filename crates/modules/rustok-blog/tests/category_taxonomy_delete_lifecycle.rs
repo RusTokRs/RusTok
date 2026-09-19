@@ -118,7 +118,7 @@ async fn delete_category_detaches_posts_without_dangling_reference() {
         .await
         .expect("Blog Category should be created");
 
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         db.get_database_backend(),
         r#"
         INSERT INTO blog_posts (
@@ -149,7 +149,7 @@ async fn delete_category_detaches_posts_without_dangling_reference() {
     let row = db
         .query_one_raw(Statement::from_sql_and_values(
             db.get_database_backend(),
-            "SELECT category_id FROM blog_posts WHERE tenant_id = ? AND id = ?",
+            "SELECT category_id, version FROM blog_posts WHERE tenant_id = ? AND id = ?",
             [tenant_id.into(), post_id.into()],
         ))
         .await

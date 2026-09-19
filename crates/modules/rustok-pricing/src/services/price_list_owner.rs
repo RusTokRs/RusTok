@@ -153,15 +153,15 @@ impl PriceListOwnerService {
         let current = load_locked_price_list(&txn, tenant_id, price_list_id).await?;
         let existing_translations = load_translations(&txn, price_list_id).await?;
 
-        let next_starts_at = match &input.starts_at {
-            Some(value) => value.clone(),
+        let next_starts_at = match input.starts_at {
+            Some(value) => value,
             None => current
                 .starts_at
                 .as_ref()
                 .map(|value| value.with_timezone(&Utc)),
         };
-        let next_ends_at = match &input.ends_at {
-            Some(value) => value.clone(),
+        let next_ends_at = match input.ends_at {
+            Some(value) => value,
             None => current.ends_at.as_ref().map(|value| value.with_timezone(&Utc)),
         };
         validate_window(next_starts_at.as_ref(), next_ends_at.as_ref())?;

@@ -31,7 +31,7 @@ impl MigrationTrait for Migration {
     }
 }
 
-async fn validate_existing_relations(manager: &SchemaManager) -> Result<(), DbErr> {
+async fn validate_existing_relations(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     let row = connection
         .query_one_raw(Statement::from_string(
@@ -62,7 +62,7 @@ WHERE post.category_id IS NOT NULL
     Ok(())
 }
 
-async fn up_postgres(manager: &SchemaManager) -> Result<(), DbErr> {
+async fn up_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     manager
         .get_connection()
         .execute_unprepared(
@@ -85,7 +85,7 @@ ALTER TABLE blog_posts
     Ok(())
 }
 
-async fn down_postgres(manager: &SchemaManager) -> Result<(), DbErr> {
+async fn down_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     manager
         .get_connection()
         .execute_unprepared(&format!(
@@ -99,7 +99,7 @@ async fn down_postgres(manager: &SchemaManager) -> Result<(), DbErr> {
     Ok(())
 }
 
-async fn up_sqlite(manager: &SchemaManager) -> Result<(), DbErr> {
+async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     for statement in [
         r#"CREATE TRIGGER blog_posts_category_tenant_insert
@@ -143,7 +143,7 @@ async fn up_sqlite(manager: &SchemaManager) -> Result<(), DbErr> {
     Ok(())
 }
 
-async fn down_sqlite(manager: &SchemaManager) -> Result<(), DbErr> {
+async fn down_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     for statement in [
         "DROP TRIGGER IF EXISTS blog_posts_category_tenant_insert",

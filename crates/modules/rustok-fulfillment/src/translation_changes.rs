@@ -206,12 +206,10 @@ LIMIT 1
     ))
     .one(txn)
     .await?
+        && previous.resource_revision == resource_revision
+        && ShippingOptionTranslationChangeLifecycle::parse(&previous.lifecycle)? == lifecycle
     {
-        if previous.resource_revision == resource_revision
-            && ShippingOptionTranslationChangeLifecycle::parse(&previous.lifecycle)? == lifecycle
-        {
-            return Ok(());
-        }
+        return Ok(());
     }
 
     let insert_sql = match backend {

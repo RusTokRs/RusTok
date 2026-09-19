@@ -25,7 +25,7 @@ impl MigrationTrait for Migration {
     }
 }
 
-async fn up_postgres(manager: &SchemaManager) -> Result<(), DbErr> {
+async fn up_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     connection
         .execute_unprepared(&format!(

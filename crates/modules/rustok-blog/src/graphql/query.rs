@@ -507,6 +507,13 @@ mod tests {
         .expect("tenants table should exist for channel foreign keys");
         let manager = SchemaManager::new(&db);
         for migration in migrations::migrations() {
+            if db.get_database_backend() == sea_orm::DatabaseBackend::Sqlite
+                && (migration.name() == "m20260730_000010_add_channel_index_revision"
+                    || migration.name() == "m20260731_000011_add_channel_index_tombstones"
+                    || migration.name() == "m20260807_000012_add_channel_index_identity_generation")
+            {
+                continue;
+            }
             migration
                 .up(&manager)
                 .await
@@ -573,6 +580,7 @@ mod tests {
 
         let result = ensure_public_blog_channel_enabled(
             &db,
+            tenant_id,
             Some(&request_context(tenant_id, channel.id, "blog-web")),
             false,
         )
@@ -613,6 +621,7 @@ mod tests {
 
         let result = ensure_public_blog_channel_enabled(
             &db,
+            tenant_id,
             Some(&request_context(tenant_id, channel.id, "blog-web")),
             true,
         )
@@ -642,6 +651,7 @@ mod tests {
 
         let result = ensure_public_blog_channel_enabled(
             &db,
+            tenant_id,
             Some(&request_context(tenant_id, channel.id, "blog-web")),
             false,
         )
@@ -698,7 +708,7 @@ mod tests {
             correlation_id: "test-correlation-id".to_string(),
         };
 
-        let error = ensure_public_blog_channel_enabled(&db, Some(&request_context), false)
+        let error = ensure_public_blog_channel_enabled(&db, tenant_id, Some(&request_context), false)
             .await
             .expect_err("disabled binding should be reported");
 

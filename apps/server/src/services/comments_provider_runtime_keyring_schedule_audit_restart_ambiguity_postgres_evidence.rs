@@ -1,6 +1,4 @@
-#[cfg(all(test, feature = "mod-blog"))]
-mod retained_restart_ambiguity_evidence {
-    use std::{sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
     use anyhow::{Context, Result, anyhow, ensure};
     use rustok_core::MigrationSource;
@@ -666,4 +664,3 @@ mod retained_restart_ambiguity_evidence {
     fn map_handoff_error(error: CommentsTcpDelegationScheduleAuditHandoffError) -> anyhow::Error {
         anyhow!("canonical handoff failed: {error:?}")
     }
-}

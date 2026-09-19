@@ -30,6 +30,10 @@ pub fn article_document_from_plain_text(text: &str) -> RichTextDocument {
         paragraphs.push(paragraph_lines.join(" "));
     }
 
+    if paragraphs.is_empty() {
+        return RichTextDocument::empty();
+    }
+
     RichTextDocument {
         kind: "doc".to_string(),
         content: paragraphs
