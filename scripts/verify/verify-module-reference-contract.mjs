@@ -94,6 +94,8 @@ requireAll("crates/modules/rustok-blog/src/services/category_owner.rs", [
 ]);
 requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   '"has no canonical Taxonomy hierarchy placement"',
+  "Column::ParentTermId.eq(category_id)",
+  '"Category must be a leaf before deletion; move or delete its children first"',
 ]);
 requireAll("crates/modules/rustok-blog/src/migrations/m20260919_000023_enforce_blog_post_category_tenant_integrity.rs", [
   "fk_blog_posts_tenant_category",
@@ -225,6 +227,9 @@ requireAll("crates/modules/rustok-blog/src/services/comment_projection.rs", [
   "DomainEvent::ReindexRequested",
   "Column::CommentCount.eq(post.comment_count)",
   "fn next_comment_count(",
+  "let post_updated =",
+  "return Ok(false);",
+  "if post_updated",
 ]);
 forbid("crates/modules/rustok-blog/src/services/comment_projection.rs", [
   "blog_post::Column::Version",
@@ -236,6 +241,7 @@ requireAll("crates/modules/rustok-blog/src/graphql/query.rs", [
   "Err(BlogError::Forbidden(_)) if is_public_request(ctx) => return Ok(None)",
   "query_tenant_id(ctx, tenant, tenant_id)?",
   '"Blog queries must use the current tenant"',
+  '"Blog is not available for the current channel"',
 ]);
 requireAll("crates/modules/rustok-blog/src/graphql/mutation.rs", [
   "mutation_tenant_id(tenant, &auth, tenant_id)?",
@@ -247,6 +253,8 @@ for (const path of rustFiles("crates/modules/rustok-blog/src/graphql")) {
     "async_graphql::Error::new(err.to_string())",
     "async_graphql::Error::new(error.to_string())",
     "format!(\"Channel module check failed: {error}\")",
+    "resolved via ",
+    "request_channel_resolution_source(",
   ]);
 }
 for (const path of rustFiles("crates/modules/rustok-blog/src/integrations")) {
@@ -299,6 +307,8 @@ requireAll("crates/modules/rustok-blog/admin/src/transport/native_server_adapter
 requireAll("crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs", [
   "fn public_internal_error() -> ServerFnError",
   "use_context::<HostRuntimeContext>().ok_or_else(public_internal_error)?",
+  '"Blog is not available for the current channel"',
+  "context.tenant_id != tenant_id",
 ]);
 for (const path of [
   "crates/modules/rustok-blog/admin/src/transport/native_server_adapter.rs",
