@@ -150,6 +150,13 @@ impl PostService {
         Ok(())
     }
 
+    pub(super) fn is_unique_constraint(error: &sea_orm::DbErr) -> bool {
+        matches!(
+            error.sql_err(),
+            Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+        )
+    }
+
     pub(super) async fn ensure_slug_unique_in_tx(
         &self,
         txn: &DatabaseTransaction,
