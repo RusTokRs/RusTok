@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
 use rustok_core::{PermissionScope, SecurityContext};
-use sea_orm::{ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, TransactionTrait};
+use sea_orm::{ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QuerySelect, TransactionTrait};
 use uuid::Uuid;
 
 use crate::dto::{TaxonomyScopeType, TaxonomyTermKind};
@@ -85,6 +85,9 @@ impl TaxonomyService {
         module_scope: Option<&str>,
         cleanup: &dyn TaxonomyCategoryDeleteCleanupPort,
     ) -> TaxonomyResult<()> {
+        let txn = self.database().begin().await?;
+        crate::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?;
+
         let mut term_query = taxonomy_term::Entity::find_by_id(category_id)
             .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
             .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category));
@@ -94,13 +97,14 @@ impl TaxonomyService {
                 .filter(taxonomy_term::Column::ScopeValue.eq(module_scope));
         }
         let term = term_query
-            .one(self.database())
+            .lock_exclusive()
+            .one(&txn)
             .await?
             .ok_or(TaxonomyError::TermNotFound(category_id))?;
         let translations = taxonomy_term_translation::Entity::find()
             .filter(taxonomy_term_translation::Column::TermId.eq(category_id))
             .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
-            .all(self.database())
+            .all(&txn)
             .await?;
         let deletion_translation = translations.iter().min_by(|left, right| {
             left.locale
@@ -124,7 +128,6 @@ impl TaxonomyService {
                 ))
             })?;
 
-        let txn = self.database().begin().await?;
         record_translation_change_in_tx(
             &txn,
             TranslationChangeEvidence {
