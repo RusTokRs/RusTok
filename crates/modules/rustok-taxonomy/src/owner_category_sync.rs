@@ -2,14 +2,14 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseTransaction, EntityTrait, QueryFilter, Statement, sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseTransaction,
+    EntityTrait, QueryFilter, sea_query::Expr,
 };
 use uuid::Uuid;
 
 use crate::{
     MAX_TAXONOMY_CATEGORY_DEPTH, TaxonomyError, TaxonomyResult, TaxonomyScopeType,
-    TaxonomyTermKind,
+    TaxonomyTermKind, lock_category_hierarchy_writer_in_tx,
     entities::{
         taxonomy_category_hierarchy, taxonomy_category_presentation, taxonomy_term,
         taxonomy_term_alias, taxonomy_term_translation,
@@ -107,7 +107,7 @@ pub async fn sync_module_category_in_tx(
         .transpose()?
         .flatten();
 
-    serialize_category_hierarchy_writer(txn, tenant_id).await?;
+    lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?;
 
     let (mut term, created_term) = ensure_category_identity(
         txn,
@@ -573,21 +573,6 @@ async fn sync_category_presentation(
             Ok(revision)
         }
     }
-}
-
-async fn serialize_category_hierarchy_writer(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-) -> TaxonomyResult<()> {
-    if txn.get_database_backend() == DatabaseBackend::Postgres {
-        txn.execute_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-            vec![tenant_id.to_string().into()],
-        ))
-        .await?;
-    }
-    Ok(())
 }
 
 fn normalize_module_scope(value: &str) -> TaxonomyResult<String> {
