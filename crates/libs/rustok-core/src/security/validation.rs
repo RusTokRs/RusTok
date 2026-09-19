@@ -50,39 +50,75 @@ impl Default for InputValidator {
 
 use once_cell::sync::Lazy;
 
+// INVARIANT: Static SQL patterns are compile-time verified constants.
 static SQL_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     vec![
-        Regex::new(r"(?i)(SELECT\s+.*\s+FROM|INSERT\s+INTO|UPDATE\s+.*\s+SET|DELETE\s+FROM|DROP\s+TABLE|UNION\s+SELECT|--|;--)").unwrap(),
-        Regex::new(r#"(?i)(OR\s+['\"]?1['\"]?\s*=\s*['\"]?1['\"]?|AND\s+['\"]?1['\"]?\s*=\s*['\"]?1['\"]?|['\"]?1['\"]?\s*=\s*['\"]?1['\"]?)"#).unwrap(),
-        Regex::new(r"(?i)(EXEC\s*\(|EXECUTE\s*\(|sp_executesql)").unwrap(),
+        // INVARIANT: Verified static SQL injection regex
+        Regex::new(r"(?i)(SELECT\s+.*\s+FROM|INSERT\s+INTO|UPDATE\s+.*\s+SET|DELETE\s+FROM|DROP\s+TABLE|UNION\s+SELECT|--|;--)")
+            .expect("valid SQL regex"),
+        // INVARIANT: Verified static boolean injection regex
+        Regex::new(r#"(?i)(OR\s+['\"]?1['\"]?\s*=\s*['\"]?1['\"]?|AND\s+['\"]?1['\"]?\s*=\s*['\"]?1['\"]?|['\"]?1['\"]?\s*=\s*['\"]?1['\"]?)"#)
+            .expect("valid SQL regex"),
+        // INVARIANT: Verified static SQL execution regex
+        Regex::new(r"(?i)(EXEC\s*\(|EXECUTE\s*\(|sp_executesql)")
+            .expect("valid SQL regex"),
     ]
 });
 
+// INVARIANT: Static XSS patterns are compile-time verified constants.
 static XSS_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     vec![
-        Regex::new(r"(?i)<script[^>]*>.*?</script>").unwrap(),
-        Regex::new(r"(?i)javascript:").unwrap(),
-        Regex::new(r#"(?i)on\w+\s*=\s*["']?[^"']*["']?"#).unwrap(),
-        Regex::new(r"(?i)<\s*iframe").unwrap(),
-        Regex::new(r"(?i)<\s*object").unwrap(),
-        Regex::new(r"(?i)<\s*embed").unwrap(),
+        // INVARIANT: Verified static XSS script tag regex
+        Regex::new(r"(?i)<script[^>]*>.*?</script>")
+            .expect("valid XSS regex"),
+        // INVARIANT: Verified static javascript URI regex
+        Regex::new(r"(?i)javascript:")
+            .expect("valid XSS regex"),
+        // INVARIANT: Verified static event handler regex
+        Regex::new(r#"(?i)on\w+\s*=\s*["']?[^"']*["']?"#)
+            .expect("valid XSS regex"),
+        // INVARIANT: Verified static iframe regex
+        Regex::new(r"(?i)<\s*iframe")
+            .expect("valid XSS regex"),
+        // INVARIANT: Verified static object regex
+        Regex::new(r"(?i)<\s*object")
+            .expect("valid XSS regex"),
+        // INVARIANT: Verified static embed regex
+        Regex::new(r"(?i)<\s*embed")
+            .expect("valid XSS regex"),
     ]
 });
 
+// INVARIANT: Static command injection patterns are compile-time verified constants.
 static CMD_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     vec![
-        Regex::new(r"[;&|`]\s*\w+").unwrap(),
-        Regex::new(r"\$\(.*\)").unwrap(),
-        Regex::new(r"`.*`").unwrap(),
+        // INVARIANT: Verified static shell metacharacter regex
+        Regex::new(r"[;&|`]\s*\w+")
+            .expect("valid CMD regex"),
+        // INVARIANT: Verified static command substitution regex
+        Regex::new(r"\$\(.*\)")
+            .expect("valid CMD regex"),
+        // INVARIANT: Verified static backtick substitution regex
+        Regex::new(r"`.*`")
+            .expect("valid CMD regex"),
     ]
 });
 
+// INVARIANT: Static path traversal patterns are compile-time verified constants.
 static PATH_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     vec![
-        Regex::new(r"\.\./").unwrap(),
-        Regex::new(r"\.\.\\").unwrap(),
-        Regex::new(r"%2e%2e[/\\]").unwrap(),
-        Regex::new(r"\x2e\x2e[/\\]").unwrap(),
+        // INVARIANT: Verified static unix path traversal regex
+        Regex::new(r"\.\./")
+            .expect("valid path traversal regex"),
+        // INVARIANT: Verified static windows path traversal regex
+        Regex::new(r"\.\.\\")
+            .expect("valid path traversal regex"),
+        // INVARIANT: Verified static URL-encoded path traversal regex
+        Regex::new(r"%2e%2e[/\\]")
+            .expect("valid path traversal regex"),
+        // INVARIANT: Verified static hex-encoded path traversal regex
+        Regex::new(r"\x2e\x2e[/\\]")
+            .expect("valid path traversal regex"),
     ]
 });
 

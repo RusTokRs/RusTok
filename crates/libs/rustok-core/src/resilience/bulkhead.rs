@@ -191,7 +191,7 @@ impl Bulkhead {
     /// # Example
     /// ```ignore
     /// let metrics = bulkhead.export_prometheus_metrics("payments_service");
-    /// println!("{}", metrics);
+    /// assert!(!metrics.is_empty());
     /// ```
     pub fn export_prometheus_metrics(&self, name: &str) -> String {
         let stats = self.stats();

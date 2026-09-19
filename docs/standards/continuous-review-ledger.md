@@ -14,8 +14,8 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `2 / 218` components audited (**0%**)
-- **Total Workspace Codebase:** `1,852,192` LOC across `218` modules/apps
+- **Progress:** `3 / 218` components audited (**1%**)
+- **Total Workspace Codebase:** `1,855,003` LOC across `218` modules/apps
 
 ---
 
@@ -41,10 +41,10 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [rustok-comments](../../apps/next-frontend/packages/rustok-comments) | `apps` | 2 | 111 | None |  |
 | [ ] | [rustok-product](../../apps/next-frontend/packages/rustok-product) | `apps` | 1 | 70 | None |  |
 | [ ] | [search](../../apps/next-frontend/packages/search) | `apps` | 1 | 681 | None |  |
-| [ ] | [server](../../apps/server) | `apps` | 478 | 177,026 | None |  |
+| [ ] | [server](../../apps/server) | `apps` | 477 | 177,052 | None |  |
 | [ ] | [storefront](../../apps/storefront) | `apps` | 34 | 5,059 | None |  |
-| [x] | [rustok-api](../../crates/libs/rustok-api) | `libs` | 34 | 6,452 | 2026-09-18 19:46 | Audited richtext.rs: eliminated unwrap panic on empty strings, documented schema invariants |
-| [ ] | [rustok-core](../../crates/libs/rustok-core) | `libs` | 64 | 16,852 | None |  |
+| [x] | [rustok-api](../../crates/libs/rustok-api) | `libs` | 35 | 6,621 | 2026-09-18 19:46 | Audited richtext.rs: eliminated unwrap panic on empty strings, documented schema invariants |
+| [x] | [rustok-core](../../crates/libs/rustok-core) | `libs` | 64 | 16,913 | 2026-09-19 05:57 | Eliminated Tier 0 unwraps/panics with documented invariants, converted DatabaseHealthCheck to typed std::error::Error trait, fixed bulkhead doc print |
 | [ ] | [rustok-events](../../crates/libs/rustok-events) | `libs` | 27 | 10,966 | None |  |
 | [x] | [rustok-fba](../../crates/libs/rustok-fba) | `libs` | 1 | 82 | 2026-09-18 18:10 | Verified clean, 1 file, 82 LOC |
 | [ ] | [rustok-runtime](../../crates/libs/rustok-runtime) | `libs` | 4 | 2,414 | None |  |
@@ -64,17 +64,17 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 50 | 11,107 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-auth/admin) | `modules` | 18 | 5,550 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-auth/cli) | `modules` | 1 | 333 | None |  |
-| [ ] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 117 | 27,209 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-blog/admin) | `modules` | 12 | 4,630 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-blog/storefront) | `modules` | 11 | 2,593 | None |  |
+| [ ] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 126 | 28,934 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-blog/admin) | `modules` | 16 | 4,914 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-blog/storefront) | `modules` | 12 | 2,601 | None |  |
 | [ ] | [rustok-brand](../../crates/modules/rustok-brand) | `modules` | 22 | 3,111 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-brand/admin) | `modules` | 9 | 1,806 | None |  |
 | [ ] | [rustok-cache](../../crates/modules/rustok-cache) | `modules` | 37 | 14,548 | None |  |
 | [ ] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 72 | 16,524 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 18 | 3,643 | None |  |
-| [ ] | [rustok-channel](../../crates/modules/rustok-channel) | `modules` | 47 | 11,171 | None |  |
+| [ ] | [rustok-channel](../../crates/modules/rustok-channel) | `modules` | 47 | 11,201 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-channel/admin) | `modules` | 14 | 5,226 | None |  |
-| [ ] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 38 | 8,845 | None |  |
+| [ ] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 38 | 8,889 | None |  |
 | [ ] | [rustok-comments-storefront-support](../../crates/modules/rustok-comments-storefront-support) | `modules` | 3 | 171 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 8 | 1,379 | None |  |
 | [ ] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 295 | 123,544 | None |  |
@@ -82,7 +82,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 21 | 5,825 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-commerce/storefront) | `modules` | 16 | 2,023 | None |  |
 | [ ] | [rustok-content](../../crates/modules/rustok-content) | `modules` | 48 | 7,003 | None |  |
-| [ ] | [rustok-content-orchestration](../../crates/modules/rustok-content-orchestration) | `modules` | 2 | 2,464 | None |  |
+| [ ] | [rustok-content-orchestration](../../crates/modules/rustok-content-orchestration) | `modules` | 2 | 2,467 | None |  |
 | [ ] | [rustok-customer](../../crates/modules/rustok-customer) | `modules` | 26 | 5,022 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-customer/admin) | `modules` | 9 | 2,476 | None |  |
 | [ ] | [rustok-distribution](../../crates/modules/rustok-distribution) | `modules` | 34 | 15,734 | None |  |
@@ -90,10 +90,10 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [rustok-events-module](../../crates/modules/rustok-events-module) | `modules` | 14 | 847 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-events-module/admin) | `modules` | 7 | 506 | None |  |
 | [ ] | [next-admin](../../crates/modules/rustok-events-module/next-admin) | `modules` | 6 | 278 | None |  |
-| [ ] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 591 | 151,981 | None |  |
+| [ ] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 591 | 151,991 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-forum/admin) | `modules` | 35 | 12,236 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-forum/storefront) | `modules` | 19 | 4,164 | None |  |
-| [ ] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 71 | 17,273 | None |  |
+| [ ] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 71 | 17,271 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-fulfillment/admin) | `modules` | 8 | 1,454 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-fulfillment/storefront) | `modules` | 12 | 1,206 | None |  |
 | [ ] | [rustok-groups](../../crates/modules/rustok-groups) | `modules` | 112 | 31,916 | None |  |
@@ -105,7 +105,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [next-admin](../../crates/modules/rustok-iggy-connector/next-admin) | `modules` | 5 | 367 | None |  |
 | [ ] | [rustok-index](../../crates/modules/rustok-index) | `modules` | 138 | 57,313 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-index/admin) | `modules` | 9 | 2,180 | None |  |
-| [ ] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 35 | 11,999 | None |  |
+| [ ] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 35 | 12,002 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-inventory/admin) | `modules` | 10 | 4,267 | None |  |
 | [ ] | [rustok-marketplace](../../crates/modules/rustok-marketplace) | `modules` | 10 | 1,485 | None |  |
 | [ ] | [rustok-marketplace-allocation](../../crates/modules/rustok-marketplace-allocation) | `modules` | 12 | 1,476 | None |  |
@@ -118,7 +118,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [admin](../../crates/modules/rustok-marketplace-seller/admin) | `modules` | 13 | 2,378 | None |  |
 | [ ] | [rustok-mcp](../../crates/modules/rustok-mcp) | `modules` | 26 | 6,856 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-mcp/admin) | `modules` | 7 | 1,829 | None |  |
-| [ ] | [rustok-media](../../crates/modules/rustok-media) | `modules` | 42 | 12,023 | None |  |
+| [ ] | [rustok-media](../../crates/modules/rustok-media) | `modules` | 42 | 12,022 | None |  |
 | [ ] | [rustok-media-transport](../../crates/modules/rustok-media-transport) | `modules` | 6 | 1,532 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-media/admin) | `modules` | 10 | 2,124 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-media/cli) | `modules` | 1 | 175 | None |  |
@@ -144,22 +144,22 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [rustok-pages](../../crates/modules/rustok-pages) | `modules` | 170 | 46,835 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-pages/admin) | `modules` | 24 | 5,904 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-pages/storefront) | `modules` | 17 | 4,717 | None |  |
-| [ ] | [rustok-payment](../../crates/modules/rustok-payment) | `modules` | 85 | 20,645 | None |  |
+| [ ] | [rustok-payment](../../crates/modules/rustok-payment) | `modules` | 85 | 20,644 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-payment/storefront) | `modules` | 11 | 1,316 | None |  |
 | [ ] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 47 | 18,461 | None |  |
 | [ ] | [rustok-pricing-persistence](../../crates/modules/rustok-pricing-persistence) | `modules` | 5 | 190 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-pricing/admin) | `modules` | 13 | 7,537 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-pricing/storefront) | `modules` | 10 | 2,465 | None |  |
-| [ ] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 168 | 62,683 | None |  |
+| [ ] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 168 | 62,712 | None |  |
 | [ ] | [rustok-product-bundles](../../crates/modules/rustok-product-bundles) | `modules` | 22 | 3,848 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-product-bundles/admin) | `modules` | 9 | 2,291 | None |  |
 | [ ] | [rustok-product-catalog-service](../../crates/modules/rustok-product-catalog-service) | `modules` | 1 | 508 | None |  |
-| [ ] | [rustok-product-relations](../../crates/modules/rustok-product-relations) | `modules` | 20 | 2,099 | None |  |
+| [ ] | [rustok-product-relations](../../crates/modules/rustok-product-relations) | `modules` | 20 | 2,100 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-product-relations/admin) | `modules` | 9 | 1,232 | None |  |
 | [ ] | [rustok-product-transport](../../crates/modules/rustok-product-transport) | `modules` | 8 | 1,699 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-product/admin) | `modules` | 20 | 12,014 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-product/admin) | `modules` | 20 | 12,023 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-product/storefront) | `modules` | 12 | 3,098 | None |  |
-| [ ] | [rustok-profiles](../../crates/modules/rustok-profiles) | `modules` | 52 | 8,976 | None |  |
+| [ ] | [rustok-profiles](../../crates/modules/rustok-profiles) | `modules` | 52 | 8,990 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-profiles/cli) | `modules` | 1 | 338 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-profiles/storefront) | `modules` | 9 | 1,464 | None |  |
 | [ ] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 55 | 11,022 | None |  |
@@ -171,7 +171,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [rustok-region](../../crates/modules/rustok-region) | `modules` | 39 | 8,559 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-region/admin) | `modules` | 8 | 2,944 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-region/storefront) | `modules` | 9 | 1,739 | None |  |
-| [ ] | [rustok-search](../../crates/modules/rustok-search) | `modules` | 95 | 30,068 | None |  |
+| [ ] | [rustok-search](../../crates/modules/rustok-search) | `modules` | 95 | 30,084 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-search/admin) | `modules` | 20 | 6,725 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-search/storefront) | `modules` | 11 | 3,453 | None |  |
 | [ ] | [rustok-seo](../../crates/modules/rustok-seo) | `modules` | 67 | 30,112 | None |  |
@@ -182,7 +182,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [rustok-social-graph](../../crates/modules/rustok-social-graph) | `modules` | 36 | 8,796 | None |  |
 | [ ] | [rustok-social-graph-cli](../../crates/modules/rustok-social-graph-cli) | `modules` | 1 | 324 | None |  |
 | [ ] | [rustok-tax](../../crates/modules/rustok-tax) | `modules` | 5 | 1,586 | None |  |
-| [ ] | [rustok-taxonomy](../../crates/modules/rustok-taxonomy) | `modules` | 51 | 12,599 | None |  |
+| [ ] | [rustok-taxonomy](../../crates/modules/rustok-taxonomy) | `modules` | 51 | 12,974 | None |  |
 | [ ] | [rustok-tenant](../../crates/modules/rustok-tenant) | `modules` | 28 | 3,836 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-tenant/admin) | `modules` | 8 | 726 | None |  |
 | [ ] | [rustok-translation](../../crates/modules/rustok-translation) | `modules` | 76 | 45,087 | None |  |
@@ -202,7 +202,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [leptos-ui-routing](../../crates/ui/leptos-ui-routing) | `ui` | 1 | 233 | None |  |
 | [ ] | [leptos-zod](../../crates/ui/leptos-zod) | `ui` | 1 | 22 | None |  |
 | [ ] | [leptos-zustand](../../crates/ui/leptos-zustand) | `ui` | 1 | 18 | None |  |
-| [ ] | [rustok-graphql](../../crates/ui/rustok-graphql) | `ui` | 1 | 340 | None |  |
+| [ ] | [rustok-graphql](../../crates/ui/rustok-graphql) | `ui` | 1 | 338 | None |  |
 | [ ] | [rustok-graphql-leptos](../../crates/ui/rustok-graphql-leptos) | `ui` | 1 | 206 | None |  |
 | [ ] | [rustok-ui-auth](../../crates/ui/rustok-ui-auth) | `ui` | 1 | 54 | None |  |
 | [ ] | [rustok-ui-core](../../crates/ui/rustok-ui-core) | `ui` | 5 | 1,280 | None |  |
@@ -223,7 +223,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [rustok-module-sdk](../../crates/utils/rustok-module-sdk) | `utils` | 2 | 60 | None |  |
 | [ ] | [rustok-module-template](../../crates/utils/rustok-module-template) | `utils` | 2 | 329 | None |  |
 | [ ] | [rustok-secrets](../../crates/utils/rustok-secrets) | `utils` | 3 | 1,306 | None |  |
-| [ ] | [rustok-storage](../../crates/utils/rustok-storage) | `utils` | 4 | 764 | None |  |
+| [ ] | [rustok-storage](../../crates/utils/rustok-storage) | `utils` | 4 | 774 | None |  |
 | [ ] | [rustok-test-utils](../../crates/utils/rustok-test-utils) | `utils` | 7 | 1,917 | None |  |
 | [ ] | [utoipa-swagger-ui-vendored](../../crates/utils/utoipa-swagger-ui-vendored) | `utils` | 2 | 34 | None |  |
 | [ ] | [rustok-artifact-node-agent](../../crates/workers/rustok-artifact-node-agent) | `workers` | 8 | 2,426 | None |  |

@@ -67,12 +67,16 @@ use std::collections::HashMap;
 // ---------------------------------------------------------------------------
 
 // INVARIANT: Static field key regex pattern is compile-time verified and constant.
-static FIELD_KEY_REGEX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^[a-z][a-z0-9_]{0,127}$").expect("valid regex"));
+static FIELD_KEY_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^[a-z][a-z0-9_]{0,127}$")
+        .expect("valid regex")
+});
 
 // INVARIANT: Static hex color regex pattern is compile-time verified and constant.
-static COLOR_REGEX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^#[0-9A-Fa-f]{6}$").expect("valid regex"));
+static COLOR_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^#[0-9A-Fa-f]{6}$")
+        .expect("valid regex")
+});
 
 // ---------------------------------------------------------------------------
 // JSON nesting depth guardrail

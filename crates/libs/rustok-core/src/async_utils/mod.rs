@@ -190,9 +190,15 @@ where
         }
     }
 
+    let error = match last_error {
+        Some(err) => err,
+        // INVARIANT: The loop executes at least once (0..=config.max_retries), ensuring last_error is populated if it completes without early return.
+        None => unreachable!("retry loop executes at least once"),
+    };
+
     Err(RetryError {
         attempts: config.max_retries + 1,
-        error: last_error.unwrap(),
+        error,
     })
 }
 

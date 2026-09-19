@@ -77,6 +77,7 @@ impl ModuleRuntimeExtensions {
             self.insert(init());
         }
 
+        // INVARIANT: Inserted immediately above if absent; extension is guaranteed present.
         self.get_mut::<T>()
             .expect("runtime extension should be uniquely owned during registration")
     }

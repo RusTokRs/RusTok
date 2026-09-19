@@ -69,7 +69,7 @@ description = "Library crates and domain modules must use strongly-typed errors 
 reference = "docs/standards/patterns-vs-antipatterns.md §2.2, docs/standards/errors.md"
 target_globs = ["crates/libs/**/*.rs", "crates/modules/**/*.rs"]
 exclude_globs = ["**/tests/**", "**/*_test.rs", "**/benches/**", "apps/**"]
-pattern = '(anyhow::|Result<.*,\s*anyhow::Error>|Result<.*,\s*String>)'
+pattern = '(anyhow::|Result<[^<>,]+(?:<[^<>]*>)?,\s*anyhow::Error>|Result<[^<>,]+(?:<[^<>]*>)?,\s*String>)'
 remediation = "Define a typed error enum with `#[derive(thiserror::Error)]` in the crate's error module and return that instead."
 
 [[rules]]

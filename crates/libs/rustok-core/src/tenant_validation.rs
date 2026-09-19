@@ -9,8 +9,10 @@ use thiserror::Error;
 
 /// Regex pattern for valid slugs (lowercase alphanumeric with hyphens)
 // INVARIANT: Static slug pattern is compile-time verified and constant.
-static VALID_SLUG_PATTERN: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^[a-z0-9][a-z0-9-]{0,62}$").expect("valid slug regex"));
+static VALID_SLUG_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^[a-z0-9][a-z0-9-]{0,62}$")
+        .expect("valid slug regex")
+});
 
 /// Regex pattern for valid UUIDs
 // INVARIANT: Static UUID regex pattern is compile-time verified and constant.

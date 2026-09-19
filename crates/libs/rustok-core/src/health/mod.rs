@@ -304,19 +304,26 @@ pub mod checks {
     pub struct DatabaseHealthCheck {
         name: String,
         check_fn:
-            Box<dyn Fn() -> futures::future::BoxFuture<'static, Result<(), String>> + Send + Sync>,
+            Box<dyn Fn() -> futures::future::BoxFuture<'static, Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send + Sync>,
     }
 
     impl DatabaseHealthCheck {
-        /// Create from a database pool
-        pub fn new<F, Fut>(name: impl Into<String>, check_fn: F) -> Self
+        /// Create from a database check function
+        pub fn new<F, Fut, E>(name: impl Into<String>, check_fn: F) -> Self
         where
             F: Fn() -> Fut + Send + Sync + 'static,
-            Fut: futures::Future<Output = Result<(), String>> + Send + 'static,
+            Fut: futures::Future<Output = Result<(), E>> + Send + 'static,
+            E: std::error::Error + Send + Sync + 'static,
         {
             Self {
                 name: name.into(),
-                check_fn: Box::new(move || Box::pin(check_fn())),
+                check_fn: Box::new(move || {
+                    let fut = check_fn();
+                    Box::pin(async move {
+                        fut.await
+                            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+                    })
+                }),
             }
         }
     }
@@ -330,7 +337,7 @@ pub mod checks {
         async fn check(&self) -> HealthResult {
             match (self.check_fn)().await {
                 Ok(_) => HealthResult::healthy(&self.name),
-                Err(e) => HealthResult::unhealthy(&self.name, e),
+                Err(e) => HealthResult::unhealthy(&self.name, e.to_string()),
             }
         }
     }
