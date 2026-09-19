@@ -524,7 +524,6 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
 
 requireAll("crates/modules/rustok-taxonomy/src/services.rs", [
   "pub async fn ensure_module_terms_for_owner_in_tx(",
-  "find_module_term_id_in_tx(",
   "allow_create",
 ]);
 
