@@ -40,7 +40,7 @@ pub use dto::{
 pub use error::{TaxonomyError, TaxonomyResult};
 pub use module_term_lookup::TaxonomyModuleRouteMatch;
 pub use module_term_mutation::{
-    ModuleTermMutationResult, ModuleTermUpdateInput, delete_module_term_in_tx,
+    ModuleTermCreateInput, ModuleTermMutationResult, ModuleTermUpdateInput, delete_module_term_in_tx,
     lock_module_term_in_tx, update_module_term_in_tx,
 };
 pub use normalization::{normalize_term_locale, normalize_term_route_key};
