@@ -182,14 +182,15 @@ impl CategoryService {
             }
         };
 
-        let existing_placement =
-            taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, category_id))
-                .one(&txn)
-                .await?;
-        let (parent_id, position) = match existing_placement {
-            Some(p) => (p.parent_term_id, p.position),
-            None => (None, 0),
-        };
+        let placement = taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, category_id))
+            .one(&txn)
+            .await?
+            .ok_or_else(|| {
+                BlogError::invariant(format!(
+                    "Blog category {category_id} has no canonical Taxonomy hierarchy placement"
+                ))
+            })?;
+        let (parent_id, position) = (placement.parent_term_id, placement.position);
 
         category_taxonomy_sync::sync_category_copy_in_tx(
             &txn,

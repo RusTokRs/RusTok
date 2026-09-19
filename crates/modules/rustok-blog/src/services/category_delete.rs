@@ -205,6 +205,11 @@ async fn canonicalize_siblings_in_tx(
         .order_by_asc(taxonomy_category_hierarchy::Column::TermId)
         .all(txn)
         .await?;
+    if siblings.len() != blog_category_ids.len() {
+        return Err(BlogError::invariant(
+            "Blog category Taxonomy hierarchy coverage is incomplete during sibling canonicalization",
+        ));
+    }
     let mut sibling_ids = Vec::with_capacity(siblings.len());
     for (index, sibling) in siblings.into_iter().enumerate() {
         let desired_position = i32::try_from(index)
