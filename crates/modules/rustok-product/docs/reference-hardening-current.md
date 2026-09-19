@@ -1,6 +1,6 @@
 # rustok-product canonical large-reference hardening cursor
 
-Status: `large_reference_hardening_in_progress_after_public_api_slice`.
+Status: `large_reference_hardening_in_progress_after_patch_slice`.
 
 Baseline: `ad04a17e8252ae9d23e99af4b7ad7ffaebdfd10e` (Blog canonical reference v1 source certification, #4073).
 
@@ -104,3 +104,5 @@ requirements remain authoritative.
 7. Audit integrations/FBA and finish Product-specific large-reference machine guards.
 8. Only then mark Product as the canonical large-module reference and continue to Pages, Forum,
    Taxonomy, and remaining modules/libs.
+
+The first two Product slices are source-only hardening; maintainer compile/test/runtime evidence remains separate.
