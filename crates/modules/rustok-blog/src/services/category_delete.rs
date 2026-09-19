@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use chrono::Utc;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::entities::taxonomy_category_hierarchy;
@@ -11,7 +12,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::entities::blog_category;
+use crate::entities::{blog_category, blog_post};
 use crate::{BlogError, BlogResult};
 
 /// Blog-owned cleanup that participates in Taxonomy's canonical Category delete transaction.
@@ -73,6 +74,8 @@ impl BlogCategoryDeleteCleanup {
                 ))
             })?;
         let parent_id = placement.parent_term_id;
+
+        detach_category_from_posts_in_tx(txn, tenant_id, self.blog_category_id).await?;
 
         let deleted = blog_category::Entity::delete_many()
             .filter(blog_category::Column::Id.eq(self.blog_category_id))
@@ -176,6 +179,73 @@ async fn ensure_category_is_leaf_in_tx(
         ));
     }
     Ok(())
+}
+
+async fn detach_category_from_posts_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    category_id: Uuid,
+) -> BlogResult<Vec<Uuid>> {
+    let posts = blog_post::Entity::find()
+        .filter(blog_post::Column::TenantId.eq(tenant_id))
+        .filter(blog_post::Column::CategoryId.eq(category_id))
+        .order_by_asc(blog_post::Column::Id)
+        .all(txn)
+        .await?;
+
+    let mut affected_post_ids = Vec::with_capacity(posts.len());
+    let now = Utc::now();
+
+    for post in posts {
+        if post.version <= 0 {
+            return Err(BlogError::invariant(format!(
+                "Blog post {} has invalid persisted version {}",
+                post.id, post.version
+            )));
+        }
+
+        let next_version = post
+            .version
+            .checked_add(1)
+            .filter(|next| *next > 0)
+            .ok_or_else(|| {
+                BlogError::invariant(format!(
+                    "Blog post version {} is invalid or exhausted",
+                    post.version
+                ))
+            })?;
+
+        let updated = blog_post::Entity::update_many()
+            .col_expr(
+                blog_post::Column::CategoryId,
+                sea_orm::sea_query::Expr::value(Option::<Uuid>::None),
+            )
+            .col_expr(
+                blog_post::Column::Version,
+                sea_orm::sea_query::Expr::value(next_version),
+            )
+            .col_expr(
+                blog_post::Column::UpdatedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .filter(blog_post::Column::Id.eq(post.id))
+            .filter(blog_post::Column::CategoryId.eq(category_id))
+            .filter(blog_post::Column::Version.eq(post.version))
+            .exec(txn)
+            .await?;
+
+        if updated.rows_affected != 1 {
+            return Err(BlogError::conflict(format!(
+                "Blog post {} changed before category detachment could commit",
+                post.id
+            )));
+        }
+
+        affected_post_ids.push(post.id);
+    }
+
+    Ok(affected_post_ids)
 }
 
 async fn canonicalize_siblings_in_tx(
