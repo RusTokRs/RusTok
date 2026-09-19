@@ -1,8 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    Statement, TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait, sea_query::Expr,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -59,7 +58,7 @@ impl CategoryService {
         let id = Uuid::new_v4();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
 
-        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?;
         ensure_category_tree_capacity_in_tx(&txn, tenant_id).await?;
         if let Some(parent_id) = parent_id {
             Self::ensure_exists_in_tx(&txn, tenant_id, parent_id).await?;
@@ -245,24 +244,6 @@ impl CategoryService {
             )
             .await
             .map_err(BlogError::from)
-    }
-}
-
-async fn lock_category_tree_in_tx(txn: &DatabaseTransaction, tenant_id: Uuid) -> BlogResult<()> {
-    match txn.get_database_backend() {
-        DatabaseBackend::Postgres => {
-            txn.execute_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                [format!("blog-category-tree:{tenant_id}").into()],
-            ))
-            .await?;
-            Ok(())
-        }
-        DatabaseBackend::Sqlite => Ok(()),
-        backend => Err(BlogError::invariant(format!(
-            "Blog category hierarchy writes do not support storage backend {backend:?}"
-        ))),
     }
 }
 
