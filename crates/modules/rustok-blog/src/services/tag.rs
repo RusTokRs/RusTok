@@ -498,7 +498,12 @@ pub(crate) async fn load_post_tags_map(
 
     let term_ids = relations.iter().map(|item| item.tag_id).collect::<Vec<_>>();
     let names = TaxonomyOwnerReader::new(db.clone())
-        .load_term_names_strict(tenant_id, TaxonomyTermKind::Tag, &term_ids)
+        .load_term_names_strict_for_module(
+            tenant_id,
+            TaxonomyTermKind::Tag,
+            BLOG_SCOPE_VALUE,
+            &term_ids,
+        )
         .await?;
     let mut locale_chain = vec![locale.to_string()];
     if let Some(fallback_locale) = fallback_locale
