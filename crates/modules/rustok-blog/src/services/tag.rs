@@ -418,17 +418,27 @@ pub(crate) async fn load_post_tags_map(
     }
 
     let term_ids = relations.iter().map(|item| item.tag_id).collect::<Vec<_>>();
-    let names = TaxonomyService::new(db.clone())
-        .resolve_term_names(tenant_id, &term_ids, locale, fallback_locale)
+    let names = TaxonomyOwnerReader::new(db.clone())
+        .load_term_names_strict(tenant_id, TaxonomyTermKind::Tag, &term_ids)
         .await?;
+    let mut locale_chain = vec![locale.to_string()];
+    if let Some(fallback_locale) = fallback_locale
+        && fallback_locale != locale
+    {
+        locale_chain.push(fallback_locale.to_string());
+    }
 
     for relation in relations {
-        if let Some(name) = names.get(&relation.tag_id) {
-            tags_by_post
-                .entry(relation.post_id)
-                .or_default()
-                .push(name.clone());
-        }
+        let Some(term_names) = names.get(&relation.tag_id) else {
+            return Err(BlogError::invariant(format!(
+                "Blog post {} references missing Taxonomy tag {}",
+                relation.post_id, relation.tag_id
+            )));
+        };
+        tags_by_post
+            .entry(relation.post_id)
+            .or_default()
+            .push(term_names.resolve_name_for_locale_chain(&locale_chain));
     }
 
     Ok(tags_by_post)

@@ -287,6 +287,7 @@ impl BlogSearchProjector {
                     JOIN taxonomy_terms term
                       ON term.id = relation.tag_id
                      AND term.tenant_id = p.tenant_id
+                     AND term.kind = 'tag'
                     LEFT JOIN taxonomy_term_translations localized
                       ON localized.term_id = term.id
                      AND localized.tenant_id = p.tenant_id

@@ -74,6 +74,7 @@ for (const marker of [
   "LEFT JOIN taxonomy_term_translations bct",
   "LEFT JOIN taxonomy_term_translations bct_fallback",
   "JOIN taxonomy_terms term",
+  "term.kind = 'tag'",
   "LEFT JOIN taxonomy_term_translations localized",
   "LEFT JOIN taxonomy_term_translations fallback",
   "relation.tenant_id = p.tenant_id",
