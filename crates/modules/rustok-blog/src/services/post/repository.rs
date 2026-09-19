@@ -71,8 +71,13 @@ impl PostService {
         Ok(map)
     }
 
-    pub(super) async fn load_channel_slugs(&self, post_id: Uuid) -> BlogResult<Vec<String>> {
+    pub(super) async fn load_channel_slugs(
+        &self,
+        tenant_id: Uuid,
+        post_id: Uuid,
+    ) -> BlogResult<Vec<String>> {
         let records = blog_post_channel_visibility::Entity::find()
+            .filter(blog_post_channel_visibility::Column::TenantId.eq(tenant_id))
             .filter(blog_post_channel_visibility::Column::PostId.eq(post_id))
             .order_by_asc(blog_post_channel_visibility::Column::ChannelSlug)
             .all(&self.db)
@@ -83,6 +88,7 @@ impl PostService {
 
     pub(super) async fn load_channel_slugs_map(
         &self,
+        tenant_id: Uuid,
         post_ids: &[Uuid],
     ) -> BlogResult<HashMap<Uuid, Vec<String>>> {
         if post_ids.is_empty() {
@@ -90,6 +96,7 @@ impl PostService {
         }
 
         let records = blog_post_channel_visibility::Entity::find()
+            .filter(blog_post_channel_visibility::Column::TenantId.eq(tenant_id))
             .filter(blog_post_channel_visibility::Column::PostId.is_in(post_ids.to_vec()))
             .order_by_asc(blog_post_channel_visibility::Column::ChannelSlug)
             .all(&self.db)
@@ -113,6 +120,7 @@ impl PostService {
         channel_slugs: &[String],
     ) -> BlogResult<()> {
         blog_post_channel_visibility::Entity::delete_many()
+            .filter(blog_post_channel_visibility::Column::TenantId.eq(tenant_id))
             .filter(blog_post_channel_visibility::Column::PostId.eq(post_id))
             .exec(txn)
             .await
