@@ -577,7 +577,7 @@ impl TaxonomyService {
             validate_term_name(label)?;
             let normalized_slug = normalize_non_empty_slug(label)?;
             let term_id = if let Some(term_id) = self
-                .find_module_term_id_in_tx(
+                .find_term_id_for_module_in_tx(
                     txn,
                     tenant_id,
                     kind,
@@ -885,57 +885,6 @@ impl TaxonomyService {
             .await?;
         }
         Ok(())
-    }
-
-    async fn find_module_term_id_in_tx(
-        &self,
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        kind: TaxonomyTermKind,
-        module_scope: &str,
-        locale: &str,
-        route_key: &str,
-    ) -> TaxonomyResult<Option<Uuid>> {
-        for candidate_locale in locale_candidates(locale) {
-            if let Some(route) = taxonomy_term_route_key::Entity::find()
-                .filter(taxonomy_term_route_key::Column::TenantId.eq(tenant_id))
-                .filter(taxonomy_term_route_key::Column::Kind.eq(kind))
-                .filter(taxonomy_term_route_key::Column::ScopeType.eq(TaxonomyScopeType::Module))
-                .filter(taxonomy_term_route_key::Column::ScopeValue.eq(module_scope))
-                .filter(taxonomy_term_route_key::Column::Locale.eq(&candidate_locale))
-                .filter(taxonomy_term_route_key::Column::RouteKey.eq(route_key))
-                .one(txn)
-                .await?
-            {
-                let Some(term) = taxonomy_term::Entity::find_by_id(route.term_id)
-                    .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
-                    .filter(taxonomy_term::Column::Kind.eq(kind))
-                    .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
-                    .filter(taxonomy_term::Column::ScopeValue.eq(module_scope))
-                    .lock_exclusive()
-                    .one(txn)
-                    .await?
-                else {
-                    continue;
-                };
-                return Ok(Some(term.id));
-            }
-        }
-
-        if let Some(term) = taxonomy_term::Entity::find()
-            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
-            .filter(taxonomy_term::Column::Kind.eq(kind))
-            .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
-            .filter(taxonomy_term::Column::ScopeValue.eq(module_scope))
-            .filter(taxonomy_term::Column::CanonicalKey.eq(route_key))
-            .lock_exclusive()
-            .one(txn)
-            .await?
-        {
-            return Ok(Some(term.id));
-        }
-
-        Ok(None)
     }
 
     async fn find_term_id_for_module_in_tx(
