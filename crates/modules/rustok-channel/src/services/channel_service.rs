@@ -259,6 +259,9 @@ impl ChannelService {
             .one(&self.db)
             .await?
             .ok_or(ChannelError::NotFound(channel_id))?;
+        if !channel.is_active {
+            return Ok(false);
+        }
 
         let binding = channel_module_binding::Entity::find()
             .filter(channel_module_binding::Column::ChannelId.eq(channel.id))
