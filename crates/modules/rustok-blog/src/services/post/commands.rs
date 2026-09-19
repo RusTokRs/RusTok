@@ -198,21 +198,21 @@ impl PostService {
         }
 
         validate_optional_title(title.as_deref())?;
-        if let Some(value) = excerpt.as_ref().set_value() {
+        if let Patch::Set(value) = excerpt.as_ref() {
             validate_post_field_length(
                 Some(value.as_str()),
                 MAX_POST_EXCERPT_CHARS,
                 "Excerpt",
             )?;
         }
-        if let Some(value) = seo_title.as_ref().set_value() {
+        if let Patch::Set(value) = seo_title.as_ref() {
             validate_post_field_length(
                 Some(value.as_str()),
                 MAX_POST_SEO_TITLE_CHARS,
                 "SEO title",
             )?;
         }
-        if let Some(value) = seo_description.as_ref().set_value() {
+        if let Patch::Set(value) = seo_description.as_ref() {
             validate_post_field_length(
                 Some(value.as_str()),
                 MAX_POST_SEO_DESCRIPTION_CHARS,
