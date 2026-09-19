@@ -322,6 +322,7 @@ impl PostService {
 
         let mut items = Vec::with_capacity(posts.len());
         for post in posts {
+            Self::validate_persisted_version(&post)?;
             let translations = translations_map.get(&post.id).cloned().unwrap_or_default();
             if translations.is_empty() {
                 return Err(BlogError::invariant(format!(
