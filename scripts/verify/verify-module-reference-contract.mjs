@@ -134,6 +134,7 @@ requireAll("crates/modules/rustok-blog/src/services/category_name_projection.rs"
 requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
   "// Serialize before reading hierarchy so a concurrent structural move cannot be",
+  "self.publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)",
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/category_command.rs", [
