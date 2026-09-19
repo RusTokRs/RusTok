@@ -4,7 +4,11 @@ use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
 use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 
-use crate::{migrations, seo_targets, ProductRuntimeSelected};
+use crate::{migrations, seo_targets};
+
+/// Typed marker proving that `ProductModule` participated in runtime extension registration.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ProductRuntimeSelected;
 
 pub struct ProductModule;
 
