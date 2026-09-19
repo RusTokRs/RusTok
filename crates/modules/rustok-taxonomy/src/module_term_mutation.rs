@@ -39,35 +39,6 @@ pub struct ModuleTermMutationResult {
     pub created_at: DateTime<Utc>,
 }
 
-pub async fn create_module_term_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    kind: TaxonomyTermKind,
-    module_slug: &str,
-    input: ModuleTermCreateInput,
-) -> TaxonomyResult<Uuid> {
-    let module_scope = normalize_module_scope(module_slug)?;
-    let locale = normalize_locale(&input.locale)?;
-    validate_term_name(&input.name)?;
-    let normalized_slug = match input.slug.as_deref() {
-        Some(slug) => normalize_non_empty_slug(slug)?,
-        None => normalize_non_empty_slug(&input.name)?,
-    };
-
-    crate::services::create_module_term_record_in_tx(
-        txn,
-        crate::services::ModuleTerm {
-            tenant_id,
-            kind,
-            module_scope: &module_scope,
-            locale: &locale,
-            name: &input.name,
-            normalized_slug: &normalized_slug,
-        },
-    )
-    .await
-}
-
 pub async fn update_module_term_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
