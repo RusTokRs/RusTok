@@ -25,7 +25,7 @@ mod translation_evidence;
 pub mod translation_target;
 
 pub use category_delete::TaxonomyCategoryDeleteCleanupPort;
-pub use category_hierarchy::MAX_TAXONOMY_CATEGORY_DEPTH;
+pub use category_hierarchy::{MAX_TAXONOMY_CATEGORY_DEPTH, lock_category_hierarchy_writer_in_tx};
 pub use category_presentation::{
     TAXONOMY_CATEGORY_ICON_KEY_MAX_BYTES, TaxonomyCategoryMediaReferenceValidator,
     normalize_taxonomy_category_color, normalize_taxonomy_category_icon_key,
