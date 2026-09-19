@@ -546,17 +546,12 @@ async fn create_blog_projection_source_tables(
             channel_slug TEXT NOT NULL
         );
 
-        CREATE TABLE blog_category_translations (
-            tenant_id UUID NOT NULL,
-            category_id UUID NOT NULL,
-            locale TEXT NOT NULL,
-            name TEXT NOT NULL,
-            slug TEXT NOT NULL
-        );
-
         CREATE TABLE taxonomy_terms (
             id UUID PRIMARY KEY,
             tenant_id UUID NOT NULL,
+            kind TEXT NOT NULL,
+            scope_type TEXT NOT NULL,
+            scope_value TEXT NOT NULL,
             canonical_key TEXT NOT NULL
         );
 
@@ -589,6 +584,8 @@ async fn insert_blog_post(
     title: &str,
 ) -> Result<(), sea_orm::DbErr> {
     let translation_id = Uuid::new_v4();
+    let category_id = Uuid::new_v4();
+    let category_translation_id = Uuid::new_v4();
     let rust_tag_id = Uuid::new_v4();
     let rust_translation_id = Uuid::new_v4();
     let cms_tag_id = Uuid::new_v4();
@@ -600,10 +597,10 @@ async fn insert_blog_post(
         ON CONFLICT (id) DO NOTHING;
 
         INSERT INTO blog_posts (
-            id, tenant_id, author_id, status, slug, metadata, published_at,
+            id, tenant_id, author_id, category_id, status, slug, metadata, published_at,
             created_at, updated_at, comment_count, view_count, version
         ) VALUES (
-            '{post_id}', '{tenant_id}', '{author_id}', '{status}', '{slug}',
+            '{post_id}', '{tenant_id}', '{author_id}', '{category_id}', '{status}', '{slug}',
             '{{"tags":["metadata-only"]}}'::jsonb,
             CASE WHEN '{status}' = 'published' THEN NOW() ELSE NULL END,
             NOW(), NOW(), 4, 12, 1
@@ -622,10 +619,15 @@ async fn insert_blog_post(
         INSERT INTO blog_post_channel_visibility (tenant_id, post_id, channel_slug)
         VALUES ('{tenant_id}', '{post_id}', 'web');
 
-        INSERT INTO taxonomy_terms (id, tenant_id, canonical_key)
+        INSERT INTO taxonomy_terms (id, tenant_id, kind, scope_type, scope_value, canonical_key)
         VALUES
-            ('{rust_tag_id}', '{tenant_id}', 'rust'),
-            ('{cms_tag_id}', '{tenant_id}', 'cms');
+            ('{category_id}', '{tenant_id}', 'category', 'module', 'blog', 'blog-category'),
+            ('{rust_tag_id}', '{tenant_id}', 'tag', 'global', '', 'rust'),
+            ('{cms_tag_id}', '{tenant_id}', 'tag', 'global', '', 'cms');
+
+        INSERT INTO taxonomy_term_translations (id, term_id, tenant_id, locale, name, slug)
+        VALUES
+            ('{category_translation_id}', '{category_id}', '{tenant_id}', 'en', 'Search Category', 'search-category');
 
         INSERT INTO taxonomy_term_translations (id, term_id, tenant_id, locale, name, slug)
         VALUES
