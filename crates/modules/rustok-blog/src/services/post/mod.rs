@@ -139,6 +139,21 @@ fn validate_tags(tags: &[String]) -> BlogResult<()> {
     Ok(())
 }
 
+fn validate_post_field_length(
+    value: Option<&str>,
+    max_chars: usize,
+    field: &str,
+) -> BlogResult<()> {
+    if let Some(value) = value
+        && value.chars().count() > max_chars
+    {
+        return Err(BlogError::validation(format!(
+            "{field} cannot exceed {max_chars} characters"
+        )));
+    }
+    Ok(())
+}
+
 fn normalize_locale(locale: &str) -> BlogResult<String> {
     normalize_locale_code(locale).ok_or_else(|| BlogError::validation("Invalid locale"))
 }
@@ -172,6 +187,9 @@ const MAX_POST_METADATA_BYTES: usize = 64 * 1024;
 const MAX_POST_CHANNEL_SLUGS: usize = 32;
 const MAX_POST_CHANNEL_SLUG_BYTES: usize = 100;
 const MAX_POST_SLUG_BYTES: usize = 255;
+const MAX_POST_EXCERPT_CHARS: usize = 1000;
+const MAX_POST_SEO_TITLE_CHARS: usize = 255;
+const MAX_POST_SEO_DESCRIPTION_CHARS: usize = 1000;
 const MAX_POST_ARCHIVE_REASON_CHARS: usize = 1000;
 
 fn normalize_custom_metadata(metadata: Option<Value>) -> BlogResult<Value> {
