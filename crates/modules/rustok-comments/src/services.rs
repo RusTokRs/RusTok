@@ -907,13 +907,19 @@ impl CommentsService {
         txn: &DatabaseTransaction,
         thread_id: Uuid,
     ) -> CommentsResult<i64> {
-        Ok(comment::Entity::find()
+        match comment::Entity::find()
             .filter(comment::Column::ThreadId.eq(thread_id))
             .order_by_desc(comment::Column::Position)
             .one(txn)
             .await?
-            .map(|item| item.position + 1)
-            .unwrap_or(1))
+        {
+            Some(item) => item.position.checked_add(1).ok_or_else(|| {
+                CommentsError::Validation(format!(
+                    "Comment position is exhausted for thread {thread_id}"
+                ))
+            }),
+            None => Ok(1),
+        }
     }
 
     async fn find_comment(
@@ -996,15 +1002,16 @@ impl CommentsService {
         &self,
         txn: &DatabaseTransaction,
         thread: &comment_thread::Model,
-        delta: i32,
-        last_commented_at: Option<sea_orm::prelude::DateTimeWithTimeZone>,
+        _delta: i32,
+        _last_commented_at: Option<sea_orm::prelude::DateTimeWithTimeZone>,
     ) -> CommentsResult<()> {
+        // The thread ActiveModel hook recomputes both denormalized counters from
+        // the transactionally visible live comments. Keep the supplied delta only
+        // for API compatibility with existing callers; never perform unchecked
+        // arithmetic on persisted counter state here.
         let mut active: comment_thread::ActiveModel = thread.clone().into();
-        active.comment_count = Set((thread.comment_count + delta).max(0));
+        active.comment_count = Set(thread.comment_count);
         active.updated_at = Set(Utc::now().into());
-        if let Some(last_commented_at) = last_commented_at {
-            active.last_commented_at = Set(Some(last_commented_at));
-        }
         active.update(txn).await?;
         Ok(())
     }
