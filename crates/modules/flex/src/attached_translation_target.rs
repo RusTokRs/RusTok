@@ -64,8 +64,10 @@ impl FlexAttachedTranslationTargetProvider {
 
     fn descriptor_value() -> TranslationTargetProviderDescriptor {
         TranslationTargetProviderDescriptor {
+            // INVARIANT: TRANSLATION_OWNER_SLUG ("flex") is a compile-time static ASCII identifier under 191 bytes.
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
                 .expect("static Flex owner slug must satisfy the target contract"),
+            // INVARIANT: TRANSLATION_RESOURCE_KIND ("attached_localized_value") is a compile-time static ASCII identifier under 191 bytes.
             resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
                 .expect("static Flex attached-value kind must satisfy the target contract"),
             display_name: "Flex attached localized values".to_string(),
@@ -602,12 +604,24 @@ pub(crate) fn attached_identity(
     entity_id: Uuid,
 ) -> Result<TranslationResourceIdentity, PortError> {
     Ok(TranslationResourceIdentity {
-        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-            .expect("static Flex owner slug must satisfy target contract"),
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-            .expect("static Flex resource kind must satisfy target contract"),
-        resource_id: ResourceId::new(entity_id.to_string())
-            .expect("resource UUID must satisfy resource id contract"),
+        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
+            PortError::invariant_violation(
+                "flex.attached_translation_owner_slug_invalid",
+                error.to_string(),
+            )
+        })?,
+        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
+            PortError::invariant_violation(
+                "flex.attached_translation_resource_kind_invalid",
+                error.to_string(),
+            )
+        })?,
+        resource_id: ResourceId::new(entity_id.to_string()).map_err(|error| {
+            PortError::invariant_violation(
+                "flex.attached_translation_resource_id_invalid",
+                error.to_string(),
+            )
+        })?,
         subresource_id: Some(ResourceId::new(entity_type.to_string()).map_err(|error| {
             PortError::invariant_violation(
                 "flex.attached_translation_entity_type_invalid",

@@ -48,8 +48,10 @@ impl FlexSchemaTranslationTargetProvider {
 
     fn descriptor_value() -> TranslationTargetProviderDescriptor {
         TranslationTargetProviderDescriptor {
+            // INVARIANT: TRANSLATION_OWNER_SLUG ("flex") is a compile-time static ASCII identifier under 191 bytes.
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
                 .expect("static Flex owner slug must satisfy the target contract"),
+            // INVARIANT: TRANSLATION_RESOURCE_KIND ("custom_field_schema") is a compile-time static ASCII identifier under 191 bytes.
             resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
                 .expect("static Flex schema-copy kind must satisfy the target contract"),
             display_name: "Flex schema copy".to_string(),
@@ -263,7 +265,7 @@ fn neutralize_snapshot(
 
     let display_label = source_schema_name(&owner)?;
     let summary = TranslationResourceSummary {
-        identity: schema_identity(owner.schema_id),
+        identity: schema_identity(owner.schema_id)?,
         display_label,
         lifecycle: schema_lifecycle(owner.is_active),
         resource_revision: opaque_revision(owner.resource_revision, "resource_revision")?,
@@ -525,7 +527,7 @@ fn summary_from_owner(
     owner: FlexSchemaTranslationExactLocaleSnapshot,
 ) -> Result<TranslationResourceSummary, PortError> {
     Ok(TranslationResourceSummary {
-        identity: schema_identity(owner.schema_id),
+        identity: schema_identity(owner.schema_id)?,
         display_label: source_schema_name(&owner)?,
         lifecycle: schema_lifecycle(owner.is_active),
         resource_revision: opaque_revision(owner.resource_revision, "resource_revision")?,
@@ -617,16 +619,28 @@ fn ensure_distinct_locales(request: &ReadTranslationResourceRequest) -> Result<(
     Ok(())
 }
 
-fn schema_identity(schema_id: Uuid) -> TranslationResourceIdentity {
-    TranslationResourceIdentity {
-        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-            .expect("static Flex owner slug must satisfy target contract"),
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-            .expect("static Flex resource kind must satisfy target contract"),
-        resource_id: ResourceId::new(schema_id.to_string())
-            .expect("schema UUID must satisfy resource id contract"),
+fn schema_identity(schema_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
+    Ok(TranslationResourceIdentity {
+        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
+            PortError::invariant_violation(
+                "flex.schema_translation_owner_slug_invalid",
+                error.to_string(),
+            )
+        })?,
+        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
+            PortError::invariant_violation(
+                "flex.schema_translation_resource_kind_invalid",
+                error.to_string(),
+            )
+        })?,
+        resource_id: ResourceId::new(schema_id.to_string()).map_err(|error| {
+            PortError::invariant_violation(
+                "flex.schema_translation_resource_id_invalid",
+                error.to_string(),
+            )
+        })?,
         subresource_id: None,
-    }
+    })
 }
 
 fn schema_lifecycle(is_active: bool) -> TranslationResourceLifecycle {

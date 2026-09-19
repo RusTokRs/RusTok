@@ -27,7 +27,7 @@ pub struct FlexMutation;
 
 #[Object]
 impl FlexMutation {
-    /// Create a new attached custom field definition.
+    /// Registers an attached custom field definition for an entity type within the current tenant.
     async fn create_field_definition(
         &self,
         ctx: &Context<'_>,
