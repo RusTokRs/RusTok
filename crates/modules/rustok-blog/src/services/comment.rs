@@ -398,6 +398,25 @@ impl CommentService {
             return Err(BlogError::post_not_found(post_id));
         }
 
+        if let Some(channel_slug) = public_channel_slug {
+            let channel_service = ChannelService::new(self.db.clone());
+            let Some(channel) = channel_service
+                .get_channel_by_slug(tenant_id, channel_slug)
+                .await
+                .map_err(|_| BlogError::post_not_found(post_id))?
+            else {
+                return Err(BlogError::post_not_found(post_id));
+            };
+
+            let enabled = channel_service
+                .is_module_enabled_for_tenant(tenant_id, channel.id, "blog")
+                .await
+                .map_err(|_| BlogError::post_not_found(post_id))?;
+            if !enabled {
+                return Err(BlogError::post_not_found(post_id));
+            }
+        }
+
         Ok(())
     }
 
