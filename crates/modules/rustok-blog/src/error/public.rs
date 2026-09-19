@@ -107,7 +107,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn rich_internal_details_and_codes_are_redacted() {
         let rich = RichError::new(ErrorKind::Internal, "internal secret")
             .with_user_message("secret user-facing detail")
@@ -120,6 +119,7 @@ mod tests {
         assert!(!mapped.code.contains("SECRET"));
     }
 
+    #[test]
     fn invariant_and_native_internal_details_are_redacted() {
         let invariant = to_http_error(BlogError::invariant(
             "persisted-status=secret-corruption-marker",
