@@ -19,7 +19,7 @@ pub(crate) async fn load_category_locale_copy_in_tx(
         locale,
     )
     .await
-    .map_err(BlogError::from)
+    .map_err(map_taxonomy_error)
 }
 
 pub(crate) async fn sync_category_copy_in_tx(
@@ -60,3 +60,11 @@ pub(crate) fn canonical_key_for_blog_category(category_id: Uuid) -> String {
     format!("blog-category-{category_id}")
 }
 
+fn map_taxonomy_error(error: rustok_taxonomy::TaxonomyError) -> BlogError {
+    match error {
+        rustok_taxonomy::TaxonomyError::Database(error) => BlogError::Database(error),
+        other => BlogError::Validation(format!(
+            "Blog Category Taxonomy synchronization failed: {other}"
+        )),
+    }
+}

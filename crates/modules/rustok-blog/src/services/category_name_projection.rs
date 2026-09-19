@@ -39,6 +39,14 @@ pub(in crate::services) async fn load_category_names_map(
             "Blog post Category Taxonomy projection coverage is incomplete",
         ));
     }
+    if canonical
+        .iter()
+        .any(|category| category.available_locales.is_empty())
+    {
+        return Err(BlogError::invariant(
+            "Blog post Category Taxonomy projection contains Category without localized copy",
+        ));
+    }
 
     let canonical_by_id = canonical
         .into_iter()

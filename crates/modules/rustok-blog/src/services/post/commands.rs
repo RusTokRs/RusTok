@@ -209,7 +209,6 @@ impl PostService {
         }
 
         let full_reindex = has_owner_change || has_relation_change;
-        let next_version = Self::next_persisted_version(post.version)?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         let now = chrono::Utc::now();
 
@@ -228,7 +227,7 @@ impl PostService {
             )
             .col_expr(
                 blog_post::Column::Version,
-                sea_orm::sea_query::Expr::value(next_version),
+                sea_orm::sea_query::Expr::value(post.version + 1),
             )
             .filter(blog_post::Column::Id.eq(post_id))
             .filter(blog_post::Column::TenantId.eq(tenant_id))
@@ -285,9 +284,9 @@ impl PostService {
         }
 
         if has_translation_change {
-            let locale = locale.as_deref().ok_or_else(|| {
-                BlogError::invariant("localized change reached persistence without a canonical locale")
-            })?;
+            let locale = locale
+                .as_deref()
+                .expect("localized change requires a canonical locale");
             self.upsert_translation_in_tx(
                 &txn,
                 post_id,
@@ -309,9 +308,9 @@ impl PostService {
                 .await?;
         }
         if let Some(tags) = tags {
-            let locale = locale.as_deref().ok_or_else(|| {
-                BlogError::invariant("tag mutation reached persistence without a canonical locale")
-            })?;
+            let locale = locale
+                .as_deref()
+                .expect("tag mutation requires a canonical locale");
             sync_post_tags_in_tx(&self.db, &txn, tenant_id, post_id, &tags, locale).await?;
         }
 
@@ -323,11 +322,7 @@ impl PostService {
         } else {
             DomainEvent::BlogPostUpdated {
                 post_id,
-                locale: locale.ok_or_else(|| {
-                    BlogError::invariant(
-                        "localized-only update reached event publication without a canonical locale",
-                    )
-                })?,
+                locale: locale.expect("localized-only update requires a canonical locale"),
             }
         };
         self.event_bus
@@ -607,7 +602,7 @@ async fn apply_status_transition_in_tx(
         )
         .col_expr(
             blog_post::Column::Version,
-            sea_orm::sea_query::Expr::value(Self::next_persisted_version(expected_version)?),
+            sea_orm::sea_query::Expr::value(expected_version + 1),
         )
         .filter(blog_post::Column::Id.eq(post_id))
         .filter(blog_post::Column::TenantId.eq(tenant_id))
