@@ -499,6 +499,14 @@ impl PostService {
         security: SecurityContext,
         reason: Option<String>,
     ) -> BlogResult<()> {
+        if let Some(reason) = reason.as_deref()
+            && reason.chars().count() > MAX_POST_ARCHIVE_REASON_CHARS
+        {
+            return Err(BlogError::validation(format!(
+                "Archive reason cannot exceed {MAX_POST_ARCHIVE_REASON_CHARS} characters"
+            )));
+        }
+
         let post = self.find_post(tenant_id, post_id).await?;
         enforce_owned_scope(
             &security,
