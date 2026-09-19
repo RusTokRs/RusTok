@@ -213,6 +213,10 @@ requireAll("crates/modules/rustok-blog/src/module.rs", [
   '"dependencies"',
   '["content", "comments", "taxonomy", "outbox", "channel"]',
 ]);
+requireAll("crates/modules/rustok-blog/rustok-module.toml", [
+  'taxonomy = { version_req = ">=0.1.0" }',
+  'channel = { version_req = ">=0.1.0" }',
+]);
 requireAll("crates/modules/rustok-blog/src/module.rs", [
   "Resource::Tags",
   "Action::Create",
