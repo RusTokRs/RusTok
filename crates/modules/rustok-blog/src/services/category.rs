@@ -226,6 +226,26 @@ impl CategoryService {
         if exists.is_none() {
             return Err(BlogError::category_not_found(category_id));
         }
+
+        let ids = [category_id];
+        let canonical = rustok_taxonomy::TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
+            txn,
+            tenant_id,
+            rustok_taxonomy::TaxonomyScopeType::Module,
+            Some(category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
+            Some(&ids),
+            rustok_api::PLATFORM_FALLBACK_LOCALE,
+            None,
+        )
+        .await
+        .map_err(BlogError::from)?;
+
+        if canonical.len() != 1 {
+            return Err(BlogError::invariant(format!(
+                "Blog category {category_id} is missing canonical Taxonomy ownership or hierarchy",
+            )));
+        }
+
         Ok(())
     }
 
