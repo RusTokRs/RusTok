@@ -1,4 +1,5 @@
 use super::*;
+use rustok_api::Patch;
 use sea_orm::{DatabaseTransaction, FromQueryResult};
 
 impl CatalogService {
@@ -307,9 +308,13 @@ impl CatalogService {
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
-        if input.primary_category_id.is_some() {
-            self.validate_primary_category(tenant_id, input.primary_category_id)
-                .await?;
+        let requested_primary_category = match input.primary_category_id.as_ref() {
+            Patch::Keep => None,
+            Patch::Set(value) => Some(*value),
+            Patch::Clear => Some(None),
+        };
+        if let Some(category_id) = requested_primary_category.flatten() {
+            self.validate_primary_category(tenant_id, Some(category_id)).await?;
         }
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
@@ -354,26 +359,32 @@ impl CatalogService {
                 .and_then(|prepared| prepared.metadata.clone()),
             existing_product.metadata.clone(),
         );
-        let shipping_profile_input = input.shipping_profile_slug.clone();
-
-        if let Some(vendor) = input.vendor {
-            product_active.vendor = Set(Some(vendor));
+        match input.vendor {
+            Patch::Keep => {}
+            Patch::Set(value) => product_active.vendor = Set(Some(value)),
+            Patch::Clear => product_active.vendor = Set(None),
         }
-        if input.seller_id.is_some() {
-            product_active.seller_id = Set(normalize_seller_id(input.seller_id.as_deref()));
+        match input.seller_id {
+            Patch::Keep => {}
+            Patch::Set(value) => product_active.seller_id = Set(normalize_seller_id(Some(&value))),
+            Patch::Clear => product_active.seller_id = Set(None),
         }
-        if let Some(product_type) = input.product_type {
-            product_active.product_type = Set(Some(product_type));
+        match input.product_type {
+            Patch::Keep => {}
+            Patch::Set(value) => product_active.product_type = Set(Some(value)),
+            Patch::Clear => product_active.product_type = Set(None),
         }
-        if shipping_profile_input.is_some() {
-            product_active.shipping_profile_slug = Set(shipping_profile_input
-                .as_deref()
-                .and_then(normalize_shipping_profile_slug));
+        match input.shipping_profile_slug {
+            Patch::Keep => {}
+            Patch::Set(value) => {
+                product_active.shipping_profile_slug = Set(normalize_shipping_profile_slug(&value));
+            }
+            Patch::Clear => product_active.shipping_profile_slug = Set(None),
         }
-        let primary_category_changed = input.primary_category_id.is_some()
-            && input.primary_category_id != existing_product.primary_category_id;
-        if input.primary_category_id.is_some() {
-            product_active.primary_category_id = Set(input.primary_category_id);
+        let primary_category_changed = requested_primary_category.is_some()
+            && requested_primary_category != Some(existing_product.primary_category_id);
+        if let Some(category_id) = requested_primary_category {
+            product_active.primary_category_id = Set(category_id);
         }
         if let Some((metadata, _)) = metadata_update.as_ref() {
             product_active.metadata = Set(metadata.clone());
@@ -476,7 +487,7 @@ impl CatalogService {
                 DomainEvent::ProductPrimaryCategoryChanged {
                     product_id,
                     old_category_id: existing_product.primary_category_id,
-                    new_category_id: input.primary_category_id,
+                    new_category_id: requested_primary_category.unwrap_or(existing_product.primary_category_id),
                 },
             )
             .await?;
