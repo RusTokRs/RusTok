@@ -298,6 +298,8 @@ requireAll("crates/modules/rustok-blog/src/dto/comment.rs", [
 requireAll("crates/modules/rustok-blog/src/services/comment.rs", [
   "input.command_id",
   ".with_idempotency_key(",
+  "Self::ensure_blog_target(&existing)?;",
+  "comments_read_port_context(",
 ]);
 
 requireAll("crates/modules/rustok-blog/admin/src/model.rs", [
