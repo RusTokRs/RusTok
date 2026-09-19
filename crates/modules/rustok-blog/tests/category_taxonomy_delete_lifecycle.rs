@@ -85,6 +85,18 @@ fn create_input(name: &str, position: i32) -> CreateCategoryInput {
     }
 }
 
+fn create_child_input(name: &str, parent_id: Uuid, position: i32) -> CreateCategoryInput {
+    CreateCategoryInput {
+        locale: "en".to_string(),
+        name: name.to_string(),
+        slug: Some(name.to_ascii_lowercase()),
+        description: None,
+        parent_id: Some(parent_id),
+        position: Some(position),
+        settings: serde_json::json!({}),
+    }
+}
+
 #[tokio::test]
 async fn delete_category_detaches_posts_without_dangling_reference() {
     let db = setup().await;
@@ -238,4 +250,49 @@ async fn host_cleanup_failure_rolls_back_blog_and_taxonomy_deletion() {
             .expect("Taxonomy Category lookup should succeed")
             .is_some()
     );
+}
+
+
+#[tokio::test]
+async fn delete_nested_category_replays_only_its_sibling_positions() {
+    let db = setup().await;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let (service, _events) = service(
+        &db,
+        Arc::new(RecordingCleanup {
+            calls: calls.clone(),
+            fail: false,
+        }),
+    );
+    let tenant_id = Uuid::new_v4();
+
+    let root = service
+        .create(tenant_id, admin(), create_input("Root", 0))
+        .await
+        .expect("root Blog Category should be created");
+    let first_child = service
+        .create(tenant_id, admin(), create_child_input("First Child", root, 0))
+        .await
+        .expect("first child Blog Category should be created");
+    let second_child = service
+        .create(tenant_id, admin(), create_child_input("Second Child", root, 1))
+        .await
+        .expect("second child Blog Category should be created");
+
+    service
+        .delete(tenant_id, first_child, admin())
+        .await
+        .expect("nested Blog Category delete should compact only destination siblings");
+
+    let remaining = taxonomy_category_hierarchy::Entity::find()
+        .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_category_hierarchy::Column::TermId.eq(second_child))
+        .one(&db)
+        .await
+        .expect("remaining sibling hierarchy lookup should succeed")
+        .expect("remaining sibling hierarchy row should exist");
+
+    assert_eq!(remaining.parent_term_id, Some(root));
+    assert_eq!(remaining.position, 0);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
