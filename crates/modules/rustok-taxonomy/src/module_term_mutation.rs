@@ -4,6 +4,7 @@ use rustok_content::normalize_locale_code;
 use rustok_core::{PermissionScope, SecurityContext};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter,
+    QuerySelect,
     sea_query::Expr,
 };
 use uuid::Uuid;
