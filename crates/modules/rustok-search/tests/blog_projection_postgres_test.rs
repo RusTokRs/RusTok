@@ -128,6 +128,8 @@ async fn blog_events_upsert_publish_archive_and_delete_search_document() -> Test
     assert_eq!(draft.slug.as_deref(), Some("release-notes"));
     assert_eq!(draft.locale, "en");
     assert_eq!(draft.payload["slug"], "release-notes");
+    assert_eq!(draft.payload["category_name"], "Search Category");
+    assert_eq!(draft.payload["category_slug"], "search-category");
     assert_eq!(draft.payload["author_name"], "Search Author");
     assert_eq!(draft.payload["tags"], serde_json::json!(["cms", "rust"]));
     assert_eq!(draft.payload["channel_slugs"], serde_json::json!(["web"]));
