@@ -92,6 +92,8 @@ impl CategoryService {
         )
         .await?;
 
+        self.publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)
+            .await?;
         txn.commit().await.map_err(BlogError::from)?;
         Ok(id)
     }
