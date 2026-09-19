@@ -551,8 +551,8 @@ impl TaxonomyService {
         Ok((items, total))
     }
 
-    /// Ensures labels resolve to module-owned terms only. Missing terms are created
-    /// only when the owning domain explicitly permits creation.
+    /// Resolves labels through module-first/global fallback and creates a new term
+    /// only when the owning domain explicitly permits module-term creation.
     #[instrument(skip(self, txn, labels))]
     pub async fn ensure_module_terms_for_owner_in_tx(
         &self,
