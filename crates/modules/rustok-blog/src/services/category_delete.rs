@@ -191,6 +191,17 @@ async fn canonicalize_siblings_in_tx(
         .map(|c| c.id)
         .collect::<Vec<_>>();
 
+    let hierarchy_rows = taxonomy_category_hierarchy::Entity::find()
+        .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_category_hierarchy::Column::TermId.is_in(blog_category_ids.clone()))
+        .all(txn)
+        .await?;
+    if hierarchy_rows.len() != blog_category_ids.len() {
+        return Err(BlogError::invariant(
+            "Blog category Taxonomy hierarchy coverage is incomplete during sibling canonicalization",
+        ));
+    }
+
     let mut query = taxonomy_category_hierarchy::Entity::find()
         .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
         .filter(taxonomy_category_hierarchy::Column::TermId.is_in(blog_category_ids));
@@ -205,11 +216,6 @@ async fn canonicalize_siblings_in_tx(
         .order_by_asc(taxonomy_category_hierarchy::Column::TermId)
         .all(txn)
         .await?;
-    if siblings.len() != blog_category_ids.len() {
-        return Err(BlogError::invariant(
-            "Blog category Taxonomy hierarchy coverage is incomplete during sibling canonicalization",
-        ));
-    }
     let mut sibling_ids = Vec::with_capacity(siblings.len());
     for (index, sibling) in siblings.into_iter().enumerate() {
         let desired_position = i32::try_from(index)
