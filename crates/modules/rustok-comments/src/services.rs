@@ -393,6 +393,7 @@ impl CommentsService {
 
         let thread = comment_thread::Entity::find_by_id(existing.thread_id)
             .filter(comment_thread::Column::TenantId.eq(tenant_id))
+            .lock_exclusive()
             .one(txn)
             .await?
             .ok_or_else(|| CommentsError::CommentThreadNotFound {
