@@ -699,9 +699,9 @@ mod tests {
             .await
             .expect_err("disabled binding should be reported");
 
-        assert!(
-            error.message.contains("resolved via query"),
-            "error must expose resolution source for diagnostics"
+        assert_eq!(
+            error.message,
+            "Blog is not available for the current channel"
         );
     }
 }
