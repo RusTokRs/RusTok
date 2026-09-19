@@ -8,7 +8,7 @@ use validator::{Validate, ValidationError};
 use super::{
     CreateVariantInput, VariantAxisConfigResponse, VariantAxisInput, VariantResponse,
 };
-use crate::entities::product::ProductStatus;
+use crate::domain::ProductStatus;
 
 fn deserialize_tenant_locale<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
