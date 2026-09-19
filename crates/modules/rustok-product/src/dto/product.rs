@@ -1,5 +1,5 @@
 use rust_decimal::Decimal;
-use rustok_api::TenantLocale;
+use rustok_api::{Patch, TenantLocale};
 use serde::{Deserialize, Deserializer, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -8,7 +8,36 @@ use validator::{Validate, ValidationError};
 use super::{
     CreateVariantInput, VariantAxisConfigResponse, VariantAxisInput, VariantResponse,
 };
-use crate::entities::product::ProductStatus;
+use crate::domain::ProductStatus;
+
+fn validate_patch_string(value: &Patch<String>, min: usize, max: usize, field: &'static str) -> Result<(), ValidationError> {
+    if let Patch::Set(value) = value {
+        let len = value.chars().count();
+        if len < min || len > max {
+            let mut error = ValidationError::new(field);
+            error.add_param("min", &min);
+            error.add_param("max", &max);
+            return Err(error);
+        }
+    }
+    Ok(())
+}
+
+fn validate_patch_seller(value: &Patch<String>) -> Result<(), ValidationError> {
+    validate_patch_string(value, 0, 100, "seller_id")
+}
+
+fn validate_patch_vendor(value: &Patch<String>) -> Result<(), ValidationError> {
+    validate_patch_string(value, 0, 255, "vendor")
+}
+
+fn validate_patch_product_type(value: &Patch<String>) -> Result<(), ValidationError> {
+    validate_patch_string(value, 0, 255, "product_type")
+}
+
+fn validate_patch_shipping_profile(value: &Patch<String>) -> Result<(), ValidationError> {
+    validate_patch_string(value, 1, 64, "shipping_profile_slug")
+}
 
 fn deserialize_tenant_locale<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
@@ -78,19 +107,20 @@ pub struct ProductTranslationInput {
 pub struct UpdateProductInput {
     #[validate(nested)]
     pub translations: Option<Vec<ProductTranslationInput>>,
-    #[validate(length(max = 100, message = "Seller ID must be max 100 characters"))]
-    pub seller_id: Option<String>,
-    #[validate(length(max = 255, message = "Vendor must be max 255 characters"))]
-    pub vendor: Option<String>,
-    #[validate(length(max = 255, message = "Product type must be max 255 characters"))]
-    pub product_type: Option<String>,
-    #[validate(length(
-        min = 1,
-        max = 64,
-        message = "Shipping profile slug must be 1-64 characters"
-    ))]
-    pub shipping_profile_slug: Option<String>,
-    pub primary_category_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    #[validate(custom(function = "validate_patch_seller"))]
+    pub seller_id: Patch<String>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    #[validate(custom(function = "validate_patch_vendor"))]
+    pub vendor: Patch<String>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    #[validate(custom(function = "validate_patch_product_type"))]
+    pub product_type: Patch<String>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    #[validate(custom(function = "validate_patch_shipping_profile"))]
+    pub shipping_profile_slug: Patch<String>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    pub primary_category_id: Patch<Uuid>,
     pub tags: Option<Vec<String>>,
     pub metadata: Option<serde_json::Value>,
     pub status: Option<ProductStatus>,
@@ -173,6 +203,29 @@ mod tests {
     use super::ProductTranslationInput;
     use serde_json::json;
     use validator::Validate;
+
+    #[test]
+    fn update_product_nullable_fields_use_explicit_patch_semantics() {
+        let keep: UpdateProductInput = serde_json::from_value(json!({})).expect("keep");
+        assert!(keep.seller_id.is_keep());
+        assert!(keep.vendor.is_keep());
+        assert!(keep.product_type.is_keep());
+        assert!(keep.shipping_profile_slug.is_keep());
+        assert!(keep.primary_category_id.is_keep());
+
+        let clear: UpdateProductInput = serde_json::from_value(json!({
+            "seller_id": null,
+            "vendor": null,
+            "product_type": null,
+            "shipping_profile_slug": null,
+            "primary_category_id": null
+        })).expect("clear");
+        assert!(matches!(clear.seller_id, Patch::Clear));
+        assert!(matches!(clear.vendor, Patch::Clear));
+        assert!(matches!(clear.product_type, Patch::Clear));
+        assert!(matches!(clear.shipping_profile_slug, Patch::Clear));
+        assert!(matches!(clear.primary_category_id, Patch::Clear));
+    }
 
     #[test]
     fn product_translation_input_uses_tenant_locale_contract() {

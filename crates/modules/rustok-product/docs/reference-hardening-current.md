@@ -1,6 +1,6 @@
 # rustok-product canonical large-reference hardening cursor
 
-Status: `large_reference_hardening_in_progress_after_blog_v1`.
+Status: `large_reference_hardening_in_progress_after_patch_slice`.
 
 Baseline: `ad04a17e8252ae9d23e99af4b7ad7ffaebdfd10e` (Blog canonical reference v1 source certification, #4073).
 
@@ -42,12 +42,11 @@ execution remains separate.
 The following gaps are confirmed from current source and block Product from being called the
 canonical large-module reference:
 
-1. **Public persistence API / crate layout**
-   - `src/lib.rs` still exports `pub mod entities`.
-   - `ProductModule` runtime registration/composition remains in `lib.rs` rather than a
-     Blog-style thin facade plus `module.rs`.
-   - `ProductStatus` is owned by the persistence entity module and is imported by public DTOs.
-   A bounded ownership/public-API migration is required before other modules copy this layout.
+1. **Public persistence API / crate layout** — **closed by this slice**
+   - `src/lib.rs` no longer exports `entities` or `migrations`.
+   - `ProductModule` runtime registration/composition now lives in `src/module.rs`; the crate root is a thin public facade.
+   - `ProductStatus` is owned by `src/domain/product_status.rs`, independent of the persistence entity module, and is re-exported through the public DTO/root API.
+   - persistence entity modules remain crate-private; public consumers receive DTOs/services/ports/contracts.
 
 2. **Nullable mutation semantics**
    - `UpdateProductInput` uses `Option<T>` for nullable owner fields such as seller, vendor,
@@ -105,3 +104,5 @@ requirements remain authoritative.
 7. Audit integrations/FBA and finish Product-specific large-reference machine guards.
 8. Only then mark Product as the canonical large-module reference and continue to Pages, Forum,
    Taxonomy, and remaining modules/libs.
+
+The first two Product slices are source-only hardening; maintainer compile/test/runtime evidence remains separate.
