@@ -300,3 +300,36 @@ async fn delete_nested_category_replays_only_its_sibling_positions() {
     assert_eq!(remaining.position, 0);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
+
+
+#[tokio::test]
+async fn create_rejects_preexisting_hierarchy_coverage_drift() {
+    let db = setup().await;
+    let (service, _events) = service(
+        &db,
+        Arc::new(RecordingCleanup {
+            calls: Arc::new(AtomicUsize::new(0)),
+            fail: false,
+        }),
+    );
+    let tenant_id = Uuid::new_v4();
+
+    let root = service
+        .create(tenant_id, admin(), create_input("Existing", 0))
+        .await
+        .expect("existing Blog Category should be created");
+
+    taxonomy_category_hierarchy::Entity::delete_by_id((tenant_id, root))
+        .exec(&db)
+        .await
+        .expect("hierarchy corruption fixture should be created");
+
+    let result = service
+        .create(tenant_id, admin(), create_input("New", 0))
+        .await;
+
+    assert!(
+        matches!(result, Err(BlogError::Invariant(_))),
+        "category create must fail closed when existing Taxonomy hierarchy coverage is incomplete"
+    );
+}
