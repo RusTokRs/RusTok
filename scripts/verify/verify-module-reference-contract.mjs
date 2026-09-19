@@ -437,6 +437,15 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
   "load_term_names_strict_for_module(",
   "BLOG_SCOPE_VALUE",
 ]);
+requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
+  "enforce_scope(&security, Resource::Tags, Action::Create)?;",
+  ".create_module_term_in_tx(",
+  "publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)",
+]);
+forbid("crates/modules/rustok-blog/src/services/tag.rs", [
+  "CreateTaxonomyTermInput",
+  ".create_term(",
+]);
 
 requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   "TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(",
