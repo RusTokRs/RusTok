@@ -87,6 +87,75 @@ impl TaxonomyOwnerCategoryReader {
         .await
     }
 
+    /// Strict Category owner read that fails when a selected canonical Category
+    /// has no corresponding hierarchy placement.
+    pub async fn load_scoped_categories_strict(
+        &self,
+        tenant_id: Uuid,
+        scope_type: TaxonomyScopeType,
+        scope_value: Option<&str>,
+        term_ids: Option<&[Uuid]>,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> TaxonomyResult<Vec<TaxonomyOwnerCategory>> {
+        Self::load_scoped_categories_in_strict(
+            &self.db,
+            tenant_id,
+            scope_type,
+            scope_value,
+            term_ids,
+            locale,
+            fallback_locale,
+        )
+        .await
+    }
+
+    /// Transaction-compatible strict Category owner read.
+    pub async fn load_scoped_categories_in_strict<C>(
+        connection: &C,
+        tenant_id: Uuid,
+        scope_type: TaxonomyScopeType,
+        scope_value: Option<&str>,
+        term_ids: Option<&[Uuid]>,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> TaxonomyResult<Vec<TaxonomyOwnerCategory>>
+    where
+        C: ConnectionTrait,
+    {
+        if term_ids.is_some_and(|term_ids| term_ids.is_empty()) {
+            return Ok(Vec::new());
+        }
+
+        let locale = normalize_requested_locale(locale)?;
+        let fallback_locale = normalize_fallback_locale(fallback_locale)?;
+        let scope_value = normalize_scope_value(scope_type, scope_value)?;
+
+        let mut query = taxonomy_term::Entity::find()
+            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category))
+            .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
+            .filter(taxonomy_term::Column::ScopeValue.eq(&scope_value));
+        if let Some(term_ids) = term_ids {
+            query = query.filter(taxonomy_term::Column::Id.is_in(term_ids.to_vec()));
+        }
+
+        let terms = query
+            .order_by_asc(taxonomy_term::Column::CanonicalKey)
+            .all(connection)
+            .await?;
+
+        materialize_categories(
+            connection,
+            tenant_id,
+            terms,
+            &locale,
+            fallback_locale.as_deref(),
+            true,
+        )
+        .await
+    }
+
     /// Transaction-compatible form of [`Self::load_scoped_categories`].
     ///
     /// Consumer modules that already hold a host transaction can reuse that
@@ -132,6 +201,7 @@ impl TaxonomyOwnerCategoryReader {
             terms,
             &locale,
             fallback_locale.as_deref(),
+            false,
         )
         .await
     }
@@ -143,6 +213,7 @@ async fn materialize_categories<C>(
     terms: Vec<taxonomy_term::Model>,
     locale: &str,
     fallback_locale: Option<&str>,
+    strict_hierarchy: bool,
 ) -> TaxonomyResult<Vec<TaxonomyOwnerCategory>>
 where
     C: ConnectionTrait,
@@ -174,6 +245,11 @@ where
             .entry(translation.term_id)
             .or_default()
             .push(translation);
+    }
+    if strict_hierarchy && hierarchy.len() != terms.len() {
+        return Err(TaxonomyError::invariant(
+            "Taxonomy Category hierarchy coverage is incomplete",
+        ));
     }
     let mut hierarchy_by_term = hierarchy
         .into_iter()
@@ -207,10 +283,16 @@ where
             .item
             .and_then(|translation| translation.description.clone());
 
-        let (parent_id, position) = hierarchy_by_term
-            .remove(&term.id)
-            .map(|row| (row.parent_term_id, row.position))
-            .unwrap_or((None, 0));
+        let (parent_id, position) = match hierarchy_by_term.remove(&term.id) {
+            Some(row) => (row.parent_term_id, row.position),
+            None if strict_hierarchy => {
+                return Err(TaxonomyError::invariant(format!(
+                    "Taxonomy Category {} has no canonical hierarchy placement",
+                    term.id
+                )));
+            }
+            None => (None, 0),
+        };
         let (icon_key, color, image_media_id, cover_media_id, presentation_revision) =
             presentation_by_term
                 .remove(&term.id)
