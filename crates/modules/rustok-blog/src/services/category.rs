@@ -116,6 +116,9 @@ impl CategoryService {
         let requested_slug = input.slug.clone();
         let requested_description = input.description.clone();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
+        // Serialize before reading hierarchy so a concurrent structural move cannot be
+        // overwritten by a stale parent/position snapshot from this update transaction.
+        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?;
         let category = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
             .one(&txn)
