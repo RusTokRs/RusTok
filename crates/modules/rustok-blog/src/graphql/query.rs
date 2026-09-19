@@ -467,9 +467,10 @@ pub(super) async fn ensure_public_blog_channel_enabled(
     let enabled = ChannelService::new(db.clone())
         .is_module_enabled(channel_id, MODULE_SLUG)
         .await
-        .map_err(|error| {
-            async_graphql::Error::new(format!("Channel module check failed: {error}"))
-                .extend_with(|_, ext| ext.set("code", "INTERNAL_SERVER_ERROR"))
+        .map_err(|_| {
+            <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::internal_error(
+                "Unable to verify Blog channel availability",
+            )
         })?;
 
     if enabled {

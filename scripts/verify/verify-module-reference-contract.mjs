@@ -63,6 +63,9 @@ requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
 ]);
 forbid("crates/modules/rustok-blog/src/services/post/commands.rs", [
   "PLATFORM_FALLBACK_LOCALE",
+  'expect("localized change requires a canonical locale")',
+  'expect("tag mutation requires a canonical locale")',
+  'expect("localized-only update requires a canonical locale")',
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/post/mod.rs", [
@@ -102,12 +105,24 @@ requireAll("crates/modules/rustok-blog/src/services/category_delete.rs", [
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
+  "validate_persisted_version",
+  "next_persisted_version",
+  '"invalid persisted version"',
   '"Title is required for a new locale"',
   '"Content is required for a new locale"',
 ]);
 forbid("crates/modules/rustok-blog/src/services/post/repository.rs", [
   "translation_seed_in_tx",
   "baseline.as_ref()",
+]);
+
+requireAll("crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs", [
+  ".map_err(BlogError::from)",
+  "BLOG_TAXONOMY_SCOPE",
+]);
+forbid("crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs", [
+  "map_taxonomy_error",
+  "BlogError::Validation(format!(
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/comment_projection.rs", [
@@ -131,7 +146,11 @@ requireAll("crates/modules/rustok-blog/src/graphql/mutation.rs", [
 ]);
 
 for (const path of rustFiles("crates/modules/rustok-blog/src/graphql")) {
-  forbid(path, ["async_graphql::Error::new(err.to_string())", "async_graphql::Error::new(error.to_string())"]);
+  forbid(path, [
+    "async_graphql::Error::new(err.to_string())",
+    "async_graphql::Error::new(error.to_string())",
+    "format!(\"Channel module check failed: {error}\"),
+  ]);
 }
 for (const path of rustFiles("crates/modules/rustok-blog/src/integrations")) {
   forbid(path, ["crate::entities", "crate::{entities", "crate::entities::"]);
