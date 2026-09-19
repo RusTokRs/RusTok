@@ -131,6 +131,12 @@ forbid("crates/modules/rustok-blog/src/services/post/repository.rs", [
   "baseline.as_ref()",
 ]);
 
+requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
+  "load_term_names_strict",
+  "TaxonomyTermKind::Tag",
+  "resolve_name_for_locale_chain",
+]);
+
 requireAll("crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs", [
   ".map_err(BlogError::from)",
   "BLOG_TAXONOMY_SCOPE",
