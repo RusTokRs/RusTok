@@ -1,13 +1,13 @@
-pub mod product;
-pub mod product_attribute_group;
-pub mod product_image;
-pub mod product_image_translation;
-pub mod product_tag;
-pub mod product_translation;
-pub mod product_variant;
-pub mod product_variant_axis;
-pub mod product_variant_axis_value;
-pub mod variant_translation;
+mod product;
+mod product_attribute_group;
+mod product_image;
+mod product_image_translation;
+mod product_tag;
+mod product_translation;
+mod product_variant;
+mod product_variant_axis;
+mod product_variant_axis_value;
+mod variant_translation;
 
 pub use product::Entity as Product;
 pub use product_attribute_group::Entity as ProductAttributeGroup;
