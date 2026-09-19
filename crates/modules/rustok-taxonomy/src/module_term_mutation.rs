@@ -82,18 +82,36 @@ pub async fn update_module_term_in_tx(
             )
             .await?;
 
-            if existing.slug != slug {
-                taxonomy_term_alias::ActiveModel {
-                    id: Set(Uuid::new_v4()),
-                    term_id: Set(term_id),
-                    tenant_id: Set(tenant_id),
-                    locale: Set(locale.clone()),
-                    name: Set(existing.slug.clone()),
-                    slug: Set(existing.slug.clone()),
-                    created_at: Set(now.fixed_offset()),
-                }
-                .insert(txn)
+            taxonomy_term_alias::Entity::delete_many()
+                .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
+                .filter(taxonomy_term_alias::Column::TermId.eq(term_id))
+                .filter(taxonomy_term_alias::Column::Locale.eq(&locale))
+                .filter(taxonomy_term_alias::Column::Slug.eq(&slug))
+                .exec(txn)
                 .await?;
+
+            if existing.slug != slug {
+                let has_existing_alias = taxonomy_term_alias::Entity::find()
+                    .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
+                    .filter(taxonomy_term_alias::Column::TermId.eq(term_id))
+                    .filter(taxonomy_term_alias::Column::Locale.eq(&locale))
+                    .filter(taxonomy_term_alias::Column::Slug.eq(&existing.slug))
+                    .one(txn)
+                    .await?
+                    .is_some();
+                if !has_existing_alias {
+                    taxonomy_term_alias::ActiveModel {
+                        id: Set(Uuid::new_v4()),
+                        term_id: Set(term_id),
+                        tenant_id: Set(tenant_id),
+                        locale: Set(locale.clone()),
+                        name: Set(existing.slug.clone()),
+                        slug: Set(existing.slug.clone()),
+                        created_at: Set(now.fixed_offset()),
+                    }
+                    .insert(txn)
+                    .await?;
+                }
             }
 
             let revision = next_translation_revision(term_id, &locale, existing.revision)?;
