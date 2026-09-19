@@ -703,11 +703,9 @@ impl CommentsService {
             self.enforce_read_scope(&security, Action::Read)?;
             let locale = normalize_locale(locale)?;
             let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
-            let txn = self.db.begin().await?;
             let thread = comment_thread::Entity::find_by_id(thread_id)
                 .filter(comment_thread::Column::TenantId.eq(tenant_id))
-                .lock_exclusive()
-                .one(&txn)
+                .one(&self.db)
                 .await?
                 .ok_or_else(|| CommentsError::CommentThreadNotFound {
                     target_type: "unknown".to_string(),
@@ -819,9 +817,11 @@ impl CommentsService {
         let started = Instant::now();
         let result = async {
             self.enforce_moderation_scope(&security)?;
+            let txn = self.db.begin().await?;
             let thread = comment_thread::Entity::find_by_id(thread_id)
                 .filter(comment_thread::Column::TenantId.eq(tenant_id))
-                .one(&self.db)
+                .lock_exclusive()
+                .one(&txn)
                 .await?
                 .ok_or_else(|| CommentsError::CommentThreadNotFound {
                     target_type: "unknown".to_string(),
@@ -829,6 +829,7 @@ impl CommentsService {
                 })?;
 
             if thread.status == status {
+                txn.commit().await?;
                 return Ok(Self::map_thread_summary(thread));
             }
 
