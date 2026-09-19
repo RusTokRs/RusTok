@@ -44,6 +44,11 @@ impl PostService {
         if slug.is_empty() {
             return Err(BlogError::validation("Slug cannot be empty"));
         }
+        if slug.len() > MAX_POST_SLUG_BYTES {
+            return Err(BlogError::validation(format!(
+                "Slug cannot exceed {MAX_POST_SLUG_BYTES} bytes"
+            )));
+        }
 
         let now = chrono::Utc::now();
         let metadata = normalize_custom_metadata(metadata)?;
@@ -211,6 +216,13 @@ impl PostService {
             .filter(|slug| !slug.is_empty());
         if slug.is_some() && normalized_slug.is_none() {
             return Err(BlogError::validation("Slug cannot be empty"));
+        }
+        if let Some(normalized_slug) = normalized_slug.as_deref()
+            && normalized_slug.len() > MAX_POST_SLUG_BYTES
+        {
+            return Err(BlogError::validation(format!(
+                "Slug cannot exceed {MAX_POST_SLUG_BYTES} bytes"
+            )));
         }
 
         let next_metadata = match metadata {
