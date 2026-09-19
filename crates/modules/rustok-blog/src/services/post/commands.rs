@@ -285,9 +285,9 @@ impl PostService {
         }
 
         if has_translation_change {
-            let locale = locale
-                .as_deref()
-                .expect("localized change requires a canonical locale");
+            let locale = locale.as_deref().ok_or_else(|| {
+                BlogError::invariant("localized change reached persistence without a canonical locale")
+            })?;
             self.upsert_translation_in_tx(
                 &txn,
                 post_id,
@@ -309,9 +309,9 @@ impl PostService {
                 .await?;
         }
         if let Some(tags) = tags {
-            let locale = locale
-                .as_deref()
-                .expect("tag mutation requires a canonical locale");
+            let locale = locale.as_deref().ok_or_else(|| {
+                BlogError::invariant("tag mutation reached persistence without a canonical locale")
+            })?;
             sync_post_tags_in_tx(&self.db, &txn, tenant_id, post_id, &tags, locale).await?;
         }
 
@@ -323,7 +323,11 @@ impl PostService {
         } else {
             DomainEvent::BlogPostUpdated {
                 post_id,
-                locale: locale.expect("localized-only update requires a canonical locale"),
+                locale: locale.ok_or_else(|| {
+                    BlogError::invariant(
+                        "localized-only update reached event publication without a canonical locale",
+                    )
+                })?,
             }
         };
         self.event_bus
