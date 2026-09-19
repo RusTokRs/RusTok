@@ -17,7 +17,7 @@ use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{
     CreateTaxonomyTermInput, ModuleTermMutationResult, ModuleTermUpdateInput, TaxonomyOwnerReader,
     TaxonomyOwnerTerm, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
-    delete_module_term_in_tx, update_module_term_in_tx,
+    delete_module_term_in_tx, lock_module_term_in_tx, update_module_term_in_tx,
 };
 
 use crate::dto::{CreateTagInput, ListTagsFilter, TagListItem, TagResponse, UpdateTagInput};
@@ -142,6 +142,14 @@ impl TagService {
         ensure_module_owned_term(&term)?;
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
+        lock_module_term_in_tx(
+            &txn,
+            tenant_id,
+            tag_id,
+            TaxonomyTermKind::Tag,
+            BLOG_SCOPE_VALUE,
+        )
+        .await?;
         detach_tag_from_posts_in_tx(&txn, tenant_id, tag_id).await?;
         delete_module_term_in_tx(
             &txn,
