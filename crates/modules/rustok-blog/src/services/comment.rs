@@ -232,7 +232,7 @@ impl CommentService {
             .set_comment_status(
                 comments_write_port_context(
                     tenant_id,
-                    &SecurityContext::system(),
+                    &security,
                     locale,
                     "moderate",
                     comment_id,
