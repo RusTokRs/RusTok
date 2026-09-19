@@ -178,6 +178,9 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
   "load_term_names_strict",
   "TaxonomyTermKind::Tag",
   "resolve_name_for_locale_chain",
+  "detach_tag_from_posts_in_tx",
+  "blog_post::Column::Version.eq(post.version)",
+  '"Blog post {post.id} changed before Tag detachment could commit"',
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/category.rs", [
