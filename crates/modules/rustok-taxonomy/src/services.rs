@@ -23,6 +23,7 @@ use crate::entities::{
     taxonomy_term, taxonomy_term_alias, taxonomy_term_route_key, taxonomy_term_translation,
 };
 use crate::error::{TaxonomyError, TaxonomyResult};
+use crate::module_term_mutation::ModuleTermCreateInput;
 use crate::route_key_registry::ensure_route_key_available_in_tx;
 use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
 
@@ -157,6 +158,43 @@ impl TaxonomyService {
 
         txn.commit().await?;
         Ok(term_id)
+    }
+
+    /// Create one module-owned term inside the caller transaction.
+    ///
+    /// Authorization belongs to the owning domain module. This primitive only validates the
+    /// requested module scope and persists the canonical Taxonomy term plus its first locale.
+    pub async fn create_module_term_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        module_slug: &str,
+        input: ModuleTermCreateInput,
+    ) -> TaxonomyResult<Uuid> {
+        let module_scope = normalize_scope_value(
+            TaxonomyScopeType::Module,
+            Some(module_slug),
+        )?;
+        let locale = normalize_locale(&input.locale)?;
+        validate_term_name(&input.name)?;
+        let normalized_slug = match input.slug.as_deref() {
+            Some(slug) => normalize_non_empty_slug(slug)?,
+            None => normalize_non_empty_slug(&input.name)?,
+        };
+
+        self.create_module_term_record_in_tx(
+            txn,
+            ModuleTerm {
+                tenant_id,
+                kind,
+                module_scope: &module_scope,
+                locale: &locale,
+                name: &input.name,
+                normalized_slug: &normalized_slug,
+            },
+        )
+        .await
     }
 
     #[instrument(skip(self, security))]
@@ -523,7 +561,7 @@ impl TaxonomyService {
             {
                 term_id
             } else {
-                self.create_module_term_in_tx(
+                self.create_module_term_record_in_tx(
                     txn,
                     ModuleTerm {
                         tenant_id,
@@ -815,7 +853,7 @@ impl TaxonomyService {
         Ok(None)
     }
 
-    async fn create_module_term_in_tx(
+    async fn create_module_term_record_in_tx(
         &self,
         txn: &DatabaseTransaction,
         term: ModuleTerm<'_>,
