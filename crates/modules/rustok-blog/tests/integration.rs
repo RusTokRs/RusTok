@@ -738,6 +738,7 @@ async fn test_create_comment_succeeds_with_required_translation() -> TestResult<
             post,
             None,
             CreateCommentInput {
+                command_id: Uuid::new_v4(),
                 locale: "en".to_string(),
                 content: richtext("This comment should be persisted"),
                 parent_comment_id: None,
@@ -803,6 +804,7 @@ async fn test_public_comment_create_rejects_draft_and_hidden_channel() -> TestRe
         )
         .await?;
     let input = || CreateCommentInput {
+        command_id: Uuid::new_v4(),
         locale: "en".to_string(),
         content: richtext("Visible comment"),
         parent_comment_id: None,
@@ -877,6 +879,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
             post_id,
             None,
             CreateCommentInput {
+                command_id: Uuid::new_v4(),
                 locale: "en".to_string(),
                 content: richtext("Parent comment"),
                 parent_comment_id: None,
@@ -891,6 +894,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
             post_id,
             None,
             CreateCommentInput {
+                command_id: Uuid::new_v4(),
                 locale: "fr".to_string(),
                 content: richtext("Réponse imbriquée"),
                 parent_comment_id: Some(parent.id),
@@ -1058,6 +1062,7 @@ async fn test_moderate_comment_with_blog_manage_permission() -> TestResult<()> {
             post_id,
             None,
             CreateCommentInput {
+                command_id: Uuid::new_v4(),
                 locale: "en".to_string(),
                 content: richtext("Needs moderation"),
                 parent_comment_id: None,
@@ -1194,7 +1199,7 @@ mod unit_tests {
         let err = BlogError::post_not_found(id);
         assert!(matches!(err, BlogError::PostNotFound(_)));
 
-        let err = BlogError::duplicate_slug("test-slug", "en");
+        let err = BlogError::duplicate_slug("test-slug");
         assert!(matches!(err, BlogError::DuplicateSlug { .. }));
     }
 

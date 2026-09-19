@@ -162,14 +162,7 @@ pub async fn start_forum_search_contract_consumer_if_enabled(
             ))
         })?;
 
-    if !ctx.shared_contains::<StopHandle>() {
-        let (stop_handle, _stop_rx) = StopHandle::new();
-        ctx.shared_insert(stop_handle);
-    }
-    let stop_rx = ctx
-        .shared_get::<StopHandle>()
-        .expect("StopHandle must be registered before Forum Search contract consumer startup")
-        .subscribe();
+    let stop_rx = StopHandle::ensure(ctx).subscribe();
     let config = ForumSearchContractWorkerConfig::from_context(ctx)?;
     let poison_receipts = ConsumerPoisonReceiptStore::new(ctx.db_clone());
     let poison_publisher_id = Uuid::new_v4();

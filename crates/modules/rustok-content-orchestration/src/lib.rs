@@ -289,6 +289,7 @@ fn taxonomy_error_to_content_error(error: TaxonomyError) -> ContentError {
         | TaxonomyError::DuplicateAlias(_)
         | TaxonomyError::Conflict(_)
         | TaxonomyError::TranslationRevisionExhausted { .. }
+        | TaxonomyError::Internal(_)
         | TaxonomyError::Validation(_) => ContentError::validation(message),
     }
 }
@@ -2040,6 +2041,7 @@ mod tests {
                 post_id,
                 None,
                 BlogCreateCommentInput {
+                    command_id: Uuid::new_v4(),
                     locale: "en".to_string(),
                     content: richtext("First blog comment"),
                     parent_comment_id: None,
@@ -2054,6 +2056,7 @@ mod tests {
                 post_id,
                 None,
                 BlogCreateCommentInput {
+                    command_id: Uuid::new_v4(),
                     locale: "en".to_string(),
                     content: richtext("Second blog comment"),
                     parent_comment_id: None,

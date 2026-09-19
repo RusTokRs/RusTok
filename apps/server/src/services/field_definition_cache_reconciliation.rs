@@ -97,10 +97,11 @@ fn start_field_definition_cache_generation_reconciliation_with_timing(
     reconcile_interval: Duration,
     restart_delay: Duration,
 ) {
-    let _ = ctx.shared_insert_if_absent(FieldDefinitionCacheGenerationStartLock::default());
+    let candidate = FieldDefinitionCacheGenerationStartLock::default();
+    let _ = ctx.shared_insert_if_absent(candidate.clone());
     let start_lock = ctx
         .shared_get::<FieldDefinitionCacheGenerationStartLock>()
-        .expect("field-definition generation start lock must exist after registration");
+        .unwrap_or(candidate);
     let _start_guard = start_lock
         .0
         .lock()

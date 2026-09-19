@@ -353,10 +353,11 @@ pub async fn start_tenant_locale_generation_listener(
     ctx: &ServerRuntimeContext,
     cache: CacheService,
 ) {
-    let _ = ctx.shared_insert_if_absent(TenantLocaleGenerationStartLock::default());
+    let candidate = TenantLocaleGenerationStartLock::default();
+    let _ = ctx.shared_insert_if_absent(candidate.clone());
     let start_lock = ctx
         .shared_get::<TenantLocaleGenerationStartLock>()
-        .expect("tenant locale generation start lock must exist after registration");
+        .unwrap_or(candidate);
     let _start_guard = start_lock.0.lock().await;
 
     if let Some(existing) = ctx.shared_get::<TenantLocaleGenerationListenerHandle>() {

@@ -47,6 +47,17 @@ impl StopHandle {
     pub fn is_stopping(&self) -> bool {
         *self.stop_tx.borrow()
     }
+
+    /// Safely retrieves or initializes the shared `StopHandle` from the context without panic.
+    pub fn ensure(ctx: &ServerRuntimeContext) -> Self {
+        if let Some(existing) = ctx.shared_get::<Self>() {
+            existing
+        } else {
+            let (handle, _rx) = Self::new();
+            let _ = ctx.shared_insert_if_absent(handle.clone());
+            ctx.shared_get::<Self>().unwrap_or(handle)
+        }
+    }
 }
 
 static OUTBOX_RELAY_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);

@@ -12,7 +12,7 @@ use rustok_taxonomy::{
     TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyModule, TaxonomyResult,
     entities::{taxonomy_category_hierarchy, taxonomy_term},
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{DatabaseConnection, EntityTrait};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 

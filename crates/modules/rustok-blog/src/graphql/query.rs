@@ -113,7 +113,7 @@ impl BlogQuery {
                 Some(tenant.default_locale.as_str()),
             )
             .await
-            .map_err(|err| crate::error::public::to_graphql_error(err))?;
+            .map_err(crate::error::public::to_graphql_error)?;
 
         if let Some(post) = post.filter(|post| {
             is_post_visible_for_request(
@@ -334,7 +334,7 @@ async fn list_public_visible_posts(
             public_channel_slug,
         )
         .await
-        .map_err(|err| crate::error::public::to_graphql_error(err))?;
+        .map_err(crate::error::public::to_graphql_error)?;
     let author_profiles = load_author_profiles_map(
         ctx,
         db,

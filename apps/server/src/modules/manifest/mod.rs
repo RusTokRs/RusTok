@@ -38,6 +38,10 @@ impl ManifestManager {
         Self::load_from_path(Self::manifest_path())
     }
 
+    pub async fn load_async() -> Result<ModulesManifest, ManifestError> {
+        Self::load_from_path_async(Self::manifest_path()).await
+    }
+
     pub fn load_from_path(path: impl AsRef<Path>) -> Result<ModulesManifest, ManifestError> {
         let path = path.as_ref();
         let raw = std::fs::read_to_string(path).map_err(|error| ManifestError::Read {
@@ -51,8 +55,29 @@ impl ManifestManager {
         })
     }
 
+    pub async fn load_from_path_async(
+        path: impl AsRef<Path>,
+    ) -> Result<ModulesManifest, ManifestError> {
+        let path = path.as_ref();
+        let raw = tokio::fs::read_to_string(path)
+            .await
+            .map_err(|error| ManifestError::Read {
+                path: path.display().to_string(),
+                error: error.to_string(),
+            })?;
+
+        toml::from_str(&raw).map_err(|error| ManifestError::Parse {
+            path: path.display().to_string(),
+            error: error.to_string(),
+        })
+    }
+
     pub fn save(manifest: &ModulesManifest) -> Result<(), ManifestError> {
         Self::save_to_path(Self::manifest_path(), manifest)
+    }
+
+    pub async fn save_async(manifest: &ModulesManifest) -> Result<(), ManifestError> {
+        Self::save_to_path_async(Self::manifest_path(), manifest).await
     }
 
     pub fn save_to_path(
@@ -70,6 +95,25 @@ impl ManifestManager {
             path: path.display().to_string(),
             error: error.to_string(),
         })
+    }
+
+    pub async fn save_to_path_async(
+        path: impl AsRef<Path>,
+        manifest: &ModulesManifest,
+    ) -> Result<(), ManifestError> {
+        let path = path.as_ref();
+        let serialized =
+            toml::to_string_pretty(manifest).map_err(|error| ManifestError::Write {
+                path: path.display().to_string(),
+                error: error.to_string(),
+            })?;
+
+        tokio::fs::write(path, serialized)
+            .await
+            .map_err(|error| ManifestError::Write {
+                path: path.display().to_string(),
+                error: error.to_string(),
+            })
     }
 
     pub fn installed_modules(manifest: &ModulesManifest) -> Vec<InstalledManifestModule> {
@@ -471,17 +515,18 @@ impl ManifestManager {
         registry: &ModuleRegistry,
     ) -> Result<(), ManifestError> {
         let resolved_specs = resolve_module_specs(manifest)?;
-        let manifest_contracts = manifest.modules.iter().map(|(slug, manifest_spec)| {
+        let mut manifest_contracts = Vec::with_capacity(manifest.modules.len());
+        for (slug, manifest_spec) in &manifest.modules {
             let resolved_spec = resolved_specs
                 .get(slug)
-                .expect("resolved manifest module must exist");
-            ManifestModuleContract {
+                .ok_or_else(|| ManifestError::UnknownModule(slug.clone()))?;
+            manifest_contracts.push(ManifestModuleContract {
                 slug: slug.clone(),
                 required: manifest_spec.required,
                 dependencies: resolved_spec.depends_on.iter().cloned().collect(),
                 has_runtime_entry: resolved_spec.entry_type.is_some(),
-            }
-        });
+            });
+        }
         let registry_contracts = registry
             .list()
             .into_iter()

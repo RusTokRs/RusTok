@@ -160,14 +160,7 @@ pub async fn start_social_graph_index_worker_if_enabled(ctx: &ServerRuntimeConte
         )
     })?;
 
-    if !ctx.shared_contains::<StopHandle>() {
-        let (stop_handle, _stop_rx) = StopHandle::new();
-        ctx.shared_insert(stop_handle);
-    }
-    let stop_rx = ctx
-        .shared_get::<StopHandle>()
-        .expect("StopHandle must be registered before Social Graph Index worker startup")
-        .subscribe();
+    let stop_rx = StopHandle::ensure(ctx).subscribe();
 
     let config = SocialGraphIndexWorkerConfig::from_context(ctx)?;
     let consumer =

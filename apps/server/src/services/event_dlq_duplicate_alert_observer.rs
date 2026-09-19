@@ -157,14 +157,7 @@ pub async fn start_event_dlq_duplicate_alert_observer(ctx: &ServerRuntimeContext
         }
     };
 
-    if !ctx.shared_contains::<StopHandle>() {
-        let (stop_handle, _stop_rx) = StopHandle::new();
-        ctx.shared_insert(stop_handle);
-    }
-    let stop_rx = ctx
-        .shared_get::<StopHandle>()
-        .expect("StopHandle must exist before DLQ duplicate observer startup")
-        .subscribe();
+    let stop_rx = StopHandle::ensure(ctx).subscribe();
 
     let (publisher, subscriber) = DlqDuplicateAlertRuntimePublisher::new(config.policy);
     let handle = tokio::spawn(observer_loop(iggy_config, config, publisher, stop_rx));

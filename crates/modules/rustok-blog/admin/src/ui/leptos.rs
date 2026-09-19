@@ -14,7 +14,6 @@ use super::components::{
     blog_form_view_model, reset_form,
 };
 use crate::i18n::t;
-use crate::model::{BlogPostDetail, BlogPostListItem};
 use crate::{core, transport};
 
 fn local_resource<S, Fut, T>(

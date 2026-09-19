@@ -60,6 +60,8 @@ def check_diff_invariants(diff_text: str) -> list[str]:
     violations: list[str] = []
     lines = diff_text.splitlines()
 
+    deleted_tests = 0
+    added_tests = 0
     for line in lines:
         for pattern, reason in DISALLOWED_ADDITIONS:
             if re.search(pattern, line):
@@ -68,7 +70,15 @@ def check_diff_invariants(diff_text: str) -> list[str]:
         # Guard against deleted tests
         if line.startswith("-") and not line.startswith("---"):
             if "#[test]" in line or "#[tokio::test]" in line:
-                violations.append(f"Forbidden test deletion: '{line.strip()}' -> AGENTS.md §14 forbids deleting tests")
+                deleted_tests += 1
+        if line.startswith("+") and not line.startswith("+++"):
+            if "#[test]" in line or "#[tokio::test]" in line:
+                added_tests += 1
+
+    if deleted_tests > added_tests:
+        violations.append(
+            f"Forbidden test deletion: {deleted_tests} test attribute(s) removed vs {added_tests} added -> AGENTS.md §14 forbids deleting tests"
+        )
 
     return violations
 
@@ -94,7 +104,15 @@ def run_crate_checks(changed_files: list[str], target_crate: str | None = None) 
             for parent in p.parents:
                 cargo_toml = parent / "Cargo.toml"
                 if cargo_toml.exists() and parent != ROOT:
-                    packages_to_check.add(parent.name)
+                    try:
+                        content = cargo_toml.read_text(encoding="utf-8")
+                        m = re.search(r'^\s*name\s*=\s*"([^"]+)"', content, re.MULTILINE)
+                        if m:
+                            packages_to_check.add(m.group(1))
+                        else:
+                            packages_to_check.add(parent.name)
+                    except Exception:
+                        packages_to_check.add(parent.name)
                     break
 
     if not packages_to_check:

@@ -41,10 +41,8 @@ pub fn default_client() -> &'static ClientWithMiddleware {
 }
 
 pub fn graphql_endpoint_from_base(base: &str) -> String {
-    if let Ok(base_url) = url::Url::parse(base) {
-        if let Ok(joined) = base_url.join(GRAPHQL_ENDPOINT) {
-            return joined.to_string();
-        }
+    if let Ok(joined) = url::Url::parse(base).and_then(|base_url| base_url.join(GRAPHQL_ENDPOINT)) {
+        return joined.to_string();
     }
     format!(
         "{}/{}",

@@ -415,14 +415,13 @@ pub(crate) fn normalize_owner_module(value: Option<&str>) -> Result<String> {
 
 pub(crate) fn extract_module_from_staging_key(key: &str) -> Option<String> {
     let parts: Vec<&str> = key.split('/').collect();
-    if let Some(pos) = parts.iter().position(|&segment| segment == "modules") {
-        if let Some(module) = parts.get(pos + 1) {
-            if !module.is_empty() {
-                return Some((*module).to_string());
-            }
-        }
+    let pos = parts.iter().position(|&segment| segment == "modules")?;
+    let module = parts.get(pos + 1)?;
+    if !module.is_empty() {
+        Some((*module).to_string())
+    } else {
+        None
     }
-    None
 }
 
 impl MediaService {

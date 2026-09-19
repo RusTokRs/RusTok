@@ -79,14 +79,7 @@ pub async fn start_social_graph_index_position_observer_if_enabled(
         }
     };
 
-    if !ctx.shared_contains::<StopHandle>() {
-        let (stop_handle, _stop_rx) = StopHandle::new();
-        ctx.shared_insert(stop_handle);
-    }
-    let stop_rx = ctx
-        .shared_get::<StopHandle>()
-        .expect("StopHandle must exist before position observer startup")
-        .subscribe();
+    let stop_rx = StopHandle::ensure(ctx).subscribe();
 
     tracing::info!(
         worker = METRICS_CONSUMER,

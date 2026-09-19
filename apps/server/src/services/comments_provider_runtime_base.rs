@@ -539,7 +539,7 @@ fn ensure_stop_handle(runtime_ctx: &ServerRuntimeContext) -> StopHandle {
     let _ = runtime_ctx.shared_insert_if_absent(candidate.clone());
     runtime_ctx
         .shared_get::<StopHandle>()
-        .expect("StopHandle must exist after Comments TCP listener initialization")
+        .unwrap_or(candidate)
 }
 
 async fn run_comments_tcp_listener(

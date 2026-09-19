@@ -82,14 +82,7 @@ pub fn start_forum_search_inbox_worker_if_ready(ctx: &ServerRuntimeContext) -> R
         return Ok(());
     }
 
-    if !ctx.shared_contains::<StopHandle>() {
-        let (stop_handle, _stop_rx) = StopHandle::new();
-        ctx.shared_insert(stop_handle);
-    }
-    let stop_rx = ctx
-        .shared_get::<StopHandle>()
-        .expect("StopHandle must be registered before Forum Search inbox worker startup")
-        .subscribe();
+    let stop_rx = StopHandle::ensure(ctx).subscribe();
 
     let instance_id = FORUM_SEARCH_INBOX_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     tracing::info!(

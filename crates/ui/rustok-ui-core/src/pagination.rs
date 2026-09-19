@@ -46,7 +46,7 @@ impl UiPaginationState {
             if total == 0 {
                 1
             } else {
-                ((total + (self.per_page as u64) - 1) / (self.per_page as u64)) as u32
+                total.div_ceil(self.per_page as u64) as u32
             }
         })
     }

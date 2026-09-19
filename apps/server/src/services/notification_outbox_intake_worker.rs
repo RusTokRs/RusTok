@@ -118,14 +118,7 @@ pub fn start_notification_outbox_intake_if_enabled(ctx: &ServerRuntimeContext) -
         return Ok(());
     }
 
-    if !ctx.shared_contains::<StopHandle>() {
-        let (stop_handle, _stop_rx) = StopHandle::new();
-        ctx.shared_insert(stop_handle);
-    }
-    let stop_rx = ctx
-        .shared_get::<StopHandle>()
-        .expect("StopHandle must be registered before notification outbox intake startup")
-        .subscribe();
+    let stop_rx = StopHandle::ensure(ctx).subscribe();
 
     let instance_id = NOTIFICATION_OUTBOX_INTAKE_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     let worker = NotificationOutboxIntakeWorker::new(

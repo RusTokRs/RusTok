@@ -138,10 +138,11 @@ fn start_seo_redirect_cache_reconciliation_with_options(
         return;
     }
 
-    let _ = ctx.shared_insert_if_absent(SeoRedirectCacheReconciliationStartLock::default());
+    let candidate = SeoRedirectCacheReconciliationStartLock::default();
+    let _ = ctx.shared_insert_if_absent(candidate.clone());
     let start_lock = ctx
         .shared_get::<SeoRedirectCacheReconciliationStartLock>()
-        .expect("SEO redirect cache reconciliation start lock must exist after registration");
+        .unwrap_or(candidate);
     let _start_guard = start_lock
         .0
         .lock()

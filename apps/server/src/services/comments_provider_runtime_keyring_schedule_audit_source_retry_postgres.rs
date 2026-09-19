@@ -148,14 +148,11 @@ impl PostgresCommentsTcpDelegationScheduleAuditSourceRetryPolicy {
 
     pub fn max_attempts(&self) -> u32 {
         u32::try_from(self.max_attempts)
-            .expect("validated Comments source max attempts must fit u32")
+            .unwrap_or(COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_SOURCE_MAX_ATTEMPTS)
     }
 
     pub fn retry_delay(&self) -> Duration {
-        Duration::from_secs(
-            u64::try_from(self.retry_delay_seconds)
-                .expect("validated Comments source retry delay must fit u64"),
-        )
+        Duration::from_secs(u64::try_from(self.retry_delay_seconds).unwrap_or(0))
     }
 
     /// Records a failed publication attempt only while the exact source claim
@@ -490,5 +487,4 @@ mod tests {
 
 #[path = "comments_provider_runtime_keyring_schedule_audit_source_retry_active.rs"]
 mod active;
-pub use active::*;
 

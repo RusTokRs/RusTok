@@ -149,7 +149,7 @@ impl EventDlqDuplicateAlertObservabilityHandle {
         *self
             .snapshot
             .read()
-            .expect("DLQ duplicate observability snapshot lock poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     pub fn is_finished(&self) -> bool {
@@ -184,14 +184,7 @@ pub fn start_event_dlq_duplicate_alert_observability(ctx: &ServerRuntimeContext)
         return;
     }
 
-    if !ctx.shared_contains::<StopHandle>() {
-        let (stop_handle, _stop_rx) = StopHandle::new();
-        ctx.shared_insert(stop_handle);
-    }
-    let mut stop_rx = ctx
-        .shared_get::<StopHandle>()
-        .expect("StopHandle must exist before DLQ duplicate observability startup")
-        .subscribe();
+    let mut stop_rx = StopHandle::ensure(ctx).subscribe();
     let runtime_ctx = ctx.clone();
     let task_snapshot = shared.clone();
     let task = tokio::spawn(async move {
@@ -212,7 +205,7 @@ pub fn start_event_dlq_duplicate_alert_observability(ctx: &ServerRuntimeContext)
                 record_projection(stopped, Some(previous));
                 *task_snapshot
                     .write()
-                    .expect("DLQ duplicate observability snapshot lock poisoned") = stopped.health;
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = stopped.health;
                 return;
             }
 
@@ -221,7 +214,7 @@ pub fn start_event_dlq_duplicate_alert_observability(ctx: &ServerRuntimeContext)
                 record_projection(current, Some(previous));
                 *task_snapshot
                     .write()
-                    .expect("DLQ duplicate observability snapshot lock poisoned") = current.health;
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = current.health;
                 previous = current;
             }
         }
@@ -306,16 +299,23 @@ fn project_runtime(
         EventDlqDuplicateAlertObserverMode::IggyBundled
         | EventDlqDuplicateAlertObserverMode::IggyExternal => match runtime {
             Some(snapshot) if snapshot.is_available() => {
-                let evaluation = snapshot
-                    .evaluation()
-                    .expect("available DLQ duplicate runtime snapshot must have evaluation");
-                (
-                    EventDlqDuplicateAlertHealthState::Available,
-                    Some(snapshot.generation()),
-                    Some(evaluation.level()),
-                    evaluation.has_physical_duplicates(),
-                    evaluation.has_identity_conflict(),
-                )
+                if let Some(evaluation) = snapshot.evaluation() {
+                    (
+                        EventDlqDuplicateAlertHealthState::Available,
+                        Some(snapshot.generation()),
+                        Some(evaluation.level()),
+                        evaluation.has_physical_duplicates(),
+                        evaluation.has_identity_conflict(),
+                    )
+                } else {
+                    (
+                        EventDlqDuplicateAlertHealthState::Unavailable,
+                        Some(snapshot.generation()),
+                        None,
+                        false,
+                        false,
+                    )
+                }
             }
             Some(snapshot) if snapshot.generation() == 0 => (
                 EventDlqDuplicateAlertHealthState::Starting,

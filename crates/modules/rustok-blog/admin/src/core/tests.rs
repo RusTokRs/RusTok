@@ -1,6 +1,7 @@
 use super::*;
 use crate::model::*;
-use rustok_api::{RichTextDocument, WritePathIssueKind};
+use rustok_api::{RichTextDocument, WritePathIssue, WritePathIssueKind};
+use rustok_ui_core::AdminQueryKey;
 
 fn sample_list_item(id: &str) -> BlogPostListItem {
         BlogPostListItem {

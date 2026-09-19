@@ -36,9 +36,12 @@ pub mod event_delivery_settings_service;
 pub mod event_dlq_duplicate_alert_observability;
 pub mod event_dlq_duplicate_alert_observer;
 #[cfg(feature = "mod-forum")]
+#[path = "forum_audience_facts.rs"]
+mod forum_audience_facts_membership;
+
+#[cfg(feature = "mod-forum")]
 pub mod forum_audience_facts {
-    #[path = "forum_audience_facts.rs"]
-    mod membership;
+    use super::forum_audience_facts_membership as membership;
 
     use rustok_forum::{ForumUserTrustAudienceFactsPort, SharedForumAudienceFactsPort};
     use sea_orm::DatabaseConnection;
@@ -81,6 +84,18 @@ pub mod mcp_management_guard;
 pub mod mcp_management_mutation_provider;
 pub mod mcp_runtime;
 pub mod mcp_scaffold_workspace;
+#[cfg(feature = "mod-forum")]
+#[path = "forum_search_category_scope.rs"]
+mod forum_search_category_scope;
+
+#[cfg(feature = "mod-forum")]
+#[path = "forum_search_owner_revision.rs"]
+mod forum_search_owner_revision;
+
+#[cfg(feature = "mod-forum")]
+#[path = "forum_search_result_eligibility.rs"]
+mod forum_search_result_eligibility;
+
 #[path = "module_event_dispatcher.rs"]
 mod module_event_dispatcher_base;
 pub mod module_event_dispatcher {
@@ -94,16 +109,9 @@ pub mod module_event_dispatcher {
     use crate::services::server_runtime_context::ServerRuntimeContext;
 
     #[cfg(feature = "mod-forum")]
-    #[path = "forum_search_category_scope.rs"]
-    mod forum_search_category_scope;
-
-    #[cfg(feature = "mod-forum")]
-    #[path = "forum_search_owner_revision.rs"]
-    mod forum_search_owner_revision;
-
-    #[cfg(feature = "mod-forum")]
-    #[path = "forum_search_result_eligibility.rs"]
-    mod forum_search_result_eligibility;
+    use super::{
+        forum_search_category_scope, forum_search_owner_revision, forum_search_result_eligibility,
+    };
 
     pub use super::module_event_dispatcher_base::{
         build_module_event_dispatcher, build_shared_runtime_extensions,

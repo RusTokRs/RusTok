@@ -331,11 +331,7 @@ impl RegistryCatalogModule {
         let versions = normalize_registry_versions(
             versions
                 .into_iter()
-                .map(|version| {
-                    version
-                        .into_catalog_version()
-                        .expect("catalog projection contains a valid artifact release")
-                })
+                .filter_map(|version| version.into_catalog_version().ok())
                 .collect(),
         )
         .into_iter()

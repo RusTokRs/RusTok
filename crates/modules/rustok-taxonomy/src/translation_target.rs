@@ -807,6 +807,10 @@ fn taxonomy_error_to_port_error(error: TaxonomyError) -> PortError {
             "taxonomy.translation_database",
             "Taxonomy storage is unavailable",
         ),
+        TaxonomyError::Internal(message) => PortError::invariant_violation(
+            "taxonomy.translation_internal_error",
+            format!("Taxonomy internal error: {message}"),
+        ),
     }
 }
 

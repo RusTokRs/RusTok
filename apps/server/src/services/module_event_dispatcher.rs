@@ -115,11 +115,7 @@ fn spawn_paid_order_label_worker_if_enabled(ctx: &ServerRuntimeContext) {
         return;
     }
 
-    ensure_stop_handle(ctx);
-    let stop_rx = ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .expect("StopHandle must exist before paid-order label worker startup")
-        .subscribe();
+    let stop_rx = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
     ctx.shared_insert(
         crate::services::paid_order_label_worker::spawn_paid_order_create_label_worker(
             ctx.clone(),
@@ -138,11 +134,7 @@ fn spawn_marketplace_financial_worker_if_enabled(ctx: &ServerRuntimeContext) {
         return;
     }
 
-    ensure_stop_handle(ctx);
-    let stop_rx = ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .expect("StopHandle must exist before marketplace financial worker startup")
-        .subscribe();
+    let stop_rx = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
     ctx.shared_insert(
         crate::services::marketplace_financial_worker::spawn_marketplace_financial_worker(
             ctx.clone(),
@@ -161,25 +153,13 @@ fn spawn_payment_provider_event_worker_if_enabled(ctx: &ServerRuntimeContext) {
         return;
     }
 
-    ensure_stop_handle(ctx);
-    let stop_rx = ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .expect("StopHandle must exist before payment provider event worker startup")
-        .subscribe();
+    let stop_rx = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
     ctx.shared_insert(
         crate::services::payment_provider_event_worker::spawn_payment_provider_event_worker(
             ctx.clone(),
             stop_rx,
         ),
     );
-}
-
-#[cfg(any(feature = "mod-commerce", feature = "mod-payment"))]
-fn ensure_stop_handle(ctx: &ServerRuntimeContext) {
-    if !ctx.shared_contains::<crate::services::app_lifecycle::StopHandle>() {
-        let (stop_handle, _stop_rx) = crate::services::app_lifecycle::StopHandle::new();
-        ctx.shared_insert(stop_handle);
-    }
 }
 
 pub fn build_shared_runtime_extensions(

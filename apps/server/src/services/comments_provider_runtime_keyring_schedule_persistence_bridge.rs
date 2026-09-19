@@ -1,7 +1,7 @@
 use super::*;
 
 impl SharedCommentsTcpDelegationScheduleHandle {
-    pub(super) fn from_prepared_file(
+    pub fn from_prepared_file(
         file_path: PathBuf,
         schedule: CommentsTcpDelegationSchedule,
         generation: u64,
@@ -17,7 +17,7 @@ impl SharedCommentsTcpDelegationScheduleHandle {
         ))
     }
 
-    pub(super) fn replace_prepared_with_commit<F>(
+    pub fn replace_prepared_with_commit<F>(
         &self,
         schedule: CommentsTcpDelegationSchedule,
         generation: u64,

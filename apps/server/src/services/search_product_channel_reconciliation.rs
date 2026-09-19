@@ -46,14 +46,7 @@ pub fn start_product_channel_projection_reconciliation_if_ready(
         return Ok(());
     }
 
-    if !ctx.shared_contains::<StopHandle>() {
-        let (stop_handle, _stop_rx) = StopHandle::new();
-        ctx.shared_insert(stop_handle);
-    }
-    let stop_rx = ctx
-        .shared_get::<StopHandle>()
-        .expect("StopHandle must be registered before Product channel reconciliation startup")
-        .subscribe();
+    let stop_rx = StopHandle::ensure(ctx).subscribe();
 
     let instance_id = PRODUCT_CHANNEL_REPAIR_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     tracing::info!(

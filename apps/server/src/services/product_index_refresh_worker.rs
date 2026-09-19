@@ -243,14 +243,7 @@ pub async fn start_product_index_refresh_worker_if_enabled(
         events,
     };
 
-    if !ctx.shared_contains::<StopHandle>() {
-        let (stop_handle, _stop_rx) = StopHandle::new();
-        ctx.shared_insert(stop_handle);
-    }
-    let stop_rx = ctx
-        .shared_get::<StopHandle>()
-        .expect("StopHandle must be registered before Product Index refresh worker startup")
-        .subscribe();
+    let stop_rx = StopHandle::ensure(ctx).subscribe();
     let config = ProductIndexRefreshWorkerConfig::from_context(ctx)?;
     let instance_id = PRODUCT_INDEX_REFRESH_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     runtime_consumer_metrics::record_worker_start(METRICS_CONSUMER);

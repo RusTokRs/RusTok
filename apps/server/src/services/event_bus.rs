@@ -64,10 +64,11 @@ impl EventForwarderHandle {
 }
 
 pub fn event_bus_from_context(ctx: &ServerRuntimeContext) -> EventBus {
-    let _ = ctx.shared_insert_if_absent(EventBusStartLock::default());
+    let candidate = EventBusStartLock::default();
+    let _ = ctx.shared_insert_if_absent(candidate.clone());
     let start_lock = ctx
         .shared_get::<EventBusStartLock>()
-        .expect("EventBus start lock must be available after registration");
+        .unwrap_or(candidate);
     let _start_guard = start_lock
         .0
         .lock()

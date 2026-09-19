@@ -188,7 +188,6 @@ mod tests {
     use crate::CommerceError;
 
     #[test]
-    #[test]
     fn generic_internal_descriptor_contains_no_runtime_details() {
         let public = super::ProductPublicError::internal();
         let rendered = public.to_string();
@@ -199,6 +198,7 @@ mod tests {
         assert!(!rendered.contains("TransactionalEventBus"));
     }
 
+    #[test]
     fn database_details_are_redacted_from_public_product_errors() {
         let error = CommerceError::Database(sea_orm::DbErr::Custom(
             "password=private host=internal".to_owned(),

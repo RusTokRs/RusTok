@@ -164,7 +164,7 @@ async fn post_tag_sync_reuses_existing_global_taxonomy_term() {
         .await
         .expect("global term should be created");
 
-    let post_id = post_service
+    let _post_id = post_service
         .create_post(
             tenant_id,
             security,
@@ -352,7 +352,7 @@ async fn tag_update_rolls_back_when_blog_reindex_outbox_write_fails() {
     let tag_service = TagService::new(db.clone());
     let security = admin();
 
-    let post_id = post_service
+    let _post_id = post_service
         .create_post(
             tenant_id,
             security.clone(),

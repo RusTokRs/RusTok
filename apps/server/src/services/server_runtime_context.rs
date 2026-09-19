@@ -16,13 +16,27 @@ struct ServerSharedValues {
 }
 
 impl ServerSharedValues {
+    fn read_lock(
+        &self,
+    ) -> std::sync::RwLockReadGuard<'_, HashMap<TypeId, Arc<dyn Any + Send + Sync>>> {
+        self.values
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn write_lock(
+        &self,
+    ) -> std::sync::RwLockWriteGuard<'_, HashMap<TypeId, Arc<dyn Any + Send + Sync>>> {
+        self.values
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     fn get<T>(&self) -> Option<T>
     where
         T: 'static + Send + Sync + Clone,
     {
-        self.values
-            .read()
-            .expect("server shared values lock poisoned")
+        self.read_lock()
             .get(&TypeId::of::<T>())
             .and_then(|value| value.downcast_ref::<T>())
             .cloned()
@@ -32,9 +46,7 @@ impl ServerSharedValues {
     where
         T: 'static + Send + Sync,
     {
-        self.values
-            .write()
-            .expect("server shared values lock poisoned")
+        self.write_lock()
             .insert(TypeId::of::<T>(), Arc::new(value));
     }
 
@@ -42,10 +54,7 @@ impl ServerSharedValues {
     where
         T: 'static + Send + Sync,
     {
-        let mut values = self
-            .values
-            .write()
-            .expect("server shared values lock poisoned");
+        let mut values = self.write_lock();
         match values.entry(TypeId::of::<T>()) {
             Entry::Vacant(entry) => {
                 entry.insert(Arc::new(value));
@@ -59,11 +68,7 @@ impl ServerSharedValues {
     where
         T: 'static + Send + Sync,
     {
-        let value = self
-            .values
-            .write()
-            .expect("server shared values lock poisoned")
-            .remove(&TypeId::of::<T>())?;
+        let value = self.write_lock().remove(&TypeId::of::<T>())?;
         let typed = Arc::downcast::<T>(value).ok()?;
         Arc::try_unwrap(typed).ok()
     }
@@ -72,10 +77,7 @@ impl ServerSharedValues {
     where
         T: 'static + Send + Sync,
     {
-        self.values
-            .read()
-            .expect("server shared values lock poisoned")
-            .contains_key(&TypeId::of::<T>())
+        self.read_lock().contains_key(&TypeId::of::<T>())
     }
 }
 
@@ -151,9 +153,7 @@ impl ServerRuntimeContext {
         T: 'static + Send + Sync,
     {
         self.shared_values
-            .values
-            .read()
-            .expect("server shared values lock poisoned")
+            .read_lock()
             .get(&TypeId::of::<T>())
             .and_then(|value| value.downcast_ref::<T>())
             .map(map)

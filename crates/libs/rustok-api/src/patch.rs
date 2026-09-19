@@ -41,6 +41,21 @@ impl<T> Patch<T> {
     }
 }
 
+impl<T> From<Option<T>> for Patch<T> {
+    fn from(value: Option<T>) -> Self {
+        match value {
+            Some(v) => Patch::Set(v),
+            None => Patch::Keep,
+        }
+    }
+}
+
+impl<T> From<T> for Patch<T> {
+    fn from(value: T) -> Self {
+        Patch::Set(value)
+    }
+}
+
 impl<T: Serialize> Serialize for Patch<T> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
