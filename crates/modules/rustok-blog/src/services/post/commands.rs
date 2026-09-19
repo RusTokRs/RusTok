@@ -209,6 +209,7 @@ impl PostService {
         }
 
         let full_reindex = has_owner_change || has_relation_change;
+        let next_version = Self::next_persisted_version(post.version)?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         let now = chrono::Utc::now();
 
@@ -227,7 +228,7 @@ impl PostService {
             )
             .col_expr(
                 blog_post::Column::Version,
-                sea_orm::sea_query::Expr::value(post.version + 1),
+                sea_orm::sea_query::Expr::value(next_version),
             )
             .filter(blog_post::Column::Id.eq(post_id))
             .filter(blog_post::Column::TenantId.eq(tenant_id))
@@ -602,7 +603,7 @@ async fn apply_status_transition_in_tx(
         )
         .col_expr(
             blog_post::Column::Version,
-            sea_orm::sea_query::Expr::value(expected_version + 1),
+            sea_orm::sea_query::Expr::value(Self::next_persisted_version(expected_version)?),
         )
         .filter(blog_post::Column::Id.eq(post_id))
         .filter(blog_post::Column::TenantId.eq(tenant_id))
