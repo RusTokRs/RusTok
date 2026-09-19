@@ -143,7 +143,6 @@ impl TaxonomyService {
 
         self.replace_aliases_in_tx(&txn, tenant_id, term_id, &locale, &aliases)
             .await?;
-        reconcile_route_keys_for_locale_in_tx(&txn, tenant_id, term_id, &locale).await?;
         record_translation_change_in_tx(
             &txn,
             TranslationChangeEvidence {
