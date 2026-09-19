@@ -22,10 +22,11 @@ use rustok_translation_targets::{
 use uuid::Uuid;
 
 use crate::{
+    domain::ProductStatus,
     CatalogService, CommerceError, ProductImageTranslationExactLocaleApply,
     ProductImageTranslationExactLocaleApplyReceipt, ProductImageTranslationExactLocaleError,
     ProductImageTranslationExactLocaleRecord, ProductImageTranslationExactLocaleSnapshot,
-    entities::product::ProductStatus, services::with_product_operation_receipt,
+    ProductStatus, services::with_product_operation_receipt,
 };
 
 const TRANSLATION_OWNER_SLUG: &str = "product";
