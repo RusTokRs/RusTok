@@ -1,5 +1,7 @@
 {
   "scripts": {
+    "verify:docs": "node scripts/verify/verify-docs.mjs",
+    "generate:docs-topology": "node scripts/generate/generate-docs-topology.mjs",
     "verify:adrs": "node scripts/verify/verify-adrs.mjs",
     "verify:module-source-layout": "node scripts/verify/verify-module-source-layout.mjs",
     "audit:deps": "cargo machete",

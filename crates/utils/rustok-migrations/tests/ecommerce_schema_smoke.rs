@@ -581,6 +581,7 @@ fn create_product_input() -> CreateProductInput {
                 meta_description: Some("RU description".to_string()),
             },
         ],
+        variant_axes: Vec::new(),
         variants: vec![CreateVariantInput {
             sku: Some(format!("SKU-{}", Uuid::new_v4())),
             barcode: None,

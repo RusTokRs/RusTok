@@ -488,7 +488,7 @@ Synchronization with `modules.toml`: updated per manifest composition as of 2026
 
 ## Module Release, Rollback and Transition Readiness Board
 
-This board defines the canonical transition class, data ownership boundary, predecessor retention strategy, and automated rollback eligibility for each platform module in accordance with [Module Release and Rollback Plan](./module-release-rollback-plan.md) and [ADR 2026-08-06](../DECISIONS/2026-08-06-module-release-rollback-safety.md).
+This board defines the canonical transition class, data ownership boundary, predecessor retention strategy, and automated rollback eligibility for each platform module in accordance with [Module Release and Rollback Plan](./module-release-rollback-plan.md) and [ADR 2026-08-06](../../DECISIONS/2026-08-06-module-release-rollback-safety.md).
 
 ### Transition Classes:
 - `Stateless`: Zero persistent module state. Immediate side-by-side slot switch (`SlotA`/`SlotB`) with zero risk of database corruption.

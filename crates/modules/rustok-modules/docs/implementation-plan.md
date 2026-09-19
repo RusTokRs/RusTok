@@ -8,7 +8,7 @@ orchestration, rollback, and static promotion. Optional module implementations
 must not become server Cargo dependencies through this crate.
 
 The cross-component sequence and completion rules are defined by the
-[canonical module-platform plan](../../../docs/modules/module-control-plane-consolidation-plan.md).
+[canonical module-platform plan](../../../../docs/modules/module-control-plane-consolidation-plan.md).
 
 ## Release and Data Rollback Readiness
 
@@ -2545,7 +2545,7 @@ desired-versus-observed rollout state. `rustok-build`, `rustok-migrations`,
 sandbox, and deployment components remain narrow execution/evidence ports and
 must not retain a second operator rollback lifecycle. The cross-module
 adoption plan is documented in
-[Module Release and Rollback Plan](../../../docs/modules/module-release-rollback-plan.md).
+[Module Release and Rollback Plan](../../../../docs/modules/module-release-rollback-plan.md).
 
 Automatic mode is computed for one exact candidate/predecessor pair and live
 scope from owner-validated evidence; caller migration modes, module prose, and

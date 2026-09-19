@@ -1,10 +1,11 @@
 ---
 id: doc://docs/verification/README.md
-kind: project_overview
+doc_type: current_contract
+status: current
+owner: platform-verification
+canonical_for:
+  - verification-map
 language: markdown
-last_verified_snapshot: snap_jsonl_00000021
-source_language: markdown
-status: verified
 ---
 # Verification Plans
 
@@ -31,19 +32,21 @@ Execution plans and remediation backlogs should not live in this section as an e
 - [RBAC, Server and Runtime Module Verification](./rbac-server-modules-verification-plan.md)
 - [Leptos Library Verification](./leptos-libraries-verification-plan.md)
 
-## ADR Governance Verification
+## Documentation & ADR Governance Verification
 
-Architecture-decision registry drift is checked with:
+Platform documentation currency, links, metadata, and ADR governance are checked with:
 
 ```bash
-npm run verify:adrs
+npm run verify:docs
 ```
 
-The verifier checks that every dated file in `DECISIONS/` is indexed exactly
-once, registry statuses use the canonical decision/implementation vocabularies,
-supersession links resolve, and ADRs created under the current governance
-contract contain the required ownership, invariant, failure, cutover, and
-verification sections.
+Constituent gates include:
+- `npm run verify:adrs` — checks that every dated file in `DECISIONS/` is indexed exactly once, registry statuses use canonical vocabularies, supersession links resolve, and ADRs contain required governance sections.
+- `npm run generate:docs-topology -- --check` — verifies that module topology tables in `docs/modules/overview.md` and Mermaid diagrams in `docs/architecture/diagram.md` stay synchronized with `modules.toml`.
+- Internal link and anchor validation across platform entrypoints.
+- Detection of unescaped literal escape characters (`\n`, `\t`) in documentation text.
+- Prevention of forbidden stale terminology and ungrounded claims.
+- Front matter schema validation on governed documentation.
 
 ## Minimum Verification Path for Platform Modules
 

@@ -1,0 +1,397 @@
+{
+  "scanned_at": "2026-09-19T01:04:41Z",
+  "total_findings": 35,
+  "by_tier": {
+    "1": 35
+  },
+  "by_rule": {
+    "SLOP-INCLUDE-MACRO-01": 35
+  },
+  "findings": [
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_middleware_locale.rs-1",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/middleware/locale.rs",
+      "line": 1,
+      "snippet": "include!(\"locale_base.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-2",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 2,
+      "snippet": "include!(\"comments_provider_runtime_base.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-6",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 6,
+      "snippet": "include!(\"comments_provider_runtime_keyring.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-10",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 10,
+      "snippet": "include!(\"comments_provider_runtime_keyring_reload.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-14",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 14,
+      "snippet": "include!(\"comments_provider_runtime_keyring_reload_guard.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-18",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 18,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-22",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 22,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_guard.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-26",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 26,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_trigger.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-30",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 30,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_persistence.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-34",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 34,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_persistence_postgres.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-38",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 38,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_persistence_postgres_audit.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-42",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 42,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_audit_publication.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-46",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 46,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_audit_canonical_writer.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-50",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 50,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_audit_handoff_postgres.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-51",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 51,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_audit_handoff_retry_ready.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-52",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 52,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_audit_handoff_postgres_test_support.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-56",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 56,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_audit_handoff_worker.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-57",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 57,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_audit_handoff_worker_source_retry.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-61",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 61,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_audit_source_retry_postgres.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-62",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 62,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_audit_source_retry_active.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-66",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 66,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_audit_recovery_postgres.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-67",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 67,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_audit_recovery_postgres_test_support.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-71",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 71,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_audit_operator.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-72",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 72,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_audit_operator_postgres_evidence.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-79",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 79,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_persisted_trigger.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-83",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 83,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_postgres_audited_trigger.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime.rs-87",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime.rs",
+      "line": 87,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_trigger_guard.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime_keyring_schedule.rs-34",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime_keyring_schedule.rs",
+      "line": 34,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_base.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_comments_provider_runtime_keyring_schedule.rs-35",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/comments_provider_runtime_keyring_schedule.rs",
+      "line": 35,
+      "snippet": "include!(\"comments_provider_runtime_keyring_schedule_persistence_bridge.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_marketplace_catalog_cache.rs-16",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/marketplace_catalog_cache.rs",
+      "line": 16,
+      "snippet": "include!(\"marketplace_catalog_cache_base.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_mod.rs-41",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/mod.rs",
+      "line": 41,
+      "snippet": "include!(\"forum_audience_facts.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_mod.rs-99",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/mod.rs",
+      "line": 99,
+      "snippet": "include!(\"forum_search_category_scope.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_mod.rs-104",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/mod.rs",
+      "line": 104,
+      "snippet": "include!(\"forum_search_owner_revision.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_mod.rs-109",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/mod.rs",
+      "line": 109,
+      "snippet": "include!(\"forum_search_result_eligibility.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    },
+    {
+      "id": "SLOP-INCLUDE-MACRO-01-apps_server_src_services_runtime_guardrails.rs-27",
+      "rule_id": "SLOP-INCLUDE-MACRO-01",
+      "tier": 1,
+      "severity": "warning",
+      "file": "apps/server/src/services/runtime_guardrails.rs",
+      "line": 27,
+      "snippet": "include!(\"runtime_guardrails_base.rs\");",
+      "remediation": "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`).",
+      "reference": "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+    }
+  ]
+}

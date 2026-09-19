@@ -15,7 +15,6 @@ This index contains one entry for each live local plan. Local plans own the curr
 | `alloy` | [plan](../../crates/modules/alloy/docs/implementation-plan.md) | `in_progress` | Move Alloy execution through the neutral sandbox, then package source revisions as immutable module artifacts. |
 | `flex` | [plan](../../crates/modules/flex/docs/implementation-plan.md) | `in_progress` | Execute the source-complete SQLite owner matrix, PostgreSQL transaction/concurrency/replay and two-replica outage/regression recovery evidence, then finish owner transport extraction. |
 | `leptos-auth` | [plan](../../crates/ui/leptos-auth/docs/implementation-plan.md) | `not_started` | Remove the legacy `api` compatibility re-export after migrating callers. |
-| `leptos-hook-form` | [plan](../../crates/ui/leptos-hook-form/docs/implementation-plan.md) | `not_started` | Validate the shared form-state contract with concrete consumers. |
 | `leptos-shadcn-pagination` | [plan](../../crates/ui/leptos-shadcn-pagination/docs/implementation-plan.md) | `not_started` | Remove package-local pagination copy through the host locale contract. |
 | `leptos-table` | [plan](../../crates/ui/leptos-table/docs/implementation-plan.md) | `not_started` | Validate the shared table-state contract with its first concrete consumers. |
 | `leptos-zod` | [plan](../../crates/ui/leptos-zod/docs/implementation-plan.md) | `not_started` | Validate the shared validation-envelope contract with concrete consumers. |

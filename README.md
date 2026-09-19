@@ -63,7 +63,7 @@ In traditional backend projects, engineering teams spend up to 70% of their init
 ### 2. Safety by Design, Not by Discipline
 In traditional Node.js, Python, or PHP platforms, security and data isolation depend on whether developers remember to check permissions or `tenant_id` filters on every query. One missed check leads to catastrophic cross-tenant data leaks.
 
-In RusTok, tenant context (`tenant_id`), RBAC policies (`rustok-rbac`), and locale matching (`ICU4X`) are enforced at **compile-time and embedded in composite database keys**. Every cross-module call passes a transport-agnostic `PortContext` carrying strict `deadline_ms` timeouts, OpenTelemetry trace identifiers (`correlation_id`, `causation_id`), and idempotency keys. Caller-supplied identity headers (`X-User-ID`) are rejected at transport boundaries and reconstructed strictly post-token validation.
+In RusTok, multi-tenant isolation and data integrity are enforced through **composite database primary keys (`tenant_id`, `id`) and strongly-typed request context (`PortContext`)**. Rust's compile-time type safety ensures exhaustiveness across domain boundaries, while transport boundaries strictly reject unvalidated caller headers (`X-User-ID`), reconstructing identities strictly post-token validation. Every cross-module call passes typed trace context and timeout deadlines (`deadline_ms`).
 
 ### 3. Alloy — Self-Evolving Dynamic Runtime & Instant Integrations
 Compiled applications traditionally require code modifications, Pull Requests, CI/CD pipelines, and server restarts to change business rules. **Alloy** ([crates/modules/alloy](crates/modules/alloy/README.md)) bridges the gap between compiled performance and dynamic flexibility:
@@ -81,19 +81,14 @@ RusTok is designed from day one for AI orchestration and automated operations:
 - **Provider-Neutral AI Framework (`rustok-ai`)**: LLM orchestration with a vector RAG data plane (Athanor vector engine) supporting OpenAI, Anthropic, and local models.
 - **Domain AI Adapters**: Pre-built AI adapters for products (`ai-product`), content (`ai-content`), media (`ai-media`), orders (`ai-order`), translations (`ai-translation`), and Alloy scripting (`ai-alloy`).
 
-### 5. Single-Binary Efficiency & Zero Cloud Waste
+### 5. Single-Binary Efficiency & Resource Economy
 Modern microservice setups often require complex Kubernetes clusters and gigabytes of RAM just to idle.
-- **Sub-50ms Cold Boot**: Starts instantly with a minimal memory footprint (**20–50 MB RAM** idle).
-- **Extreme Request Throughput**: Handles tens of thousands of requests per second on a single low-cost VPS.
+- **Minimal Memory Footprint & Fast Boot** (*Benchmark profile: Linux x86_64 release, single-binary modular monolith*): Sub-50ms cold boot and ~20–50 MB idle RAM footprint in minimal configurations.
+- **High Request Throughput**: Tokio-driven asynchronous I/O and zero-allocation routing handle high request volumes on commodity hardware without JVM garbage collection pauses.
 
-### 6. Dual Database Engine Architecture (PostgreSQL + Turso / libSQL)
-RusTok is designed to support a **Dual-Engine Persistence Strategy**:
-- **PostgreSQL**: The gold standard for enterprise monoliths, complex partitioning, and centralized high-scale database clusters.
-- **Turso (libSQL) Native Edge & Multi-Tenant Track**: The next-generation serverless database engine:
-  - 🏢 **Database-per-Tenant**: True physical database isolation for every tenant with zero-cost scale-to-zero.
-  - ⚡ **Zero-Latency Embedded Replicas**: Executes reads in-process inside the Rust binary (< 1ms latency) with background async cloud replication.
-  - 🧠 **Native Vector Search**: Direct vector embeddings and semantic search for `rustok-ai` built directly into the database engine.
-  - 🌿 **Instant Database Branching**: Spawns isolated database branches in 5ms for safe Alloy script dry-runs and AI migration testing.
+### 6. Database Strategy: PostgreSQL Foundation & Edge Roadmap Track
+- **PostgreSQL (Implemented / Production Foundation)**: The canonical relational store for production deployments. Backs core transactional writes, JSONB keyset indexing (`rustok-index`), and the transactional outbox (`sys_events`).
+- **Turso / libSQL (Accepted Target / Edge Track)**: Architecture target for serverless and edge topologies, introducing physical database-per-tenant isolation, embedded in-process replicas, and instant 5ms database branching.
 
 ---
 
@@ -106,7 +101,7 @@ Rather than spending months rebuilding low-level infrastructure from scratch, Ru
 - 🚀 **Startups & MVPs**: Launch production-ready digital products in days rather than months.
 - 🏢 **Enterprise ERP, CRM & B2B Portals**: Manage complex organizational hierarchies, RBAC policies, custom pricing, and legacy data cleansing via Alloy scripts.
 - 💳 **Fintech, Banking & Data-Sensitive Workloads**: Strict compile-time type safety, double-entry financial ledger accounting (`rustok-marketplace-ledger`), event audit trails, and non-bypassable tenant isolation.
-- ☁️ **SaaS Platforms**: Multi-tenant database isolation (Turso per-tenant micro-DBs), sub-50ms cold boots, and effortless scale-to-zero.
+- ☁️ **SaaS Platforms**: Multi-tenant database isolation, sub-50ms cold boots, and effortless scale-to-zero.
 
 ### 2. Specialized Industry Frameworks
 For domain-specific verticals, RusTok provides pre-packaged module ecosystems:
@@ -123,24 +118,23 @@ For domain-specific verticals, RusTok provides pre-packaged module ecosystems:
 | Engineering Capability | WordPress / Woo | Magento 2 | Strapi (JS) | Medusa v2 (TS) | **RusTok** |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Type Safety Guarantees** | None (PHP) | None (PHP) | Build-step (TS) | Build-step (TS) | **Compile-time enforced (Rust)** |
-| **Native Multi-Tenancy** | Multisite add-on | Store views | None | Limited | **Native composite DB keys & Turso per-tenant DBs** |
-| **Fluid Backend Topology (FBA)** | Monolith only | Monolith only | Headless only | Complex setup | **Fluid: Monolith ↔ gRPC Microservices** |
+| **Native Multi-Tenancy** | Multisite add-on | Store views | None | Limited | **Composite DB primary keys & typed `PortContext`** |
+| **Fluid Backend Topology (FBA)** | Monolith only | Monolith only | Headless only | Complex setup | **In-process modular monolith default; verified gRPC profiles** |
 | **Read Indexing Engine** | Direct DB queries | Heavy EAV / ES | Direct DB queries | Remote Query | **`rustok-index` (JSONB + Keyset)** |
 | **Event Streaming & Replay** | Cron / MySQL | Triggers / Mview | None | Pub/Sub | **Iggy (Event Replay in Rust)** |
 | **On-the-Fly Dynamic Logic** | Unsafe PHP plugins | Heavy DDL / Cron | JS Hooks | JS Workflows | **Alloy (`rustok-sandbox` Rhai/WASM)** |
 | **Native AI & MCP Integration** | Plugins | None | None | Limited | **Built-in `rustok-mcp` Server & RAG** |
-| **Idle RAM Footprint** | ~150–300 MB | ~500+ MB | ~200–400 MB | ~200–300 MB | **Extremely Low (20–50 MB RAM)** |
+| **Idle RAM Footprint** | ~150–300 MB | ~500+ MB | ~200–400 MB | ~200–300 MB | **Extremely Low (~20–50 MB in release profile)** |
 
 ---
 
 ## Technical Pillars & Core Architecture
 
 ### 1. Fluid Backend Architecture (FBA)
-Fluid Backend Architecture (FBA) decouples domain service logic from transport boundaries. A module's canonical business logic (`ProductCatalogReadPort`, `OrderService`, etc.) is implemented once in pure Rust.
+Fluid Backend Architecture decouples domain service logic from transport boundaries:
 
-- **Embedded Monolith (Default)**: Modules run inside `apps/server` in a single process. Service calls execute as zero-overhead, in-process Rust trait invocations without network hops or HTTP serialization.
-- **Remote Service (Microservice Profile)**: Heavy modules can be extracted into standalone binaries (e.g. `rustok-product-catalog-service`) and called over authenticated, high-performance **gRPC** (`rustok-product-transport`).
-- **Zero Business Code Rewrite**: Switching between embedded and remote modes requires changing only a environment flag (e.g. `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc`). Client APIs and domain logic remain untouched.
+- **Embedded Modular Monolith (Default)**: RusTok executes as a single binary by default. Module service calls execute as zero-overhead, in-process Rust trait invocations without network hops or serialization penalties.
+- **Targeted Remote Service Profiles**: When a module's owner explicitly publishes that port, transport adapter, service host, security boundary, and verification evidence (e.g. `rustok-product-transport`), it can run as an independent gRPC microservice. Remote execution is not a universal switch and never silently falls back.
 
 ### 2. Fluid Frontend Architecture (FFA)
 FFA provides a framework-agnostic UI architecture that eliminates frontend fragmentation and protects application code from UI framework lock-in:

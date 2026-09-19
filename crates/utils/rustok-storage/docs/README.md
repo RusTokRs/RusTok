@@ -62,5 +62,5 @@ against the exact provider endpoint and bucket used by the environment.
 ## Related documents
 
 - [Implementation plan](./implementation-plan.md)
-- [Direct object-store ADR](../../../DECISIONS/2026-07-22-direct-object-store-runtime-owner-local-lifecycle.md)
-- [`rustok-media` documentation](../../rustok-media/docs/README.md)
+- [Direct object-store ADR](../../../../DECISIONS/2026-07-22-direct-object-store-runtime-owner-local-lifecycle.md)
+- [`rustok-media` documentation](../../../modules/rustok-media/docs/README.md)

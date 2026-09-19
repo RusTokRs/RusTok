@@ -68,4 +68,4 @@ channel visibility and deterministic published artifacts.
 - [Implementation plan](./implementation-plan.md)
 - [Admin package](../admin/README.md)
 - [Storefront package](../storefront/README.md)
-- [Event flow contract](../../../docs/architecture/event-flow-contract.md)
+- [Event flow contract](../../../../docs/architecture/event-flow-contract.md)

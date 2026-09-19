@@ -55,7 +55,7 @@ sentinel before persistence or relay.
 
 The rebuild-only rollback and `build.rolled_back` contracts describe the
 current implementation. The accepted
-[module release rollback safety decision](../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
+[module release rollback safety decision](../../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
 requires an atomic cutover to `rustok-modules`-owned recovery-operation and
 desired/observed rollout facts. The cutover removes superseded build rollback
 events and every repository-owned caller rather than retaining parallel event
@@ -65,5 +65,5 @@ families.
 
 - [Module docs](./docs/README.md)
 - [Event contract digest admission](./docs/event-contract-digest-admission.md)
-- [Event schema release decision](../../DECISIONS/2026-07-23-event-schema-release-discipline.md)
-- [Platform docs index](../../docs/index.md)
+- [Event schema release decision](../../../DECISIONS/2026-07-23-event-schema-release-discipline.md)
+- [Platform docs index](../../../docs/index.md)

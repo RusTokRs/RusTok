@@ -455,7 +455,7 @@ async fn check_storage_backend(ctx: &ServerRuntimeContext) -> std::result::Resul
         uuid::Uuid::nil(),
         "probe",
     )
-    .expect("platform health key constants are valid")
+    .map_err(|e| format!("invalid health probe key: {e}"))?
     .into_path();
     let data = bytes::Bytes::from_static(b"ok");
     let result = async {

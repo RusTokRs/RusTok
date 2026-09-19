@@ -42,4 +42,4 @@ module transport adapters, but which should not live in `rustok-core`.
 
 - [README crate](../README.md)
 - [Implementation Plan](./implementation-plan.md)
-- [Platform documentation map](../../../docs/index.md)
+- [Platform documentation map](../../../../docs/index.md)

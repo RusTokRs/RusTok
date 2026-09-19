@@ -39,4 +39,4 @@ and other invariants that the remaining RusToK modules rely on.
 
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
-- [Event flow contract](../../../docs/architecture/event-flow-contract.md)
+- [Event flow contract](../../../../docs/architecture/event-flow-contract.md)

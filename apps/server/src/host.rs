@@ -70,7 +70,7 @@ struct JwtConfig {
 
 /// Starts the HTTP-only Axum host.
 pub async fn run() -> Result<()> {
-    let config = load_config()?;
+    let config = load_config().await?;
     let database_uri = resolve_database_uri(&config.database.uri);
     let production = is_production_environment();
     validate_database_deployment(&database_uri, production)?;
@@ -331,14 +331,14 @@ async fn connect_database(
     Database::connect(options).await.map_err(Error::Database)
 }
 
-fn load_config() -> Result<HostConfig> {
+async fn load_config() -> Result<HostConfig> {
     let environment = std::env::var("RUSTOK_ENV")
         .or_else(|_| std::env::var("APP_ENV"))
         .unwrap_or_else(|_| "development".to_string());
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("config")
         .join(format!("{environment}.yaml"));
-    let raw = std::fs::read_to_string(&path)?;
+    let raw = tokio::fs::read_to_string(&path).await?;
     serde_yaml::from_str(&raw).map_err(Error::Yaml)
 }
 

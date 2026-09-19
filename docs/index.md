@@ -1,10 +1,11 @@
 ---
 id: doc://docs/index.md
-kind: project_overview
+doc_type: current_contract
+status: current
+owner: platform-architecture
+canonical_for:
+  - documentation-map
 language: markdown
-last_verified_snapshot: snap_jsonl_00000021
-source_language: markdown
-status: verified
 ---
 # RusTok: Documentation Map
 
@@ -29,7 +30,8 @@ Local documents for applications and crates live in `apps/*/docs/`,
 
 ## Required Starting Documents
 
-- [Architecture Quick Reference](../ARCHITECTURE.md)\n- [ADR Registry](../DECISIONS/README.md)
+- [Architecture Quick Reference](../ARCHITECTURE.md)
+- [ADR Registry](../DECISIONS/README.md)
 - [Platform Overview](./architecture/overview.md)
 - [Architecture Principles](./architecture/principles.md)
 - [API and Surface Contracts](./architecture/api.md)
@@ -131,11 +133,11 @@ from complete operation safety and retention through serving cutover.
 - [Page Builder Implementation Plan](./modules/page-builder-implementation-plan.md)
 - [Translation Module Implementation Plan](./modules/translation-implementation-plan.md) — owner-safe control plane, 49-operation admin contract, guarded human workflow controls, private workflow collaboration, checksum-verified expiring interchange artifacts, fixed-cardinality content-free observability, and AI machine-translation workflow
 - [Machine-readable Translation Surface Registry](./modules/translation-surfaces.json)
-- [Page Builder FBA Registry](./crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json)
-- [Page Builder Wave Evidence Template](./crates/modules/rustok-page-builder/contracts/page-builder-wave-evidence-template.json)
-- [Page Builder Control-plane Dry-run Contract](./crates/modules/rustok-page-builder/contracts/page-builder-control-plane-dry-run.json)
-- [Page Builder Flutter Wave Hand-off Contract](./crates/modules/rustok-page-builder/contracts/page-builder-flutter-wave-handoff.json)
-- [Synthetic Pages Wave 0 Dry-run Evidence Packet](./crates/modules/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json)
+- [Page Builder FBA Registry](../crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json)
+- [Page Builder Wave Evidence Template](../crates/modules/rustok-page-builder/contracts/page-builder-wave-evidence-template.json)
+- [Page Builder Control-plane Dry-run Contract](../crates/modules/rustok-page-builder/contracts/page-builder-control-plane-dry-run.json)
+- [Page Builder Flutter Wave Hand-off Contract](../crates/modules/rustok-page-builder/contracts/page-builder-flutter-wave-handoff.json)
+- [Synthetic Pages Wave 0 Dry-run Evidence Packet](../crates/modules/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json)
 
 ## UI and Client Surfaces
 
@@ -226,6 +228,8 @@ from complete operation safety and retention through serving cutover.
 - [Errors](./standards/errors.md)
 - [Security](./standards/security.md)
 - [Coding Standards](./standards/coding.md)
+- [Continuous Code Review & Slop Remediation (ACRE)](./CONTINUOUS_CODE_REVIEW.md)
+- [Continuous Review Progress Ledger](./standards/continuous-review-ledger.md)
 
 ## Platform Verification
 
@@ -243,12 +247,14 @@ from complete operation safety and retention through serving cutover.
 - [Frontend Surfaces Verification](./verification/platform-frontend-surfaces-verification-plan.md)
 - [Core Integrity Verification](./verification/platform-core-integrity-verification-plan.md)
 - [Quality and Operations Verification](./verification/platform-quality-operations-verification-plan.md)
+- [Remediation Verification Gatekeeper (verify-remediation-gate)](../scripts/verify/verify-remediation-gate.py)
 
 ## AI, Research and Templates
 
 - [AI Context](./AI_CONTEXT.md)
 - [AI Session Template](./ai/SESSION_TEMPLATE.md)
 - [Known Pitfalls](./ai/KNOWN_PITFALLS.md)
+- [Continuous Code Review Protocol](./CONTINUOUS_CODE_REVIEW.md)
 - [MCP Reference Index](./references/mcp/README.md)
 - [DevMesh: AI-Native Collaborative Network](./research/devmesh-concept.md) — proposed community, participant, work, provenance, settlement, and resource-commons architecture
 - [RusTok vs Medusa Architecture Comparison](./research/medusa-vs-rustok-architecture.md)

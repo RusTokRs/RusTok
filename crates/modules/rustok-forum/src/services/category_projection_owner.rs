@@ -201,6 +201,5 @@ impl CategoryProjectionOwnerService {
     }
 }
 
-pub(super) mod taxonomy_sync {
-    include!("category_taxonomy_sync.rs");
-}
+#[path = "category_taxonomy_sync.rs"]
+pub(super) mod taxonomy_sync;

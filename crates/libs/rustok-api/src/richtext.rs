@@ -204,6 +204,7 @@ pub struct RichTextView {
 /// generation. Executable profile constraints are exported separately by
 /// `rustok-content::richtext`.
 pub fn document_json_schema() -> JsonValue {
+    // INVARIANT: RichTextDocument generates a valid schema that always serializes to JsonValue
     serde_json::to_value(schemars::schema_for!(RichTextDocument))
         .expect("the RichTextDocument schema must serialize")
 }
@@ -217,7 +218,9 @@ fn validate_profile_id(value: &str) -> Result<(), RichTextProfileIdError> {
     }
 
     let mut chars = value.chars();
-    let first = chars.next().expect("non-empty value has a first character");
+    let Some(first) = chars.next() else {
+        return Err(RichTextProfileIdError::Empty);
+    };
     if !first.is_ascii_lowercase() {
         return Err(RichTextProfileIdError::InvalidStart);
     }
@@ -247,8 +250,10 @@ mod graphql {
         }
 
         fn to_value(&self) -> GraphqlValue {
+            // INVARIANT: RichTextDocument fields are standard serde-serializable types
             let json = serde_json::to_value(self)
                 .expect("RichTextDocument contains only serializable values");
+            // INVARIANT: serde_json::Value converts into async_graphql::Value without failure
             GraphqlValue::from_json(json)
                 .expect("serialized RichTextDocument is a valid GraphQL value")
         }

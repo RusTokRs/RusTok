@@ -125,5 +125,5 @@ Operator action plan:
 
 - [Implementation plan](./implementation-plan.md)
 - [README crate](../README.md)
-- [ADR: `rustok-pages` does not get default integration with `rustok-comments`](../../../DECISIONS/2026-03-29-pages-comments-no-default-integration.md)
-- [Documentation map](../../../docs/index.md)
+- [ADR: `rustok-pages` does not get default integration with `rustok-comments`](../../../../DECISIONS/2026-03-29-pages-comments-no-default-integration.md)
+- [Documentation map](../../../../docs/index.md)

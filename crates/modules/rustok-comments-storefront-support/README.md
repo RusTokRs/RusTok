@@ -21,4 +21,4 @@ This is a support crate rather than a host-mounted module surface, so it intenti
 - `CommentComposerCopy`
 - `is_richtext_blank`
 
-See the [module UI package implementation guide](../../docs/UI/module-package-implementation.md) and the [Comments implementation plan](../rustok-comments/docs/implementation-plan.md).
+See the [module UI package implementation guide](../../../docs/UI/module-package-implementation.md) and the [Comments implementation plan](../rustok-comments/docs/implementation-plan.md).

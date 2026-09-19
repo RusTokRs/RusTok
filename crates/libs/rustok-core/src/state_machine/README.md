@@ -439,7 +439,7 @@ test bench_typestate_transition   ... bench:      11 ns/iter
 
 ## Documentation
 
-Full guide: [docs/STATE_MACHINE_GUIDE.md](../../../../docs/STATE_MACHINE_GUIDE.md)
+Full guide: [docs/guides/state-machine.md](../../../../../docs/guides/state-machine.md)
 
 **Sections:**
 1. Type-State Pattern Concepts

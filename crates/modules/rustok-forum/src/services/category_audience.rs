@@ -77,7 +77,7 @@ impl ForumCategoryAudiencePolicyService {
     }
 }
 
-async fn insert_roles(
+pub(super) async fn insert_roles(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
@@ -103,7 +103,7 @@ async fn insert_roles(
     Ok(())
 }
 
-async fn insert_channels(
+pub(super) async fn insert_channels(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
@@ -131,7 +131,7 @@ async fn insert_channels(
     Ok(())
 }
 
-async fn insert_groups(
+pub(super) async fn insert_groups(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
@@ -157,7 +157,7 @@ async fn insert_groups(
     Ok(())
 }
 
-async fn insert_users(
+pub(super) async fn insert_users(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
@@ -416,7 +416,7 @@ fn ensure_storage_bound(actual: usize, maximum: usize, label: &str) -> ForumResu
     Ok(())
 }
 
-fn constraints_are_empty(constraints: &ForumAudienceConstraints) -> bool {
+pub(super) fn constraints_are_empty(constraints: &ForumAudienceConstraints) -> bool {
     constraints.roles_any.is_empty()
         && constraints.minimum_trust_level.is_none()
         && constraints.channel_members_any.is_empty()
@@ -445,3 +445,7 @@ pub(crate) async fn lock_category_tree_in_tx(
         ))),
     }
 }
+
+#[path = "category_audience_owner.rs"]
+pub mod owner;
+pub use owner::ForumCategoryAudiencePolicyOwnerService;

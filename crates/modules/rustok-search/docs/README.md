@@ -64,4 +64,4 @@ or host-specific UI wiring.
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
 - [Observability runbook](./observability-runbook.md)
-- [ADR: boundary `index != search`](../../../DECISIONS/2026-03-29-index-search-boundary.md)
+- [ADR: boundary `index != search`](../../../../DECISIONS/2026-03-29-index-search-boundary.md)

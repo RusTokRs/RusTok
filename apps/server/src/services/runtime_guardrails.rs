@@ -23,9 +23,8 @@ use crate::services::social_graph_index_worker::{
 };
 use crate::services::tenant_locale_generation::TenantLocaleGenerationListenerHandle;
 
-mod base {
-    include!("runtime_guardrails_base.rs");
-}
+#[path = "runtime_guardrails_base.rs"]
+mod base;
 
 pub use base::{
     EventBusGuardrailSnapshot, EventTransportGuardrailSnapshot, RateLimitGuardrailSnapshot,

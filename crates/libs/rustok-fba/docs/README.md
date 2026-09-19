@@ -32,4 +32,4 @@ Use this crate for provider/consumer metadata and topology descriptors. Port req
 response and error semantics still use `rustok-api::ports` primitives; transport
 implementations stay in owner modules or adapter crates.
 
-Related guide: [Backend Module Architecture](../../../docs/backend/module-backend-architecture.md).
+Related guide: [Backend Module Architecture](../../../../docs/backend/module-backend-architecture.md).

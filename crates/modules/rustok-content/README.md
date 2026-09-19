@@ -8,7 +8,7 @@ The target richtext boundary keeps neutral document/read-projection types in
 `rustok-api::richtext` and executable profiles, validation, safe HTML rendering,
 and plain-text extraction in `rustok-content::richtext`. Blog, Forum, Comments,
 and future consumers continue to own their localized rows and revisions. See
-the [central implementation plan](../../docs/modules/rich-text-implementation-plan.md).
+the [central implementation plan](../../../docs/modules/rich-text-implementation-plan.md).
 
 ## Responsibilities
 
@@ -76,4 +76,4 @@ canonical and their corrective migration/conversion artifacts are absent.
 ## Docs
 
 - [Module docs](./docs/README.md)
-- [Platform docs index](../../docs/index.md)
+- [Platform docs index](../../../docs/index.md)

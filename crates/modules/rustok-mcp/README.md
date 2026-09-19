@@ -231,5 +231,5 @@ persisted drafts from `apps/server` instead of process-local in-memory state.
 
 - [Module docs](./docs/README.md)
 - RusToK MCP implementation plan: [`./docs/implementation-plan.md`](./docs/implementation-plan.md)
-- Central MCP reference index: [`../../docs/references/mcp/README.md`](../../docs/references/mcp/README.md)
-- Platform docs map: [`../../docs/index.md`](../../docs/index.md)
+- Central MCP reference index: [`../../docs/references/mcp/README.md`](../../../docs/references/mcp/README.md)
+- Platform docs map: [`../../docs/index.md`](../../../docs/index.md)

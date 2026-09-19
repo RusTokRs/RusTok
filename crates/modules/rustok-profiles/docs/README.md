@@ -70,4 +70,4 @@ Media control-plane descriptor selection may be embedded or remote because both 
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
 - [Storefront package](../storefront/README.md)
-- [Platform documentation map](../../../docs/index.md)
+- [Platform documentation map](../../../../docs/index.md)

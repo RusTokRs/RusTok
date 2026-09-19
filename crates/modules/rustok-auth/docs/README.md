@@ -147,4 +147,4 @@ On auth degradation:
 
 - [README crate](../README.md)
 - [Implementation Plan](./implementation-plan.md)
-- [Manifest Layer Contract](../../../docs/modules/manifest.md)
+- [Manifest Layer Contract](../../../../docs/modules/manifest.md)

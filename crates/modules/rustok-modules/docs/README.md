@@ -333,7 +333,7 @@ remains a separate revision-CAS security operation. Deployment agents report
 evidence and never own release selection.
 
 The accepted
-[module release rollback safety decision](../../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
+[module release rollback safety decision](../../../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
 defines the production incident-recovery boundary. The worker publishes one
 complete role bundle and one receipt containing
 its per-role artifact and evidence identities. Release admission stores that
@@ -857,5 +857,5 @@ materializes a downloaded OCI payload as an unbounded in-memory buffer.
 ## Related Documents
 
 - [Implementation plan](./implementation-plan.md)
-- [Neutral sandbox ADR](../../../DECISIONS/2026-07-11-neutral-sandbox-foundation.md)
-- [Module control-plane plan](../../../docs/modules/module-control-plane-consolidation-plan.md)
+- [Neutral sandbox ADR](../../../../DECISIONS/2026-07-11-neutral-sandbox-foundation.md)
+- [Module control-plane plan](../../../../docs/modules/module-control-plane-consolidation-plan.md)

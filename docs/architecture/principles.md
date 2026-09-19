@@ -1,10 +1,11 @@
 ---
 id: doc://docs/architecture/principles.md
-kind: project_overview
+doc_type: current_contract
+status: current
+owner: platform-architecture
+canonical_for:
+  - architecture-principles
 language: markdown
-last_verified_snapshot: snap_jsonl_00000021
-source_language: markdown
-status: verified
 ---
 # Architecture Principles
 

@@ -42,7 +42,7 @@ the AI host retains that typed receipt separately from redacted tool output.
   without owning MCP management logic.
 - Evidence: `scripts/verify/verify-mcp-admin-boundary.mjs`,
   `scripts/verify/verify-api-surface-contract.mjs`, and ADR
-  [MCP management owner boundary](../../../DECISIONS/2026-07-10-mcp-management-owner-boundary.md).
+  [MCP management owner boundary](../../../../DECISIONS/2026-07-10-mcp-management-owner-boundary.md).
 - Source-lineage evidence: `cargo test -p rustok-mcp --lib` covers stable
   source-digest computation and its propagation through stage/review/apply.
 
@@ -90,5 +90,5 @@ the AI host retains that typed receipt separately from redacted tool output.
 
 - [Crate README](../README.md)
 - [Module documentation](./README.md)
-- [MCP reference index](../../../docs/references/mcp/README.md)
-- [MCP management owner ADR](../../../DECISIONS/2026-07-10-mcp-management-owner-boundary.md)
+- [MCP reference index](../../../../docs/references/mcp/README.md)
+- [MCP management owner ADR](../../../../DECISIONS/2026-07-10-mcp-management-owner-boundary.md)

@@ -50,7 +50,7 @@ repository-owned replacement is recorded in the
 
 The rebuild-only rollback and `build.rolled_back` entries above are current
 implementation facts, not the accepted production recovery target. The
-[module release rollback safety decision](../../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
+[module release rollback safety decision](../../../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
 requires one atomic migration to `rustok-modules`-owned recovery-operation and
 desired/observed rollout facts, with the superseded build rollback events and
 all repository-owned callers deleted in the same change.
@@ -137,6 +137,6 @@ only.
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
 - [Event contract digest admission](./event-contract-digest-admission.md)
-- [Platform documentation map](../../../docs/index.md)
-- [Event flow contract](../../../docs/architecture/event-flow-contract.md)
-- [Sealed typed event-family ADR](../../../DECISIONS/2026-07-17-sealed-typed-event-families.md)
+- [Platform documentation map](../../../../docs/index.md)
+- [Event flow contract](../../../../docs/architecture/event-flow-contract.md)
+- [Sealed typed event-family ADR](../../../../DECISIONS/2026-07-17-sealed-typed-event-families.md)

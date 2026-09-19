@@ -15,7 +15,7 @@ and the first target policy is now implemented in `src/richtext/`: the
 tree grammar, reject unknown structure/attributes, normalize Tiptap default
 attributes and mark order, enforce raw/typed size limits, render escaped
 semantic HTML, and extract plain text. The target boundary is recorded in
-the [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md):
+the [central Richtext plan](../../../../docs/modules/rich-text-implementation-plan.md):
 neutral types live in `rustok-api::richtext`, while this module implements the
 executable policy. Domain owners keep locale rows and persistence. Blog, Forum,
 and Comments owner transports now use typed documents. Blog/Comments initial

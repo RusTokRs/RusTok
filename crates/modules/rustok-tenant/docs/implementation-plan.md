@@ -194,7 +194,7 @@ is still required; source inspection is not a substitute.
 - [Commerce tenant-locale owner cutover](../../rustok-commerce/docs/tenant-locale-owner-cutover.md)
 - [Host cache contract inventory](../../rustok-cache/docs/host-cache-inventory.md)
 - [Events runtime adapter plan](../../rustok-events-module/docs/implementation-plan.md)
-- [Host-global operator runbook](../../../apps/server/docs/host-authority.md)
+- [Host-global operator runbook](../../../../apps/server/docs/host-authority.md)
 - GitHub issue #2680 for retained host-operator authority evidence
 - GitHub issue #2740 for the deterministic Rust-host PostgreSQL role fixture blocker
 

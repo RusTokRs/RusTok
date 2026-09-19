@@ -133,6 +133,7 @@ mod tests {
             channel_slug: Some("members".to_string()),
             channel_resolution_source: None,
             locale: "ru-RU".to_string(),
+            correlation_id: "test-correlation-id".to_string(),
         }
     }
 

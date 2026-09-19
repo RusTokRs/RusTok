@@ -51,4 +51,4 @@ Use this crate when the same runtime lookup pattern appears in multiple backend 
 Do not copy shared-handle lookup code into each module or push executable helpers back into
 `rustok-api`.
 
-Related guide: [Backend Module Implementation](../../../docs/backend/module-backend-implementation.md).
+Related guide: [Backend Module Implementation](../../../../docs/backend/module-backend-implementation.md).

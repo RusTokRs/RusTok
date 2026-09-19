@@ -40,4 +40,4 @@
 
 ## Docs
 
-- [Platform docs index](../../docs/index.md)
+- [Platform docs index](../../../docs/index.md)

@@ -12,7 +12,7 @@ belong to `rustok-sandbox`. Marketplace publication, installation, activation,
 and release governance belong to `rustok-modules`.
 
 The cross-component sequence and completion rules are defined by the
-[canonical module-platform plan](../../../docs/modules/module-control-plane-consolidation-plan.md).
+[canonical module-platform plan](../../../../docs/modules/module-control-plane-consolidation-plan.md).
 
 ## Current state
 

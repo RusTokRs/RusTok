@@ -29,6 +29,6 @@ runtime state separately because this adapter has no host runtime context.
 ## Related Documentation
 
 - [Adapter implementation plan](implementation-plan.md)
-- [Canonical Events documentation](../../rustok-events/docs/README.md)
-- [Canonical Events implementation plan](../../rustok-events/docs/implementation-plan.md)
-- [Platform event flow](../../../docs/architecture/event-flow-contract.md)
+- [Canonical Events documentation](../../../libs/rustok-events/docs/README.md)
+- [Canonical Events implementation plan](../../../libs/rustok-events/docs/implementation-plan.md)
+- [Platform event flow](../../../../docs/architecture/event-flow-contract.md)

@@ -43,7 +43,7 @@ executor boundary for reviewed native module promotions.
 ## Planned Release-Safety Integration
 
 Under the accepted
-[module release rollback safety decision](../../DECISIONS/2026-08-06-module-release-rollback-safety.md),
+[module release rollback safety decision](../../../DECISIONS/2026-08-06-module-release-rollback-safety.md),
 this worker is the sole static role-bundle executor and publisher.
 `rustok-build` supplies canonical role-plan/validation primitives but is not a
 second static publisher. The worker must produce one canonical digest-bound
@@ -65,4 +65,4 @@ receipt into a release and owns rollout or recovery.
   pipeline, calls the deployment-owned evidence publisher, and writes the
   bounded receipt.
 - See [local documentation](docs/README.md) and the
-  [module control-plane plan](../../docs/modules/module-control-plane-consolidation-plan.md).
+  [module control-plane plan](../../../docs/modules/module-control-plane-consolidation-plan.md).

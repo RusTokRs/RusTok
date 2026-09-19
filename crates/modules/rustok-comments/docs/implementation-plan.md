@@ -250,7 +250,7 @@ workflow, browser, or CI execution is recorded.
    stores a format selector; reads use canonical HTML/plain-text projections.
    The remaining verification is runtime evidence for every consumer.
    **Depends on:** the
-   [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md)
+   [central Richtext plan](../../../../docs/modules/rich-text-implementation-plan.md)
    and synchronized Blog consumer contract.
    **Done when:** invalid/empty/oversized documents fail at every entry point,
    no direct port bypass exists, and Next/Leptos reads share the server renderer.

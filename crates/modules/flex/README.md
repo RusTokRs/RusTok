@@ -114,5 +114,5 @@ permissive AI-export fallback while that evidence gate is open.
 
 - Module documentation: [`docs/README.md`](./docs/README.md)
 - Implementation plan: [`docs/implementation-plan.md`](./docs/implementation-plan.md)
-- Platform Taxonomy/Flex Category plan: [`../../docs/architecture/taxonomy-flex-category-platform-plan.md`](../../docs/architecture/taxonomy-flex-category-platform-plan.md)
-- Platform docs index: [`../../docs/index.md`](../../docs/index.md)
+- Platform Taxonomy/Flex Category plan: [`../../docs/architecture/taxonomy-flex-category-platform-plan.md`](../../../docs/architecture/taxonomy-flex-category-platform-plan.md)
+- Platform docs index: [`../../docs/index.md`](../../../docs/index.md)

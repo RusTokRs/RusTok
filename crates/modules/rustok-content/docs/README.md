@@ -9,7 +9,7 @@ For the active richtext boundary, neutral wire types live in
 normalization, safe HTML rendering, and plain-text extraction. Domain modules
 retain their locale rows and body storage. The obsolete core richtext/format
 implementation and generic shared-node service have been removed under the
-[central plan](../../../docs/modules/rich-text-implementation-plan.md).
+[central plan](../../../../docs/modules/rich-text-implementation-plan.md).
 
 ## Purpose
 
@@ -50,5 +50,5 @@ implementation and generic shared-node service have been removed under the
 
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
-- [Event flow contract](../../../docs/architecture/event-flow-contract.md)
-- [Richtext implementation plan](../../../docs/modules/rich-text-implementation-plan.md)
+- [Event flow contract](../../../../docs/architecture/event-flow-contract.md)
+- [Richtext implementation plan](../../../../docs/modules/rich-text-implementation-plan.md)

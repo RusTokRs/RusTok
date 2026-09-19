@@ -37,9 +37,8 @@ pub mod event_dlq_duplicate_alert_observability;
 pub mod event_dlq_duplicate_alert_observer;
 #[cfg(feature = "mod-forum")]
 pub mod forum_audience_facts {
-    mod membership {
-        include!("forum_audience_facts.rs");
-    }
+    #[path = "forum_audience_facts.rs"]
+    mod membership;
 
     use rustok_forum::{ForumUserTrustAudienceFactsPort, SharedForumAudienceFactsPort};
     use sea_orm::DatabaseConnection;
@@ -95,19 +94,16 @@ pub mod module_event_dispatcher {
     use crate::services::server_runtime_context::ServerRuntimeContext;
 
     #[cfg(feature = "mod-forum")]
-    mod forum_search_category_scope {
-        include!("forum_search_category_scope.rs");
-    }
+    #[path = "forum_search_category_scope.rs"]
+    mod forum_search_category_scope;
 
     #[cfg(feature = "mod-forum")]
-    mod forum_search_owner_revision {
-        include!("forum_search_owner_revision.rs");
-    }
+    #[path = "forum_search_owner_revision.rs"]
+    mod forum_search_owner_revision;
 
     #[cfg(feature = "mod-forum")]
-    mod forum_search_result_eligibility {
-        include!("forum_search_result_eligibility.rs");
-    }
+    #[path = "forum_search_result_eligibility.rs"]
+    mod forum_search_result_eligibility;
 
     pub use super::module_event_dispatcher_base::{
         build_module_event_dispatcher, build_shared_runtime_extensions,

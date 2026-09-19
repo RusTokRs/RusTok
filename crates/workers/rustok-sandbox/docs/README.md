@@ -219,5 +219,5 @@ serialized components are executed but not cached.
 ## Related Documents
 
 - [Implementation plan](./implementation-plan.md)
-- [Neutral sandbox ADR](../../../DECISIONS/2026-07-11-neutral-sandbox-foundation.md)
-- [Documentation map](../../../docs/index.md)
+- [Neutral sandbox ADR](../../../../DECISIONS/2026-07-11-neutral-sandbox-foundation.md)
+- [Documentation map](../../../../docs/index.md)

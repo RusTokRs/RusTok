@@ -1,9 +1,9 @@
 # rustok-ai-admin
 
 > **For contributors and AI agents — choose the relevant guide before modifying this package:**
-> [Architecture](../../../docs/UI/module-package-architecture.md) |
-> [Implementation](../../../docs/UI/module-package-implementation.md) |
-> [Verification](../../../docs/UI/module-package-verification.md)
+> [Architecture](../../../../docs/UI/module-package-architecture.md) |
+> [Implementation](../../../../docs/UI/module-package-implementation.md) |
+> [Verification](../../../../docs/UI/module-package-verification.md)
 
 Large Leptos operator/admin UI package for the `rustok-ai` capability crate.
 
@@ -52,4 +52,4 @@ Large Leptos operator/admin UI package for the `rustok-ai` capability crate.
 
 ## Documentation
 
-- See [platform docs](../../../docs/index.md).
+- See [platform docs](../../../../docs/index.md).

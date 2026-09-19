@@ -1,9 +1,9 @@
 # rustok-forum-admin
 
 > **For contributors and AI agents — choose the relevant guide before modifying this package:**
-> [Architecture](../../../docs/UI/module-package-architecture.md) |
-> [Implementation](../../../docs/UI/module-package-implementation.md) |
-> [Verification](../../../docs/UI/module-package-verification.md)
+> [Architecture](../../../../docs/UI/module-package-architecture.md) |
+> [Implementation](../../../../docs/UI/module-package-implementation.md) |
+> [Verification](../../../../docs/UI/module-package-verification.md)
 
 Leptos admin UI package for the `rustok-forum` module.
 
@@ -68,7 +68,7 @@ Slug rename uses the additive FORUM-24F GraphQL mutation in all Leptos build pro
 
 ## Documentation
 
-- See [platform docs](../../../docs/index.md).
+- See [platform docs](../../../../docs/index.md).
 - See [FORUM-21N admin merge UI](../docs/forum-21n-topic-merge-admin-ui.md).
 - See [FORUM-21O native admin merge transport](../docs/forum-21o-topic-merge-native-admin.md).
 - See [FORUM-21V selected-reply split admin composition](../docs/forum-21v-topic-split-admin-ui.md).

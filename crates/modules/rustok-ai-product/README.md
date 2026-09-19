@@ -28,4 +28,4 @@
 - [Module docs](./docs/README.md)
 - Product AI controls are composed by the capability-owned `rustok-ai` admin
   surfaces. This support adapter owns no standalone Leptos or Next.js route.
-- [Platform docs index](../../docs/index.md)
+- [Platform docs index](../../../docs/index.md)

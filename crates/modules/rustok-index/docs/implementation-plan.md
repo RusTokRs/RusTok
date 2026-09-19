@@ -563,9 +563,7 @@ depending on Index. `rustok-distribution` owns the selected generic bridges. Ind
 schema/source/runtime contracts, reconciliation, and mutation persistence. Runtime
 capability presence does not establish persisted schema readiness. Incremental event
 acknowledgement, durable Product-to-SalesChannel links, owner evidence, and consumer
-cutover remain open. See [`m7-product-source.md`](./m7-product-source.md),
-[`m7-product-variant-source.md`](./m7-product-variant-source.md),
-[`m7-product-graph-source.md`](./m7-product-graph-source.md),
+cutover remain open. See [`m7-product-graph-source.md`](./m7-product-graph-source.md),
 [`m7-product-tombstone-source.md`](./m7-product-tombstone-source.md), and
 [`m7-sales-channel-source.md`](./m7-sales-channel-source.md).
 

@@ -44,4 +44,4 @@ or Next.js metadata mapping.
 - [Crate README](../README.md)
 - [Module documentation](./README.md)
 - [SEO module plan](../../docs/implementation-plan.md)
-- [Next runtime parity fixtures](../../../../apps/next-frontend/contracts/seo/runtime-parity-fixtures.json)
+- [Next runtime parity fixtures](../../../../../apps/next-frontend/contracts/seo/runtime-parity-fixtures.json)

@@ -44,6 +44,7 @@ Before changing repository content, contributors and agents MUST:
 7. Inspect active ADRs that govern the affected boundary before proposing a competing model.
 8. Capture the current main commit SHA before starting work.
 9. Identify the affected change surface before implementation.
+10. For continuous code quality, debt reduction, and slop remediation sweeps, follow `docs/CONTINUOUS_CODE_REVIEW.md` and update `docs/standards/continuous-review-ledger.md`.
 
 The minimum change-surface review for a non-trivial change is:
 - canonical owner and source of truth;
@@ -384,6 +385,7 @@ Typical hierarchy:
 
 Never bypass or disable pre-commit/pre-push hooks.
 Fix the root cause of failures.
+Automated remediations and code cleanup sweeps MUST pass the pre-commit gatekeeper: `python scripts/verify/verify-remediation-gate.py --files <paths>`.
 
 Do not edit CI/CD workflow files unless the user explicitly requests CI/CD changes.
 

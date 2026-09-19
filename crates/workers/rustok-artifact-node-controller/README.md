@@ -13,4 +13,4 @@ is an operations-tool component and must be deployed outside application role
 bundles.
 
 See the [local deployment contract](./docs/README.md) and the
-[module control-plane plan](../../docs/modules/module-control-plane-consolidation-plan.md).
+[module control-plane plan](../../../docs/modules/module-control-plane-consolidation-plan.md).

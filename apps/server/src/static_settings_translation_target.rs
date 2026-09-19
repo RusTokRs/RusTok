@@ -62,8 +62,10 @@ impl StaticSettingsTranslationTargetProvider {
 
     fn descriptor_value() -> TranslationTargetProviderDescriptor {
         TranslationTargetProviderDescriptor {
+            // INVARIANT: STATIC_SETTINGS_TRANSLATION_OWNER_SLUG is a verified valid compile-time slug constant
             owner_slug: OwnerSlug::new(STATIC_SETTINGS_TRANSLATION_OWNER_SLUG)
                 .expect("static Settings Translation owner slug must be valid"),
+            // INVARIANT: STATIC_SETTINGS_TRANSLATION_RESOURCE_KIND is a verified valid compile-time resource kind constant
             resource_kind: ResourceKind::new(STATIC_SETTINGS_TRANSLATION_RESOURCE_KIND)
                 .expect("static Settings Translation resource kind must be valid"),
             display_name: "Static module settings".to_string(),
@@ -321,6 +323,7 @@ impl TranslationTargetProvider for StaticSettingsTranslationTargetProvider {
             resources.truncate(usize::from(request.limit));
         }
         let next_cursor = has_more.then(|| resources.last()).flatten().map(|summary| {
+            // INVARIANT: resource_id is an alphanumeric module slug conforming to OpaqueCursor grammar
             OpaqueCursor::new(summary.identity.resource_id.as_str())
                 .expect("Settings module slug resource ID must satisfy the opaque cursor contract")
         });

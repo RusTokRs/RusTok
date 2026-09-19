@@ -168,7 +168,7 @@ implementation plan.
 
 - [Module docs](./docs/README.md)
 - Leptos admin UI package: [`./admin/README.md`](./admin/README.md)
-- Platform docs map: [`../../docs/index.md`](../../docs/index.md)
+- Platform docs map: [`../../docs/index.md`](../../../docs/index.md)
 
 ## Deployment secret resolvers
 

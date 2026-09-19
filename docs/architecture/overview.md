@@ -1,10 +1,11 @@
 ---
 id: doc://docs/architecture/overview.md
-kind: project_overview
+doc_type: current_contract
+status: current
+owner: platform-architecture
+canonical_for:
+  - platform-architecture-overview
 language: markdown
-last_verified_snapshot: snap_jsonl_00000021
-source_language: markdown
-status: verified
 ---
 # Platform Architecture Overview
 

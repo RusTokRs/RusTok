@@ -374,6 +374,7 @@ mod tests {
             channel_slug: Some(channel_slug.to_string()),
             channel_resolution_source: Some(ChannelResolutionSource::Host),
             locale: "en".to_string(),
+            correlation_id: "test-correlation-id".to_string(),
         }
     }
 
@@ -495,6 +496,7 @@ mod tests {
             channel_slug: Some(" Web ".to_string()),
             channel_resolution_source: Some(ChannelResolutionSource::Query),
             locale: "en".to_string(),
+            correlation_id: "test-correlation-id".to_string(),
         };
 
         let unauthenticated = request_context
@@ -548,6 +550,7 @@ mod tests {
             channel_slug: Some("web".to_string()),
             channel_resolution_source: Some(ChannelResolutionSource::Host),
             locale: "en".to_string(),
+            correlation_id: "test-correlation-id".to_string(),
         };
 
         let error = ensure_public_pages_channel_enabled(&db, Some(&request_context), false)

@@ -103,4 +103,4 @@ It does not yet provide:
 - [Implementation plan](./docs/implementation-plan.md)
 - [M7 SalesChannel Index source contract](../rustok-index/docs/m7-sales-channel-source.md)
 - [M7 Product-SalesChannel Freshness Witness](../rustok-product/docs/index-sales-channel-relation-freshness.md)
-- [Platform docs index](../../docs/index.md)
+- [Platform docs index](../../../docs/index.md)

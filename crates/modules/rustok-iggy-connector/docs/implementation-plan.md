@@ -200,4 +200,4 @@ scenarios remain maintainer-run and were not executed in this slice.
 - [Iggy transport plan](../../rustok-iggy/docs/implementation-plan.md)
 - [Poison observer runbook](../../rustok-social-graph/docs/index-poison-receipt-observer.md)
 - [PostgreSQL poison evidence guide](./consumer-poison-postgres-evidence.md)
-- [Iggy integration reference](../../../docs/references/iggy/README.md)
+- [Iggy integration reference](../../../../docs/references/iggy/README.md)

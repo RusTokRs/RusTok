@@ -36,4 +36,4 @@ typed email rendering and delivery helpers for auth and operational notification
 
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
-- [Manifest layer contract](../../../docs/modules/manifest.md)
+- [Manifest layer contract](../../../../docs/modules/manifest.md)

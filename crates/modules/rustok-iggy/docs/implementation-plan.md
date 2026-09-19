@@ -265,4 +265,4 @@ this slice.
 - [External raw poison evidence guide](./contract-poison-external-evidence.md)
 - [External physical header evidence guide](./contract-poison-external-header-evidence.md)
 - [External dedup behavior evidence guide](./contract-poison-external-dedup-evidence.md)
-- [Iggy integration reference](../../../docs/references/iggy/README.md)
+- [Iggy integration reference](../../../../docs/references/iggy/README.md)

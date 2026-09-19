@@ -28,4 +28,4 @@
 - [Module docs](./docs/README.md)
 - Adapter controls are composed by the `rustok-ai` Leptos and Next.js admin
   surfaces; this support crate does not expose a standalone content-admin route.
-- [Platform docs index](../../docs/index.md)
+- [Platform docs index](../../../docs/index.md)

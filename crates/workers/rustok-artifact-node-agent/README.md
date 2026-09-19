@@ -14,4 +14,4 @@ It reports `prepared` after non-executing local payload preparation and
 alone promotes all healthy assignments to `active` and advances convergence.
 
 See the [deployment contract](./docs/README.md) and the
-[module control-plane plan](../../docs/modules/module-control-plane-consolidation-plan.md).
+[module control-plane plan](../../../docs/modules/module-control-plane-consolidation-plan.md).

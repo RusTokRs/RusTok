@@ -275,4 +275,4 @@ providers must be added behind the same retrieval contract.
 
 - [Capability README](../README.md)
 - [Capability documentation](./README.md)
-- [AI capability ADR](../../../DECISIONS/2026-04-03-rustok-ai-capability-module.md)
+- [AI capability ADR](../../../../DECISIONS/2026-04-03-rustok-ai-capability-module.md)

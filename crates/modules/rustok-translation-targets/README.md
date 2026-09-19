@@ -63,5 +63,5 @@ same-key/different-payload rejection.
 ## Docs
 
 - [Contract documentation](./docs/README.md)
-- [Translation implementation plan](../../docs/modules/translation-implementation-plan.md)
-- [Platform documentation map](../../docs/index.md)
+- [Translation implementation plan](../../../docs/modules/translation-implementation-plan.md)
+- [Platform documentation map](../../../docs/index.md)

@@ -1392,4 +1392,4 @@ should run the relevant subset, including:
 - [Crate README](../README.md)
 - [Blog documentation](./README.md)
 - [Comments consumer registry](../contracts/blog-fba-registry.json)
-- [Richtext implementation plan](../../../docs/modules/rich-text-implementation-plan.md)
+- [Richtext implementation plan](../../../../docs/modules/rich-text-implementation-plan.md)

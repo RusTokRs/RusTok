@@ -27,10 +27,19 @@ pub use bundle::{
     FluentCatalog, build_fluent_bundle, build_fluent_catalog, try_build_fluent_catalog,
 };
 pub use error::{BundleBuildError, I18nError};
-pub use locale::{
-    locale_candidates, normalize_admin_locale, normalize_locale_tag, push_locale_candidate,
-    push_unique,
-};
+pub use locale::{locale_candidates, normalize_admin_locale, normalize_locale_tag};
+#[allow(deprecated)]
+#[deprecated(
+    since = "0.1.0",
+    note = "Use `locale_candidates` instead. This internal helper will be made private before 1.0."
+)]
+pub use locale::push_locale_candidate;
+#[allow(deprecated)]
+#[deprecated(
+    since = "0.1.0",
+    note = "Internal helper; will be made private before 1.0."
+)]
+pub use locale::push_unique;
 pub use messages::{
     PreparedUiMessages, UiLocaleTranslator, UiMessages, UiTranslator, resolve_fluent_message,
     try_resolve_fluent_message, with_kebab_key,

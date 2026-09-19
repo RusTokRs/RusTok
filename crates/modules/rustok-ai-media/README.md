@@ -27,4 +27,4 @@ degraded behavior without duplicating either owner.
 
 - [Module documentation](./docs/README.md)
 - [Implementation plan](./docs/implementation-plan.md)
-- [Platform documentation map](../../docs/index.md)
+- [Platform documentation map](../../../docs/index.md)

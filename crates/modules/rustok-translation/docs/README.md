@@ -299,6 +299,6 @@ never auto-select the first entry.
 ## Related Documents
 
 - [Implementation plan](implementation-plan.md)
-- [Central translation plan](../../../docs/modules/translation-implementation-plan.md)
-- [Translation surface registry](../../../docs/modules/translation-surfaces.json)
-- [Module authoring guide](../../../docs/modules/module-authoring.md)
+- [Central translation plan](../../../../docs/modules/translation-implementation-plan.md)
+- [Translation surface registry](../../../../docs/modules/translation-surfaces.json)
+- [Module authoring guide](../../../../docs/modules/module-authoring.md)

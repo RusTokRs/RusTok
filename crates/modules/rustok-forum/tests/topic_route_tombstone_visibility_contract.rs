@@ -58,7 +58,7 @@ fn delete_matches_canonical_policy_lock_order_before_snapshot() {
             "mark_topic_thread_deleted_in_tx(&txn, tenant_id, topic_id).await?",
         ],
     );
-    assert!(TOPIC_OWNER_INLINE.contains("include!(\"topic_route_tombstone_visibility.rs\")"));
+    assert!(TOPIC_OWNER_INLINE.contains("path = \"topic_route_tombstone_visibility.rs\""));
 }
 
 #[test]

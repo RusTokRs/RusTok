@@ -155,7 +155,7 @@ into README files, issues, or additional planning documents.
 
 - [Module docs](./docs/README.md)
 - [Canonical implementation plan](./docs/implementation-plan.md)
-- [Accepted Forum slug/locale decision](../../DECISIONS/2026-03-29-forum-slug-locale-contract.md)
+- [Accepted Forum slug/locale decision](../../../DECISIONS/2026-03-29-forum-slug-locale-contract.md)
 - [Merge owner](./docs/forum-21b-topic-merge-owner.md)
 - [Checked cross-category merge](./docs/forum-21m-topic-merge-cross-category.md)
 - [Accepted-solution policy](./docs/forum-21h-topic-merge-solution-policy.md)
@@ -169,4 +169,4 @@ into README files, issues, or additional planning documents.
 - [Localized category route identity owner](./docs/forum-24l-category-route-identity-owner.md)
 - [Category slug alias owner](./docs/forum-24m-category-slug-alias-owner.md)
 - [Category route storefront transport](./docs/forum-24n-category-route-storefront-transport.md)
-- [Platform docs index](../../docs/index.md)
+- [Platform docs index](../../../docs/index.md)

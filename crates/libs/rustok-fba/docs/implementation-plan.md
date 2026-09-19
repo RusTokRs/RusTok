@@ -39,10 +39,10 @@ module registry currently consumes these Rust types in production.
 - `node scripts/verify/lib/fba-registry-validation.test.mjs`
 - Targeted registry fixture/compatibility checks once a module adopts the
   shared types.
-- Review against [backend module architecture](../../../docs/backend/module-backend-architecture.md).
+- Review against [backend module architecture](../../../../docs/backend/module-backend-architecture.md).
 
 ## References
 
 - [Crate README](../README.md)
 - [Module documentation](./README.md)
-- [Backend module implementation guide](../../../docs/backend/module-backend-implementation.md)
+- [Backend module implementation guide](../../../../docs/backend/module-backend-implementation.md)

@@ -165,7 +165,7 @@ slice text.
 - [CRATE_API](../CRATE_API.md)
 - [Admin package](../admin/README.md)
 - [Storefront package](../storefront/README.md)
-- [Event flow contract](../../../docs/architecture/event-flow-contract.md)
+- [Event flow contract](../../../../docs/architecture/event-flow-contract.md)
 
 ## FFA UI split
 

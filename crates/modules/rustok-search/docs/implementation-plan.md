@@ -291,7 +291,7 @@ Search is a whole-module extraction pilot. Remote deployment contains the comple
 rules, analytics, URL policy, and PostgreSQL baseline. Storefront and admin
 consumers call normalized Search contracts and never construct application routes.
 The extraction boundary follows
-[Media and Search Extraction Boundaries](../../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md).
+[Media and Search Extraction Boundaries](../../../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md).
 
 Meilisearch, Typesense, and Algolia remain connector implementations inside the
 Search service. They receive canonical `SearchQuery` and document inputs and

@@ -49,5 +49,5 @@ runtime or domain behavior.
 
 - [Crate README](../README.md)
 - [Module documentation](./README.md)
-- [Testing guide](../../../docs/guides/testing.md)
-- [Axum runtime and operations CLI boundary](../../../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md)
+- [Testing guide](../../../../docs/guides/testing.md)
+- [Axum runtime and operations CLI boundary](../../../../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md)

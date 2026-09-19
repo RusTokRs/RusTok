@@ -73,8 +73,8 @@ through its public hook and integration contracts.
 
 - [README crate](../README.md)
 - [Implementation Plan](./implementation-plan.md)
-- [Alloy Concept](../../../docs/alloy-concept.md)
-- [Manifest Layer Contract](../../../docs/modules/manifest.md)
+- [Alloy Concept](../../../../docs/alloy-concept.md)
+- [Manifest Layer Contract](../../../../docs/modules/manifest.md)
 
 ## Runtime Hardening Contract
 

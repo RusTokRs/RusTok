@@ -45,7 +45,7 @@ second production schema contract.
 ## Planned Module Release Safety Integration
 
 The
-[module release and rollback plan](../../docs/modules/module-release-rollback-plan.md)
+[module release and rollback plan](../../../docs/modules/module-release-rollback-plan.md)
 keeps this crate as the trusted neutral migration executor.
 `rustok-modules` owns update mode, the exact digest-bound migration phase plan,
 fences, checkpoints, and recovery outcome; `rustok-migrations` validates and
@@ -62,5 +62,5 @@ against the exact migration identity before any retry.
 
 - `rustok_migrations::Migrator`
 
-See [the database architecture](../../docs/architecture/database.md) and the
-[Axum runtime and operations CLI boundary](../../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md).
+See [the database architecture](../../../docs/architecture/database.md) and the
+[Axum runtime and operations CLI boundary](../../../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md).

@@ -1,9 +1,9 @@
 # rustok-translation-admin
 
 > **For contributors and AI agents — read before modifying this package:**
-> [Architecture](../../../docs/UI/module-package-architecture.md) |
-> [Implementation](../../../docs/UI/module-package-implementation.md) |
-> [Verification](../../../docs/UI/module-package-verification.md)
+> [Architecture](../../../../docs/UI/module-package-architecture.md) |
+> [Implementation](../../../../docs/UI/module-package-implementation.md) |
+> [Verification](../../../../docs/UI/module-package-verification.md)
 
 ## Purpose
 
@@ -64,10 +64,10 @@ module-owned schema so the host cannot bypass or redefine the rendered module
 surface.
 
 The module manifest publishes this package together with the matching
-[`@rustok/translation-admin`](../../../apps/next-admin/packages/translation/README.md)
+[`@rustok/translation-admin`](../../../../apps/next-admin/packages/translation/README.md)
 Next admin surface.
 
 See the
-[module UI implementation guide](../../../docs/UI/module-package-implementation.md)
+[module UI implementation guide](../../../../docs/UI/module-package-implementation.md)
 and the
 [Translation implementation plan](../docs/implementation-plan.md).

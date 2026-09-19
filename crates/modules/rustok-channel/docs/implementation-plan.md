@@ -206,7 +206,7 @@ contracts documented and source-locked.
 
 - [Host cache contract inventory](../../rustok-cache/docs/host-cache-inventory.md)
 - [Cache operations and recovery runbook](../../rustok-cache/docs/operations.md)
-- [Multilingual database contract audit](../../../docs/architecture/database-multilingual-audit.md)
+- [Multilingual database contract audit](../../../../docs/architecture/database-multilingual-audit.md)
 
 ## Change rules
 

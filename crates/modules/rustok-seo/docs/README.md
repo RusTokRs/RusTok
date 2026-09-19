@@ -151,5 +151,5 @@ The current roadmap is captured in `docs/implementation-plan.md`: base batches `
 - [`rustok-seo-render` documentation](../render/docs/README.md)
 - [`rustok-seo-admin-support` documentation](../../rustok-seo-admin-support/docs/README.md)
 - [Admin package](../admin/README.md)
-- [Storefront contract](../../../docs/UI/storefront.md)
-- [i18n architecture](../../../docs/architecture/i18n.md)
+- [Storefront contract](../../../../docs/UI/storefront.md)
+- [i18n architecture](../../../../docs/architecture/i18n.md)

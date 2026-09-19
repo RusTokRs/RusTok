@@ -166,7 +166,7 @@ impl TenantCacheV3 {
 
 ## Documentation
 
-Full guide: [docs/CIRCUIT_BREAKER_GUIDE.md](../../../../docs/CIRCUIT_BREAKER_GUIDE.md)
+Full guide: [docs/guides/circuit-breaker.md](../../../../../docs/guides/circuit-breaker.md)
 
 **Sections:**
 1. Concepts and patterns

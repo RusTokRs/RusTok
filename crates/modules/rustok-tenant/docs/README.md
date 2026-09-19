@@ -66,5 +66,5 @@ domain contract and must not dissolve into middleware or host-specific logic.
 
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
-- [Server docs](../../../apps/server/docs/README.md)
-- [Cache stampede protection](../../../apps/server/docs/CACHE_STAMPEDE_PROTECTION.md)
+- [Server docs](../../../../apps/server/docs/README.md)
+- [Cache stampede protection](../../../../apps/server/docs/CACHE_STAMPEDE_PROTECTION.md)

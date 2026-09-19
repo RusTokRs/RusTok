@@ -72,7 +72,7 @@ Each section contains: what to do correctly (✅), what is forbidden (❌), why,
 
 | # | ✅ Correct | ❌ Incorrect | Why | Details |
 |---|-------------|---------------|--------|--------|
-| 3.1 | **Always** `WHERE tenant_id = ?` in every query | SELECT/UPDATE/DELETE without tenant_id filter | **Critical vulnerability**: cross-tenant data leak | [architecture/tenancy.md](../architecture/tenancy.md) |
+| 3.1 | **Always** `WHERE tenant_id = ?` in every query | SELECT/UPDATE/DELETE without tenant_id filter | **Critical vulnerability**: cross-tenant data leak | [crates/modules/rustok-tenant](../../crates/modules/rustok-tenant/docs/README.md) |
 | 3.2 | Parameterized queries via SeaORM | String concatenation for SQL | SQL injection | [standards/security.md](security.md) |
 | 3.3 | Migrations via `RusToKModule::migrations()` | Manual SQL scripts bypassing migration system | Schema desync between environments | [architecture/principles.md](../architecture/principles.md) |
 | 3.4 | Naming: `mYYYYMMDD_<module>_<nnn>_<description>` | Arbitrary migration names | Breaks execution order, conflicts | [architecture/principles.md](../architecture/principles.md) |
@@ -95,7 +95,7 @@ Each section contains: what to do correctly (✅), what is forbidden (❌), why,
 | 4.5 | Idempotent event handlers | Event handler without idempotency check | Data duplication on retry/replay | [CONTRIBUTING.md](../../CONTRIBUTING.md) |
 | 4.6 | Event versioning with backward compatibility | Breaking changes in event payload | Old consumers break | — |
 | 4.7 | Use `IggyConfig`/`ConnectorConfig` from code | Invent Iggy configuration | Incompatible parameters, connection errors | [ai/KNOWN_PITFALLS.md §Iggy](../ai/KNOWN_PITFALLS.md) |
-| 4.8 | DLQ for failed events + admin replay endpoint | Silent drop of failed events | Data loss without recovery possibility | [architecture/events.md](../architecture/events.md) |
+| 4.8 | DLQ for failed events + admin replay endpoint | Silent drop of failed events | Data loss without recovery possibility | [architecture/event-flow-contract.md](../architecture/event-flow-contract.md) |
 
 ---
 
@@ -103,13 +103,13 @@ Each section contains: what to do correctly (✅), what is forbidden (❌), why,
 
 | # | ✅ Correct | ❌ Incorrect | Why | Details |
 |---|-------------|---------------|--------|--------|
-| 5.1 | Permission extractors (`RequireProductsCreate(user)`) | No RBAC check in handler | Any auth user can do anything | [architecture/rbac.md](../architecture/rbac.md) |
+| 5.1 | Permission extractors (`RequireProductsCreate(user)`) | No RBAC check in handler | Any auth user can do anything | [crates/modules/rustok-rbac](../../crates/modules/rustok-rbac/docs/README.md) |
 | 5.2 | `AuthLifecycleService` for auth business logic | Duplicating auth logic in REST and GraphQL controllers | Behavior desync between transport layers | [architecture/api.md](../architecture/api.md) |
-| 5.3 | `SecurityContext` with `get_scope()` in services | Data filtering only at controller level | Customer sees others' orders in list queries | [architecture/rbac.md §SecurityContext](../architecture/rbac.md) |
+| 5.3 | `SecurityContext` with `get_scope()` in services | Data filtering only at controller level | Customer sees others' orders in list queries | [crates/modules/rustok-rbac](../../crates/modules/rustok-rbac/docs/README.md) |
 | 5.4 | JWT secret via env var (`JWT_SECRET`) | Hardcoded JWT secret in code | Compromise of all tokens | [standards/security.md](security.md) |
 | 5.5 | Argon2 for password hashing | MD5/SHA256/bcrypt for passwords | Argon2 is the standard, resistant to GPU/ASIC | — |
 | 5.6 | Token invalidation on change-password | Old tokens remain valid after password change | Compromised token continues to work | — |
-| 5.7 | Public endpoints explicitly marked (health, login, storefront queries) | Endpoint without auth "by default" | Accidental data exposure | [architecture/rbac.md](../architecture/rbac.md) |
+| 5.7 | Public endpoints explicitly marked (health, login, storefront queries) | Endpoint without auth "by default" | Accidental data exposure | [crates/modules/rustok-rbac](../../crates/modules/rustok-rbac/docs/README.md) |
 
 ---
 
@@ -117,11 +117,11 @@ Each section contains: what to do correctly (✅), what is forbidden (❌), why,
 
 | # | ✅ Correct | ❌ Incorrect | Why | Details |
 |---|-------------|---------------|--------|--------|
-| 6.1 | `TenantContext` extractor in every handler | Handler without tenant resolution | All tenants' data mixed | [architecture/tenancy.md](../architecture/tenancy.md) |
-| 6.2 | `tenant_id` field in **all** domain tables | Tables without tenant_id | Cannot isolate data | [architecture/tenancy.md](../architecture/tenancy.md) |
-| 6.3 | Negative cache for non-existent tenants (TTL 60s) | Every request with invalid tenant hits DB | DoS via non-existent tenants | [architecture/tenancy.md](../architecture/tenancy.md) |
-| 6.4 | Singleflight for cache miss (one DB query) | Each concurrent request makes its own DB query | Cache stampede on cold start | [architecture/tenancy.md](../architecture/tenancy.md) |
-| 6.5 | Redis pub/sub for cross-instance invalidation | Only local cache invalidation | Stale data on other instances | [architecture/tenancy.md](../architecture/tenancy.md) |
+| 6.1 | `TenantContext` extractor in every handler | Handler without tenant resolution | All tenants' data mixed | [crates/modules/rustok-tenant](../../crates/modules/rustok-tenant/docs/README.md) |
+| 6.2 | `tenant_id` field in **all** domain tables | Tables without tenant_id | Cannot isolate data | [crates/modules/rustok-tenant](../../crates/modules/rustok-tenant/docs/README.md) |
+| 6.3 | Negative cache for non-existent tenants (TTL 60s) | Every request with invalid tenant hits DB | DoS via non-existent tenants | [crates/modules/rustok-tenant](../../crates/modules/rustok-tenant/docs/README.md) |
+| 6.4 | Singleflight for cache miss (one DB query) | Each concurrent request makes its own DB query | Cache stampede on cold start | [crates/modules/rustok-tenant](../../crates/modules/rustok-tenant/docs/README.md) |
+| 6.5 | Redis pub/sub for cross-instance invalidation | Only local cache invalidation | Stale data on other instances | [crates/modules/rustok-tenant](../../crates/modules/rustok-tenant/docs/README.md) |
 | 6.6 | `validate_registry_vs_manifest()` at startup | Manifest and registry desynchronized | Module declared in manifest but not registered (or vice versa) | [modules/manifest.md](../modules/manifest.md) |
 
 ---

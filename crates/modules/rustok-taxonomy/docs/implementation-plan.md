@@ -569,7 +569,7 @@ production-validation evidence. Until then the browser packet remains
 
 ## References
 
-- [`DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md`](../../../DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md)
-- [`docs/architecture/taxonomy-flex-category-platform-plan.md`](../../../docs/architecture/taxonomy-flex-category-platform-plan.md)
+- [`DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md`](../../../../DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md)
+- [`docs/architecture/taxonomy-flex-category-platform-plan.md`](../../../../docs/architecture/taxonomy-flex-category-platform-plan.md)
 - [`docs/route-registry-recovery.md`](./route-registry-recovery.md)
 - [`../README.md`](../README.md)

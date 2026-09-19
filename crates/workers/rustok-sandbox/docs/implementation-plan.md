@@ -9,7 +9,7 @@ workflow. It owns only the neutral canonical Rhai workspace representation used
 at execution boundaries.
 
 The cross-component sequence and completion rules are defined by the
-[canonical module-platform plan](../../../docs/modules/module-control-plane-consolidation-plan.md).
+[canonical module-platform plan](../../../../docs/modules/module-control-plane-consolidation-plan.md).
 
 ## Current State
 

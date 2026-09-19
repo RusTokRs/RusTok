@@ -12,7 +12,6 @@ pub mod checkout_compensation;
 mod checkout_compensation_context;
 #[path = "checkout_compensation.rs"]
 mod checkout_compensation_persistent;
-#[allow(dead_code)]
 pub mod checkout_execution;
 mod collection_runtime;
 #[cfg(feature = "server")]

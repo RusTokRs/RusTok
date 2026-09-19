@@ -188,7 +188,7 @@ Search metrics:
 - `rustok_search_max_lag_seconds`;
 - `rustok_search_lagging_tenants_total`.
 
-The detailed snapshot contract and its Prometheus representation are described in [runtime-guardrails.md](../../docs/guides/runtime-guardrails.md).
+The detailed snapshot contract and its Prometheus representation are described in [runtime-guardrails.md](../../../docs/guides/runtime-guardrails.md).
 
 ## Local runbook for `registry_only`
 

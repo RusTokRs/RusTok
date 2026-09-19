@@ -564,6 +564,7 @@ fn redirect_with_code(
     code: &str,
     state: Option<&str>,
 ) -> (StatusCode, [(axum::http::header::HeaderName, String); 2]) {
+    // INVARIANT: redirect_uri was validated against client's registered redirect_uris in validate_authorize_request
     let mut url = Url::parse(redirect_uri).expect("validated redirect URI");
     {
         let mut query = url.query_pairs_mut();
@@ -590,6 +591,7 @@ fn redirect_with_error(
     description: &str,
     state: Option<&str>,
 ) -> (StatusCode, [(axum::http::header::HeaderName, String); 2]) {
+    // INVARIANT: redirect_uri was validated against client's registered redirect_uris in validate_authorize_request
     let mut url = Url::parse(redirect_uri).expect("validated redirect URI");
     {
         let mut query = url.query_pairs_mut();

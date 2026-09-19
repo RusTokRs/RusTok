@@ -33,4 +33,4 @@ current-only `rustok-build-publication` boundary. The worker pins and re-hashes
 both deployment executables and does not own a second broker or signer path.
 
 See [local documentation](./docs/README.md) and the
-[control-plane plan](../../docs/modules/module-control-plane-consolidation-plan.md).
+[control-plane plan](../../../docs/modules/module-control-plane-consolidation-plan.md).

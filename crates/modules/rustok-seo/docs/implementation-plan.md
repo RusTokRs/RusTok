@@ -105,4 +105,4 @@ Rust gate passes on the same revision.
 - [SEO replay/repair runbook](./replay-repair-runbook.md)
 - [SEO operations runbook](./operations-runbook.md)
 - [Host cache contract inventory](../../rustok-cache/docs/host-cache-inventory.md)
-- [Runtime parity fixtures](../../../apps/next-frontend/contracts/seo/runtime-parity-fixtures.json)
+- [Runtime parity fixtures](../../../../apps/next-frontend/contracts/seo/runtime-parity-fixtures.json)

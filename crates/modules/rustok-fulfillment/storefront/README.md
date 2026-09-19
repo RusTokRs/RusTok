@@ -1,9 +1,9 @@
 # rustok-fulfillment-storefront
 
 > **For contributors and AI agents — choose the relevant guide before modifying this package:**
-> [Architecture](../../../docs/UI/module-package-architecture.md) |
-> [Implementation](../../../docs/UI/module-package-implementation.md) |
-> [Verification](../../../docs/UI/module-package-verification.md)
+> [Architecture](../../../../docs/UI/module-package-architecture.md) |
+> [Implementation](../../../../docs/UI/module-package-implementation.md) |
+> [Verification](../../../../docs/UI/module-package-verification.md)
 
 Module-owned storefront UI package for `rustok-fulfillment`.
 
@@ -23,4 +23,4 @@ Module-owned storefront UI package for `rustok-fulfillment`.
 - `src/transport/native_server_adapter/server_functions.rs` — native server-function adapter backed by `HostRuntimeContext` DB/event-bus handles; it has no host-framework or framework-specific outbox adapter dependency.
 - `src/ui/leptos.rs` — Leptos render adapter for fulfillment-owned shipping handoff and selection UI.
 
-See the platform documentation map in [`../../../docs/index.md`](../../../docs/index.md).
+See the platform documentation map in [`../../../docs/index.md`](../../../../docs/index.md).

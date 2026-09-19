@@ -33,4 +33,4 @@
 
 - [Module docs](./docs/README.md)
 - [Implementation plan](./docs/implementation-plan.md)
-- [Platform docs index](../../docs/index.md)
+- [Platform docs index](../../../docs/index.md)

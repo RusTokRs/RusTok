@@ -1,10 +1,13 @@
 ---
 id: doc://docs/architecture/diagram.md
-kind: project_overview
+doc_type: current_contract
+status: current
+owner: platform-architecture
+canonical_for:
+  - architecture-diagrams
+derived_from:
+  - modules.toml
 language: markdown
-last_verified_snapshot: snap_jsonl_00000021
-source_language: markdown
-status: verified
 ---
 # Platform Diagrams
 
@@ -14,152 +17,119 @@ Details of ownership, manifests and local docs are described in `docs/modules/*`
 
 ## Overall Platform Diagram
 
+<!-- @generated:architecture-diagram-begin -->
 ```mermaid
 graph TD
     subgraph Hosts["Host applications"]
-        SERVER["apps/server"]
-        ADMIN["apps/admin"]
-        STOREFRONT["apps/storefront"]
-        NEXT_ADMIN["apps/next-admin"]
-        NEXT_FRONT["apps/next-frontend"]
+        SERVER["apps/server (Axum composition root)"]
+        ADMIN["apps/admin (Leptos)"]
+        STOREFRONT["apps/storefront (Leptos)"]
+        NEXT_ADMIN["apps/next-admin (Next.js)"]
+        NEXT_FRONT["apps/next-frontend (Next.js)"]
     end
 
-    subgraph Core["Core modules"]
-        AUTH["auth"]
-        CACHE["cache"]
-        CHANNEL["channel"]
-        EMAIL["email"]
-        INDEX["index"]
-        SEARCH["search"]
-        OUTBOX["outbox"]
-        TENANT["tenant"]
-        RBAC["rbac"]
+    subgraph Core["Core platform modules (required = true)"]
+        CORE_MODULES["modules (rustok-modules)"]
+        CORE_AUTH["auth (rustok-auth)"]
+        CORE_CACHE["cache (rustok-cache)"]
+        CORE_CHANNEL["channel (rustok-channel)"]
+        CORE_EMAIL["email (rustok-email)"]
+        CORE_INDEX["index (rustok-index)"]
+        CORE_SEARCH["search (rustok-search)"]
+        CORE_OUTBOX["outbox (rustok-outbox)"]
+        CORE_EVENTS["events (rustok-events-module)"]
+        CORE_TENANT["tenant (rustok-tenant)"]
+        CORE_RBAC["rbac (rustok-rbac)"]
     end
 
-    subgraph Optional["Optional modules"]
-        CONTENT["content"]
-        CART["cart"]
-        CUSTOMER["customer"]
-        PRODUCT["product"]
-        PROFILES["profiles"]
-        REGION["region"]
-        PRICING["pricing"]
-        INVENTORY["inventory"]
-        ORDER["order"]
-        PAYMENT["payment"]
-        FULFILLMENT["fulfillment"]
-        COMMERCE["commerce"]
-        BLOG["blog"]
-        FORUM["forum"]
-        COMMENTS["comments"]
-        PAGES["pages"]
-        TAXONOMY["taxonomy"]
-        MEDIA["media"]
-        WORKFLOW["workflow"]
+    subgraph Optional["Optional domain modules (tenant-managed)"]
+        OPT_CONTENT["content"]
+        OPT_CART["cart"]
+        OPT_CUSTOMER["customer"]
+        OPT_PRODUCT["product"]
+        OPT_PRODUCT_RELATIONS["product_relations"]
+        OPT_BRAND["brand"]
+        OPT_PRODUCT_BUNDLES["product_bundles"]
+        OPT_PROFILES["profiles"]
+        OPT_SOCIAL_GRAPH["social_graph"]
+        OPT_REACTIONS["reactions"]
+        OPT_GROUPS["groups"]
+        OPT_REGION["region"]
+        OPT_PRICING["pricing"]
+        OPT_INVENTORY["inventory"]
+        OPT_ORDER["order"]
+        OPT_PAYMENT["payment"]
+        OPT_FULFILLMENT["fulfillment"]
+        OPT_COMMERCE["commerce"]
+        OPT_MARKETPLACE_SELLER["marketplace_seller"]
+        OPT_MARKETPLACE_LISTING["marketplace_listing"]
+        OPT_MARKETPLACE_ALLOCATION["marketplace_allocation"]
+        OPT_MARKETPLACE_COMMISSION["marketplace_commission"]
+        OPT_MARKETPLACE_LEDGER["marketplace_ledger"]
+        OPT_MARKETPLACE_PAYOUT["marketplace_payout"]
+        OPT_MARKETPLACE["marketplace"]
+        OPT_MODERATION["moderation"]
+        OPT_BLOG["blog"]
+        OPT_FORUM["forum"]
+        OPT_NOTIFICATIONS["notifications"]
+        OPT_COMMENTS["comments"]
+        OPT_PAGES["pages"]
+        OPT_NAVIGATION["navigation"]
+        OPT_PAGE_BUILDER["page_builder"]
+        OPT_TAXONOMY["taxonomy"]
+        OPT_MEDIA["media"]
+        OPT_TRANSLATION["translation"]
+        OPT_SEO["seo"]
+        OPT_WORKFLOW["workflow"]
+        OPT_ALLOY["alloy"]
+        OPT_FLEX["flex"]
     end
 
-    subgraph Support["Shared / capability crates"]
-        CORE["rustok-core"]
-        API["rustok-api"]
-        EVENTS["rustok-events"]
-        STORAGE["rustok-storage"]
-        TESTS["rustok-test-utils"]
-        COM_FOUND["rustok-commerce-foundation"]
-        TELEMETRY["rustok-telemetry"]
-        IGGY["rustok-iggy"]
-        MCP["rustok-mcp"]
-        AI["rustok-ai"]
-        ALLOY["alloy"]
-        FLEX["flex"]
+    subgraph Extensions["Capability extensions (runtime = \"extension\")"]
+        EXT_AI["ai (rustok-ai)"]
+        EXT_IGGY_CONNECTOR["iggy_connector (rustok-iggy-connector)"]
     end
 
-    SERVER --> AUTH
-    SERVER --> CACHE
-    SERVER --> CHANNEL
-    SERVER --> EMAIL
-    SERVER --> INDEX
-    SERVER --> SEARCH
-    SERVER --> OUTBOX
-    SERVER --> TENANT
-    SERVER --> RBAC
-    SERVER --> CONTENT
-    SERVER --> CART
-    SERVER --> CUSTOMER
-    SERVER --> PRODUCT
-    SERVER --> PROFILES
-    SERVER --> REGION
-    SERVER --> PRICING
-    SERVER --> INVENTORY
-    SERVER --> ORDER
-    SERVER --> PAYMENT
-    SERVER --> FULFILLMENT
-    SERVER --> COMMERCE
-    SERVER --> BLOG
-    SERVER --> FORUM
-    SERVER --> COMMENTS
-    SERVER --> PAGES
-    SERVER --> TAXONOMY
-    SERVER --> MEDIA
-    SERVER --> WORKFLOW
+    subgraph Foundations["Platform foundation & shared libraries"]
+        CORE_LIB["rustok-core"]
+        API_LIB["rustok-api"]
+        EVENTS_LIB["rustok-events"]
+        RUNTIME_LIB["rustok-runtime"]
+        WEB_LIB["rustok-web"]
+        STORAGE_LIB["rustok-storage"]
+        TELEMETRY_LIB["rustok-telemetry"]
+        FBA_LIB["rustok-fba"]
+        MCP_LIB["rustok-mcp"]
+    end
 
-    SERVER --> CORE
-    SERVER --> API
-    SERVER --> EVENTS
-    SERVER --> STORAGE
-    SERVER --> TELEMETRY
-    SERVER --> IGGY
-    SERVER --> MCP
-    SERVER --> AI
-    SERVER --> ALLOY
-    SERVER --> FLEX
-
-    ADMIN --> SERVER
-    STOREFRONT --> SERVER
-    NEXT_ADMIN --> SERVER
-    NEXT_FRONT --> SERVER
-
-    COMMERCE --> CART
-    COMMERCE --> CUSTOMER
-    COMMERCE --> PRODUCT
-    COMMERCE --> REGION
-    COMMERCE --> PRICING
-    COMMERCE --> INVENTORY
-    COMMERCE --> ORDER
-    COMMERCE --> PAYMENT
-    COMMERCE --> FULFILLMENT
-
-    BLOG --> CONTENT
-    BLOG --> COMMENTS
-    BLOG --> TAXONOMY
-    FORUM --> CONTENT
-    FORUM --> TAXONOMY
-    PAGES --> CONTENT
-    PRODUCT --> TAXONOMY
-    PRODUCT --> COM_FOUND
-    PRICING --> COM_FOUND
-    INVENTORY --> COM_FOUND
-    MEDIA --> STORAGE
-    OUTBOX --> EVENTS
-    OUTBOX --> IGGY
+    SERVER --> Core
+    SERVER --> Optional
+    SERVER --> Extensions
+    Core --> Foundations
+    Optional --> Foundations
+    Extensions --> Foundations
+    ADMIN --> Core
+    STOREFRONT --> Core
 ```
+<!-- @generated:architecture-diagram-end -->
 
 ## Runtime Composition
 
 ```mermaid
 flowchart TD
-    MANIFEST["modules.toml"] --> REGISTRY["ModuleRegistry"]
-    MANIFEST --> VALIDATE["manifest/runtime validation"]
-    VALIDATE --> SERVER["apps/server"]
+    MANIFEST["modules.toml"] --> SPLIT{"runtime mode"}
+    SPLIT -->|"runtime = 'module'"| REGISTRY["ModuleRegistry (Core & Optional tenant modules)"]
+    SPLIT -->|"runtime = 'extension'"| EXT_SEAM["Runtime extension host seam (deployment capabilities: ai, iggy)"]
+    
+    REGISTRY --> SERVER["apps/server (composition root)"]
+    EXT_SEAM --> SERVER
 
     SERVER --> GRAPHQL["GraphQL"]
     SERVER --> REST["REST"]
     SERVER --> SERVER_FN["Leptos #[server] functions"]
     SERVER --> HEALTH["health / metrics / ops"]
 
-    SERVER --> MODULES["platform modules"]
-    SERVER --> SUPPORT["shared/support/capability crates"]
-
-    MODULES --> OUTBOX["transactional outbox"]
+    REGISTRY --> OUTBOX["transactional outbox"]
     OUTBOX --> EVENTS["event flow"]
     EVENTS --> INDEX["read-side / indexing"]
 ```

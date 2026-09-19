@@ -35,4 +35,4 @@ provider routing, MCP wiring, or host UI.
 
 - [Module documentation](./docs/README.md)
 - [Implementation plan](./docs/implementation-plan.md)
-- [Platform documentation map](../../docs/index.md)
+- [Platform documentation map](../../../docs/index.md)

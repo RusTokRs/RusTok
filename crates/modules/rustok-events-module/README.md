@@ -30,4 +30,4 @@ for the event capability. Canonical event contracts remain in
 
 See the [local module contract](docs/README.md), the
 [adapter implementation plan](docs/implementation-plan.md), and the
-[canonical Events capability plan](../rustok-events/docs/implementation-plan.md).
+[canonical Events capability plan](../../libs/rustok-events/docs/implementation-plan.md).

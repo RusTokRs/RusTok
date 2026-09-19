@@ -65,10 +65,10 @@ Expected result:
 
 - correct `exit code` (`0` for pass, otherwise fail).
 
-Source: `docs/research/fix docs.md`.
+Source: `docs/verification/platform-quality-operations-verification-plan.md`.
 
 ## Related Documents
 
 - [Quickstart](../guides/quickstart.md)
-- [Documentation Fix Plan](../research/fix%20docs.md)
+- [Platform Quality Operations Verification Plan (DOC-07)](../verification/platform-quality-operations-verification-plan.md)
 - [Platform Summary Verification Plan](../verification/PLATFORM_VERIFICATION_PLAN.md)

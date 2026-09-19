@@ -1,3 +1,5 @@
+use super::*;
+
 /// Transactional owner facade for category audience policy replacement.
 ///
 /// Read operations continue through the established service. Replacement is
@@ -63,7 +65,7 @@ impl ForumCategoryAudiencePolicyOwnerService {
         }
 
         let result = load_category_audience_policy(&txn, tenant_id, category_id).await?;
-        super::projection_invalidation::publish_forum_projection_scope_direct_in_tx(
+        crate::services::projection_invalidation::publish_forum_projection_scope_direct_in_tx(
             &txn,
             tenant_id,
             security.user_id,

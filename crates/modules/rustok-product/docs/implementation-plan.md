@@ -275,7 +275,7 @@ rustok-pricing` dependency cycle.
    a typed storage/API/index migration. `product_translations.description` and
    catalog attributes currently named `richtext` are scalar text, so replacing
    their textarea alone would create a false contract. When approved, use the
-   shared [Richtext plan](../../../docs/modules/rich-text-implementation-plan.md),
+   shared [Richtext plan](../../../../docs/modules/rich-text-implementation-plan.md),
    assign an owner profile, migrate both transports, and keep short/meta
    descriptions plain text.
 

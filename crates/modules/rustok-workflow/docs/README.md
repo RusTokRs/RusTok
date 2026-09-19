@@ -43,4 +43,4 @@ events and must not become a second event bus or transport runtime.
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
 - [CRATE_API](../CRATE_API.md)
-- [Event flow contract](../../../docs/architecture/event-flow-contract.md)
+- [Event flow contract](../../../../docs/architecture/event-flow-contract.md)

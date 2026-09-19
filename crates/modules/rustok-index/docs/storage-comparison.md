@@ -137,4 +137,4 @@ still evaluate:
 - the explicit rejection reason for each alternative.
 
 The canonical accepted decision record is
-[`DECISIONS/2026-07-24-index-storage-layout.md`](../../../DECISIONS/2026-07-24-index-storage-layout.md).
+[`DECISIONS/2026-07-24-index-storage-layout.md`](../../../../DECISIONS/2026-07-24-index-storage-layout.md).

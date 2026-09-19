@@ -122,6 +122,7 @@ mod tests {
             channel_slug: channel_slug.map(ToOwned::to_owned),
             channel_resolution_source: None,
             locale: "en".to_string(),
+            correlation_id: "test-correlation-id".to_string(),
         }
     }
 

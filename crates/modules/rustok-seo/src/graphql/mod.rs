@@ -723,6 +723,7 @@ mod tests {
             channel_slug: channel_slug.map(|value| value.to_string()),
             channel_resolution_source: None,
             locale: locale.to_string(),
+            correlation_id: "test-correlation-id".to_string(),
         }
     }
 

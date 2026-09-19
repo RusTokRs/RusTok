@@ -37,4 +37,4 @@ Use this crate from module-local `cli/` adapter packages, generated CLI registri
 Do not add CLI command implementations to module domain crates or to the production HTTP
 server runtime.
 
-Related guide: [Backend Module Architecture](../../../docs/backend/module-backend-architecture.md).
+Related guide: [Backend Module Architecture](../../../../docs/backend/module-backend-architecture.md).

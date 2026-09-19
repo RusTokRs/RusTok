@@ -5,10 +5,7 @@ mod category {
     include!("category_projection_owner.rs");
     include!("category_visibility_list.rs");
 }
-mod category_audience {
-    include!("category_audience.rs");
-    include!("category_audience_owner.rs");
-}
+pub mod category_audience;
 mod category_audience_read {
     include!("category_audience_read.rs");
     include!("category_audience_read_inline.rs");

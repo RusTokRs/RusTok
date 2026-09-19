@@ -299,4 +299,4 @@ criterion_main!(benches);
 
 - [Criterion.rs Documentation](https://bheisler.github.io/criterion.rs/book/)
 - [Rust Performance Book](https://nnethercote.github.io/perf-book/)
-- [Target Benchmark Directory Structure](target/criterion/)
+- [Performance Baseline Workflow](../architecture/performance-baseline.md)

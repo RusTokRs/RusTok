@@ -39,4 +39,4 @@
 - [Module docs](./docs/README.md)
 - [Implementation plan](./docs/implementation-plan.md)
 - No-compile source guardrail: `node scripts/verify/verify-iggy-connector-source.mjs` from the repository root
-- [Platform docs index](../../docs/index.md)
+- [Platform docs index](../../../docs/index.md)

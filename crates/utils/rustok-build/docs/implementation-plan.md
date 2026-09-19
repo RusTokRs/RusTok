@@ -13,7 +13,7 @@ been removed atomically.
 ## Module Release Safety Boundary
 
 The accepted
-[module release safety decision](../../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
+[module release safety decision](../../../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
 makes `rustok-modules` the sole operator-level owner of static release
 selection, predecessor eligibility, rollback, incident outcome, and
 desired-versus-observed rollout. `rustok-build` remains the plan/validation

@@ -1,9 +1,9 @@
 # rustok-payment-storefront
 
 > **For contributors and AI agents — choose the relevant guide before modifying this package:**
-> [Architecture](../../../docs/UI/module-package-architecture.md) |
-> [Implementation](../../../docs/UI/module-package-implementation.md) |
-> [Verification](../../../docs/UI/module-package-verification.md)
+> [Architecture](../../../../docs/UI/module-package-architecture.md) |
+> [Implementation](../../../../docs/UI/module-package-implementation.md) |
+> [Verification](../../../../docs/UI/module-package-verification.md)
 
 Module-owned storefront UI package for `rustok-payment`.
 
@@ -26,4 +26,4 @@ Module-owned storefront UI package for `rustok-payment`.
 
 `rustok-commerce-storefront` may temporarily pass checkout-orchestration payment collection snapshots into this package and execute the async native/GraphQL orchestration callback, but presentation ownership, payment request construction, and create/reuse command metadata stay here.
 
-See the platform documentation map in [`../../../docs/index.md`](../../../docs/index.md).
+See the platform documentation map in [`../../../docs/index.md`](../../../../docs/index.md).

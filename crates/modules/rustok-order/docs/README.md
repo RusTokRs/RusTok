@@ -31,7 +31,7 @@
 
 ## Event contracts
 
-- [Event flow contract (central)](../../../docs/architecture/event-flow-contract.md)
+- [Event flow contract (central)](../../../../docs/architecture/event-flow-contract.md)
 
 ## Integration
 

@@ -97,4 +97,4 @@ attempt boundaries, so a tenant-private denial fails before an external call.
 
 - [Adapter contract](./docs/README.md)
 - [Implementation plan](./docs/implementation-plan.md)
-- [Translation architecture plan](../../docs/modules/translation-implementation-plan.md)
+- [Translation architecture plan](../../../docs/modules/translation-implementation-plan.md)

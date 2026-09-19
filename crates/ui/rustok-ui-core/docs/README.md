@@ -6,4 +6,4 @@ This folder documents the framework-agnostic route, input, busy-state, paginatio
 
 - [Implementation Plan](implementation-plan.md) — active modernization and target architecture plan.
 
-See also the [root README](../README.md) and the [Central Documentation Index](../../../docs/index.md).
+See also the [root README](../README.md) and the [Central Documentation Index](../../../../docs/index.md).

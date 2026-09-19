@@ -219,14 +219,14 @@ optional shortcut. Its desired/observed adapter remains a fail-closed
 implementation gap.
 See the
 [implementation plan](implementation-plan.md) and the
-[release and rollback plan](../../../docs/modules/module-release-rollback-plan.md)
+[release and rollback plan](../../../../docs/modules/module-release-rollback-plan.md)
 for ownership and rollout.
 
 ## Related documents
 
-- [Hybrid installer ADR](../../../DECISIONS/2026-04-26-hybrid-installer-architecture.md)
-- [Installer topology composition identity ADR](../../../DECISIONS/2026-07-12-installer-topology-composition-identity.md)
-- [Module release rollback safety ADR](../../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
-- [Module architecture](../../../docs/architecture/modules.md)
-- [Platform database schema](../../../docs/architecture/database.md)
+- [Hybrid installer ADR](../../../../DECISIONS/2026-04-26-hybrid-installer-architecture.md)
+- [Installer topology composition identity ADR](../../../../DECISIONS/2026-07-12-installer-topology-composition-identity.md)
+- [Module release rollback safety ADR](../../../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
+- [Module architecture](../../../../docs/architecture/modules.md)
+- [Platform database schema](../../../../docs/architecture/database.md)
 - [Installer implementation plan](implementation-plan.md)

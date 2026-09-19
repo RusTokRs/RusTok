@@ -8,12 +8,15 @@ use regex::Regex;
 use thiserror::Error;
 
 /// Regex pattern for valid slugs (lowercase alphanumeric with hyphens)
+// INVARIANT: Static slug pattern is compile-time verified and constant.
 static VALID_SLUG_PATTERN: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^[a-z0-9][a-z0-9-]{0,62}$").unwrap());
+    Lazy::new(|| Regex::new(r"^[a-z0-9][a-z0-9-]{0,62}$").expect("valid slug regex"));
 
 /// Regex pattern for valid UUIDs
+// INVARIANT: Static UUID regex pattern is compile-time verified and constant.
 static VALID_UUID_PATTERN: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").unwrap()
+    Regex::new(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+        .expect("valid UUID regex")
 });
 
 /// Reserved slugs that cannot be used as tenant identifiers

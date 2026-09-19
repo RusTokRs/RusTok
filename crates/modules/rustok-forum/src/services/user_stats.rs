@@ -257,4 +257,9 @@ impl UserStatsService {
     }
 }
 
-include!("member_card.rs");
+#[path = "member_card.rs"]
+mod member_card_file;
+pub use member_card_file::{
+    ForumMemberCard, ForumMemberCardAudience, ForumMemberCardService, ForumMemberStats,
+    MAX_FORUM_MEMBER_CARD_USER_IDS,
+};

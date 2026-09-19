@@ -79,5 +79,5 @@ spec or turning into a provider/model host.
 ## Related documents
 
 - [Implementation plan](./implementation-plan.md)
-- [Central MCP reference index](../../../docs/references/mcp/README.md)
+- [Central MCP reference index](../../../../docs/references/mcp/README.md)
 - [README crate](../README.md)

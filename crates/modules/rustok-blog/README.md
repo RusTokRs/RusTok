@@ -126,4 +126,4 @@ copy must use the canonical Taxonomy owner contract.
 
 - [Module docs](./docs/README.md)
 - [Current implementation cursor](./docs/implementation-plan-current.md)
-- [Platform docs index](../../docs/index.md)
+- [Platform docs index](../../../docs/index.md)

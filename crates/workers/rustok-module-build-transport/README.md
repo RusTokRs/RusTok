@@ -13,4 +13,4 @@ returned to the owner path; it never authorizes server-local Cargo execution or
 records a false terminal build result.
 
 See [local documentation](./docs/README.md) and the
-[control-plane plan](../../docs/modules/module-control-plane-consolidation-plan.md).
+[control-plane plan](../../../docs/modules/module-control-plane-consolidation-plan.md).

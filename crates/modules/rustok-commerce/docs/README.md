@@ -39,7 +39,7 @@ for checkout, REST/GraphQL transport and split-module integration in addition to
 ## Related documents
 
 - [Implementation plan](./implementation-plan.md) — current roadmap for ecommerce family development, Medusa-style REST transport, channel-aware commerce over `rustok-channel` and responsibility extraction into separate modules.
-- [RusTok vs Medusa comparison](../../../docs/research/medusa-vs-rustok-architecture.md)
+- [RusTok vs Medusa comparison](../../../../docs/research/medusa-vs-rustok-architecture.md)
 - [Admin UI package](../admin/README.md)
 - [Storefront UI package](../storefront/README.md)
 
@@ -89,7 +89,7 @@ for checkout, REST/GraphQL transport and split-module integration in addition to
 
 ## Event contracts
 
-- [Event flow contract (central)](../../../docs/architecture/event-flow-contract.md)
+- [Event flow contract (central)](../../../../docs/architecture/event-flow-contract.md)
 
 ## FFA core/transport/ui slice
 

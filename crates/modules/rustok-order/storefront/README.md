@@ -1,9 +1,9 @@
 # rustok-order-storefront
 
 > **For contributors and AI agents — choose the relevant guide before modifying this package:**
-> [Architecture](../../../docs/UI/module-package-architecture.md) |
-> [Implementation](../../../docs/UI/module-package-implementation.md) |
-> [Verification](../../../docs/UI/module-package-verification.md)
+> [Architecture](../../../../docs/UI/module-package-architecture.md) |
+> [Implementation](../../../../docs/UI/module-package-implementation.md) |
+> [Verification](../../../../docs/UI/module-package-verification.md)
 
 Module-owned storefront UI package for `rustok-order`.
 
@@ -27,4 +27,4 @@ Module-owned storefront UI package for `rustok-order`.
 
 The native callback still calls the explicit `rustok_commerce::storefront_checkout_runtime` orchestration API during the handoff window, but the storefront package receives host state through `HostRuntimeContext` DB/event-bus handles rather than a host-wide `AppContext`.
 
-See the platform documentation map in [`../../../docs/index.md`](../../../docs/index.md).
+See the platform documentation map in [`../../../docs/index.md`](../../../../docs/index.md).

@@ -76,7 +76,7 @@ endpoint URLs and provider error text. `rustok-modules` owns the catalog port;
    profile definitions, and plain-text extraction remain in
    `rustok-content::richtext`.
    **Depends on:** deletion of the old core/generic format paths under the
-   [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md)
+   [central Richtext plan](../../../../docs/modules/rich-text-implementation-plan.md)
    and synchronized Blog/Forum/Comments transports.
    **Current evidence:** `cargo test -p rustok-api` and
    `cargo test -p rustok-api --features server` cover the structural contract,

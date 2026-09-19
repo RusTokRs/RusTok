@@ -42,8 +42,8 @@
 
 - [`implementation-plan.md`](./implementation-plan.md)
 - [`../README.md`](../README.md)
-- [`../../../docs/modules/manifest.md`](../../../docs/modules/manifest.md)
-- [`../../../docs/architecture/database.md`](../../../docs/architecture/database.md)
+- [`../../../docs/modules/manifest.md`](../../../../docs/modules/manifest.md)
+- [`../../../docs/architecture/database.md`](../../../../docs/architecture/database.md)
 
 ---
 
@@ -614,5 +614,5 @@ Implementation details — in [`implementation-plan.md`](./implementation-plan.m
 ## See Also
 
 - [`implementation-plan.md`](./implementation-plan.md) — not yet implemented (Phase 4 debts, Phase 4.5, 5, 6)
-- [`rustok-core/src/field_schema.rs`](../../crates/libs/rustok-core/src/field_schema.rs) — source code of core types
-- [`../../../docs/modules/_index.md`](../../../docs/modules/_index.md) — central module documentation index
+- [`rustok-core/src/field_schema.rs`](../../../libs/rustok-core/src/field_schema.rs) — source code of core types
+- [`_index.md`](../../../../docs/modules/_index.md) — central module documentation index

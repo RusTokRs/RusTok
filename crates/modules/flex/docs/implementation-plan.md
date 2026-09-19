@@ -254,9 +254,9 @@ review before merge and must not claim runtime evidence that was not executed.
 
 ## References
 
-- [Translation implementation plan](../../../docs/modules/translation-implementation-plan.md)
-- [Taxonomy Category + Flex platform plan](../../../docs/architecture/taxonomy-flex-category-platform-plan.md)
-- [Taxonomy/Flex ownership ADR](../../../DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md)
+- [Translation implementation plan](../../../../docs/modules/translation-implementation-plan.md)
+- [Taxonomy Category + Flex platform plan](../../../../docs/architecture/taxonomy-flex-category-platform-plan.md)
+- [Taxonomy/Flex ownership ADR](../../../../DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md)
 - [Host cache contract inventory](../../rustok-cache/docs/host-cache-inventory.md)
 - [Cache capability implementation plan](../../rustok-cache/docs/implementation-plan.md)
 

@@ -30,6 +30,6 @@
 
 ## Docs
 
-- [Platform docs index](../../docs/index.md)
-- [UI docs](../../docs/UI/README.md)
-- [Routing architecture](../../docs/architecture/routing.md)
+- [Platform docs index](../../../docs/index.md)
+- [UI docs](../../../docs/UI/README.md)
+- [Routing architecture](../../../docs/architecture/routing.md)

@@ -1,10 +1,11 @@
 ---
 id: doc://docs/verification/platform-quality-operations-verification-plan.md
-kind: project_overview
+doc_type: current_contract
+status: current
+owner: platform-verification
+canonical_for:
+  - operations-quality-verification
 language: markdown
-last_verified_snapshot: snap_jsonl_00000021
-source_language: markdown
-status: verified
 ---
 # Platform Verification Plan: Quality and Operational Readiness
 
@@ -114,6 +115,7 @@ The check covers:
 - [ ] `cargo xtask validate-manifest`
 - [ ] targeted `cargo xtask module validate <slug>`
 - [ ] targeted `cargo xtask module test <slug>`
+- [ ] `npm run verify:docs`
 - [ ] `npm run verify:i18n:ui`
 - [ ] `npm run verify:i18n:contract`
 - [ ] `npm run verify:storefront:routes`, if storefront/runtime routing contract is affected
@@ -136,25 +138,38 @@ The check covers:
 
 ## Docs quality gates (DOC-07 baseline)
 
-The purpose of this block is to establish minimum docs quality gates that
+The purpose of this block is to establish canonical docs quality gates that
 must be executed for PRs with documentation changes.
 
-### Minimum gates
+### Canonical platform gate
 
-1. Markdown lint on changed files:
+Run the unified documentation verifier:
+
+```bash
+npm run verify:docs
+```
+
+This gate executes:
+1. `npm run verify:adrs` (ADR governance, ordering, required sections, relations);
+2. `npm run generate:docs-topology -- --check` (synchronization between `modules.toml` and documentation tables/diagrams);
+3. Malformed literal escape detection (`\n`, `\t` text escapes);
+4. Internal relative markdown links and anchor validity;
+5. Forbidden stale terminology guard;
+6. Canonical YAML front matter metadata schema (`doc_type`, `status`).
+
+### Supplementary tooling (changed files)
+
+1. Markdown syntax on changed files:
 
 ```bash
 npx --yes markdownlint-cli <changed-files>
 ```
 
-2. Link-check on changed files:
+2. External link-check on changed files (optional):
 
 ```bash
 lychee --no-progress <changed-files>
 ```
-
-3. Manual check of changed links and anchors in `docs/index.md` + affected
-   `README.md`/`docs/*.md` sections.
 
 ### Status rules
 

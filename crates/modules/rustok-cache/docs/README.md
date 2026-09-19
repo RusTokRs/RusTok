@@ -156,4 +156,4 @@ should inject delayed Redis responses, disconnect listeners and force local broa
 - [Implementation plan](./implementation-plan.md)
 - [Host cache contract inventory](./host-cache-inventory.md)
 - [Cache operations and recovery runbook](./operations.md)
-- [Manifest layer contract](../../../docs/modules/manifest.md)
+- [Manifest layer contract](../../../../docs/modules/manifest.md)

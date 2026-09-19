@@ -6,7 +6,7 @@ taxonomy relations and domain policy.
 
 The current runtime implementation is still Tag-only, but the accepted platform direction now adds a
 first-class Taxonomy-owned `Category` kind with shared hierarchy. The staged migration is documented
-in [`../../../docs/architecture/taxonomy-flex-category-platform-plan.md`](../../../docs/architecture/taxonomy-flex-category-platform-plan.md).
+in [`../../../docs/architecture/taxonomy-flex-category-platform-plan.md`](../../../../docs/architecture/taxonomy-flex-category-platform-plan.md).
 Historical docs/guards that pin Blog/Forum/Product category hierarchy to consumer modules are
 transitional and must be replaced atomically with the Category implementation; they are not the target
 architecture.
@@ -77,5 +77,5 @@ consumer bindings and Flex Category extension.
 
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
-- [Taxonomy Category + Flex platform plan](../../../docs/architecture/taxonomy-flex-category-platform-plan.md)
-- [Manifest layer contract](../../../docs/modules/manifest.md)
+- [Taxonomy Category + Flex platform plan](../../../../docs/architecture/taxonomy-flex-category-platform-plan.md)
+- [Manifest layer contract](../../../../docs/modules/manifest.md)

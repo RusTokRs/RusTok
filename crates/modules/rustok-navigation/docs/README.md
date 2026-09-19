@@ -38,4 +38,4 @@ Owner-run compilation, migrations, GraphQL schema generation and transport check
 ## Related Documents
 
 - [Implementation plan](implementation-plan.md)
-- [Platform manifest contract](../../../docs/modules/manifest.md)
+- [Platform manifest contract](../../../../docs/modules/manifest.md)

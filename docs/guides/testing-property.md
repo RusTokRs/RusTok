@@ -328,9 +328,9 @@ As new state machines are added, property-based tests should follow the same pat
 ## References
 
 - [Proptest Book](https://altsysrq.github.io/proptest-book/)
-- [State Machine Guide](./STATE_MACHINE_GUIDE.md)
-- [Integration Tests Guide](./INTEGRATION_TESTS_GUIDE.md)
-- [Architecture Improvement Plan](../ARCHITECTURE_IMPROVEMENT_PLAN.md)
+- [State Machine Guide](./state-machine.md)
+- [Integration Tests Guide](./testing-integration.md)
+- [Platform Architecture Overview](../architecture/overview.md)
 
 ---
 

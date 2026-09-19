@@ -239,4 +239,4 @@ the retained terminal result is AES-GCM ciphertext rather than plaintext.
 - [README crate](../README.md)
 - [Implementation Plan](./implementation-plan.md)
 - [README crate `rustok-mcp`](../../rustok-mcp/README.md)
-- [Platform documentation map](../../../docs/index.md)
+- [Platform documentation map](../../../../docs/index.md)

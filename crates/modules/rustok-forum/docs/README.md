@@ -90,7 +90,7 @@ notifications module, and cross-module release gates.
 
 - [README crate](../README.md)
 - [Canonical implementation plan](./implementation-plan.md)
-- [Accepted Forum slug/locale decision](../../../DECISIONS/2026-03-29-forum-slug-locale-contract.md)
+- [Accepted Forum slug/locale decision](../../../../DECISIONS/2026-03-29-forum-slug-locale-contract.md)
 - [FORUM-21B merge owner](./forum-21b-topic-merge-owner.md)
 - [FORUM-21H accepted-solution policy](./forum-21h-topic-merge-solution-policy.md)
 - [FORUM-21L competing solution resolution](./forum-21l-topic-merge-solution-resolution.md)
@@ -129,4 +129,4 @@ notifications module, and cross-module release gates.
 - [FORUM-24S registered native-host route evidence](./forum-24s-native-host-route-evidence.md)
 - [Admin UI package](../admin/README.md)
 - [Storefront UI package](../storefront/README.md)
-- [Event flow contract](../../../docs/architecture/event-flow-contract.md)
+- [Event flow contract](../../../../docs/architecture/event-flow-contract.md)

@@ -75,4 +75,4 @@ These commands are maintainer-run and were not executed while publishing this sl
 - [Implementation plan](./implementation-plan.md)
 - [Admin package](../admin/README.md)
 - [gRPC transport](../../rustok-media-transport/docs/README.md)
-- [Manifest layer contract](../../../docs/modules/manifest.md)
+- [Manifest layer contract](../../../../docs/modules/manifest.md)

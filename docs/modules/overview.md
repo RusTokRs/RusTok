@@ -1,10 +1,13 @@
 ---
 id: doc://docs/modules/overview.md
-kind: project_overview
+doc_type: current_contract
+status: current
+owner: platform-architecture
+canonical_for:
+  - module-topology
+derived_from:
+  - modules.toml
 language: markdown
-last_verified_snapshot: snap_jsonl_00000021
-source_language: markdown
-status: verified
 ---
 # Module Platform Overview
 
@@ -48,6 +51,7 @@ It is important to distinguish:
 
 ## Platform Modules
 
+<!-- @generated:module-topology-begin -->
 ### Core
 
 | Slug | Crate | Depends on |
@@ -72,6 +76,9 @@ It is important to distinguish:
 | `cart` | `rustok-cart` | — |
 | `customer` | `rustok-customer` | — |
 | `product` | `rustok-product` | `taxonomy` |
+| `product_relations` | `rustok-product-relations` | `product` |
+| `brand` | `rustok-brand` | `product` |
+| `product_bundles` | `rustok-product-bundles` | `product` |
 | `profiles` | `rustok-profiles` | `media`, `social_graph`, `taxonomy` |
 | `social_graph` | `rustok-social-graph` | `index`, `outbox` |
 | `reactions` | `rustok-reactions` | `outbox` |
@@ -82,7 +89,7 @@ It is important to distinguish:
 | `order` | `rustok-order` | — |
 | `payment` | `rustok-payment` | — |
 | `fulfillment` | `rustok-fulfillment` | — |
-| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment`, `tenant` |
+| `commerce` | `rustok-commerce` | `tenant`, `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` |
 | `marketplace_seller` | `rustok-marketplace-seller` | — |
 | `marketplace_listing` | `rustok-marketplace-listing` | `marketplace_seller`, `product` |
 | `marketplace_allocation` | `rustok-marketplace-allocation` | `order`, `marketplace_seller`, `marketplace_listing` |
@@ -112,6 +119,7 @@ It is important to distinguish:
 |---|---|---|
 | `ai` | `rustok-ai` | `extension` |
 | `iggy_connector` | `rustok-iggy-connector` | `extension` |
+<!-- @generated:module-topology-end -->
 
 Capability extensions are deployment-scoped, globally active when compiled and are
 not tenant-toggled through the regular `Core` / `Optional` module lifecycle.

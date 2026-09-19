@@ -1380,6 +1380,7 @@ mod tests {
                         meta_title: None,
                         meta_description: None,
                     }],
+                    variant_axes: vec![],
                     variants: vec![rustok_product::dto::CreateVariantInput {
                         sku: Some("PRICE-TIER-1".to_string()),
                         barcode: None,

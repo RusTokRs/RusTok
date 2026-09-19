@@ -216,5 +216,5 @@ durable generation and recovery action is still an open P1 in the implementation
 
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
-- [Event flow contract](../../../docs/architecture/event-flow-contract.md)
-- [Verification plan](../../../docs/verification/rbac-server-modules-verification-plan.md)
+- [Event flow contract](../../../../docs/architecture/event-flow-contract.md)
+- [Verification plan](../../../../docs/verification/rbac-server-modules-verification-plan.md)

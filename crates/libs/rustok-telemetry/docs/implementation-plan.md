@@ -153,5 +153,5 @@ These commands remain maintainer-run and were not executed manually in this slic
 
 - [Crate README](../README.md)
 - [Module documentation](./README.md)
-- [Telemetry reference package](../../../docs/references/telemetry/README.md)
-- [Observability quickstart](../../../docs/guides/observability-quickstart.md)
+- [Telemetry reference package](../../../../docs/references/telemetry/README.md)
+- [Observability quickstart](../../../../docs/guides/observability-quickstart.md)

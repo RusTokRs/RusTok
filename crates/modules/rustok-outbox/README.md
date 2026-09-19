@@ -52,4 +52,4 @@
 ## Docs
 
 - [Module docs](./docs/README.md)
-- [Platform docs index](../../docs/index.md)
+- [Platform docs index](../../../docs/index.md)

@@ -15,4 +15,4 @@ set. This process has no CAS, sandbox, AI, Alloy, product, tenant, or
 application-server dependency.
 
 See the [local deployment contract](./docs/README.md) and the
-[module control-plane plan](../../docs/modules/module-control-plane-consolidation-plan.md).
+[module control-plane plan](../../../docs/modules/module-control-plane-consolidation-plan.md).

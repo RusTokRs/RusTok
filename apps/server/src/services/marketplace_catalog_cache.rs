@@ -12,9 +12,8 @@ use crate::modules::{CatalogManifestModule, ModulesManifest};
 use crate::services::marketplace_catalog::MarketplaceProviderHealthSnapshot;
 use crate::services::marketplace_catalog::{MarketplaceCatalogProvider, MarketplaceCatalogQuery};
 
-mod base {
-    include!("marketplace_catalog_cache_base.rs");
-}
+#[path = "marketplace_catalog_cache_base.rs"]
+mod base;
 
 const DEFAULT_REGISTRY_DETAIL_CACHE_MAX_WEIGHT_BYTES: u64 = 4 * 1024 * 1024;
 const DEFAULT_REGISTRY_DETAIL_NEGATIVE_TTL_SECS: u64 = 5;

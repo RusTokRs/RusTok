@@ -104,4 +104,4 @@ not responsible for a recipient's domain side effects.
 
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
-- [Manifest layer contract](../../../docs/modules/manifest.md)
+- [Manifest layer contract](../../../../docs/modules/manifest.md)

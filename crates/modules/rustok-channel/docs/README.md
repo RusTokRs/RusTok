@@ -43,4 +43,4 @@ channel context for delivery surfaces and channel-aware runtime resolution.
 
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
-- [Manifest layer contract](../../../docs/modules/manifest.md)
+- [Manifest layer contract](../../../../docs/modules/manifest.md)

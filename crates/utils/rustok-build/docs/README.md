@@ -24,7 +24,7 @@ build and history snapshots.
 ## Release-Safety Boundary
 
 Under the accepted
-[module release rollback safety decision](../../../DECISIONS/2026-08-06-module-release-rollback-safety.md).
+[module release rollback safety decision](../../../../DECISIONS/2026-08-06-module-release-rollback-safety.md).
 `rustok-modules` is the sole operator-level owner of
 static release selection, predecessor eligibility, recovery, desired/observed
 rollout, and incident outcome. `rustok-build` remains the immutable role-build

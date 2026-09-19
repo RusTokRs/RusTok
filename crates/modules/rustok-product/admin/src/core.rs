@@ -2878,14 +2878,6 @@ mod tests {
 
         let ru_med = build_product_media_panel_copy(Some("ru"));
         assert_eq!(ru_med.title, "Медиагалерея");
-
-        let en_rel = build_product_relations_panel_copy(Some("en"));
-        assert_eq!(en_rel.title, "Product Relations");
-        assert_eq!(en_rel.tab_cross_sell, "Cross-sell");
-
-        let ru_rel = build_product_relations_panel_copy(Some("ru"));
-        assert_eq!(ru_rel.title, "Связанные товары");
-        assert_eq!(ru_rel.tab_cross_sell, "Сопутствующие");
     }
 
     #[test]

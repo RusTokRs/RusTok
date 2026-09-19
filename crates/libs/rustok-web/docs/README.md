@@ -24,4 +24,4 @@ Current entry points:
 Use `json_response` in server or module HTTP adapters. Keep response formatting
 inside this shared boundary.
 
-Related guide: [Backend Module Implementation](../../../docs/backend/module-backend-implementation.md).
+Related guide: [Backend Module Implementation](../../../../docs/backend/module-backend-implementation.md).
