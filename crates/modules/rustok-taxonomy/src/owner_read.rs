@@ -158,6 +158,32 @@ impl TaxonomyOwnerReader {
     /// It intentionally does not expose Taxonomy persistence rows, aliases, routes, or
     /// relation storage. Consumers remain responsible only for attachment semantics and
     /// the ordering of their locale preferences.
+    /// Strict variant for owner attachment readers: every requested ID must resolve
+    /// to a tenant-local Taxonomy term of the requested kind.
+    pub async fn load_term_names_strict(
+        &self,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        term_ids: &[Uuid],
+    ) -> TaxonomyResult<HashMap<Uuid, TaxonomyOwnerTermNames>> {
+        if term_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let mut expected_ids = term_ids.to_vec();
+        expected_ids.sort_unstable();
+        expected_ids.dedup();
+
+        let names = self.load_term_names(tenant_id, kind, &expected_ids).await?;
+        if names.len() != expected_ids.len() {
+            return Err(TaxonomyError::invariant(
+                "Taxonomy owner attachment references a missing or wrong-kind term",
+            ));
+        }
+
+        Ok(names)
+    }
+
     pub async fn load_term_names(
         &self,
         tenant_id: Uuid,
