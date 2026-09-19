@@ -11,7 +11,9 @@ use uuid::Uuid;
 use crate::dto::{TaxonomyScopeType, TaxonomyTermKind};
 use crate::entities::{taxonomy_term, taxonomy_term_translation};
 use crate::error::{TaxonomyError, TaxonomyResult};
-use crate::route_key_registry::ensure_route_key_available_in_tx;
+use crate::route_key_registry::{
+    ensure_route_key_available_in_tx, reconcile_route_keys_for_locale_in_tx,
+};
 use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -151,6 +153,7 @@ pub async fn update_module_term_in_tx(
         }
     };
 
+    reconcile_route_keys_for_locale_in_tx(txn, tenant_id, term_id, &locale).await?;
     let resource_revision = next_term_revision(&term)?;
     let updated = taxonomy_term::Entity::update_many()
         .col_expr(
