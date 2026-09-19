@@ -23,7 +23,9 @@ pub struct CreatePostInput {
     pub tags: Vec<String>,
     pub category_id: Option<Uuid>,
     pub featured_image_url: Option<String>,
+    #[schema(max_length = 255)]
     pub seo_title: Option<String>,
+    #[schema(max_length = 1000)]
     pub seo_description: Option<String>,
     pub channel_slugs: Option<Vec<String>>,
     pub metadata: Option<Value>,
@@ -49,10 +51,10 @@ pub struct UpdatePostInput {
     #[schema(value_type = Option<String>)]
     pub featured_image_url: Patch<String>,
     #[serde(default, skip_serializing_if = "Patch::is_keep")]
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, max_length = 255)]
     pub seo_title: Patch<String>,
     #[serde(default, skip_serializing_if = "Patch::is_keep")]
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, max_length = 1000)]
     pub seo_description: Patch<String>,
     pub channel_slugs: Option<Vec<String>>,
     pub metadata: Option<Value>,
