@@ -760,7 +760,18 @@ impl TaxonomyService {
                     .one(txn)
                     .await?
                 {
-                    return Ok(Some(route.term_id));
+                    let Some(term) = taxonomy_term::Entity::find_by_id(route.term_id)
+                        .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+                        .filter(taxonomy_term::Column::Kind.eq(kind))
+                        .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
+                        .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
+                        .lock_exclusive()
+                        .one(txn)
+                        .await?
+                    else {
+                        continue;
+                    };
+                    return Ok(Some(term.id));
                 }
             }
 
@@ -770,6 +781,7 @@ impl TaxonomyService {
                 .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
                 .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
                 .filter(taxonomy_term::Column::CanonicalKey.eq(route_key))
+                .lock_exclusive()
                 .one(txn)
                 .await?
             {
