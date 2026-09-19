@@ -96,18 +96,20 @@ impl ActiveModelBehavior for ActiveModel {
             )));
         }
 
-        let count = super::comment::Entity::find()
+        let live_comments = super::comment::Entity::find()
             .filter(super::comment::Column::TenantId.eq(tenant_id))
             .filter(super::comment::Column::ThreadId.eq(thread_id))
             .filter(super::comment::Column::DeletedAt.is_null())
-            .count(db)
+            .order_by_desc(super::comment::Column::CreatedAt)
+            .all(db)
             .await?;
-        let count = i32::try_from(count).map_err(|_| {
+        let count = i32::try_from(live_comments.len()).map_err(|_| {
             DbErr::Custom(format!(
                 "comment count exceeds i32 capacity for thread {thread_id}"
             ))
         })?;
         self.comment_count = Set(count);
+        self.last_commented_at = Set(live_comments.first().map(|comment| comment.created_at));
 
         Ok(self)
     }
