@@ -130,6 +130,7 @@ requireAll("crates/modules/rustok-blog/src/services/category_name_projection.rs"
   "Category without localized copy",
 ]);
 requireAll("crates/modules/rustok-blog/src/services/category_command.rs", [
+  "lock_category_tree_in_tx(&txn, tenant_id).await?",
   ".map_err(storage_category_tree_error)?",
   'BlogError::invariant("Moved category placement was not persisted")',
   '"Blog category Taxonomy hierarchy coverage is incomplete"',
@@ -139,6 +140,7 @@ forbid("crates/modules/rustok-blog/src/services/category_command.rs", [
   "or_insert((None, 0))",
 ]);
 requireAll("crates/modules/rustok-blog/src/services/category_delete.rs", [
+  "lock_category_tree_in_tx(txn, tenant_id).await?",
   "TaxonomyError::internal(format!(",
   "BlogError::CategoryNotFound(category_id) => TaxonomyError::TermNotFound(category_id)",
   '"has no canonical Taxonomy hierarchy placement"',
@@ -182,9 +184,16 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
   "detach_tag_from_posts_in_tx",
   "blog_post::Column::Version.eq(post.version)",
   '"Blog post {} changed before Tag detachment could commit"',
+  "blog_post_tag::Entity::delete_many()",
+  "blog_post_tag::Column::TenantId.eq(tenant_id)",
+  "blog_post_tag::Column::PostId.eq(post_id)",
+  "blog_post_tag::Column::TagId.eq(tag_id)",
+  "tenant_id: Set(tenant_id)",
+  "ensure_terms_for_module_in_tx(",
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/category.rs", [
+  "lock_category_tree_in_tx(&txn, tenant_id).await?",
   "ensure_hierarchy_coverage_in_tx(&txn, tenant_id).await?",
   '"Blog category Taxonomy hierarchy coverage is incomplete before create"',
 ]);
