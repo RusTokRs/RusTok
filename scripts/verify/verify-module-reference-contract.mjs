@@ -97,6 +97,7 @@ requireAll("crates/modules/rustok-blog/src/services/category.rs", [
 ]);
 requireAll("crates/modules/rustok-blog/src/migrations/m20260919_000023_enforce_blog_post_category_tenant_integrity.rs", [
   "fk_blog_posts_tenant_category",
+  "uq_blog_categories_tenant_id",
   "ON DELETE SET NULL",
   "blog_posts_category_tenant_insert",
   "blog_posts_category_tenant_update",
