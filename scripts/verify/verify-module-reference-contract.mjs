@@ -122,7 +122,7 @@ requireAll("crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs", 
 ]);
 forbid("crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs", [
   "map_taxonomy_error",
-  "BlogError::Validation(format!(
+  "BlogError::Validation(format!(",
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/comment_projection.rs", [
@@ -149,7 +149,7 @@ for (const path of rustFiles("crates/modules/rustok-blog/src/graphql")) {
   forbid(path, [
     "async_graphql::Error::new(err.to_string())",
     "async_graphql::Error::new(error.to_string())",
-    "format!(\"Channel module check failed: {error}\"),
+    "format!(\"Channel module check failed: {error}\")",
   ]);
 }
 for (const path of rustFiles("crates/modules/rustok-blog/src/integrations")) {

@@ -976,3 +976,7 @@ fn current_unix_ms() -> std::result::Result<u64, String> {
     u64::try_from(elapsed.as_millis())
         .map_err(|_| "Comments TCP delegation schedule clock is not available".to_string())
 }
+
+#[path = "comments_provider_runtime_keyring_schedule_persistence_bridge.rs"]
+mod bridge;
+

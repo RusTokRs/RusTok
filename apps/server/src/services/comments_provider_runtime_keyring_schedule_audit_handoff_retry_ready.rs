@@ -1,3 +1,5 @@
+use super::*;
+
 impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
     /// Claims one source row that is ready under the durable retry policy.
     ///

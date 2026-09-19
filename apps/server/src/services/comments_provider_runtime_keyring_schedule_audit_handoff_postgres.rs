@@ -605,3 +605,12 @@ mod tests {
         assert!(sql.contains("handoff_attempt_count = handoff_attempt_count + 1"));
     }
 }
+
+#[path = "comments_provider_runtime_keyring_schedule_audit_handoff_retry_ready.rs"]
+mod retry_ready;
+pub use retry_ready::*;
+
+#[cfg(test)]
+#[path = "comments_provider_runtime_keyring_schedule_audit_handoff_postgres_test_support.rs"]
+mod test_support;
+

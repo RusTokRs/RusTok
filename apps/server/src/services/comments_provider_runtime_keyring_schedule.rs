@@ -30,10 +30,8 @@ mod keyring_reload_guard {
     pub(super) use super::super::keyring_reload_guard::*;
 }
 
-mod historical {
-    include!("comments_provider_runtime_keyring_schedule_base.rs");
-    include!("comments_provider_runtime_keyring_schedule_persistence_bridge.rs");
-}
+#[path = "comments_provider_runtime_keyring_schedule_base.rs"]
+mod historical;
 
 pub use historical::{
     COMMENTS_TCP_DELEGATION_SCHEDULE_ENABLED_ENV, CommentsTcpDelegationScheduleReloadOutcome,

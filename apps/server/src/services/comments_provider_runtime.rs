@@ -1,91 +1,62 @@
-mod base {
-    include!("comments_provider_runtime_base.rs");
-}
+#[path = "comments_provider_runtime_base.rs"]
+mod base;
 
-mod keyring {
-    include!("comments_provider_runtime_keyring.rs");
-}
+#[path = "comments_provider_runtime_keyring.rs"]
+mod keyring;
 
-mod keyring_reload {
-    include!("comments_provider_runtime_keyring_reload.rs");
-}
+#[path = "comments_provider_runtime_keyring_reload.rs"]
+mod keyring_reload;
 
-mod keyring_reload_guard {
-    include!("comments_provider_runtime_keyring_reload_guard.rs");
-}
+#[path = "comments_provider_runtime_keyring_reload_guard.rs"]
+mod keyring_reload_guard;
 
-mod keyring_schedule {
-    include!("comments_provider_runtime_keyring_schedule.rs");
-}
+#[path = "comments_provider_runtime_keyring_schedule.rs"]
+mod keyring_schedule;
 
-mod keyring_schedule_guard {
-    include!("comments_provider_runtime_keyring_schedule_guard.rs");
-}
+#[path = "comments_provider_runtime_keyring_schedule_guard.rs"]
+mod keyring_schedule_guard;
 
-mod keyring_schedule_trigger {
-    include!("comments_provider_runtime_keyring_schedule_trigger.rs");
-}
+#[path = "comments_provider_runtime_keyring_schedule_trigger.rs"]
+mod keyring_schedule_trigger;
 
-mod keyring_schedule_persistence {
-    include!("comments_provider_runtime_keyring_schedule_persistence.rs");
-}
+#[path = "comments_provider_runtime_keyring_schedule_persistence.rs"]
+mod keyring_schedule_persistence;
 
-mod keyring_schedule_persistence_postgres {
-    include!("comments_provider_runtime_keyring_schedule_persistence_postgres.rs");
-}
+#[path = "comments_provider_runtime_keyring_schedule_persistence_postgres.rs"]
+mod keyring_schedule_persistence_postgres;
 
-mod keyring_schedule_persistence_postgres_audit {
-    include!("comments_provider_runtime_keyring_schedule_persistence_postgres_audit.rs");
-}
+#[path = "comments_provider_runtime_keyring_schedule_persistence_postgres_audit.rs"]
+mod keyring_schedule_persistence_postgres_audit;
 
-mod keyring_schedule_audit_publication {
-    include!("comments_provider_runtime_keyring_schedule_audit_publication.rs");
-}
+#[path = "comments_provider_runtime_keyring_schedule_audit_publication.rs"]
+mod keyring_schedule_audit_publication;
 
-mod keyring_schedule_audit_canonical_writer {
-    include!("comments_provider_runtime_keyring_schedule_audit_canonical_writer.rs");
-}
+#[path = "comments_provider_runtime_keyring_schedule_audit_canonical_writer.rs"]
+mod keyring_schedule_audit_canonical_writer;
 
-mod keyring_schedule_audit_handoff_postgres {
-    include!("comments_provider_runtime_keyring_schedule_audit_handoff_postgres.rs");
-    include!("comments_provider_runtime_keyring_schedule_audit_handoff_retry_ready.rs");
-    include!("comments_provider_runtime_keyring_schedule_audit_handoff_postgres_test_support.rs");
-}
+#[path = "comments_provider_runtime_keyring_schedule_audit_handoff_postgres.rs"]
+mod keyring_schedule_audit_handoff_postgres;
 
-mod keyring_schedule_audit_handoff_worker {
-    include!("comments_provider_runtime_keyring_schedule_audit_handoff_worker.rs");
-    include!("comments_provider_runtime_keyring_schedule_audit_handoff_worker_source_retry.rs");
-}
+#[path = "comments_provider_runtime_keyring_schedule_audit_handoff_worker.rs"]
+mod keyring_schedule_audit_handoff_worker;
 
-mod keyring_schedule_audit_source_retry_postgres {
-    include!("comments_provider_runtime_keyring_schedule_audit_source_retry_postgres.rs");
-    include!("comments_provider_runtime_keyring_schedule_audit_source_retry_active.rs");
-}
+#[path = "comments_provider_runtime_keyring_schedule_audit_source_retry_postgres.rs"]
+mod keyring_schedule_audit_source_retry_postgres;
 
-mod keyring_schedule_audit_recovery_postgres {
-    include!("comments_provider_runtime_keyring_schedule_audit_recovery_postgres.rs");
-    include!("comments_provider_runtime_keyring_schedule_audit_recovery_postgres_test_support.rs");
-}
+#[path = "comments_provider_runtime_keyring_schedule_audit_recovery_postgres.rs"]
+mod keyring_schedule_audit_recovery_postgres;
 
-mod keyring_schedule_audit_operator {
-    include!("comments_provider_runtime_keyring_schedule_audit_operator.rs");
-    include!("comments_provider_runtime_keyring_schedule_audit_operator_postgres_evidence.rs");
-    include!(
-        "comments_provider_runtime_keyring_schedule_audit_restart_ambiguity_postgres_evidence.rs"
-    );
-}
+#[path = "comments_provider_runtime_keyring_schedule_audit_operator.rs"]
+mod keyring_schedule_audit_operator;
 
-mod keyring_schedule_persisted_trigger {
-    include!("comments_provider_runtime_keyring_schedule_persisted_trigger.rs");
-}
+#[path = "comments_provider_runtime_keyring_schedule_persisted_trigger.rs"]
+mod keyring_schedule_persisted_trigger;
 
-mod keyring_schedule_postgres_audited_trigger {
-    include!("comments_provider_runtime_keyring_schedule_postgres_audited_trigger.rs");
-}
+#[path = "comments_provider_runtime_keyring_schedule_postgres_audited_trigger.rs"]
+mod keyring_schedule_postgres_audited_trigger;
 
-mod keyring_schedule_trigger_guard {
-    include!("comments_provider_runtime_keyring_schedule_trigger_guard.rs");
-}
+#[path = "comments_provider_runtime_keyring_schedule_trigger_guard.rs"]
+mod keyring_schedule_trigger_guard;
 
 pub use base::{
     COMMENTS_PROVIDER_MODE_ENV, COMMENTS_TCP_BEARER_TOKEN_ENV, COMMENTS_TCP_BIND_ENV,

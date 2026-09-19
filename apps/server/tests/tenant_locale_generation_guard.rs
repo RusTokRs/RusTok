@@ -5,7 +5,7 @@ fn tenant_locale_cache_uses_the_durable_tenant_generation_channel() {
     let middleware = include_str!("../src/middleware/mod.rs");
     let guardrails = include_str!("../src/services/runtime_guardrails.rs");
 
-    assert!(locale.contains("include!(\"locale_base.rs\")"));
+    assert!(locale.contains("struct TenantLocaleCache"));
     assert!(locale.contains("pub async fn invalidate_all_tenant_locale_cache"));
     assert!(locale.contains("ctx.shared_get::<Arc<TenantLocaleCache>>()"));
     assert!(!locale.contains("tenant_locale_cache(ctx).invalidate_all"));
