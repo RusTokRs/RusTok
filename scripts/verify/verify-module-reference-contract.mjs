@@ -131,6 +131,11 @@ requireAll("crates/modules/rustok-blog/src/services/category_name_projection.rs"
   ".map_err(BlogError::from)?",
   "Category without localized copy",
 ]);
+requireAll("crates/modules/rustok-blog/src/services/category.rs", [
+  "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
+  "// Serialize before reading hierarchy so a concurrent structural move cannot be",
+]);
+
 requireAll("crates/modules/rustok-blog/src/services/category_command.rs", [
   "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
   ".map_err(storage_category_tree_error)?",
@@ -198,6 +203,10 @@ requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
   "ensure_hierarchy_coverage_in_tx(&txn, tenant_id).await?",
   '"Blog category Taxonomy hierarchy coverage is incomplete before create"',
+]);
+requireAll("crates/modules/rustok-blog/src/services/category.rs", [
+  "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
+  "// Serialize before reading hierarchy so a concurrent structural move cannot be",
 ]);
 forbid("crates/modules/rustok-blog/src/services/category.rs", [
   "blog-category-tree:",
