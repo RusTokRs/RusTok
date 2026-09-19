@@ -107,7 +107,6 @@ impl BlogSearchProjector {
                 to_regclass('blog_posts') IS NOT NULL
                 AND to_regclass('blog_post_translations') IS NOT NULL
                 AND to_regclass('blog_post_channel_visibility') IS NOT NULL
-                AND to_regclass('blog_category_translations') IS NOT NULL
                 AND to_regclass('blog_post_tags') IS NOT NULL
                 AND to_regclass('taxonomy_terms') IS NOT NULL
                 AND to_regclass('taxonomy_term_translations') IS NOT NULL
@@ -213,13 +212,13 @@ impl BlogSearchProjector {
                 p.status::text AS status,
                 (LOWER(p.status::text) = 'published') AS is_public,
                 COALESCE(bt.title, '') AS title,
-                bct.name AS subtitle,
+                COALESCE(bct.name, bct_fallback.name, bct_term.canonical_key) AS subtitle,
                 p.slug,
                 NULL::text AS handle,
                 COALESCE(bt.excerpt, '') AS body,
                 CONCAT_WS(
                     ' ',
-                    COALESCE(bct.name, ''),
+                    COALESCE(bct.name, bct_fallback.name, bct_term.canonical_key, ''),
                     COALESCE(u.name, ''),
                     COALESCE(bt.seo_title, ''),
                     COALESCE(bt.seo_description, ''),
@@ -238,8 +237,8 @@ impl BlogSearchProjector {
                     'seo_description', bt.seo_description,
                     'featured_image_url', p.featured_image_url,
                     'category_id', p.category_id,
-                    'category_name', bct.name,
-                    'category_slug', bct.slug,
+                    'category_name', COALESCE(bct.name, bct_fallback.name, bct_term.canonical_key),
+                    'category_slug', COALESCE(bct.slug, bct_fallback.slug, bct_term.canonical_key),
                     'author_id', p.author_id,
                     'author_name', u.name,
                     'tags', COALESCE(tags.tag_list, '[]'::jsonb),
@@ -257,10 +256,22 @@ impl BlogSearchProjector {
             FROM blog_posts p
             JOIN blog_post_translations bt
                 ON bt.post_id = p.id
-            LEFT JOIN blog_category_translations bct
-                ON bct.category_id = p.category_id
+            LEFT JOIN taxonomy_terms bct_term
+                ON bct_term.id = p.category_id
+               AND bct_term.tenant_id = p.tenant_id
+               AND bct_term.kind = 'category'
+               AND bct_term.scope_type = 'module'
+               AND bct_term.scope_value = 'blog'
+            LEFT JOIN taxonomy_term_translations bct
+                ON bct.term_id = p.category_id
                AND bct.tenant_id = p.tenant_id
                AND bct.locale = bt.locale
+               AND bct_term.id IS NOT NULL
+            LEFT JOIN taxonomy_term_translations bct_fallback
+                ON bct_fallback.term_id = p.category_id
+               AND bct_fallback.tenant_id = p.tenant_id
+               AND bct_fallback.locale = 'en'
+               AND bct_term.id IS NOT NULL
             LEFT JOIN users u
                 ON u.id = p.author_id
             LEFT JOIN LATERAL (
