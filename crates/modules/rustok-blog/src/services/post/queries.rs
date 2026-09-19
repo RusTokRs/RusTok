@@ -87,7 +87,7 @@ impl PostService {
         }
 
         let translations = self.load_translations(post.id).await?;
-        let channel_slugs = self.load_channel_slugs(post.id).await?;
+        let channel_slugs = self.load_channel_slugs(tenant_id, post.id).await?;
         self.build_post_response(
             post,
             translations,
@@ -298,7 +298,7 @@ impl PostService {
         let post_ids = posts.iter().map(|post| post.id).collect::<Vec<_>>();
 
         let translations_map = self.load_translations_map(&post_ids).await?;
-        let channel_slugs_map = self.load_channel_slugs_map(&post_ids).await?;
+        let channel_slugs_map = self.load_channel_slugs_map(tenant_id, &post_ids).await?;
         let tags_map = load_post_tags_map(
             &self.db,
             tenant_id,
