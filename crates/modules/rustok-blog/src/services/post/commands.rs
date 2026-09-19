@@ -25,6 +25,21 @@ impl PostService {
         } = input;
 
         validate_title(&title)?;
+        validate_post_field_length(
+            excerpt.as_deref(),
+            MAX_POST_EXCERPT_CHARS,
+            "Excerpt",
+        )?;
+        validate_post_field_length(
+            seo_title.as_deref(),
+            MAX_POST_SEO_TITLE_CHARS,
+            "SEO title",
+        )?;
+        validate_post_field_length(
+            seo_description.as_deref(),
+            MAX_POST_SEO_DESCRIPTION_CHARS,
+            "SEO description",
+        )?;
         let locale = normalize_locale(&locale)?;
         validate_tags(&tags)?;
 
@@ -183,6 +198,27 @@ impl PostService {
         }
 
         validate_optional_title(title.as_deref())?;
+        if let Some(value) = excerpt.as_ref().set_value() {
+            validate_post_field_length(
+                Some(value.as_str()),
+                MAX_POST_EXCERPT_CHARS,
+                "Excerpt",
+            )?;
+        }
+        if let Some(value) = seo_title.as_ref().set_value() {
+            validate_post_field_length(
+                Some(value.as_str()),
+                MAX_POST_SEO_TITLE_CHARS,
+                "SEO title",
+            )?;
+        }
+        if let Some(value) = seo_description.as_ref().set_value() {
+            validate_post_field_length(
+                Some(value.as_str()),
+                MAX_POST_SEO_DESCRIPTION_CHARS,
+                "SEO description",
+            )?;
+        }
         if let Some(ref tags) = tags {
             validate_tags(tags)?;
         }
