@@ -358,6 +358,10 @@ requireAll("crates/modules/rustok-taxonomy/src/owner_category_read.rs", [
 requireAll("crates/modules/rustok-taxonomy/src/module_term_mutation.rs", [
   ".filter(taxonomy_term::Column::ScopeValue.eq(module_scope))",
   ".lock_exclusive()",
+]);\nrequireAll("crates/modules/rustok-taxonomy/src/services.rs", [
+  '"Module-owned Taxonomy terms must be updated by their owning module"',
+  '"Module-owned Taxonomy terms must be deleted by their owning module"',
+  ".lock_exclusive()",
 ]);
 requireAll("crates/modules/rustok-taxonomy/src/services.rs", [
   "let Some(term) = taxonomy_term::Entity::find_by_id(route.term_id)",
