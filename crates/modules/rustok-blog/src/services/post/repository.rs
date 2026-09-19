@@ -1,6 +1,16 @@
 use super::*;
 
 impl PostService {
+    pub(super) fn validate_persisted_version(post: &blog_post::Model) -> BlogResult<()> {
+        if post.version > 0 {
+            return Ok(());
+        }
+        Err(BlogError::invariant(format!(
+            "Blog post {} has invalid persisted version {}",
+            post.id, post.version
+        )))
+    }
+
     pub(super) async fn find_post(
         &self,
         tenant_id: Uuid,
@@ -12,6 +22,10 @@ impl PostService {
             .await
             .map_err(BlogError::from)?
             .ok_or(BlogError::PostNotFound(post_id))
+            .and_then(|post| {
+                Self::validate_persisted_version(&post)?;
+                Ok(post)
+            })
     }
 
     pub(super) async fn load_translations(
