@@ -457,22 +457,13 @@ requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   "enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;",
 ]);
 
-requireAll("crates/modules/rustok-taxonomy/src/services.rs", [
-  "reconcile_route_keys_for_locale_in_tx(&txn, tenant_id, term_id, &locale).await?;",
-  "reconcile_route_keys_for_locale_in_tx(txn, tenant_id, term_id, input.target_locale.as_str())",
-]);
-
-requireAll("crates/modules/rustok-taxonomy/src/module_term_mutation.rs", [
-  "reconcile_route_keys_for_locale_in_tx(txn, tenant_id, term_id, &locale).await?;",
-]);
-
-requireAll("crates/modules/rustok-taxonomy/src/owner_category_sync.rs", [
-  "reconcile_route_keys_for_locale_in_tx(txn, tenant_id, input.category_id, &locale).await?;",
-]);
-
 requireAll("crates/modules/rustok-taxonomy/src/route_key_registry.rs", [
   "localized taxonomy route key",
   "is_unique_constraint(&error)",
+]);
+requireAll("crates/modules/rustok-taxonomy/src/translation_evidence.rs", [
+  "reconcile_route_keys_for_locale_in_tx(",
+  'if evidence.operation != "delete"',
 ]);
 
 if (failures.length > 0) {
