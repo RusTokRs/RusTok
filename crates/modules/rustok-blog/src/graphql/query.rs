@@ -613,7 +613,7 @@ mod tests {
 
         let result = ensure_public_blog_channel_enabled(
             &db,
-            Some(&request_context(channel.id, "blog-web")),
+            Some(&request_context(tenant_id, channel.id, "blog-web")),
             true,
         )
         .await;
@@ -642,7 +642,7 @@ mod tests {
 
         let result = ensure_public_blog_channel_enabled(
             &db,
-            Some(&request_context(channel.id, "blog-web")),
+            Some(&request_context(tenant_id, channel.id, "blog-web")),
             false,
         )
         .await;
@@ -662,7 +662,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn disabled_binding_error_reports_resolution_source() {
+    async fn disabled_binding_error_is_redacted() {
         let db = setup_channel_db().await;
         let tenant_id = Uuid::new_v4();
         seed_tenant(&db, tenant_id, "tenant-blog").await;
