@@ -196,8 +196,18 @@ impl TaxonomyService {
         enforce_scope(&security, Resource::Taxonomy, Action::Update)?;
 
         let locale = normalize_locale(&input.locale)?;
-        let term = self.find_term(tenant_id, term_id).await?;
         let txn = self.db.begin().await?;
+        let term = taxonomy_term::Entity::find_by_id(term_id)
+            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+            .lock_exclusive()
+            .one(&txn)
+            .await?
+            .ok_or(TaxonomyError::TermNotFound(term_id))?;
+        if term.scope_type == TaxonomyScopeType::Module {
+            return Err(TaxonomyError::forbidden(
+                "Module-owned Taxonomy terms must be updated by their owning module",
+            ));
+        }
         let now = Utc::now();
         let scope = TermScope {
             tenant_id,
@@ -338,8 +348,23 @@ impl TaxonomyService {
         security: SecurityContext,
     ) -> TaxonomyResult<()> {
         enforce_scope(&security, Resource::Taxonomy, Action::Delete)?;
-        let term = self.find_term(tenant_id, term_id).await?;
-        let translations = self.load_translations(term_id).await?;
+        let txn = self.db.begin().await?;
+        let term = taxonomy_term::Entity::find_by_id(term_id)
+            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+            .lock_exclusive()
+            .one(&txn)
+            .await?
+            .ok_or(TaxonomyError::TermNotFound(term_id))?;
+        if term.scope_type == TaxonomyScopeType::Module {
+            return Err(TaxonomyError::forbidden(
+                "Module-owned Taxonomy terms must be deleted by their owning module",
+            ));
+        }
+        let translations = taxonomy_term_translation::Entity::find()
+            .filter(taxonomy_term_translation::Column::TermId.eq(term_id))
+            .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+            .all(&txn)
+            .await?;
         let deletion_translation = translations.iter().min_by(|left, right| {
             left.locale
                 .cmp(&right.locale)
@@ -352,7 +377,6 @@ impl TaxonomyService {
             .map(|translation| translation.revision)
             .unwrap_or_default();
         let resource_revision = next_term_revision(&term)?;
-        let txn = self.db.begin().await?;
         record_translation_change_in_tx(
             &txn,
             TranslationChangeEvidence {
