@@ -143,7 +143,11 @@ requireAll("crates/modules/rustok-blog/src/graphql/mutation.rs", [
 ]);
 
 for (const path of rustFiles("crates/modules/rustok-blog/src/graphql")) {
-  forbid(path, ["async_graphql::Error::new(err.to_string())", "async_graphql::Error::new(error.to_string())"]);
+  forbid(path, [
+    "async_graphql::Error::new(err.to_string())",
+    "async_graphql::Error::new(error.to_string())",
+    "format!(\"Channel module check failed: {error}\"),
+  ]);
 }
 for (const path of rustFiles("crates/modules/rustok-blog/src/integrations")) {
   forbid(path, ["crate::entities", "crate::{entities", "crate::entities::"]);
