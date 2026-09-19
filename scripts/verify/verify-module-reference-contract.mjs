@@ -91,6 +91,15 @@ requireAll("crates/modules/rustok-blog/src/services/category_name_projection.rs"
   "BlogError::invariant(",
   ".map_err(BlogError::from)?",
 ]);
+requireAll("crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs", [
+  ".map_err(BlogError::from)",
+  "BLOG_TAXONOMY_SCOPE",
+]);
+forbid("crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs", [
+  "map_err(map_taxonomy_error)",
+  "BlogError::Validation(format!(",
+]);
+
 requireAll("crates/modules/rustok-blog/src/services/category_command.rs", [
   ".map_err(storage_category_tree_error)?",
   'BlogError::invariant("Moved category placement was not persisted")',
