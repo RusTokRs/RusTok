@@ -209,6 +209,10 @@ requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
   "// Serialize before reading hierarchy so a concurrent structural move cannot be",
 ]);
+requireAll("crates/modules/rustok-blog/src/module.rs", [
+  '"dependencies"',
+  '["content", "comments", "taxonomy", "outbox", "channel"]',
+]);
 forbid("crates/modules/rustok-blog/src/services/category.rs", [
   "blog-category-tree:",
 ]);
