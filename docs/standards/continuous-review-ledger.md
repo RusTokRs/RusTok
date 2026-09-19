@@ -14,8 +14,8 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `3 / 218` components audited (**1%**)
-- **Total Workspace Codebase:** `1,855,003` LOC across `218` modules/apps
+- **Progress:** `4 / 218` components audited (**1%**)
+- **Total Workspace Codebase:** `1,855,008` LOC across `218` modules/apps
 
 ---
 
@@ -45,7 +45,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [ ] | [storefront](../../apps/storefront) | `apps` | 34 | 5,059 | None |  |
 | [x] | [rustok-api](../../crates/libs/rustok-api) | `libs` | 35 | 6,621 | 2026-09-18 19:46 | Audited richtext.rs: eliminated unwrap panic on empty strings, documented schema invariants |
 | [x] | [rustok-core](../../crates/libs/rustok-core) | `libs` | 64 | 16,913 | 2026-09-19 05:57 | Eliminated Tier 0 unwraps/panics with documented invariants, converted DatabaseHealthCheck to typed std::error::Error trait, fixed bulkhead doc print |
-| [ ] | [rustok-events](../../crates/libs/rustok-events) | `libs` | 27 | 10,966 | None |  |
+| [x] | [rustok-events](../../crates/libs/rustok-events) | `libs` | 27 | 10,971 | 2026-09-19 06:10 | Audited schema.rs: documented structural JSON serialization invariants for root events, envelopes, contracts, and digests |
 | [x] | [rustok-fba](../../crates/libs/rustok-fba) | `libs` | 1 | 82 | 2026-09-18 18:10 | Verified clean, 1 file, 82 LOC |
 | [ ] | [rustok-runtime](../../crates/libs/rustok-runtime) | `libs` | 4 | 2,414 | None |  |
 | [ ] | [rustok-telemetry](../../crates/libs/rustok-telemetry) | `libs` | 14 | 3,764 | None |  |

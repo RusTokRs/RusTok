@@ -80,12 +80,14 @@ fn field_json_schema(data_type: &str) -> serde_json::Value {
 /// Generates the canonical JSON Schema for the serde representation of every
 /// established root event variant.
 pub fn domain_event_json_schema() -> serde_json::Value {
+    // INVARIANT: schemars::schema_for! produces a RootSchema structurally guaranteed to serialize to JSON.
     serde_json::to_value(schema_for!(crate::DomainEvent))
         .expect("schemars output must always serialize to JSON")
 }
 
 /// Generates the canonical JSON Schema for the established root envelope.
 pub fn event_envelope_json_schema() -> serde_json::Value {
+    // INVARIANT: schemars::schema_for! produces a RootSchema structurally guaranteed to serialize to JSON.
     serde_json::to_value(schema_for!(crate::EventEnvelope))
         .expect("schemars output must always serialize to JSON")
 }
@@ -93,6 +95,7 @@ pub fn event_envelope_json_schema() -> serde_json::Value {
 /// Generates the canonical JSON Schema for the typed contract-payload wire
 /// representation used by durable and streaming transports.
 pub fn contract_event_payload_json_schema() -> serde_json::Value {
+    // INVARIANT: schemars::schema_for! produces a RootSchema structurally guaranteed to serialize to JSON.
     serde_json::to_value(schema_for!(crate::ContractEventPayload))
         .expect("schemars output must always serialize to JSON")
 }
@@ -100,6 +103,7 @@ pub fn contract_event_payload_json_schema() -> serde_json::Value {
 /// Generates the canonical JSON Schema for the typed contract-envelope wire
 /// representation used by durable and streaming transports.
 pub fn contract_event_envelope_json_schema() -> serde_json::Value {
+    // INVARIANT: schemars::schema_for! produces a RootSchema structurally guaranteed to serialize to JSON.
     serde_json::to_value(schema_for!(crate::ContractEventEnvelope))
         .expect("schemars output must always serialize to JSON")
 }
@@ -138,6 +142,7 @@ fn event_registry_artifact() -> serde_json::Value {
 }
 
 fn json_digest(value: serde_json::Value) -> String {
+    // INVARIANT: serde_json::Value is valid in-memory JSON and cannot fail serialization into bytes.
     let bytes = serde_json::to_vec(&value).expect("event contract JSON must serialize");
     let digest = Sha256::digest(bytes);
     format!("sha256:{}", hex::encode(digest))

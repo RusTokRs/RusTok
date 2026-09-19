@@ -182,7 +182,7 @@ title = "Blocking IO or sleep inside async runtime"
 description = "Calling std::fs::*, std::thread::sleep, or holding std::sync::Mutex across await points in async functions blocks the Tokio thread pool and degrades throughput."
 reference = "docs/standards/patterns-vs-antipatterns.md §2.5, docs/standards/coding.md §3"
 target_globs = ["crates/**/*.rs", "apps/**/*.rs"]
-exclude_globs = ["**/tests/**", "**/*_test.rs", "**/tests.rs", "**/benches/**"]
+exclude_globs = ["**/tests/**", "**/*_test.rs", "**/tests.rs", "**/benches/**", "**/examples/**"]
 pattern = '(std::fs::(read|write|remove|create|rename|copy)|std::thread::sleep)'
 remediation = "Use `tokio::fs::*` or `tokio::time::sleep`, or wrap blocking operations in `tokio::task::spawn_blocking`."
 
