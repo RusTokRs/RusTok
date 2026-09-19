@@ -177,6 +177,14 @@ impl CategoryService {
                 "Blog Category Taxonomy projection contains duplicate identities",
             ));
         }
+        if canonical_by_id
+            .values()
+            .any(|category| category.available_locales.is_empty())
+        {
+            return Err(BlogError::invariant(
+                "Blog Category Taxonomy projection contains Category without localized copy",
+            ));
+        }
 
         let mut rows = categories
             .into_iter()
@@ -250,6 +258,11 @@ impl CategoryService {
                     "Blog category {category_id} points to a missing Taxonomy Category"
                 ))
             })?;
+        if canonical.available_locales.is_empty() {
+            return Err(BlogError::invariant(format!(
+                "Blog category {category_id} Taxonomy projection has no localized copy"
+            )));
+        }
         let parent_id = canonical.parent_id;
 
         Ok(CategoryResponse {
