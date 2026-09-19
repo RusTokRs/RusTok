@@ -1,11 +1,14 @@
 pub mod consumer_poison_metrics;
 pub mod dlq_duplicate_alert_metrics;
+pub mod factory;
 pub mod metrics;
 pub mod otel;
 pub mod page_builder_provider_metrics;
 pub mod rbac_invalidation_metrics;
 pub mod runtime_consumer_metrics;
 pub mod social_graph_index_privacy_shadow_metrics;
+
+pub(crate) use factory::*;
 
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
@@ -85,65 +88,48 @@ pub enum TelemetryError {
     Prometheus(#[from] prometheus::Error),
 }
 
-use prometheus::{CounterVec, HistogramOpts, HistogramVec, Opts};
+use prometheus::{CounterVec, HistogramVec};
 
 lazy_static! {
-    pub static ref CONTENT_OPERATIONS_TOTAL: CounterVec = CounterVec::new(
-        Opts::new(
-            "rustok_content_operations_total",
-            "Total content operations"
-        ),
-        &["operation", "kind", "status"]
-    )
-    .expect("Failed to create content_operations_total");
-    pub static ref CONTENT_OPERATION_DURATION_SECONDS: HistogramVec = HistogramVec::new(
-        HistogramOpts::new(
-            "rustok_content_operation_duration_seconds",
-            "Duration of content operations"
-        ),
-        &["operation", "kind"]
-    )
-    .expect("Failed to create content_operation_duration_seconds");
-    pub static ref CONTENT_NODES_TOTAL: IntGauge = IntGauge::new(
-        "rustok_content_nodes_total",
-        "Total number of content nodes"
-    )
-    .expect("Failed to create content_nodes_total");
-    pub static ref COMMERCE_OPERATIONS_TOTAL: CounterVec = CounterVec::new(
-        Opts::new(
-            "rustok_commerce_operations_total",
-            "Total commerce operations"
-        ),
-        &["operation", "kind", "status"]
-    )
-    .expect("Failed to create commerce_operations_total");
-    pub static ref COMMERCE_OPERATION_DURATION_SECONDS: HistogramVec = HistogramVec::new(
-        HistogramOpts::new(
-            "rustok_commerce_operation_duration_seconds",
-            "Duration of commerce operations"
-        ),
-        &["operation", "kind"]
-    )
-    .expect("Failed to create commerce_operation_duration_seconds");
+    pub static ref CONTENT_OPERATIONS_TOTAL: CounterVec = create_counter_vec(
+        "rustok_content_operations_total",
+        "Total content operations",
+        &["operation", "kind", "status"],
+    );
+    pub static ref CONTENT_OPERATION_DURATION_SECONDS: HistogramVec = create_histogram_vec(
+        "rustok_content_operation_duration_seconds",
+        "Duration of content operations",
+        vec![0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+        &["operation", "kind"],
+    );
+    pub static ref CONTENT_NODES_TOTAL: IntGauge =
+        create_int_gauge("rustok_content_nodes_total", "Total number of content nodes");
+    pub static ref COMMERCE_OPERATIONS_TOTAL: CounterVec = create_counter_vec(
+        "rustok_commerce_operations_total",
+        "Total commerce operations",
+        &["operation", "kind", "status"],
+    );
+    pub static ref COMMERCE_OPERATION_DURATION_SECONDS: HistogramVec = create_histogram_vec(
+        "rustok_commerce_operation_duration_seconds",
+        "Duration of commerce operations",
+        vec![0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+        &["operation", "kind"],
+    );
     pub static ref COMMERCE_PRODUCTS_TOTAL: IntGauge =
-        IntGauge::new("rustok_commerce_products_total", "Total number of products")
-            .expect("Failed to create commerce_products_total");
+        create_int_gauge("rustok_commerce_products_total", "Total number of products");
     pub static ref COMMERCE_ORDERS_TOTAL: IntGauge =
-        IntGauge::new("rustok_commerce_orders_total", "Total number of orders")
-            .expect("Failed to create commerce_orders_total");
-    pub static ref HTTP_REQUESTS_TOTAL: CounterVec = CounterVec::new(
-        Opts::new("rustok_http_requests_total", "Total HTTP requests"),
-        &["method", "path", "status"]
-    )
-    .expect("Failed to create http_requests_total");
-    pub static ref HTTP_REQUEST_DURATION_SECONDS: HistogramVec = HistogramVec::new(
-        HistogramOpts::new(
-            "rustok_http_request_duration_seconds",
-            "HTTP request duration"
-        ),
-        &["method", "path"]
-    )
-    .expect("Failed to create http_request_duration_seconds");
+        create_int_gauge("rustok_commerce_orders_total", "Total number of orders");
+    pub static ref HTTP_REQUESTS_TOTAL: CounterVec = create_counter_vec(
+        "rustok_http_requests_total",
+        "Total HTTP requests",
+        &["method", "path", "status"],
+    );
+    pub static ref HTTP_REQUEST_DURATION_SECONDS: HistogramVec = create_histogram_vec(
+        "rustok_http_request_duration_seconds",
+        "HTTP request duration",
+        vec![0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+        &["method", "path"],
+    );
 }
 
 pub fn init(config: TelemetryConfig) -> Result<TelemetryHandles, TelemetryError> {

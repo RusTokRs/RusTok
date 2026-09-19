@@ -2,9 +2,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use lazy_static::lazy_static;
+use crate::factory::*;
 use prometheus::core::{Collector, Desc};
 use prometheus::proto::MetricFamily;
-use prometheus::{IntGaugeVec, Opts};
+use prometheus::IntGaugeVec;
 
 const STATES: [&str; 6] = [
     "total",
@@ -25,30 +26,9 @@ struct ConsumerPoisonMetrics {
 impl ConsumerPoisonMetrics {
     fn new() -> Self {
         Self {
-            receipts: IntGaugeVec::new(
-                Opts::new(
-                    "rustok_runtime_consumer_poison_receipts",
-                    "Count-only neutral poison receipts by bounded durable state",
-                ),
-                &["consumer", "state"],
-            )
-            .expect("Failed to create consumer poison receipt gauge"),
-            snapshot_available: IntGaugeVec::new(
-                Opts::new(
-                    "rustok_runtime_consumer_poison_snapshot_available",
-                    "Whether the latest count-only poison receipt snapshot is available",
-                ),
-                &["consumer"],
-            )
-            .expect("Failed to create consumer poison snapshot availability gauge"),
-            snapshot_timestamp_seconds: IntGaugeVec::new(
-                Opts::new(
-                    "rustok_runtime_consumer_poison_snapshot_timestamp_seconds",
-                    "Unix timestamp of the latest available count-only poison receipt snapshot",
-                ),
-                &["consumer"],
-            )
-            .expect("Failed to create consumer poison snapshot timestamp gauge"),
+            receipts: create_int_gauge_vec("rustok_runtime_consumer_poison_receipts", "Count-only neutral poison receipts by bounded durable state", &["consumer", "state"]),
+            snapshot_available: create_int_gauge_vec("rustok_runtime_consumer_poison_snapshot_available", "Whether the latest count-only poison receipt snapshot is available", &["consumer"]),
+            snapshot_timestamp_seconds: create_int_gauge_vec("rustok_runtime_consumer_poison_snapshot_timestamp_seconds", "Unix timestamp of the latest available count-only poison receipt snapshot", &["consumer"]),
         }
     }
 }

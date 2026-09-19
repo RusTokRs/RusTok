@@ -1,71 +1,31 @@
 use lazy_static::lazy_static;
-use prometheus::{IntCounter, IntCounterVec, IntGauge, Opts, Registry};
+use crate::factory::*;
+use prometheus::{IntCounter, IntCounterVec, IntGauge, Registry};
 
 lazy_static! {
     /// Durable RBAC invalidation generation read from the database source of truth.
-    pub static ref RBAC_INVALIDATION_DURABLE_GENERATION: IntGauge = IntGauge::new(
-        "rustok_rbac_invalidation_durable_generation",
-        "Durable RBAC invalidation generation read from the database source of truth"
-    )
-    .expect("Failed to create rbac_invalidation_durable_generation");
+    pub static ref RBAC_INVALIDATION_DURABLE_GENERATION: IntGauge = create_int_gauge("rustok_rbac_invalidation_durable_generation", "Durable RBAC invalidation generation read from the database source of truth");
 
     /// RBAC invalidation generation already applied to this process.
-    pub static ref RBAC_INVALIDATION_APPLIED_GENERATION: IntGauge = IntGauge::new(
-        "rustok_rbac_invalidation_applied_generation",
-        "RBAC invalidation generation already applied to this process"
-    )
-    .expect("Failed to create rbac_invalidation_applied_generation");
+    pub static ref RBAC_INVALIDATION_APPLIED_GENERATION: IntGauge = create_int_gauge("rustok_rbac_invalidation_applied_generation", "RBAC invalidation generation already applied to this process");
 
     /// Signed durable-minus-applied generation lag. Negative values indicate regression.
-    pub static ref RBAC_INVALIDATION_GENERATION_LAG: IntGauge = IntGauge::new(
-        "rustok_rbac_invalidation_generation_lag",
-        "Signed durable minus applied RBAC invalidation generation lag; negative means database regression"
-    )
-    .expect("Failed to create rbac_invalidation_generation_lag");
+    pub static ref RBAC_INVALIDATION_GENERATION_LAG: IntGauge = create_int_gauge("rustok_rbac_invalidation_generation_lag", "Signed durable minus applied RBAC invalidation generation lag; negative means database regression");
 
     /// Whether the durable RBAC invalidation watchdog worker is currently running.
-    pub static ref RBAC_INVALIDATION_WATCHDOG_RUNNING: IntGauge = IntGauge::new(
-        "rustok_rbac_invalidation_watchdog_running",
-        "Whether the durable RBAC invalidation watchdog worker is running (1=yes, 0=no)"
-    )
-    .expect("Failed to create rbac_invalidation_watchdog_running");
+    pub static ref RBAC_INVALIDATION_WATCHDOG_RUNNING: IntGauge = create_int_gauge("rustok_rbac_invalidation_watchdog_running", "Whether the durable RBAC invalidation watchdog worker is running (1=yes, 0=no)");
 
     /// Total durable generation database read failures.
-    pub static ref RBAC_INVALIDATION_DATABASE_READ_ERRORS_TOTAL: IntCounter = IntCounter::new(
-        "rustok_rbac_invalidation_database_read_errors_total",
-        "Total failures reading the durable RBAC invalidation generation"
-    )
-    .expect("Failed to create rbac_invalidation_database_read_errors_total");
+    pub static ref RBAC_INVALIDATION_DATABASE_READ_ERRORS_TOTAL: IntCounter = create_int_counter("rustok_rbac_invalidation_database_read_errors_total", "Total failures reading the durable RBAC invalidation generation");
 
     /// Total watchdog restarts by bounded reason.
-    pub static ref RBAC_INVALIDATION_WATCHDOG_RESTARTS_TOTAL: IntCounterVec = IntCounterVec::new(
-        Opts::new(
-            "rustok_rbac_invalidation_watchdog_restarts_total",
-            "Total durable RBAC invalidation watchdog restarts by reason"
-        ),
-        &["reason"]
-    )
-    .expect("Failed to create rbac_invalidation_watchdog_restarts_total");
+    pub static ref RBAC_INVALIDATION_WATCHDOG_RESTARTS_TOTAL: IntCounterVec = create_int_counter_vec("rustok_rbac_invalidation_watchdog_restarts_total", "Total durable RBAC invalidation watchdog restarts by reason", &["reason"]);
 
     /// Total durable-generation recovery actions by bounded reason.
-    pub static ref RBAC_INVALIDATION_RECOVERIES_TOTAL: IntCounterVec = IntCounterVec::new(
-        Opts::new(
-            "rustok_rbac_invalidation_recoveries_total",
-            "Total RBAC durable-generation recovery actions by reason"
-        ),
-        &["reason"]
-    )
-    .expect("Failed to create rbac_invalidation_recoveries_total");
+    pub static ref RBAC_INVALIDATION_RECOVERIES_TOTAL: IntCounterVec = create_int_counter_vec("rustok_rbac_invalidation_recoveries_total", "Total RBAC durable-generation recovery actions by reason", &["reason"]);
 
     /// Total process-wide permission snapshot clears by bounded recovery reason.
-    pub static ref RBAC_INVALIDATION_FULL_CLEARS_TOTAL: IntCounterVec = IntCounterVec::new(
-        Opts::new(
-            "rustok_rbac_invalidation_full_clears_total",
-            "Total process-wide RBAC permission snapshot clears by recovery reason"
-        ),
-        &["reason"]
-    )
-    .expect("Failed to create rbac_invalidation_full_clears_total");
+    pub static ref RBAC_INVALIDATION_FULL_CLEARS_TOTAL: IntCounterVec = create_int_counter_vec("rustok_rbac_invalidation_full_clears_total", "Total process-wide RBAC permission snapshot clears by recovery reason", &["reason"]);
 }
 
 pub fn register(registry: &Registry) -> Result<(), prometheus::Error> {

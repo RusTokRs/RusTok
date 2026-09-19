@@ -5,7 +5,8 @@
 //! counts, timestamps, or arbitrary label text.
 
 use lazy_static::lazy_static;
-use prometheus::{IntCounterVec, IntGaugeVec, Opts, Registry};
+use crate::factory::*;
+use prometheus::{IntCounterVec, IntGaugeVec, Registry};
 
 const HEALTH_STATE_LABELS: [&str; 6] = [
     "disabled",
@@ -120,34 +121,13 @@ impl DlqDuplicateAlertMetricLevel {
 
 lazy_static! {
     /// Current observer health state as a bounded one-hot series.
-    pub static ref DLQ_DUPLICATE_ALERT_OBSERVER_STATE: IntGaugeVec = IntGaugeVec::new(
-        Opts::new(
-            "rustok_dlq_duplicate_alert_observer_state",
-            "Current physical DLQ duplicate observer state as a bounded one-hot series"
-        ),
-        &["deployment", "scan_mode", "state"]
-    )
-    .expect("Failed to create dlq_duplicate_alert_observer_state");
+    pub static ref DLQ_DUPLICATE_ALERT_OBSERVER_STATE: IntGaugeVec = create_int_gauge_vec("rustok_dlq_duplicate_alert_observer_state", "Current physical DLQ duplicate observer state as a bounded one-hot series", &["deployment", "scan_mode", "state"]);
 
     /// Total identifier-free runtime snapshots by availability and alert level.
-    pub static ref DLQ_DUPLICATE_ALERT_SNAPSHOTS_TOTAL: IntCounterVec = IntCounterVec::new(
-        Opts::new(
-            "rustok_dlq_duplicate_alert_snapshots_total",
-            "Total physical DLQ duplicate runtime snapshots by bounded availability and level"
-        ),
-        &["deployment", "scan_mode", "availability", "level"]
-    )
-    .expect("Failed to create dlq_duplicate_alert_snapshots_total");
+    pub static ref DLQ_DUPLICATE_ALERT_SNAPSHOTS_TOTAL: IntCounterVec = create_int_counter_vec("rustok_dlq_duplicate_alert_snapshots_total", "Total physical DLQ duplicate runtime snapshots by bounded availability and level", &["deployment", "scan_mode", "availability", "level"]);
 
     /// Current identifier-free alert evaluation flags as bounded boolean gauges.
-    pub static ref DLQ_DUPLICATE_ALERT_EVALUATION_FLAGS: IntGaugeVec = IntGaugeVec::new(
-        Opts::new(
-            "rustok_dlq_duplicate_alert_evaluation_flags",
-            "Current physical DLQ duplicate alert evaluation flags"
-        ),
-        &["deployment", "scan_mode", "flag"]
-    )
-    .expect("Failed to create dlq_duplicate_alert_evaluation_flags");
+    pub static ref DLQ_DUPLICATE_ALERT_EVALUATION_FLAGS: IntGaugeVec = create_int_gauge_vec("rustok_dlq_duplicate_alert_evaluation_flags", "Current physical DLQ duplicate alert evaluation flags", &["deployment", "scan_mode", "flag"]);
 }
 
 pub fn register(registry: &Registry) -> Result<(), prometheus::Error> {

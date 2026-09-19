@@ -1,5 +1,6 @@
 use lazy_static::lazy_static;
-use prometheus::{HistogramOpts, HistogramVec, IntCounterVec, IntGaugeVec, Opts, Registry};
+use crate::factory::*;
+use prometheus::{HistogramVec, IntCounterVec, IntGaugeVec, Registry};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub const PAGE_BUILDER_PROVIDER_SOURCE_COMMIT_ENV: &str = "RUSTOK_SOURCE_COMMIT";
@@ -17,44 +18,15 @@ lazy_static! {
     /// The label is emitted only when `RUSTOK_SOURCE_COMMIT` is a canonical 40-character Git SHA.
     /// Missing or malformed source identity therefore leaves the series absent so deployment-health
     /// capture/evaluation can fail closed instead of treating an unknown image as authoritative.
-    pub static ref PAGE_BUILDER_PROVIDER_BUILD_INFO: IntGaugeVec = IntGaugeVec::new(
-        Opts::new(
-            "rustok_page_builder_provider_build_info",
-            "Canonical source commit reported by this Page Builder provider target"
-        ),
-        &["source_commit"],
-    )
-    .expect("Failed to create Page Builder provider build info gauge");
+    pub static ref PAGE_BUILDER_PROVIDER_BUILD_INFO: IntGaugeVec = create_int_gauge_vec("rustok_page_builder_provider_build_info", "Canonical source commit reported by this Page Builder provider target", &["source_commit"]);
     pub static ref PAGE_BUILDER_PROVIDER_OPERATION_DURATION_SECONDS: HistogramVec =
-        HistogramVec::new(
-            HistogramOpts::new(
-                "rustok_page_builder_provider_operation_duration_seconds",
-                "Canonical Page Builder provider operation duration in seconds"
-            )
-            .buckets(vec![
+        create_histogram_vec("rustok_page_builder_provider_operation_duration_seconds", "Canonical Page Builder provider operation duration in seconds", vec![
                 0.05, 0.1, 0.25, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0, 15.0,
-            ]),
-            &["operation"],
-        )
-        .expect("Failed to create Page Builder provider duration histogram");
+            ], &["operation"]);
     pub static ref PAGE_BUILDER_PROVIDER_OPERATION_COMPLETED_TOTAL: IntCounterVec =
-        IntCounterVec::new(
-            Opts::new(
-                "rustok_page_builder_provider_operation_completed_total",
-                "Completed canonical Page Builder provider operations by terminal outcome"
-            ),
-            &["operation", "outcome"],
-        )
-        .expect("Failed to create Page Builder provider completion counter");
+        create_int_counter_vec("rustok_page_builder_provider_operation_completed_total", "Completed canonical Page Builder provider operations by terminal outcome", &["operation", "outcome"]);
     pub static ref PAGE_BUILDER_PROVIDER_LAST_OBSERVATION_UNIX_SECONDS: IntGaugeVec =
-        IntGaugeVec::new(
-            Opts::new(
-                "rustok_page_builder_provider_last_observation_unix_seconds",
-                "Unix timestamp of the latest canonical Page Builder provider observation"
-            ),
-            &["operation"],
-        )
-        .expect("Failed to create Page Builder provider freshness gauge");
+        create_int_gauge_vec("rustok_page_builder_provider_last_observation_unix_seconds", "Unix timestamp of the latest canonical Page Builder provider observation", &["operation"]);
 }
 
 fn canonical_source_commit(value: &str) -> Option<String> {

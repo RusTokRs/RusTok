@@ -153,7 +153,14 @@ def check_regex_pattern(file_path: Path, rule: dict, rel_path: str) -> list[Find
     test_lines = find_test_line_ranges(lines) if file_path.suffix == ".rs" else set()
 
     for idx, line in enumerate(lines, start=1):
+        stripped = line.strip()
         if rx.search(line):
+            # Skip comments for runtime code rules
+            if rule["id"] != "SLOP-COMMENT-01" and (
+                stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*")
+            ):
+                continue
+
             # If the rule is runtime-only, skip lines inside test blocks
             if rule["id"] in (
                 "REL-UNWRAP-01",

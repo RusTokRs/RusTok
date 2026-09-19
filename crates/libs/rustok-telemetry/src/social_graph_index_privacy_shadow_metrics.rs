@@ -4,7 +4,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use lazy_static::lazy_static;
 use prometheus::core::{Collector, Desc};
 use prometheus::proto::MetricFamily;
-use prometheus::{HistogramOpts, HistogramVec, IntCounterVec, IntGauge, IntGaugeVec, Opts};
+use prometheus::{HistogramVec, IntCounterVec, IntGauge, IntGaugeVec};
+
+use crate::factory::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SocialGraphIndexPrivacyShadowOperation {
@@ -67,51 +69,38 @@ struct SocialGraphIndexPrivacyShadowMetrics {
 
 impl SocialGraphIndexPrivacyShadowMetrics {
     fn new() -> Self {
-        let collector_started_timestamp_seconds = IntGauge::new(
+        let collector_started_timestamp_seconds = create_int_gauge(
             "rustok_social_graph_index_privacy_shadow_collector_started_timestamp_seconds",
             "Unix timestamp when the Social Graph Index privacy shadow collector was initialized",
-        )
-        .expect("Failed to create Social Graph Index privacy shadow collector epoch gauge");
+        );
         collector_started_timestamp_seconds.set(unix_timestamp_seconds());
 
         Self {
             collector_started_timestamp_seconds,
-            observations_total: IntCounterVec::new(
-                Opts::new(
-                    "rustok_social_graph_index_privacy_shadow_observations_total",
-                    "Total non-authoritative Social Graph Index privacy shadow observations",
-                ),
+            observations_total: create_int_counter_vec(
+                "rustok_social_graph_index_privacy_shadow_observations_total",
+                "Total non-authoritative Social Graph Index privacy shadow observations",
                 &["operation", "outcome"],
-            )
-            .expect("Failed to create Social Graph Index privacy shadow observation counter"),
-            failures_total: IntCounterVec::new(
-                Opts::new(
-                    "rustok_social_graph_index_privacy_shadow_failures_total",
-                    "Total Social Graph Index privacy shadow projection failures by bounded code",
-                ),
+            ),
+            failures_total: create_int_counter_vec(
+                "rustok_social_graph_index_privacy_shadow_failures_total",
+                "Total Social Graph Index privacy shadow projection failures by bounded code",
                 &["operation", "error_code", "retryable"],
-            )
-            .expect("Failed to create Social Graph Index privacy shadow failure counter"),
-            comparison_duration_seconds: HistogramVec::new(
-                HistogramOpts::new(
-                    "rustok_social_graph_index_privacy_shadow_comparison_duration_seconds",
-                    "Duration of the non-authoritative Index comparison after the owner privacy read",
-                )
-                .buckets(vec![
+            ),
+            comparison_duration_seconds: create_histogram_vec(
+                "rustok_social_graph_index_privacy_shadow_comparison_duration_seconds",
+                "Duration of the non-authoritative Index comparison after the owner privacy read",
+                vec![
                     0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5,
                     1.0, 2.5, 5.0,
-                ]),
+                ],
                 &["operation", "outcome"],
-            )
-            .expect("Failed to create Social Graph Index privacy shadow duration histogram"),
-            last_observation_timestamp_seconds: IntGaugeVec::new(
-                Opts::new(
-                    "rustok_social_graph_index_privacy_shadow_last_observation_timestamp_seconds",
-                    "Unix timestamp of the last Social Graph Index privacy shadow observation",
-                ),
+            ),
+            last_observation_timestamp_seconds: create_int_gauge_vec(
+                "rustok_social_graph_index_privacy_shadow_last_observation_timestamp_seconds",
+                "Unix timestamp of the last Social Graph Index privacy shadow observation",
                 &["operation", "outcome"],
-            )
-            .expect("Failed to create Social Graph Index privacy shadow timestamp gauge"),
+            ),
         }
     }
 }
