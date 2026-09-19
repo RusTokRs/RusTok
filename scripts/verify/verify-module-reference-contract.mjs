@@ -213,6 +213,15 @@ requireAll("crates/modules/rustok-blog/src/module.rs", [
   '"dependencies"',
   '["content", "comments", "taxonomy", "outbox", "channel"]',
 ]);
+requireAll("crates/modules/rustok-blog/src/module.rs", [
+  "Resource::Tags",
+  "Action::Create",
+  "Action::Read",
+  "Action::Update",
+  "Action::Delete",
+  "Action::List",
+  "Action::Manage",
+]);
 forbid("crates/modules/rustok-blog/src/services/category.rs", [
   "blog-category-tree:",
 ]);
