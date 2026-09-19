@@ -65,6 +65,12 @@ WHERE post.category_id IS NOT NULL
 async fn up_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     manager
         .get_connection()
+        .execute_unprepared(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_blog_categories_tenant_id ON blog_categories (tenant_id, id)",
+        )
+        .await?;
+    manager
+        .get_connection()
         .execute_unprepared(&format!(
             r#"
 ALTER TABLE blog_posts
@@ -85,6 +91,10 @@ async fn down_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         .execute_unprepared(&format!(
             "ALTER TABLE blog_posts DROP CONSTRAINT IF EXISTS {POST_CATEGORY_FK}"
         ))
+        .await?;
+    manager
+        .get_connection()
+        .execute_unprepared("DROP INDEX IF EXISTS uq_blog_categories_tenant_id")
         .await?;
     Ok(())
 }
