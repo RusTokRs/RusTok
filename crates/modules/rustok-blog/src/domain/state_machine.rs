@@ -142,7 +142,6 @@ impl BlogPost<Draft> {
         tracing::info!(
             post_id = %self.id,
             tenant_id = %self.tenant_id,
-            title = %self.title,
             "Blog post: Draft → Published"
         );
 
@@ -202,7 +201,6 @@ impl BlogPost<Published> {
         tracing::info!(
             post_id = %self.id,
             tenant_id = %self.tenant_id,
-            reason = %reason,
             "Blog post: Published → Archived"
         );
 
