@@ -91,6 +91,10 @@ requireAll("crates/modules/rustok-blog/src/services/category_owner.rs", [
   '"Blog Category Taxonomy projection contains duplicate identities"',
   '"Blog Category Taxonomy projection contains Category without localized copy"',
 ]);
+requireAll("crates/modules/rustok-blog/src/services/category.rs", [
+  '"has no canonical Taxonomy hierarchy placement"',
+]);
+
 requireAll("crates/modules/rustok-blog/src/services/category_name_projection.rs", [
   "BlogError::invariant(",
   ".map_err(BlogError::from)?",
@@ -110,6 +114,7 @@ requireAll("crates/modules/rustok-blog/src/services/category_delete.rs", [
   "BlogError::CategoryNotFound(category_id) => TaxonomyError::TermNotFound(category_id)",
   '"has no canonical Taxonomy hierarchy placement"',
   '"Blog category Taxonomy hierarchy placement disappeared before delete completed"',
+  '"Blog category Taxonomy hierarchy coverage is incomplete during sibling canonicalization"',
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
