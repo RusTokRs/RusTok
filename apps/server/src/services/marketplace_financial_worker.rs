@@ -28,14 +28,19 @@ impl MarketplaceFinancialWorkerHandle {
 pub fn spawn_marketplace_financial_worker(
     runtime_ctx: ServerRuntimeContext,
     stop_rx: tokio::sync::watch::Receiver<bool>,
-) -> MarketplaceFinancialWorkerHandle {
+) -> Option<MarketplaceFinancialWorkerHandle> {
     let instance_id = MARKETPLACE_FINANCIAL_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
-    let financial_runtime = runtime_ctx
+    let Some(financial_runtime) = runtime_ctx
         .shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()
-        .expect("MarketplaceFinancialRuntime must be initialized before financial recovery worker");
+    else {
+        tracing::warn!("MarketplaceFinancialRuntime not available; skipping financial recovery worker");
+        return None;
+    };
     let event_bus = runtime_ctx
         .shared_get::<rustok_outbox::TransactionalEventBus>()
-        .expect("TransactionalEventBus must be initialized before marketplace financial worker");
+        .unwrap_or_else(|| {
+            crate::services::event_bus::transactional_event_bus_from_context(&runtime_ctx)
+        });
     let db = runtime_ctx.db_clone();
     let paid_events = financial_runtime.paid_event_inbox(db.clone(), event_bus);
     let reversal_backfill = financial_runtime.provider_reversal_backfill(db.clone());
@@ -46,7 +51,7 @@ pub fn spawn_marketplace_financial_worker(
         instance_id,
         "Starting runtime worker"
     );
-    MarketplaceFinancialWorkerHandle {
+    Some(MarketplaceFinancialWorkerHandle {
         instance_id,
         _handle: tokio::spawn(worker_loop(
             instance_id,
@@ -55,7 +60,7 @@ pub fn spawn_marketplace_financial_worker(
             reversal_events,
             stop_rx,
         )),
-    }
+    })
 }
 
 async fn worker_loop(

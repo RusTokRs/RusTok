@@ -202,9 +202,10 @@ LIMIT 1
     .one(conn)
     .await?
     {
-        if previous.resource_revision == resource_revision
-            && StockLocationTranslationChangeLifecycle::parse(&previous.lifecycle)? == lifecycle
-        {
+        let same_revision = previous.resource_revision == resource_revision;
+        let same_lifecycle =
+            StockLocationTranslationChangeLifecycle::parse(&previous.lifecycle)? == lifecycle;
+        if same_revision && same_lifecycle {
             return Ok(());
         }
     }

@@ -1,4 +1,4 @@
-use sea_orm::ConnectionTrait;
+use sea_orm::{ConnectionTrait, DatabaseBackend};
 use sea_orm_migration::prelude::*;
 
 const POST_CATEGORY_FK: &str = "fk_blog_posts_tenant_category";
@@ -8,7 +8,7 @@ pub struct Migration;
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
-    async fn up(&self, manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => up_postgres(manager).await,
             DatabaseBackend::Sqlite => Ok(()),
@@ -18,14 +18,14 @@ impl MigrationTrait for Migration {
         }
     }
 
-    async fn down(&self, _manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
         // Intentionally irreversible: rolling back this migration would restore
         // the unsafe composite SET NULL action that can null a non-null tenant_id.
         Ok(())
     }
 }
 
-async fn up_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+async fn up_postgres(manager: &SchemaManager) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     connection
         .execute_unprepared(&format!(

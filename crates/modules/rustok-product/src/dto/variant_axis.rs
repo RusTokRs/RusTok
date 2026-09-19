@@ -3,9 +3,10 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum VariantAxisPolicy {
+    #[default]
     Forbidden,
     Allowed,
     Required,
@@ -26,12 +27,6 @@ impl VariantAxisPolicy {
             "required" => Self::Required,
             _ => Self::Forbidden,
         }
-    }
-}
-
-impl Default for VariantAxisPolicy {
-    fn default() -> Self {
-        Self::Forbidden
     }
 }
 

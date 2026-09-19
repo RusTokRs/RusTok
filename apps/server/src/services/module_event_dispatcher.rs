@@ -116,12 +116,14 @@ fn spawn_paid_order_label_worker_if_enabled(ctx: &ServerRuntimeContext) {
     }
 
     let stop_rx = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
-    ctx.shared_insert(
+    if let Some(handle) =
         crate::services::paid_order_label_worker::spawn_paid_order_create_label_worker(
             ctx.clone(),
             stop_rx,
-        ),
-    );
+        )
+    {
+        ctx.shared_insert(handle);
+    }
 }
 
 #[cfg(feature = "commerce-marketplace-financial")]
@@ -135,12 +137,14 @@ fn spawn_marketplace_financial_worker_if_enabled(ctx: &ServerRuntimeContext) {
     }
 
     let stop_rx = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
-    ctx.shared_insert(
+    if let Some(handle) =
         crate::services::marketplace_financial_worker::spawn_marketplace_financial_worker(
             ctx.clone(),
             stop_rx,
-        ),
-    );
+        )
+    {
+        ctx.shared_insert(handle);
+    }
 }
 
 #[cfg(feature = "mod-payment")]

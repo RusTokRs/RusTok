@@ -8,7 +8,7 @@ pub struct Migration;
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
-    async fn up(&self, manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         validate_existing_rows(manager).await?;
 
         match manager.get_database_backend() {
@@ -20,7 +20,7 @@ impl MigrationTrait for Migration {
         }
     }
 
-    async fn down(&self, manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => down_postgres(manager).await,
             DatabaseBackend::Sqlite => down_sqlite(manager).await,
@@ -31,7 +31,7 @@ impl MigrationTrait for Migration {
     }
 }
 
-async fn validate_existing_rows(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+async fn validate_existing_rows(manager: &SchemaManager) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     let row = connection
         .query_one_raw(Statement::from_string(
@@ -61,7 +61,7 @@ WHERE post.id IS NULL
     Ok(())
 }
 
-async fn up_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+async fn up_postgres(manager: &SchemaManager) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     connection
         .execute_unprepared(&format!(
@@ -83,7 +83,7 @@ ALTER TABLE blog_post_channel_visibility
     Ok(())
 }
 
-async fn down_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+async fn down_postgres(manager: &SchemaManager) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     connection
         .execute_unprepared(&format!(
@@ -105,7 +105,7 @@ ALTER TABLE blog_post_channel_visibility
     Ok(())
 }
 
-async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+async fn up_sqlite(manager: &SchemaManager) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     for statement in [
         r#"CREATE TRIGGER blog_post_channel_visibility_tenant_insert
@@ -138,7 +138,7 @@ async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     Ok(())
 }
 
-async fn down_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+async fn down_sqlite(manager: &SchemaManager) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     for statement in [
         "DROP TRIGGER IF EXISTS blog_post_channel_visibility_tenant_insert",

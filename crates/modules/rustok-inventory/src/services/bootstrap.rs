@@ -142,21 +142,23 @@ impl BootstrapService {
     where
         C: ConnectionTrait,
     {
-        if let Some(item) = entities::inventory_item::Entity::find()
+        let Some(item) = entities::inventory_item::Entity::find()
             .filter(entities::inventory_item::Column::VariantId.eq(variant_id))
             .one(conn)
             .await?
+        else {
+            return Ok(());
+        };
+
+        if let Some(level) = entities::inventory_level::Entity::find()
+            .filter(entities::inventory_level::Column::InventoryItemId.eq(item.id))
+            .one(conn)
+            .await?
         {
-            if let Some(level) = entities::inventory_level::Entity::find()
-                .filter(entities::inventory_level::Column::InventoryItemId.eq(item.id))
-                .one(conn)
-                .await?
-            {
-                let mut active: entities::inventory_level::ActiveModel = level.into();
-                active.stocked_quantity = Set(quantity);
-                active.updated_at = Set(Utc::now().into());
-                active.update(conn).await?;
-            }
+            let mut active: entities::inventory_level::ActiveModel = level.into();
+            active.stocked_quantity = Set(quantity);
+            active.updated_at = Set(Utc::now().into());
+            active.update(conn).await?;
         }
         Ok(())
     }

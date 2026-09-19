@@ -151,9 +151,14 @@ async fn run_event_forwarder(
 }
 
 pub fn transactional_event_bus_from_context(ctx: &ServerRuntimeContext) -> TransactionalEventBus {
-    let transport = ctx
-        .shared_get::<Arc<dyn EventTransport>>()
-        .expect("Event transport must be initialized before creating TransactionalEventBus");
+    let transport = if let Some(transport) = ctx.shared_get::<Arc<dyn EventTransport>>() {
+        transport
+    } else {
+        let default_transport = Arc::new(rustok_outbox::OutboxTransport::new(ctx.db_clone()))
+            as Arc<dyn EventTransport>;
+        let _ = ctx.shared_insert_if_absent(default_transport.clone());
+        default_transport
+    };
     TransactionalEventBus::new(transport)
 }
 

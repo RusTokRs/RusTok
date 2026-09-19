@@ -1904,12 +1904,13 @@ fn validate_stored_option_translation(translation: &StoredOptionTranslation) -> 
 }
 
 fn validate_optional_persisted(value: Option<&str>, max: Option<usize>) -> OwnerResult<()> {
-    if let Some(value) = value {
-        if value.trim().is_empty() || max.is_some_and(|max| value.chars().count() > max) {
-            return Err(ProductAttributeTranslationError::OwnerInvariant(
-                "persisted optional Product attribute copy is blank or too long".to_string(),
-            ));
-        }
+    let Some(value) = value else {
+        return Ok(());
+    };
+    if value.trim().is_empty() || max.is_some_and(|max| value.chars().count() > max) {
+        return Err(ProductAttributeTranslationError::OwnerInvariant(
+            "persisted optional Product attribute copy is blank or too long".to_string(),
+        ));
     }
     Ok(())
 }

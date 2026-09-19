@@ -320,17 +320,17 @@ pub fn attach_commerce_provider_registries(
     let host = {
         let observers = server
             .shared_get::<rustok_payment::PaymentProviderEventObservers>()
-            .unwrap_or_else(|| {
-                let runtime = server
-                    .shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()
-                    .expect(
-                        "MarketplaceFinancialRuntime must be initialized before payment event observers",
-                    );
+            .or_else(|| {
+                let runtime = server.shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()?;
                 let observers = runtime.payment_provider_event_observers(server.db_clone());
                 server.shared_insert(observers.clone());
-                observers
+                Some(observers)
             });
-        host.with_shared_value(observers)
+        if let Some(observers) = observers {
+            host.with_shared_value(observers)
+        } else {
+            host
+        }
     };
 
     #[cfg(all(feature = "mod-ai", feature = "mod-order"))]

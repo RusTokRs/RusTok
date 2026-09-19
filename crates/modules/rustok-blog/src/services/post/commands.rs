@@ -607,7 +607,7 @@ async fn apply_status_transition_in_tx(
         )
         .col_expr(
             blog_post::Column::Version,
-            sea_orm::sea_query::Expr::value(Self::next_persisted_version(expected_version)?),
+            sea_orm::sea_query::Expr::value(PostService::next_persisted_version(expected_version)?),
         )
         .filter(blog_post::Column::Id.eq(post_id))
         .filter(blog_post::Column::TenantId.eq(tenant_id))

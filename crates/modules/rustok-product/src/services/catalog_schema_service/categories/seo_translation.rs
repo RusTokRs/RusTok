@@ -892,7 +892,8 @@ impl TranslationTargetProvider for ProductCategorySeoTranslationTargetProvider {
         let snapshot = snapshot_from_owner(&owner, &read_request)?;
         let mut validation = validate_patch_against_snapshot(&request, &snapshot);
         if validation.accepted {
-            if let Err(error) = merged_target(&request, &snapshot) {
+            let target_result = merged_target(&request, &snapshot);
+            if let Err(error) = target_result {
                 validation.accepted = false;
                 validation
                     .issues

@@ -1848,15 +1848,16 @@ fn validate_stored_group_translation(translation: &StoredGroupTranslation) -> Ow
 }
 
 fn validate_optional_persisted(value: Option<&str>, max: Option<usize>) -> OwnerResult<()> {
-    if let Some(value) = value {
-        if value.trim().is_empty()
-            || value.trim() != value
-            || max.is_some_and(|max| value.chars().count() > max)
-        {
-            return Err(ProductAttributeSchemaTranslationError::OwnerInvariant(
-                "persisted optional Product attribute schema copy is blank or too long".to_string(),
-            ));
-        }
+    let Some(value) = value else {
+        return Ok(());
+    };
+    if value.trim().is_empty()
+        || value.trim() != value
+        || max.is_some_and(|max| value.chars().count() > max)
+    {
+        return Err(ProductAttributeSchemaTranslationError::OwnerInvariant(
+            "persisted optional Product attribute schema copy is blank or too long".to_string(),
+        ));
     }
     Ok(())
 }

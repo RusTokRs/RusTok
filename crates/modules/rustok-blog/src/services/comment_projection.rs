@@ -146,7 +146,7 @@ async fn update_comment_count_in_tx(
     tenant_id: Uuid,
     post_id: Uuid,
     delta: i32,
-) -> HandlerResult<bool> {
+) -> Result<bool, Error> {
     for attempt_index in 0..MAX_PROJECTION_UPDATE_ATTEMPTS {
         let Some(post) = blog_post::Entity::find_by_id(post_id)
             .filter(blog_post::Column::TenantId.eq(tenant_id))

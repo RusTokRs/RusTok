@@ -28,11 +28,16 @@ impl PaidOrderCreateLabelWorkerHandle {
 pub fn spawn_paid_order_create_label_worker(
     runtime_ctx: ServerRuntimeContext,
     stop_rx: tokio::sync::watch::Receiver<bool>,
-) -> PaidOrderCreateLabelWorkerHandle {
+) -> Option<PaidOrderCreateLabelWorkerHandle> {
     let instance_id = PAID_ORDER_LABEL_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
-    let fulfillment_provider_registry = runtime_ctx
+    let Some(fulfillment_provider_registry) = runtime_ctx
         .shared_get::<rustok_fulfillment::providers::FulfillmentProviderRegistry>()
-        .expect("FulfillmentProviderRegistry must be initialized before paid-order label worker");
+    else {
+        tracing::warn!(
+            "FulfillmentProviderRegistry not available; skipping paid-order label worker"
+        );
+        return None;
+    };
     let service = rustok_commerce::PaidOrderCreateLabelSweepService::new(
         runtime_ctx.db_clone(),
         fulfillment_provider_registry,
@@ -43,10 +48,10 @@ pub fn spawn_paid_order_create_label_worker(
         instance_id,
         "Starting runtime worker"
     );
-    PaidOrderCreateLabelWorkerHandle {
+    Some(PaidOrderCreateLabelWorkerHandle {
         instance_id,
         _handle: tokio::spawn(worker_loop(instance_id, service, stop_rx)),
-    }
+    })
 }
 
 async fn worker_loop(

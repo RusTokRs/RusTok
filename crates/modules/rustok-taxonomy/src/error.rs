@@ -41,6 +41,10 @@ impl TaxonomyError {
         Self::Internal(message.into())
     }
 
+    pub fn invariant(message: impl Into<String>) -> Self {
+        Self::Internal(message.into())
+    }
+
     pub fn forbidden(message: impl Into<String>) -> Self {
         Self::Forbidden(message.into())
     }
