@@ -467,7 +467,8 @@ requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   "category_taxonomy_sync::BLOG_TAXONOMY_SCOPE",
   "Blog category {category_id} is missing canonical Taxonomy ownership or hierarchy",
   "Blog category {category_id} has no canonical localized copy",
-]);\nrequireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
+]);
+requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
   "if publish {",
   "enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;",
 ]);
