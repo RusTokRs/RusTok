@@ -442,6 +442,7 @@ requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   "TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(",
   "category_taxonomy_sync::BLOG_TAXONOMY_SCOPE",
   "Blog category {category_id} is missing canonical Taxonomy ownership or hierarchy",
+  "Blog category {category_id} has no canonical localized copy",
 ]);
 
 if (failures.length > 0) {
