@@ -536,6 +536,18 @@ requireAll("crates/modules/rustok-taxonomy/src/services.rs", [
   "Module-owned Taxonomy terms must be created by the owning module",
 ]);
 
+requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
+  "enforce_scope(&security, Resource::Tags, Action::Update)?;",
+  "enforce_scope(&security, Resource::Tags, Action::Delete)?;",
+  "ensure_module_owned_term(&term)?;",
+]);
+
+requireAll("crates/modules/rustok-blog/src/services/comment.rs", [
+  'comments_write_port_context(',
+  '                    &security,',
+  '                    "moderate",',
+]);
+
 if (failures.length > 0) {
   console.error("Canonical module reference-contract verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
