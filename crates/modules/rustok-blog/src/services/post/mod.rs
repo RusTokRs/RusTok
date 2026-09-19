@@ -172,6 +172,7 @@ const MAX_POST_METADATA_BYTES: usize = 64 * 1024;
 const MAX_POST_CHANNEL_SLUGS: usize = 32;
 const MAX_POST_CHANNEL_SLUG_BYTES: usize = 100;
 const MAX_POST_SLUG_BYTES: usize = 255;
+const MAX_POST_ARCHIVE_REASON_CHARS: usize = 1000;
 
 fn normalize_custom_metadata(metadata: Option<Value>) -> BlogResult<Value> {
     let metadata = metadata.unwrap_or_else(|| serde_json::json!({}));
