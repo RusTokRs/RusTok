@@ -64,6 +64,7 @@ impl CategoryService {
         if let Some(parent_id) = parent_id {
             Self::ensure_exists_in_tx(&txn, tenant_id, parent_id).await?;
         }
+        ensure_hierarchy_coverage_in_tx(&txn, tenant_id).await?;
         canonicalize_siblings_for_insert_in_tx(&txn, tenant_id, parent_id, requested_position)
             .await?;
 
@@ -278,6 +279,39 @@ async fn ensure_category_tree_capacity_in_tx(
             "Blog category tree cannot exceed {MAX_BLOG_CATEGORY_TREE_NODES} nodes"
         )));
     }
+    Ok(())
+}
+
+async fn ensure_hierarchy_coverage_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+) -> BlogResult<()> {
+    let blog_category_ids = blog_category::Entity::find()
+        .filter(blog_category::Column::TenantId.eq(tenant_id))
+        .all(txn)
+        .await?
+        .into_iter()
+        .map(|category| category.id)
+        .collect::<Vec<_>>();
+
+    if blog_category_ids.is_empty() {
+        return Ok(());
+    }
+
+    let hierarchy_rows = taxonomy_category_hierarchy::Entity::find()
+        .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+        .filter(
+            taxonomy_category_hierarchy::Column::TermId.is_in(blog_category_ids.clone()),
+        )
+        .all(txn)
+        .await?;
+
+    if hierarchy_rows.len() != blog_category_ids.len() {
+        return Err(BlogError::invariant(
+            "Blog category Taxonomy hierarchy coverage is incomplete before create",
+        ));
+    }
+
     Ok(())
 }
 
