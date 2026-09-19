@@ -167,6 +167,10 @@ const RESERVED_POST_METADATA_KEYS: &[&str] = &[
     "channel_slugs",
 ];
 
+const MAX_POST_METADATA_BYTES: usize = 64 * 1024;
+const MAX_POST_CHANNEL_SLUGS: usize = 32;
+const MAX_POST_CHANNEL_SLUG_BYTES: usize = 100;
+
 fn normalize_custom_metadata(metadata: Option<Value>) -> BlogResult<Value> {
     let metadata = metadata.unwrap_or_else(|| serde_json::json!({}));
     let Value::Object(map) = metadata else {
@@ -182,7 +186,17 @@ fn normalize_custom_metadata(metadata: Option<Value>) -> BlogResult<Value> {
         )));
     }
 
-    Ok(Value::Object(map))
+    let normalized = Value::Object(map);
+    let encoded = serde_json::to_vec(&normalized).map_err(|_| {
+        BlogError::validation("Post metadata could not be serialized")
+    })?;
+    if encoded.len() > MAX_POST_METADATA_BYTES {
+        return Err(BlogError::validation(format!(
+            "Post metadata cannot exceed {MAX_POST_METADATA_BYTES} bytes"
+        )));
+    }
+
+    Ok(normalized)
 }
 
 fn scrub_reserved_metadata(mut metadata: Value) -> Value {
@@ -223,6 +237,11 @@ fn normalize_channel_slugs(channel_slugs: &[String]) -> Vec<String> {
         .collect::<Vec<_>>();
     normalized.sort();
     normalized.dedup();
+
+    if normalized.len() > MAX_POST_CHANNEL_SLUGS {
+        normalized.truncate(MAX_POST_CHANNEL_SLUGS);
+    }
+    normalized.retain(|item| item.len() <= MAX_POST_CHANNEL_SLUG_BYTES);
     normalized
 }
 
