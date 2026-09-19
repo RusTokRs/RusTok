@@ -548,6 +548,16 @@ requireAll("crates/modules/rustok-blog/src/services/comment.rs", [
   '                    "moderate",',
 ]);
 
+requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
+  "pub(super) fn is_unique_constraint(error: &sea_orm::DbErr) -> bool",
+]);
+
+requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
+  "PostService::is_unique_constraint(&error)",
+  "const MAX_POST_SLUG_BYTES: usize = 255;",
+  "Slug cannot exceed",
+]);
+
 if (failures.length > 0) {
   console.error("Canonical module reference-contract verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
