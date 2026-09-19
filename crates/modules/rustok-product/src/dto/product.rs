@@ -66,13 +66,17 @@ pub struct CreateProductInput {
     pub variant_axes: Vec<VariantAxisInput>,
     #[validate(nested)]
     pub variants: Vec<CreateVariantInput>,
-    #[validate(custom(function = "validate_patch_seller"))]
+    #[validate(length(max = 100, message = "Seller ID must be max 100 characters"))]
     pub seller_id: Option<String>,
-    #[validate(custom(function = "validate_patch_vendor"))]
+    #[validate(length(max = 255, message = "Vendor must be max 255 characters"))]
     pub vendor: Option<String>,
-    #[validate(custom(function = "validate_patch_product_type"))]
+    #[validate(length(max = 255, message = "Product type must be max 255 characters"))]
     pub product_type: Option<String>,
-    #[validate(custom(function = "validate_patch_shipping_profile"))]
+    #[validate(length(
+        min = 1,
+        max = 64,
+        message = "Shipping profile slug must be 1-64 characters"
+    ))]
     pub shipping_profile_slug: Option<String>,
     pub primary_category_id: Option<Uuid>,
     #[serde(default)]
@@ -104,20 +108,16 @@ pub struct UpdateProductInput {
     #[validate(nested)]
     pub translations: Option<Vec<ProductTranslationInput>>,
     #[serde(default, skip_serializing_if = "Patch::is_keep")]
-    #[validate(length(max = 100, message = "Seller ID must be max 100 characters"))]
+    #[validate(custom(function = "validate_patch_seller"))]
     pub seller_id: Patch<String>,
     #[serde(default, skip_serializing_if = "Patch::is_keep")]
-    #[validate(length(max = 255, message = "Vendor must be max 255 characters"))]
+    #[validate(custom(function = "validate_patch_vendor"))]
     pub vendor: Patch<String>,
     #[serde(default, skip_serializing_if = "Patch::is_keep")]
-    #[validate(length(max = 255, message = "Product type must be max 255 characters"))]
+    #[validate(custom(function = "validate_patch_product_type"))]
     pub product_type: Patch<String>,
     #[serde(default, skip_serializing_if = "Patch::is_keep")]
-    #[validate(length(
-        min = 1,
-        max = 64,
-        message = "Shipping profile slug must be 1-64 characters"
-    ))]
+    #[validate(custom(function = "validate_patch_shipping_profile"))]
     pub shipping_profile_slug: Patch<String>,
     #[serde(default, skip_serializing_if = "Patch::is_keep")]
     pub primary_category_id: Patch<Uuid>,
