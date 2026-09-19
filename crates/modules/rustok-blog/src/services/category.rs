@@ -242,9 +242,14 @@ impl CategoryService {
         .await
         .map_err(BlogError::from)?;
 
-        if canonical.len() != 1 {
-            return Err(BlogError::invariant(format!(
+        let canonical = canonical.into_iter().next().ok_or_else(|| {
+            BlogError::invariant(format!(
                 "Blog category {category_id} is missing canonical Taxonomy ownership or hierarchy",
+            ))
+        })?;
+        if canonical.available_locales.is_empty() {
+            return Err(BlogError::invariant(format!(
+                "Blog category {category_id} has no canonical localized copy",
             )));
         }
 
