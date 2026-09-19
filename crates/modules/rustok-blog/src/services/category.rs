@@ -1,8 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    Statement, TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait, sea_query::Expr,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -59,11 +58,12 @@ impl CategoryService {
         let id = Uuid::new_v4();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
 
-        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?;
         ensure_category_tree_capacity_in_tx(&txn, tenant_id).await?;
         if let Some(parent_id) = parent_id {
             Self::ensure_exists_in_tx(&txn, tenant_id, parent_id).await?;
         }
+        ensure_hierarchy_coverage_in_tx(&txn, tenant_id).await?;
         canonicalize_siblings_for_insert_in_tx(&txn, tenant_id, parent_id, requested_position)
             .await?;
 
@@ -116,6 +116,9 @@ impl CategoryService {
         let requested_slug = input.slug.clone();
         let requested_description = input.description.clone();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
+        // Serialize before reading hierarchy so a concurrent structural move cannot be
+        // overwritten by a stale parent/position snapshot from this update transaction.
+        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?;
         let category = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
             .one(&txn)
@@ -182,14 +185,15 @@ impl CategoryService {
             }
         };
 
-        let existing_placement =
-            taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, category_id))
-                .one(&txn)
-                .await?;
-        let (parent_id, position) = match existing_placement {
-            Some(p) => (p.parent_term_id, p.position),
-            None => (None, 0),
-        };
+        let placement = taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, category_id))
+            .one(&txn)
+            .await?
+            .ok_or_else(|| {
+                BlogError::invariant(format!(
+                    "Blog category {category_id} has no canonical Taxonomy hierarchy placement"
+                ))
+            })?;
+        let (parent_id, position) = (placement.parent_term_id, placement.position);
 
         category_taxonomy_sync::sync_category_copy_in_tx(
             &txn,
@@ -246,24 +250,6 @@ impl CategoryService {
     }
 }
 
-async fn lock_category_tree_in_tx(txn: &DatabaseTransaction, tenant_id: Uuid) -> BlogResult<()> {
-    match txn.get_database_backend() {
-        DatabaseBackend::Postgres => {
-            txn.execute_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                [format!("blog-category-tree:{tenant_id}").into()],
-            ))
-            .await?;
-            Ok(())
-        }
-        DatabaseBackend::Sqlite => Ok(()),
-        backend => Err(BlogError::invariant(format!(
-            "Blog category hierarchy writes do not support storage backend {backend:?}"
-        ))),
-    }
-}
-
 async fn ensure_category_tree_capacity_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -277,6 +263,39 @@ async fn ensure_category_tree_capacity_in_tx(
             "Blog category tree cannot exceed {MAX_BLOG_CATEGORY_TREE_NODES} nodes"
         )));
     }
+    Ok(())
+}
+
+async fn ensure_hierarchy_coverage_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+) -> BlogResult<()> {
+    let blog_category_ids = blog_category::Entity::find()
+        .filter(blog_category::Column::TenantId.eq(tenant_id))
+        .all(txn)
+        .await?
+        .into_iter()
+        .map(|category| category.id)
+        .collect::<Vec<_>>();
+
+    if blog_category_ids.is_empty() {
+        return Ok(());
+    }
+
+    let hierarchy_rows = taxonomy_category_hierarchy::Entity::find()
+        .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+        .filter(
+            taxonomy_category_hierarchy::Column::TermId.is_in(blog_category_ids.clone()),
+        )
+        .all(txn)
+        .await?;
+
+    if hierarchy_rows.len() != blog_category_ids.len() {
+        return Err(BlogError::invariant(
+            "Blog category Taxonomy hierarchy coverage is incomplete before create",
+        ));
+    }
+
     Ok(())
 }
 

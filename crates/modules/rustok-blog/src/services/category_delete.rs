@@ -1,17 +1,18 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use chrono::Utc;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
+use rustok_taxonomy::{TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult, lock_category_hierarchy_writer_in_tx};
 use rustok_taxonomy::entities::taxonomy_category_hierarchy;
-use rustok_taxonomy::{TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, Statement,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
+    DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use uuid::Uuid;
 
-use crate::entities::blog_category;
+use crate::entities::{blog_category, blog_post};
 use crate::{BlogError, BlogResult};
 
 /// Blog-owned cleanup that participates in Taxonomy's canonical Category delete transaction.
@@ -47,7 +48,7 @@ impl BlogCategoryDeleteCleanup {
         tenant_id: Uuid,
         taxonomy_category_id: Uuid,
     ) -> BlogResult<()> {
-        lock_category_tree_in_tx(txn, tenant_id).await?;
+        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?;
 
         if self.blog_category_id != taxonomy_category_id {
             return Err(BlogError::invariant(format!(
@@ -58,16 +59,24 @@ impl BlogCategoryDeleteCleanup {
 
         let category = blog_category::Entity::find_by_id(self.blog_category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
+            .lock_exclusive()
             .one(txn)
             .await?
             .ok_or_else(|| BlogError::category_not_found(self.blog_category_id))?;
         ensure_category_is_leaf_in_tx(txn, tenant_id, self.blog_category_id).await?;
 
-        let placement =
-            taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, self.blog_category_id))
-                .one(txn)
-                .await?;
-        let parent_id = placement.and_then(|p| p.parent_term_id);
+        let placement = taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, self.blog_category_id))
+            .one(txn)
+            .await?
+            .ok_or_else(|| {
+                BlogError::invariant(format!(
+                    "Blog category {} has no canonical Taxonomy hierarchy placement",
+                    self.blog_category_id
+                ))
+            })?;
+        let parent_id = placement.parent_term_id;
+
+        detach_category_from_posts_in_tx(txn, tenant_id, self.blog_category_id).await?;
 
         let deleted = blog_category::Entity::delete_many()
             .filter(blog_category::Column::Id.eq(self.blog_category_id))
@@ -81,11 +90,16 @@ impl BlogCategoryDeleteCleanup {
             ));
         }
 
-        taxonomy_category_hierarchy::Entity::delete_many()
+        let deleted_placement = taxonomy_category_hierarchy::Entity::delete_many()
             .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
             .filter(taxonomy_category_hierarchy::Column::TermId.eq(self.blog_category_id))
             .exec(txn)
             .await?;
+        if deleted_placement.rows_affected != 1 {
+            return Err(BlogError::invariant(
+                "Blog category Taxonomy hierarchy placement disappeared before delete completed",
+            ));
+        }
 
         canonicalize_siblings_in_tx(txn, tenant_id, parent_id).await?;
 
@@ -123,41 +137,14 @@ impl TaxonomyCategoryDeleteCleanupPort for BlogCategoryDeleteCleanup {
     }
 }
 
-async fn lock_category_tree_in_tx(txn: &DatabaseTransaction, tenant_id: Uuid) -> BlogResult<()> {
-    match txn.get_database_backend() {
-        DatabaseBackend::Postgres => {
-            txn.execute_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                [format!("blog-category-tree:{tenant_id}").into()],
-            ))
-            .await?;
-            Ok(())
-        }
-        DatabaseBackend::Sqlite => Ok(()),
-        backend => Err(BlogError::invariant(format!(
-            "Blog category hierarchy writes do not support storage backend {backend:?}"
-        ))),
-    }
-}
-
 async fn ensure_category_is_leaf_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> BlogResult<()> {
-    let blog_category_ids = blog_category::Entity::find()
-        .filter(blog_category::Column::TenantId.eq(tenant_id))
-        .all(txn)
-        .await?
-        .into_iter()
-        .map(|c| c.id)
-        .collect::<Vec<_>>();
-
     let child = taxonomy_category_hierarchy::Entity::find()
         .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
         .filter(taxonomy_category_hierarchy::Column::ParentTermId.eq(category_id))
-        .filter(taxonomy_category_hierarchy::Column::TermId.is_in(blog_category_ids))
         .one(txn)
         .await?;
     if child.is_some() {
@@ -166,6 +153,73 @@ async fn ensure_category_is_leaf_in_tx(
         ));
     }
     Ok(())
+}
+
+async fn detach_category_from_posts_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    category_id: Uuid,
+) -> BlogResult<Vec<Uuid>> {
+    let posts = blog_post::Entity::find()
+        .filter(blog_post::Column::TenantId.eq(tenant_id))
+        .filter(blog_post::Column::CategoryId.eq(category_id))
+        .order_by_asc(blog_post::Column::Id)
+        .all(txn)
+        .await?;
+
+    let mut affected_post_ids = Vec::with_capacity(posts.len());
+    let now = Utc::now();
+
+    for post in posts {
+        if post.version <= 0 {
+            return Err(BlogError::invariant(format!(
+                "Blog post {} has invalid persisted version {}",
+                post.id, post.version
+            )));
+        }
+
+        let next_version = post
+            .version
+            .checked_add(1)
+            .filter(|next| *next > 0)
+            .ok_or_else(|| {
+                BlogError::invariant(format!(
+                    "Blog post version {} is invalid or exhausted",
+                    post.version
+                ))
+            })?;
+
+        let updated = blog_post::Entity::update_many()
+            .col_expr(
+                blog_post::Column::CategoryId,
+                sea_orm::sea_query::Expr::value(Option::<Uuid>::None),
+            )
+            .col_expr(
+                blog_post::Column::Version,
+                sea_orm::sea_query::Expr::value(next_version),
+            )
+            .col_expr(
+                blog_post::Column::UpdatedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .filter(blog_post::Column::Id.eq(post.id))
+            .filter(blog_post::Column::CategoryId.eq(category_id))
+            .filter(blog_post::Column::Version.eq(post.version))
+            .exec(txn)
+            .await?;
+
+        if updated.rows_affected != 1 {
+            return Err(BlogError::conflict(format!(
+                "Blog post {} changed before category detachment could commit",
+                post.id
+            )));
+        }
+
+        affected_post_ids.push(post.id);
+    }
+
+    Ok(affected_post_ids)
 }
 
 async fn canonicalize_siblings_in_tx(
@@ -180,6 +234,17 @@ async fn canonicalize_siblings_in_tx(
         .into_iter()
         .map(|c| c.id)
         .collect::<Vec<_>>();
+
+    let hierarchy_rows = taxonomy_category_hierarchy::Entity::find()
+        .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_category_hierarchy::Column::TermId.is_in(blog_category_ids.clone()))
+        .all(txn)
+        .await?;
+    if hierarchy_rows.len() != blog_category_ids.len() {
+        return Err(BlogError::invariant(
+            "Blog category Taxonomy hierarchy coverage is incomplete during sibling canonicalization",
+        ));
+    }
 
     let mut query = taxonomy_category_hierarchy::Entity::find()
         .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))

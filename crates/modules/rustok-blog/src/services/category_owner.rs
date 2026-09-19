@@ -153,7 +153,7 @@ impl CategoryService {
             .collect::<Vec<_>>();
 
         let canonical = TaxonomyOwnerCategoryReader::new(self.db.clone())
-            .load_scoped_categories(
+            .load_scoped_categories_strict(
                 tenant_id,
                 TaxonomyScopeType::Module,
                 Some(BLOG_TAXONOMY_SCOPE),
@@ -242,7 +242,7 @@ impl CategoryService {
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
         let taxonomy_ids = [category_id];
         let canonical = TaxonomyOwnerCategoryReader::new(self.db.clone())
-            .load_scoped_categories(
+            .load_scoped_categories_strict(
                 tenant_id,
                 TaxonomyScopeType::Module,
                 Some(BLOG_TAXONOMY_SCOPE),

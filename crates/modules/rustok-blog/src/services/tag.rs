@@ -4,6 +4,7 @@ use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
     EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect, RelationTrait, TransactionTrait,
+    sea_query::Expr,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -16,7 +17,7 @@ use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{
     CreateTaxonomyTermInput, ModuleTermMutationResult, ModuleTermUpdateInput, TaxonomyOwnerReader,
     TaxonomyOwnerTerm, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
-    delete_module_term_in_tx, update_module_term_in_tx,
+    delete_module_term_in_tx, lock_module_term_in_tx, update_module_term_in_tx,
 };
 
 use crate::dto::{CreateTagInput, ListTagsFilter, TagListItem, TagResponse, UpdateTagInput};
@@ -141,6 +142,15 @@ impl TagService {
         ensure_module_owned_term(&term)?;
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
+        lock_module_term_in_tx(
+            &txn,
+            tenant_id,
+            tag_id,
+            TaxonomyTermKind::Tag,
+            BLOG_SCOPE_VALUE,
+        )
+        .await?;
+        detach_tag_from_posts_in_tx(&txn, tenant_id, tag_id).await?;
         delete_module_term_in_tx(
             &txn,
             tenant_id,
@@ -324,6 +334,75 @@ impl TagService {
     }
 }
 
+async fn detach_tag_from_posts_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    tag_id: Uuid,
+) -> BlogResult<()> {
+    let relations = blog_post_tag::Entity::find()
+        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
+        .filter(blog_post_tag::Column::TagId.eq(tag_id))
+        .order_by_asc(blog_post_tag::Column::PostId)
+        .all(txn)
+        .await?;
+
+    let now = Utc::now();
+    for relation in relations {
+        let post = blog_post::Entity::find_by_id(relation.post_id)
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .one(txn)
+            .await?
+            .ok_or_else(|| {
+                BlogError::invariant(format!(
+                    "Blog post-tag relation {} references missing post {}",
+                    relation.tag_id, relation.post_id
+                ))
+            })?;
+
+        if post.version <= 0 {
+            return Err(BlogError::invariant(format!(
+                "Blog post {} has invalid persisted version {}",
+                post.id, post.version
+            )));
+        }
+
+        let next_version = post
+            .version
+            .checked_add(1)
+            .filter(|next| *next > 0)
+            .ok_or_else(|| {
+                BlogError::invariant(format!(
+                    "Blog post version {} is invalid or exhausted",
+                    post.version
+                ))
+            })?;
+
+        let updated = blog_post::Entity::update_many()
+            .col_expr(
+                blog_post::Column::Version,
+                Expr::value(next_version),
+            )
+            .col_expr(
+                blog_post::Column::UpdatedAt,
+                Expr::value(now),
+            )
+            .filter(blog_post::Column::Id.eq(post.id))
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .filter(blog_post::Column::Version.eq(post.version))
+            .exec(txn)
+            .await?;
+
+        if updated.rows_affected != 1 {
+            return Err(BlogError::conflict(format!(
+                "Blog post {} changed before Tag detachment could commit",
+                post.id
+            )));
+        }
+    }
+
+    Ok(())
+}
+
 async fn publish_blog_reindex_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -418,17 +497,27 @@ pub(crate) async fn load_post_tags_map(
     }
 
     let term_ids = relations.iter().map(|item| item.tag_id).collect::<Vec<_>>();
-    let names = TaxonomyService::new(db.clone())
-        .resolve_term_names(tenant_id, &term_ids, locale, fallback_locale)
+    let names = TaxonomyOwnerReader::new(db.clone())
+        .load_term_names_strict(tenant_id, TaxonomyTermKind::Tag, &term_ids)
         .await?;
+    let mut locale_chain = vec![locale.to_string()];
+    if let Some(fallback_locale) = fallback_locale
+        && fallback_locale != locale
+    {
+        locale_chain.push(fallback_locale.to_string());
+    }
 
     for relation in relations {
-        if let Some(name) = names.get(&relation.tag_id) {
-            tags_by_post
-                .entry(relation.post_id)
-                .or_default()
-                .push(name.clone());
-        }
+        let Some(term_names) = names.get(&relation.tag_id) else {
+            return Err(BlogError::invariant(format!(
+                "Blog post {} references missing Taxonomy tag {}",
+                relation.post_id, relation.tag_id
+            )));
+        };
+        tags_by_post
+            .entry(relation.post_id)
+            .or_default()
+            .push(term_names.resolve_name_for_locale_chain(&locale_chain));
     }
 
     Ok(tags_by_post)

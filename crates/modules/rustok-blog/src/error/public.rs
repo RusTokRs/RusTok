@@ -26,24 +26,36 @@ impl BlogPublicError {
 impl From<BlogError> for BlogPublicError {
     fn from(error: BlogError) -> Self {
         let rich: RichError = error.into();
-        let status = rich.status_code;
-        let code = rich
-            .error_code
-            .unwrap_or_else(|| rich.kind.error_code().to_string());
-        let message = rich.user_message.unwrap_or_else(|| match rich.kind {
-            ErrorKind::Validation => "Invalid Blog request".to_string(),
-            ErrorKind::Unauthenticated => "Authentication required".to_string(),
-            ErrorKind::Forbidden => "Access denied".to_string(),
-            ErrorKind::NotFound => "The requested Blog resource was not found".to_string(),
-            ErrorKind::Conflict => "The Blog resource changed concurrently".to_string(),
-            ErrorKind::RateLimited => "Too many Blog requests".to_string(),
-            ErrorKind::Database | ErrorKind::Internal => {
-                "The Blog operation could not be completed".to_string()
-            }
-            ErrorKind::ExternalService => "A required Blog dependency is unavailable".to_string(),
-            ErrorKind::Timeout => "A required Blog dependency timed out".to_string(),
-            ErrorKind::BusinessLogic => "The Blog operation is not allowed".to_string(),
-        });
+        let internal = matches!(rich.kind, ErrorKind::Database | ErrorKind::Internal);
+        let status = if internal {
+            StatusCode::INTERNAL_SERVER_ERROR.as_u16()
+        } else {
+            rich.status_code
+        };
+        let code = if internal {
+            ErrorKind::Internal.error_code().to_string()
+        } else {
+            rich.error_code
+                .unwrap_or_else(|| rich.kind.error_code().to_string())
+        };
+        let message = if internal {
+            "The Blog operation could not be completed".to_string()
+        } else {
+            rich.user_message.unwrap_or_else(|| match rich.kind {
+                ErrorKind::Validation => "Invalid Blog request".to_string(),
+                ErrorKind::Unauthenticated => "Authentication required".to_string(),
+                ErrorKind::Forbidden => "Access denied".to_string(),
+                ErrorKind::NotFound => "The requested Blog resource was not found".to_string(),
+                ErrorKind::Conflict => "The Blog resource changed concurrently".to_string(),
+                ErrorKind::RateLimited => "Too many Blog requests".to_string(),
+                ErrorKind::Database | ErrorKind::Internal => {
+                    "The Blog operation could not be completed".to_string()
+                }
+                ErrorKind::ExternalService => "A required Blog dependency is unavailable".to_string(),
+                ErrorKind::Timeout => "A required Blog dependency timed out".to_string(),
+                ErrorKind::BusinessLogic => "The Blog operation is not allowed".to_string(),
+            })
+        };
 
         Self {
             status,
@@ -95,6 +107,19 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn rich_internal_details_and_codes_are_redacted() {
+        let rich = RichError::new(ErrorKind::Internal, "internal secret")
+            .with_user_message("secret user-facing detail")
+            .with_error_code("DEPENDENCY_SECRET_CODE");
+        let mapped = to_http_error(BlogError::Rich(Box::new(rich)));
+        assert_eq!(mapped.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(mapped.code, ErrorKind::Internal.error_code());
+        assert_eq!(mapped.message, "The Blog operation could not be completed");
+        assert!(!mapped.message.contains("secret"));
+        assert!(!mapped.code.contains("SECRET"));
+    }
+
     fn invariant_and_native_internal_details_are_redacted() {
         let invariant = to_http_error(BlogError::invariant(
             "persisted-status=secret-corruption-marker",

@@ -4,6 +4,7 @@ use rustok_content::normalize_locale_code;
 use rustok_core::{PermissionScope, SecurityContext};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter,
+    QuerySelect,
     sea_query::Expr,
 };
 use uuid::Uuid;
@@ -194,6 +195,26 @@ pub async fn update_module_term_in_tx(
         slug,
         created_at: term.created_at.with_timezone(&Utc),
     })
+}
+
+pub async fn lock_module_term_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    term_id: Uuid,
+    kind: TaxonomyTermKind,
+    module_slug: &str,
+) -> TaxonomyResult<()> {
+    let module_scope = normalize_module_scope(module_slug)?;
+    taxonomy_term::Entity::find_by_id(term_id)
+        .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_term::Column::Kind.eq(kind))
+        .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
+        .filter(taxonomy_term::Column::ScopeValue.eq(&module_scope))
+        .lock_exclusive()
+        .one(txn)
+        .await?
+        .ok_or(TaxonomyError::TermNotFound(term_id))?;
+    Ok(())
 }
 
 pub async fn delete_module_term_in_tx(

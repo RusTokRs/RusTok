@@ -1,9 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-    Statement, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -43,7 +42,7 @@ impl CategoryCommandService {
         enforce_scope(&security, Resource::BlogCategories, Action::Manage)?;
 
         let txn = self.db.begin().await?;
-        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?;
 
         let categories = load_categories_in_tx(&txn, tenant_id).await?;
         let blog_ids = categories
@@ -60,12 +59,14 @@ impl CategoryCommandService {
             .filter(taxonomy_category_hierarchy::Column::TermId.is_in(blog_ids.iter().copied()))
             .all(&txn)
             .await?;
-        let mut placement_by_id = hierarchy_rows
+        let placement_by_id = hierarchy_rows
             .into_iter()
             .map(|row| (row.term_id, (row.parent_term_id, row.position)))
             .collect::<HashMap<_, _>>();
-        for id in &blog_ids {
-            placement_by_id.entry(*id).or_insert((None, 0));
+        if placement_by_id.len() != blog_ids.len() {
+            return Err(BlogError::invariant(
+                "Blog category Taxonomy hierarchy coverage is incomplete",
+            ));
         }
 
         let mut parent_by_id = placement_by_id
@@ -166,24 +167,6 @@ impl CategoryCommandService {
 
         txn.commit().await?;
         Ok(MoveCategoryResponse { moved, updated })
-    }
-}
-
-async fn lock_category_tree_in_tx(txn: &DatabaseTransaction, tenant_id: Uuid) -> BlogResult<()> {
-    match txn.get_database_backend() {
-        DatabaseBackend::Postgres => {
-            txn.execute_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                [format!("blog-category-tree:{tenant_id}").into()],
-            ))
-            .await?;
-            Ok(())
-        }
-        DatabaseBackend::Sqlite => Ok(()),
-        backend => Err(BlogError::invariant(format!(
-            "Blog category hierarchy commands do not support storage backend {backend:?}"
-        ))),
     }
 }
 

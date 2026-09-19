@@ -68,7 +68,7 @@ impl TaxonomyService {
         }
 
         let txn = self.database().begin().await?;
-        serialize_hierarchy_writer(&txn, tenant_id).await?;
+        lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?;
         let term = load_category(&txn, tenant_id, term_id).await?;
 
         if let Some(parent_id) = input.parent_id {
@@ -113,7 +113,12 @@ impl TaxonomyService {
     }
 }
 
-async fn serialize_hierarchy_writer(
+/// Shared transaction serialization point for every Taxonomy Category hierarchy writer.
+///
+/// Consumer modules that own a Category hierarchy must use this primitive rather than inventing
+/// their own advisory-lock key. On PostgreSQL this key is exactly the same tenant-level lock used
+/// by the canonical Taxonomy hierarchy triggers.
+pub async fn lock_category_hierarchy_writer_in_tx(
     txn: &sea_orm::DatabaseTransaction,
     tenant_id: Uuid,
 ) -> TaxonomyResult<()> {

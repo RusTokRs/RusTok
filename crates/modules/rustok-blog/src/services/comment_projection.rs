@@ -105,11 +105,13 @@ impl BlogCommentProjectionHandler {
             return Ok(());
         }
 
-        update_comment_count_in_tx(&txn, envelope.tenant_id, change.post_id, change.delta).await?;
+        let post_updated =
+            update_comment_count_in_tx(&txn, envelope.tenant_id, change.post_id, change.delta)
+                .await?;
 
-        // The delivery marker is committed with the counter and outbox event. If
-        // a concurrent duplicate wins this unique insert, this transaction rolls
-        // back its optimistic counter update and the runtime can safely retry.
+        // A delayed comment lifecycle event may arrive after its Post was deleted. The
+        // derived counter is already irrelevant, but the delivery still needs a durable
+        // idempotency marker so the event does not retry forever.
         blog_comment_projection_delivery::ActiveModel {
             event_id: Set(envelope.id),
             tenant_id: Set(envelope.tenant_id),
@@ -121,17 +123,19 @@ impl BlogCommentProjectionHandler {
         .insert(&txn)
         .await?;
 
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                envelope.tenant_id,
-                envelope.actor_id,
-                DomainEvent::ReindexRequested {
-                    target_type: "blog".to_string(),
-                    target_id: Some(change.post_id),
-                },
-            )
-            .await?;
+        if post_updated {
+            self.event_bus
+                .publish_in_tx(
+                    &txn,
+                    envelope.tenant_id,
+                    envelope.actor_id,
+                    DomainEvent::ReindexRequested {
+                        target_type: "blog".to_string(),
+                        target_id: Some(change.post_id),
+                    },
+                )
+                .await?;
+        }
         txn.commit().await?;
         Ok(())
     }
@@ -142,16 +146,14 @@ async fn update_comment_count_in_tx(
     tenant_id: Uuid,
     post_id: Uuid,
     delta: i32,
-) -> HandlerResult {
+) -> HandlerResult<bool> {
     for attempt_index in 0..MAX_PROJECTION_UPDATE_ATTEMPTS {
         let Some(post) = blog_post::Entity::find_by_id(post_id)
             .filter(blog_post::Column::TenantId.eq(tenant_id))
             .one(txn)
             .await?
         else {
-            return Err(Error::NotFound(format!(
-                "blog post {post_id} for comment projection was not found in tenant {tenant_id}"
-            )));
+            return Ok(false);
         };
 
         let next_comment_count = next_comment_count(post.comment_count, delta);
@@ -167,7 +169,7 @@ async fn update_comment_count_in_tx(
             .await?;
 
         match projection_update_decision(attempt_index, result.rows_affected) {
-            ProjectionUpdateDecision::Applied => return Ok(()),
+            ProjectionUpdateDecision::Applied => return Ok(true),
             ProjectionUpdateDecision::Retry => continue,
             ProjectionUpdateDecision::LimitReached => break,
         }

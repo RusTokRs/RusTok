@@ -34,7 +34,7 @@ impl PostService {
             return Err(BlogError::forbidden("Permission denied"));
         }
         let translations = self.load_translations(post_id).await?;
-        let channel_slugs = self.load_channel_slugs(post_id).await?;
+        let channel_slugs = self.load_channel_slugs(tenant_id, post_id).await?;
         self.build_post_response(
             post,
             translations,
@@ -78,6 +78,7 @@ impl PostService {
         else {
             return Ok(None);
         };
+        Self::validate_persisted_version(&post)?;
 
         if storage_to_status(&post.status)? != BlogPostStatus::Published
             && !can_read_non_public_posts(&security)
@@ -86,7 +87,7 @@ impl PostService {
         }
 
         let translations = self.load_translations(post.id).await?;
-        let channel_slugs = self.load_channel_slugs(post.id).await?;
+        let channel_slugs = self.load_channel_slugs(tenant_id, post.id).await?;
         self.build_post_response(
             post,
             translations,
@@ -174,7 +175,7 @@ impl PostService {
         let post_ids = posts.iter().map(|post| post.id).collect::<Vec<_>>();
 
         let translations_map = self.load_translations_map(&post_ids).await?;
-        let channel_slugs_map = self.load_channel_slugs_map(&post_ids).await?;
+        let channel_slugs_map = self.load_channel_slugs_map(tenant_id, &post_ids).await?;
         let tags_map = load_post_tags_map(
             &self.db,
             tenant_id,
@@ -198,6 +199,7 @@ impl PostService {
 
         let mut items = Vec::with_capacity(posts.len());
         for post in posts {
+            Self::validate_persisted_version(&post)?;
             let translations = translations_map.get(&post.id).cloned().unwrap_or_default();
             if translations.is_empty() {
                 return Err(BlogError::invariant(format!(
@@ -296,7 +298,7 @@ impl PostService {
         let post_ids = posts.iter().map(|post| post.id).collect::<Vec<_>>();
 
         let translations_map = self.load_translations_map(&post_ids).await?;
-        let channel_slugs_map = self.load_channel_slugs_map(&post_ids).await?;
+        let channel_slugs_map = self.load_channel_slugs_map(tenant_id, &post_ids).await?;
         let tags_map = load_post_tags_map(
             &self.db,
             tenant_id,
@@ -320,6 +322,7 @@ impl PostService {
 
         let mut items = Vec::with_capacity(posts.len());
         for post in posts {
+            Self::validate_persisted_version(&post)?;
             let translations = translations_map.get(&post.id).cloned().unwrap_or_default();
             if translations.is_empty() {
                 return Err(BlogError::invariant(format!(

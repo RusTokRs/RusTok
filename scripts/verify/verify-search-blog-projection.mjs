@@ -52,7 +52,6 @@ for (const table of [
   "blog_posts",
   "blog_post_translations",
   "blog_post_channel_visibility",
-  "blog_category_translations",
   "blog_post_tags",
   "taxonomy_terms",
   "taxonomy_term_translations",
@@ -60,6 +59,7 @@ for (const table of [
   requireMarker(projector, `to_regclass('${table}')`, projectorPath);
 }
 rejectMarker(projector, "to_regclass('public.blog_", projectorPath);
+rejectMarker(projector, "blog_category_translations", projectorPath);
 for (const marker of [
   "FROM blog_posts p",
   "INSERT INTO search_documents",
@@ -67,7 +67,14 @@ for (const marker of [
   "pub(crate) async fn delete_tenant",
   '"delete_blog_scope"',
   "FROM blog_post_tags relation",
+  "LEFT JOIN taxonomy_terms bct_term",
+  "bct_term.kind = 'category'",
+  "bct_term.scope_type = 'module'",
+  "bct_term.scope_value = 'blog'",
+  "LEFT JOIN taxonomy_term_translations bct",
+  "LEFT JOIN taxonomy_term_translations bct_fallback",
   "JOIN taxonomy_terms term",
+  "term.kind = 'tag'",
   "LEFT JOIN taxonomy_term_translations localized",
   "LEFT JOIN taxonomy_term_translations fallback",
   "relation.tenant_id = p.tenant_id",
@@ -75,6 +82,7 @@ for (const marker of [
   "localized.tenant_id = p.tenant_id",
   "fallback.tenant_id = p.tenant_id",
   "COALESCE(localized.name, fallback.name, term.canonical_key)",
+  "COALESCE(bct.name, bct_fallback.name, bct_term.canonical_key)",
 ]) {
   requireMarker(projector, marker, projectorPath);
 }

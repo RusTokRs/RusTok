@@ -24,7 +24,7 @@ pub(in crate::services) async fn load_category_names_map(
     category_ids.dedup();
 
     let canonical = TaxonomyOwnerCategoryReader::new(db.clone())
-        .load_scoped_categories(
+        .load_scoped_categories_strict(
             tenant_id,
             TaxonomyScopeType::Module,
             Some(BLOG_TAXONOMY_SCOPE),

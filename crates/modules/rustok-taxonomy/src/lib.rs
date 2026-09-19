@@ -25,7 +25,7 @@ mod translation_evidence;
 pub mod translation_target;
 
 pub use category_delete::TaxonomyCategoryDeleteCleanupPort;
-pub use category_hierarchy::MAX_TAXONOMY_CATEGORY_DEPTH;
+pub use category_hierarchy::{MAX_TAXONOMY_CATEGORY_DEPTH, lock_category_hierarchy_writer_in_tx};
 pub use category_presentation::{
     TAXONOMY_CATEGORY_ICON_KEY_MAX_BYTES, TaxonomyCategoryMediaReferenceValidator,
     normalize_taxonomy_category_color, normalize_taxonomy_category_icon_key,
@@ -41,7 +41,7 @@ pub use error::{TaxonomyError, TaxonomyResult};
 pub use module_term_lookup::TaxonomyModuleRouteMatch;
 pub use module_term_mutation::{
     ModuleTermMutationResult, ModuleTermUpdateInput, delete_module_term_in_tx,
-    update_module_term_in_tx,
+    lock_module_term_in_tx, update_module_term_in_tx,
 };
 pub use normalization::{normalize_term_locale, normalize_term_route_key};
 pub use owner_category_read::{TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader};
