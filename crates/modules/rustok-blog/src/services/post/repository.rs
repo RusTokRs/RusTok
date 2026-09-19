@@ -273,3 +273,33 @@ pub(crate) async fn load_post_subject_snapshot(
         version: post.version,
     }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn persisted_post_version_must_be_positive() {
+        let post = blog_post::Model {
+            id: Uuid::from_u128(1),
+            tenant_id: Uuid::from_u128(2),
+            author_id: Uuid::from_u128(3),
+            category_id: None,
+            status: "draft".to_string(),
+            slug: "post".to_string(),
+            metadata: serde_json::json!({}),
+            featured_image_url: None,
+            published_at: None,
+            created_at: chrono::Utc::now().into(),
+            updated_at: chrono::Utc::now().into(),
+            archived_at: None,
+            comment_count: 0,
+            view_count: 0,
+            version: 0,
+        };
+        assert!(Self::validate_persisted_version(&post).is_err());
+        assert!(matches!(Self::next_persisted_version(0), Ok(1)));
+        assert!(Self::next_persisted_version(i32::MAX).is_err());
+    }
+}
+
