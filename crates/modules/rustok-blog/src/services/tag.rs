@@ -418,8 +418,8 @@ pub(crate) async fn load_post_tags_map(
     }
 
     let term_ids = relations.iter().map(|item| item.tag_id).collect::<Vec<_>>();
-    let names = TaxonomyService::new(db.clone())
-        .resolve_term_names(tenant_id, &term_ids, locale, fallback_locale)
+    let names = TaxonomyOwnerReader::new(db.clone())
+        .load_term_names_strict(tenant_id, TaxonomyTermKind::Tag, &term_ids)
         .await?;
 
     for relation in relations {
