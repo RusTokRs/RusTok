@@ -1,9 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-    Statement, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -43,7 +42,7 @@ impl CategoryCommandService {
         enforce_scope(&security, Resource::BlogCategories, Action::Manage)?;
 
         let txn = self.db.begin().await?;
-        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?;
 
         let categories = load_categories_in_tx(&txn, tenant_id).await?;
         let blog_ids = categories
