@@ -554,6 +554,28 @@ requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
   "Slug cannot exceed",
 ]);
 
+requireAll("crates/modules/rustok-blog/src/dto/post.rs", [
+  "#[schema(max_length = 1000)]",
+  "pub reason: Option<String>,",
+]);
+
+requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
+  "MAX_POST_ARCHIVE_REASON_CHARS",
+  "Archive reason cannot exceed",
+]);
+
+requireAll("crates/modules/rustok-blog/src/services/post/mod.rs", [
+  "const MAX_POST_EXCERPT_CHARS: usize = 1000;",
+  "const MAX_POST_SEO_TITLE_CHARS: usize = 255;",
+  "const MAX_POST_SEO_DESCRIPTION_CHARS: usize = 1000;",
+  "validate_post_field_length(",
+]);
+
+requireAll("crates/modules/rustok-blog/src/dto/post.rs", [
+  "max_length = 255",
+  "max_length = 1000",
+]);
+
 if (failures.length > 0) {
   console.error("Canonical module reference-contract verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
