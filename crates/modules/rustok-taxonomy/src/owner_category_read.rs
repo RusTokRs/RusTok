@@ -246,10 +246,44 @@ where
             .or_default()
             .push(translation);
     }
-    if strict_hierarchy && hierarchy.len() != terms.len() {
-        return Err(TaxonomyError::invariant(
-            "Taxonomy Category hierarchy coverage is incomplete",
-        ));
+    if strict_hierarchy {
+        if hierarchy.len() != terms.len() {
+            return Err(TaxonomyError::invariant(
+                "Taxonomy Category hierarchy coverage is incomplete",
+            ));
+        }
+
+        let parent_ids = hierarchy
+            .iter()
+            .filter_map(|row| row.parent_term_id)
+            .collect::<std::collections::HashSet<_>>();
+        if hierarchy
+            .iter()
+            .any(|row| row.position < 0 || row.parent_term_id == Some(row.term_id))
+        {
+            return Err(TaxonomyError::invariant(
+                "Taxonomy Category hierarchy contains an invalid position or self-parent",
+            ));
+        }
+
+        if !parent_ids.is_empty() {
+            let parents = taxonomy_term::Entity::find()
+                .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+                .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category))
+                .filter(taxonomy_term::Column::Id.is_in(parent_ids.clone()))
+                .all(connection)
+                .await?;
+            if parents.len() != parent_ids.len()
+                || parents.iter().any(|parent| {
+                    parent.scope_type != terms[0].scope_type
+                        || parent.scope_value != terms[0].scope_value
+                })
+            {
+                return Err(TaxonomyError::invariant(
+                    "Taxonomy Category hierarchy contains a missing or foreign-scope parent",
+                ));
+            }
+        }
     }
     let mut hierarchy_by_term = hierarchy
         .into_iter()

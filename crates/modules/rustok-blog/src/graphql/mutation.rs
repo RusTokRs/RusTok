@@ -272,7 +272,6 @@ impl BlogMutation {
     ) -> Result<GqlBlogComment> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
-        ensure_public_blog_channel_enabled(db, ctx.data_opt::<RequestContext>(), false).await?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
         let auth = require_blog_permission(
@@ -282,6 +281,13 @@ impl BlogMutation {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+        ensure_public_blog_channel_enabled(
+            db,
+            tenant_id,
+            ctx.data_opt::<RequestContext>(),
+            false,
+        )
+        .await?;
         let public_channel_slug = ctx
             .data_opt::<RequestContext>()
             .and_then(|request| request.channel_slug.as_deref());

@@ -245,6 +245,30 @@ impl ChannelService {
         Ok(binding.map(|item| item.is_enabled).unwrap_or(true))
     }
 
+    /// Checks module availability while proving that the channel belongs to the
+    /// caller-selected tenant. Consumers must use this form whenever both
+    /// tenant and channel identifiers cross a transport boundary.
+    pub async fn is_module_enabled_for_tenant(
+        &self,
+        tenant_id: Uuid,
+        channel_id: Uuid,
+        module_slug: &str,
+    ) -> ChannelResult<bool> {
+        let channel = channel::Entity::find_by_id(channel_id)
+            .filter(channel::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(ChannelError::NotFound(channel_id))?;
+
+        let binding = channel_module_binding::Entity::find()
+            .filter(channel_module_binding::Column::ChannelId.eq(channel.id))
+            .filter(channel_module_binding::Column::ModuleSlug.eq(module_slug))
+            .one(&self.db)
+            .await?;
+
+        Ok(binding.map(|item| item.is_enabled).unwrap_or(true))
+    }
+
     #[instrument(skip(self, input), fields(channel_id = %channel_id, target_type = %input.target_type))]
     pub async fn add_target(
         &self,

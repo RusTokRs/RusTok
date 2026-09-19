@@ -292,11 +292,10 @@ impl CommentsService {
         record_entrypoint("update_comment");
         let started = Instant::now();
         let result = async {
-            let existing = self.find_comment(tenant_id, comment_id, false).await?;
-            self.enforce_owned_scope(&security, Action::Update, existing.author_id)?;
-
             let locale = normalize_locale(&input.locale)?;
             let Some(body) = input.body else {
+                let existing = self.find_comment(tenant_id, comment_id, false).await?;
+                self.enforce_owned_scope(&security, Action::Update, existing.author_id)?;
                 return self
                     .get_comment(tenant_id, security, comment_id, &locale, None)
                     .await;
@@ -304,6 +303,15 @@ impl CommentsService {
             let body = serialize_comment_body(body)?;
 
             let txn = self.db.begin().await?;
+            let existing = comment::Entity::find_by_id(comment_id)
+                .filter(comment::Column::TenantId.eq(tenant_id))
+                .filter(comment::Column::DeletedAt.is_null())
+                .lock_exclusive()
+                .one(&txn)
+                .await?
+                .ok_or(CommentsError::CommentNotFound(comment_id))?;
+            self.enforce_owned_scope(&security, Action::Update, existing.author_id)?;
+
             self.upsert_body_in_tx(&txn, comment_id, &locale, body)
                 .await?;
 
@@ -374,13 +382,18 @@ impl CommentsService {
         security: SecurityContext,
         comment_id: Uuid,
     ) -> CommentsResult<()> {
-        let existing = self
-            .find_comment_in_tx(txn, tenant_id, comment_id, false)
-            .await?;
+        let existing = comment::Entity::find_by_id(comment_id)
+            .filter(comment::Column::TenantId.eq(tenant_id))
+            .filter(comment::Column::DeletedAt.is_null())
+            .lock_exclusive()
+            .one(txn)
+            .await?
+            .ok_or(CommentsError::CommentNotFound(comment_id))?;
         self.enforce_owned_scope(&security, Action::Delete, existing.author_id)?;
 
         let thread = comment_thread::Entity::find_by_id(existing.thread_id)
             .filter(comment_thread::Column::TenantId.eq(tenant_id))
+            .lock_exclusive()
             .one(txn)
             .await?
             .ok_or_else(|| CommentsError::CommentThreadNotFound {
@@ -585,11 +598,13 @@ impl CommentsService {
         let started = Instant::now();
         let result = async {
             self.enforce_moderation_scope(&security)?;
+            let txn = self.db.begin().await?;
             let thread = comment_thread::Entity::find()
                 .filter(comment_thread::Column::TenantId.eq(tenant_id))
                 .filter(comment_thread::Column::TargetType.eq(target_type))
                 .filter(comment_thread::Column::TargetId.eq(target_id))
-                .one(&self.db)
+                .lock_exclusive()
+                .one(&txn)
                 .await?
                 .ok_or_else(|| CommentsError::CommentThreadNotFound {
                     target_type: target_type.to_string(),
@@ -603,7 +618,8 @@ impl CommentsService {
             let mut active: comment_thread::ActiveModel = thread.into();
             active.status = Set(status);
             active.updated_at = Set(Utc::now().into());
-            active.update(&self.db).await?;
+            active.update(&txn).await?;
+            txn.commit().await?;
             Ok(())
         }
         .await;
@@ -760,13 +776,21 @@ impl CommentsService {
             let locale = normalize_locale(locale)?;
             let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
 
-            let existing = self.find_comment(tenant_id, comment_id, false).await?;
+            let txn = self.db.begin().await?;
+            let existing = comment::Entity::find_by_id(comment_id)
+                .filter(comment::Column::TenantId.eq(tenant_id))
+                .filter(comment::Column::DeletedAt.is_null())
+                .lock_exclusive()
+                .one(&txn)
+                .await?
+                .ok_or(CommentsError::CommentNotFound(comment_id))?;
             if existing.status != status {
                 let mut active: comment::ActiveModel = existing.clone().into();
                 active.status = Set(status);
                 active.updated_at = Set(Utc::now().into());
-                active.update(&self.db).await?;
+                active.update(&txn).await?;
             }
+            txn.commit().await?;
 
             self.get_comment(
                 tenant_id,
@@ -794,9 +818,11 @@ impl CommentsService {
         let started = Instant::now();
         let result = async {
             self.enforce_moderation_scope(&security)?;
+            let txn = self.db.begin().await?;
             let thread = comment_thread::Entity::find_by_id(thread_id)
                 .filter(comment_thread::Column::TenantId.eq(tenant_id))
-                .one(&self.db)
+                .lock_exclusive()
+                .one(&txn)
                 .await?
                 .ok_or_else(|| CommentsError::CommentThreadNotFound {
                     target_type: "unknown".to_string(),
@@ -804,13 +830,15 @@ impl CommentsService {
                 })?;
 
             if thread.status == status {
+                txn.commit().await?;
                 return Ok(Self::map_thread_summary(thread));
             }
 
             let mut active: comment_thread::ActiveModel = thread.clone().into();
             active.status = Set(status);
             active.updated_at = Set(Utc::now().into());
-            let thread = active.update(&self.db).await?;
+            let thread = active.update(&txn).await?;
+            txn.commit().await?;
             Ok(Self::map_thread_summary(thread))
         }
         .await;
@@ -829,6 +857,7 @@ impl CommentsService {
             .filter(comment_thread::Column::TenantId.eq(tenant_id))
             .filter(comment_thread::Column::TargetType.eq(target_type))
             .filter(comment_thread::Column::TargetId.eq(target_id))
+            .lock_exclusive()
             .one(txn)
             .await?
         {
@@ -878,13 +907,19 @@ impl CommentsService {
         txn: &DatabaseTransaction,
         thread_id: Uuid,
     ) -> CommentsResult<i64> {
-        Ok(comment::Entity::find()
+        match comment::Entity::find()
             .filter(comment::Column::ThreadId.eq(thread_id))
             .order_by_desc(comment::Column::Position)
             .one(txn)
             .await?
-            .map(|item| item.position + 1)
-            .unwrap_or(1))
+        {
+            Some(item) => item.position.checked_add(1).ok_or_else(|| {
+                CommentsError::Validation(format!(
+                    "Comment position is exhausted for thread {thread_id}"
+                ))
+            }),
+            None => Ok(1),
+        }
     }
 
     async fn find_comment(
@@ -967,15 +1002,16 @@ impl CommentsService {
         &self,
         txn: &DatabaseTransaction,
         thread: &comment_thread::Model,
-        delta: i32,
-        last_commented_at: Option<sea_orm::prelude::DateTimeWithTimeZone>,
+        _delta: i32,
+        _last_commented_at: Option<sea_orm::prelude::DateTimeWithTimeZone>,
     ) -> CommentsResult<()> {
+        // The thread ActiveModel hook recomputes both denormalized counters from
+        // the transactionally visible live comments. Keep the supplied delta only
+        // for API compatibility with existing callers; never perform unchecked
+        // arithmetic on persisted counter state here.
         let mut active: comment_thread::ActiveModel = thread.clone().into();
-        active.comment_count = Set((thread.comment_count + delta).max(0));
+        active.comment_count = Set(thread.comment_count);
         active.updated_at = Set(Utc::now().into());
-        if let Some(last_commented_at) = last_commented_at {
-            active.last_commented_at = Set(Some(last_commented_at));
-        }
         active.update(txn).await?;
         Ok(())
     }

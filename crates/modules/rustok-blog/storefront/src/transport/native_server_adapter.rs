@@ -92,7 +92,7 @@ async fn create_blog_comment_native(
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .ok();
-        require_blog_channel_enabled(&runtime_ctx, request_context.as_ref()).await?;
+        require_blog_channel_enabled(&runtime_ctx, tenant.id, request_context.as_ref()).await?;
 
         let command_id = uuid::Uuid::parse_str(request.command_id.trim())
             .map_err(|_| ServerFnError::new("Invalid command_id"))?;
@@ -225,7 +225,7 @@ async fn storefront_blog_native(
             return Err(public_internal_error());
         }
 
-        require_blog_channel_enabled(&runtime_ctx, request_context.as_ref()).await?;
+        require_blog_channel_enabled(&runtime_ctx, tenant_id, request_context.as_ref()).await?;
 
         let requested_locale = locale
             .as_deref()
@@ -341,6 +341,7 @@ fn comment_service(
 #[cfg(feature = "ssr")]
 async fn require_blog_channel_enabled(
     runtime_ctx: &rustok_api::HostRuntimeContext,
+    tenant_id: uuid::Uuid,
     request_context: Option<&rustok_api::RequestContext>,
 ) -> Result<(), ServerFnError> {
     use rustok_channel::ChannelService;
@@ -352,7 +353,7 @@ async fn require_blog_channel_enabled(
         return Ok(());
     };
     let enabled = ChannelService::new(runtime_ctx.db_clone())
-        .is_module_enabled(channel_id, MODULE_SLUG)
+        .is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)
         .await
         .map_err(|_| ServerFnError::new("Blog channel state is temporarily unavailable"))?;
     if enabled {

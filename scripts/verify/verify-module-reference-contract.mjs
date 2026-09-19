@@ -134,6 +134,7 @@ requireAll("crates/modules/rustok-blog/src/services/category_name_projection.rs"
 requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
   "// Serialize before reading hierarchy so a concurrent structural move cannot be",
+  "self.publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)",
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/category_command.rs", [
@@ -348,6 +349,91 @@ forbid("crates/modules/rustok-blog/src/services/category_delete.rs", [
 requireAll("crates/modules/rustok-taxonomy/src/category_hierarchy.rs", [
   "pub async fn lock_category_hierarchy_writer_in_tx(",
   "pg_advisory_xact_lock(hashtextextended($1, 0))",
+]);
+
+requireAll("crates/modules/rustok-taxonomy/src/owner_category_read.rs", [
+  "Taxonomy Category hierarchy contains a missing or foreign-scope parent",
+  "Taxonomy Category hierarchy contains an invalid position or self-parent",
+]);
+requireAll("crates/modules/rustok-taxonomy/src/module_term_mutation.rs", [
+  ".filter(taxonomy_term::Column::ScopeValue.eq(module_scope))",
+  ".lock_exclusive()",
+]);
+requireAll("crates/modules/rustok-taxonomy/src/services.rs", [
+  "let Some(term) = taxonomy_term::Entity::find_by_id(route.term_id)",
+  ".lock_exclusive()",
+  "let Some(term) = taxonomy_term::Entity::find()",
+]);
+requireAll("crates/modules/rustok-channel/src/services/channel_service.rs", [
+  "pub async fn is_module_enabled_for_tenant(",
+]);
+requireAll("crates/modules/rustok-blog/src/graphql/query.rs", [
+  "is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)",
+]);
+requireAll("crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs", [
+  "is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)",
+  "request_context",
+  ".is_some_and(|context| context.tenant_id != tenant_id)",
+]);
+requireAll("crates/modules/rustok-comments/src/services.rs", [
+  "Comment position is exhausted for thread",
+  "active.comment_count = Set(thread.comment_count)",
+  ".lock_exclusive()",
+]);
+requireAll("crates/modules/rustok-comments/src/entities/comment_thread.rs", [
+  "self.last_commented_at = Set(live_comments.first().map(|comment| comment.created_at))",
+]);
+requireAll("crates/modules/rustok-blog/src/dto/post.rs", [
+  "saturating_add(u64::from(per_page).saturating_sub(1))",
+  "u32::try_from(total_pages).unwrap_or(u32::MAX)",
+]);
+requireAll("crates/modules/rustok-blog/src/error/public.rs", [
+  "let internal = matches!(rich.kind, ErrorKind::Database | ErrorKind::Internal)",
+  "ErrorKind::Internal.error_code().to_string()",
+  "The Blog operation could not be completed",
+]);
+
+requireAll("crates/modules/rustok-taxonomy/src/owner_category_route_sync.rs", [
+  "crate::lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?",
+]);
+forbid("crates/modules/rustok-taxonomy/src/owner_category_route_sync.rs", [
+  "serialize_category_hierarchy_writer",
+]);
+
+requireAll("crates/modules/rustok-taxonomy/src/owner_category_sync.rs", [
+  "lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?",
+]);
+forbid("crates/modules/rustok-taxonomy/src/owner_category_sync.rs", [
+  "serialize_category_hierarchy_writer",
+]);
+
+requireAll("crates/modules/rustok-taxonomy/src/category_delete.rs", [
+  "crate::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
+  ".lock_exclusive()",
+]);
+
+requireAll("crates/modules/rustok-blog/src/graphql/mutation.rs", [
+  "let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;",
+  "ensure_public_blog_channel_enabled(",
+  '"Permission denied: comments:create required"',
+]);
+
+requireAll("crates/modules/rustok-taxonomy/src/owner_read.rs", [
+  "pub async fn load_term_names_strict_for_module(",
+  "Taxonomy owner attachment references a term outside the allowed module/global scope",
+  "TaxonomyScopeType::Global",
+  "TaxonomyScopeType::Module",
+]);
+
+requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
+  "load_term_names_strict_for_module(",
+  "BLOG_SCOPE_VALUE",
+]);
+
+requireAll("crates/modules/rustok-blog/src/services/category.rs", [
+  "TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(",
+  "category_taxonomy_sync::BLOG_TAXONOMY_SCOPE",
+  "Blog category {category_id} is missing canonical Taxonomy ownership or hierarchy",
 ]);
 
 if (failures.length > 0) {

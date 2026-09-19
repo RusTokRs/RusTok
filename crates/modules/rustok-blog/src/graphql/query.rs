@@ -429,8 +429,10 @@ where
 
 async fn require_public_blog_channel_enabled(ctx: &Context<'_>) -> Result<()> {
     let db = ctx.data::<DatabaseConnection>()?;
+    let tenant = ctx.data::<TenantContext>()?;
     ensure_public_blog_channel_enabled(
         db,
+        tenant.id,
         ctx.data_opt::<RequestContext>(),
         ctx.data_opt::<AuthContext>().is_some(),
     )
@@ -439,6 +441,7 @@ async fn require_public_blog_channel_enabled(ctx: &Context<'_>) -> Result<()> {
 
 pub(super) async fn ensure_public_blog_channel_enabled(
     db: &DatabaseConnection,
+    tenant_id: Uuid,
     request_context: Option<&RequestContext>,
     is_authenticated: bool,
 ) -> Result<()> {
@@ -454,7 +457,7 @@ pub(super) async fn ensure_public_blog_channel_enabled(
     };
 
     let enabled = ChannelService::new(db.clone())
-        .is_module_enabled(channel_id, MODULE_SLUG)
+        .is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)
         .await
         .map_err(|_| {
             <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::internal_error(
@@ -529,9 +532,9 @@ mod tests {
         .expect("tenant should be inserted");
     }
 
-    fn request_context(channel_id: Uuid, channel_slug: &str) -> RequestContext {
+    fn request_context(tenant_id: Uuid, channel_id: Uuid, channel_slug: &str) -> RequestContext {
         RequestContext {
-            tenant_id: Uuid::new_v4(),
+            tenant_id,
             user_id: None,
             channel_id: Some(channel_id),
             channel_slug: Some(channel_slug.to_string()),
@@ -570,7 +573,7 @@ mod tests {
 
         let result = ensure_public_blog_channel_enabled(
             &db,
-            Some(&request_context(channel.id, "blog-web")),
+            Some(&request_context(tenant_id, channel.id, "blog-web")),
             false,
         )
         .await;
@@ -610,7 +613,7 @@ mod tests {
 
         let result = ensure_public_blog_channel_enabled(
             &db,
-            Some(&request_context(channel.id, "blog-web")),
+            Some(&request_context(tenant_id, channel.id, "blog-web")),
             true,
         )
         .await;
@@ -639,7 +642,7 @@ mod tests {
 
         let result = ensure_public_blog_channel_enabled(
             &db,
-            Some(&request_context(channel.id, "blog-web")),
+            Some(&request_context(tenant_id, channel.id, "blog-web")),
             false,
         )
         .await;
@@ -659,7 +662,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn disabled_binding_error_reports_resolution_source() {
+    async fn disabled_binding_error_is_redacted() {
         let db = setup_channel_db().await;
         let tenant_id = Uuid::new_v4();
         seed_tenant(&db, tenant_id, "tenant-blog").await;

@@ -184,6 +184,51 @@ impl TaxonomyOwnerReader {
         Ok(names)
     }
 
+    pub async fn load_term_names_strict_for_module(
+        &self,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        module_slug: &str,
+        term_ids: &[Uuid],
+    ) -> TaxonomyResult<HashMap<Uuid, TaxonomyOwnerTermNames>> {
+        if term_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let mut expected_ids = term_ids.to_vec();
+        expected_ids.sort_unstable();
+        expected_ids.dedup();
+
+        let module_scope = normalize_scope_value(
+            TaxonomyScopeType::Module,
+            Some(module_slug),
+        )?;
+        let terms = taxonomy_term::Entity::find()
+            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term::Column::Kind.eq(kind))
+            .filter(taxonomy_term::Column::Id.is_in(expected_ids.clone()))
+            .all(&self.db)
+            .await?;
+
+        if terms.len() != expected_ids.len() {
+            return Err(TaxonomyError::invariant(
+                "Taxonomy owner attachment references a missing or wrong-kind term",
+            ));
+        }
+
+        if terms.iter().any(|term| {
+            !matches!(term.scope_type, TaxonomyScopeType::Global)
+                && !(term.scope_type == TaxonomyScopeType::Module
+                    && term.scope_value == module_scope)
+        }) {
+            return Err(TaxonomyError::invariant(
+                "Taxonomy owner attachment references a term outside the allowed module/global scope",
+            ));
+        }
+
+        self.load_term_names(tenant_id, kind, &expected_ids).await
+    }
+
     pub async fn load_term_names(
         &self,
         tenant_id: Uuid,
