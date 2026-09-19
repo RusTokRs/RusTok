@@ -374,7 +374,6 @@ impl TaxonomyService {
         }
 
         let resource_revision = self.update_term_revision_in_tx(&txn, &term, now).await?;
-        reconcile_route_keys_for_locale_in_tx(&txn, tenant_id, term_id, &locale).await?;
         record_translation_change_in_tx(
             &txn,
             TranslationChangeEvidence {
@@ -1205,13 +1204,6 @@ impl TaxonomyService {
         let resource_revision = self
             .update_term_revision_in_tx(txn, &term, Utc::now())
             .await?;
-        reconcile_route_keys_for_locale_in_tx(
-            txn,
-            tenant_id,
-            term_id,
-            input.target_locale.as_str(),
-        )
-        .await?;
         Ok(TaxonomyTranslationApplyResult {
             resource_revision,
             target_revision,
