@@ -107,7 +107,7 @@ impl BlogSearchProjector {
                 to_regclass('blog_posts') IS NOT NULL
                 AND to_regclass('blog_post_translations') IS NOT NULL
                 AND to_regclass('blog_post_channel_visibility') IS NOT NULL
-                 AND to_regclass('blog_post_tags') IS NOT NULL
+                AND to_regclass('blog_post_tags') IS NOT NULL
                 AND to_regclass('taxonomy_terms') IS NOT NULL
                 AND to_regclass('taxonomy_term_translations') IS NOT NULL
                 AS available
