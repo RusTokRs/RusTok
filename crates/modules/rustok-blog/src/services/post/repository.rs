@@ -254,6 +254,8 @@ pub(crate) async fn load_post_subject_snapshot(
         return Ok(None);
     };
 
+    PostService::validate_persisted_version(&post)?;
+
     let channel_slugs = blog_post_channel_visibility::Entity::find()
         .filter(blog_post_channel_visibility::Column::TenantId.eq(tenant_id))
         .filter(blog_post_channel_visibility::Column::PostId.eq(post_id))
