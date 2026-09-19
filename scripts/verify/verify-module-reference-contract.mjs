@@ -86,6 +86,7 @@ forbid("crates/modules/rustok-blog/src/services/rbac.rs", [
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/category_owner.rs", [
+  "load_scoped_categories_strict",
   'BlogError::invariant(\n                "Blog Category delete requires host-composed Taxonomy capability cleanup"',
   '"Blog Category Taxonomy projection coverage is incomplete"',
   '"Blog Category Taxonomy projection contains duplicate identities"',
@@ -96,6 +97,7 @@ requireAll("crates/modules/rustok-blog/src/services/category.rs", [
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/category_name_projection.rs", [
+  "load_scoped_categories_strict",
   "BlogError::invariant(",
   ".map_err(BlogError::from)?",
   "Category without localized copy",
