@@ -285,18 +285,6 @@ fn public_channel_slug(ctx: &Context<'_>) -> Option<String> {
         .filter(|slug| !slug.is_empty())
 }
 
-fn request_channel_label(request_context: &RequestContext) -> &str {
-    request_context.channel_slug.as_deref().unwrap_or("current")
-}
-
-fn request_channel_resolution_source(request_context: &RequestContext) -> &str {
-    request_context
-        .channel_resolution_source
-        .as_ref()
-        .map(|source| source.as_str())
-        .unwrap_or("unknown")
-}
-
 fn is_post_visible_for_request(
     channel_slugs: &[String],
     public_channel_slug: Option<&str>,
@@ -478,11 +466,9 @@ pub(super) async fn ensure_public_blog_channel_enabled(
         return Ok(());
     }
 
-    let channel_label = request_channel_label(request_context);
-    let resolution_source = request_channel_resolution_source(request_context);
-    Err(async_graphql::Error::new(format!(
-        "Module '{MODULE_SLUG}' is not enabled for channel '{channel_label}' (resolved via {resolution_source})"
-    ))
+    Err(async_graphql::Error::new(
+        "Blog is not available for the current channel",
+    )
     .extend_with(|_, ext| ext.set("code", "MODULE_NOT_ENABLED")))
 }
 
