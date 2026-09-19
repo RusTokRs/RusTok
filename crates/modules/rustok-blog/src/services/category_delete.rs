@@ -8,7 +8,7 @@ use rustok_taxonomy::entities::taxonomy_category_hierarchy;
 use rustok_taxonomy::{TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, Statement,
+    DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Statement,
 };
 use uuid::Uuid;
 
@@ -59,6 +59,7 @@ impl BlogCategoryDeleteCleanup {
 
         let category = blog_category::Entity::find_by_id(self.blog_category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
+            .lock_exclusive()
             .one(txn)
             .await?
             .ok_or_else(|| BlogError::category_not_found(self.blog_category_id))?;
