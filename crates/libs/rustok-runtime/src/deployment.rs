@@ -390,7 +390,12 @@ fn write_journal(
 }
 
 fn write_new_json<T: Serialize>(path: &Path, value: &T) -> Result<(), RoleMaterializationError> {
-    let bytes = serde_json::to_vec_pretty(value).expect("deployment receipt must serialize");
+    let bytes = serde_json::to_vec_pretty(value).map_err(|source| {
+        RoleMaterializationError::Receipt {
+            path: path.display().to_string(),
+            source,
+        }
+    })?;
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)

@@ -14,8 +14,8 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `4 / 218` components audited (**1%**)
-- **Total Workspace Codebase:** `1,855,008` LOC across `218` modules/apps
+- **Progress:** `5 / 218` components audited (**2%**)
+- **Total Workspace Codebase:** `1,855,018` LOC across `218` modules/apps
 
 ---
 
@@ -47,7 +47,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-core](../../crates/libs/rustok-core) | `libs` | 64 | 16,913 | 2026-09-19 05:57 | Eliminated Tier 0 unwraps/panics with documented invariants, converted DatabaseHealthCheck to typed std::error::Error trait, fixed bulkhead doc print |
 | [x] | [rustok-events](../../crates/libs/rustok-events) | `libs` | 27 | 10,971 | 2026-09-19 06:10 | Audited schema.rs: documented structural JSON serialization invariants for root events, envelopes, contracts, and digests |
 | [x] | [rustok-fba](../../crates/libs/rustok-fba) | `libs` | 1 | 82 | 2026-09-18 18:10 | Verified clean, 1 file, 82 LOC |
-| [ ] | [rustok-runtime](../../crates/libs/rustok-runtime) | `libs` | 4 | 2,414 | None |  |
+| [x] | [rustok-runtime](../../crates/libs/rustok-runtime) | `libs` | 4 | 2,424 | 2026-09-19 06:20 | Audited deployment.rs and layout.rs: replaced expect calls with typed error propagation through Receipt and InvalidMarker variants |
 | [ ] | [rustok-telemetry](../../crates/libs/rustok-telemetry) | `libs` | 14 | 3,764 | None |  |
 | [ ] | [rustok-web](../../crates/libs/rustok-web) | `libs` | 2 | 730 | None |  |
 | [ ] | [alloy](../../crates/modules/alloy) | `modules` | 70 | 24,622 | None |  |

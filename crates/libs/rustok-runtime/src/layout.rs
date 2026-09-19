@@ -592,7 +592,12 @@ pub fn prepare_instance_layout(
         layout_revision: INSTANCE_LAYOUT_REVISION,
         instance_id: layout.placement().instance_id,
     };
-    let bytes = serde_json::to_vec_pretty(&marker).expect("instance marker must serialize");
+    let bytes = serde_json::to_vec_pretty(&marker).map_err(|source| {
+        InstanceLayoutError::InvalidMarker {
+            path: pending.display().to_string(),
+            source,
+        }
+    })?;
     match OpenOptions::new()
         .write(true)
         .create_new(true)

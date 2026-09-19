@@ -155,7 +155,13 @@ def check_regex_pattern(file_path: Path, rule: dict, rel_path: str) -> list[Find
     for idx, line in enumerate(lines, start=1):
         if rx.search(line):
             # If the rule is runtime-only, skip lines inside test blocks
-            if rule["id"] in ("REL-UNWRAP-01", "ERR-ANYHOW-01", "LOG-RAW-PRINT-01", "EVENT-OUTBOX-01"):
+            if rule["id"] in (
+                "REL-UNWRAP-01",
+                "ERR-ANYHOW-01",
+                "LOG-RAW-PRINT-01",
+                "EVENT-OUTBOX-01",
+                "ASYNC-BLOCKING-IO-01",
+            ):
                 if idx in test_lines:
                     continue
 
