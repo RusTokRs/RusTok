@@ -174,6 +174,7 @@ impl FulfillmentOrchestrationService {
                 })
             })
             .collect::<FulfillmentOrchestrationResult<Vec<_>>>()?;
+        // INVARIANT: input.items is validated as non-empty at lines 99-103 and mapped 1-to-1 into requested_group.
         let canonical_group = requested_group
             .first()
             .cloned()

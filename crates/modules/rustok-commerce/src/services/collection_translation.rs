@@ -366,6 +366,8 @@ impl CollectionTranslationService {
             .or_else(|| (!unchanged).then(generate_id));
 
         if !unchanged {
+            // INVARIANT: When `!unchanged` is true, `(!unchanged).then(generate_id)` evaluates
+            // to `Some(id)` if `operation_lease` was None, ensuring `operation_id` is always Some.
             let correlation_id = operation_id.expect("changed owner apply must have operation id");
             let root_event_id = self
                 .event_bus
