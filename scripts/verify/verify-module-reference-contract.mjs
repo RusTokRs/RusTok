@@ -89,13 +89,20 @@ forbid("crates/modules/rustok-blog/src/services/post/commands.rs", [
   'expect("localized-only update requires a canonical locale")',
 ]);
 
-requireAll("crates/modules/rustok-blog/src/controllers/posts.rs", [
+requireAll("crates/modules/rustok-blog/src/controllers/mod.rs", [
   "pub(super) async fn ensure_blog_module_enabled(",
   'is_tenant_module_enabled(&runtime.db_clone(), tenant_id, "blog")',
   '"MODULE_NOT_ENABLED"',
+  '"The Blog operation could not be completed"',
+]);
+requireAll("crates/modules/rustok-blog/src/controllers/posts.rs", [
   "pub(super) fn ensure_blog_permission(",
   "if auth.tenant_id != tenant.id",
   '"blog_tenant_mismatch"',
+  "ensure_blog_module_enabled(&runtime, tenant.id).await?;",
+]);
+forbid("crates/modules/rustok-blog/src/controllers/posts.rs", [
+  "pub(super) async fn ensure_blog_module_enabled(",
 ]);
 requireAll("crates/modules/rustok-blog/src/controllers/categories.rs", [
   "ensure_blog_module_enabled(&runtime, tenant.id).await?;",
