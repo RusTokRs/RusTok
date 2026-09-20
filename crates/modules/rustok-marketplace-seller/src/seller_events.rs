@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 
 use rustok_core::generate_id;
@@ -243,14 +241,16 @@ pub(crate) async fn append_receipted_seller_event<C: ConnectionTrait>(
 
     insert_command_event(
         connection,
-        tenant_id,
-        response.id,
-        actor_id,
-        response.resolved_locale,
-        event_kind,
-        note,
-        metadata,
-        response.updated_at,
+        CommandEventParams {
+            tenant_id,
+            seller_id: response.id,
+            actor_id,
+            locale: response.resolved_locale,
+            event_kind,
+            note,
+            metadata,
+            created_at: response.updated_at,
+        },
     )
     .await
 }
@@ -279,26 +279,26 @@ pub(crate) async fn append_receipted_member_event<C: ConnectionTrait>(
     };
     insert_command_event(
         connection,
-        tenant_id,
-        response.seller_id,
-        actor_id,
-        locale.to_string(),
-        event_kind,
-        None,
-        serde_json::json!({
-            "member_id": response.id,
-            "user_id": response.user_id,
-            "role": response.role.as_str(),
-            "status": response.status.as_str(),
-        }),
-        response.updated_at,
+        CommandEventParams {
+            tenant_id,
+            seller_id: response.seller_id,
+            actor_id,
+            locale: locale.to_string(),
+            event_kind,
+            note: None,
+            metadata: serde_json::json!({
+                "member_id": response.id,
+                "user_id": response.user_id,
+                "role": response.role.as_str(),
+                "status": response.status.as_str(),
+            }),
+            created_at: response.updated_at,
+        },
     )
     .await
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn insert_command_event<C: ConnectionTrait>(
-    connection: &C,
+struct CommandEventParams {
     tenant_id: Uuid,
     seller_id: Uuid,
     actor_id: Uuid,
@@ -307,20 +307,25 @@ async fn insert_command_event<C: ConnectionTrait>(
     note: Option<String>,
     metadata: Value,
     created_at: chrono::DateTime<chrono::FixedOffset>,
+}
+
+async fn insert_command_event<C: ConnectionTrait>(
+    connection: &C,
+    params: CommandEventParams,
 ) -> MarketplaceSellerResult<()> {
     seller_event::ActiveModel {
         id: Set(generate_id()),
-        tenant_id: Set(tenant_id),
-        seller_id: Set(seller_id),
-        actor_id: Set(Some(actor_id)),
-        event_kind: Set(event_kind.as_str().to_string()),
-        locale: Set(Some(locale)),
+        tenant_id: Set(params.tenant_id),
+        seller_id: Set(params.seller_id),
+        actor_id: Set(Some(params.actor_id)),
+        event_kind: Set(params.event_kind.as_str().to_string()),
+        locale: Set(Some(params.locale)),
         provenance: Set(MarketplaceSellerEventProvenance::Command
             .as_str()
             .to_string()),
-        note: Set(note),
-        metadata: Set(metadata),
-        created_at: Set(created_at),
+        note: Set(params.note),
+        metadata: Set(params.metadata),
+        created_at: Set(params.created_at),
     }
     .insert(connection)
     .await?;

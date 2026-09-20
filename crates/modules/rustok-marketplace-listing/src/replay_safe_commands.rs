@@ -17,7 +17,9 @@ use crate::dto::{
 };
 use crate::entities::{listing, listing_terms};
 use crate::error::{MarketplaceListingError, MarketplaceListingResult};
-use crate::listing_events::{append_listing_event, normalize_listing_event_locale};
+use crate::listing_events::{
+    append_listing_event, normalize_listing_event_locale, AppendListingEventParams,
+};
 use crate::service::{
     ensure_listing_identity_available, find_listing, listing_reason_codes_without_lifecycle,
     load_response_for_model, map_listing, map_listing_insert_error, map_product_port_error,
@@ -117,19 +119,21 @@ impl MarketplaceListingService {
             ListingCommandAdmission::New(receipt) => {
                 let result = create_in_transaction(
                     &receipt,
-                    tenant_id,
-                    actor_id,
-                    locale.as_str(),
-                    input.seller_id,
-                    product.id,
-                    input.master_variant_id,
-                    seller_sku,
-                    market_slug,
-                    channel_slug,
-                    pricing_reference,
-                    inventory_reference,
-                    fulfillment_profile_slug,
-                    metadata,
+                    CreateListingTransactionParams {
+                        tenant_id,
+                        actor_id,
+                        locale: locale.as_str(),
+                        seller_id: input.seller_id,
+                        master_product_id: product.id,
+                        master_variant_id: input.master_variant_id,
+                        seller_sku,
+                        market_slug,
+                        channel_slug,
+                        pricing_reference,
+                        inventory_reference,
+                        fulfillment_profile_slug,
+                        metadata,
+                    },
                 )
                 .await;
                 finish(receipt, result).await
@@ -254,12 +258,10 @@ impl MarketplaceListingService {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn create_in_transaction(
-    receipt: &NewListingCommandReceipt,
+struct CreateListingTransactionParams<'a> {
     tenant_id: Uuid,
     actor_id: Uuid,
-    locale: &str,
+    locale: &'a str,
     seller_id: Uuid,
     master_product_id: Uuid,
     master_variant_id: Uuid,
@@ -270,32 +272,37 @@ async fn create_in_transaction(
     inventory_reference: Option<String>,
     fulfillment_profile_slug: Option<String>,
     metadata: serde_json::Value,
+}
+
+async fn create_in_transaction(
+    receipt: &NewListingCommandReceipt,
+    params: CreateListingTransactionParams<'_>,
 ) -> MarketplaceListingResult<MarketplaceListingResponse> {
     ensure_listing_identity_available(
         &receipt.transaction,
-        tenant_id,
-        seller_id,
-        master_variant_id,
-        market_slug.as_str(),
-        channel_slug.as_str(),
-        seller_sku.as_str(),
+        params.tenant_id,
+        params.seller_id,
+        params.master_variant_id,
+        params.market_slug.as_str(),
+        params.channel_slug.as_str(),
+        params.seller_sku.as_str(),
     )
     .await?;
     let listing_id = generate_id();
     let now = Utc::now();
     let listing_model = listing::ActiveModel {
         id: Set(listing_id),
-        tenant_id: Set(tenant_id),
-        seller_id: Set(seller_id),
-        master_product_id: Set(master_product_id),
-        master_variant_id: Set(master_variant_id),
-        seller_sku: Set(seller_sku),
-        market_slug: Set(market_slug),
-        channel_slug: Set(channel_slug),
+        tenant_id: Set(params.tenant_id),
+        seller_id: Set(params.seller_id),
+        master_product_id: Set(params.master_product_id),
+        master_variant_id: Set(params.master_variant_id),
+        seller_sku: Set(params.seller_sku),
+        market_slug: Set(params.market_slug),
+        channel_slug: Set(params.channel_slug),
         status: Set(MarketplaceListingStatus::Draft.as_str().to_string()),
         approval_status: Set(MarketplaceListingApprovalStatus::Draft.as_str().to_string()),
         current_terms_version: Set(1),
-        metadata: Set(metadata),
+        metadata: Set(params.metadata),
         published_at: Set(None),
         approved_at: Set(None),
         created_at: Set(now.into()),
@@ -306,12 +313,12 @@ async fn create_in_transaction(
     .map_err(map_listing_insert_error)?;
     let terms_model = listing_terms::ActiveModel {
         id: Set(generate_id()),
-        tenant_id: Set(tenant_id),
+        tenant_id: Set(params.tenant_id),
         listing_id: Set(listing_id),
         version: Set(1),
-        pricing_reference: Set(pricing_reference),
-        inventory_reference: Set(inventory_reference),
-        fulfillment_profile_slug: Set(fulfillment_profile_slug),
+        pricing_reference: Set(params.pricing_reference),
+        inventory_reference: Set(params.inventory_reference),
+        fulfillment_profile_slug: Set(params.fulfillment_profile_slug),
         metadata: Set(serde_json::json!({})),
         created_at: Set(now.into()),
     }
@@ -319,18 +326,20 @@ async fn create_in_transaction(
     .await?;
     append_listing_event(
         &receipt.transaction,
-        tenant_id,
-        listing_id,
-        actor_id,
-        MarketplaceListingEventKind::Created,
-        locale,
-        None,
-        serde_json::json!({
-            "seller_id": seller_id,
-            "master_product_id": master_product_id,
-            "master_variant_id": master_variant_id,
-            "terms_version": 1,
-        }),
+        AppendListingEventParams {
+            tenant_id: params.tenant_id,
+            listing_id,
+            actor_id: params.actor_id,
+            event_kind: MarketplaceListingEventKind::Created,
+            locale: params.locale,
+            note: None,
+            metadata: serde_json::json!({
+                "seller_id": params.seller_id,
+                "master_product_id": params.master_product_id,
+                "master_variant_id": params.master_variant_id,
+                "terms_version": 1,
+            }),
+        },
     )
     .await?;
     map_listing(listing_model, terms_model)
@@ -375,13 +384,15 @@ async fn activate_in_transaction(
     let model = active.update(&receipt.transaction).await?;
     append_listing_event(
         &receipt.transaction,
-        tenant_id,
-        listing_id,
-        actor_id,
-        event_kind,
-        locale,
-        None,
-        serde_json::json!({}),
+        AppendListingEventParams {
+            tenant_id,
+            listing_id,
+            actor_id,
+            event_kind,
+            locale,
+            note: None,
+            metadata: serde_json::json!({}),
+        },
     )
     .await?;
     load_response_for_model(&receipt.transaction, model).await

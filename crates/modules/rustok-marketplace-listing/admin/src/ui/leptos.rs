@@ -191,11 +191,13 @@ pub fn MarketplaceListingAdmin() -> impl IntoView {
                     {render_create_form(
                         russian,
                         busy,
-                        create_seller_id,
-                        create_variant_id,
-                        create_sku,
-                        create_market,
-                        create_channel,
+                        CreateListingFormSignals {
+                            seller_id: create_seller_id,
+                            variant_id: create_variant_id,
+                            sku: create_sku,
+                            market: create_market,
+                            channel: create_channel,
+                        },
                         create_command,
                     )}
                 </aside>
@@ -215,11 +217,13 @@ pub fn MarketplaceListingAdmin() -> impl IntoView {
                                 detail,
                                 shell.legacy_attribution_label.clone(),
                                 busy,
-                                pricing_reference,
-                                inventory_reference,
-                                fulfillment_profile,
-                                moderation_note,
-                                suspension_reason,
+                                DetailFormSignals {
+                                    pricing_reference,
+                                    inventory_reference,
+                                    fulfillment_profile,
+                                    moderation_note,
+                                    suspension_reason,
+                                },
                                 run_command.clone(),
                             ).into_any(),
                             Err(transport_error) => view! {
@@ -310,17 +314,35 @@ fn render_directory(
     .into_any()
 }
 
-#[allow(clippy::too_many_arguments)]
-fn render_create_form(
-    russian: bool,
-    busy: RwSignal<bool>,
+#[derive(Clone, Copy)]
+struct CreateListingFormSignals {
     seller_id: RwSignal<String>,
     variant_id: RwSignal<String>,
     sku: RwSignal<String>,
     market: RwSignal<String>,
     channel: RwSignal<String>,
+}
+
+#[derive(Clone, Copy)]
+struct DetailFormSignals {
+    pricing_reference: RwSignal<String>,
+    inventory_reference: RwSignal<String>,
+    fulfillment_profile: RwSignal<String>,
+    moderation_note: RwSignal<String>,
+    suspension_reason: RwSignal<String>,
+}
+
+fn render_create_form(
+    russian: bool,
+    busy: RwSignal<bool>,
+    form: CreateListingFormSignals,
     run_command: Arc<dyn Fn(MarketplaceListingAdminCommand) + Send + Sync>,
 ) -> impl IntoView {
+    let seller_id = form.seller_id;
+    let variant_id = form.variant_id;
+    let sku = form.sku;
+    let market = form.market;
+    let channel = form.channel;
     view! {
         <section class="marketplace-listing-admin__create">
             <h2>{label(russian, "Create listing", "Создать листинг")}</h2>
@@ -350,19 +372,19 @@ fn render_create_form(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn render_detail(
     russian: bool,
     detail: MarketplaceListingAdminDetail,
     legacy_label: String,
     busy: RwSignal<bool>,
-    pricing_reference: RwSignal<String>,
-    inventory_reference: RwSignal<String>,
-    fulfillment_profile: RwSignal<String>,
-    moderation_note: RwSignal<String>,
-    suspension_reason: RwSignal<String>,
+    form: DetailFormSignals,
     run_command: Arc<dyn Fn(MarketplaceListingAdminCommand) + Send + Sync>,
 ) -> impl IntoView {
+    let pricing_reference = form.pricing_reference;
+    let inventory_reference = form.inventory_reference;
+    let fulfillment_profile = form.fulfillment_profile;
+    let moderation_note = form.moderation_note;
+    let suspension_reason = form.suspension_reason;
     let listing = detail.listing;
     let listing_id = listing.id.clone();
     let update_id = listing_id.clone();

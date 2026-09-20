@@ -17,6 +17,7 @@ use crate::entities::listing;
 use crate::error::{MarketplaceListingError, MarketplaceListingResult};
 use crate::listing_events::{
     append_listing_event, list_listing_events, normalize_listing_event_locale,
+    AppendListingEventParams,
 };
 use crate::service::{find_listing, load_response_for_model};
 
@@ -82,13 +83,15 @@ impl MarketplaceListingService {
             ListingCommandAdmission::New(receipt) => {
                 let result = review_in_transaction(
                     &receipt,
-                    tenant_id,
-                    actor_id,
-                    locale.as_str(),
-                    input.listing_id,
-                    input.approved,
-                    note,
-                    event_kind,
+                    ReviewTransactionParams {
+                        tenant_id,
+                        actor_id,
+                        locale: locale.as_str(),
+                        listing_id: input.listing_id,
+                        approved: input.approved,
+                        note,
+                        event_kind,
+                    },
                 )
                 .await;
                 finish(receipt, result).await
@@ -149,48 +152,53 @@ impl MarketplaceListingService {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn review_in_transaction(
-    receipt: &NewListingCommandReceipt,
+struct ReviewTransactionParams<'a> {
     tenant_id: Uuid,
     actor_id: Uuid,
-    locale: &str,
+    locale: &'a str,
     listing_id: Uuid,
     approved: bool,
     note: Option<String>,
     event_kind: MarketplaceListingEventKind,
+}
+
+async fn review_in_transaction(
+    receipt: &NewListingCommandReceipt,
+    params: ReviewTransactionParams<'_>,
 ) -> MarketplaceListingResult<MarketplaceListingResponse> {
-    let current = find_listing(&receipt.transaction, tenant_id, listing_id).await?;
+    let current = find_listing(&receipt.transaction, params.tenant_id, params.listing_id).await?;
     if current.status != MarketplaceListingStatus::PendingReview.as_str() {
         return Err(MarketplaceListingError::InvalidTransition {
             from: format!("{}:{}", current.status, current.approval_status),
-            to: if approved { "approved" } else { "rejected" }.to_string(),
+            to: if params.approved { "approved" } else { "rejected" }.to_string(),
         });
     }
 
     let now = Utc::now();
     let mut active: listing::ActiveModel = current.into();
     active.status = Set(MarketplaceListingStatus::Draft.as_str().to_string());
-    active.approval_status = Set(if approved {
+    active.approval_status = Set(if params.approved {
         MarketplaceListingApprovalStatus::Approved
     } else {
         MarketplaceListingApprovalStatus::Rejected
     }
     .as_str()
     .to_string());
-    active.approved_at = Set(if approved { Some(now.into()) } else { None });
+    active.approved_at = Set(if params.approved { Some(now.into()) } else { None });
     active.updated_at = Set(now.into());
     let model = active.update(&receipt.transaction).await?;
 
     append_listing_event(
         &receipt.transaction,
-        tenant_id,
-        listing_id,
-        actor_id,
-        event_kind,
-        locale,
-        note,
-        serde_json::json!({}),
+        AppendListingEventParams {
+            tenant_id: params.tenant_id,
+            listing_id: params.listing_id,
+            actor_id: params.actor_id,
+            event_kind: params.event_kind,
+            locale: params.locale,
+            note: params.note,
+            metadata: serde_json::json!({}),
+        },
     )
     .await?;
     load_response_for_model(&receipt.transaction, model).await
@@ -219,13 +227,15 @@ async fn suspend_in_transaction(
 
     append_listing_event(
         &receipt.transaction,
-        tenant_id,
-        listing_id,
-        actor_id,
-        MarketplaceListingEventKind::Suspended,
-        locale,
-        Some(reason),
-        serde_json::json!({}),
+        AppendListingEventParams {
+            tenant_id,
+            listing_id,
+            actor_id,
+            event_kind: MarketplaceListingEventKind::Suspended,
+            locale,
+            note: Some(reason),
+            metadata: serde_json::json!({}),
+        },
     )
     .await?;
     load_response_for_model(&receipt.transaction, model).await

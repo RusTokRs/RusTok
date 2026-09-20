@@ -15,30 +15,33 @@ use crate::error::{MarketplaceListingError, MarketplaceListingResult};
 
 const MAX_EVENTS_PER_READ: u64 = 200;
 
-#[allow(clippy::too_many_arguments)]
+pub(crate) struct AppendListingEventParams<'a> {
+    pub tenant_id: Uuid,
+    pub listing_id: Uuid,
+    pub actor_id: Uuid,
+    pub event_kind: MarketplaceListingEventKind,
+    pub locale: &'a str,
+    pub note: Option<String>,
+    pub metadata: serde_json::Value,
+}
+
 pub(crate) async fn append_listing_event<C: ConnectionTrait>(
     connection: &C,
-    tenant_id: Uuid,
-    listing_id: Uuid,
-    actor_id: Uuid,
-    event_kind: MarketplaceListingEventKind,
-    locale: &str,
-    note: Option<String>,
-    metadata: serde_json::Value,
+    params: AppendListingEventParams<'_>,
 ) -> MarketplaceListingResult<MarketplaceListingEventResponse> {
-    let locale = normalize_listing_event_locale(locale)?;
+    let locale = normalize_listing_event_locale(params.locale)?;
     let model = listing_event::ActiveModel {
         id: Set(generate_id()),
-        tenant_id: Set(tenant_id),
-        listing_id: Set(listing_id),
-        actor_id: Set(Some(actor_id)),
-        event_kind: Set(event_kind.as_str().to_string()),
+        tenant_id: Set(params.tenant_id),
+        listing_id: Set(params.listing_id),
+        actor_id: Set(Some(params.actor_id)),
+        event_kind: Set(params.event_kind.as_str().to_string()),
         locale: Set(Some(locale)),
         provenance: Set(MarketplaceListingEventProvenance::Command
             .as_str()
             .to_string()),
-        note: Set(note),
-        metadata: Set(object_or_empty(metadata)?),
+        note: Set(params.note),
+        metadata: Set(object_or_empty(params.metadata)?),
         created_at: Set(Utc::now().into()),
     }
     .insert(connection)

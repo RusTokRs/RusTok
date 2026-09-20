@@ -65,17 +65,19 @@ impl MigrationTrait for Migration {
                 insert_legacy_snapshot(
                     connection,
                     backend,
-                    tenant_id,
-                    listing_id,
-                    "legacy_approval_snapshot",
-                    note,
-                    json!({
-                        "source_column": "approval_note",
-                        "observed_approval_status": approval_status,
-                        "original_actor_known": false,
-                        "original_locale_known": false
-                    }),
-                    imported_at,
+                    LegacySnapshotInput {
+                        tenant_id,
+                        listing_id,
+                        event_kind: "legacy_approval_snapshot",
+                        note,
+                        metadata: json!({
+                            "source_column": "approval_note",
+                            "observed_approval_status": approval_status,
+                            "original_actor_known": false,
+                            "original_locale_known": false
+                        }),
+                        imported_at,
+                    },
                 )
                 .await?;
             }
@@ -83,17 +85,19 @@ impl MigrationTrait for Migration {
                 insert_legacy_snapshot(
                     connection,
                     backend,
-                    tenant_id,
-                    listing_id,
-                    "legacy_suspension_snapshot",
-                    note,
-                    json!({
-                        "source_column": "suspension_reason",
-                        "observed_listing_status": status,
-                        "original_actor_known": false,
-                        "original_locale_known": false
-                    }),
-                    imported_at,
+                    LegacySnapshotInput {
+                        tenant_id,
+                        listing_id,
+                        event_kind: "legacy_suspension_snapshot",
+                        note,
+                        metadata: json!({
+                            "source_column": "suspension_reason",
+                            "observed_listing_status": status,
+                            "original_actor_known": false,
+                            "original_locale_known": false
+                        }),
+                        imported_at,
+                    },
                 )
                 .await?;
             }
@@ -117,25 +121,28 @@ impl MigrationTrait for Migration {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn insert_legacy_snapshot<C: ConnectionTrait>(
-    connection: &C,
-    backend: DbBackend,
+struct LegacySnapshotInput<'a> {
     tenant_id: Uuid,
     listing_id: Uuid,
-    event_kind: &str,
+    event_kind: &'a str,
     note: String,
     metadata: serde_json::Value,
     imported_at: chrono::DateTime<chrono::FixedOffset>,
+}
+
+async fn insert_legacy_snapshot<C: ConnectionTrait>(
+    connection: &C,
+    backend: DbBackend,
+    input: LegacySnapshotInput<'_>,
 ) -> Result<(), DbErr> {
     let values = [
         generate_id().into(),
-        tenant_id.into(),
-        listing_id.into(),
-        event_kind.into(),
-        note.into(),
-        metadata.to_string().into(),
-        imported_at.into(),
+        input.tenant_id.into(),
+        input.listing_id.into(),
+        input.event_kind.into(),
+        input.note.into(),
+        input.metadata.to_string().into(),
+        input.imported_at.into(),
     ];
     let statement = match backend {
         DbBackend::Postgres => Statement::from_sql_and_values(
