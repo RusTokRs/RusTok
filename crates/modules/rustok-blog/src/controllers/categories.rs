@@ -27,7 +27,17 @@ fn security_context(auth: &AuthContext) -> rustok_core::SecurityContext {
     )
 }
 
-fn ensure_category_permission(auth: &AuthContext, action: Action) -> HttpResult<()> {
+fn ensure_category_permission(
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    action: Action,
+) -> HttpResult<()> {
+    if auth.tenant_id != tenant.id {
+        return Err(HttpError::forbidden(
+            "blog_category_tenant_mismatch",
+            "Authenticated principal is not bound to the current tenant",
+        ));
+    }
     let permission = Permission::new(Resource::BlogCategories, action);
     if !has_effective_permission(&auth.permissions, &permission) {
         return Err(HttpError::forbidden(
@@ -64,7 +74,7 @@ pub async fn list_categories(
     request_context: RequestContext,
     Query(mut filter): Query<ListCategoriesFilter>,
 ) -> HttpResult<Json<CategoryListResponse>> {
-    ensure_category_permission(&auth, Action::List)?;
+    ensure_category_permission(&tenant, &auth, Action::List)?;
     filter.locale = filter.locale.or(Some(request_context.locale));
     filter.page = filter.page.max(1);
     filter.per_page = filter.per_page.clamp(1, 100);
@@ -107,7 +117,7 @@ pub async fn get_category(
     Path(id): Path<Uuid>,
     Query(params): Query<HashMap<String, String>>,
 ) -> HttpResult<Json<CategoryResponse>> {
-    ensure_category_permission(&auth, Action::Read)?;
+    ensure_category_permission(&tenant, &auth, Action::Read)?;
     let locale = params
         .get("locale")
         .map(String::as_str)
@@ -140,7 +150,7 @@ pub async fn create_category(
     auth: AuthContext,
     Json(input): Json<CreateCategoryInput>,
 ) -> HttpResult<(StatusCode, Json<Uuid>)> {
-    ensure_category_permission(&auth, Action::Create)?;
+    ensure_category_permission(&tenant, &auth, Action::Create)?;
 
     let category_id = category_service(&runtime)
         .create(tenant.id, security_context(&auth), input)
@@ -171,7 +181,7 @@ pub async fn update_category(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateCategoryInput>,
 ) -> HttpResult<Json<CategoryResponse>> {
-    ensure_category_permission(&auth, Action::Update)?;
+    ensure_category_permission(&tenant, &auth, Action::Update)?;
 
     let category = category_service(&runtime)
         .update(tenant.id, id, security_context(&auth), input)
@@ -202,7 +212,7 @@ pub async fn move_category(
     Path(id): Path<Uuid>,
     Json(input): Json<MoveCategoryInput>,
 ) -> HttpResult<Json<MoveCategoryResponse>> {
-    ensure_category_permission(&auth, Action::Manage)?;
+    ensure_category_permission(&tenant, &auth, Action::Manage)?;
 
     let response = category_command_service(&runtime)
         .move_category(tenant.id, id, security_context(&auth), input)
@@ -230,7 +240,7 @@ pub async fn delete_category(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
-    ensure_category_permission(&auth, Action::Delete)?;
+    ensure_category_permission(&tenant, &auth, Action::Delete)?;
 
     category_service(&runtime)
         .delete(tenant.id, id, security_context(&auth))

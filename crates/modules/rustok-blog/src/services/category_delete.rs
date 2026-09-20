@@ -4,8 +4,11 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
-use rustok_taxonomy::{TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult};
-use rustok_taxonomy::entities::taxonomy_category_hierarchy;
+use rustok_taxonomy::{
+    TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult, TaxonomyScopeType,
+    TaxonomyTermKind,
+};
+use rustok_taxonomy::entities::{taxonomy_category_hierarchy, taxonomy_term};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait,
     DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
@@ -74,6 +77,24 @@ impl BlogCategoryDeleteCleanup {
                     self.blog_category_id
                 ))
             })?;
+        if let Some(parent_id) = placement.parent_term_id {
+            taxonomy_term::Entity::find_by_id(parent_id)
+                .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+                .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category))
+                .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
+                .filter(
+                    taxonomy_term::Column::ScopeValue
+                        .eq(crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
+                )
+                .one(txn)
+                .await?
+                .ok_or_else(|| {
+                    BlogError::invariant(format!(
+                        "Blog category {} has a missing or foreign-scope parent {}",
+                        self.blog_category_id, parent_id
+                    ))
+                })?;
+        }
         let parent_id = placement.parent_term_id;
 
         detach_category_from_posts_in_tx(txn, tenant_id, self.blog_category_id).await?;

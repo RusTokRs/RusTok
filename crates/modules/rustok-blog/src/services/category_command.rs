@@ -251,14 +251,9 @@ async fn persist_sibling_order(
                 }
             }
             None => {
-                taxonomy_category_hierarchy::ActiveModel {
-                    tenant_id: Set(tenant_id),
-                    term_id: Set(category_id),
-                    parent_term_id: Set(parent_id),
-                    position: Set(position),
-                }
-                .insert(txn)
-                .await?;
+                return Err(BlogError::invariant(format!(
+                    "Blog category {category_id} has no canonical Taxonomy hierarchy placement during move",
+                )));
             }
         }
 

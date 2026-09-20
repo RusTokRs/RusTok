@@ -276,7 +276,7 @@ fn optional_post(result: crate::BlogResult<PostResponse>) -> AnyResult<Option<Po
     match result {
         Ok(post) => Ok(Some(post)),
         Err(BlogError::PostNotFound(_)) => Ok(None),
-        Err(error) => Err(anyhow::anyhow!("Blog SEO owner read failed: {error}")),
+        Err(error) => Err(anyhow::Error::new(error)),
     }
 }
 

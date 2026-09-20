@@ -81,6 +81,17 @@ forbid("crates/modules/rustok-blog/src/services/post/commands.rs", [
   'expect("localized-only update requires a canonical locale")',
 ]);
 
+requireAll("crates/modules/rustok-blog/src/controllers/posts.rs", [
+  "pub(super) fn ensure_blog_permission(",
+  "if auth.tenant_id != tenant.id",
+  '"blog_tenant_mismatch"',
+]);
+requireAll("crates/modules/rustok-blog/src/controllers/categories.rs", [
+  "fn ensure_category_permission(",
+  "if auth.tenant_id != tenant.id",
+  '"blog_category_tenant_mismatch"',
+]);
+
 requireAll("crates/modules/rustok-blog/src/services/post/mod.rs", [
   "other => Err(BlogError::invariant(format!(",
   '"Unknown persisted Blog post status: {other}"',
@@ -152,6 +163,7 @@ requireAll("crates/modules/rustok-blog/src/services/category.rs", [
 
 requireAll("crates/modules/rustok-blog/src/services/category_command.rs", [
   "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
+  '"Blog category {category_id} has no canonical Taxonomy hierarchy placement during move"',
   ".map_err(storage_category_tree_error)?",
   'BlogError::invariant("Moved category placement was not persisted")',
   '"Blog category Taxonomy hierarchy coverage is incomplete"',
@@ -168,6 +180,8 @@ requireAll("crates/modules/rustok-blog/src/services/category_delete.rs", [
   '"Blog category Taxonomy hierarchy placement disappeared before delete completed"',
   "hierarchy_rows.len() != blog_category_ids.len()",
   '"Blog category Taxonomy hierarchy coverage is incomplete during sibling canonicalization"',
+  "TaxonomyScopeType::Module",
+  "taxonomy_term::Column::ScopeValue.eq(crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE)",
   "detach_category_from_posts_in_tx",
   "blog_post::Column::CategoryId.eq(category_id)",
   "blog_post::Column::Version.eq(post.version)",
@@ -314,6 +328,17 @@ requireAll("crates/modules/rustok-blog/src/integrations/public_comments_snapshot
 ]);
 forbid("crates/modules/rustok-blog/src/integrations/public_comments_snapshot.rs", [
   "serde_json::to_vec(identity).unwrap_or_default()",
+]);
+
+requireAll("crates/modules/rustok-blog/src/controllers/comments.rs", [
+  "ensure_blog_permission(\n        &tenant,\n        &auth,",
+]);
+
+requireAll("crates/modules/rustok-blog/src/integrations/seo_targets.rs", [
+  "Err(error) => Err(anyhow::Error::new(error))",
+]);
+forbid("crates/modules/rustok-blog/src/integrations/seo_targets.rs", [
+  'anyhow::anyhow!("Blog SEO owner read failed: {error}")',
 ]);
 
 requireAll("crates/modules/rustok-blog/src/error/public.rs", [
