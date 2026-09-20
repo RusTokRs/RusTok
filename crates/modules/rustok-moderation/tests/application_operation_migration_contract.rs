@@ -142,9 +142,13 @@ async fn assert_upgrade_contract(
     assert_application_schema(db).await?;
     assert_eq!(application_operation_count(db).await?, 1);
 
+    let backend = db.get_database_backend();
+    let typed_decision_id = sql_uuid(backend, fixture.typed_decision_id);
+    let untyped_decision_id = sql_uuid(backend, fixture.untyped_decision_id);
+
     let row = db
         .query_one_raw(Statement::from_string(
-            db.get_database_backend(),
+            backend,
             format!(
                 r#"
 SELECT
@@ -166,9 +170,8 @@ SELECT
 FROM moderation_application_operations a
 JOIN moderation_decisions d ON d.id = a.decision_id
 JOIN moderation_cases c ON c.id = a.case_id
-WHERE a.decision_id = '{}'
+WHERE a.decision_id = {typed_decision_id}
 "#,
-                fixture.typed_decision_id
             ),
         ))
         .await?
@@ -196,10 +199,9 @@ WHERE a.decision_id = '{}'
 
     let identity = db
         .query_one_raw(Statement::from_string(
-            db.get_database_backend(),
+            backend,
             format!(
-                "SELECT tenant_id, case_id, subject_id, subject_revision FROM moderation_application_operations WHERE decision_id = '{}'",
-                fixture.typed_decision_id
+                "SELECT tenant_id, case_id, subject_id, subject_revision FROM moderation_application_operations WHERE decision_id = {typed_decision_id}",
             ),
         ))
         .await?
@@ -225,8 +227,7 @@ WHERE a.decision_id = '{}'
         scalar_i64(
             db,
             &format!(
-                "SELECT COUNT(*) AS value FROM moderation_application_operations WHERE decision_id = '{}'",
-                fixture.untyped_decision_id
+                "SELECT COUNT(*) AS value FROM moderation_application_operations WHERE decision_id = {untyped_decision_id}",
             ),
         )
         .await?,
@@ -272,6 +273,13 @@ async fn application_index_names(db: &DatabaseConnection) -> TestResult<BTreeSet
     Ok(names)
 }
 
+fn sql_uuid(backend: DatabaseBackend, id: Uuid) -> String {
+    match backend {
+        DatabaseBackend::Sqlite => format!("X'{}'", id.simple()),
+        _ => format!("'{id}'"),
+    }
+}
+
 async fn seed_legacy_decisions(db: &DatabaseConnection) -> TestResult<UpgradeFixture> {
     assert_eq!(migration_count(db).await?, 3);
     let fixture = UpgradeFixture {
@@ -303,18 +311,20 @@ async fn seed_legacy_decisions(db: &DatabaseConnection) -> TestResult<UpgradeFix
         'a',
     )
     .await?;
+    let backend = db.get_database_backend();
+    let typed_decision_id = sql_uuid(backend, fixture.typed_decision_id);
+    let tenant_id = sql_uuid(backend, fixture.tenant_id);
     db.execute_unprepared(
         &format!(
             r#"
 INSERT INTO moderation_decision_effects (
     decision_id, tenant_id, schema_version, effect_kind, effect_payload, created_at
 ) VALUES (
-    '{}', '{}', 1, 'warning',
+    {typed_decision_id}, {tenant_id}, 1, 'warning',
     '{{"schema_version":1,"action":{{"type":"no_domain_mutation"}}}}',
-    '{}'
+    '{LEGACY_CREATED_AT}'
 )
 "#,
-            fixture.typed_decision_id, fixture.tenant_id, LEGACY_CREATED_AT
         )
         .replace("\\\"", "\""),
     )
@@ -354,13 +364,17 @@ async fn insert_case(
     subject_id: Uuid,
     subject_revision: i64,
 ) -> TestResult<()> {
+    let backend = db.get_database_backend();
+    let case_id = sql_uuid(backend, case_id);
+    let tenant_id = sql_uuid(backend, tenant_id);
+    let subject_id = sql_uuid(backend, subject_id);
     db.execute_unprepared(&format!(
         r#"
 INSERT INTO moderation_cases (
     id, tenant_id, scope_kind, subject_module, subject_kind, subject_id, subject_revision,
     queue_key, policy_version, status, revision, metadata, opened_at, decided_at, created_at, updated_at
 ) VALUES (
-    '{case_id}', '{tenant_id}', 'platform', 'forum', 'forum_post', '{subject_id}', {subject_revision},
+    {case_id}, {tenant_id}, 'platform', 'forum', 'forum_post', {subject_id}, {subject_revision},
     'content', 1, 'decided', 3, '{{}}', '{LEGACY_CREATED_AT}', '{LEGACY_CREATED_AT}',
     '{LEGACY_CREATED_AT}', '{LEGACY_CREATED_AT}'
 )
@@ -379,6 +393,11 @@ async fn insert_decision(
     actor_id: Uuid,
     hash_char: char,
 ) -> TestResult<()> {
+    let backend = db.get_database_backend();
+    let decision_id = sql_uuid(backend, decision_id);
+    let tenant_id = sql_uuid(backend, tenant_id);
+    let case_id = sql_uuid(backend, case_id);
+    let actor_id = sql_uuid(backend, actor_id);
     let decision_hash: String = std::iter::repeat_n(hash_char, 64).collect();
     db.execute_unprepared(&format!(
         r#"
@@ -386,8 +405,8 @@ INSERT INTO moderation_decisions (
     id, tenant_id, case_id, decision_kind, reason_code, policy_snapshot, subject_revision,
     decision_hash, decided_by, decided_at, created_at
 ) VALUES (
-    '{decision_id}', '{tenant_id}', '{case_id}', 'warning', 'other', '{{}}', {subject_revision},
-    '{decision_hash}', '{actor_id}', '{LEGACY_CREATED_AT}', '{LEGACY_CREATED_AT}'
+    {decision_id}, {tenant_id}, {case_id}, 'warning', 'other', '{{}}', {subject_revision},
+    '{decision_hash}', {actor_id}, '{LEGACY_CREATED_AT}', '{LEGACY_CREATED_AT}'
 )
 "#
     ))

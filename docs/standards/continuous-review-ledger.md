@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `79 / 218` components audited (**36%**)
+- **Progress:** `81 / 218` components audited (**37%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -122,8 +122,8 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-media-transport](../../crates/modules/rustok-media-transport) | `modules` | 6 | 1,532 | 2026-09-20 21:24 | Verified gRPC and loopback media transport providers & public image client, zero suppressions/unwraps, all 12 tests passed, clippy clean |
 | [x] | [admin](../../crates/modules/rustok-media/admin) | `modules` | 10 | 2,124 | 2026-09-20 21:24 | Verified media admin leptos UI, upload & translation forms, zero suppressions/unwraps, all 11 tests passed, clippy clean |
 | [x] | [cli](../../crates/modules/rustok-media/cli) | `modules` | 1 | 175 | 2026-09-20 21:24 | Verified media CLI reconciliation commands & runtime checks, zero suppressions/unwraps, all 3 tests passed, clippy clean |
-| [ ] | [rustok-moderation](../../crates/modules/rustok-moderation) | `modules` | 36 | 9,113 | None |  |
-| [ ] | [rustok-moderation-api](../../crates/modules/rustok-moderation-api) | `modules` | 3 | 766 | None |  |
+| [x] | [rustok-moderation](../../crates/modules/rustok-moderation) | `modules` | 36 | 9,113 | 2026-09-20 22:15 | Verified moderation service, transactional outbox & leases, zero suppressions/unwraps, fixed SQLite migration contract UUID blob literal formatting, all 24 tests passed, clippy clean |
+| [x] | [rustok-moderation-api](../../crates/modules/rustok-moderation-api) | `modules` | 3 | 766 | 2026-09-20 22:15 | Verified moderation boundary ports, typed capabilities, scope claims, zero suppressions/unwraps, all 4 tests passed, clippy clean |
 | [ ] | [rustok-modules](../../crates/modules/rustok-modules) | `modules` | 175 | 129,930 | None |  |
 | [ ] | [rustok-modules-translation](../../crates/modules/rustok-modules-translation) | `modules` | 1 | 822 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-modules/cli) | `modules` | 1 | 1,813 | None |  |
