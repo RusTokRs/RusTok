@@ -63,6 +63,14 @@ WHERE post.id IS NULL
 
 async fn up_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let connection = manager.get_connection();
+    // PostgreSQL requires the referenced column set of a composite foreign key
+    // to have its own unique constraint/index, even though id is already a
+    // primary key. The composite key is therefore explicit and tenant-shaped.
+    connection
+        .execute_unprepared(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_blog_posts_tenant_id ON blog_posts (tenant_id, id)",
+        )
+        .await?;
     connection
         .execute_unprepared(
             "ALTER TABLE blog_post_channel_visibility DROP CONSTRAINT IF EXISTS fk_blog_post_channel_visibility_post",
@@ -102,7 +110,11 @@ ALTER TABLE blog_post_channel_visibility
 "#,
         )
         .await?;
+    connection
+        .execute_unprepared("DROP INDEX IF EXISTS uq_blog_posts_tenant_id")
+        .await?;
     Ok(())
+}
 }
 
 async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
