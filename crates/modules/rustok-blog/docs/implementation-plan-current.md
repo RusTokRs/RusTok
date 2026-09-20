@@ -27,6 +27,7 @@ The hardened contract now requires:
   explicit Archived -> Draft restore command;
 - derived Comments counters that preserve Blog business `version` and
   `updated_at` and publish locale-neutral reindex requests;
+- Comments lifecycle projections serialize on the tenant-scoped Blog post row lock, order delivery state per comment by envelope id, derive counter transitions from lifecycle state, and never mutate Blog business `version` or `updated_at`;
 - current-tenant authority on GraphQL reads and writes;
 - one redacted Blog public-error mapping boundary;
 - private persistence entities and integrations that consume owner service state;
