@@ -2,9 +2,12 @@ use leptos::prelude::*;
 use std::fmt::{Display, Formatter};
 
 use crate::application_model::{
+    GroupsAdminReviewApplicationResult, ReopenGroupMembershipApplicationCommand,
+};
+#[cfg(feature = "ssr")]
+use crate::application_model::{
     GroupsAdminApplicationAnswer, GroupsAdminApplicationQuestion, GroupsAdminApplicationRule,
-    GroupsAdminMembership, GroupsAdminMembershipApplication, GroupsAdminReviewApplicationResult,
-    ReopenGroupMembershipApplicationCommand,
+    GroupsAdminMembership, GroupsAdminMembershipApplication,
 };
 
 #[derive(Debug, Clone)]

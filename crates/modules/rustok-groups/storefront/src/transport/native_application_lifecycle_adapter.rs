@@ -3,8 +3,7 @@ use std::fmt::{Display, Formatter};
 
 use crate::application_model::{
     CancelGroupMembershipApplicationCommand, GroupsStorefrontApplicationLifecycleResult,
-    GroupsStorefrontApplicationMembership, GroupsStorefrontMembershipApplication,
-    GroupsStorefrontMyApplicationQuery,
+    GroupsStorefrontMembershipApplication, GroupsStorefrontMyApplicationQuery,
 };
 
 #[derive(Debug, Clone)]

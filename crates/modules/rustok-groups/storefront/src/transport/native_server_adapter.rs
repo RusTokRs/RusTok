@@ -4,7 +4,6 @@ use std::fmt::{Display, Formatter};
 use crate::model::{
     AcceptGroupInvitationCommand, AcceptTargetedGroupInvitationCommand,
     GroupsStorefrontAcceptInvitationResult, GroupsStorefrontDirectory, GroupsStorefrontFilters,
-    GroupsStorefrontMembership,
 };
 
 #[derive(Debug, Clone)]

@@ -59,6 +59,15 @@ struct ApplicationCopy {
     missing_rule: String,
 }
 
+#[derive(Clone, Copy)]
+struct ApplicationFormSignals {
+    answers: ReadSignal<BTreeMap<String, String>>,
+    set_answers: WriteSignal<BTreeMap<String, String>>,
+    acknowledged_rules: ReadSignal<BTreeSet<String>>,
+    set_acknowledged_rules: WriteSignal<BTreeSet<String>>,
+    policy_changed: ReadSignal<bool>,
+}
+
 #[component]
 pub fn GroupsMembershipApplication(transport: GroupsStorefrontTransportContext) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -235,6 +244,14 @@ pub fn GroupsMembershipApplication(transport: GroupsStorefrontTransportContext) 
         ..
     } = copy.clone();
 
+    let form_signals = ApplicationFormSignals {
+        answers,
+        set_answers,
+        acknowledged_rules,
+        set_acknowledged_rules,
+        policy_changed,
+    };
+
     view! {
         <section class="groups-storefront__application rounded-3xl border border-border bg-card p-6 shadow-sm">
             <h2 class="text-xl font-semibold text-card-foreground">{title}</h2>
@@ -245,11 +262,7 @@ pub fn GroupsMembershipApplication(transport: GroupsStorefrontTransportContext) 
                     Ok((current, policy)) => render_application_content(
                         current,
                         policy,
-                        answers,
-                        set_answers,
-                        acknowledged_rules,
-                        set_acknowledged_rules,
-                        policy_changed,
+                        form_signals,
                         on_submit,
                         on_cancel,
                         copy.clone(),
@@ -297,15 +310,10 @@ pub fn GroupsMembershipApplication(transport: GroupsStorefrontTransportContext) 
     .into_any()
 }
 
-#[allow(clippy::too_many_arguments)]
 fn render_application_content(
     current: Option<GroupsStorefrontMembershipApplication>,
     policy: Option<GroupsStorefrontApplicationPolicy>,
-    answers: ReadSignal<BTreeMap<String, String>>,
-    set_answers: WriteSignal<BTreeMap<String, String>>,
-    acknowledged_rules: ReadSignal<BTreeSet<String>>,
-    set_acknowledged_rules: WriteSignal<BTreeSet<String>>,
-    policy_changed: ReadSignal<bool>,
+    signals: ApplicationFormSignals,
     on_submit: Callback<SubmitEvent>,
     on_cancel: Callback<()>,
     copy: ApplicationCopy,
@@ -348,21 +356,9 @@ fn render_application_content(
     });
 
     let form = match policy {
-        Some(policy) if policy.enabled => render_policy_form(
-            policy,
-            answers,
-            set_answers,
-            acknowledged_rules,
-            set_acknowledged_rules,
-            policy_changed,
-            on_submit,
-            &copy.required,
-            &copy.optional,
-            &copy.rules,
-            &copy.acknowledge,
-            &copy.submit,
-        )
-        .into_any(),
+        Some(policy) if policy.enabled => {
+            render_policy_form(policy, signals, on_submit, &copy).into_any()
+        }
         _ => view! { <p class="mt-4 text-sm text-muted-foreground">{copy.unavailable}</p> }
             .into_any(),
     };
@@ -374,30 +370,27 @@ fn render_application_content(
     .into_any()
 }
 
-#[allow(clippy::too_many_arguments)]
 fn render_policy_form(
     policy: GroupsStorefrontApplicationPolicy,
-    answers: ReadSignal<BTreeMap<String, String>>,
-    set_answers: WriteSignal<BTreeMap<String, String>>,
-    acknowledged_rules: ReadSignal<BTreeSet<String>>,
-    set_acknowledged_rules: WriteSignal<BTreeSet<String>>,
-    policy_changed: ReadSignal<bool>,
+    signals: ApplicationFormSignals,
     on_submit: Callback<SubmitEvent>,
-    required: &str,
-    optional: &str,
-    rules_label: &str,
-    acknowledge: &str,
-    submit: &str,
+    copy: &ApplicationCopy,
 ) -> impl IntoView {
     let questions = policy.questions;
     let rules = policy.rules;
     let has_rules = !rules.is_empty();
 
-    let required = required.to_string();
-    let optional = optional.to_string();
-    let rules_label = rules_label.to_string();
-    let acknowledge = acknowledge.to_string();
-    let submit = submit.to_string();
+    let required = copy.required.clone();
+    let optional = copy.optional.clone();
+    let rules_label = copy.rules.clone();
+    let acknowledge = copy.acknowledge.clone();
+    let submit = copy.submit.clone();
+
+    let answers = signals.answers;
+    let set_answers = signals.set_answers;
+    let acknowledged_rules = signals.acknowledged_rules;
+    let set_acknowledged_rules = signals.set_acknowledged_rules;
+    let policy_changed = signals.policy_changed;
 
     view! {
         <form class="mt-6 space-y-6" on:submit=move |event| on_submit.run(event)>

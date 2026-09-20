@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `53 / 218` components audited (**24%**)
+- **Progress:** `56 / 218` components audited (**26%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -96,9 +96,9 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 71 | 17,271 | 2026-09-20 16:54 | Eliminated 2 allow(too_many_arguments) suppressions via ShippingOptionReadRequestFacts and FulfillmentLifecycleReadRequestFacts, added change journal to test schema support, bounded provider journal migrations, all 43 tests passed, clippy clean |
 | [x] | [admin](../../crates/modules/rustok-fulfillment/admin) | `modules` | 8 | 1,454 | 2026-09-20 16:54 | Replaced 2 allow(too_many_arguments) suppressions with typed ShippingOptionFormSignals struct and methods, all 3 tests passed, clippy clean |
 | [x] | [storefront](../../crates/modules/rustok-fulfillment/storefront) | `modules` | 12 | 1,206 | 2026-09-20 16:54 | Verified storefront fulfillment package, zero suppressions/unwraps, all 8 tests passed, clippy clean |
-| [ ] | [rustok-groups](../../crates/modules/rustok-groups) | `modules` | 112 | 31,916 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-groups/admin) | `modules` | 34 | 8,520 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-groups/storefront) | `modules` | 17 | 3,123 | None |  |
+| [x] | [rustok-groups](../../crates/modules/rustok-groups) | `modules` | 112 | 31,916 | 2026-09-20 17:10 | Verified groups module, domain invariants, moderation & governance rules, zero suppressions/unwraps, all 20 tests passed, clippy clean |
+| [x] | [admin](../../crates/modules/rustok-groups/admin) | `modules` | 34 | 8,520 | 2026-09-20 17:10 | Gated SSR-only imports across 6 native transport adapters, zero suppressions/unwraps, all 4 tests passed, clippy clean |
+| [x] | [storefront](../../crates/modules/rustok-groups/storefront) | `modules` | 17 | 3,123 | 2026-09-20 17:10 | Replaced 2 allow(too_many_arguments) suppressions with typed ApplicationFormSignals & ApplicationCopy, cleaned up unused imports across native adapters, all 4 tests passed, clippy clean |
 | [ ] | [rustok-iggy](../../crates/modules/rustok-iggy) | `modules` | 32 | 8,279 | None |  |
 | [ ] | [rustok-iggy-connector](../../crates/modules/rustok-iggy-connector) | `modules` | 21 | 4,972 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-iggy-connector/admin) | `modules` | 7 | 612 | None |  |

@@ -2,9 +2,10 @@ use leptos::prelude::*;
 use std::fmt::{Display, Formatter};
 
 use crate::application_model::{
-    GroupsAdminApplicationPolicyRevision, GroupsAdminApplicationPolicyRevisionConnection,
-    GroupsAdminApplicationPolicyRevisionQuery,
+    GroupsAdminApplicationPolicyRevisionConnection, GroupsAdminApplicationPolicyRevisionQuery,
 };
+#[cfg(feature = "ssr")]
+use crate::application_model::GroupsAdminApplicationPolicyRevision;
 
 #[derive(Debug, Clone)]
 pub struct NativeGroupsPolicyHistoryError(pub String);
