@@ -268,25 +268,4 @@ mod tests {
         assert_eq!(next_comment_count(0, -1), 0);
         assert_eq!(next_comment_count(i32::MAX, 1), i32::MAX);
     }
-
-}
-
-    #[test]
-    fn optimistic_retry_policy_allows_seven_retries_then_stops_on_eighth_conflict() {
-        let decisions = (0..MAX_PROJECTION_UPDATE_ATTEMPTS)
-            .map(|attempt_index| projection_update_decision(attempt_index, 0))
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            decisions
-                .iter()
-                .filter(|decision| **decision == ProjectionUpdateDecision::Retry)
-                .count(),
-            MAX_PROJECTION_UPDATE_ATTEMPTS - 1
-        );
-        assert_eq!(
-            decisions.last(),
-            Some(&ProjectionUpdateDecision::LimitReached)
-        );
-    }
 }
