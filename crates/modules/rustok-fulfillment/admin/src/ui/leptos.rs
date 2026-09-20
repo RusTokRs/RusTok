@@ -253,15 +253,19 @@ pub fn FulfillmentAdmin() -> impl IntoView {
         "Metadata is sent as an optional JSON patch. Leaving the field blank during update keeps the existing metadata payload unchanged.",
     );
 
+    let form_signals = ShippingOptionFormSignals {
+        editing_id: set_editing_id,
+        selected: set_selected,
+        name: set_name,
+        currency_code: set_currency_code,
+        amount: set_amount,
+        provider_id: set_provider_id,
+        allowed_profiles: set_allowed_profiles,
+        metadata_json: set_metadata_json,
+    };
+
     let reset_form = move || {
-        set_editing_id.set(None);
-        set_selected.set(None);
-        set_name.set(String::new());
-        set_currency_code.set("USD".to_string());
-        set_amount.set("0.00".to_string());
-        set_provider_id.set("manual".to_string());
-        set_allowed_profiles.set(Vec::new());
-        set_metadata_json.set(String::new());
+        form_signals.clear();
     };
 
     let edit_bootstrap_loading_label = bootstrap_loading_label.clone();
@@ -287,41 +291,13 @@ pub fn FulfillmentAdmin() -> impl IntoView {
             )
             .await
             {
-                Ok(Some(option)) => apply_shipping_option(
-                    &option,
-                    set_editing_id,
-                    set_selected,
-                    set_name,
-                    set_currency_code,
-                    set_amount,
-                    set_provider_id,
-                    set_allowed_profiles,
-                    set_metadata_json,
-                ),
+                Ok(Some(option)) => form_signals.apply(&option),
                 Ok(None) => {
-                    clear_shipping_option_form(
-                        set_editing_id,
-                        set_selected,
-                        set_name,
-                        set_currency_code,
-                        set_amount,
-                        set_provider_id,
-                        set_allowed_profiles,
-                        set_metadata_json,
-                    );
+                    form_signals.clear();
                     set_error.set(Some(not_found_label));
                 }
                 Err(err) => {
-                    clear_shipping_option_form(
-                        set_editing_id,
-                        set_selected,
-                        set_name,
-                        set_currency_code,
-                        set_amount,
-                        set_provider_id,
-                        set_allowed_profiles,
-                        set_metadata_json,
-                    );
+                    form_signals.clear();
                     set_error.set(Some(format!("{load_error_label}: {err}")));
                 }
             }
@@ -389,17 +365,7 @@ pub fn FulfillmentAdmin() -> impl IntoView {
             match result {
                 Ok(option) => {
                     let option_id = option.id.clone();
-                    apply_shipping_option(
-                        &option,
-                        set_editing_id,
-                        set_selected,
-                        set_name,
-                        set_currency_code,
-                        set_amount,
-                        set_provider_id,
-                        set_allowed_profiles,
-                        set_metadata_json,
-                    );
+                    form_signals.apply(&option);
                     set_refresh_nonce.update(|value| *value += 1);
                     submit_query_writer
                         .replace_value(AdminQueryKey::ShippingOptionId.as_str(), option_id);
@@ -444,17 +410,7 @@ pub fn FulfillmentAdmin() -> impl IntoView {
             match result {
                 Ok(updated) => {
                     if editing_id.get_untracked().as_deref() == Some(option.id.as_str()) {
-                        apply_shipping_option(
-                            &updated,
-                            set_editing_id,
-                            set_selected,
-                            set_name,
-                            set_currency_code,
-                            set_amount,
-                            set_provider_id,
-                            set_allowed_profiles,
-                            set_metadata_json,
-                        );
+                        form_signals.apply(&updated);
                     }
                     set_refresh_nonce.update(|value| *value += 1);
                 }
@@ -482,16 +438,7 @@ pub fn FulfillmentAdmin() -> impl IntoView {
             initial_edit_option.run(option_id);
         }
         _ => {
-            clear_shipping_option_form(
-                set_editing_id,
-                set_selected,
-                set_name,
-                set_currency_code,
-                set_amount,
-                set_provider_id,
-                set_allowed_profiles,
-                set_metadata_json,
-            );
+            form_signals.clear();
         }
     });
 
@@ -629,52 +576,45 @@ pub fn FulfillmentAdmin() -> impl IntoView {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn apply_shipping_option(
-    option: &ShippingOption,
-    set_editing_id: WriteSignal<Option<String>>,
-    set_selected: WriteSignal<Option<ShippingOption>>,
-    set_name: WriteSignal<String>,
-    set_currency_code: WriteSignal<String>,
-    set_amount: WriteSignal<String>,
-    set_provider_id: WriteSignal<String>,
-    set_allowed_profiles: WriteSignal<Vec<String>>,
-    set_metadata_json: WriteSignal<String>,
-) {
-    set_editing_id.set(Some(option.id.clone()));
-    set_selected.set(Some(option.clone()));
-    set_name.set(option.name.clone());
-    set_currency_code.set(option.currency_code.clone());
-    set_amount.set(option.amount.clone());
-    set_provider_id.set(option.provider_id.clone());
-    set_allowed_profiles.set(
-        option
-            .allowed_shipping_profile_slugs
-            .clone()
-            .unwrap_or_default(),
-    );
-    set_metadata_json.set(option.metadata.clone());
+#[derive(Clone, Copy)]
+struct ShippingOptionFormSignals {
+    editing_id: WriteSignal<Option<String>>,
+    selected: WriteSignal<Option<ShippingOption>>,
+    name: WriteSignal<String>,
+    currency_code: WriteSignal<String>,
+    amount: WriteSignal<String>,
+    provider_id: WriteSignal<String>,
+    allowed_profiles: WriteSignal<Vec<String>>,
+    metadata_json: WriteSignal<String>,
 }
 
-#[allow(clippy::too_many_arguments)]
-fn clear_shipping_option_form(
-    set_editing_id: WriteSignal<Option<String>>,
-    set_selected: WriteSignal<Option<ShippingOption>>,
-    set_name: WriteSignal<String>,
-    set_currency_code: WriteSignal<String>,
-    set_amount: WriteSignal<String>,
-    set_provider_id: WriteSignal<String>,
-    set_allowed_profiles: WriteSignal<Vec<String>>,
-    set_metadata_json: WriteSignal<String>,
-) {
-    set_editing_id.set(None);
-    set_selected.set(None);
-    set_name.set(String::new());
-    set_currency_code.set("USD".to_string());
-    set_amount.set("0.00".to_string());
-    set_provider_id.set("manual".to_string());
-    set_allowed_profiles.set(Vec::new());
-    set_metadata_json.set(String::new());
+impl ShippingOptionFormSignals {
+    fn apply(self, option: &ShippingOption) {
+        self.editing_id.set(Some(option.id.clone()));
+        self.selected.set(Some(option.clone()));
+        self.name.set(option.name.clone());
+        self.currency_code.set(option.currency_code.clone());
+        self.amount.set(option.amount.clone());
+        self.provider_id.set(option.provider_id.clone());
+        self.allowed_profiles.set(
+            option
+                .allowed_shipping_profile_slugs
+                .clone()
+                .unwrap_or_default(),
+        );
+        self.metadata_json.set(option.metadata.clone());
+    }
+
+    fn clear(self) {
+        self.editing_id.set(None);
+        self.selected.set(None);
+        self.name.set(String::new());
+        self.currency_code.set("USD".to_string());
+        self.amount.set("0.00".to_string());
+        self.provider_id.set("manual".to_string());
+        self.allowed_profiles.set(Vec::new());
+        self.metadata_json.set(String::new());
+    }
 }
 
 fn summarize_shipping_option(locale: Option<&str>, option: &ShippingOption) -> String {

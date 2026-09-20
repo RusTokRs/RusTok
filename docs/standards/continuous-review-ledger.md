@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `50 / 218` components audited (**23%**)
+- **Progress:** `53 / 218` components audited (**24%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -93,9 +93,9 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 591 | 151,991 | 2026-09-20 16:30 | Eliminated 17 allow suppressions across services/tests with typed structs (CategoryTaxonomyListFilter, CategoryTreeBuildContext, CounterQueryDialects, ForumSubscriptionReconciliationCursors, TopicForkOperationParams, TopicReplyRangeMoveOperationParams, RecordTopicAliasParams, TestSubscriptionParams), extracted reply_tests to eliminate items_after_test_module, collapsed nested ifs, all 191+ tests passed, clippy clean |
 | [x] | [admin](../../crates/modules/rustok-forum/admin) | `modules` | 35 | 12,236 | 2026-09-20 16:30 | Verified forum admin package, zero suppressions/unwraps, all 87 tests passed, clippy clean |
 | [x] | [storefront](../../crates/modules/rustok-forum/storefront) | `modules` | 19 | 4,164 | 2026-09-20 16:30 | Re-exported public transport API in lib.rs, eliminated 6 allow(dead_code) suppressions, all tests passed, clippy clean |
-| [ ] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 71 | 17,271 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-fulfillment/admin) | `modules` | 8 | 1,454 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-fulfillment/storefront) | `modules` | 12 | 1,206 | None |  |
+| [x] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 71 | 17,271 | 2026-09-20 16:54 | Eliminated 2 allow(too_many_arguments) suppressions via ShippingOptionReadRequestFacts and FulfillmentLifecycleReadRequestFacts, added change journal to test schema support, bounded provider journal migrations, all 43 tests passed, clippy clean |
+| [x] | [admin](../../crates/modules/rustok-fulfillment/admin) | `modules` | 8 | 1,454 | 2026-09-20 16:54 | Replaced 2 allow(too_many_arguments) suppressions with typed ShippingOptionFormSignals struct and methods, all 3 tests passed, clippy clean |
+| [x] | [storefront](../../crates/modules/rustok-fulfillment/storefront) | `modules` | 12 | 1,206 | 2026-09-20 16:54 | Verified storefront fulfillment package, zero suppressions/unwraps, all 8 tests passed, clippy clean |
 | [ ] | [rustok-groups](../../crates/modules/rustok-groups) | `modules` | 112 | 31,916 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-groups/admin) | `modules` | 34 | 8,520 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-groups/storefront) | `modules` | 17 | 3,123 | None |  |

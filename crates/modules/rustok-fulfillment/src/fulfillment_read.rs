@@ -126,6 +126,12 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
     ) -> Result<FulfillmentResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context, "read_fulfillment_projection")?;
+        let request_facts = fulfillment_lifecycle_read_request_facts(
+            Some(request.fulfillment_id),
+            None,
+            None,
+            None,
+        );
 
         self.inner
             .get_fulfillment(tenant_id, request.fulfillment_id)
@@ -134,10 +140,7 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
                 map_owner_error(
                     &context,
                     "read_fulfillment_projection",
-                    Some(request.fulfillment_id),
-                    None,
-                    None,
-                    None,
+                    request_facts,
                     error,
                 )
             })
@@ -153,6 +156,12 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
         let status_length = request.status.as_deref().map(str::len);
         let order_id = request.order_id;
         let customer_id = request.customer_id;
+        let request_facts = fulfillment_lifecycle_read_request_facts(
+            None,
+            order_id,
+            status_length,
+            customer_id,
+        );
         let (items, total) = self
             .inner
             .list_fulfillments(
@@ -170,10 +179,7 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
                 map_owner_error(
                     &context,
                     "list_fulfillment_projections",
-                    None,
-                    order_id,
-                    status_length,
-                    customer_id,
+                    request_facts,
                     error,
                 )
             })?;
@@ -188,6 +194,12 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
     ) -> Result<Option<FulfillmentResponse>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context, "find_latest_fulfillment_by_order_projection")?;
+        let request_facts = fulfillment_lifecycle_read_request_facts(
+            None,
+            Some(request.order_id),
+            None,
+            None,
+        );
 
         self.inner
             .find_by_order(tenant_id, request.order_id)
@@ -196,10 +208,7 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
                 map_owner_error(
                     &context,
                     "find_latest_fulfillment_by_order_projection",
-                    None,
-                    Some(request.order_id),
-                    None,
-                    None,
+                    request_facts,
                     error,
                 )
             })
@@ -344,23 +353,13 @@ fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uui
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 fn map_owner_error(
     context: &PortContext,
     operation: &'static str,
-    fulfillment_id: Option<Uuid>,
-    order_id: Option<Uuid>,
-    status_length: Option<usize>,
-    customer_id: Option<Uuid>,
+    request_facts: FulfillmentLifecycleReadRequestFacts,
     error: FulfillmentError,
 ) -> PortError {
     let error_facts = fulfillment_lifecycle_owner_error_facts(&error);
-    let request_facts = fulfillment_lifecycle_read_request_facts(
-        fulfillment_id,
-        order_id,
-        status_length,
-        customer_id,
-    );
     let (kind, code, message, retryable, technical_failure) = match &error {
         FulfillmentError::Validation(_) => (
             PortErrorKind::Validation,

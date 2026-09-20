@@ -144,8 +144,11 @@ impl ShippingOptionReadPort for InProcessShippingOptionReadPort {
     ) -> Result<Vec<ShippingOptionResponse>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context, "list_shipping_option_projections")?;
-        let requested_locale_length = request.requested_locale.as_deref().map(str::len);
-        let tenant_default_locale_length = request.tenant_default_locale.as_deref().map(str::len);
+        let request_facts = shipping_option_read_request_facts(
+            None,
+            request.requested_locale.as_deref().map(str::len),
+            request.tenant_default_locale.as_deref().map(str::len),
+        );
 
         self.inner
             .list_shipping_options(
@@ -158,9 +161,7 @@ impl ShippingOptionReadPort for InProcessShippingOptionReadPort {
                 map_owner_error(
                     &context,
                     "list_shipping_option_projections",
-                    None,
-                    requested_locale_length,
-                    tenant_default_locale_length,
+                    request_facts,
                     error,
                 )
             })
@@ -173,8 +174,11 @@ impl ShippingOptionReadPort for InProcessShippingOptionReadPort {
     ) -> Result<ShippingOptionResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context, "read_shipping_option_projection")?;
-        let requested_locale_length = request.requested_locale.as_deref().map(str::len);
-        let tenant_default_locale_length = request.tenant_default_locale.as_deref().map(str::len);
+        let request_facts = shipping_option_read_request_facts(
+            Some(request.shipping_option_id),
+            request.requested_locale.as_deref().map(str::len),
+            request.tenant_default_locale.as_deref().map(str::len),
+        );
 
         self.inner
             .get_shipping_option(
@@ -188,9 +192,7 @@ impl ShippingOptionReadPort for InProcessShippingOptionReadPort {
                 map_owner_error(
                     &context,
                     "read_shipping_option_projection",
-                    Some(request.shipping_option_id),
-                    requested_locale_length,
-                    tenant_default_locale_length,
+                    request_facts,
                     error,
                 )
             })
@@ -206,8 +208,11 @@ impl ShippingOptionAdminReadPort for InProcessShippingOptionAdminReadPort {
     ) -> Result<Vec<ShippingOptionResponse>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context, "list_all_shipping_option_projections")?;
-        let requested_locale_length = request.requested_locale.as_deref().map(str::len);
-        let tenant_default_locale_length = request.tenant_default_locale.as_deref().map(str::len);
+        let request_facts = shipping_option_read_request_facts(
+            None,
+            request.requested_locale.as_deref().map(str::len),
+            request.tenant_default_locale.as_deref().map(str::len),
+        );
 
         self.inner
             .list_all_shipping_options(
@@ -220,9 +225,7 @@ impl ShippingOptionAdminReadPort for InProcessShippingOptionAdminReadPort {
                 map_owner_error(
                     &context,
                     "list_all_shipping_option_projections",
-                    None,
-                    requested_locale_length,
-                    tenant_default_locale_length,
+                    request_facts,
                     error,
                 )
             })
@@ -362,21 +365,13 @@ fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uui
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 fn map_owner_error(
     context: &PortContext,
     operation: &'static str,
-    shipping_option_id: Option<Uuid>,
-    requested_locale_length: Option<usize>,
-    tenant_default_locale_length: Option<usize>,
+    request_facts: ShippingOptionReadRequestFacts,
     error: FulfillmentError,
 ) -> PortError {
     let error_facts = shipping_option_owner_error_facts(&error);
-    let request_facts = shipping_option_read_request_facts(
-        shipping_option_id,
-        requested_locale_length,
-        tenant_default_locale_length,
-    );
     let (kind, code, message, retryable, technical_failure) = match &error {
         FulfillmentError::Validation(_) => (
             PortErrorKind::Validation,

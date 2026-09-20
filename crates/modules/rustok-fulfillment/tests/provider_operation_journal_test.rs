@@ -17,6 +17,7 @@ async fn ensure_provider_journal_guards(db: &sea_orm::DatabaseConnection) {
     for migration in rustok_fulfillment::migrations::migrations()
         .into_iter()
         .skip(6)
+        .take(3)
     {
         migration
             .up(&manager)
