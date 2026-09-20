@@ -10,7 +10,7 @@ use rustok_web::{HttpError, HttpResult};
 use std::{collections::HashMap, time::Instant};
 use uuid::Uuid;
 
-use super::BlogHttpRuntime;
+use super::{BlogHttpRuntime, ensure_blog_module_enabled};
 use crate::{
     ArchivePostInput, CreatePostInput, PostListQuery, PostResponse, PostService, UpdatePostInput,
 };
@@ -316,25 +316,6 @@ pub async fn unpublish_post(
         .await
         .map_err(crate::error::public::to_http_error)?;
     Ok(())
-}
-
-pub(super) async fn ensure_blog_module_enabled(
-    runtime: &BlogHttpRuntime,
-    tenant_id: Uuid,
-) -> HttpResult<()> {
-    match rustok_api::is_tenant_module_enabled(&runtime.db_clone(), tenant_id, "blog").await {
-        Ok(true) => Ok(()),
-        Ok(false) => Err(HttpError::new(
-            StatusCode::FORBIDDEN,
-            "MODULE_NOT_ENABLED",
-            "Module 'blog' is not enabled for this tenant",
-        )),
-        Err(_) => Err(HttpError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "INTERNAL_SERVER_ERROR",
-            "The Blog operation could not be completed",
-        )),
-    }
 }
 
 pub(super) fn ensure_blog_permission(
