@@ -6,7 +6,8 @@ use rustok_events::DomainEvent;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    QueryFilter, Set, TransactionTrait, sea_query::{Expr, OnConflict},
+    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    sea_query::{Expr, OnConflict},
 };
 use std::sync::Arc;
 use uuid::Uuid;
