@@ -80,7 +80,6 @@ pub async fn cancel_order_change(
         .map_err(Into::into)
 }
 
-#[allow(dead_code)]
 pub async fn preview_cart_promotion(
     cart_id: String,
     payload: CommerceCartPromotionDraft,
@@ -90,7 +89,6 @@ pub async fn preview_cart_promotion(
         .map_err(Into::into)
 }
 
-#[allow(dead_code)]
 pub async fn apply_cart_promotion(
     cart_id: String,
     payload: CommerceCartPromotionDraft,
@@ -117,25 +115,6 @@ fn ensure_permission(
 
 fn transport_correlation_id(scope: &str, operation: &'static str) -> String {
     format!("{scope}:{operation}:{}", uuid::Uuid::new_v4())
-}
-
-#[allow(dead_code)]
-fn request_context_fields(
-    request_context: Option<&rustok_api::RequestContext>,
-) -> (
-    Option<uuid::Uuid>,
-    Option<uuid::Uuid>,
-    Option<uuid::Uuid>,
-    Option<&str>,
-    Option<&str>,
-) {
-    (
-        request_context.map(|context| context.tenant_id),
-        request_context.and_then(|context| context.user_id),
-        request_context.and_then(|context| context.channel_id),
-        request_context.and_then(|context| context.channel_slug.as_deref()),
-        request_context.map(|context| context.locale.as_str()),
-    )
 }
 
 fn parse_metadata_json(value: &str) -> Result<serde_json::Value, ServerFnError> {

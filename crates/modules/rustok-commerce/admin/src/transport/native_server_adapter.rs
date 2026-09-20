@@ -72,7 +72,6 @@ pub async fn cancel_order_change(
         .map_err(Into::into)
 }
 
-#[allow(dead_code)]
 pub async fn preview_cart_promotion(
     cart_id: String,
     payload: CommerceCartPromotionDraft,
@@ -82,7 +81,6 @@ pub async fn preview_cart_promotion(
         .map_err(Into::into)
 }
 
-#[allow(dead_code)]
 pub async fn apply_cart_promotion(
     cart_id: String,
     payload: CommerceCartPromotionDraft,

@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `34 / 218` components audited (**16%**)
+- **Progress:** `37 / 218` components audited (**17%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -78,9 +78,9 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-comments-storefront-support](../../crates/modules/rustok-comments-storefront-support) | `modules` | 3 | 171 | 2026-09-20 10:28 | Zero suppressions/unwraps, all 3 tests passed, clippy clean |
 | [x] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 8 | 1,379 | 2026-09-20 10:28 | Updated native server adapter callers to typed filters, English boundary test markers, all 13 tests passed, boundary script verified, clippy clean |
 | [ ] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 295 | 123,544 | None |  |
-| [ ] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 20 | 1,044 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 21 | 5,825 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-commerce/storefront) | `modules` | 16 | 2,023 | None |  |
+| [x] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 20 | 1,044 | 2026-09-20 10:35 | Zero suppressions/unwraps/panics, all 3 tests passed, clippy clean |
+| [x] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 21 | 5,825 | 2026-09-20 10:38 | Eliminated allow(dead_code), removed dead request_context_fields, all 15 tests passed, boundary script verified, clippy clean |
+| [x] | [storefront](../../crates/modules/rustok-commerce/storefront) | `modules` | 16 | 2,023 | 2026-09-20 10:38 | Eliminated allow(dead_code) in shared_adapter, transport, and requests, all 7 tests passed, error-safety & handoff scripts verified, clippy clean |
 | [ ] | [rustok-content](../../crates/modules/rustok-content) | `modules` | 48 | 7,003 | None |  |
 | [ ] | [rustok-content-orchestration](../../crates/modules/rustok-content-orchestration) | `modules` | 2 | 2,467 | None |  |
 | [ ] | [rustok-customer](../../crates/modules/rustok-customer) | `modules` | 26 | 5,022 | None |  |

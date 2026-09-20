@@ -49,7 +49,6 @@ fn configured_tenant_slug() -> Option<String> {
     })
 }
 
-#[allow(dead_code)]
 #[cfg(feature = "ssr")]
 pub(super) fn resolve_requested_locale(
     requested: Option<String>,

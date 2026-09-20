@@ -49,7 +49,6 @@ pub fn build_fetch_commerce_request(
     }
 }
 
-#[allow(dead_code)]
 pub fn build_select_shipping_option_request(
     cart: StorefrontCheckoutCart,
     shipping_profile_slug: String,

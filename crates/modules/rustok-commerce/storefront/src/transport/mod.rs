@@ -46,7 +46,6 @@ pub async fn create_storefront_payment_collection(
         .map_err(|error| error_context.map_error(error))
 }
 
-#[allow(dead_code)]
 pub async fn select_storefront_shipping_option(
     request: SelectShippingOptionRequest,
 ) -> Result<(), ApiError> {
