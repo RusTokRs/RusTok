@@ -295,6 +295,40 @@ requireAll("crates/modules/rustok-blog/src/module.rs", [
   "Action::List",
   "Action::Manage",
 ]);
+requireAll("crates/modules/rustok-blog/src/module.rs", [
+  '"blog"',
+  '"Blog"',
+  '"Posts, Comments, Categories, Tags"',
+  "Permission::BLOG_POSTS_CREATE",
+  "Permission::BLOG_POSTS_READ",
+  "Permission::BLOG_POSTS_UPDATE",
+  "Permission::BLOG_POSTS_DELETE",
+  "Permission::BLOG_POSTS_LIST",
+  "Permission::BLOG_POSTS_PUBLISH",
+  "Permission::BLOG_POSTS_MANAGE",
+  "Permission::BLOG_CATEGORIES_CREATE",
+  "Permission::BLOG_CATEGORIES_READ",
+  "Permission::BLOG_CATEGORIES_UPDATE",
+  "Permission::BLOG_CATEGORIES_DELETE",
+  "Permission::BLOG_CATEGORIES_LIST",
+  "Permission::BLOG_CATEGORIES_MANAGE",
+]);
+
+requireAll("crates/modules/rustok-blog/rustok-module.toml", [
+  'slug = "blog"',
+  'name = "Blog"',
+  'query = "graphql::BlogQuery"',
+  'mutation = "graphql::BlogMutation"',
+  'runtime_data_factory = "graphql::attach_schema_data"',
+  'axum_router = "controllers::axum_router"',
+  'leptos_crate = "rustok-blog-admin"',
+  'next_package = "@rustok/blog-admin"',
+  'leptos_crate = "rustok-blog-storefront"',
+  'next_package = "@rustok/blog-frontend"',
+  'profile = "blog_post_comments"',
+  'provider_contracts = ["comments.thread.v1"]',
+]);
+
 forbid("crates/modules/rustok-blog/src/services/category.rs", [
   "blog-category-tree:",
 ]);
