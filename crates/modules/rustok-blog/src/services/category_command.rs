@@ -8,7 +8,10 @@ use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
-use rustok_taxonomy::entities::taxonomy_category_hierarchy;
+use rustok_taxonomy::{
+    entities::{taxonomy_category_hierarchy, taxonomy_term},
+    TaxonomyScopeType, TaxonomyTermKind,
+};
 
 use crate::dto::{
     CategoryPlacementResponse, MAX_BLOG_CATEGORY_TREE_NODES, MoveCategoryInput,
@@ -53,6 +56,23 @@ impl CategoryCommandService {
             return Err(BlogError::category_not_found(category_id));
         }
         ensure_parent_exists(&blog_ids, input.parent_id)?;
+
+        let canonical_terms = taxonomy_term::Entity::find()
+            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category))
+            .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
+            .filter(
+                taxonomy_term::Column::ScopeValue
+                    .eq(crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
+            )
+            .filter(taxonomy_term::Column::Id.is_in(blog_ids.iter().copied()))
+            .all(&txn)
+            .await?;
+        if canonical_terms.len() != blog_ids.len() {
+            return Err(BlogError::invariant(
+                "Blog category Taxonomy ownership coverage is incomplete during move",
+            ));
+        }
 
         let hierarchy_rows = taxonomy_category_hierarchy::Entity::find()
             .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
