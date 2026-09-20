@@ -24,7 +24,7 @@ use rustok_events::EventEnvelope;
 use rustok_outbox::{SysEventsMigration, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
-use sea_orm_migration::SchemaManager;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
@@ -419,6 +419,20 @@ async fn test_cannot_delete_published_post() -> TestResult<()> {
     Ok(())
 }
 
+struct NoopCategoryDeleteCleanup;
+
+#[async_trait]
+impl rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort for NoopCategoryDeleteCleanup {
+    async fn cleanup_in_tx(
+        &self,
+        _txn: &sea_orm::DatabaseTransaction,
+        _tenant_id: Uuid,
+        _category_id: Uuid,
+    ) -> rustok_taxonomy::TaxonomyResult<()> {
+        Ok(())
+    }
+}
+
 #[tokio::test]
 async fn test_category_crud() -> TestResult<()> {
     let db = setup_blog_test_db().await;
@@ -427,7 +441,8 @@ async fn test_category_crud() -> TestResult<()> {
     let transport = MemoryTransport::new();
     let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
-    let category_service = CategoryService::new(db.clone(), event_bus);
+    let category_service = CategoryService::new(db.clone(), event_bus)
+        .with_category_delete_cleanup(Arc::new(NoopCategoryDeleteCleanup));
 
     let tenant_id = Uuid::new_v4();
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -660,7 +675,7 @@ async fn setup_blog_test_db() -> DatabaseConnection {
 }
 
 async fn ensure_blog_schema(db: &DatabaseConnection) {
-    db.execute(&sea_orm::Statement::from_string(
+    db.execute_raw(sea_orm::Statement::from_string(
         db.get_database_backend(),
         r#"
         CREATE TABLE IF NOT EXISTS tenants (
@@ -717,7 +732,7 @@ async fn ensure_blog_schema(db: &DatabaseConnection) {
 }
 
 async fn seed_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
-    db.execute(&sea_orm::Statement::from_sql_and_values(
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
         db.get_database_backend(),
         "INSERT OR IGNORE INTO tenants (id, name, slug, settings, default_locale, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
         [
@@ -1089,7 +1104,8 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
 
     let event_types = drain_event_types(&mut receiver);
     assert!(event_types.iter().any(|et| et == "blog.post.created"));
-    assert!(event_types.iter().any(|et| et == "blog.post.updated"));
+    assert!(event_types.iter().any(|et| et == "comment.created"));
+    assert!(event_types.iter().any(|et| et == "comment.deleted"));
 
     Ok(())
 }
