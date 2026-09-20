@@ -82,8 +82,10 @@ impl BlogCommentProjectionHandler {
             .one(&txn)
             .await?
         else {
-            txn.commit().await?;
-            return Ok(());
+            return Err(Error::External(format!(
+                "Blog post {} was not found for Comments projection",
+                change.post_id
+            )));
         };
 
         // Event IDs are ULIDs encoded as UUIDs by EventEnvelope::new(), so UUID ordering
