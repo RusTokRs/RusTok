@@ -93,14 +93,17 @@ impl VoteService {
         let user_id = require_authenticated_user(&security)?;
         validate_vote_value(value)?;
 
-        let reply = self.find_reply(tenant_id, reply_id).await?;
+        let txn = self.db.begin().await?;
+        let reply = crate::services::ReplyService::find_reply_for_update_in_tx(
+            &txn, tenant_id, reply_id,
+        )
+        .await?;
         if reply.status != ReplyStatus::Approved {
             return Err(ForumError::Validation(
                 "Only approved replies can receive votes".to_string(),
             ));
         }
 
-        let txn = self.db.begin().await?;
         self.upsert_reply_vote_in_tx(&txn, tenant_id, reply_id, user_id, value)
             .await?;
         txn.commit().await?;
@@ -116,9 +119,9 @@ impl VoteService {
     ) -> ForumResult<()> {
         enforce_scope(&security, Resource::ForumReplies, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
-        self.find_reply(tenant_id, reply_id).await?;
-
         let txn = self.db.begin().await?;
+        crate::services::ReplyService::find_reply_for_update_in_tx(&txn, tenant_id, reply_id)
+            .await?;
         forum_reply_vote::Entity::delete_many()
             .filter(forum_reply_vote::Column::TenantId.eq(tenant_id))
             .filter(forum_reply_vote::Column::ReplyId.eq(reply_id))
