@@ -141,6 +141,7 @@ impl TopicService {
             Action::Update,
             topic.author_id,
         )?;
+        let expected_updated_at = topic.updated_at;
         let prepared_custom_fields = if let Some(metadata) = input.metadata.clone() {
             Some(
                 self.prepare_topic_custom_fields_for_update(
@@ -209,6 +210,13 @@ impl TopicService {
             };
 
         let txn = self.db.begin().await?;
+        let claimed_updated_at = Self::claim_topic_update_in_tx(
+            &txn,
+            tenant_id,
+            topic_id,
+            expected_updated_at,
+        )
+        .await?;
         if let Some(expectation) = quote_expectation {
             super::relation_quote_input::lock_source_and_assert_latest_in_tx(
                 &txn,
@@ -224,7 +232,7 @@ impl TopicService {
             lock_topic_tag_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         }
         let mut active: forum_topic::ActiveModel = topic.into();
-        active.updated_at = Set(Utc::now().into());
+        active.updated_at = Set(claimed_updated_at.into());
         if let Some(prepared_custom_fields) = prepared_custom_fields.as_ref() {
             active.metadata = Set(prepared_custom_fields
                 .metadata
