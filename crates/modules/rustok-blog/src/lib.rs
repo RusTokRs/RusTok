@@ -11,8 +11,7 @@ mod module;
 
 pub mod controllers;
 pub mod dto;
-pub mod entities;
-pub use entities::{blog_category, blog_post, blog_post_tag, blog_post_translation};
+mod entities;
 pub mod error;
 pub mod graphql;
 pub mod migrations;

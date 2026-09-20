@@ -176,12 +176,12 @@ requireAll("crates/modules/rustok-blog/src/services/category_delete.rs", [
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
-  "load_channel_slugs(
+  `load_channel_slugs(
         &self,
-        tenant_id: Uuid",
-  "load_channel_slugs_map(
+        tenant_id: Uuid`,
+  `load_channel_slugs_map(
         &self,
-        tenant_id: Uuid",
+        tenant_id: Uuid`,
   "validate_persisted_version",
   "next_persisted_version",
   '"invalid persisted version"',

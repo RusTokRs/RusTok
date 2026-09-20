@@ -168,9 +168,7 @@ async fn load_snapshot_best_effort(
     store: &dyn PublicCommentsSnapshotStore,
     identity: &PublicCommentsSnapshotIdentity,
 ) -> Option<PublicCommentsSnapshotEnvelope> {
-    let Some(key) = snapshot_key(identity) else {
-        return None;
-    };
+    let key = snapshot_key(identity)?;
     let bytes = match store.load(&key).await {
         Ok(Some(bytes)) if bytes.len() <= MAX_PUBLIC_COMMENTS_SNAPSHOT_BYTES => bytes,
         Ok(Some(bytes)) => {
