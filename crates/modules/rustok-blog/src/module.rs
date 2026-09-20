@@ -65,7 +65,7 @@ impl RusToKModule for BlogModule {
     ) -> rustok_core::Result<()> {
         register_seo_target_provider(extensions, seo_targets::BlogSeoTargetProvider).map_err(
             |error| {
-                rustok_core::Error::Validation(format!(
+                rustok_core::Error::Internal(format!(
                     "blog SEO target registration failed: {error}"
                 ))
             },
@@ -75,7 +75,7 @@ impl RusToKModule for BlogModule {
             reaction_subject::BlogReactionSubjectProviderFactory,
         )
         .map_err(|error| {
-            rustok_core::Error::Validation(format!(
+            rustok_core::Error::Internal(format!(
                 "blog reaction subject factory registration failed: {error}"
             ))
         })?;
