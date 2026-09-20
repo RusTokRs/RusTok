@@ -324,6 +324,9 @@ impl CommentService {
         filter: ListCommentsFilter,
         fallback_locale: Option<&str>,
     ) -> BlogResult<(Vec<CommentListItem>, u64)> {
+        if !security.is_public_read() {
+            enforce_scope(&security, Resource::Comments, Action::List)?;
+        }
         self.ensure_post_exists(tenant_id, post_id).await?;
 
         let locale = filter
