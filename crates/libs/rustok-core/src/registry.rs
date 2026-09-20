@@ -296,6 +296,7 @@ mod tests {
             .err()
             .expect("registration must fail");
 
+        assert!(matches!(error, crate::Error::Internal(_)));
         assert!(
             error
                 .to_string()
