@@ -4,6 +4,7 @@ export const BLOG_FBA_VERIFICATION_STEPS = [
   'node scripts/verify/verify-blog-fba.mjs',
   'npm run verify:blog:admin-boundary',
   'npm run verify:blog:storefront-boundary',
+  'npm run verify:blog:comments-storefront-write-surface',
   'npm run verify:blog:comments-port-boundary',
   'npm run verify:blog:comments-event-projection',
   'npm run verify:blog:comments-duplicate-delivery-race',
@@ -17,6 +18,13 @@ export const BLOG_FBA_VERIFICATION_STEPS = [
 ];
 
 export const BLOG_FBA_SOURCE_GATES = {
+  comments_storefront_write_surface: {
+    package_script: 'verify:blog:comments-storefront-write-surface',
+    test_package_script: 'test:verify:blog:comments-storefront-write-surface',
+    verifier: 'scripts/verify/verify-blog-comments-storefront-write-surface.mjs',
+    self_test: 'scripts/verify/verify-blog-comments-storefront-write-surface.test.mjs',
+    evidence: 'crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json',
+  },
   admin_boundary: {
     package_script: 'verify:blog:admin-boundary',
     test_package_script: 'test:verify:blog:admin-boundary',
@@ -111,6 +119,7 @@ export const BLOG_FBA_TEST_STEPS = [
   BLOG_FBA_SELF_TEST_COMMAND,
   'npm run test:verify:blog:admin-boundary',
   'npm run test:verify:blog:storefront-boundary',
+  'npm run test:verify:blog:comments-storefront-write-surface',
   'npm run test:verify:blog:comments-port-boundary',
   'npm run test:verify:blog:comments-event-projection',
   'npm run test:verify:blog:comments-duplicate-delivery-race',
