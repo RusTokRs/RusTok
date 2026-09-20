@@ -163,6 +163,7 @@ requireAll("crates/modules/rustok-blog/src/services/category.rs", [
 
 requireAll("crates/modules/rustok-blog/src/services/category_command.rs", [
   "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
+  '"Blog category {category_id} has no canonical Taxonomy hierarchy placement during move"',
   ".map_err(storage_category_tree_error)?",
   'BlogError::invariant("Moved category placement was not persisted")',
   '"Blog category Taxonomy hierarchy coverage is incomplete"',
