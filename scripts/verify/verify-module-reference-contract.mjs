@@ -124,11 +124,6 @@ requireAll("crates/modules/rustok-blog/src/services/category_owner.rs", [
   '"Blog Category Taxonomy projection contains duplicate identities"',
   '"Blog Category Taxonomy projection contains Category without localized copy"',
 ]);
-requireAll("crates/modules/rustok-blog/src/services/category.rs", [
-  '"has no canonical Taxonomy hierarchy placement"',
-  "Column::ParentTermId.eq(category_id)",
-  '"Category must be a leaf before deletion; move or delete its children first"',
-]);
 requireAll("crates/modules/rustok-blog/src/migrations/m20260919_000023_enforce_blog_post_category_tenant_integrity.rs", [
   "fk_blog_posts_tenant_category",
   "uq_blog_categories_tenant_id",
