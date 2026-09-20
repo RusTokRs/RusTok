@@ -6,7 +6,9 @@ This slice corrects the previous source inventory after a fresh audit of the act
 
 ## Re-audit result
 
-The active `rustok-blog-storefront` package owns:
+The active `rustok-blog-storefront` package owns the public comment write surface and also the dual-path public comment read surface.
+
+It owns:
 
 - dual-path read access for published posts;
 - approved public Comments reads;
