@@ -59,7 +59,10 @@ impl GuardedCartPort {
 }
 
 fn authorize_guest_cart(context: &PortContext, cart: &CartResponse) -> Result<(), PortError> {
-    if cart.customer_id.is_some() || context.actor.kind == rustok_api::PortActorKind::System {
+    if cart.customer_id.is_some()
+        || context.actor.kind == rustok_api::PortActorKind::Service
+        || context.actor.kind == rustok_api::PortActorKind::System
+    {
         return Ok(());
     }
 
@@ -302,7 +305,7 @@ mod tests {
         let token = token.expect("guest token");
         let base = PortContext::new(
             Uuid::new_v4().to_string(),
-            PortActor::service("storefront"),
+            PortActor::user("guest-user"),
             "en",
             "request",
         );
