@@ -139,7 +139,16 @@ for (const removedPath of removedRichtextArtifacts) {
 }
 
 const manifest = read('crates/modules/rustok-blog/rustok-module.toml');
-hasAll(manifest, ['[fba.consumer]', 'registry = "contracts/blog-fba-registry.json"', 'profile = "blog_post_comments"', 'comments.thread.v1'], 'manifest');
+hasAll(manifest, [
+  '[fba.consumer]',
+  'registry = "contracts/blog-fba-registry.json"',
+  'profile = "blog_post_comments"',
+  'provider_contracts = ["comments.thread.v1"]',
+  'context = "rustok_api::ports::PortContext"',
+  'error = "rustok_api::ports::PortError"',
+  'fallback_profiles = ["embedded_native"]',
+  'degraded_modes = ["hide_comment_form", "show_cached_thread_snapshot"]',
+], 'manifest');
 
 if (evidence.schema_version !== 3 || evidence.surface !== 'comments_port_boundary') fail('comments port matrix schema/identity drift');
 if (evidence.generated_from !== registryPath || evidence.status !== registry.contract_tests.status) fail('evidence header drift');
