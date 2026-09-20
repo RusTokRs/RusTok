@@ -110,7 +110,7 @@ impl CommentService {
         Self::map_comment_record(record)
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn get_comment(
         &self,
         tenant_id: Uuid,
@@ -128,7 +128,7 @@ impl CommentService {
         .await
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn get_comment_with_locale_fallback(
         &self,
         tenant_id: Uuid,
