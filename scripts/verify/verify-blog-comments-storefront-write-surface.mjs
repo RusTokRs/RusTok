@@ -204,5 +204,5 @@ if (failures.length) {
 }
 
 console.log(
-  '[verify-blog-comments-storefront-write-surface] PASS write_surface=absent comment_form_fallback=not_applicable execution=not_run',
+  '[verify-blog-comments-storefront-write-surface] PASS write_surface=present comment_form_fallback=planned execution=not_run',
 );
