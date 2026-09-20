@@ -15,7 +15,9 @@ use crate::dto::{CreateCategoryInput, MAX_BLOG_CATEGORY_TREE_NODES, UpdateCatego
 use crate::entities::blog_category;
 use crate::error::{BlogError, BlogResult};
 use crate::services::{category_taxonomy_sync, rbac::enforce_scope};
-use rustok_taxonomy::entities::taxonomy_category_hierarchy;
+use rustok_taxonomy::{
+    entities::taxonomy_category_hierarchy, TaxonomyOwnerCategoryReader, TaxonomyScopeType,
+};
 
 /// Blog-owned Category command core.
 ///
@@ -126,6 +128,25 @@ impl CategoryService {
             .one(&txn)
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
+
+        // Fail closed on missing/foreign canonical ownership; update must never recreate a Taxonomy Category.
+        let category_ids = [category_id];
+        let canonical = TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
+            &txn,
+            tenant_id,
+            TaxonomyScopeType::Module,
+            Some(category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
+            Some(&category_ids),
+            &locale,
+            None,
+        )
+        .await
+        .map_err(BlogError::from)?;
+        if canonical.len() != 1 {
+            return Err(BlogError::invariant(format!(
+                "Blog category {category_id} is missing canonical Taxonomy ownership or hierarchy",
+            )));
+        }
 
         let next_resource_revision = next_category_revision(&category)?;
         let now = Utc::now().fixed_offset();

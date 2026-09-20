@@ -527,6 +527,7 @@ requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   "category_taxonomy_sync::BLOG_TAXONOMY_SCOPE",
   "Blog category {category_id} is missing canonical Taxonomy ownership or hierarchy",
   "Blog category {category_id} has no canonical localized copy",
+  "update must never recreate a Taxonomy Category",
 ]);
 requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   "ensure_hierarchy_coverage_in_tx(&txn, tenant_id).await?",
