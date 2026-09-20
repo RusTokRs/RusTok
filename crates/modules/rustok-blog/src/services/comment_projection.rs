@@ -6,7 +6,7 @@ use rustok_events::DomainEvent;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    QueryFilter, Set, TransactionTrait, sea_query::Expr,
+    QueryFilter, Set, TransactionTrait, sea_query::{Expr, OnConflict},
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -105,23 +105,34 @@ impl BlogCommentProjectionHandler {
             return Ok(());
         }
 
+        // Claim the delivery before applying the derived counter. The event id is the
+        // primary key, so concurrent duplicate deliveries deterministically elect one
+        // transaction as the owner. If the projection fails, the claim rolls back with
+        // the counter update and the dispatcher can retry the event safely.
+        let claimed = blog_comment_projection_delivery::Entity::insert(
+            blog_comment_projection_delivery::ActiveModel {
+                event_id: Set(envelope.id),
+                tenant_id: Set(envelope.tenant_id),
+                comment_id: Set(change.comment_id),
+                post_id: Set(change.post_id),
+                delta: Set(change.delta),
+                processed_at: Set(Utc::now().into()),
+            },
+        )
+        .on_conflict(OnConflict::column(
+            blog_comment_projection_delivery::Column::EventId,
+        ).do_nothing().to_owned())
+        .exec(&txn)
+        .await?;
+
+        if claimed.rows_affected == 0 {
+            txn.commit().await?;
+            return Ok(());
+        }
+
         let post_updated =
             update_comment_count_in_tx(&txn, envelope.tenant_id, change.post_id, change.delta)
                 .await?;
-
-        // A delayed comment lifecycle event may arrive after its Post was deleted. The
-        // derived counter is already irrelevant, but the delivery still needs a durable
-        // idempotency marker so the event does not retry forever.
-        blog_comment_projection_delivery::ActiveModel {
-            event_id: Set(envelope.id),
-            tenant_id: Set(envelope.tenant_id),
-            comment_id: Set(change.comment_id),
-            post_id: Set(change.post_id),
-            delta: Set(change.delta),
-            processed_at: Set(Utc::now().into()),
-        }
-        .insert(&txn)
-        .await?;
 
         if post_updated {
             self.event_bus
