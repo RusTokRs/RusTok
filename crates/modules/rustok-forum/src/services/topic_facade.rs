@@ -399,6 +399,14 @@ impl TopicService {
         topic_owner::TopicService::find_topic_in_tx(txn, tenant_id, topic_id).await
     }
 
+    pub(crate) async fn find_topic_for_update_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+    ) -> ForumResult<forum_topic::Model> {
+        topic_owner::TopicService::find_topic_for_update_in_tx(txn, tenant_id, topic_id).await
+    }
+
     pub(crate) async fn adjust_reply_count_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
