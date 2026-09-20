@@ -81,6 +81,17 @@ forbid("crates/modules/rustok-blog/src/services/post/commands.rs", [
   'expect("localized-only update requires a canonical locale")',
 ]);
 
+requireAll("crates/modules/rustok-blog/src/controllers/posts.rs", [
+  "pub(super) fn ensure_blog_permission(",
+  "if auth.tenant_id != tenant.id",
+  '"blog_tenant_mismatch"',
+]);
+requireAll("crates/modules/rustok-blog/src/controllers/categories.rs", [
+  "fn ensure_category_permission(",
+  "if auth.tenant_id != tenant.id",
+  '"blog_category_tenant_mismatch"',
+]);
+
 requireAll("crates/modules/rustok-blog/src/services/post/mod.rs", [
   "other => Err(BlogError::invariant(format!(",
   '"Unknown persisted Blog post status: {other}"',
@@ -314,6 +325,13 @@ requireAll("crates/modules/rustok-blog/src/integrations/public_comments_snapshot
 ]);
 forbid("crates/modules/rustok-blog/src/integrations/public_comments_snapshot.rs", [
   "serde_json::to_vec(identity).unwrap_or_default()",
+]);
+
+requireAll("crates/modules/rustok-blog/src/integrations/seo_targets.rs", [
+  "Err(error) => Err(anyhow::Error::new(error))",
+]);
+forbid("crates/modules/rustok-blog/src/integrations/seo_targets.rs", [
+  'anyhow::anyhow!("Blog SEO owner read failed: {error}")',
 ]);
 
 requireAll("crates/modules/rustok-blog/src/error/public.rs", [

@@ -43,6 +43,7 @@ pub async fn list_posts(
     Query(mut query): Query<PostListQuery>,
 ) -> HttpResult<Json<crate::PostListResponse>> {
     ensure_blog_permission(
+        &tenant,
         &auth,
         &[Permission::BLOG_POSTS_LIST],
         "Permission denied: blog_posts:list required",
@@ -106,6 +107,7 @@ pub async fn get_post(
     Query(params): Query<HashMap<String, String>>,
 ) -> HttpResult<Json<PostResponse>> {
     ensure_blog_permission(
+        &tenant,
         &auth,
         &[Permission::BLOG_POSTS_READ],
         "Permission denied: blog_posts:read required",
@@ -149,6 +151,7 @@ pub async fn create_post(
     Json(input): Json<CreatePostInput>,
 ) -> HttpResult<(StatusCode, Json<Uuid>)> {
     ensure_blog_permission(
+        &tenant,
         &auth,
         &[Permission::BLOG_POSTS_CREATE],
         "Permission denied: blog_posts:create required",
@@ -186,6 +189,7 @@ pub async fn update_post(
     Json(input): Json<UpdatePostInput>,
 ) -> HttpResult<()> {
     ensure_blog_permission(
+        &tenant,
         &auth,
         &[Permission::BLOG_POSTS_UPDATE],
         "Permission denied: blog_posts:update required",
@@ -221,6 +225,7 @@ pub async fn delete_post(
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
     ensure_blog_permission(
+        &tenant,
         &auth,
         &[Permission::BLOG_POSTS_DELETE],
         "Permission denied: blog_posts:delete required",
@@ -256,6 +261,7 @@ pub async fn publish_post(
     Path(id): Path<Uuid>,
 ) -> HttpResult<()> {
     ensure_blog_permission(
+        &tenant,
         &auth,
         &[Permission::BLOG_POSTS_PUBLISH],
         "Permission denied: blog_posts:publish required",
@@ -291,6 +297,7 @@ pub async fn unpublish_post(
     Path(id): Path<Uuid>,
 ) -> HttpResult<()> {
     ensure_blog_permission(
+        &tenant,
         &auth,
         &[Permission::BLOG_POSTS_PUBLISH],
         "Permission denied: blog_posts:publish required",
@@ -305,10 +312,17 @@ pub async fn unpublish_post(
 }
 
 pub(super) fn ensure_blog_permission(
+    tenant: &TenantContext,
     auth: &AuthContext,
     permissions: &[Permission],
     message: &str,
 ) -> HttpResult<()> {
+    if auth.tenant_id != tenant.id {
+        return Err(HttpError::forbidden(
+            "blog_tenant_mismatch",
+            "Authenticated principal is not bound to the current tenant",
+        ));
+    }
     if !has_any_effective_permission(&auth.permissions, permissions) {
         return Err(HttpError::forbidden("blog_permission_denied", message));
     }
@@ -339,6 +353,7 @@ pub async fn archive_post(
     Json(input): Json<ArchivePostInput>,
 ) -> HttpResult<()> {
     ensure_blog_permission(
+        &tenant,
         &auth,
         &[Permission::BLOG_POSTS_PUBLISH],
         "Permission denied: blog_posts:publish required",
@@ -371,6 +386,7 @@ pub async fn restore_post(
     Path(id): Path<Uuid>,
 ) -> HttpResult<()> {
     ensure_blog_permission(
+        &tenant,
         &auth,
         &[Permission::BLOG_POSTS_PUBLISH],
         "Permission denied: blog_posts:publish required",
