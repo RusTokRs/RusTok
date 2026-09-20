@@ -64,7 +64,14 @@ impl BlogCategoryDeleteCleanup {
             .one(txn)
             .await?
             .ok_or_else(|| BlogError::category_not_found(self.blog_category_id))?;
-        ensure_category_is_leaf_in_tx(txn, tenant_id, self.blog_category_id).await?;
+        rustok_taxonomy::delete_module_category_placement_and_compact_in_tx(
+            txn,
+            tenant_id,
+            self.blog_category_id,
+            crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE,
+        )
+        .await
+        .map_err(map_blog_error)?;
 
         detach_category_from_posts_in_tx(txn, tenant_id, self.blog_category_id).await?;
 
@@ -79,15 +86,6 @@ impl BlogCategoryDeleteCleanup {
                 "blog category changed before deletion could commit",
             ));
         }
-
-        rustok_taxonomy::delete_module_category_placement_and_compact_in_tx(
-            txn,
-            tenant_id,
-            self.blog_category_id,
-            crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE,
-        )
-        .await
-        .map_err(map_blog_error)?;
 
         self.event_bus
             .publish_in_tx(
@@ -121,24 +119,6 @@ impl TaxonomyCategoryDeleteCleanupPort for BlogCategoryDeleteCleanup {
             .cleanup_in_tx(txn, tenant_id, category_id)
             .await
     }
-}
-
-async fn ensure_category_is_leaf_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    category_id: Uuid,
-) -> BlogResult<()> {
-    let child = taxonomy_category_hierarchy::Entity::find()
-        .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
-        .filter(taxonomy_category_hierarchy::Column::ParentTermId.eq(category_id))
-        .one(txn)
-        .await?;
-    if child.is_some() {
-        return Err(BlogError::validation(
-            "Category must be a leaf before deletion; move or delete its children first",
-        ));
-    }
-    Ok(())
 }
 
 async fn detach_category_from_posts_in_tx(
