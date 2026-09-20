@@ -15,20 +15,12 @@ use uuid::Uuid;
 use crate::entities::{blog_comment_projection_delivery, blog_post};
 
 const BLOG_POST_TARGET_TYPE: &str = "blog_post";
-const MAX_PROJECTION_UPDATE_ATTEMPTS: usize = 8;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct CommentProjectionChange {
     comment_id: Uuid,
     post_id: Uuid,
     delta: i32,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ProjectionUpdateDecision {
-    Applied,
-    Retry,
-    LimitReached,
 }
 
 fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionChange> {
@@ -59,19 +51,6 @@ fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionCha
 
 fn next_comment_count(comment_count: i32, delta: i32) -> i32 {
     comment_count.saturating_add(delta).max(0)
-}
-
-fn projection_update_decision(
-    attempt_index: usize,
-    rows_affected: u64,
-) -> ProjectionUpdateDecision {
-    if rows_affected == 1 {
-        ProjectionUpdateDecision::Applied
-    } else if attempt_index + 1 < MAX_PROJECTION_UPDATE_ATTEMPTS {
-        ProjectionUpdateDecision::Retry
-    } else {
-        ProjectionUpdateDecision::LimitReached
-    }
 }
 
 /// Projects Comments lifecycle events into Blog-owned reply-count state.
@@ -290,17 +269,7 @@ mod tests {
         assert_eq!(next_comment_count(i32::MAX, 1), i32::MAX);
     }
 
-    #[test]
-    fn optimistic_retry_policy_applies_success_without_retry() {
-        assert_eq!(
-            projection_update_decision(0, 1),
-            ProjectionUpdateDecision::Applied
-        );
-        assert_eq!(
-            projection_update_decision(MAX_PROJECTION_UPDATE_ATTEMPTS - 1, 1),
-            ProjectionUpdateDecision::Applied
-        );
-    }
+}
 
     #[test]
     fn optimistic_retry_policy_allows_seven_retries_then_stops_on_eighth_conflict() {
