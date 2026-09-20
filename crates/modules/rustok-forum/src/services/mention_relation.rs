@@ -172,30 +172,30 @@ impl MentionRelationService {
                 .await?;
         let current_snapshot = ProjectionSnapshot::from_prepared(&prepared);
 
-        if let Some(latest) = latest.as_ref() {
-            if latest.projection_fingerprint == prepared.projection_fingerprint {
-                let persisted =
-                    load_snapshot_in_tx(txn, prepared.tenant_id, latest.revision_id).await?;
-                if persisted != current_snapshot {
-                    return Err(ForumError::Validation(
-                        "Forum relation replay fingerprint does not match persisted targets"
-                            .to_string(),
-                    ));
-                }
-                return Ok(MentionRelationSyncResult {
-                    source: ForumRevisionIdentity::new(
-                        prepared.tenant_id,
-                        prepared.target,
-                        latest.revision_id,
-                        prepared.locale,
-                    )?,
-                    replayed: true,
-                    added_user_ids: Vec::new(),
-                    added_audiences: Vec::new(),
-                    mention_count: current_snapshot.users.len() + current_snapshot.audiences.len(),
-                    quote_count: current_snapshot.quotes.len(),
-                });
+        if let Some(latest) = latest.as_ref()
+            && latest.projection_fingerprint == prepared.projection_fingerprint
+        {
+            let persisted =
+                load_snapshot_in_tx(txn, prepared.tenant_id, latest.revision_id).await?;
+            if persisted != current_snapshot {
+                return Err(ForumError::Validation(
+                    "Forum relation replay fingerprint does not match persisted targets"
+                        .to_string(),
+                ));
             }
+            return Ok(MentionRelationSyncResult {
+                source: ForumRevisionIdentity::new(
+                    prepared.tenant_id,
+                    prepared.target,
+                    latest.revision_id,
+                    prepared.locale,
+                )?,
+                replayed: true,
+                added_user_ids: Vec::new(),
+                added_audiences: Vec::new(),
+                mention_count: current_snapshot.users.len() + current_snapshot.audiences.len(),
+                quote_count: current_snapshot.quotes.len(),
+            });
         }
 
         let previous_snapshot = if let Some(latest) = latest.as_ref() {

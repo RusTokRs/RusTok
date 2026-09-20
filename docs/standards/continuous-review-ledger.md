@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `47 / 218` components audited (**22%**)
+- **Progress:** `50 / 218` components audited (**23%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -90,9 +90,9 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-events-module](../../crates/modules/rustok-events-module) | `modules` | 14 | 847 | 2026-09-20 14:21 | Verified events runtime module adapter, zero suppressions/unwraps, test passed, clippy clean |
 | [x] | [admin](../../crates/modules/rustok-events-module/admin) | `modules` | 7 | 506 | 2026-09-20 14:21 | Verified leptos events admin surface, zero suppressions/unwraps, clippy clean |
 | [x] | [next-admin](../../crates/modules/rustok-events-module/next-admin) | `modules` | 6 | 278 | 2026-09-20 14:22 | Verified events next-admin UI package, typed status query and delivery configuration API |
-| [ ] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 591 | 151,991 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-forum/admin) | `modules` | 35 | 12,236 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-forum/storefront) | `modules` | 19 | 4,164 | None |  |
+| [x] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 591 | 151,991 | 2026-09-20 16:30 | Eliminated 17 allow suppressions across services/tests with typed structs (CategoryTaxonomyListFilter, CategoryTreeBuildContext, CounterQueryDialects, ForumSubscriptionReconciliationCursors, TopicForkOperationParams, TopicReplyRangeMoveOperationParams, RecordTopicAliasParams, TestSubscriptionParams), extracted reply_tests to eliminate items_after_test_module, collapsed nested ifs, all 191+ tests passed, clippy clean |
+| [x] | [admin](../../crates/modules/rustok-forum/admin) | `modules` | 35 | 12,236 | 2026-09-20 16:30 | Verified forum admin package, zero suppressions/unwraps, all 87 tests passed, clippy clean |
+| [x] | [storefront](../../crates/modules/rustok-forum/storefront) | `modules` | 19 | 4,164 | 2026-09-20 16:30 | Re-exported public transport API in lib.rs, eliminated 6 allow(dead_code) suppressions, all tests passed, clippy clean |
 | [ ] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 71 | 17,271 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-fulfillment/admin) | `modules` | 8 | 1,454 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-fulfillment/storefront) | `modules` | 12 | 1,206 | None |  |

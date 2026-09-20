@@ -233,22 +233,22 @@ impl TopicService {
         }
         active.update(&txn).await?;
 
-        if let Some(prepared_custom_fields) = prepared_custom_fields.as_ref() {
-            if let (Some(persist_locale), Some(values)) = (
+        if let Some(prepared_custom_fields) = prepared_custom_fields.as_ref()
+            && let (Some(persist_locale), Some(values)) = (
                 prepared_custom_fields.locale.as_deref(),
                 prepared_custom_fields.localized_values.as_ref(),
-            ) {
-                persist_localized_values(
-                    &txn,
-                    tenant_id,
-                    "topic",
-                    topic_id,
-                    persist_locale,
-                    values,
-                )
-                .await
-                .map_err(|error| ForumError::Validation(error.to_string()))?;
-            }
+            )
+        {
+            persist_localized_values(
+                &txn,
+                tenant_id,
+                "topic",
+                topic_id,
+                persist_locale,
+                values,
+            )
+            .await
+            .map_err(|error| ForumError::Validation(error.to_string()))?;
         }
 
         self.upsert_translation_in_tx(

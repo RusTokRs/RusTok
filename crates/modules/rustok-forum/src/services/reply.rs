@@ -268,14 +268,14 @@ impl ReplyService {
             .filter(forum_reply::Column::TopicId.eq(topic_id))
             .order_by_asc(forum_reply::Column::Position);
 
-        if let Some(statuses) = statuses {
-            if !statuses.is_empty() {
-                let mut condition = Condition::any();
-                for status in statuses {
-                    condition = condition.add(forum_reply::Column::Status.eq(*status));
-                }
-                query = query.filter(condition);
+        if let Some(statuses) = statuses
+            && !statuses.is_empty()
+        {
+            let mut condition = Condition::any();
+            for status in statuses {
+                condition = condition.add(forum_reply::Column::Status.eq(*status));
             }
+            query = query.filter(condition);
         }
 
         let paginator = query.paginate(&self.db, per_page.max(1));

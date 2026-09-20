@@ -79,12 +79,12 @@ fn ensure_parent_exists(
     models: &HashMap<Uuid, forum_category::Model>,
     parent_id: Option<Uuid>,
 ) -> ForumResult<()> {
-    if let Some(parent_id) = parent_id {
-        if !models.contains_key(&parent_id) {
-            return Err(ForumError::Validation(format!(
-                "Category parent {parent_id} does not exist in the tenant"
-            )));
-        }
+    if let Some(parent_id) = parent_id
+        && !models.contains_key(&parent_id)
+    {
+        return Err(ForumError::Validation(format!(
+            "Category parent {parent_id} does not exist in the tenant"
+        )));
     }
     Ok(())
 }
