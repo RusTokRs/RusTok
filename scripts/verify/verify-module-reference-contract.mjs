@@ -525,6 +525,13 @@ requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   "Blog category {category_id} is missing canonical Taxonomy ownership or hierarchy",
   "Blog category {category_id} has no canonical localized copy",
 ]);
+requireAll("crates/modules/rustok-blog/src/services/category.rs", [
+  "ensure_hierarchy_coverage_in_tx(&txn, tenant_id).await?",
+  "TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(",
+  "category_taxonomy_sync::BLOG_TAXONOMY_SCOPE",
+  "Blog category Taxonomy hierarchy coverage is incomplete before create",
+  "Blog category Taxonomy projection contains Category without localized copy before create",
+]);
 requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
   "if publish {",
   "enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;",

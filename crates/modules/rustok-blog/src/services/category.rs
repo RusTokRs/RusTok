@@ -6,7 +6,7 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_api::{Action, Resource, TenantLocale};
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource, TenantLocale};
 use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
@@ -309,17 +309,29 @@ async fn ensure_hierarchy_coverage_in_tx(
         return Ok(());
     }
 
-    let hierarchy_rows = taxonomy_category_hierarchy::Entity::find()
-        .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
-        .filter(
-            taxonomy_category_hierarchy::Column::TermId.is_in(blog_category_ids.clone()),
-        )
-        .all(txn)
-        .await?;
+    let canonical = rustok_taxonomy::TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
+        txn,
+        tenant_id,
+        rustok_taxonomy::TaxonomyScopeType::Module,
+        Some(category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
+        Some(&blog_category_ids),
+        PLATFORM_FALLBACK_LOCALE,
+        Some(PLATFORM_FALLBACK_LOCALE),
+    )
+    .await
+    .map_err(BlogError::from)?;
 
-    if hierarchy_rows.len() != blog_category_ids.len() {
+    if canonical.len() != blog_category_ids.len() {
         return Err(BlogError::invariant(
             "Blog category Taxonomy hierarchy coverage is incomplete before create",
+        ));
+    }
+    if canonical
+        .iter()
+        .any(|category| category.available_locales.is_empty())
+    {
+        return Err(BlogError::invariant(
+            "Blog category Taxonomy projection contains Category without localized copy before create",
         ));
     }
 
