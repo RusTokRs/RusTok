@@ -102,7 +102,7 @@ impl ModuleRegistry {
             module
                 .register_runtime_extensions(&mut extensions)
                 .map_err(|error| {
-                    crate::Error::Validation(format!(
+                    crate::Error::Internal(format!(
                         "module `{}` runtime extension registration failed: {error}",
                         module.slug()
                     ))
