@@ -189,7 +189,7 @@ need(ui, 'transport::create_comment(', files.ui);
 
 for (const marker of [
   'storefront_comment_form_fallback_active_surface_source_verified',
-  'active storefront package owns the public comment write surface',
+  'owns the public comment write surface',
   'hide_comment_form',
   'fallback vocabulary',
   'comment_form_fallback = planned',
