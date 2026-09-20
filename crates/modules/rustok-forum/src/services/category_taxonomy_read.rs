@@ -19,6 +19,16 @@ pub(in crate::services) struct CategoryTaxonomyReadService {
     db: DatabaseConnection,
 }
 
+pub(in crate::services) struct CategoryTaxonomyListFilter<'a> {
+    pub tenant_id: Uuid,
+    pub security: SecurityContext,
+    pub locale: &'a str,
+    pub page: u64,
+    pub per_page: u64,
+    pub fallback_locale: Option<&'a str>,
+    pub hidden_category_ids: &'a [Uuid],
+}
+
 impl CategoryTaxonomyReadService {
     pub(in crate::services) fn new(db: DatabaseConnection) -> Self {
         Self { db }
@@ -87,27 +97,18 @@ impl CategoryTaxonomyReadService {
         })
     }
 
-pub(in crate::services) struct CategoryTaxonomyListFilter<'a> {
-    pub tenant_id: Uuid,
-    pub security: SecurityContext,
-    pub locale: &'a str,
-    pub page: u64,
-    pub per_page: u64,
-    pub fallback_locale: Option<&'a str>,
-    pub hidden_category_ids: &'a [Uuid],
-}
-
     pub(in crate::services) async fn list_paginated_with_locale_fallback_and_hidden_categories(
         &self,
         filter: CategoryTaxonomyListFilter<'_>,
     ) -> ForumResult<(Vec<CategoryListItem>, u64)> {
         enforce_scope(&filter.security, Resource::ForumCategories, Action::List)?;
+        let tenant_id = filter.tenant_id;
 
         let mut query = forum_category::Entity::find()
-            .filter(forum_category::Column::TenantId.eq(filter.tenant_id))
+            .filter(forum_category::Column::TenantId.eq(tenant_id))
             .filter(
                 forum_category::Column::Id
-                    .not_in_subquery(archived_category_ids_subquery(filter.tenant_id)),
+                    .not_in_subquery(archived_category_ids_subquery(tenant_id)),
             );
         if !filter.hidden_category_ids.is_empty() {
             query = query

@@ -268,7 +268,7 @@ impl CategoryService {
             .await?;
         self.read
             .list_paginated_with_locale_fallback_and_hidden_categories(
-                super::category_taxonomy_read::CategoryTaxonomyListFilter {
+                category::taxonomy_read::CategoryTaxonomyListFilter {
                     tenant_id,
                     security,
                     locale,

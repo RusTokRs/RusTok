@@ -117,18 +117,21 @@ async fn create_topic(
         .id)
 }
 
-#[allow(clippy::too_many_arguments)]
+struct TestSubscriptionParams<'a> {
+    level: &'a str,
+    notify_mentions: bool,
+    notify_replies: bool,
+    notify_new_topics: bool,
+    digest_mode: &'a str,
+    revision: i64,
+}
+
 async fn insert_subscription(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     topic_id: Uuid,
     user_id: Uuid,
-    level: &str,
-    notify_mentions: bool,
-    notify_replies: bool,
-    notify_new_topics: bool,
-    digest_mode: &str,
-    revision: i64,
+    params: TestSubscriptionParams<'_>,
 ) -> TestResult<()> {
     db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
@@ -143,12 +146,12 @@ async fn insert_subscription(
             topic_id.into(),
             user_id.into(),
             tenant_id.into(),
-            level.into(),
-            notify_mentions.into(),
-            notify_replies.into(),
-            notify_new_topics.into(),
-            digest_mode.into(),
-            revision.into(),
+            params.level.into(),
+            params.notify_mentions.into(),
+            params.notify_replies.into(),
+            params.notify_new_topics.into(),
+            params.digest_mode.into(),
+            params.revision.into(),
         ],
     ))
     .await?;
@@ -203,12 +206,14 @@ async fn merge_subscription_reconciliation_is_atomic_idempotent_and_target_autho
         tenant_id,
         source_topic_id,
         source_only_user,
-        "watching",
-        true,
-        true,
-        true,
-        "immediate",
-        7,
+        TestSubscriptionParams {
+            level: "watching",
+            notify_mentions: true,
+            notify_replies: true,
+            notify_new_topics: true,
+            digest_mode: "immediate",
+            revision: 7,
+        },
     )
     .await?;
     insert_subscription(
@@ -216,12 +221,14 @@ async fn merge_subscription_reconciliation_is_atomic_idempotent_and_target_autho
         tenant_id,
         target_topic_id,
         target_only_user,
-        "tracking",
-        true,
-        false,
-        false,
-        "disabled",
-        4,
+        TestSubscriptionParams {
+            level: "tracking",
+            notify_mentions: true,
+            notify_replies: false,
+            notify_new_topics: false,
+            digest_mode: "disabled",
+            revision: 4,
+        },
     )
     .await?;
     insert_subscription(
@@ -229,12 +236,14 @@ async fn merge_subscription_reconciliation_is_atomic_idempotent_and_target_autho
         tenant_id,
         source_topic_id,
         equal_user,
-        "watching",
-        true,
-        true,
-        false,
-        "daily",
-        2,
+        TestSubscriptionParams {
+            level: "watching",
+            notify_mentions: true,
+            notify_replies: true,
+            notify_new_topics: false,
+            digest_mode: "daily",
+            revision: 2,
+        },
     )
     .await?;
     insert_subscription(
@@ -242,12 +251,14 @@ async fn merge_subscription_reconciliation_is_atomic_idempotent_and_target_autho
         tenant_id,
         target_topic_id,
         equal_user,
-        "watching",
-        true,
-        true,
-        false,
-        "daily",
-        9,
+        TestSubscriptionParams {
+            level: "watching",
+            notify_mentions: true,
+            notify_replies: true,
+            notify_new_topics: false,
+            digest_mode: "daily",
+            revision: 9,
+        },
     )
     .await?;
     insert_subscription(
@@ -255,12 +266,14 @@ async fn merge_subscription_reconciliation_is_atomic_idempotent_and_target_autho
         tenant_id,
         source_topic_id,
         conflict_user,
-        "watching",
-        true,
-        true,
-        true,
-        "immediate",
-        3,
+        TestSubscriptionParams {
+            level: "watching",
+            notify_mentions: true,
+            notify_replies: true,
+            notify_new_topics: true,
+            digest_mode: "immediate",
+            revision: 3,
+        },
     )
     .await?;
     insert_subscription(
@@ -268,12 +281,14 @@ async fn merge_subscription_reconciliation_is_atomic_idempotent_and_target_autho
         tenant_id,
         target_topic_id,
         conflict_user,
-        "muted",
-        false,
-        false,
-        false,
-        "disabled",
-        5,
+        TestSubscriptionParams {
+            level: "muted",
+            notify_mentions: false,
+            notify_replies: false,
+            notify_new_topics: false,
+            digest_mode: "disabled",
+            revision: 5,
+        },
     )
     .await?;
 
@@ -350,12 +365,14 @@ async fn merge_subscription_reconciliation_is_atomic_idempotent_and_target_autho
         tenant_id,
         target_topic_id,
         actor_id,
-        "watching",
-        true,
-        true,
-        true,
-        "immediate",
-        1,
+        TestSubscriptionParams {
+            level: "watching",
+            notify_mentions: true,
+            notify_replies: true,
+            notify_new_topics: true,
+            digest_mode: "immediate",
+            revision: 1,
+        },
     )
     .await?;
     assert_subscription(
@@ -363,12 +380,14 @@ async fn merge_subscription_reconciliation_is_atomic_idempotent_and_target_autho
         tenant_id,
         target_topic_id,
         source_only_user,
-        "watching",
-        true,
-        true,
-        true,
-        "immediate",
-        8,
+        TestSubscriptionParams {
+            level: "watching",
+            notify_mentions: true,
+            notify_replies: true,
+            notify_new_topics: true,
+            digest_mode: "immediate",
+            revision: 8,
+        },
     )
     .await?;
     assert_subscription(
@@ -376,12 +395,14 @@ async fn merge_subscription_reconciliation_is_atomic_idempotent_and_target_autho
         tenant_id,
         target_topic_id,
         target_only_user,
-        "tracking",
-        true,
-        false,
-        false,
-        "disabled",
-        4,
+        TestSubscriptionParams {
+            level: "tracking",
+            notify_mentions: true,
+            notify_replies: false,
+            notify_new_topics: false,
+            digest_mode: "disabled",
+            revision: 4,
+        },
     )
     .await?;
     assert_subscription(
@@ -389,12 +410,14 @@ async fn merge_subscription_reconciliation_is_atomic_idempotent_and_target_autho
         tenant_id,
         target_topic_id,
         equal_user,
-        "watching",
-        true,
-        true,
-        false,
-        "daily",
-        9,
+        TestSubscriptionParams {
+            level: "watching",
+            notify_mentions: true,
+            notify_replies: true,
+            notify_new_topics: false,
+            digest_mode: "daily",
+            revision: 9,
+        },
     )
     .await?;
     assert_subscription(
@@ -402,12 +425,14 @@ async fn merge_subscription_reconciliation_is_atomic_idempotent_and_target_autho
         tenant_id,
         target_topic_id,
         conflict_user,
-        "muted",
-        false,
-        false,
-        false,
-        "disabled",
-        5,
+        TestSubscriptionParams {
+            level: "muted",
+            notify_mentions: false,
+            notify_replies: false,
+            notify_new_topics: false,
+            digest_mode: "disabled",
+            revision: 5,
+        },
     )
     .await?;
     assert_reconciliation_event(&db, tenant_id, &reconciled).await?;
@@ -543,18 +568,12 @@ async fn assert_archived_subscription_database_guards(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn assert_subscription(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     topic_id: Uuid,
     user_id: Uuid,
-    expected_level: &str,
-    expected_notify_mentions: bool,
-    expected_notify_replies: bool,
-    expected_notify_new_topics: bool,
-    expected_digest_mode: &str,
-    expected_revision: i64,
+    expected: TestSubscriptionParams<'_>,
 ) -> TestResult<()> {
     let row = db
         .query_one_raw(Statement::from_sql_and_values(
@@ -569,24 +588,24 @@ async fn assert_subscription(
         ))
         .await?
         .ok_or("topic subscription row missing")?;
-    assert_eq!(row.try_get::<String>("", "level")?, expected_level);
+    assert_eq!(row.try_get::<String>("", "level")?, expected.level);
     assert_eq!(
         row.try_get::<bool>("", "notify_mentions")?,
-        expected_notify_mentions
+        expected.notify_mentions
     );
     assert_eq!(
         row.try_get::<bool>("", "notify_replies")?,
-        expected_notify_replies
+        expected.notify_replies
     );
     assert_eq!(
         row.try_get::<bool>("", "notify_new_topics")?,
-        expected_notify_new_topics
+        expected.notify_new_topics
     );
     assert_eq!(
         row.try_get::<String>("", "digest_mode")?,
-        expected_digest_mode
+        expected.digest_mode
     );
-    assert_eq!(row.try_get::<i64>("", "revision")?, expected_revision);
+    assert_eq!(row.try_get::<i64>("", "revision")?, expected.revision);
     Ok(())
 }
 

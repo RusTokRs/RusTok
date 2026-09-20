@@ -24,7 +24,7 @@ use crate::entities::{
 use crate::mentions::{ForumContentTarget, ForumQuoteReference};
 use crate::state_machine::{ReplyStatus, TopicStatus};
 
-use super::{ForumQuoteCommandService, MentionRelationService};
+use super::{ForumQuoteCommandService, mention_relation::MentionRelationService};
 
 struct FakeProfilesReader {
     records: HashMap<(Uuid, String), ProfileRecord>,

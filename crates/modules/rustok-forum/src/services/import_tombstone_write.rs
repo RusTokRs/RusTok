@@ -76,12 +76,14 @@ impl ForumImportWriteService {
             reply_service
                 .insert_import_reply_with_tombstone_in_tx(
                     &txn,
-                    relations.writes.tenant_id,
-                    &prepared_replies[index],
-                    &relations.replies[index],
-                    tombstones.get(&prepared_replies[index].id()).copied(),
-                    relations.relation_event_mode,
-                    relations.writes.event_mode,
+                    super::reply_owner::InsertImportReplyWithTombstoneParams {
+                        tenant_id: relations.writes.tenant_id,
+                        prepared: &prepared_replies[index],
+                        relation: &relations.replies[index],
+                        tombstone: tombstones.get(&prepared_replies[index].id()).copied(),
+                        relation_event_mode: relations.relation_event_mode,
+                        write_event_mode: relations.writes.event_mode,
+                    },
                 )
                 .await?;
         }

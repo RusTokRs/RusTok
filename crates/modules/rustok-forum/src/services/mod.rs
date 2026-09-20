@@ -12,7 +12,6 @@ mod category_audience_read {
     include!("category_audience_read_search.rs");
 }
 mod category_audience_visibility;
-#[allow(clippy::collapsible_if)]
 mod category_command {
     include!("category_command_owner.rs");
     include!("category_command.rs");
@@ -43,7 +42,6 @@ mod import_write {
     include!("import_tombstone_write.rs");
     include!("import_write.rs");
 }
-#[allow(clippy::collapsible_if, clippy::too_many_arguments)]
 mod mention_relation {
     include!("mention_relation_import.rs");
     include!("mention_relation.rs");
@@ -84,10 +82,11 @@ pub mod read_tracking {
 }
 mod relation_quote_input;
 mod relation_read;
-#[allow(clippy::collapsible_if, clippy::items_after_test_module)]
 mod reply {
     include!("reply.rs");
     include!("reply_inline.rs");
+    #[cfg(test)]
+    include!("reply_tests.rs");
 }
 mod reply_audience_read;
 mod reply_create_audience_authorization;
@@ -105,7 +104,6 @@ pub mod storefront_read_state {
     include!("storefront_read_state_bulk.rs");
 }
 pub mod subscription;
-#[allow(clippy::collapsible_if)]
 mod topic {
     include!("topic_import.rs");
     include!("topic.rs");
@@ -207,8 +205,6 @@ pub use mention_reconciliation::{
     ForumMentionDrift, ForumMentionDriftKind, ForumMentionReconciliationReport,
     ForumMentionReconciliationService,
 };
-#[allow(unused_imports)]
-pub(crate) use mention_relation::MentionRelationService;
 pub use moderation::ModerationService;
 pub use moderation_audience_authorization::{
     ForumModerationAudienceAuthorization, ForumModerationAudienceAuthorizationService,
@@ -266,8 +262,8 @@ pub use storefront_read_state::{
 pub use subscription::SubscriptionService;
 pub use subscription::reconciliation::{
     ForumSubscriptionCursor, ForumSubscriptionDrift, ForumSubscriptionDriftKind,
-    ForumSubscriptionReconciliationReport, ForumSubscriptionReconciliationService,
-    ForumSubscriptionTargetKind,
+    ForumSubscriptionReconciliationCursors, ForumSubscriptionReconciliationReport,
+    ForumSubscriptionReconciliationService, ForumSubscriptionTargetKind,
 };
 pub use topic::MAX_FORUM_TOPIC_TAGS;
 pub use topic_audience::{

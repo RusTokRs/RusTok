@@ -1,3 +1,12 @@
+pub(crate) struct InsertImportReplyWithTombstoneParams<'a> {
+    pub tenant_id: Uuid,
+    pub prepared: &'a PreparedImportReplyInsert,
+    pub relation: &'a crate::import_relation_preparation::ForumPreparedImportContentRelations,
+    pub tombstone: Option<&'a crate::import_tombstone_preparation::ForumPreparedDeletedReplyTombstone>,
+    pub relation_event_mode: crate::import_relation_preparation::ForumImportRelationEventMode,
+    pub write_event_mode: crate::import_write_preparation::ForumImportWriteEventMode,
+}
+
 impl ReplyService {
     pub(crate) fn prepare_import_reply_with_tombstone(
         &self,
@@ -61,17 +70,18 @@ impl ReplyService {
         })
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn insert_import_reply_with_tombstone_in_tx(
         &self,
         txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        prepared: &PreparedImportReplyInsert,
-        relation: &crate::import_relation_preparation::ForumPreparedImportContentRelations,
-        tombstone: Option<&crate::import_tombstone_preparation::ForumPreparedDeletedReplyTombstone>,
-        relation_event_mode: crate::import_relation_preparation::ForumImportRelationEventMode,
-        write_event_mode: crate::import_write_preparation::ForumImportWriteEventMode,
+        params: InsertImportReplyWithTombstoneParams<'_>,
     ) -> ForumResult<()> {
+        let tenant_id = params.tenant_id;
+        let prepared = params.prepared;
+        let relation = params.relation;
+        let tombstone = params.tombstone;
+        let relation_event_mode = params.relation_event_mode;
+        let write_event_mode = params.write_event_mode;
+
         if prepared.record.status != ReplyStatus::Deleted {
             if tombstone.is_some() {
                 return Err(ForumError::Validation(
