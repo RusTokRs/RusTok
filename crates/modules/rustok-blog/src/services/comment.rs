@@ -60,6 +60,7 @@ impl CommentService {
         public_channel_slug: Option<&str>,
         input: CreateCommentInput,
     ) -> BlogResult<CommentResponse> {
+        enforce_scope(&security, Resource::Comments, Action::Create)?;
         self.ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
             .await?;
 
