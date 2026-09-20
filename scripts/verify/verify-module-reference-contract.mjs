@@ -165,8 +165,14 @@ requireAll("crates/modules/rustok-blog/src/services/category_name_projection.rs"
 ]);
 requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
+  "TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(",
+  "placement.parent_id",
   "// Serialize before reading hierarchy so a concurrent structural move cannot be",
   "self.publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)",
+]);
+forbid("crates/modules/rustok-blog/src/services/category.rs", [
+  "taxonomy_category_hierarchy::",
+  "entities::taxonomy_category_hierarchy",
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/category_command.rs", [
@@ -183,6 +189,7 @@ requireAll("crates/modules/rustok-blog/src/services/category_command.rs", [
 ]);
 forbid("crates/modules/rustok-blog/src/services/category_command.rs", [
   "or_insert((None, 0))",
+  "taxonomy_category_hierarchy::",
   "taxonomy_term::Entity::find(",
   "taxonomy_term::Column::",
   "entities::{taxonomy_category_hierarchy, taxonomy_term}",
@@ -190,19 +197,20 @@ forbid("crates/modules/rustok-blog/src/services/category_command.rs", [
 ]);
 requireAll("crates/modules/rustok-blog/src/services/category_delete.rs", [
   "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?",
+  "rustok_taxonomy::delete_module_category_placement_and_compact_in_tx(",
   "TaxonomyError::internal(format!(",
   "BlogError::CategoryNotFound(category_id) => TaxonomyError::TermNotFound(category_id)",
-  '"has no canonical Taxonomy hierarchy placement"',
-  '"Blog category Taxonomy hierarchy placement disappeared before delete completed"',
-  "hierarchy_rows.len() != blog_category_ids.len()",
-  '"Blog category Taxonomy hierarchy coverage is incomplete during sibling canonicalization"',
-  "TaxonomyScopeType::Module",
-  "taxonomy_term::Column::ScopeValue.eq(crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE)",
   "detach_category_from_posts_in_tx",
   "blog_post::Column::CategoryId.eq(category_id)",
   "blog_post::Column::Version.eq(post.version)",
   "checked_add(1)",
   '"Blog post {} changed before category detachment could commit"',
+]);
+forbid("crates/modules/rustok-blog/src/services/category_delete.rs", [
+  "taxonomy_category_hierarchy::",
+  "taxonomy_term::",
+  "TaxonomyScopeType::Module",
+  "TaxonomyTermKind::Category",
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
@@ -246,6 +254,7 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
 requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
   "ensure_hierarchy_coverage_in_tx(&txn, tenant_id).await?",
+  "rustok_taxonomy::reorder_module_category_siblings_in_tx(",
   '"Blog category Taxonomy hierarchy coverage is incomplete before create"',
 ]);
 requireAll("crates/modules/rustok-blog/src/services/category.rs", [
@@ -489,6 +498,17 @@ requireAll("crates/modules/rustok-blog/src/error/public.rs", [
   "The Blog operation could not be completed",
 ]);
 
+requireAll("crates/modules/rustok-taxonomy/src/owner_category_hierarchy_mutation.rs", [
+  "pub async fn reorder_module_category_siblings_in_tx(",
+  "Module Category sibling order does not cover the complete canonical sibling set",
+  "pub async fn delete_module_category_placement_and_compact_in_tx(",
+  "Category must be a leaf before deletion; move or delete its children first",
+  "Module Category hierarchy coverage is incomplete during deletion",
+]);
+forbid("crates/modules/rustok-blog/src/services/category.rs", [
+  "taxonomy_category_hierarchy::",
+  "entities::taxonomy_category_hierarchy",
+]);
 requireAll("crates/modules/rustok-taxonomy/src/owner_category_route_sync.rs", [
   "crate::lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?",
 ]);

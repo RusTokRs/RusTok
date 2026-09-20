@@ -1,17 +1,14 @@
 use std::collections::{HashMap, HashSet};
 
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait,
-    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, TransactionTrait,
 };
 use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
-use rustok_taxonomy::{
-    entities::taxonomy_category_hierarchy,
-    TaxonomyOwnerCategoryReader, TaxonomyScopeType,
-};
+use rustok_taxonomy::{TaxonomyOwnerCategoryReader, TaxonomyScopeType};
 
 use crate::dto::{
     CategoryPlacementResponse, MAX_BLOG_CATEGORY_TREE_NODES, MoveCategoryInput,
@@ -78,14 +75,9 @@ impl CategoryCommandService {
             ));
         }
 
-        let hierarchy_rows = taxonomy_category_hierarchy::Entity::find()
-            .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
-            .filter(taxonomy_category_hierarchy::Column::TermId.is_in(blog_ids.iter().copied()))
-            .all(&txn)
-            .await?;
-        let placement_by_id = hierarchy_rows
-            .into_iter()
-            .map(|row| (row.term_id, (row.parent_term_id, row.position)))
+        let placement_by_id = canonical_terms
+            .iter()
+            .map(|category| (category.id, (category.parent_id, category.position)))
             .collect::<HashMap<_, _>>();
         if placement_by_id.len() != blog_ids.len() {
             return Err(BlogError::invariant(
@@ -151,13 +143,15 @@ impl CategoryCommandService {
             }
             target_siblings.insert(target_index, category_id);
 
+            // Move the target into its destination first; this makes an empty source
+            // sibling set represent the real post-move state to Taxonomy.
             updated.extend(
                 persist_sibling_order(
                     &txn,
                     tenant_id,
                     &desired_depths,
-                    source_parent_id,
-                    &source_siblings,
+                    input.parent_id,
+                    &target_siblings,
                     &mut touched,
                 )
                 .await?,
@@ -167,8 +161,8 @@ impl CategoryCommandService {
                     &txn,
                     tenant_id,
                     &desired_depths,
-                    input.parent_id,
-                    &target_siblings,
+                    source_parent_id,
+                    &source_siblings,
                     &mut touched,
                 )
                 .await?,
@@ -252,6 +246,16 @@ async fn persist_sibling_order(
     ordered_ids: &[Uuid],
     touched: &mut HashSet<Uuid>,
 ) -> BlogResult<Vec<CategoryPlacementResponse>> {
+    rustok_taxonomy::reorder_module_category_siblings_in_tx(
+        txn,
+        tenant_id,
+        crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE,
+        parent_id,
+        ordered_ids,
+    )
+    .await
+    .map_err(BlogError::from)?;
+
     let mut placements = Vec::with_capacity(ordered_ids.len());
     for (position, category_id) in ordered_ids.iter().copied().enumerate() {
         let position = i32::try_from(position)
@@ -261,25 +265,6 @@ async fn persist_sibling_order(
                 "Blog category depth was not computed for category {category_id}"
             ))
         })?;
-
-        let existing = taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, category_id))
-            .one(txn)
-            .await?;
-        match existing {
-            Some(existing) => {
-                if existing.parent_term_id != parent_id || existing.position != position {
-                    let mut active: taxonomy_category_hierarchy::ActiveModel = existing.into();
-                    active.parent_term_id = Set(parent_id);
-                    active.position = Set(position);
-                    active.update(txn).await?;
-                }
-            }
-            None => {
-                return Err(BlogError::invariant(format!(
-                    "Blog category {category_id} has no canonical Taxonomy hierarchy placement during move",
-                )));
-            }
-        }
 
         touched.insert(category_id);
         placements.push(CategoryPlacementResponse {

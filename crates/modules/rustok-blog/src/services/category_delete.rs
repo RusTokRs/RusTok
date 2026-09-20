@@ -5,10 +5,8 @@ use chrono::Utc;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{
-    TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult, TaxonomyScopeType,
-    TaxonomyTermKind,
+    TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult,
 };
-use rustok_taxonomy::entities::{taxonomy_category_hierarchy, taxonomy_term};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait,
     DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
@@ -68,35 +66,6 @@ impl BlogCategoryDeleteCleanup {
             .ok_or_else(|| BlogError::category_not_found(self.blog_category_id))?;
         ensure_category_is_leaf_in_tx(txn, tenant_id, self.blog_category_id).await?;
 
-        let placement = taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, self.blog_category_id))
-            .one(txn)
-            .await?
-            .ok_or_else(|| {
-                BlogError::invariant(format!(
-                    "Blog category {} has no canonical Taxonomy hierarchy placement",
-                    self.blog_category_id
-                ))
-            })?;
-        if let Some(parent_id) = placement.parent_term_id {
-            taxonomy_term::Entity::find_by_id(parent_id)
-                .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
-                .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category))
-                .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
-                .filter(
-                    taxonomy_term::Column::ScopeValue
-                        .eq(crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
-                )
-                .one(txn)
-                .await?
-                .ok_or_else(|| {
-                    BlogError::invariant(format!(
-                        "Blog category {} has a missing or foreign-scope parent {}",
-                        self.blog_category_id, parent_id
-                    ))
-                })?;
-        }
-        let parent_id = placement.parent_term_id;
-
         detach_category_from_posts_in_tx(txn, tenant_id, self.blog_category_id).await?;
 
         let deleted = blog_category::Entity::delete_many()
@@ -111,18 +80,14 @@ impl BlogCategoryDeleteCleanup {
             ));
         }
 
-        let deleted_placement = taxonomy_category_hierarchy::Entity::delete_many()
-            .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
-            .filter(taxonomy_category_hierarchy::Column::TermId.eq(self.blog_category_id))
-            .exec(txn)
-            .await?;
-        if deleted_placement.rows_affected != 1 {
-            return Err(BlogError::invariant(
-                "Blog category Taxonomy hierarchy placement disappeared before delete completed",
-            ));
-        }
-
-        canonicalize_siblings_in_tx(txn, tenant_id, parent_id).await?;
+        rustok_taxonomy::delete_module_category_placement_and_compact_in_tx(
+            txn,
+            tenant_id,
+            self.blog_category_id,
+            crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE,
+        )
+        .await
+        .map_err(map_blog_error)?;
 
         self.event_bus
             .publish_in_tx(
@@ -241,59 +206,6 @@ async fn detach_category_from_posts_in_tx(
     }
 
     Ok(affected_post_ids)
-}
-
-async fn canonicalize_siblings_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    parent_id: Option<Uuid>,
-) -> BlogResult<Vec<Uuid>> {
-    let blog_category_ids = blog_category::Entity::find()
-        .filter(blog_category::Column::TenantId.eq(tenant_id))
-        .all(txn)
-        .await?
-        .into_iter()
-        .map(|c| c.id)
-        .collect::<Vec<_>>();
-
-    let hierarchy_rows = taxonomy_category_hierarchy::Entity::find()
-        .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
-        .filter(taxonomy_category_hierarchy::Column::TermId.is_in(blog_category_ids.clone()))
-        .all(txn)
-        .await?;
-    if hierarchy_rows.len() != blog_category_ids.len() {
-        return Err(BlogError::invariant(
-            "Blog category Taxonomy hierarchy coverage is incomplete during sibling canonicalization",
-        ));
-    }
-
-    let mut query = taxonomy_category_hierarchy::Entity::find()
-        .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
-        .filter(taxonomy_category_hierarchy::Column::TermId.is_in(blog_category_ids));
-    query = match parent_id {
-        Some(parent_id) => {
-            query.filter(taxonomy_category_hierarchy::Column::ParentTermId.eq(parent_id))
-        }
-        None => query.filter(taxonomy_category_hierarchy::Column::ParentTermId.is_null()),
-    };
-    let siblings = query
-        .order_by_asc(taxonomy_category_hierarchy::Column::Position)
-        .order_by_asc(taxonomy_category_hierarchy::Column::TermId)
-        .all(txn)
-        .await?;
-    let mut sibling_ids = Vec::with_capacity(siblings.len());
-    for (index, sibling) in siblings.into_iter().enumerate() {
-        let desired_position = i32::try_from(index)
-            .map_err(|_| BlogError::invariant("Persisted category sibling position exceeds i32 range"))?;
-        sibling_ids.push(sibling.term_id);
-        if sibling.position == desired_position {
-            continue;
-        }
-        let mut active: taxonomy_category_hierarchy::ActiveModel = sibling.into();
-        active.position = Set(desired_position);
-        active.update(txn).await?;
-    }
-    Ok(sibling_ids)
 }
 
 fn map_blog_error(error: BlogError) -> TaxonomyError {
