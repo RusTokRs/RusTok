@@ -90,14 +90,28 @@ forbid("crates/modules/rustok-blog/src/services/post/commands.rs", [
 ]);
 
 requireAll("crates/modules/rustok-blog/src/controllers/posts.rs", [
+  "pub(super) async fn ensure_blog_module_enabled(",
+  'is_tenant_module_enabled(&runtime.db_clone(), tenant_id, "blog")',
+  '"MODULE_NOT_ENABLED"',
   "pub(super) fn ensure_blog_permission(",
   "if auth.tenant_id != tenant.id",
   '"blog_tenant_mismatch"',
 ]);
 requireAll("crates/modules/rustok-blog/src/controllers/categories.rs", [
+  "ensure_blog_module_enabled(&runtime, tenant.id).await?;",
+  "ensure_category_permission(&tenant, &auth, Action::List)?;",
+  "ensure_category_permission(&tenant, &auth, Action::Read)?;",
+  "ensure_category_permission(&tenant, &auth, Action::Create)?;",
+  "ensure_category_permission(&tenant, &auth, Action::Update)?;",
+  "ensure_category_permission(&tenant, &auth, Action::Manage)?;",
+  "ensure_category_permission(&tenant, &auth, Action::Delete)?;",
   "fn ensure_category_permission(",
   "if auth.tenant_id != tenant.id",
   '"blog_category_tenant_mismatch"',
+]);
+requireAll("crates/modules/rustok-blog/src/controllers/comments.rs", [
+  "ensure_blog_module_enabled(&runtime, tenant.id).await?;",
+  "ensure_blog_permission(",
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/post/mod.rs", [
