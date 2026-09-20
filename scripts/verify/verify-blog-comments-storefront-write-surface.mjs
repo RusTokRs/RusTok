@@ -66,10 +66,11 @@ if (evidence) {
     evidence.module !== 'blog' ||
     evidence.surface !== 'storefront_comments_write_surface' ||
     evidence.owner !== 'rustok-blog-storefront' ||
-    evidence.status !== 'source_verified_absent' ||
-    evidence.actualization !== 'comment_form_fallback_not_applicable_no_storefront_write_surface' ||
+    evidence.status !== 'source_verified_present' ||
+    evidence.actualization !== 'active_storefront_write_surface_source_verified' ||
     evidence.legacy_degraded_mode !== 'hide_comment_form' ||
-    evidence.legacy_registry_semantics !== 'compatibility_vocabulary_not_active_storefront_surface'
+    evidence.legacy_registry_semantics !==
+      'legacy_fallback_vocabulary_now_maps_to_active_write_surface'
   ) failures.push(`${files.evidence}: identity/status drift`);
 
   const expectedInventory = {
@@ -85,32 +86,26 @@ if (evidence) {
       failures.push(`${files.evidence}: source_inventory.${key} drift`);
     }
   }
-  for (const key of [
-    'storefront_responsibility_is_dual_path_read',
-    'approved_public_comments_are_read_only_projection',
-    'graphql_transport_contains_storefront_query_only',
-    'native_transport_contains_storefront_data_read_only',
-    'leptos_ui_renders_comments_without_submit_surface',
+  for (const [key, expected] of [
+    ['storefront_responsibility_is_dual_path_read', true],
+    ['approved_public_comments_are_read_only_projection', true],
+    ['graphql_transport_contains_storefront_query_only', false],
+    ['native_transport_contains_storefront_data_read_only', false],
+    ['leptos_ui_renders_comments_without_submit_surface', false],
+    ['create_comment_surface_present', true],
+    ['comment_form_present', true],
+    ['textarea_present', false],
+    ['submit_handler_present', true],
+    ['production_behavior_changed', false],
+    ['runtime_execution_observed', false],
+    ['browser_execution_observed', false],
   ]) {
-    if (evidence.source_contract?.[key] !== true) {
-      failures.push(`${files.evidence}: source_contract.${key} must be true`);
-    }
-  }
-  for (const key of [
-    'create_comment_surface_present',
-    'comment_form_present',
-    'textarea_present',
-    'submit_handler_present',
-    'production_behavior_changed',
-    'runtime_execution_observed',
-    'browser_execution_observed',
-  ]) {
-    if (evidence.source_contract?.[key] !== false) {
-      failures.push(`${files.evidence}: source_contract.${key} must be false`);
+    if (evidence.source_contract?.[key] !== expected) {
+      failures.push(`${files.evidence}: source_contract.${key} must be ${expected}`);
     }
   }
   if (
-    evidence.planning_effect?.comment_form_fallback !== 'not_applicable_no_storefront_write_surface' ||
+    evidence.planning_effect?.comment_form_fallback !== 'planned' ||
     evidence.planning_effect?.cached_thread_snapshot !== 'source_ready_maintainer_execution_pending' ||
     evidence.planning_effect?.fallback_smoke_status !== 'planned_runtime_execution_only' ||
     evidence.planning_effect?.new_storefront_write_surface_authorized !== false ||
@@ -126,18 +121,18 @@ if (fallback) {
   if (
     fallback.storefront_read_degradation?.comment_form_fallback !== 'planned' ||
     fallback.storefront_read_degradation?.comment_form_fallback_interpretation !==
-      'legacy_registry_compatibility_only_see_storefront_write_surface'
-  ) failures.push(`${files.fallback}: legacy compatibility marker drift`);
+      'active_storefront_write_surface_degraded_mode_planned'
+  ) failures.push(`${files.fallback}: fallback compatibility marker drift`);
   const writeSurface = fallback.storefront_write_surface ?? {};
   if (
-    writeSurface.status !== 'source_verified_absent' ||
+    writeSurface.status !== 'source_verified_present' ||
     writeSurface.inventory !== files.evidence ||
-    writeSurface.active_comment_form !== false ||
-    writeSurface.active_create_comment_transport !== false ||
+    writeSurface.active_comment_form !== true ||
+    writeSurface.active_create_comment_transport !== true ||
     writeSurface.legacy_degraded_mode !== 'hide_comment_form' ||
     writeSurface.legacy_registry_semantics !==
-      'compatibility_vocabulary_not_active_storefront_surface' ||
-    writeSurface.comment_form_fallback !== 'not_applicable_no_storefront_write_surface'
+      'fallback_vocabulary_for_active_storefront_write_surface' ||
+    writeSurface.comment_form_fallback !== 'planned'
   ) failures.push(`${files.fallback}: write-surface actualization drift`);
   if (
     fallback.fallback_smoke?.status !== 'planned' ||
@@ -151,9 +146,9 @@ if (fallback) {
   if (
     !createCase ||
     createCase.degraded_mode !== 'hide_comment_form' ||
-    createCase.mode_status !== 'legacy_not_applicable_no_storefront_write_surface' ||
-    !createCase.expected_consumer_behavior?.includes('not an implementation target')
-  ) failures.push(`${files.fallback}: create-comment legacy mode drift`);
+    createCase.mode_status !== 'planned_runtime_execution_only' ||
+    !createCase.expected_consumer_behavior?.includes('active storefront has an authenticated create-comment surface')
+  ) failures.push(`${files.fallback}: create-comment degraded-mode contract drift`);
 }
 
 const blogDependency = blogRegistry?.provider_dependencies?.find(
@@ -180,36 +175,24 @@ for (const marker of [
   'Owns public comment pagination',
 ]) need(readme, marker, files.readme);
 
-for (const [label, source] of [
-  [files.ui, ui],
-  [files.graphql, graphql],
-  [files.native, native],
-  [files.facade, facade],
-  [files.model, model],
-]) {
-  for (const marker of [
-    '<form',
-    '<textarea',
-    'on:submit',
-    'CreateCommentInput',
-    'create_comment(',
-    'createComment',
-    'submit_comment',
-  ]) forbid(source, marker, label);
-}
-
 need(graphql, 'query StorefrontBlog', files.graphql);
-forbid(graphql, 'mutation StorefrontBlog', files.graphql);
+need(graphql, 'mutation CreateBlogComment', files.graphql);
+need(graphql, 'createBlogComment', files.graphql);
 need(native, 'endpoint = "blog/storefront-data"', files.native);
-need(native, 'list_public_comments_with_snapshot(', files.native);
-need(ui, 'fn PublicCommentsList(', files.ui);
+need(native, 'endpoint = "blog/comment-create"', files.native);
+need(native, 'create_public_comment(', files.native);
+need(facade, 'pub async fn create_comment(', files.facade);
+need(facade, 'blog_comment_create', files.facade);
+need(ui, 'CommentComposer', files.ui);
+need(ui, 'let submit_comment = Action::new_local', files.ui);
+need(ui, 'transport::create_comment(', files.ui);
 
 for (const marker of [
-  'storefront_comment_form_fallback_not_applicable_source_verified',
-  'active storefront package is read-only',
+  'storefront_comment_form_fallback_active_surface_source_verified',
+  'active storefront package owns the public comment write surface',
   'hide_comment_form',
-  'compatibility vocabulary',
-  'not_applicable_no_storefront_write_surface',
+  'fallback vocabulary',
+  'comment_form_fallback = planned',
   'cached read fallback runtime evidence',
   'No tests, Cargo commands, Node verifiers',
 ]) need(plan, marker, files.plan);
