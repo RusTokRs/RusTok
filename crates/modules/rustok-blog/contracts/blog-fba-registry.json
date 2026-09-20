@@ -47,7 +47,8 @@
     "static_matrix": "crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json",
     "runtime_fallback_smoke": "crates/modules/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json",
     "consumer_runtime_order_smoke": "crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json",
-    "consumer_runtime_order_smoke_runner": "scripts/verify/verify-consumer-fba-runtime-order.mjs"
+    "consumer_runtime_order_smoke_runner": "scripts/verify/verify-consumer-fba-runtime-order.mjs",
+    "comments_storefront_write_surface": "crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json"
   },
   "verification_chain": {
     "package_script": "verify:blog:fba",
@@ -172,8 +173,8 @@
         "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-forum-ui-ownership.json"
       },
       "comments_storefront_write_surface": {
-        "package_script": "npm run verify:blog:comments-storefront-write-surface",
-        "test_package_script": "npm run test:verify:blog:comments-storefront-write-surface",
+        "package_script": "verify:blog:comments-storefront-write-surface",
+        "test_package_script": "test:verify:blog:comments-storefront-write-surface",
         "verifier": "scripts/verify/verify-blog-comments-storefront-write-surface.mjs",
         "self_test": "scripts/verify/verify-blog-comments-storefront-write-surface.test.mjs",
         "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json"
