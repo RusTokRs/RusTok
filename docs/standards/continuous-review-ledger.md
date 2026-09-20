@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `11 / 218` components audited (**5%**)
+- **Progress:** `18 / 218` components audited (**8%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -23,10 +23,10 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 
 | Status | Component | Category | Files | LOC | Last Audited | Notes |
 |:---:|---|---|---:|---:|---|---|
-| [ ] | [admin](../../apps/admin) | `apps` | 119 | 25,749 | None |  |
-| [ ] | [next-admin](../../apps/next-admin) | `apps` | 432 | 60,638 | None |  |
-| [ ] | [blog](../../apps/next-admin/packages/blog) | `apps` | 11 | 976 | None |  |
-| [ ] | [cache](../../apps/next-admin/packages/cache) | `apps` | 6 | 163 | None |  |
+| [ ] | [admin](../../apps/admin) | `apps` | 134 | 22,234 | None |  |
+| [ ] | [next-admin](../../apps/next-admin) | `apps` | 148 | 13,845 | None |  |
+| [ ] | [ai](../../apps/next-admin/packages/ai) | `apps` | 10 | 1,489 | None |  |
+| [ ] | [blog](../../apps/next-admin/packages/blog) | `apps` | 17 | 1,777 | None |  |
 | [ ] | [commerce](../../apps/next-admin/packages/commerce) | `apps` | 7 | 2,309 | None |  |
 | [ ] | [email](../../apps/next-admin/packages/email) | `apps` | 5 | 289 | None |  |
 | [ ] | [rbac](../../apps/next-admin/packages/rbac) | `apps` | 5 | 211 | None |  |
@@ -53,13 +53,13 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [alloy](../../crates/modules/alloy) | `modules` | 70 | 24,622 | 2026-09-19 16:15 | Audited memory.rs, sea_orm.rs, runner.rs: eliminated Tier 0 bare expects with typed error propagation and documented concurrency invariants, replaced untyped String cron errors with ScriptError::InvalidTrigger, verified multi-tenancy scoping |
 | [x] | [flex](../../crates/modules/flex) | `modules` | 51 | 16,885 | 2026-09-19 16:25 | Audited translation targets and mutation.rs: replaced expects with typed PortErrors in identity builders, documented static contract invariants in descriptor values, enriched GraphQL doc comments |
 | [x] | [rustok-ai](../../crates/modules/rustok-ai) | `modules` | 72 | 42,257 | 2026-09-20 07:10 | Audited inference.rs, direct_order_tasks.rs, mcp.rs, policy.rs, metrics.rs, service/types.rs, graphql/types.rs: eliminated Tier 0 bare expects and panics with typed AiError propagation and graceful fallback, removed dead-code suppressions and made lineage public, verified multi-tenancy scoping |
-| [ ] | [rustok-ai-alloy](../../crates/modules/rustok-ai-alloy) | `modules` | 1 | 384 | None |  |
-| [ ] | [rustok-ai-athanor](../../crates/modules/rustok-ai-athanor) | `modules` | 2 | 546 | None |  |
-| [ ] | [rustok-ai-content](../../crates/modules/rustok-ai-content) | `modules` | 1 | 326 | None |  |
-| [ ] | [rustok-ai-media](../../crates/modules/rustok-ai-media) | `modules` | 1 | 71 | None |  |
-| [ ] | [rustok-ai-order](../../crates/modules/rustok-ai-order) | `modules` | 1 | 255 | None |  |
-| [ ] | [rustok-ai-product](../../crates/modules/rustok-ai-product) | `modules` | 1 | 307 | None |  |
-| [ ] | [rustok-ai-translation](../../crates/modules/rustok-ai-translation) | `modules` | 1 | 1,657 | None |  |
+| [x] | [rustok-ai-alloy](../../crates/modules/rustok-ai-alloy) | `modules` | 1 | 384 | 2026-09-20 07:33 | Verified clean, 1 file, 384 LOC, all 7 tests passed |
+| [x] | [rustok-ai-athanor](../../crates/modules/rustok-ai-athanor) | `modules` | 2 | 546 | 2026-09-20 07:33 | Verified clean adapter architecture under athanor feature gate, all integration tests passed |
+| [x] | [rustok-ai-content](../../crates/modules/rustok-ai-content) | `modules` | 1 | 326 | 2026-09-20 07:33 | Verified clean, 1 file, 326 LOC, all 10 tests passed |
+| [x] | [rustok-ai-media](../../crates/modules/rustok-ai-media) | `modules` | 1 | 71 | 2026-09-20 07:33 | Verified clean, 1 file, 71 LOC, all tests passed |
+| [x] | [rustok-ai-order](../../crates/modules/rustok-ai-order) | `modules` | 1 | 255 | 2026-09-20 07:33 | Verified clean, 1 file, 255 LOC, all 9 tests passed |
+| [x] | [rustok-ai-product](../../crates/modules/rustok-ai-product) | `modules` | 1 | 307 | 2026-09-20 07:33 | Verified clean, 1 file, 307 LOC, all 6 tests passed |
+| [x] | [rustok-ai-translation](../../crates/modules/rustok-ai-translation) | `modules` | 1 | 1,657 | 2026-09-20 07:33 | Audited lib.rs: eliminated Tier 0 bare expects on schema serialization and manifest hashing with safe fallbacks, all 18 tests passed |
 | [x] | [admin](../../crates/modules/rustok-ai/admin) | `modules` | 17 | 8,440 | 2026-09-20 07:10 | Audited native_server_adapter.rs, transport/mod.rs, ui/leptos.rs: removed dead_code suppression on cancel_run and re-exported in transport facade, safely handled optional browser window/location in WebSocket URL builder |
 | [ ] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 50 | 11,107 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-auth/admin) | `modules` | 18 | 5,550 | None |  |

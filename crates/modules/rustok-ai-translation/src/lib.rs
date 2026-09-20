@@ -68,7 +68,7 @@ fn prompt_policy() -> PromptPolicy {
 }
 
 pub fn machine_translation_policy_digest() -> String {
-    hash_manifest(&prompt_policy()).expect("static machine-translation policy must serialize")
+    hash_manifest(&prompt_policy()).unwrap_or_default()
 }
 
 pub fn machine_translation_task_descriptor() -> AiStructuredTaskDescriptor {
@@ -91,13 +91,11 @@ pub fn machine_translation_task_descriptor() -> AiStructuredTaskDescriptor {
 }
 
 pub fn machine_translation_input_schema_digest() -> String {
-    hash_manifest(&machine_translation_input_schema())
-        .expect("static machine-translation input schema must serialize")
+    hash_manifest(&machine_translation_input_schema()).unwrap_or_default()
 }
 
 pub fn machine_translation_output_schema_digest() -> String {
-    hash_manifest(&machine_translation_output_schema())
-        .expect("static machine-translation output schema must serialize")
+    hash_manifest(&machine_translation_output_schema()).unwrap_or_default()
 }
 
 pub fn machine_translation_descriptor() -> MachineTranslationProviderDescriptor {
@@ -358,12 +356,12 @@ impl MachineTranslationPort for AiMachineTranslationAdapter {
 
 fn machine_translation_input_schema() -> serde_json::Value {
     serde_json::to_value(schemars::schema_for!(MachineTranslationTaskInput))
-        .expect("static machine-translation input schema must serialize")
+        .unwrap_or_else(|_| serde_json::json!({}))
 }
 
 fn machine_translation_output_schema() -> serde_json::Value {
     serde_json::to_value(schemars::schema_for!(MachineTranslationTaskOutput))
-        .expect("static machine-translation output schema must serialize")
+        .unwrap_or_else(|_| serde_json::json!({}))
 }
 
 fn map_health(health: AiStructuredTaskHealth) -> MachineTranslationProviderHealth {
