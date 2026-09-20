@@ -357,6 +357,20 @@ for (const path of rustFiles("crates/modules/rustok-blog/src/integrations")) {
   forbid(path, ["crate::entities", "crate::{entities", "crate::entities::"]);
 }
 
+requireAll("crates/modules/rustok-blog/src/integrations/seo_targets.rs", [
+  "let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());",
+  "service.get_post_with_locale_fallback(",
+  "service.get_post_by_slug_with_locale_fallback(",
+  "fn optional_post(result: crate::BlogResult<PostResponse>) -> AnyResult<Option<PostResponse>>",
+  "Err(BlogError::PostNotFound(_)) => Ok(None)",
+]);
+
+requireAll("crates/modules/rustok-blog/src/integrations/reaction_subject.rs", [
+  "load_post_subject_snapshot(&self.db, subject.tenant_id(), subject.subject_id())",
+  "is_post_visible_for_channel(&snapshot.channel_slugs, context.channel.as_deref())",
+  "let current_revision = blog_post_revision(snapshot.version)?;",
+]);
+
 requireAll("crates/modules/rustok-blog/src/error/mod.rs", [
   "rustok_channel::ChannelError::InvalidTargetValue(message)",
   "rustok_channel::ChannelError::InvalidTargetType(message)",
