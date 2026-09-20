@@ -11,7 +11,7 @@ use rustok_web::{HttpError, HttpResult};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use super::{BlogHttpRuntime, posts::ensure_blog_module_enabled};
+use super::{BlogHttpRuntime, ensure_blog_module_enabled};
 use crate::CategoryService;
 use crate::dto::{
     CategoryListResponse, CategoryResponse, CreateCategoryInput, ListCategoriesFilter,
