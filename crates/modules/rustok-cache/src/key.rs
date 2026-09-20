@@ -243,10 +243,10 @@ fn canonical_identity(value: &[u8]) -> Result<String, CacheKeyError> {
     validate_identity_size(value)?;
 
     if value.len() <= MAX_SAFE_COMPONENT_BYTES && is_safe_component(value) {
-        // Safety check above guarantees ASCII and therefore valid UTF-8.
-        return Ok(std::str::from_utf8(value)
-            .expect("safe cache key bytes are ASCII")
-            .to_string());
+        // INVARIANT: is_safe_component ensures only [a-z0-9-_], guaranteed ASCII and valid UTF-8.
+        if let Ok(safe_str) = std::str::from_utf8(value) {
+            return Ok(safe_str.to_string());
+        }
     }
 
     Ok(format!("h-{}", sha256_hex(value)))

@@ -77,6 +77,7 @@ pub struct BoundedCacheEventDedupe {
 
 impl Default for BoundedCacheEventDedupe {
     fn default() -> Self {
+        // INVARIANT: DEFAULT_MAX_CACHE_EVENT_DEDUPE_ENTRIES (4096) and DEFAULT_CACHE_EVENT_DEDUPE_TTL (300s) are non-zero constants.
         Self::new(
             DEFAULT_MAX_CACHE_EVENT_DEDUPE_ENTRIES,
             DEFAULT_CACHE_EVENT_DEDUPE_TTL,

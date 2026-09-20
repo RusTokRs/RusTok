@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `26 / 218` components audited (**12%**)
+- **Progress:** `27 / 218` components audited (**12%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -69,7 +69,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [storefront](../../crates/modules/rustok-blog/storefront) | `modules` | 12 | 2,601 | 2026-09-20 09:02 | Eliminated bare expect with localized fallback in leptos UI, all 35 tests passed |
 | [x] | [rustok-brand](../../crates/modules/rustok-brand) | `modules` | 22 | 3,111 | 2026-09-20 09:12 | Audited brand domain, schema, translations, zero Tier 0 findings, all 5 tests passed, clippy clean |
 | [x] | [admin](../../crates/modules/rustok-brand/admin) | `modules` | 9 | 1,806 | 2026-09-20 09:12 | Audited brand admin UI & transport, zero suppressions/unwraps, all 3 tests passed, clippy clean |
-| [ ] | [rustok-cache](../../crates/modules/rustok-cache) | `modules` | 37 | 14,548 | None |  |
+| [x] | [rustok-cache](../../crates/modules/rustok-cache) | `modules` | 37 | 14,548 | 2026-09-20 09:23 | Audited cache service, dedupe, lease & status: eliminated bare expect in key canonicalization, documented dedupe invariant, removed dead_code suppressions via cfg gates, all 189 tests passed, clippy clean |
 | [ ] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 72 | 16,524 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 18 | 3,643 | None |  |
 | [ ] | [rustok-channel](../../crates/modules/rustok-channel) | `modules` | 47 | 11,238 | None |  |

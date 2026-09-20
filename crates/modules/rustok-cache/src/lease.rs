@@ -79,7 +79,7 @@ pub struct DistributedCacheLease {
     #[cfg(feature = "redis-cache")]
     client: redis::Client,
     key: String,
-    #[allow(dead_code)]
+    #[cfg(feature = "redis-cache")]
     token: String,
     ttl: Duration,
     operation_timeout: Duration,
