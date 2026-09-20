@@ -194,6 +194,13 @@ posts.
 The manifest's bundled UI locales (currently `en` and `ru`) describe shipped
 interface translations only. They do not restrict tenant Blog content locales.
 
+The storefront package also exposes an authenticated Blog-bound public comment
+composer. Its native and GraphQL write adapters preserve the current tenant,
+require `comments:create`, require an enabled Blog channel, and delegate the
+write through `CommentService::create_public_comment` and the Comments owner
+port. The `hide_comment_form` degraded mode remains planned; it is not runtime-
+verified evidence.
+
 ## Verification
 
 Canonical reference gates:
