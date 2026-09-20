@@ -87,6 +87,7 @@ requireOrdered("crates/modules/rustok-blog/src/services/post/commands.rs", "enfo
 requireOrdered("crates/modules/rustok-blog/src/services/post/commands.rs", "enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;", "let post = self.find_post(tenant_id, post_id).await?");
 requireOrdered("crates/modules/rustok-blog/src/services/post/commands.rs", "enforce_scope(&security, Resource::BlogPosts, Action::Delete)?;", "let post = self.find_post(tenant_id, post_id).await?");
 
+requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
   "Column::Version.eq(version)",
   "ensure_transition(current, BlogPostStatus::Published)?",
   "ensure_transition(current, BlogPostStatus::Draft)?",
