@@ -720,6 +720,8 @@ async fn lock_topic_route_for_rename_in_tx(
     topic_id: Uuid,
     locale: &str,
 ) -> ForumResult<CurrentTopicRoute> {
+    lock_topic_for_route_rename_in_tx(txn, tenant_id, topic_id).await?;
+
     match txn.get_database_backend() {
         DatabaseBackend::Postgres => {
             let row = txn
@@ -783,6 +785,38 @@ async fn lock_topic_route_for_rename_in_tx(
         }
         backend => Err(unsupported_backend(backend)),
     }
+}
+
+async fn lock_topic_for_route_rename_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    topic_id: Uuid,
+) -> ForumResult<()> {
+    let statement = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT id FROM forum_topics WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE",
+            vec![tenant_id.into(), topic_id.into()],
+        ),
+        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "UPDATE forum_topics SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2 AND deleted_at IS NULL",
+            vec![tenant_id.into(), topic_id.into()],
+        ),
+        backend => {
+            return Err(unsupported_backend(backend));
+        }
+    };
+
+    let found = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => txn.query_one_raw(statement).await?.is_some(),
+        DatabaseBackend::Sqlite => txn.execute_raw(statement).await?.rows_affected() == 1,
+        _ => unreachable!(),
+    };
+    if !found {
+        return Err(ForumError::TopicNotFound(topic_id));
+    }
+    Ok(())
 }
 
 async fn update_topic_route_slug_in_tx(
