@@ -432,12 +432,13 @@ requireAll("scripts/verify/verify-blog-comments-event-projection.mjs", [
   "OnConflict::column(blog_comment_projection_delivery::Column::EventId)",
   "projection_delta_tracks_comment_state_not_delivery_order()",
 ]);
-forbid("scripts/verify/verify-blog-comments-event-projection.mjs", [
-  "MAX_PROJECTION_UPDATE_ATTEMPTS",
-  "ProjectionUpdateDecision",
-  "optimistic_retry_policy_applies_success_without_retry",
-  "optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears",
-  "implementation-plan.md",
+requireAll("scripts/verify/verify-blog-comments-event-projection.mjs", [
+  "implementation-plan-current.md",
+  "lock_exclusive()",
+  "projection_applied_delta(",
+  "order_by_desc(blog_comment_projection_delivery::Column::EventId)",
+  "delivery.event_id >= envelope.id",
+  "OnConflict::column(blog_comment_projection_delivery::Column::EventId)",
 ]);
 
 requireAll("scripts/verify/verify-blog-comments-event-projection.test.mjs", [
