@@ -202,8 +202,8 @@ fn parse_port_tenant_id(
     Uuid::parse_str(&context.tenant_id).map_err(|_| {
         log_customer_tenant_parse_rejection(context, owner_operation);
         PortError::validation(
-            "customer.context_invalid",
-            "customer request context is invalid",
+            "customer.tenant_id_invalid",
+            "customer request context tenant id is invalid",
         )
     })
 }
@@ -390,7 +390,7 @@ fn log_customer_tenant_parse_rejection(context: &PortContext, owner_operation: &
         idempotency_key_length = ?context_facts.idempotency_key_length,
         deadline_ms = ?context_facts.deadline_ms,
         operation = owner_operation,
-        code = "customer.context_invalid",
+        code = "customer.tenant_id_invalid",
         tenant_id_parse_failed = true,
         boundary = CUSTOMER_READ_PORT_BOUNDARY,
         "customer port context was rejected with bounded diagnostics"
@@ -540,7 +540,7 @@ fn customer_error_to_port_error(
                 "customer storage is temporarily unavailable",
             )
         }
-        CustomerError::CustomerNotFound(_) => {
+        CustomerError::CustomerNotFound(customer_id) => {
             log_customer_owner_failure(
                 context,
                 owner_operation,
@@ -548,9 +548,12 @@ fn customer_error_to_port_error(
                 &error_facts,
                 false,
             );
-            PortError::not_found("customer.customer_not_found", "customer was not found")
+            PortError::not_found(
+                "customer.customer_not_found",
+                format!("customer '{customer_id}' was not found"),
+            )
         }
-        CustomerError::CustomerByUserNotFound(_) => {
+        CustomerError::CustomerByUserNotFound(user_id) => {
             log_customer_owner_failure(
                 context,
                 owner_operation,
@@ -560,7 +563,7 @@ fn customer_error_to_port_error(
             );
             PortError::not_found(
                 "customer.customer_by_user_not_found",
-                "customer was not found for the requested user",
+                format!("customer was not found for the requested user '{user_id}'"),
             )
         }
         CustomerError::DuplicateEmail(_) => {

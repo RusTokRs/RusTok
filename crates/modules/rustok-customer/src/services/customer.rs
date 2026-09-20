@@ -30,13 +30,14 @@ impl CustomerService {
     pub async fn create_customer(
         &self,
         tenant_id: Uuid,
-        input: CreateCustomerInput,
+        mut input: CreateCustomerInput,
     ) -> CustomerResult<CustomerResponse> {
+        input.email = input.email.trim().to_string();
         input
             .validate()
             .map_err(|error| CustomerError::Validation(error.to_string()))?;
 
-        let email = input.email.trim().to_string();
+        let email = input.email.clone();
         self.ensure_email_available(tenant_id, &email, None).await?;
         if let Some(user_id) = input.user_id {
             self.ensure_user_available(tenant_id, user_id, None).await?;
@@ -211,6 +212,10 @@ impl CustomerService {
         customer_id: Uuid,
         input: UpdateCustomerInput,
     ) -> CustomerResult<CustomerResponse> {
+        let mut input = input;
+        if let Some(email) = input.email.as_deref() {
+            input.email = Some(email.trim().to_string());
+        }
         input
             .validate()
             .map_err(|error| CustomerError::Validation(error.to_string()))?;

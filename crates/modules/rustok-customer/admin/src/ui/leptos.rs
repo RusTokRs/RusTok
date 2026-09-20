@@ -52,6 +52,16 @@ pub fn CustomerAdmin() -> impl IntoView {
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
 
+    let form_signals = CustomerFormSignals {
+        editing_id: set_editing_id,
+        selected: set_selected,
+        user_id: set_user_id,
+        email: set_email,
+        first_name: set_first_name,
+        last_name: set_last_name,
+        phone: set_phone,
+    };
+
     let bootstrap = local_resource(
         move || refresh_nonce.get(),
         move |_| async move { transport::fetch_bootstrap().await },
@@ -68,16 +78,7 @@ pub fn CustomerAdmin() -> impl IntoView {
     let error_labels = customer_admin_error_labels(ui_locale.as_deref());
 
     let reset_form = move || {
-        apply_customer_form_snapshot(
-            empty_customer_admin_form_snapshot(),
-            set_editing_id,
-            set_selected,
-            set_user_id,
-            set_email,
-            set_first_name,
-            set_last_name,
-            set_phone,
-        );
+        apply_customer_form_snapshot(empty_customer_admin_form_snapshot(), form_signals);
         set_error.set(None);
     };
 
@@ -90,24 +91,12 @@ pub fn CustomerAdmin() -> impl IntoView {
             match transport::fetch_customer_detail(customer_id).await {
                 Ok(detail) => apply_customer_form_snapshot(
                     customer_detail_form_snapshot(detail),
-                    set_editing_id,
-                    set_selected,
-                    set_user_id,
-                    set_email,
-                    set_first_name,
-                    set_last_name,
-                    set_phone,
+                    form_signals,
                 ),
                 Err(err) => {
                     apply_customer_form_snapshot(
                         empty_customer_admin_form_snapshot(),
-                        set_editing_id,
-                        set_selected,
-                        set_user_id,
-                        set_email,
-                        set_first_name,
-                        set_last_name,
-                        set_phone,
+                        form_signals,
                     );
                     set_error.set(Some(customer_admin_transport_error_message(
                         &error_labels.load_customer,
@@ -124,16 +113,7 @@ pub fn CustomerAdmin() -> impl IntoView {
             initial_open_customer.run(customer_id);
         }
         _ => {
-            apply_customer_form_snapshot(
-                empty_customer_admin_form_snapshot(),
-                set_editing_id,
-                set_selected,
-                set_user_id,
-                set_email,
-                set_first_name,
-                set_last_name,
-                set_phone,
-            );
+            apply_customer_form_snapshot(empty_customer_admin_form_snapshot(), form_signals);
         }
     });
 
@@ -184,13 +164,7 @@ pub fn CustomerAdmin() -> impl IntoView {
                     let detail_id = detail.customer.id.clone();
                     apply_customer_form_snapshot(
                         customer_detail_form_snapshot(detail),
-                        set_editing_id,
-                        set_selected,
-                        set_user_id,
-                        set_email,
-                        set_first_name,
-                        set_last_name,
-                        set_phone,
+                        form_signals,
                     );
                     set_refresh_nonce.update(|value| *value += 1);
                     submit_query_writer
@@ -618,22 +592,26 @@ fn customer_admin_display_labels(locale: Option<&str>) -> CustomerAdminDisplayLa
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[derive(Clone, Copy)]
+struct CustomerFormSignals {
+    editing_id: WriteSignal<Option<String>>,
+    selected: WriteSignal<Option<CustomerDetail>>,
+    user_id: WriteSignal<String>,
+    email: WriteSignal<String>,
+    first_name: WriteSignal<String>,
+    last_name: WriteSignal<String>,
+    phone: WriteSignal<String>,
+}
+
 fn apply_customer_form_snapshot(
     snapshot: CustomerAdminFormSnapshot,
-    set_editing_id: WriteSignal<Option<String>>,
-    set_selected: WriteSignal<Option<CustomerDetail>>,
-    set_user_id: WriteSignal<String>,
-    set_email: WriteSignal<String>,
-    set_first_name: WriteSignal<String>,
-    set_last_name: WriteSignal<String>,
-    set_phone: WriteSignal<String>,
+    signals: CustomerFormSignals,
 ) {
-    set_editing_id.set(snapshot.editing_customer_id);
-    set_selected.set(snapshot.selected_detail);
-    set_user_id.set(snapshot.user_id);
-    set_email.set(snapshot.email);
-    set_first_name.set(snapshot.first_name);
-    set_last_name.set(snapshot.last_name);
-    set_phone.set(snapshot.phone);
+    signals.editing_id.set(snapshot.editing_customer_id);
+    signals.selected.set(snapshot.selected_detail);
+    signals.user_id.set(snapshot.user_id);
+    signals.email.set(snapshot.email);
+    signals.first_name.set(snapshot.first_name);
+    signals.last_name.set(snapshot.last_name);
+    signals.phone.set(snapshot.phone);
 }

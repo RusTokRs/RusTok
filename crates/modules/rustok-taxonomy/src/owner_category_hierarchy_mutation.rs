@@ -174,7 +174,7 @@ pub async fn delete_module_category_placement_and_compact_in_tx(
         return Ok(());
     }
 
-    let mut siblings = taxonomy_category_hierarchy::Entity::find()
+    let siblings = taxonomy_category_hierarchy::Entity::find()
         .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
         .filter(taxonomy_category_hierarchy::Column::TermId.is_in(remaining_ids))
         .filter(match parent_id {
