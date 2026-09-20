@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseBackend, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, Statement,
+    ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    Statement,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -129,50 +129,37 @@ impl UserStatsService {
             return Ok(());
         };
 
-        let now = Utc::now();
-        let existing = forum_user_stat::Entity::find_by_id((tenant_id, user_id))
-            .one(txn)
-            .await?;
-
-        match existing {
-            Some(existing) => {
-                let mut active: forum_user_stat::ActiveModel = existing.into();
-                let current_topic = match active.topic_count.clone() {
-                    sea_orm::ActiveValue::Set(value) => value,
-                    sea_orm::ActiveValue::Unchanged(value) => value,
-                    sea_orm::ActiveValue::NotSet => 0,
-                };
-                let current_reply = match active.reply_count.clone() {
-                    sea_orm::ActiveValue::Set(value) => value,
-                    sea_orm::ActiveValue::Unchanged(value) => value,
-                    sea_orm::ActiveValue::NotSet => 0,
-                };
-                let current_solution = match active.solution_count.clone() {
-                    sea_orm::ActiveValue::Set(value) => value,
-                    sea_orm::ActiveValue::Unchanged(value) => value,
-                    sea_orm::ActiveValue::NotSet => 0,
-                };
-                active.topic_count = Set((current_topic + topic_delta).max(0));
-                active.reply_count = Set((current_reply + reply_delta).max(0));
-                active.solution_count = Set((current_solution + solution_delta).max(0));
-                active.updated_at = Set(now.into());
-                active.update(txn).await?;
+        let statement = match txn.get_database_backend() {
+            DatabaseBackend::Postgres => Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "INSERT INTO forum_user_stats                  (tenant_id, user_id, topic_count, reply_count, solution_count, created_at, updated_at)                  VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)                  ON CONFLICT (tenant_id, user_id) DO UPDATE SET                     topic_count = CASE WHEN forum_user_stats.topic_count + EXCLUDED.topic_count < 0                                        THEN 0 ELSE forum_user_stats.topic_count + EXCLUDED.topic_count END,                     reply_count = CASE WHEN forum_user_stats.reply_count + EXCLUDED.reply_count < 0                                        THEN 0 ELSE forum_user_stats.reply_count + EXCLUDED.reply_count END,                     solution_count = CASE WHEN forum_user_stats.solution_count + EXCLUDED.solution_count < 0                                           THEN 0 ELSE forum_user_stats.solution_count + EXCLUDED.solution_count END,                     updated_at = CURRENT_TIMESTAMP",
+                vec![
+                    tenant_id.into(),
+                    user_id.into(),
+                    topic_delta.into(),
+                    reply_delta.into(),
+                    solution_delta.into(),
+                ],
+            ),
+            DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "INSERT INTO forum_user_stats                  (tenant_id, user_id, topic_count, reply_count, solution_count, created_at, updated_at)                  VALUES (?1, ?2, ?3, ?4, ?5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)                  ON CONFLICT (tenant_id, user_id) DO UPDATE SET                     topic_count = MAX(forum_user_stats.topic_count + excluded.topic_count, 0),                     reply_count = MAX(forum_user_stats.reply_count + excluded.reply_count, 0),                     solution_count = MAX(forum_user_stats.solution_count + excluded.solution_count, 0),                     updated_at = CURRENT_TIMESTAMP",
+                vec![
+                    tenant_id.into(),
+                    user_id.into(),
+                    topic_delta.into(),
+                    reply_delta.into(),
+                    solution_delta.into(),
+                ],
+            ),
+            backend => {
+                return Err(ForumError::Validation(format!(
+                    "Forum user statistic counter adjustment does not support database backend {backend:?}"
+                )));
             }
-            None => {
-                forum_user_stat::ActiveModel {
-                    tenant_id: Set(tenant_id),
-                    user_id: Set(user_id),
-                    topic_count: Set(topic_delta.max(0)),
-                    reply_count: Set(reply_delta.max(0)),
-                    solution_count: Set(solution_delta.max(0)),
-                    created_at: Set(now.into()),
-                    updated_at: Set(now.into()),
-                }
-                .insert(txn)
-                .await?;
-            }
-        }
+        };
 
+        txn.execute_raw(statement).await?;
         Ok(())
     }
 
