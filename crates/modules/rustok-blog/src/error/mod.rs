@@ -300,8 +300,23 @@ impl From<rustok_taxonomy::TaxonomyError> for BlogError {
 impl From<rustok_channel::ChannelError> for BlogError {
     fn from(value: rustok_channel::ChannelError) -> Self {
         match value {
-            rustok_channel::ChannelError::Database(err) => Self::Database(err),
-            other => Self::Invariant(format!("Channel dependency failed: {other}")),
+            rustok_channel::ChannelError::Database(error) => Self::Database(error),
+            rustok_channel::ChannelError::InvalidTargetType(message)
+            | rustok_channel::ChannelError::InvalidTargetValue(message)
+            | rustok_channel::ChannelError::InvalidPolicyDefinition(message)
+            | rustok_channel::ChannelError::InvalidPolicyOperation(message) => Self::Validation(message),
+            rustok_channel::ChannelError::SlugAlreadyExists(message)
+            | rustok_channel::ChannelError::TargetAlreadyExists(_, message)
+            | rustok_channel::ChannelError::PolicySetSlugAlreadyExists(message) => Self::Conflict(message),
+            rustok_channel::ChannelError::NotFound(channel_id)
+            | rustok_channel::ChannelError::InactiveChannel(channel_id) => {
+                Self::Invariant(format!(
+                    "Channel dependency referenced unavailable channel {channel_id}"
+                ))
+            }
+            rustok_channel::ChannelError::Serialization(error) => {
+                Self::Invariant(format!("Channel dependency serialization failed: {error}"))
+            }
         }
     }
 }

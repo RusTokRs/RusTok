@@ -37,6 +37,19 @@ function rustFiles(path) {
   return out;
 }
 
+requireAll("crates/modules/rustok-blog/build.rs", [
+  "fn main() -> Result<(), Box<dyn Error>>",
+  'std::env::var("CARGO_MANIFEST_DIR")?',
+  "fs::create_dir_all(parent)?",
+  "fs::write(&bootstrap, content)?",
+]);
+forbid("crates/modules/rustok-blog/build.rs", [
+  'std::env::var("CARGO_MANIFEST_DIR").expect(',
+  "fs::read(&src).unwrap_or_default()",
+  "let _ = fs::create_dir_all",
+  "let _ = fs::write",
+]);
+
 requireAll("crates/modules/rustok-blog/src/dto/post.rs", [
   "pub excerpt: Patch<String>",
   "pub category_id: Patch<Uuid>",
@@ -287,6 +300,21 @@ for (const path of rustFiles("crates/modules/rustok-blog/src/graphql")) {
 for (const path of rustFiles("crates/modules/rustok-blog/src/integrations")) {
   forbid(path, ["crate::entities", "crate::{entities", "crate::entities::"]);
 }
+
+requireAll("crates/modules/rustok-blog/src/error/mod.rs", [
+  "rustok_channel::ChannelError::InvalidTargetValue(message)",
+  "rustok_channel::ChannelError::InvalidTargetType(message)",
+  "rustok_channel::ChannelError::Database(error) => Self::Database(error)",
+]);
+
+requireAll("crates/modules/rustok-blog/src/integrations/public_comments_snapshot.rs", [
+  "fn snapshot_key(identity: &PublicCommentsSnapshotIdentity) -> Option<String>",
+  "Blog public comments snapshot identity serialization failed",
+  "let Some(key) = snapshot_key(identity) else",
+]);
+forbid("crates/modules/rustok-blog/src/integrations/public_comments_snapshot.rs", [
+  "serde_json::to_vec(identity).unwrap_or_default()",
+]);
 
 requireAll("crates/modules/rustok-blog/src/error/public.rs", [
   "pub struct BlogPublicError",
@@ -547,6 +575,16 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
 requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
   "pub(super) fn is_unique_constraint(error: &sea_orm::DbErr) -> bool",
 ]);
+
+requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
+  "ensure_channel_slugs_exist_for_tenant_in_tx(",
+  ".map_err(BlogError::from)?;",
+]);
+forbid("crates/modules/rustok-blog/src/services/post/repository.rs", [
+  "BlogError::validation(error.to_string())",
+]);
+
+
 
 requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
   "PostService::is_unique_constraint(&error)",

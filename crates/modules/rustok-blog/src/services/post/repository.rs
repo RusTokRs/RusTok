@@ -122,10 +122,7 @@ impl PostService {
         ChannelService::new(self.db.clone())
             .ensure_channel_slugs_exist_for_tenant_in_tx(txn, tenant_id, channel_slugs)
             .await
-            .map_err(|error| match error {
-                rustok_channel::ChannelError::Database(error) => BlogError::Database(error),
-                error => BlogError::validation(error.to_string()),
-            })?;
+            .map_err(BlogError::from)?;
 
         blog_post_channel_visibility::Entity::delete_many()
             .filter(blog_post_channel_visibility::Column::TenantId.eq(tenant_id))

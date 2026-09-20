@@ -156,7 +156,10 @@ async fn store_snapshot_best_effort(
         }
     };
 
-    if let Err(error) = store.store(snapshot_key(identity), bytes).await {
+    let Some(key) = snapshot_key(identity) else {
+        return;
+    };
+    if let Err(error) = store.store(key, bytes).await {
         tracing::warn!(%error, "Blog public comments snapshot cache write failed");
     }
 }
@@ -165,7 +168,10 @@ async fn load_snapshot_best_effort(
     store: &dyn PublicCommentsSnapshotStore,
     identity: &PublicCommentsSnapshotIdentity,
 ) -> Option<PublicCommentsSnapshotEnvelope> {
-    let bytes = match store.load(snapshot_key(identity).as_str()).await {
+    let Some(key) = snapshot_key(identity) else {
+        return None;
+    };
+    let bytes = match store.load(&key).await {
         Ok(Some(bytes)) if bytes.len() <= MAX_PUBLIC_COMMENTS_SNAPSHOT_BYTES => bytes,
         Ok(Some(bytes)) => {
             tracing::warn!(
@@ -210,14 +216,20 @@ fn snapshot_matches(
             .all(|item| item.post_id == identity.post_id && item.status == "approved")
 }
 
-fn snapshot_key(identity: &PublicCommentsSnapshotIdentity) -> String {
-    let encoded = serde_json::to_vec(identity).unwrap_or_default();
+fn snapshot_key(identity: &PublicCommentsSnapshotIdentity) -> Option<String> {
+    let encoded = match serde_json::to_vec(identity) {
+        Ok(encoded) => encoded,
+        Err(error) => {
+            tracing::warn!(%error, "Blog public comments snapshot identity serialization failed");
+            return None;
+        }
+    };
     let digest = sha256_digest(&[b"blog-public-comments-snapshot-v1\0", encoded.as_slice()]);
     let mut hex = String::with_capacity(digest.len() * 2);
     for byte in digest {
         let _ = write!(&mut hex, "{byte:02x}");
     }
-    format!("snapshot:{hex}")
+    Some(format!("snapshot:{hex}"))
 }
 
 fn degraded_availability(error: &BlogError) -> Option<PublicCommentsAvailability> {
