@@ -145,6 +145,15 @@ if (handlesStart === -1 || handleStart === -1) {
 }
 
 const projectStart = handler.indexOf('async fn project(&self, envelope: &EventEnvelope)');
+const projectEnd = handler.indexOf('impl EventHandler for BlogCommentProjectionHandler', projectStart);
+const projectBody = projectStart === -1 || projectEnd === -1
+  ? ''
+  : handler.slice(projectStart, projectEnd);
+requireNoMarker(
+  projectBody,
+  'DomainEvent::BlogPostUpdated',
+  `${handlerPath}: project`,
+);
 const txnStart = handler.indexOf('let txn = self.db.begin().await?;', projectStart);
 const postLock = handler.indexOf('.lock_exclusive()', txnStart);
 const latestQuery = handler.indexOf(
