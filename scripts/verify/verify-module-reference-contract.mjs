@@ -139,6 +139,11 @@ requireAll("crates/modules/rustok-blog/src/services/comment.rs", [
   "enforce_scope(&security, Resource::Comments, Action::Read)?;",
   "tenant_id,\n                    &security,",
 ]);
+requireOrdered(
+  "crates/modules/rustok-blog/src/services/comment.rs",
+  "enforce_scope(&security, Resource::Comments, Action::List)?;",
+  "self.ensure_post_exists(tenant_id, post_id).await?;",
+);
 
 requireAll("crates/modules/rustok-blog/src/services/post/mod.rs", [
   "other => Err(BlogError::invariant(format!(",
