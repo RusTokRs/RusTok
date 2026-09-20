@@ -110,7 +110,10 @@ Invalid transitions fail; transports/UI do not reinterpret them.
 
 Locale resolution on reads follows the shared runtime fallback contract, but an
 existing post with no localized records is a storage invariant violation rather
-than a fabricated empty post.
+than a fabricated empty post. Persisted Article richtext JSON is also an owner
+storage invariant: malformed JSON or a document that no longer satisfies the
+fixed Article profile fails closed as an internal Blog invariant, never as client
+input validation.
 
 `PostListQuery` is an owner list/filter API, not full-text search. Sort fields
 and order are typed through `PostSortField` / `PostSortOrder`, and owner
