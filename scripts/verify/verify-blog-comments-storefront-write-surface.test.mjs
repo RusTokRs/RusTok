@@ -71,7 +71,7 @@ function rejects(mutator) {
   }
 }
 
-test('accepts the canonical absent storefront Comments write surface', () => {
+test('accepts the canonical active storefront Comments write surface', () => {
   const root = fixture();
   try {
     const result = run(root);
@@ -81,59 +81,59 @@ test('accepts the canonical absent storefront Comments write surface', () => {
   }
 });
 
-test('rejects a newly added storefront comment form', () => {
+test('rejects removal of the active storefront comment composer', () => {
   const result = rejects((root) =>
     mutate(
       root,
       'crates/modules/rustok-blog/storefront/src/ui/leptos.rs',
-      (source) => `${source}\n<form><textarea></textarea></form>`,
+      (source) => source.replace('CommentComposer', 'RemovedCommentComposer'),
     ),
   );
   assert.notEqual(result.status, 0);
 });
 
-test('rejects a storefront create-comment transport', () => {
+test('rejects removal of the storefront native create-comment transport', () => {
   const result = rejects((root) =>
     mutate(
       root,
       'crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs',
-      (source) => `${source}\ncreate_comment(`,
+      (source) => source.replace('endpoint = "blog/comment-create"', 'endpoint = "blog/comment-create-removed"'),
     ),
   );
   assert.notEqual(result.status, 0);
 });
 
-test('rejects a storefront GraphQL mutation', () => {
+test('rejects removal of the storefront GraphQL create-comment mutation', () => {
   const result = rejects((root) =>
     mutate(
       root,
       'crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs',
-      (source) => source.replace('query StorefrontBlog', 'mutation StorefrontBlog'),
+      (source) => source.replace('mutation CreateBlogComment', 'removed CreateBlogComment'),
     ),
   );
   assert.notEqual(result.status, 0);
 });
 
-test('rejects inventory promotion to a present form', () => {
+test('rejects evidence that regresses the active write-surface status', () => {
   const result = rejects((root) =>
     mutateJson(
       root,
       'crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json',
       (evidence) => {
-        evidence.source_contract.comment_form_present = true;
+        evidence.status = 'source_verified_absent';
       },
     ),
   );
   assert.notEqual(result.status, 0);
 });
 
-test('rejects fallback actualization back to an implementation target', () => {
+test('rejects fallback actualization drift away from the active write surface', () => {
   const result = rejects((root) =>
     mutateJson(
       root,
       'crates/modules/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json',
       (evidence) => {
-        evidence.storefront_write_surface.comment_form_fallback = 'planned';
+        evidence.storefront_write_surface.active_comment_form = false;
       },
     ),
   );
