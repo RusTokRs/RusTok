@@ -133,6 +133,30 @@ requireAll("crates/modules/rustok-blog/src/controllers/comments.rs", [
   "ensure_blog_module_enabled(&runtime, tenant.id).await?;",
   "ensure_blog_permission(",
 ]);
+requireAll("crates/modules/rustok-blog/src/services/comment.rs", [
+  "pub async fn get_comment(",
+  "security: SecurityContext",
+  "enforce_scope(&security, Resource::Comments, Action::Read)?;",
+  "tenant_id,\n                    &security,",
+]);
+forbid("crates/modules/rustok-blog/src/services/comment.rs", [
+  "tenant_id,\n                    &SecurityContext::system(),\n                    locale,\n                    comment_id,",
+]);
+
+
+requireAll("crates/modules/rustok-blog/src/controllers/comments.rs", [
+  "ensure_blog_module_enabled(&runtime, tenant.id).await?;",
+  "ensure_blog_permission(",
+]);
+requireAll("crates/modules/rustok-blog/src/services/comment.rs", [
+  "pub async fn get_comment(",
+  "security: SecurityContext",
+  "enforce_scope(&security, Resource::Comments, Action::Read)?;",
+  "tenant_id,\n                    &security,",
+]);
+forbid("crates/modules/rustok-blog/src/services/comment.rs", [
+  "tenant_id,\n                    &SecurityContext::system(),\n                    locale,\n                    comment_id,",
+]);
 
 requireAll("crates/modules/rustok-blog/src/services/post/mod.rs", [
   "other => Err(BlogError::invariant(format!(",
