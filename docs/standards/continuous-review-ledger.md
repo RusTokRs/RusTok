@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `62 / 218` components audited (**28%**)
+- **Progress:** `64 / 218` components audited (**29%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -105,8 +105,8 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [next-admin](../../crates/modules/rustok-iggy-connector/next-admin) | `modules` | 5 | 367 | 2026-09-20 18:48 | Verified iggy connector next-admin components and typed API contract, zero suppressions |
 | [x] | [rustok-index](../../crates/modules/rustok-index) | `modules` | 138 | 57,313 | 2026-09-20 19:50 | Eliminated 6 allow suppressions via typed IndexReconciliationBudget, ProductTestSchemas, PartitionAdmissionPolicyParams, PartitionShadowEvidenceParams, and IndexDriftRepairRecoveryCommandParams, resolved dead_code on ReconciliationLease.schema, all 320+ tests passed, clippy clean |
 | [x] | [admin](../../crates/modules/rustok-index/admin) | `modules` | 9 | 2,180 | 2026-09-20 19:50 | Verified index admin package, zero suppressions/unwraps, all 7 tests passed, clippy clean |
-| [ ] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 35 | 12,002 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-inventory/admin) | `modules` | 10 | 4,267 | None |  |
+| [x] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 35 | 12,002 | 2026-09-20 20:09 | Eliminated 5 allow suppressions (removed deprecated attributes on trait and introduced LocalReservationOutcomeParams), fixed whitespace padding in inventory_policy_allows_backorder, all 28 tests passed, clippy clean |
+| [x] | [admin](../../crates/modules/rustok-inventory/admin) | `modules` | 10 | 4,267 | 2026-09-20 20:09 | Synchronized boundary tests and documentation with canonical Product catalog service owner reads, all 57 tests passed, zero suppressions, clippy clean |
 | [ ] | [rustok-marketplace](../../crates/modules/rustok-marketplace) | `modules` | 10 | 1,485 | None |  |
 | [ ] | [rustok-marketplace-allocation](../../crates/modules/rustok-marketplace-allocation) | `modules` | 12 | 1,476 | None |  |
 | [ ] | [rustok-marketplace-commission](../../crates/modules/rustok-marketplace-commission) | `modules` | 16 | 2,586 | None |  |

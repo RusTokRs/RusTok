@@ -6,11 +6,11 @@
 
 ## Responsibilities
 
-- Own the inventory service, backend admin read-side service, native admin stock write helpers, stock-level migrations, and normalized stock and reservation persistence.
+- Own the inventory service, native admin stock write helpers, stock-level migrations, and normalized stock and reservation persistence.
 - Keep `stock_locations`, `inventory_items`, `inventory_levels`, and `reservation_items`
   as the source of truth for ecommerce inventory runtime.
-- Provide `AdminInventoryReadService` as the inventory-owned backend read model for admin
-  product, variant, price, stock, and translation visibility; variant availability is read from
+- Back admin product, variant, price, stock, and translation visibility through canonical
+  Product catalog service queries and inventory-owned stock levels; variant availability is read from
   `inventory_items`/`inventory_levels` when stock levels exist, with the legacy variant
   quantity used only as a compatibility fallback.
 - Provide a module-owned Leptos admin UI package in `admin/` for inventory visibility,
@@ -36,7 +36,7 @@
 - Used by `rustok-product` only through the native `BootstrapService` exception while no
   GraphQL/REST bootstrap contract exists; the product creation transaction remains atomic.
 - `apps/admin` consumes `rustok-inventory-admin` through manifest-driven composition;
-  the admin package now routes Leptos UI through a private `transport/` facade and explicit native server-function adapter backed by `AdminInventoryReadService`, with the previous transitional commerce GraphQL adapter and pre-FFA `api.rs` facade removed, and uses native inventory-owned set/adjust/reserve/release
+  the admin package now routes Leptos UI through a private `transport/` facade and explicit native server-function adapter backed by canonical Product catalog and Inventory services, with the previous transitional commerce GraphQL adapter and pre-FFA `api.rs` facade removed, and uses native inventory-owned set/adjust/reserve/release
   quantity write endpoints plus check-availability validation for targeted stock corrections,
   +/-1 adjustments, reservation flows, and availability checks; set-quantity targets available
   quantity while preserving reserved units, while remaining non-admin write parity is split
@@ -46,7 +46,6 @@
 
 - `InventoryModule`
 - `InventoryService`
-- `AdminInventoryReadService`
 - public-channel inventory visibility/projection helpers exported from `services::public_channel`
 - `rustok-inventory-admin`
 

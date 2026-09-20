@@ -6,7 +6,7 @@
 
 - inventory service logic;
 - stock-related migrations;
-- `InventoryModule`, `InventoryService`, backend `AdminInventoryReadService` and native admin stock write endpoints;
+- `InventoryModule`, `InventoryService`, and native admin stock write endpoints;
 - module-owned admin UI package `rustok-inventory/admin` for inventory visibility,
   low-stock triage and variant-level stock inspection.
 
@@ -15,9 +15,8 @@
 - runtime dependency: `product`;
 - the module owns the inventory/stock boundary and the operator read-side UI surface
   for stock levels;
-- the backend read-side for the admin now has an inventory-owned service/DTO in
-  `src/services/admin_read.rs`, which returns a tenant-scoped product/variant/price/translations
-  model for native server-function read transport;
+- the backend read-side for the admin routes through canonical Product catalog service DTOs
+  for product/variant/price/translations and inventory-owned stock queries for native server-function read transport;
 - admin UI read-side now goes only through inventory-owned `admin/src/core.rs`, `admin/src/transport/mod.rs`, explicit native `#[server]` functions in `admin/src/transport/native_server_adapter.rs`, and explicit Leptos adapter `admin/src/ui/leptos.rs`; commerce GraphQL fallback, `admin/src/transport.rs`, pre-FFA `admin/src/api.rs`, `rustok-graphql`, and token/tenant-slug fallback parameters are absent;
 - dedicated native inventory write/validation endpoints `inventory/variant/set-quantity`,
   `inventory/variant/adjust-quantity`, `inventory/variant/reserve-quantity`,
@@ -37,8 +36,8 @@
 
 - the module is part of the ecommerce family and must maintain its own storage/runtime boundary
   without returning responsibility to the umbrella `rustok-commerce`;
-- the inventory-owned backend admin read service is exported by the root crate and is the source
-  for native server-function read transport;
+- the admin read transport delegates product catalog queries to the Product owner service and
+  resolves stock levels from inventory;
 - inventory-owned admin UX and read facade are published through `rustok-inventory/admin`;
   read-side and targeted set/adjust/reserve/release quantity plus check-availability flows go through native inventory-owned server-function surface without commerce GraphQL selected path;
 - cross-module contract changes must be synchronized with `rustok-commerce`

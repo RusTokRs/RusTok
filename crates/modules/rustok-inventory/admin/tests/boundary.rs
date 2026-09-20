@@ -93,7 +93,7 @@ fn native_read_path_targets_inventory_backend_service() {
         "#[server(prefix = \"/api/fn\", endpoint = \"inventory/bootstrap\")]",
         "#[server(prefix = \"/api/fn\", endpoint = \"inventory/products\")]",
         "#[server(prefix = \"/api/fn\", endpoint = \"inventory/product\")]",
-        "AdminInventoryReadService::new",
+        "product_catalog_service_from_context",
         "assert_requested_tenant",
         "Permission::INVENTORY_LIST",
         "Permission::INVENTORY_READ",
@@ -316,66 +316,80 @@ fn native_only_graphql_adapter_removal_is_documented() {
 fn native_read_mapper_keeps_backend_read_model_parity() {
     let model = read_source("src/model.rs");
     let native = read_source("src/transport/native_server_adapter.rs");
-    let backend = read_source("../src/services/admin_read.rs");
+    let product_dto = read_source("../../rustok-product/src/dto/product.rs");
+    let variant_dto = read_source("../../rustok-product/src/dto/variant.rs");
+    let catalog_types = read_source("../../rustok-product/src/services/catalog/types.rs");
 
-    for (model_marker, backend_marker, native_marker) in [
+    for (model_marker, backend_source, backend_marker, native_marker) in [
         (
             "pub per_page: u64",
+            catalog_types.as_str(),
             "pub per_page: u64",
             "per_page: value.per_page",
         ),
         (
             "pub has_next: bool",
+            catalog_types.as_str(),
             "pub has_next: bool",
             "has_next: value.has_next",
         ),
         (
             "pub shipping_profile_slug: Option<String>",
+            product_dto.as_str(),
             "pub shipping_profile_slug: Option<String>",
             "shipping_profile_slug: value.shipping_profile_slug",
         ),
         (
             "pub translations: Vec<InventoryProductTranslation>",
-            "pub translations: Vec<AdminInventoryProductTranslation>",
+            product_dto.as_str(),
+            "pub translations: Vec<ProductTranslationResponse>",
             "translations: value",
         ),
         (
             "pub variants: Vec<InventoryVariant>",
-            "pub variants: Vec<AdminInventoryVariant>",
-            "variants: value.variants.into_iter().map(map_variant).collect()",
+            product_dto.as_str(),
+            "pub variants: Vec<VariantResponse>",
+            "variants: value",
         ),
         (
             "pub prices: Vec<InventoryPrice>",
-            "pub prices: Vec<AdminInventoryPrice>",
+            variant_dto.as_str(),
+            "pub prices: Vec<PriceResponse>",
             "prices: value",
         ),
         (
             "pub inventory_quantity: i32",
+            variant_dto.as_str(),
             "pub inventory_quantity: i32",
             "inventory_quantity: value.inventory_quantity",
         ),
         (
             "pub inventory_policy: String",
+            variant_dto.as_str(),
             "pub inventory_policy: String",
             "inventory_policy: value.inventory_policy",
         ),
         (
             "pub in_stock: bool",
+            variant_dto.as_str(),
             "pub in_stock: bool",
             "in_stock: value.in_stock",
         ),
         (
             "pub currency_code: String",
+            product_dto.as_str(),
             "pub currency_code: String",
             "currency_code: price.currency_code",
         ),
         (
             "pub compare_at_amount: Option<String>",
-            "pub compare_at_amount: Option<String>",
+            product_dto.as_str(),
+            "pub compare_at_amount: Option<Decimal>",
             "compare_at_amount: price.compare_at_amount",
         ),
         (
             "pub on_sale: bool",
+            product_dto.as_str(),
             "pub on_sale: bool",
             "on_sale: price.on_sale",
         ),
@@ -385,8 +399,8 @@ fn native_read_mapper_keeps_backend_read_model_parity() {
             "admin read model must keep field marker `{model_marker}`"
         );
         assert!(
-            backend.contains(backend_marker),
-            "backend AdminInventoryReadService DTO must keep field marker `{backend_marker}`"
+            backend_source.contains(backend_marker),
+            "product catalog DTO must keep field marker `{backend_marker}`"
         );
         assert!(
             native.contains(native_marker),

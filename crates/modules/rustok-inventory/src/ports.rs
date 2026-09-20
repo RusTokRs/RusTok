@@ -32,14 +32,12 @@ pub trait InventoryReservationPort: Send + Sync {
         request: InventoryAvailabilityRequest,
     ) -> Result<InventoryAvailabilitySnapshot, PortError>;
 
-    #[deprecated(note = "use InventoryReservationIdentityPort::reserve_inventory_by_identity")]
     async fn reserve_inventory(
         &self,
         context: PortContext,
         request: InventoryReservationRequest,
     ) -> Result<InventoryReservationSnapshot, PortError>;
 
-    #[deprecated(note = "use InventoryReservationIdentityPort::release_inventory_by_identity")]
     async fn release_inventory_reservation(
         &self,
         context: PortContext,
@@ -189,7 +187,6 @@ impl InventoryReservationPort for crate::InventoryService {
         })
     }
 
-    #[allow(deprecated)]
     async fn reserve_inventory(
         &self,
         context: PortContext,
@@ -212,7 +209,6 @@ impl InventoryReservationPort for crate::InventoryService {
         })
     }
 
-    #[allow(deprecated)]
     async fn release_inventory_reservation(
         &self,
         context: PortContext,

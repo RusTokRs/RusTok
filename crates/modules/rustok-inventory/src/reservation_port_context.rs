@@ -62,7 +62,6 @@ impl InventoryReservationPort for InProcessInventoryReservationPort {
         })
     }
 
-    #[allow(deprecated)]
     async fn reserve_inventory(
         &self,
         context: PortContext,
@@ -85,7 +84,6 @@ impl InventoryReservationPort for InProcessInventoryReservationPort {
         })
     }
 
-    #[allow(deprecated)]
     async fn release_inventory_reservation(
         &self,
         context: PortContext,
@@ -147,12 +145,14 @@ fn map_inventory_reservation_local_port_error(
     let technical_failure = inventory_reservation_error_is_technical(&error);
     log_inventory_reservation_local_outcome(
         context,
-        operation,
-        local_operation,
-        variant_id,
-        quantity,
-        &error,
-        technical_failure,
+        LocalReservationOutcomeParams {
+            operation,
+            local_operation,
+            variant_id,
+            quantity,
+            error: &error,
+            technical_failure,
+        },
     );
     error
 }
@@ -217,17 +217,27 @@ fn inventory_reservation_error_is_technical(error: &PortError) -> bool {
     )
 }
 
-#[allow(clippy::too_many_arguments)]
+#[derive(Debug)]
+struct LocalReservationOutcomeParams<'a> {
+    pub operation: &'static str,
+    pub local_operation: &'static str,
+    pub variant_id: Uuid,
+    pub quantity: i32,
+    pub error: &'a PortError,
+    pub technical_failure: bool,
+}
+
 fn log_inventory_reservation_local_outcome(
     context: &PortContext,
-    operation: &'static str,
-    local_operation: &'static str,
-    variant_id: Uuid,
-    quantity: i32,
-    error: &PortError,
-    technical_failure: bool,
+    params: LocalReservationOutcomeParams<'_>,
 ) {
     let context_facts = inventory_reservation_context_facts(context);
+    let operation = params.operation;
+    let local_operation = params.local_operation;
+    let error = params.error;
+    let technical_failure = params.technical_failure;
+    let variant_id = params.variant_id;
+    let quantity = params.quantity;
     if technical_failure {
         tracing::error!(
             owner = INVENTORY_OWNER,
