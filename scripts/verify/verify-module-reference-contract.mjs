@@ -288,6 +288,15 @@ forbid("crates/modules/rustok-blog/src/domain/richtext.rs", [
   'map_err(|_| BlogError::validation("Stored article content is not a document"))',
 ]);
 
+requireAll("crates/libs/rustok-core/src/error/mod.rs", [
+  '#[error("Internal error: {0}")]' ,
+  "Internal(String)",
+  "Error::Internal(_) => ErrorKind::Internal",
+]);
+requireAll("crates/libs/rustok-core/src/registry.rs", [
+  "crate::Error::Internal(format!(",
+  "module `{}` runtime extension registration failed: {error}",
+]);
 requireAll("crates/modules/rustok-blog/src/module.rs", [
   '"dependencies"',
   '["content", "comments", "taxonomy", "outbox", "channel"]',
