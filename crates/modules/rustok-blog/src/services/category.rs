@@ -326,6 +326,14 @@ async fn ensure_hierarchy_coverage_in_tx(
             "Blog category Taxonomy hierarchy coverage is incomplete before create",
         ));
     }
+    if canonical
+        .iter()
+        .any(|category| category.available_locales.is_empty())
+    {
+        return Err(BlogError::invariant(
+            "Blog category Taxonomy projection contains Category without localized copy before create",
+        ));
+    }
 
     Ok(())
 }
