@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `56 / 218` components audited (**26%**)
+- **Progress:** `60 / 218` components audited (**28%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -99,10 +99,10 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-groups](../../crates/modules/rustok-groups) | `modules` | 112 | 31,916 | 2026-09-20 17:10 | Verified groups module, domain invariants, moderation & governance rules, zero suppressions/unwraps, all 20 tests passed, clippy clean |
 | [x] | [admin](../../crates/modules/rustok-groups/admin) | `modules` | 34 | 8,520 | 2026-09-20 17:10 | Gated SSR-only imports across 6 native transport adapters, zero suppressions/unwraps, all 4 tests passed, clippy clean |
 | [x] | [storefront](../../crates/modules/rustok-groups/storefront) | `modules` | 17 | 3,123 | 2026-09-20 17:10 | Replaced 2 allow(too_many_arguments) suppressions with typed ApplicationFormSignals & ApplicationCopy, cleaned up unused imports across native adapters, all 4 tests passed, clippy clean |
-| [ ] | [rustok-iggy](../../crates/modules/rustok-iggy) | `modules` | 32 | 8,279 | None |  |
-| [ ] | [rustok-iggy-connector](../../crates/modules/rustok-iggy-connector) | `modules` | 21 | 4,972 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-iggy-connector/admin) | `modules` | 7 | 612 | None |  |
-| [ ] | [next-admin](../../crates/modules/rustok-iggy-connector/next-admin) | `modules` | 5 | 367 | None |  |
+| [x] | [rustok-iggy](../../crates/modules/rustok-iggy) | `modules` | 32 | 8,279 | 2026-09-20 18:48 | Eliminated allow(clippy::too_many_arguments) in DlqDuplicateAlertPolicy, verified DLQ deduplication & fair window scan tests, clippy clean |
+| [x] | [rustok-iggy-connector](../../crates/modules/rustok-iggy-connector) | `modules` | 21 | 4,972 | 2026-09-20 18:48 | Eliminated allow(clippy::too_many_arguments) in ConsumerPoisonIdentity, removed dead create_and_connect stub, replaced allow(dead_code) with cfg(any(feature = iggy, test)), all 40 migration + unit tests passed, clippy clean |
+| [x] | [admin](../../crates/modules/rustok-iggy-connector/admin) | `modules` | 7 | 612 | 2026-09-20 18:48 | Verified leptos iggy connector admin UI package, zero suppressions/unwraps, all tests passed, clippy clean |
+| [x] | [next-admin](../../crates/modules/rustok-iggy-connector/next-admin) | `modules` | 5 | 367 | 2026-09-20 18:48 | Verified iggy connector next-admin components and typed API contract, zero suppressions |
 | [ ] | [rustok-index](../../crates/modules/rustok-index) | `modules` | 138 | 57,313 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-index/admin) | `modules` | 9 | 2,180 | None |  |
 | [ ] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 35 | 12,002 | None |  |
