@@ -261,12 +261,17 @@ async fn lock_topic_move_tenant_in_tx(
 ) -> ForumResult<()> {
     match txn.get_database_backend() {
         DatabaseBackend::Postgres => {
-            txn.execute_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, 21))",
-                vec![format!("forum-topic-move:{tenant_id}").into()],
-            ))
-            .await?;
+            for (scope, seed) in [
+                (format!("forum-topic-move:{tenant_id}"), 21_i32),
+                (tenant_id.to_string(), 0_i32),
+            ] {
+                txn.execute_raw(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "SELECT pg_advisory_xact_lock(hashtextextended($1, $2))",
+                    vec![scope.into(), seed.into()],
+                ))
+                .await?;
+            }
             Ok(())
         }
         DatabaseBackend::Sqlite => {
