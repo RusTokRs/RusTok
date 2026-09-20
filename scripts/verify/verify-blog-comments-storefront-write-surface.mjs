@@ -96,6 +96,10 @@ if (evidence) {
     ['comment_form_present', true],
     ['textarea_present', false],
     ['submit_handler_present', true],
+    ['channel_context_required_for_create', true],
+    ['channel_module_state_checked_for_create', true],
+    ['missing_channel_context_fails_closed', true],
+    ['disabled_channel_fails_closed', true],
     ['production_behavior_changed', false],
     ['runtime_execution_observed', false],
     ['browser_execution_observed', false],
@@ -181,6 +185,13 @@ need(graphql, 'createBlogComment', files.graphql);
 need(native, 'endpoint = "blog/storefront-data"', files.native);
 need(native, 'endpoint = "blog/comment-create"', files.native);
 need(native, 'create_public_comment(', files.native);
+need(native, "requireBlogCommentChannelEnabled", files.native);
+need(native, "require_blog_comment_channel_enabled", files.native);
+need(native, "ensure_authenticated_blog_channel_enabled", files.native);
+need(native, "Blog comment creation requires current channel context", files.native);
+need(native, "Blog comment creation requires current channel", files.native);
+need(native, "is_module_enabled_for_tenant", files.native);
+need(native, "endpoint = \"blog/comment-create\"", files.native);
 need(facade, 'pub async fn create_comment(', files.facade);
 need(facade, 'blog_comment_create', files.facade);
 need(ui, 'CommentComposer', files.ui);
