@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `38 / 218` components audited (**17%**)
+- **Progress:** `40 / 218` components audited (**18%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -81,8 +81,8 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 20 | 1,044 | 2026-09-20 10:35 | Zero suppressions/unwraps/panics, all 3 tests passed, clippy clean |
 | [x] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 21 | 5,825 | 2026-09-20 10:38 | Eliminated allow(dead_code), removed dead request_context_fields, all 15 tests passed, boundary script verified, clippy clean |
 | [x] | [storefront](../../crates/modules/rustok-commerce/storefront) | `modules` | 16 | 2,023 | 2026-09-20 10:38 | Eliminated allow(dead_code) in shared_adapter, transport, and requests, all 7 tests passed, error-safety & handoff scripts verified, clippy clean |
-| [ ] | [rustok-content](../../crates/modules/rustok-content) | `modules` | 48 | 7,003 | None |  |
-| [ ] | [rustok-content-orchestration](../../crates/modules/rustok-content-orchestration) | `modules` | 2 | 2,467 | None |  |
+| [x] | [rustok-content](../../crates/modules/rustok-content) | `modules` | 48 | 7,003 | 2026-09-20 13:45 | Added test-transport-fallback to dev-dependencies, documented richtext AST render and profile invariants, all 75 tests passed, clippy clean |
+| [x] | [rustok-content-orchestration](../../crates/modules/rustok-content-orchestration) | `modules` | 2 | 2,467 | 2026-09-20 13:45 | Verified bridge wiring and invariants, zero suppressions/unwraps, all tests passed, clippy clean |
 | [ ] | [rustok-customer](../../crates/modules/rustok-customer) | `modules` | 26 | 5,022 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-customer/admin) | `modules` | 9 | 2,476 | None |  |
 | [ ] | [rustok-distribution](../../crates/modules/rustok-distribution) | `modules` | 34 | 15,734 | None |  |

@@ -31,6 +31,7 @@ validator.workspace = true
 [dev-dependencies]
 tokio.workspace = true
 proptest = "1.11"
+rustok-outbox = { workspace = true, features = ["test-transport-fallback"] }
 
 [features]
 default = []

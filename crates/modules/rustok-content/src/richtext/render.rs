@@ -45,6 +45,7 @@ fn render_node(node: &RichTextNode, profile: RichTextProfile, html: &mut String)
     match node.kind.as_str() {
         "paragraph" => render_container("p", "richtext-paragraph", node, profile, html),
         "heading" => {
+            // INVARIANT: node schema validation guarantees heading nodes carry a valid numeric "level" attribute.
             let level = node.attrs["level"]
                 .as_u64()
                 .expect("validated heading level");
@@ -75,6 +76,7 @@ fn render_node(node: &RichTextNode, profile: RichTextProfile, html: &mut String)
         "codeBlock" => {
             html.push_str("<pre class=\"richtext-code-block\"><code>");
             for child in &node.content {
+                // INVARIANT: node schema validation guarantees code block children are text nodes with string content.
                 escape_text(child.text.as_deref().expect("validated code text"), html);
             }
             html.push_str("</code></pre>");
@@ -83,6 +85,7 @@ fn render_node(node: &RichTextNode, profile: RichTextProfile, html: &mut String)
         "hardBreak" => render_inline("<br>", &node.marks, profile, html),
         "text" => {
             let mut escaped = String::new();
+            // INVARIANT: node schema validation guarantees text nodes carry text content.
             escape_text(
                 node.text.as_deref().expect("validated text node"),
                 &mut escaped,
@@ -122,6 +125,7 @@ fn render_inline(value: &str, marks: &[RichTextMark], profile: RichTextProfile, 
     for mark in marks {
         match mark.kind.as_str() {
             "link" => {
+                // INVARIANT: mark schema validation guarantees link marks contain a valid string "href" attribute.
                 let href = mark.attrs["href"].as_str().expect("validated link href");
                 html.push_str("<a href=\"");
                 escape_attribute(href, html);
