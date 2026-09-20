@@ -219,4 +219,13 @@ mod tests {
         assert_eq!(rich.kind, ErrorKind::NotFound);
         assert_eq!(rich.status_code, 404);
     }
+
+    #[test]
+    fn test_internal_error_to_rich_error_conversion() {
+        let err = Error::Internal("startup registration failed".to_string());
+        let rich: RichError = err.into();
+
+        assert_eq!(rich.kind, ErrorKind::Internal);
+        assert_eq!(rich.status_code, 500);
+    }
 }
