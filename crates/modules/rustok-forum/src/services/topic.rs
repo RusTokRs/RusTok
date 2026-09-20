@@ -158,6 +158,48 @@ impl TopicService {
             .ok_or(ForumError::TopicNotFound(topic_id))
     }
 
+    pub(crate) async fn claim_topic_update_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        expected_updated_at: chrono::DateTime<chrono::FixedOffset>,
+    ) -> ForumResult<chrono::DateTime<chrono::Utc>> {
+        let claimed_at = Utc::now();
+        let statement = match txn.get_database_backend() {
+            DatabaseBackend::Postgres => Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "UPDATE forum_topics SET updated_at = $3 WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL AND updated_at = $4",
+                vec![
+                    tenant_id.into(),
+                    topic_id.into(),
+                    claimed_at.fixed_offset().into(),
+                    expected_updated_at.into(),
+                ],
+            ),
+            DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE forum_topics SET updated_at = ?3 WHERE tenant_id = ?1 AND id = ?2 AND deleted_at IS NULL AND updated_at = ?4",
+                vec![
+                    tenant_id.into(),
+                    topic_id.into(),
+                    claimed_at.fixed_offset().into(),
+                    expected_updated_at.into(),
+                ],
+            ),
+            backend => {
+                return Err(ForumError::Validation(format!(
+                    "Forum topic update locking does not support database backend {backend:?}"
+                )));
+            }
+        };
+
+        let result = txn.execute_raw(statement).await?;
+        if result.rows_affected() != 1 {
+            return Err(ForumError::TopicUpdateConflict(topic_id));
+        }
+        Ok(claimed_at)
+    }
+
     pub(crate) async fn adjust_reply_count_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
