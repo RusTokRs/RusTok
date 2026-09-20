@@ -352,7 +352,8 @@ impl ModerationService {
 
         let txn = self.db.begin().await?;
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
-        let reply = ReplyService::find_reply_in_tx(&txn, tenant_id, reply_id).await?;
+        let reply =
+            ReplyService::find_reply_for_update_in_tx(&txn, tenant_id, reply_id).await?;
         if reply.topic_id != topic_id {
             return Err(ForumError::Validation(
                 "Reply belongs to another topic".to_string(),
@@ -472,6 +473,7 @@ impl ModerationService {
         target: ReplyStatus,
     ) -> ForumResult<()> {
         let txn = self.db.begin().await?;
+        lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         let reply = ReplyService::find_reply_in_tx(&txn, tenant_id, reply_id).await?;
         if reply.topic_id != topic_id {
             return Err(ForumError::Validation(
@@ -488,6 +490,25 @@ impl ModerationService {
         let new_status = target.to_string();
 
         ReplyService::set_status_in_tx(&txn, tenant_id, reply_id, target).await?;
+
+        if stopped_being_public {
+            let solution_removed = forum_solution::Entity::delete_many()
+                .filter(forum_solution::Column::TenantId.eq(tenant_id))
+                .filter(forum_solution::Column::TopicId.eq(topic_id))
+                .filter(forum_solution::Column::ReplyId.eq(reply_id))
+                .exec(&txn)
+                .await?;
+
+            if solution_removed.rows_affected > 0 {
+                UserStatsService::adjust_solution_count_in_tx(
+                    &txn,
+                    tenant_id,
+                    reply.author_id,
+                    -1,
+                )
+                .await?;
+            }
+        }
 
         let changed_category_id = if became_public || stopped_being_public {
             let public_delta = if became_public { 1 } else { -1 };

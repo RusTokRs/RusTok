@@ -108,6 +108,7 @@ impl TopicService {
         )?;
 
         let txn = self.db.begin().await?;
+        lock_topic_delete_tenant_in_tx(&txn, tenant_id).await?;
         ForumTopicRouteTombstoneVisibilityService::lock_category_scope_in_tx(&txn, tenant_id)
             .await?;
         claim_topic_delete_in_tx(&txn, tenant_id, topic_id).await?;
@@ -235,6 +236,14 @@ impl TopicService {
         topic::TopicService::find_topic_in_tx(txn, tenant_id, topic_id).await
     }
 
+    pub(crate) async fn find_topic_for_update_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+    ) -> ForumResult<crate::entities::forum_topic::Model> {
+        topic::TopicService::find_topic_for_update_in_tx(txn, tenant_id, topic_id).await
+    }
+
     pub(crate) async fn adjust_reply_count_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
@@ -277,6 +286,32 @@ impl Deref for TopicService {
 
     fn deref(&self) -> &Self::Target {
         &self.inner
+    }
+}
+
+async fn lock_topic_delete_tenant_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+) -> ForumResult<()> {
+    match txn.get_database_backend() {
+        DatabaseBackend::Postgres => {
+            for (scope, seed) in [
+                (format!("forum-topic-delete:{tenant_id}"), 23_i32),
+                (tenant_id.to_string(), 0_i32),
+            ] {
+                txn.execute_raw(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "SELECT pg_advisory_xact_lock(hashtextextended($1, $2))",
+                    vec![scope.into(), seed.into()],
+                ))
+                .await?;
+            }
+            Ok(())
+        }
+        DatabaseBackend::Sqlite => Ok(()),
+        backend => Err(ForumError::Validation(format!(
+            "Forum topic delete does not support database backend {backend:?}"
+        ))),
     }
 }
 

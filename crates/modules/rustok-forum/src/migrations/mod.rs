@@ -62,6 +62,7 @@ mod m20260823_000029_add_forum_taxonomy_category_binding;
 mod m20260823_000030_backfill_forum_categories_to_taxonomy;
 mod m20260824_000031_retire_forum_category_legacy_storage;
 mod m20260916_000032_clean_forum_category_canonical_taxonomy;
+mod m20260920_000033_lock_topic_during_reply_creation;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -132,6 +133,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260823_000030_backfill_forum_categories_to_taxonomy::Migration),
         Box::new(m20260824_000031_retire_forum_category_legacy_storage::Migration),
         Box::new(m20260916_000032_clean_forum_category_canonical_taxonomy::Migration),
+        Box::new(m20260920_000033_lock_topic_during_reply_creation::Migration),
     ]
 }
 

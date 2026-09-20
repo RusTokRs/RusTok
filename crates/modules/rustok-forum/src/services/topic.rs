@@ -23,8 +23,8 @@ use flex::{
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::Set,
-    ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, Select, TransactionTrait,
+    ColumnTrait, Condition, DatabaseBackend, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Select, Statement, TransactionTrait,
     sea_query::{Expr, Query, SelectStatement},
 };
 use serde_json::Value;
@@ -43,7 +43,7 @@ use rustok_taxonomy::{TaxonomyService, TaxonomyTermKind};
 
 use crate::dto::{ListTopicsFilter, TopicListItem, TopicResponse, UpdateTopicInput};
 use crate::entities::{
-    forum_solution, forum_topic, forum_topic_channel_access, forum_topic_tag,
+    forum_reply, forum_solution, forum_topic, forum_topic_channel_access, forum_topic_tag,
     forum_topic_translation,
 };
 use crate::error::{ForumError, ForumResult};
@@ -53,7 +53,7 @@ use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 use crate::services::subscription::SubscriptionService;
 use crate::services::user_stats::UserStatsService;
 use crate::services::vote::{VoteService, VoteSummary};
-use crate::state_machine::TopicStatus;
+use crate::state_machine::{ReplyStatus, TopicStatus};
 
 mod topic_field_definitions_storage {
     rustok_core::define_field_definitions_entity!("topic_field_definitions");
@@ -158,19 +158,135 @@ impl TopicService {
             .ok_or(ForumError::TopicNotFound(topic_id))
     }
 
+    pub(crate) async fn find_topic_for_update_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+    ) -> ForumResult<forum_topic::Model> {
+        let query = forum_topic::Entity::find_by_id(topic_id)
+            .filter(forum_topic::Column::TenantId.eq(tenant_id));
+        match txn.get_database_backend() {
+            DatabaseBackend::Postgres => query
+                .lock_exclusive()
+                .one(txn)
+                .await?
+                .ok_or(ForumError::TopicNotFound(topic_id)),
+            DatabaseBackend::Sqlite => {
+                let statement = Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    "UPDATE forum_topics SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2 AND deleted_at IS NULL",
+                    vec![tenant_id.into(), topic_id.into()],
+                );
+                if txn.execute_raw(statement).await?.rows_affected() != 1 {
+                    return Err(ForumError::TopicNotFound(topic_id));
+                }
+                query
+                    .one(txn)
+                    .await?
+                    .ok_or(ForumError::TopicNotFound(topic_id))
+            }
+            backend => Err(ForumError::Validation(format!(
+                "Forum topic row locking does not support database backend {backend:?}"
+            ))),
+        }
+    }
+
+    pub(crate) async fn claim_topic_update_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        expected_updated_at: chrono::DateTime<chrono::FixedOffset>,
+    ) -> ForumResult<chrono::DateTime<chrono::Utc>> {
+        let claimed_at = Utc::now();
+        let statement = match txn.get_database_backend() {
+            DatabaseBackend::Postgres => Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "UPDATE forum_topics SET updated_at = $3 WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL AND updated_at = $4",
+                vec![
+                    tenant_id.into(),
+                    topic_id.into(),
+                    claimed_at.fixed_offset().into(),
+                    expected_updated_at.into(),
+                ],
+            ),
+            DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE forum_topics SET updated_at = ?3 WHERE tenant_id = ?1 AND id = ?2 AND deleted_at IS NULL AND updated_at = ?4",
+                vec![
+                    tenant_id.into(),
+                    topic_id.into(),
+                    claimed_at.fixed_offset().into(),
+                    expected_updated_at.into(),
+                ],
+            ),
+            backend => {
+                return Err(ForumError::Validation(format!(
+                    "Forum topic update locking does not support database backend {backend:?}"
+                )));
+            }
+        };
+
+        let result = txn.execute_raw(statement).await?;
+        if result.rows_affected() != 1 {
+            return Err(ForumError::TopicUpdateConflict(topic_id));
+        }
+        Ok(claimed_at)
+    }
+
     pub(crate) async fn adjust_reply_count_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
         topic_id: Uuid,
         delta: i32,
     ) -> ForumResult<forum_topic::Model> {
+        if delta == 0 {
+            return Self::find_topic_in_tx(txn, tenant_id, topic_id).await;
+        }
+
+        let now = Utc::now();
+        let reply_count = if delta > 0 {
+            Expr::col(forum_topic::Column::ReplyCount).add(delta).into()
+        } else {
+            let decrement = delta.checked_abs().ok_or_else(|| {
+                ForumError::Validation("Forum reply counter delta overflow".to_string())
+            })?;
+            Expr::case(
+                Expr::col(forum_topic::Column::ReplyCount).gt(decrement),
+                Expr::col(forum_topic::Column::ReplyCount).sub(decrement),
+            )
+            .finally(0)
+            .into()
+        };
+
+        let updated = forum_topic::Entity::update_many()
+            .filter(forum_topic::Column::TenantId.eq(tenant_id))
+            .filter(forum_topic::Column::Id.eq(topic_id))
+            .col_expr(forum_topic::Column::ReplyCount, reply_count)
+            .col_expr(forum_topic::Column::UpdatedAt, Expr::val(now))
+            .exec(txn)
+            .await?;
+        if updated.rows_affected != 1 {
+            return Err(ForumError::TopicNotFound(topic_id));
+        }
+
+        let last_reply_at = if delta > 0 {
+            Some(now.into())
+        } else {
+            forum_reply::Entity::find()
+                .filter(forum_reply::Column::TenantId.eq(tenant_id))
+                .filter(forum_reply::Column::TopicId.eq(topic_id))
+                .filter(forum_reply::Column::Status.eq(ReplyStatus::Approved))
+                .order_by_desc(forum_reply::Column::CreatedAt)
+                .one(txn)
+                .await?
+                .map(|reply| reply.created_at)
+        };
+
         let topic = Self::find_topic_in_tx(txn, tenant_id, topic_id).await?;
-        let mut active: forum_topic::ActiveModel = topic.clone().into();
-        active.reply_count = Set((topic.reply_count + delta).max(0));
-        active.last_reply_at = Set(Some(Utc::now().into()));
-        active.updated_at = Set(Utc::now().into());
-        active.update(txn).await?;
-        Ok(topic)
+        let mut active: forum_topic::ActiveModel = topic.into();
+        active.last_reply_at = Set(last_reply_at);
+        active.updated_at = Set(now.into());
+        Ok(active.update(txn).await?)
     }
 
     pub(crate) async fn set_pinned_in_tx(
@@ -179,7 +295,7 @@ impl TopicService {
         topic_id: Uuid,
         is_pinned: bool,
     ) -> ForumResult<()> {
-        let topic = Self::find_topic_in_tx(txn, tenant_id, topic_id).await?;
+        let topic = Self::find_topic_for_update_in_tx(txn, tenant_id, topic_id).await?;
         let mut active: forum_topic::ActiveModel = topic.into();
         active.is_pinned = Set(is_pinned);
         active.updated_at = Set(Utc::now().into());
@@ -193,7 +309,7 @@ impl TopicService {
         topic_id: Uuid,
         is_locked: bool,
     ) -> ForumResult<()> {
-        let topic = Self::find_topic_in_tx(txn, tenant_id, topic_id).await?;
+        let topic = Self::find_topic_for_update_in_tx(txn, tenant_id, topic_id).await?;
         let mut active: forum_topic::ActiveModel = topic.into();
         active.is_locked = Set(is_locked);
         active.updated_at = Set(Utc::now().into());
@@ -207,7 +323,7 @@ impl TopicService {
         topic_id: Uuid,
         status: TopicStatus,
     ) -> ForumResult<()> {
-        let topic = Self::find_topic_in_tx(txn, tenant_id, topic_id).await?;
+        let topic = Self::find_topic_for_update_in_tx(txn, tenant_id, topic_id).await?;
         let mut active: forum_topic::ActiveModel = topic.into();
         active.status = Set(status);
         active.updated_at = Set(Utc::now().into());
