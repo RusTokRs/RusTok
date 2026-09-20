@@ -37,17 +37,42 @@ impl CategoryService {
         topic_delta: i32,
         reply_delta: i32,
     ) -> ForumResult<()> {
-        let category = forum_category::Entity::find_by_id(category_id)
-            .filter(forum_category::Column::TenantId.eq(tenant_id))
-            .one(txn)
-            .await?
-            .ok_or(ForumError::CategoryNotFound(category_id))?;
+        let now = Utc::now();
+        let topic_count = clamped_counter_expr(forum_category::Column::TopicCount, topic_delta)?;
+        let reply_count = clamped_counter_expr(forum_category::Column::ReplyCount, reply_delta)?;
 
-        let mut active: forum_category::ActiveModel = category.clone().into();
-        active.topic_count = Set((category.topic_count + topic_delta).max(0));
-        active.reply_count = Set((category.reply_count + reply_delta).max(0));
-        active.updated_at = Set(Utc::now().into());
-        active.update(txn).await?;
+        let updated = forum_category::Entity::update_many()
+            .filter(forum_category::Column::TenantId.eq(tenant_id))
+            .filter(forum_category::Column::Id.eq(category_id))
+            .col_expr(forum_category::Column::TopicCount, topic_count)
+            .col_expr(forum_category::Column::ReplyCount, reply_count)
+            .col_expr(forum_category::Column::UpdatedAt, Expr::val(now))
+            .exec(txn)
+            .await?;
+
+        if updated.rows_affected != 1 {
+            return Err(ForumError::CategoryNotFound(category_id));
+        }
+
         Ok(())
+    }
+
+    fn clamped_counter_expr(
+        column: forum_category::Column,
+        delta: i32,
+    ) -> ForumResult<sea_orm::sea_query::SimpleExpr> {
+        if delta >= 0 {
+            return Ok(Expr::col(column).add(delta).into());
+        }
+
+        let decrement = delta.checked_abs().ok_or_else(|| {
+            ForumError::Validation("Forum category counter delta overflow".to_string())
+        })?;
+        Ok(Expr::case(
+            Expr::col(column).gt(decrement),
+            Expr::col(column).sub(decrement),
+        )
+        .finally(0)
+        .into())
     }
 }
