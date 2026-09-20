@@ -179,6 +179,9 @@ pub enum Error {
     #[error("Validation error: {0}")]
     Validation(String),
 
+    #[error("Internal error: {0}")]
+    Internal(String),
+
     #[error("External error: {0}")]
     External(String),
 }
@@ -195,6 +198,7 @@ impl From<Error> for RichError {
             Error::Forbidden(_) => ErrorKind::Forbidden,
             Error::Cache(_) => ErrorKind::Internal,
             Error::Scripting(_) => ErrorKind::Internal,
+            Error::Internal(_) => ErrorKind::Internal,
             Error::Validation(_) => ErrorKind::Validation,
             Error::External(_) => ErrorKind::ExternalService,
         };
@@ -214,5 +218,14 @@ mod tests {
 
         assert_eq!(rich.kind, ErrorKind::NotFound);
         assert_eq!(rich.status_code, 404);
+    }
+
+    #[test]
+    fn test_internal_error_to_rich_error_conversion() {
+        let err = Error::Internal("startup registration failed".to_string());
+        let rich: RichError = err.into();
+
+        assert_eq!(rich.kind, ErrorKind::Internal);
+        assert_eq!(rich.status_code, 500);
     }
 }

@@ -42,7 +42,10 @@ The hardened contract now requires:
 - typed Taxonomy dependency failures preserving 404/409/internal semantics across
   the Blog boundary;
 - native admin/storefront server functions using fallible host-context lookup and
-  redacted owner-owned internal errors rather than raw runtime/dependency details.
+  redacted owner-owned internal errors rather than raw runtime/dependency details;
+- runtime SEO/Reaction extension registration failures are composition-time internal
+  errors, never user-input validation failures; the core `Error::Internal` category is preserved
+  through `ModuleRegistry::build_runtime_extensions()`.
 
 The machine gates are `npm run verify:module-source-layout` and
 `npm run verify:module-reference-contract`. The semantic contract is documented

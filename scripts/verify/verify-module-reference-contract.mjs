@@ -288,6 +288,15 @@ forbid("crates/modules/rustok-blog/src/domain/richtext.rs", [
   'map_err(|_| BlogError::validation("Stored article content is not a document"))',
 ]);
 
+requireAll("crates/libs/rustok-core/src/error/mod.rs", [
+  '#[error("Internal error: {0}")]' ,
+  "Internal(String)",
+  "Error::Internal(_) => ErrorKind::Internal",
+]);
+requireAll("crates/libs/rustok-core/src/registry.rs", [
+  "crate::Error::Internal(format!(",
+  "module `{}` runtime extension registration failed: {error}",
+]);
 requireAll("crates/modules/rustok-blog/src/module.rs", [
   '"dependencies"',
   '["content", "comments", "taxonomy", "outbox", "channel"]',
@@ -413,6 +422,16 @@ requireAll("crates/modules/rustok-blog/src/module.rs", [
   "reaction_subject::BlogReactionSubjectProviderFactory,",
   "registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));",
 ],);
+requireAll("crates/modules/rustok-blog/src/module.rs", [
+  "rustok_core::Error::Internal(format!(",
+  "blog SEO target registration failed: {error}",
+  "blog reaction subject factory registration failed: {error}",
+]);
+forbid("crates/modules/rustok-blog/src/module.rs", [
+  "rustok_core::Error::Validation(format!(\n                    \"blog SEO target registration failed: {error}\"",
+  "rustok_core::Error::Validation(format!(\n                \"blog reaction subject factory registration failed: {error}\"",
+]);
+
 requireAll("crates/modules/rustok-blog/src/integrations/seo_targets.rs", [
   "let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());",
   "service.get_post_with_locale_fallback(",
