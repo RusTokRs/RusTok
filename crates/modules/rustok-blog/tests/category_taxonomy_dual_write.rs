@@ -255,7 +255,7 @@ async fn taxonomy_route_conflict_rolls_back_blog_create() {
         .create(tenant_id, admin(), create_input("Reserved", "reserved"))
         .await
         .expect_err("Taxonomy historical route ownership must reject Blog create");
-    assert!(matches!(error, BlogError::Validation(_)));
+    assert!(matches!(error, BlogError::Conflict(_)));
 
     assert_eq!(
         service

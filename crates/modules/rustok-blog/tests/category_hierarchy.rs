@@ -52,12 +52,20 @@ impl rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort for NoopCategoryDeleteCl
     }
 }
 
-fn services(db: &DatabaseConnection) -> (CategoryService, CategoryCommandService) {
-    let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
+fn services(
+    db: &DatabaseConnection,
+) -> (
+    CategoryService,
+    CategoryCommandService,
+    tokio::sync::broadcast::Receiver<rustok_events::EventEnvelope>,
+) {
+    let transport = MemoryTransport::new();
+    let receiver = transport.subscribe();
     (
-        CategoryService::new(db.clone(), event_bus)
+        CategoryService::new(db.clone(), TransactionalEventBus::new(Arc::new(transport)))
             .with_category_delete_cleanup(Arc::new(NoopCategoryDeleteCleanup)),
         CategoryCommandService::new(db.clone()),
+        receiver,
     )
 }
 
@@ -132,7 +140,7 @@ async fn load_category(
 #[tokio::test]
 async fn create_inserts_at_dense_sibling_index_and_rejects_out_of_range_position() {
     let db = setup().await;
-    let (category_service, _) = services(&db);
+    let (category_service, _, _events) = services(&db);
     let tenant_id = Uuid::new_v4();
 
     let first = create_category(&category_service, tenant_id, "First", None, 0).await;
@@ -156,7 +164,7 @@ async fn create_inserts_at_dense_sibling_index_and_rejects_out_of_range_position
 #[tokio::test]
 async fn move_reparents_subtree_and_failed_moves_leave_tree_unchanged() {
     let db = setup().await;
-    let (category_service, command_service) = services(&db);
+    let (category_service, command_service, _events) = services(&db);
     let tenant_id = Uuid::new_v4();
 
     let root_a = create_category(&category_service, tenant_id, "Root A", None, 0).await;

@@ -127,25 +127,6 @@ impl PostService {
         let locale = normalize_locale(&locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
 
-        if let Some(channel_slug) = normalize_public_channel_slug(channel_slug) {
-            let channel_service = rustok_channel::ChannelService::new(self.db.clone());
-            let Some(channel) = channel_service
-                .get_channel_by_slug(tenant_id, channel_slug.as_str())
-                .await
-                .map_err(BlogError::from)?
-            else {
-                return Ok(PostListResponse::new(Vec::new(), 0, &query));
-            };
-            if !channel.is_active
-                || !channel_service
-                    .is_module_enabled_for_tenant(tenant_id, channel.id, "blog")
-                    .await
-                    .map_err(BlogError::from)?
-            {
-                return Ok(PostListResponse::new(Vec::new(), 0, &query));
-            }
-        }
-
         let tag_filter = query.tag.clone();
         let mut select =
             blog_post::Entity::find().filter(blog_post::Column::TenantId.eq(tenant_id));
@@ -277,6 +258,25 @@ impl PostService {
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
         let locale = normalize_locale(&locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+
+        if let Some(channel_slug) = normalize_public_channel_slug(channel_slug) {
+            let channel_service = rustok_channel::ChannelService::new(self.db.clone());
+            let Some(channel) = channel_service
+                .get_channel_by_slug(tenant_id, channel_slug.as_str())
+                .await
+                .map_err(BlogError::from)?
+            else {
+                return Ok(PostListResponse::new(Vec::new(), 0, &query));
+            };
+            if !channel.is_active
+                || !channel_service
+                    .is_module_enabled_for_tenant(tenant_id, channel.id, "blog")
+                    .await
+                    .map_err(BlogError::from)?
+            {
+                return Ok(PostListResponse::new(Vec::new(), 0, &query));
+            }
+        }
 
         let tag_filter = query.tag.clone();
         let mut select = blog_post::Entity::find()

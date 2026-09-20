@@ -23,7 +23,7 @@ use rustok_taxonomy::{
 use crate::dto::{CreateTagInput, ListTagsFilter, TagListItem, TagResponse, UpdateTagInput};
 use crate::entities::{blog_post, blog_post_tag};
 use crate::error::{BlogError, BlogResult};
-use crate::services::rbac::{enforce_owned_scope, enforce_scope};
+use crate::services::rbac::enforce_scope;
 
 const BLOG_SCOPE_VALUE: &str = "blog";
 const MAX_TAGS_PER_PAGE: u64 = 100;

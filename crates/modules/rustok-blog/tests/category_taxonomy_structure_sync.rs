@@ -28,11 +28,16 @@ async fn setup() -> DatabaseConnection {
     db
 }
 
-fn category_service(db: &DatabaseConnection) -> CategoryService {
-    CategoryService::new(
-        db.clone(),
-        TransactionalEventBus::new(Arc::new(MemoryTransport::new())),
-    )
+fn category_service(
+    db: &DatabaseConnection,
+) -> (
+    CategoryService,
+    tokio::sync::broadcast::Receiver<rustok_events::EventEnvelope>,
+) {
+    let transport = MemoryTransport::new();
+    let receiver = transport.subscribe();
+    let service = CategoryService::new(db.clone(), TransactionalEventBus::new(Arc::new(transport)));
+    (service, receiver)
 }
 
 fn admin() -> SecurityContext {
@@ -79,7 +84,7 @@ async fn taxonomy_placement(
 #[tokio::test]
 async fn create_at_index_keeps_taxonomy_sibling_positions_dense() {
     let db = setup().await;
-    let service = category_service(&db);
+    let (service, _events) = category_service(&db);
     let tenant_id = Uuid::new_v4();
 
     let first = create_category(&service, tenant_id, "First", None, 0).await;
@@ -94,7 +99,7 @@ async fn create_at_index_keeps_taxonomy_sibling_positions_dense() {
 #[tokio::test]
 async fn move_reparent_syncs_taxonomy_parent_and_both_sibling_sets() {
     let db = setup().await;
-    let service = category_service(&db);
+    let (service, _events) = category_service(&db);
     let command = CategoryCommandService::new(db.clone());
     let tenant_id = Uuid::new_v4();
 

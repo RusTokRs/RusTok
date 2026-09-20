@@ -307,10 +307,10 @@ impl PostService {
             .filter(blog_post::Column::TenantId.eq(tenant_id))
             .filter(blog_post::Column::Version.eq(version));
 
-        if let Some(slug) = normalized_slug {
+        if let Some(ref slug) = normalized_slug {
             update = update.col_expr(
                 blog_post::Column::Slug,
-                sea_orm::sea_query::Expr::value(slug),
+                sea_orm::sea_query::Expr::value(slug.clone()),
             );
         }
         match category_id {

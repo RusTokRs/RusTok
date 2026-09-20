@@ -399,7 +399,7 @@ impl CommentService {
         }
 
         if let Some(channel_slug) = public_channel_slug {
-            let channel_service = ChannelService::new(self.db.clone());
+            let channel_service = rustok_channel::ChannelService::new(self.db.clone());
             let Some(channel) = channel_service
                 .get_channel_by_slug(tenant_id, channel_slug)
                 .await

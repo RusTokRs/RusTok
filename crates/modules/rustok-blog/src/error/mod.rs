@@ -297,6 +297,15 @@ impl From<rustok_taxonomy::TaxonomyError> for BlogError {
     }
 }
 
+impl From<rustok_channel::ChannelError> for BlogError {
+    fn from(value: rustok_channel::ChannelError) -> Self {
+        match value {
+            rustok_channel::ChannelError::Database(err) => Self::Database(err),
+            other => Self::Invariant(format!("Channel dependency failed: {other}")),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

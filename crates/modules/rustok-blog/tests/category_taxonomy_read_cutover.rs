@@ -28,11 +28,16 @@ async fn setup() -> DatabaseConnection {
     db
 }
 
-fn service(db: &DatabaseConnection) -> CategoryService {
-    CategoryService::new(
-        db.clone(),
-        TransactionalEventBus::new(Arc::new(MemoryTransport::new())),
-    )
+fn service(
+    db: &DatabaseConnection,
+) -> (
+    CategoryService,
+    tokio::sync::broadcast::Receiver<rustok_events::EventEnvelope>,
+) {
+    let transport = MemoryTransport::new();
+    let receiver = transport.subscribe();
+    let service = CategoryService::new(db.clone(), TransactionalEventBus::new(Arc::new(transport)));
+    (service, receiver)
 }
 
 fn admin() -> SecurityContext {
@@ -76,7 +81,7 @@ async fn public_get_and_list_use_taxonomy_copy_and_placement_after_storage_retir
             .expect("legacy translation table lookup should succeed")
     );
 
-    let service = service(&db);
+    let (service, _events) = service(&db);
     let tenant_id = Uuid::new_v4();
 
     let root = create_category(
