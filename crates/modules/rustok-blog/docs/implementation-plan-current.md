@@ -156,7 +156,7 @@ previous cursor. Their latest retained source states remain:
 - `remote_comments_transport = source_implemented_maintainer_execution_pending`;
 - `canonical_outbox_relay_postgres_evidence_source_ready_maintainer_execution_pending`;
 - `cached_public_comments_snapshot = source_ready_maintainer_execution_pending`;
-- `comment_form_fallback = not_applicable_no_storefront_write_surface`;
+- `comment_form_fallback = planned`; the active storefront has an authenticated create-comment surface, while `hide_comment_form` remains a planned degraded mode and has not been runtime-verified.
 - `tag_list_pagination = source_ready_maintainer_execution_pending`;
 - `tag_canonical_projection = source_ready_maintainer_execution_pending`;
 - `tag_mutation_atomic_reindex = source_ready_maintainer_execution_pending`;
