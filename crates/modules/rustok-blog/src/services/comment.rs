@@ -316,6 +316,49 @@ impl CommentService {
     }
 
     #[instrument(skip(self, security))]
+    pub async fn list_public_for_post_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        post_id: Uuid,
+        public_channel_slug: Option<&str>,
+        filter: ListCommentsFilter,
+        fallback_locale: Option<&str>,
+    ) -> BlogResult<(Vec<CommentListItem>, u64)> {
+        self.ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
+            .await?;
+
+        let locale = filter
+            .locale
+            .clone()
+            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+        let domain_filter = DomainListCommentsFilter {
+            locale: locale.clone(),
+            page: filter.page,
+            per_page: filter.per_page,
+        };
+
+        let (items, total) = self
+            .comments_thread_port
+            .list_public_comments_for_target(
+                comments_public_read_port_context(tenant_id, locale.as_str(), post_id),
+                TARGET_TYPE_BLOG_POST.to_string(),
+                post_id,
+                domain_filter,
+                fallback_locale.map(str::to_owned),
+            )
+            .await
+            .map_err(comments_port_error_to_blog_error)?;
+
+        Ok((
+            items
+                .into_iter()
+                .map(Self::map_comment_list_item)
+                .collect::<Vec<_>>(),
+            total,
+        ))
+    }
+
+    #[instrument(skip(self, security))]
     pub async fn list_for_post_with_locale_fallback(
         &self,
         tenant_id: Uuid,
@@ -340,15 +383,9 @@ impl CommentService {
         };
 
         let result = if security.is_public_read() {
-            self.comments_thread_port
-                .list_public_comments_for_target(
-                    comments_public_read_port_context(tenant_id, locale.as_str(), post_id),
-                    TARGET_TYPE_BLOG_POST.to_string(),
-                    post_id,
-                    domain_filter,
-                    fallback_locale.map(str::to_owned),
-                )
-                .await
+            return Err(BlogError::forbidden(
+                "public comment reads require the owner-level public listing command",
+            ));
         } else {
             self.comments_thread_port
                 .list_comments_for_target(
@@ -423,6 +460,10 @@ impl CommentService {
             else {
                 return Err(BlogError::post_not_found(post_id));
             };
+
+            if !channel.is_active {
+                return Err(BlogError::post_not_found(post_id));
+            }
 
             let enabled = channel_service
                 .is_module_enabled_for_tenant(tenant_id, channel.id, "blog")

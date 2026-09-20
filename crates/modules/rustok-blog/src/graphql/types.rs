@@ -2,7 +2,8 @@ use async_graphql::{
     ComplexObject, Context, Enum, FieldError, InputObject, MaybeUndefined, Result, SimpleObject,
 };
 use rustok_api::{
-    AuthContext, Patch, Permission, RichTextDocument, RichTextView, TenantContext,
+    AuthContext, Patch, Permission, RequestContext, RichTextDocument, RichTextView,
+    TenantContext,
     graphql::GraphQLError, has_any_effective_permission,
 };
 use rustok_core::SecurityContext;
@@ -195,6 +196,8 @@ impl GqlPost {
             self.id,
             requested_locale.as_str(),
             Some(fallback_locale),
+            ctx.data_opt::<RequestContext>()
+                .and_then(|request| request.channel_slug.as_deref()),
             page.unwrap_or(1),
             per_page.unwrap_or(20),
         )

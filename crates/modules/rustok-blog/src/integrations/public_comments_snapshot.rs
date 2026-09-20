@@ -58,6 +58,7 @@ pub async fn list_public_comments_with_snapshot(
     post_id: Uuid,
     requested_locale: &str,
     fallback_locale: Option<&str>,
+    public_channel_slug: Option<&str>,
     page: u64,
     per_page: u64,
 ) -> BlogResult<PublicCommentsRead> {
@@ -73,10 +74,10 @@ pub async fn list_public_comments_with_snapshot(
     };
 
     match service
-        .list_for_post_with_locale_fallback(
+        .list_public_for_post_with_locale_fallback(
             tenant_id,
-            rustok_core::SecurityContext::public_read(),
             post_id,
+            public_channel_slug,
             ListCommentsFilter {
                 locale: Some(requested_locale.to_string()),
                 page,

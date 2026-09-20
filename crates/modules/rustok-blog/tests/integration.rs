@@ -852,6 +852,96 @@ async fn test_create_comment_succeeds_with_required_translation() -> TestResult<
 }
 
 #[tokio::test]
+async fn test_public_comment_list_rejects_draft_and_hidden_channel() -> TestResult<()> {
+    let db = setup_blog_test_db().await;
+    ensure_blog_schema(&db).await;
+
+    let transport = MemoryTransport::new();
+    let _receiver = transport.subscribe();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let post_service = PostService::new(db.clone(), event_bus.clone());
+    let comment_service = CommentService::new(db.clone(), event_bus);
+    let tenant_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+    seed_channel(&db, tenant_id, "web").await;
+    seed_channel(&db, tenant_id, "mobile").await;
+    let author = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    let post_id = post_service
+        .create_post(
+            tenant_id,
+            author.clone(),
+            CreatePostInput {
+                locale: "en".to_string(),
+                title: "Public comment list target".to_string(),
+                content: richtext("Post body"),
+                excerpt: None,
+                slug: Some("public-comment-list-target".to_string()),
+                publish: false,
+                tags: vec![],
+                category_id: None,
+                featured_image_url: None,
+                seo_title: None,
+                seo_description: None,
+                channel_slugs: Some(vec!["web".to_string()]),
+                metadata: None,
+            },
+        )
+        .await?;
+
+    let filter = ListCommentsFilter {
+        locale: Some("en".to_string()),
+        page: 1,
+        per_page: 20,
+    };
+
+    let draft_error = comment_service
+        .list_public_for_post_with_locale_fallback(
+            tenant_id,
+            post_id,
+            Some("web"),
+            filter.clone(),
+            Some("en"),
+        )
+        .await
+        .expect_err("draft posts must not expose public comments");
+    assert!(matches!(draft_error, BlogError::PostNotFound(id) if id == post_id));
+
+    post_service
+        .publish_post(tenant_id, post_id, author.clone())
+        .await?;
+
+    let hidden_error = comment_service
+        .list_public_for_post_with_locale_fallback(
+            tenant_id,
+            post_id,
+            Some("mobile"),
+            filter.clone(),
+            Some("en"),
+        )
+        .await
+        .expect_err("channel-hidden posts must not expose public comments");
+    assert!(matches!(hidden_error, BlogError::PostNotFound(id) if id == post_id));
+
+    let missing_channel_error = comment_service
+        .list_public_for_post_with_locale_fallback(
+            tenant_id,
+            post_id,
+            None,
+            filter,
+            Some("en"),
+        )
+        .await
+        .expect_err("restricted posts require a current public channel");
+    assert!(matches!(
+        missing_channel_error,
+        BlogError::PostNotFound(id) if id == post_id
+    ));
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_public_comment_create_rejects_draft_and_hidden_channel() -> TestResult<()> {
     let db = setup_blog_test_db().await;
     ensure_blog_schema(&db).await;
