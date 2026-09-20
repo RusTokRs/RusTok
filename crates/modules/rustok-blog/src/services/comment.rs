@@ -114,27 +114,36 @@ impl CommentService {
     pub async fn get_comment(
         &self,
         tenant_id: Uuid,
+        security: SecurityContext,
         comment_id: Uuid,
         locale: &str,
     ) -> BlogResult<CommentResponse> {
-        self.get_comment_with_locale_fallback(tenant_id, comment_id, locale, None)
-            .await
+        self.get_comment_with_locale_fallback(
+            tenant_id,
+            security,
+            comment_id,
+            locale,
+            None,
+        )
+        .await
     }
 
     #[instrument(skip(self))]
     pub async fn get_comment_with_locale_fallback(
         &self,
         tenant_id: Uuid,
+        security: SecurityContext,
         comment_id: Uuid,
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> BlogResult<CommentResponse> {
+        enforce_scope(&security, Resource::Comments, Action::Read)?;
         let record = self
             .comments_thread_port
             .get_comment(
                 comments_read_port_context(
                     tenant_id,
-                    &SecurityContext::system(),
+                    &security,
                     locale,
                     comment_id,
                 )?,
