@@ -182,16 +182,19 @@ for (const marker of [
 need(graphql, 'query StorefrontBlog', files.graphql);
 need(graphql, 'mutation CreateBlogComment', files.graphql);
 need(graphql, 'createBlogComment', files.graphql);
+for (const marker of [
+  'ensure_authenticated_blog_channel_enabled',
+  'Blog comment creation requires current channel context',
+  'Blog comment creation requires current channel',
+  'is_module_enabled_for_tenant',
+]) need(graphql, marker, files.graphql);
 need(native, 'endpoint = "blog/storefront-data"', files.native);
 need(native, 'endpoint = "blog/comment-create"', files.native);
 need(native, 'create_public_comment(', files.native);
-need(native, "requireBlogCommentChannelEnabled", files.native);
-need(native, "require_blog_comment_channel_enabled", files.native);
-need(native, "ensure_authenticated_blog_channel_enabled", files.native);
-need(native, "Blog comment creation requires current channel context", files.native);
-need(native, "Blog comment creation requires current channel", files.native);
-need(native, "is_module_enabled_for_tenant", files.native);
-need(native, "endpoint = \"blog/comment-create\"", files.native);
+need(native, 'require_blog_comment_channel_enabled', files.native);
+need(native, 'Blog comment creation requires current channel context', files.native);
+need(native, 'Blog comment creation requires current channel', files.native);
+need(native, 'is_module_enabled_for_tenant', files.native);
 need(facade, 'pub async fn create_comment(', files.facade);
 need(facade, 'blog_comment_create', files.facade);
 need(ui, 'CommentComposer', files.ui);
