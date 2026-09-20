@@ -110,7 +110,10 @@ Invalid transitions fail; transports/UI do not reinterpret them.
 
 Locale resolution on reads follows the shared runtime fallback contract, but an
 existing post with no localized records is a storage invariant violation rather
-than a fabricated empty post.
+than a fabricated empty post. Persisted Article richtext JSON is also an owner
+storage invariant: malformed JSON or a document that no longer satisfies the
+fixed Article profile fails closed as an internal Blog invariant, never as client
+input validation.
 
 `PostListQuery` is an owner list/filter API, not full-text search. Sort fields
 and order are typed through `PostSortField` / `PostSortOrder`, and owner
@@ -193,6 +196,13 @@ posts.
 
 The manifest's bundled UI locales (currently `en` and `ru`) describe shipped
 interface translations only. They do not restrict tenant Blog content locales.
+
+The storefront package also exposes an authenticated Blog-bound public comment
+composer. Its native and GraphQL write adapters preserve the current tenant,
+require `comments:create`, require an enabled Blog channel, and delegate the
+write through `CommentService::create_public_comment` and the Comments owner
+port. The `hide_comment_form` degraded mode remains planned; it is not runtime-
+verified evidence.
 
 ## Verification
 

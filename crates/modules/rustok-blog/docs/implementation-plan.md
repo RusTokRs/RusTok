@@ -881,7 +881,7 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
   authenticated native server-function path without full storefront hydration.
   Mounted Blog article save/reload, Leptos comment persistence/reload and
   rejection, and dirty locale-switch evidence remain open.
-- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v13
+- Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v14
   locks exact verify/test order, source-gate paths, leaf npm commands, evidence,
   self-tests, the Comments projection classifier, deterministic retry policy,
   PostgreSQL retry-limit rollback/replay, concurrent duplicate-delivery race, and

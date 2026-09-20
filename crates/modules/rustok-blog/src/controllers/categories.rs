@@ -11,7 +11,7 @@ use rustok_web::{HttpError, HttpResult};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use super::BlogHttpRuntime;
+use super::{BlogHttpRuntime, ensure_blog_module_enabled};
 use crate::CategoryService;
 use crate::dto::{
     CategoryListResponse, CategoryResponse, CreateCategoryInput, ListCategoriesFilter,
@@ -74,8 +74,8 @@ pub async fn list_categories(
     request_context: RequestContext,
     Query(mut filter): Query<ListCategoriesFilter>,
 ) -> HttpResult<Json<CategoryListResponse>> {
-    ensure_category_permission(&tenant, &auth, Action::List)?;
-    filter.locale = filter.locale.or(Some(request_context.locale));
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
+    ensure_category_permission(&tenant, &auth, Action::List)?;    filter.locale = filter.locale.or(Some(request_context.locale));
     filter.page = filter.page.max(1);
     filter.per_page = filter.per_page.clamp(1, 100);
     let page = filter.page;
@@ -117,8 +117,8 @@ pub async fn get_category(
     Path(id): Path<Uuid>,
     Query(params): Query<HashMap<String, String>>,
 ) -> HttpResult<Json<CategoryResponse>> {
-    ensure_category_permission(&tenant, &auth, Action::Read)?;
-    let locale = params
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
+    ensure_category_permission(&tenant, &auth, Action::Read)?;    let locale = params
         .get("locale")
         .map(String::as_str)
         .unwrap_or(request_context.locale.as_str());
@@ -150,8 +150,8 @@ pub async fn create_category(
     auth: AuthContext,
     Json(input): Json<CreateCategoryInput>,
 ) -> HttpResult<(StatusCode, Json<Uuid>)> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_category_permission(&tenant, &auth, Action::Create)?;
-
     let category_id = category_service(&runtime)
         .create(tenant.id, security_context(&auth), input)
         .await
@@ -181,8 +181,8 @@ pub async fn update_category(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateCategoryInput>,
 ) -> HttpResult<Json<CategoryResponse>> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_category_permission(&tenant, &auth, Action::Update)?;
-
     let category = category_service(&runtime)
         .update(tenant.id, id, security_context(&auth), input)
         .await
@@ -212,8 +212,8 @@ pub async fn move_category(
     Path(id): Path<Uuid>,
     Json(input): Json<MoveCategoryInput>,
 ) -> HttpResult<Json<MoveCategoryResponse>> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_category_permission(&tenant, &auth, Action::Manage)?;
-
     let response = category_command_service(&runtime)
         .move_category(tenant.id, id, security_context(&auth), input)
         .await
@@ -240,8 +240,8 @@ pub async fn delete_category(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_category_permission(&tenant, &auth, Action::Delete)?;
-
     category_service(&runtime)
         .delete(tenant.id, id, security_context(&auth))
         .await

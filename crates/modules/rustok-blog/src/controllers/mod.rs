@@ -1,10 +1,12 @@
 use anyhow::Context;
-use axum::Router;
+use axum::{Router, http::StatusCode};
 use axum::routing::{get, post};
 use rustok_api::HostRuntimeContext;
 use rustok_comments::CommentsThreadPort;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort;
+use rustok_web::{HttpError, HttpResult};
+use uuid::Uuid;
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
@@ -64,6 +66,25 @@ impl BlogHttpRuntime {
             comments_thread_port: runtime.shared_get::<Arc<dyn CommentsThreadPort>>(),
             category_delete_cleanup,
         })
+    }
+}
+
+pub(super) async fn ensure_blog_module_enabled(
+    runtime: &BlogHttpRuntime,
+    tenant_id: Uuid,
+) -> HttpResult<()> {
+    match rustok_api::is_tenant_module_enabled(&runtime.db_clone(), tenant_id, "blog").await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(HttpError::new(
+            StatusCode::FORBIDDEN,
+            "MODULE_NOT_ENABLED",
+            "Module 'blog' is not enabled for this tenant",
+        )),
+        Err(_) => Err(HttpError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "INTERNAL_SERVER_ERROR",
+            "The Blog operation could not be completed",
+        )),
     }
 }
 

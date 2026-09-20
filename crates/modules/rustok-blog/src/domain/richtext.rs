@@ -68,9 +68,25 @@ pub fn project_article(document: RichTextDocument) -> BlogResult<(RichTextView, 
 /// Project a canonical storage row through the current article policy.
 pub fn project_stored_article(body: &str) -> BlogResult<(RichTextView, String)> {
     let document = serde_json::from_str(body)
-        .map_err(|_| BlogError::validation("Stored article content is not a document"))?;
+        .map_err(|_| BlogError::invariant("Stored article content is not a document"))?;
+    let document = validate_and_normalize(document, RichTextProfile::Article)
+        .map_err(|error| {
+            BlogError::invariant(format!(
+                "Stored article content violates the Article richtext contract: {error}"
+            ))
+        })?;
+    let view = project(&document, RichTextProfile::Article).map_err(|error| {
+        BlogError::invariant(format!(
+            "Stored article content cannot be projected as Article richtext: {error}"
+        ))
+    })?;
+    let text = plain_text(&document, RichTextProfile::Article).map_err(|error| {
+        BlogError::invariant(format!(
+            "Stored article content cannot produce Article plain text: {error}"
+        ))
+    })?;
 
-    project_article(document)
+    Ok((view, text))
 }
 
 #[cfg(test)]

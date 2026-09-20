@@ -7,7 +7,7 @@ use rustok_api::{AuthContext, RequestContext, TenantContext};
 use rustok_web::HttpResult;
 use uuid::Uuid;
 
-use super::{BlogHttpRuntime, posts::ensure_blog_permission};
+use super::{BlogHttpRuntime, ensure_blog_module_enabled, posts::ensure_blog_permission};
 use crate::{CommentResponse, ModerateCommentInput};
 
 #[utoipa::path(
@@ -34,6 +34,7 @@ pub async fn moderate_comment(
     Path(id): Path<Uuid>,
     Json(mut input): Json<ModerateCommentInput>,
 ) -> HttpResult<Json<CommentResponse>> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
         &auth,

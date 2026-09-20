@@ -10,7 +10,7 @@ use rustok_web::{HttpError, HttpResult};
 use std::{collections::HashMap, time::Instant};
 use uuid::Uuid;
 
-use super::BlogHttpRuntime;
+use super::{BlogHttpRuntime, ensure_blog_module_enabled};
 use crate::{
     ArchivePostInput, CreatePostInput, PostListQuery, PostResponse, PostService, UpdatePostInput,
 };
@@ -42,6 +42,7 @@ pub async fn list_posts(
     request_context: RequestContext,
     Query(mut query): Query<PostListQuery>,
 ) -> HttpResult<Json<crate::PostListResponse>> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
         &auth,
@@ -106,6 +107,7 @@ pub async fn get_post(
     Path(id): Path<Uuid>,
     Query(params): Query<HashMap<String, String>>,
 ) -> HttpResult<Json<PostResponse>> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
         &auth,
@@ -150,6 +152,7 @@ pub async fn create_post(
     auth: AuthContext,
     Json(input): Json<CreatePostInput>,
 ) -> HttpResult<(StatusCode, Json<Uuid>)> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
         &auth,
@@ -188,6 +191,7 @@ pub async fn update_post(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdatePostInput>,
 ) -> HttpResult<()> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
         &auth,
@@ -224,6 +228,7 @@ pub async fn delete_post(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
         &auth,
@@ -260,6 +265,7 @@ pub async fn publish_post(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<()> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
         &auth,
@@ -296,6 +302,7 @@ pub async fn unpublish_post(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<()> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
         &auth,
@@ -352,6 +359,7 @@ pub async fn archive_post(
     Path(id): Path<Uuid>,
     Json(input): Json<ArchivePostInput>,
 ) -> HttpResult<()> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
         &auth,
@@ -385,6 +393,7 @@ pub async fn restore_post(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<()> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
         &auth,

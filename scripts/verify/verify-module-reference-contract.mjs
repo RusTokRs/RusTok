@@ -89,15 +89,36 @@ forbid("crates/modules/rustok-blog/src/services/post/commands.rs", [
   'expect("localized-only update requires a canonical locale")',
 ]);
 
+requireAll("crates/modules/rustok-blog/src/controllers/mod.rs", [
+  "pub(super) async fn ensure_blog_module_enabled(",
+  'is_tenant_module_enabled(&runtime.db_clone(), tenant_id, "blog")',
+  '"MODULE_NOT_ENABLED"',
+  '"The Blog operation could not be completed"',
+]);
 requireAll("crates/modules/rustok-blog/src/controllers/posts.rs", [
   "pub(super) fn ensure_blog_permission(",
   "if auth.tenant_id != tenant.id",
   '"blog_tenant_mismatch"',
+  "ensure_blog_module_enabled(&runtime, tenant.id).await?;",
+]);
+forbid("crates/modules/rustok-blog/src/controllers/posts.rs", [
+  "pub(super) async fn ensure_blog_module_enabled(",
 ]);
 requireAll("crates/modules/rustok-blog/src/controllers/categories.rs", [
+  "ensure_blog_module_enabled(&runtime, tenant.id).await?;",
+  "ensure_category_permission(&tenant, &auth, Action::List)?;",
+  "ensure_category_permission(&tenant, &auth, Action::Read)?;",
+  "ensure_category_permission(&tenant, &auth, Action::Create)?;",
+  "ensure_category_permission(&tenant, &auth, Action::Update)?;",
+  "ensure_category_permission(&tenant, &auth, Action::Manage)?;",
+  "ensure_category_permission(&tenant, &auth, Action::Delete)?;",
   "fn ensure_category_permission(",
   "if auth.tenant_id != tenant.id",
   '"blog_category_tenant_mismatch"',
+]);
+requireAll("crates/modules/rustok-blog/src/controllers/comments.rs", [
+  "ensure_blog_module_enabled(&runtime, tenant.id).await?;",
+  "ensure_blog_permission(",
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/post/mod.rs", [
@@ -257,11 +278,24 @@ requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
   "// Serialize before reading hierarchy so a concurrent structural move cannot be",
 ]);
+requireAll("crates/modules/rustok-blog/src/domain/richtext.rs", [
+  'BlogError::invariant("Stored article content is not a document")',
+  '"Stored article content violates the Article richtext contract"',
+  '"Stored article content cannot be projected as Article richtext"',
+  '"Stored article content cannot produce Article plain text"',
+]);
+forbid("crates/modules/rustok-blog/src/domain/richtext.rs", [
+  'map_err(|_| BlogError::validation("Stored article content is not a document"))',
+]);
+
 requireAll("crates/modules/rustok-blog/src/module.rs", [
   '"dependencies"',
   '["content", "comments", "taxonomy", "outbox", "channel"]',
 ]);
 requireAll("crates/modules/rustok-blog/rustok-module.toml", [
+  'content = { version_req = ">=0.1.0" }',
+  'comments = { version_req = ">=0.1.0" }',
+  'outbox = { version_req = ">=0.1.0" }',
   'taxonomy = { version_req = ">=0.1.0" }',
   'channel = { version_req = ">=0.1.0" }',
 ]);
@@ -274,6 +308,43 @@ requireAll("crates/modules/rustok-blog/src/module.rs", [
   "Action::List",
   "Action::Manage",
 ]);
+requireAll("crates/modules/rustok-blog/src/module.rs", [
+  'fn slug(&self) ->',
+  '"blog"',
+  'fn name(&self) ->',
+  '"Blog"',
+  'fn description(&self) ->',
+  '"Posts, Comments, Categories, Tags"',
+  "Permission::BLOG_POSTS_CREATE",
+  "Permission::BLOG_POSTS_READ",
+  "Permission::BLOG_POSTS_UPDATE",
+  "Permission::BLOG_POSTS_DELETE",
+  "Permission::BLOG_POSTS_LIST",
+  "Permission::BLOG_POSTS_PUBLISH",
+  "Permission::BLOG_POSTS_MANAGE",
+  "Permission::BLOG_CATEGORIES_CREATE",
+  "Permission::BLOG_CATEGORIES_READ",
+  "Permission::BLOG_CATEGORIES_UPDATE",
+  "Permission::BLOG_CATEGORIES_DELETE",
+  "Permission::BLOG_CATEGORIES_LIST",
+  "Permission::BLOG_CATEGORIES_MANAGE",
+]);
+
+requireAll("crates/modules/rustok-blog/rustok-module.toml", [
+  'slug = "blog"',
+  'name = "Blog"',
+  'query = "graphql::BlogQuery"',
+  'mutation = "graphql::BlogMutation"',
+  'runtime_data_factory = "graphql::attach_schema_data"',
+  'axum_router = "controllers::axum_router"',
+  'leptos_crate = "rustok-blog-admin"',
+  'next_package = "@rustok/blog-admin"',
+  'leptos_crate = "rustok-blog-storefront"',
+  'next_package = "@rustok/blog-frontend"',
+  'profile = "blog_post_comments"',
+  'provider_contracts = ["comments.thread.v1"]',
+]);
+
 forbid("crates/modules/rustok-blog/src/services/category.rs", [
   "blog-category-tree:",
 ]);
@@ -335,6 +406,26 @@ for (const path of rustFiles("crates/modules/rustok-blog/src/graphql")) {
 for (const path of rustFiles("crates/modules/rustok-blog/src/integrations")) {
   forbid(path, ["crate::entities", "crate::{entities", "crate::entities::"]);
 }
+
+requireAll("crates/modules/rustok-blog/src/module.rs", [
+  "register_seo_target_provider(extensions, seo_targets::BlogSeoTargetProvider)",
+  "register_reaction_subject_provider_factory(",
+  "reaction_subject::BlogReactionSubjectProviderFactory,",
+  "registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));",
+],);
+requireAll("crates/modules/rustok-blog/src/integrations/seo_targets.rs", [
+  "let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());",
+  "service.get_post_with_locale_fallback(",
+  "service.get_post_by_slug_with_locale_fallback(",
+  "fn optional_post(result: crate::BlogResult<PostResponse>) -> AnyResult<Option<PostResponse>>",
+  "Err(BlogError::PostNotFound(_)) => Ok(None)",
+]);
+
+requireAll("crates/modules/rustok-blog/src/integrations/reaction_subject.rs", [
+  "load_post_subject_snapshot(&self.db, subject.tenant_id(), subject.subject_id())",
+  "is_post_visible_for_channel(&snapshot.channel_slugs, context.channel.as_deref())",
+  "let current_revision = blog_post_revision(snapshot.version)?;",
+]);
 
 requireAll("crates/modules/rustok-blog/src/error/mod.rs", [
   "rustok_channel::ChannelError::InvalidTargetValue(message)",
