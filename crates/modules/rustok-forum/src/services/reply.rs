@@ -2,8 +2,9 @@ use std::collections::HashMap;
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseBackend, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+    TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -202,6 +203,25 @@ impl ReplyService {
         reply_id: Uuid,
     ) -> ForumResult<forum_reply::Model> {
         Self::find_reply_in_conn(txn, tenant_id, reply_id).await
+    }
+
+    pub(crate) async fn find_reply_for_update_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+    ) -> ForumResult<forum_reply::Model> {
+        let query = forum_reply::Entity::find_by_id(reply_id)
+            .filter(forum_reply::Column::TenantId.eq(tenant_id));
+        let reply = match txn.get_database_backend() {
+            DatabaseBackend::Postgres => query.lock_exclusive().one(txn).await?,
+            DatabaseBackend::Sqlite => query.one(txn).await?,
+            backend => {
+                return Err(ForumError::Validation(format!(
+                    "Forum reply row locking does not support database backend {backend:?}"
+                )));
+            }
+        };
+        reply.ok_or(ForumError::ReplyNotFound(reply_id))
     }
 
     async fn find_reply_in_conn(
