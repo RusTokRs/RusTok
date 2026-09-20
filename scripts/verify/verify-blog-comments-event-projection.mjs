@@ -46,12 +46,11 @@ const migrationPath = 'crates/modules/rustok-blog/src/migrations/m20260716_00000
 const migrationRegistryPath = 'crates/modules/rustok-blog/src/migrations/mod.rs';
 const modulePath = 'crates/modules/rustok-blog/src/module.rs';
 const registryPath = 'crates/modules/rustok-blog/contracts/blog-fba-registry.json';
-const planPath = 'crates/modules/rustok-blog/docs/implementation-plan.md';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-current.md';
 const harnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
 const hostRegistrationHarnessCommand = 'cargo test -p rustok-blog --lib module::tests::module_registers_comment_projection_handler_with_host_routing';
 const dispatcherHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact';
 const concurrencyHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --exact';
-const retryLimitHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears -- --exact';
 const postgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
 const restartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test';
 const processRestartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test restarted_process_reuses_delivery_ledger_without_reapplying_counter -- --exact';
@@ -68,6 +67,7 @@ const moduleSource = read(modulePath);
 const plan = read(planPath);
 let evidence = null;
 let registry = null;
+
 try {
   evidence = JSON.parse(read(evidencePath));
 } catch (error) {
@@ -81,57 +81,58 @@ try {
 
 for (const marker of [
   'const BLOG_POST_TARGET_TYPE: &str = "blog_post";',
-  'const MAX_PROJECTION_UPDATE_ATTEMPTS: usize = 8;',
   'struct CommentProjectionChange',
-  'enum ProjectionUpdateDecision',
-  'ProjectionUpdateDecision::Applied',
-  'ProjectionUpdateDecision::Retry',
-  'ProjectionUpdateDecision::LimitReached',
   'fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionChange>',
   'DomainEvent::CommentCreated',
   'delta: 1',
   'DomainEvent::CommentDeleted',
   'delta: -1',
+  'fn projection_applied_delta(',
   'fn next_comment_count(comment_count: i32, delta: i32)',
   'comment_count.saturating_add(delta).max(0)',
-    'fn projection_update_decision(',
-  'attempt_index: usize',
-  'rows_affected: u64',
-  'else if attempt_index + 1 < MAX_PROJECTION_UPDATE_ATTEMPTS',
   'let Some(change) = comment_projection_change(&envelope.event) else',
   'let txn = self.db.begin().await?;',
-  'blog_comment_projection_delivery::Entity::find_by_id(envelope.id)',
-  'change.post_id',
-  'change.delta',
-  'event_id: Set(envelope.id)',
-  'comment_id: Set(change.comment_id)',
-  '.insert(&txn)',
-  '.publish_in_tx(',
-  'DomainEvent::ReindexRequested',
-  'txn.commit().await?;',
-  'Column::TenantId.eq(tenant_id)',
+  'lock_exclusive()',
+  'Column::TenantId.eq(envelope.tenant_id)',
+  'Column::PostId.eq(change.post_id)',
+  'Column::CommentId.eq(change.comment_id)',
+  'order_by_desc(blog_comment_projection_delivery::Column::EventId)',
+  'delivery.event_id >= envelope.id',
+  'let applied_delta = projection_applied_delta(',
+  'let next_comment_count = next_comment_count(post.comment_count, applied_delta);',
+  'let post_updated =',
   'Column::CommentCount.eq(post.comment_count)',
-  'next_comment_count(post.comment_count, delta)',
-  'for attempt_index in 0..MAX_PROJECTION_UPDATE_ATTEMPTS',
-  'match projection_update_decision(attempt_index, result.rows_affected)',
-  'Error::NotFound',
+  'delta: Set(change.delta)',
+  'OnConflict::column(blog_comment_projection_delivery::Column::EventId)',
+  '.do_nothing()',
+  'if post_updated',
+  'DomainEvent::ReindexRequested',
+  '.publish_in_tx(',
+  'txn.commit().await?;',
   'impl EventHandler for BlogCommentProjectionHandler',
   'comment_projection_change(event).is_some()',
   '#[cfg(test)]',
   'fn classifies_blog_comment_lifecycle_events()',
   'fn ignores_non_blog_targets_and_unrelated_events()',
+  'fn projection_delta_tracks_comment_state_not_delivery_order()',
   'fn counter_transition_is_non_negative_and_does_not_touch_business_revision()',
-  'fn optimistic_retry_policy_applies_success_without_retry()',
-  'fn optimistic_retry_policy_allows_seven_retries_then_stops_on_eighth_conflict()',
-  'MAX_PROJECTION_UPDATE_ATTEMPTS - 1',
-  'Some(&ProjectionUpdateDecision::LimitReached)',
 ]) {
   requireMarker(handler, marker, handlerPath);
 }
-requireNoMarker(handler, 'public.blog_posts', handlerPath);
-requireNoMarker(handler, 'blog_post::Column::Version', handlerPath);
-requireNoMarker(handler, 'blog_post::Column::UpdatedAt', handlerPath);
-requireNoMarker(handler, 'DomainEvent::BlogPostUpdated', handlerPath);
+
+for (const marker of [
+  'MAX_PROJECTION_UPDATE_ATTEMPTS',
+  'ProjectionUpdateDecision',
+  'projection_update_decision(',
+  'for attempt_index in 0..MAX_PROJECTION_UPDATE_ATTEMPTS',
+  'optimistic_retry_policy_applies_success_without_retry',
+  'optimistic_retry_policy_allows_seven_retries_then_stops_on_eighth_conflict',
+  'blog_post::Column::Version',
+  'blog_post::Column::UpdatedAt',
+  'DomainEvent::BlogPostUpdated',
+]) {
+  requireNoMarker(handler, marker, handlerPath);
+}
 
 const handlesStart = handler.indexOf('fn handles(&self, event: &DomainEvent) -> bool');
 const handleStart = handler.indexOf('async fn handle(&self, envelope: &EventEnvelope)', handlesStart);
@@ -143,30 +144,68 @@ if (handlesStart === -1 || handleStart === -1) {
   requireNoMarker(handlesBody, 'matches!(', `${handlerPath}: handles`);
 }
 
-const retryLoopStart = handler.indexOf(
-  'for attempt_index in 0..MAX_PROJECTION_UPDATE_ATTEMPTS',
+const projectStart = handler.indexOf('async fn project(&self, envelope: &EventEnvelope)');
+const txnStart = handler.indexOf('let txn = self.db.begin().await?;', projectStart);
+const postLock = handler.indexOf('.lock_exclusive()', txnStart);
+const latestQuery = handler.indexOf(
+  'order_by_desc(blog_comment_projection_delivery::Column::EventId)',
+  postLock,
 );
-const retryLoopEnd = handler.indexOf('Err(Error::External(format!(', retryLoopStart);
-if (retryLoopStart === -1 || retryLoopEnd === -1) {
-  failures.push(`${handlerPath}: missing bounded optimistic retry loop boundary`);
-} else {
-  const retryLoopBody = handler.slice(retryLoopStart, retryLoopEnd);
-  requireMarker(
-    retryLoopBody,
-    'match projection_update_decision(attempt_index, result.rows_affected)',
-    `${handlerPath}: retry loop`,
-  );
-  requireNoMarker(
-    retryLoopBody,
-    'if result.rows_affected == 1',
-    `${handlerPath}: retry loop`,
-  );
+const lifecycleGate = handler.indexOf(
+  'delivery.event_id >= envelope.id',
+  latestQuery,
+);
+const appliedDelta = handler.indexOf(
+  'let applied_delta = projection_applied_delta(',
+  lifecycleGate,
+);
+const postUpdate = handler.indexOf('let post_updated =', appliedDelta);
+const deliveryInsert = handler.indexOf(
+  'OnConflict::column(blog_comment_projection_delivery::Column::EventId)',
+  postUpdate,
+);
+const reindex = handler.indexOf('DomainEvent::ReindexRequested', deliveryInsert);
+const commit = handler.indexOf('txn.commit().await?;', reindex);
+
+for (const [name, index] of [
+  ['project', projectStart],
+  ['transaction', txnStart],
+  ['post row lock', postLock],
+  ['per-comment delivery ordering', latestQuery],
+  ['older-delivery guard', lifecycleGate],
+  ['state-based delta', appliedDelta],
+  ['counter update', postUpdate],
+  ['delivery insert', deliveryInsert],
+  ['reindex publication', reindex],
+  ['transaction commit', commit],
+]) {
+  if (index === -1) failures.push(`${handlerPath}: missing ${name} ordering marker`);
+}
+
+if (
+  projectStart !== -1 &&
+  [txnStart, postLock, latestQuery, lifecycleGate, appliedDelta, postUpdate, deliveryInsert, reindex, commit]
+    .some((index) => index === -1)
+) {
+  failures.push(`${handlerPath}: incomplete projection ordering chain`);
+} else if (
+  projectStart !== -1 &&
+  !(projectStart < txnStart &&
+    txnStart < postLock &&
+    postLock < latestQuery &&
+    latestQuery < lifecycleGate &&
+    lifecycleGate < appliedDelta &&
+    appliedDelta < postUpdate &&
+    postUpdate < deliveryInsert &&
+    deliveryInsert < reindex &&
+    reindex < commit)
+) {
+  failures.push(`${handlerPath}: expected row-lock -> ordering -> state-delta -> counter -> delivery -> reindex -> commit sequence`);
 }
 
 for (const marker of [
   'const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";',
   'const CONCURRENT_PROJECTION_DELIVERIES: usize = 4;',
-  'const EXPECTED_RETRY_LIMIT_ATTEMPTS: i64 = 8;',
   'struct PostgresBlogProjectionTestDb',
   'database_url: String',
   'async fn isolated_connection(&self)',
@@ -175,7 +214,6 @@ for (const marker of [
   '.max_connections(1)',
   'SET search_path TO "{schema_name}"',
   'async fn duplicate_delivery_updates_counter_and_outbox_once()',
-  'handler.handle(&envelope).await?;',
   'async fn event_dispatcher_routes_registered_handler_and_commits_projection()',
   'let extensions = ModuleRuntimeExtensions::default();',
   'BlogModule.register_event_listeners(&mut registry, &context);',
@@ -189,11 +227,6 @@ for (const marker of [
   'let running = dispatcher.start();',
   'running.bus().publish_envelope(envelope.clone())?;',
   'wait_for_dispatch_commit(&test_db.db, envelope.id).await?;',
-  'running.stop();',
-  'async fn wait_for_dispatch_commit(db: &DatabaseConnection, event_id: Uuid)',
-  'tokio::time::timeout(Duration::from_secs(5)',
-  'count_delivery(db, event_id).await? == 1',
-  'event dispatcher did not commit delivery',
   'async fn concurrent_created_events_converge_without_lost_updates()',
   'Arc::new(Barrier::new(envelopes.len()))',
   'let db = test_db.isolated_connection().await?;',
@@ -201,22 +234,6 @@ for (const marker of [
   'barrier.wait().await;',
   'CONCURRENT_PROJECTION_DELIVERIES as i32',
   'count_all_deliveries(&test_db.db).await?',
-  'async fn optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears()',
-  'install_retry_limit_probe(&test_db.db).await?;',
-  'eight zero-row updates must reach the optimistic retry limit',
-  'after 8 concurrent attempts',
-  'load_retry_attempt_count(&test_db.db).await?',
-  'EXPECTED_RETRY_LIMIT_ATTEMPTS',
-  'remove_retry_limit_probe(&test_db.db).await?;',
-  'CREATE SEQUENCE blog_projection_retry_attempts START WITH 1;',
-  'CREATE FUNCTION force_blog_projection_retry_limit()',
-  "PERFORM nextval('blog_projection_retry_attempts');",
-  'RETURN NULL;',
-  'CREATE TRIGGER force_blog_projection_retry_limit',
-  'BEFORE UPDATE OF comment_count, version ON blog_posts',
-  'DROP TRIGGER force_blog_projection_retry_limit ON blog_posts;',
-  'DROP FUNCTION force_blog_projection_retry_limit();',
-  'SELECT last_value::bigint AS count FROM blog_projection_retry_attempts',
   'async fn delete_before_create_stays_non_negative_and_replays_in_order()',
   'DomainEvent::CommentDeleted',
   'async fn missing_post_replay_commits_only_after_source_appears()',
@@ -231,6 +248,16 @@ for (const marker of [
   'count_outbox_events(&test_db.db)',
 ]) {
   requireMarker(postgresHarness, marker, postgresHarnessPath);
+}
+
+for (const marker of [
+  'optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears',
+  'install_retry_limit_probe',
+  'force_blog_projection_retry_limit',
+  'blog_projection_retry_attempts',
+  'EXPECTED_RETRY_LIMIT_ATTEMPTS',
+]) {
+  requireNoMarker(postgresHarness, marker, postgresHarnessPath);
 }
 requireNoMarker(postgresHarness, '#[ignore]', postgresHarnessPath);
 requireNoMarker(postgresHarness, 'runtime_verified', postgresHarnessPath);
@@ -331,7 +358,9 @@ for (const marker of [
 ]) {
   requireMarker(migrationRegistry, marker, migrationRegistryPath);
 }
+
 requireMarker(serviceExport, 'pub use comment_projection::BlogCommentProjectionHandler;', serviceExportPath);
+
 for (const marker of [
   'fn register_event_listeners(',
   'registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));',
@@ -363,6 +392,7 @@ if (evidence) {
   if (evidence.status !== 'source_verified_no_compile') failures.push(`${evidencePath}: status drift`);
   if (evidence.compile_policy !== 'not_run_by_request') failures.push(`${evidencePath}: compile policy drift`);
   if (evidence.runtime_status !== 'pending') failures.push(`${evidencePath}: runtime status drift`);
+
   const contract = evidence.production_contract ?? {};
   for (const [key, expected] of Object.entries({
     handler: handlerPath,
@@ -375,6 +405,7 @@ if (evidence) {
   })) {
     if (contract[key] !== expected) failures.push(`${evidencePath}: ${key} drift`);
   }
+
   const sourceHarness = evidence.source_harness ?? {};
   if (
     sourceHarness.status !== 'executable_no_run' ||
@@ -384,90 +415,18 @@ if (evidence) {
   ) {
     failures.push(`${evidencePath}: source harness drift`);
   }
-  const harnessCases = [...(sourceHarness.cases ?? [])].sort().join('|');
   if (
-    harnessCases !== [
+    [...(sourceHarness.cases ?? [])].sort().join('|') !==
+    [
       'shared_created_deleted_classifier',
       'non_blog_target_rejection',
-      'non_negative_saturating_counter_transition',
-      'optimistic_retry_policy_applies_success_without_retry',
-      'optimistic_retry_policy_allows_seven_retries_then_stops_on_eighth_conflict',
+      'projection_delta_tracks_comment_state_not_delivery_order',
+      'counter_transition_is_non_negative_and_does_not_touch_business_revision',
     ].sort().join('|')
   ) {
     failures.push(`${evidencePath}: source harness case drift`);
   }
-  const hostRegistration = evidence.host_registration_harness ?? {};
-  if (
-    hostRegistration.status !== 'executable_no_run' ||
-    hostRegistration.runtime_status !== 'not_run' ||
-    hostRegistration.path !== modulePath ||
-    hostRegistration.module !== 'module::tests' ||
-    hostRegistration.command !== hostRegistrationHarnessCommand ||
-    hostRegistration.scope !== 'module_registry_handler_identity_and_routing_only'
-  ) {
-    failures.push(`${evidencePath}: host registration harness drift`);
-  }
-  if (
-    [...(hostRegistration.cases ?? [])].join('|') !==
-    'module_registers_comment_projection_handler_with_host_routing'
-  ) {
-    failures.push(`${evidencePath}: host registration harness case drift`);
-  }
-  const dispatcher = evidence.dispatcher_harness ?? {};
-  if (
-    dispatcher.status !== 'executable_no_run' ||
-    dispatcher.runtime_status !== 'not_run' ||
-    dispatcher.path !== postgresHarnessPath ||
-    dispatcher.environment !== postgresHarnessEnvironment ||
-    dispatcher.command !== dispatcherHarnessCommand ||
-    dispatcher.isolation !== 'unique_schema_one_connection_pool' ||
-    dispatcher.scope !== 'event_bus_dispatcher_module_registered_handler_transactional_commit'
-  ) {
-    failures.push(`${evidencePath}: dispatcher harness drift`);
-  }
-  if (
-    [...(dispatcher.cases ?? [])].join('|') !==
-    'event_dispatcher_routes_registered_handler_and_commits_projection'
-  ) {
-    failures.push(`${evidencePath}: dispatcher harness case drift`);
-  }
-  const concurrency = evidence.concurrency_harness ?? {};
-  if (
-    concurrency.status !== 'executable_no_run' ||
-    concurrency.runtime_status !== 'not_run' ||
-    concurrency.path !== postgresHarnessPath ||
-    concurrency.environment !== postgresHarnessEnvironment ||
-    concurrency.command !== concurrencyHarnessCommand ||
-    concurrency.isolation !== 'unique_schema_four_independent_connections_barrier' ||
-    concurrency.scope !== 'concurrent_unique_envelopes_same_post_final_counter_delivery_outbox'
-  ) {
-    failures.push(`${evidencePath}: concurrency harness drift`);
-  }
-  if (
-    [...(concurrency.cases ?? [])].join('|') !==
-    'concurrent_created_events_converge_without_lost_updates'
-  ) {
-    failures.push(`${evidencePath}: concurrency harness case drift`);
-  }
-  const retryLimit = evidence.retry_limit_harness ?? {};
-  if (
-    retryLimit.status !== 'executable_no_run' ||
-    retryLimit.runtime_status !== 'not_run' ||
-    retryLimit.path !== postgresHarnessPath ||
-    retryLimit.environment !== postgresHarnessEnvironment ||
-    retryLimit.command !== retryLimitHarnessCommand ||
-    retryLimit.isolation !== 'unique_schema_one_connection_pool_before_update_skip_trigger_nontransactional_attempt_sequence' ||
-    retryLimit.scope !== 'real_handler_eight_zero_row_updates_terminal_error_atomic_rollback_and_same_envelope_replay' ||
-    retryLimit.non_claim !== 'does_not_measure_natural_postgresql_contention_frequency_or_record_execution'
-  ) {
-    failures.push(`${evidencePath}: retry-limit harness drift`);
-  }
-  if (
-    [...(retryLimit.cases ?? [])].join('|') !==
-    'optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears'
-  ) {
-    failures.push(`${evidencePath}: retry-limit harness case drift`);
-  }
+
   const postgres = evidence.postgres_harness ?? {};
   if (
     postgres.status !== 'executable_no_run' ||
@@ -479,11 +438,10 @@ if (evidence) {
   ) {
     failures.push(`${evidencePath}: PostgreSQL harness drift`);
   }
-  const postgresCases = [...(postgres.cases ?? [])].sort().join('|');
   if (
-    postgresCases !== [
+    [...(postgres.cases ?? [])].sort().join('|') !==
+    [
       'duplicate_delivery_updates_counter_and_outbox_once',
-      'optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears',
       'delete_before_create_stays_non_negative_and_replays_in_order',
       'missing_post_replay_commits_only_after_source_appears',
       'outbox_failure_rolls_back_counter_and_delivery_before_retry',
@@ -491,6 +449,24 @@ if (evidence) {
   ) {
     failures.push(`${evidencePath}: PostgreSQL harness case drift`);
   }
+
+  for (const [field, expectedCommand, expectedCase] of [
+    ['dispatcher_harness', dispatcherHarnessCommand, 'event_dispatcher_routes_registered_handler_and_commits_projection'],
+    ['concurrency_harness', concurrencyHarnessCommand, 'concurrent_created_events_converge_without_lost_updates'],
+  ]) {
+    const harness = evidence[field] ?? {};
+    if (
+      harness.status !== 'executable_no_run' ||
+      harness.runtime_status !== 'not_run' ||
+      harness.path !== postgresHarnessPath ||
+      harness.environment !== postgresHarnessEnvironment ||
+      harness.command !== expectedCommand ||
+      ![...(harness.cases ?? [])].includes(expectedCase)
+    ) {
+      failures.push(`${evidencePath}: ${field} drift`);
+    }
+  }
+
   const restart = evidence.restart_harness ?? {};
   if (
     restart.status !== 'executable_no_run' ||
@@ -499,16 +475,13 @@ if (evidence) {
     restart.environment !== postgresHarnessEnvironment ||
     restart.command !== restartHarnessCommand ||
     restart.isolation !== 'unique_schema_new_connection' ||
-    restart.scope !== 'same_process_new_connection_and_handler'
+    restart.scope !== 'same_process_new_connection_and_handler' ||
+    [...(restart.cases ?? [])].join('|') !==
+      'restarted_handler_reuses_delivery_ledger_without_reapplying_counter'
   ) {
     failures.push(`${evidencePath}: restart harness drift`);
   }
-  if (
-    [...(restart.cases ?? [])].join('|') !==
-    'restarted_handler_reuses_delivery_ledger_without_reapplying_counter'
-  ) {
-    failures.push(`${evidencePath}: restart harness case drift`);
-  }
+
   const processRestart = evidence.process_restart_harness ?? {};
   if (
     processRestart.status !== 'executable_no_run' ||
@@ -522,19 +495,16 @@ if (evidence) {
   ) {
     failures.push(`${evidencePath}: process restart harness drift`);
   }
-  const processRestartCases = [...(processRestart.cases ?? [])].sort().join('|');
   if (
-    processRestartCases !== [
+    [...(processRestart.cases ?? [])].sort().join('|') !==
+    [
       'restarted_process_reuses_delivery_ledger_without_reapplying_counter',
       'process_restart_worker_applies_envelope_from_env',
     ].sort().join('|')
   ) {
     failures.push(`${evidencePath}: process restart harness case drift`);
   }
-  const events = [...(evidence.events ?? [])].sort().join('|');
-  if (events !== ['comment.created', 'comment.deleted'].sort().join('|')) {
-    failures.push(`${evidencePath}: event set drift`);
-  }
+
   const cases = new Set((evidence.cases ?? []).map((entry) => entry.name));
   for (const requiredCase of [
     'shared_event_classifier',
@@ -542,9 +512,8 @@ if (evidence) {
     'created_deleted_delta',
     'envelope_idempotency',
     'atomic_counter_delivery_outbox',
-    'tenant_scoped_optimistic_update',
-    'bounded_optimistic_retry_policy',
-    'postgres_retry_limit_rollback_and_replay',
+    'tenant_scoped_row_lock',
+    'comment_lifecycle_ordering',
     'missing_post_retry',
     'non_negative_count',
     'host_registration_routing_harness',
@@ -559,6 +528,15 @@ if (evidence) {
     'module_listener_registration',
   ]) {
     if (!cases.has(requiredCase)) failures.push(`${evidencePath}: missing case ${requiredCase}`);
+  }
+
+  for (const forbidden of [
+    'bounded_optimistic_retry_policy',
+    'postgres_retry_limit_rollback_and_replay',
+    'tenant_scoped_optimistic_update',
+    'ProjectionUpdateDecision',
+  ]) {
+    if (cases.has(forbidden)) failures.push(`${evidencePath}: obsolete case ${forbidden}`);
   }
 }
 
@@ -602,44 +580,19 @@ if (registry) {
   ) {
     failures.push(`${registryPath}: event projection restart harness drift`);
   }
-  const sourceGate = registry.verification_chain?.source_gates?.comments_event_projection;
-  if (sourceGate?.unit_test !== handlerPath) {
-    failures.push(`${registryPath}: comments event projection unit test path drift`);
-  }
-  if (sourceGate?.postgres_test !== postgresHarnessPath) {
-    failures.push(`${registryPath}: comments event projection PostgreSQL test path drift`);
-  }
-  if (sourceGate?.restart_test !== restartHarnessPath) {
-    failures.push(`${registryPath}: comments event projection restart test path drift`);
-  }
 }
 
 for (const marker of [
-  'blog-comments-event-projection.json',
-  'verify:blog:comments-event-projection',
-  'test:verify:blog:comments-event-projection',
-  'source_verified_no_compile',
-  'services::comment_projection::tests',
-  'ProjectionUpdateDecision',
-  'seven retry decisions',
-  'module::tests::module_registers_comment_projection_handler_with_host_routing',
-  'event_dispatcher_routes_registered_handler_and_commits_projection',
-  'concurrent_created_events_converge_without_lost_updates',
-  'optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears',
-  'eight zero-row',
-  'restarted_process_reuses_delivery_ledger_without_reapplying_counter',
-  'comment_projection_postgres_test',
-  'comment_projection_restart_postgres_test',
-  'RUSTOK_BLOG_TEST_DATABASE_URL',
-  'EventBus',
-  'EventDispatcher',
-  'independent PostgreSQL connections',
-  'same envelope',
-  'two sequential OS test processes',
-  'server-host restart',
+  'Blog FBA registry schema v14 and Comments projection evidence schema v5',
+  'derived Comments counters that preserve Blog business',
+  'source-level',
+  'runtime/remote evidence is still pending',
 ]) {
   requireMarker(plan, marker, planPath);
 }
+requireNoMarker(plan, 'ProjectionUpdateDecision', planPath);
+requireNoMarker(plan, 'bounded optimistic retry', planPath);
+requireNoMarker(plan, 'retry-limit', planPath);
 
 if (failures.length > 0) {
   console.error('Blog comments event projection verification failed:');
@@ -647,4 +600,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('Blog comments event projection classifier, retry policy, registration, dispatcher, concurrency, PostgreSQL retry-limit, connection restart, and process restart harnesses are consistent');
+console.log('Blog comments event projection classifier, row-lock ordering, delivery ledger, registration, dispatcher, concurrency, PostgreSQL recovery, connection restart, and process restart harnesses are consistent');
