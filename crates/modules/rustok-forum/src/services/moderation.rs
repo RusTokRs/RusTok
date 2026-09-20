@@ -228,7 +228,7 @@ impl ModerationService {
         target: TopicStatus,
     ) -> ForumResult<()> {
         let txn = self.db.begin().await?;
-        let topic = TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
+        let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
         let current = topic.status;
         current.validate_transition(&target)?;
 
