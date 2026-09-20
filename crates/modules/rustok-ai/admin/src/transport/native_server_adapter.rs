@@ -392,7 +392,6 @@ pub async fn resolve_agent_workflow_stage_approval(
         .map_err(Into::into)
 }
 
-#[allow(dead_code)]
 pub async fn cancel_run(run_id: String) -> Result<AiChatRunPayload, ApiError> {
     ai_cancel_run_native(run_id).await.map_err(Into::into)
 }

@@ -9,7 +9,7 @@ pub mod graphql_adapter;
 pub mod native_server_adapter;
 
 pub use native_server_adapter::{
-    ApiError, create_agent_model_assignment, create_agent_principal, create_agent_workflow_run,
+    ApiError, cancel_run, create_agent_model_assignment, create_agent_principal, create_agent_workflow_run,
     create_provider, create_task_profile, create_tool_profile, deactivate_provider,
     fetch_bootstrap, fetch_session, put_structured_budget_policy, put_structured_provider_policy,
     resolve_agent_workflow_stage_approval, resume_approval, run_task_job, send_message,

@@ -235,7 +235,7 @@ impl AiHostRuntime {
         let (sender, receiver) = watch::channel(());
         self.cancellations
             .lock()
-            .expect("AI cancellation registry mutex poisoned")
+            .unwrap_or_else(|p| p.into_inner())
             .insert(run_id, sender);
         receiver
     }
@@ -244,7 +244,7 @@ impl AiHostRuntime {
         if let Some(sender) = self
             .cancellations
             .lock()
-            .expect("AI cancellation registry mutex poisoned")
+            .unwrap_or_else(|p| p.into_inner())
             .remove(&run_id)
         {
             let _ = sender.send(());
@@ -254,7 +254,7 @@ impl AiHostRuntime {
     pub fn complete_run_cancellation(&self, run_id: Uuid) {
         self.cancellations
             .lock()
-            .expect("AI cancellation registry mutex poisoned")
+            .unwrap_or_else(|p| p.into_inner())
             .remove(&run_id);
     }
 

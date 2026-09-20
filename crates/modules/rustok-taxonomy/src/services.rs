@@ -25,9 +25,7 @@ use crate::entities::{
 };
 use crate::error::{TaxonomyError, TaxonomyResult};
 use crate::module_term_mutation::ModuleTermCreateInput;
-use crate::route_key_registry::{
-    ensure_route_key_available_in_tx, reconcile_route_keys_for_locale_in_tx,
-};
+use crate::route_key_registry::ensure_route_key_available_in_tx;
 use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
 
 pub struct TaxonomyService {

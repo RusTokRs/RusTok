@@ -786,18 +786,12 @@ impl From<AiStructuredBudgetPolicyRecord> for AiStructuredBudgetPolicyGql {
         Self {
             id: value.id,
             currency_code: value.currency_code,
-            limit_minor_units: i64::try_from(value.limit_minor_units)
-                .expect("persisted structured budget limit fits i64"),
-            reserved_minor_units: i64::try_from(value.reserved_minor_units)
-                .expect("persisted structured budget reservation fits i64"),
-            committed_minor_units: i64::try_from(value.committed_minor_units)
-                .expect("persisted structured budget commitment fits i64"),
-            max_concurrent: i32::try_from(value.max_concurrent)
-                .expect("persisted structured budget concurrency fits i32"),
-            in_flight: i32::try_from(value.in_flight)
-                .expect("persisted structured budget in-flight count fits i32"),
-            revision: i64::try_from(value.revision)
-                .expect("persisted structured budget revision fits i64"),
+            limit_minor_units: i64::try_from(value.limit_minor_units).unwrap_or(i64::MAX),
+            reserved_minor_units: i64::try_from(value.reserved_minor_units).unwrap_or(i64::MAX),
+            committed_minor_units: i64::try_from(value.committed_minor_units).unwrap_or(i64::MAX),
+            max_concurrent: i32::try_from(value.max_concurrent).unwrap_or(i32::MAX),
+            in_flight: i32::try_from(value.in_flight).unwrap_or(i32::MAX),
+            revision: i64::try_from(value.revision).unwrap_or(i64::MAX),
             created_at: value.created_at,
             updated_at: value.updated_at,
         }
@@ -832,16 +826,13 @@ impl From<AiStructuredProviderPolicyRecord> for AiStructuredProviderPolicyGql {
                 .collect(),
             currency_code: value.currency_code,
             input_cost_per_million_minor: i64::try_from(value.input_cost_per_million_minor)
-                .expect("persisted structured provider input cost fits i64"),
+                .unwrap_or(i64::MAX),
             output_cost_per_million_minor: i64::try_from(value.output_cost_per_million_minor)
-                .expect("persisted structured provider output cost fits i64"),
-            max_concurrent: i32::try_from(value.max_concurrent)
-                .expect("persisted structured provider concurrency fits i32"),
-            in_flight: i32::try_from(value.in_flight)
-                .expect("persisted structured provider in-flight count fits i32"),
+                .unwrap_or(i64::MAX),
+            max_concurrent: i32::try_from(value.max_concurrent).unwrap_or(i32::MAX),
+            in_flight: i32::try_from(value.in_flight).unwrap_or(i32::MAX),
             is_active: value.is_active,
-            revision: i64::try_from(value.revision)
-                .expect("persisted structured provider revision fits i64"),
+            revision: i64::try_from(value.revision).unwrap_or(i64::MAX),
             created_at: value.created_at,
             updated_at: value.updated_at,
         }

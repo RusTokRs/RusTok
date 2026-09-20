@@ -103,8 +103,8 @@ impl ToolExecutionPolicy {
 }
 
 fn digest_value(value: &serde_json::Value) -> String {
-    let encoded = serde_json::to_vec(value).expect("tool policy evidence is serializable");
-    let digest = Sha256::digest(encoded);
+    let encoded = serde_json::to_vec(value).unwrap_or_default();
+    let digest = Sha256::digest(&encoded);
     format!("sha256:{}", hex::encode(digest))
 }
 

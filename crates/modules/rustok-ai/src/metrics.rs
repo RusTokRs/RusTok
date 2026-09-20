@@ -201,14 +201,14 @@ pub fn reset_metrics_for_tests() {
 }
 
 fn increment_bucket(store: &Lazy<Mutex<BTreeMap<String, u64>>>, label: &str) {
-    let mut guard = store.lock().expect("AI metrics bucket store");
+    let mut guard = store.lock().unwrap_or_else(|p| p.into_inner());
     *guard.entry(label.to_string()).or_insert(0) += 1;
 }
 
 fn snapshot_buckets(store: &Lazy<Mutex<BTreeMap<String, u64>>>) -> Vec<AiMetricBucket> {
     store
         .lock()
-        .expect("AI metrics bucket snapshot")
+        .unwrap_or_else(|p| p.into_inner())
         .iter()
         .map(|(label, total)| AiMetricBucket {
             label: label.clone(),

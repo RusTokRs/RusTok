@@ -60,8 +60,16 @@ async fn order_status_context(
                 "code": "ai_order.status_port_deadline_exceeded",
                 "retryable": true,
             })),
-            Ok(Ok(snapshot)) => snapshots
-                .push(serde_json::to_value(snapshot).expect("order status is serializable")),
+            Ok(Ok(snapshot)) => match serde_json::to_value(snapshot) {
+                Ok(val) => snapshots.push(val),
+                Err(error) => errors.push(json!({
+                    "order_id": order_id,
+                    "kind": "serialization_failed",
+                    "code": "ai_order.serialization_failed",
+                    "message": error.to_string(),
+                    "retryable": false,
+                })),
+            },
             Ok(Err(error)) => errors.push(json!({
                 "order_id": order_id,
                 "kind": error.kind,
@@ -95,7 +103,11 @@ impl DirectTaskHandler for OrderAnalyticsHandler {
         let input: AiOrderAnalyticsTaskInput =
             serde_json::from_value(request.task_input_json.clone()).map_err(AiError::Json)?;
         let execution_policy = order_ai_execution_policy(ORDER_ANALYTICS_TASK_SLUG)
-            .expect("order analytics execution policy must be registered");
+            .ok_or_else(|| {
+                AiError::Execution(format!(
+                    "order analytics execution policy not registered for task `{ORDER_ANALYTICS_TASK_SLUG}`"
+                ))
+            })?;
         let status_context = order_status_context(
             runtime,
             operator,
@@ -168,7 +180,11 @@ impl DirectTaskHandler for OrderOpsAssistantHandler {
         let input: AiOrderOpsAssistantTaskInput =
             serde_json::from_value(request.task_input_json.clone()).map_err(AiError::Json)?;
         let execution_policy = order_ai_execution_policy(ORDER_OPS_ASSISTANT_TASK_SLUG)
-            .expect("order operations execution policy must be registered");
+            .ok_or_else(|| {
+                AiError::Execution(format!(
+                    "order operations execution policy not registered for task `{ORDER_OPS_ASSISTANT_TASK_SLUG}`"
+                ))
+            })?;
         let status_context = order_status_context(
             runtime,
             operator,

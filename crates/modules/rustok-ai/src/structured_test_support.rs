@@ -1,3 +1,5 @@
+#![cfg(all(test, feature = "server"))]
+
 use std::path::Path;
 
 use chrono::Utc;

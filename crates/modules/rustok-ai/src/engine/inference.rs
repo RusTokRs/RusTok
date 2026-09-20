@@ -841,7 +841,3 @@ fn map_response(
     }
 }
 
-#[allow(dead_code)]
-fn tool_names(request: &CompletionRequest) -> BTreeSet<String> {
-    request.tools.iter().map(|tool| tool.name.clone()).collect()
-}

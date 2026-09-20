@@ -19,7 +19,7 @@ pub struct ToolSourceLineage {
     pub source_digest: String,
 }
 
-pub(crate) fn validated_source_lineage(
+pub fn validated_source_lineage(
     tool_name: &str,
     source_lineage: &[ToolSourceLineage],
 ) -> AiResult<Vec<ToolSourceLineage>> {

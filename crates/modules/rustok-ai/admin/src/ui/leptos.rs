@@ -2694,10 +2694,9 @@ fn clear_live_subscription_generation(generation: u64) {
 
 #[cfg(target_arch = "wasm32")]
 fn graphql_ws_url() -> String {
-    let window = web_sys::window().expect("window should exist in browser");
-    let location = window.location();
-    let protocol = location.protocol().ok();
-    let host = location.host().ok();
+    let location = web_sys::window().map(|w| w.location());
+    let protocol = location.as_ref().and_then(|l| l.protocol().ok());
+    let host = location.as_ref().and_then(|l| l.host().ok());
     graphql_ws_url_from_location(protocol.as_deref(), host.as_deref())
 }
 
