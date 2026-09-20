@@ -35,6 +35,7 @@ pub async fn moderate_comment(
     Json(mut input): Json<ModerateCommentInput>,
 ) -> HttpResult<Json<CommentResponse>> {
     ensure_blog_permission(
+        &tenant,
         &auth,
         &[Permission::BLOG_POSTS_MANAGE],
         "Permission denied: blog_posts:manage required",

@@ -327,6 +327,10 @@ forbid("crates/modules/rustok-blog/src/integrations/public_comments_snapshot.rs"
   "serde_json::to_vec(identity).unwrap_or_default()",
 ]);
 
+requireAll("crates/modules/rustok-blog/src/controllers/comments.rs", [
+  "ensure_blog_permission(\n        &tenant,\n        &auth,",
+]);
+
 requireAll("crates/modules/rustok-blog/src/integrations/seo_targets.rs", [
   "Err(error) => Err(anyhow::Error::new(error))",
 ]);
