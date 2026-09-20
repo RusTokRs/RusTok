@@ -352,7 +352,8 @@ impl ModerationService {
 
         let txn = self.db.begin().await?;
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
-        let reply = ReplyService::find_reply_in_tx(&txn, tenant_id, reply_id).await?;
+        let reply =
+            ReplyService::find_reply_for_update_in_tx(&txn, tenant_id, reply_id).await?;
         if reply.topic_id != topic_id {
             return Err(ForumError::Validation(
                 "Reply belongs to another topic".to_string(),
