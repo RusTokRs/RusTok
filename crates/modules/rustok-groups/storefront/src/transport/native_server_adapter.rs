@@ -5,6 +5,8 @@ use crate::model::{
     AcceptGroupInvitationCommand, AcceptTargetedGroupInvitationCommand,
     GroupsStorefrontAcceptInvitationResult, GroupsStorefrontDirectory, GroupsStorefrontFilters,
 };
+#[cfg(feature = "ssr")]
+use crate::model::GroupsStorefrontMembership;
 
 #[derive(Debug, Clone)]
 pub struct NativeGroupsStorefrontError(pub String);

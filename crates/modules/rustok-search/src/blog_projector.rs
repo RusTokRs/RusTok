@@ -466,6 +466,7 @@ fn classify_error(error: &Error) -> &'static str {
         Error::Serialization(_) => "serialization",
         Error::Scripting(_) => "scripting",
         Error::InvalidIdFormat(_) => "invalid_id",
+        Error::Internal(_) => "internal",
     }
 }
 

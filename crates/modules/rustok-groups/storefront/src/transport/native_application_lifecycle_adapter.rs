@@ -5,6 +5,8 @@ use crate::application_model::{
     CancelGroupMembershipApplicationCommand, GroupsStorefrontApplicationLifecycleResult,
     GroupsStorefrontMembershipApplication, GroupsStorefrontMyApplicationQuery,
 };
+#[cfg(feature = "ssr")]
+use crate::application_model::GroupsStorefrontApplicationMembership;
 
 #[derive(Debug, Clone)]
 pub struct NativeGroupsApplicationLifecycleError(pub String);

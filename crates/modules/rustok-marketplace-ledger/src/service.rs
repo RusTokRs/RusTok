@@ -342,46 +342,49 @@ async fn post_in_transaction(
     })?;
 
     let mut entries = Vec::with_capacity(batch.assessments.len() * 3);
+    let tx_ctx = LedgerTransactionContext {
+        receipt,
+        tenant_id,
+        transaction_id,
+        created_at,
+    };
     for assessment in batch.assessments {
         entries.push(
             insert_entry(
-                receipt,
-                tenant_id,
-                transaction_id,
-                &assessment,
-                None,
-                MarketplaceLedgerAccountCode::MarketplaceClearing,
-                MarketplaceLedgerEntryDirection::Debit,
-                assessment.allocation_total_amount,
-                created_at,
+                &tx_ctx,
+                NewAssessmentEntryInput {
+                    assessment: &assessment,
+                    seller_id: None,
+                    account_code: MarketplaceLedgerAccountCode::MarketplaceClearing,
+                    direction: MarketplaceLedgerEntryDirection::Debit,
+                    amount: assessment.allocation_total_amount,
+                },
             )
             .await?,
         );
         entries.push(
             insert_entry(
-                receipt,
-                tenant_id,
-                transaction_id,
-                &assessment,
-                None,
-                MarketplaceLedgerAccountCode::PlatformCommissionRevenue,
-                MarketplaceLedgerEntryDirection::Credit,
-                assessment.commission_amount,
-                created_at,
+                &tx_ctx,
+                NewAssessmentEntryInput {
+                    assessment: &assessment,
+                    seller_id: None,
+                    account_code: MarketplaceLedgerAccountCode::PlatformCommissionRevenue,
+                    direction: MarketplaceLedgerEntryDirection::Credit,
+                    amount: assessment.commission_amount,
+                },
             )
             .await?,
         );
         entries.push(
             insert_entry(
-                receipt,
-                tenant_id,
-                transaction_id,
-                &assessment,
-                Some(assessment.seller_id),
-                MarketplaceLedgerAccountCode::SellerPayable,
-                MarketplaceLedgerEntryDirection::Credit,
-                assessment.seller_proceeds_amount,
-                created_at,
+                &tx_ctx,
+                NewAssessmentEntryInput {
+                    assessment: &assessment,
+                    seller_id: Some(assessment.seller_id),
+                    account_code: MarketplaceLedgerAccountCode::SellerPayable,
+                    direction: MarketplaceLedgerEntryDirection::Credit,
+                    amount: assessment.seller_proceeds_amount,
+                },
             )
             .await?,
         );
@@ -396,43 +399,50 @@ async fn post_in_transaction(
     map_transaction(transaction_model, entries)
 }
 
-#[allow(clippy::too_many_arguments)]
+struct LedgerTransactionContext<'a> {
+    pub receipt: &'a NewLedgerReceipt,
+    pub tenant_id: Uuid,
+    pub transaction_id: Uuid,
+    pub created_at: chrono::DateTime<chrono::FixedOffset>,
+}
+
+struct NewAssessmentEntryInput<'a> {
+    pub assessment: &'a MarketplaceCommissionAssessmentResponse,
+    pub seller_id: Option<Uuid>,
+    pub account_code: MarketplaceLedgerAccountCode,
+    pub direction: MarketplaceLedgerEntryDirection,
+    pub amount: i64,
+}
+
 async fn insert_entry(
-    receipt: &NewLedgerReceipt,
-    tenant_id: Uuid,
-    transaction_id: Uuid,
-    assessment: &MarketplaceCommissionAssessmentResponse,
-    seller_id: Option<Uuid>,
-    account_code: MarketplaceLedgerAccountCode,
-    direction: MarketplaceLedgerEntryDirection,
-    amount: i64,
-    created_at: chrono::DateTime<chrono::FixedOffset>,
+    ctx: &LedgerTransactionContext<'_>,
+    input: NewAssessmentEntryInput<'_>,
 ) -> MarketplaceLedgerResult<MarketplaceLedgerEntryResponse> {
     let model = entry::ActiveModel {
         id: Set(generate_id()),
-        tenant_id: Set(tenant_id),
-        transaction_id: Set(transaction_id),
-        order_id: Set(assessment.order_id),
-        assessment_id: Set(assessment.id),
-        allocation_id: Set(assessment.allocation_id),
-        order_line_item_id: Set(assessment.order_line_item_id),
-        seller_id: Set(seller_id),
-        account_code: Set(account_code.as_str().to_string()),
-        direction: Set(direction.as_str().to_string()),
-        currency_code: Set(assessment.currency_code.clone()),
-        amount: Set(amount),
+        tenant_id: Set(ctx.tenant_id),
+        transaction_id: Set(ctx.transaction_id),
+        order_id: Set(input.assessment.order_id),
+        assessment_id: Set(input.assessment.id),
+        allocation_id: Set(input.assessment.allocation_id),
+        order_line_item_id: Set(input.assessment.order_line_item_id),
+        seller_id: Set(input.seller_id),
+        account_code: Set(input.account_code.as_str().to_string()),
+        direction: Set(input.direction.as_str().to_string()),
+        currency_code: Set(input.assessment.currency_code.clone()),
+        amount: Set(input.amount),
         metadata: Set(serde_json::json!({
-            "rule_id": assessment.rule_id,
-            "rule_key": assessment.rule_key,
-            "rule_version": assessment.rule_version,
+            "rule_id": input.assessment.rule_id,
+            "rule_key": input.assessment.rule_key,
+            "rule_version": input.assessment.rule_version,
         })),
-        created_at: Set(created_at),
+        created_at: Set(ctx.created_at),
     }
-    .insert(&receipt.transaction)
+    .insert(&ctx.receipt.transaction)
     .await
     .map_err(|error| {
         if is_unique_constraint(&error) {
-            MarketplaceLedgerError::AssessmentAlreadyPosted(assessment.id)
+            MarketplaceLedgerError::AssessmentAlreadyPosted(input.assessment.id)
         } else {
             error.into()
         }

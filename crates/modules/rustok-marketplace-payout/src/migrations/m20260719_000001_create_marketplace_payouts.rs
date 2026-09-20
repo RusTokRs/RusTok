@@ -196,6 +196,7 @@ impl MigrationTrait for Migration {
 
 #[derive(Iden)]
 enum Payouts {
+    #[iden = "marketplace_payouts"]
     Table,
     Id,
     TenantId,
@@ -215,6 +216,7 @@ enum Payouts {
 
 #[derive(Iden)]
 enum PayoutItems {
+    #[iden = "marketplace_payout_items"]
     Table,
     Id,
     TenantId,
@@ -226,6 +228,7 @@ enum PayoutItems {
 
 #[derive(Iden)]
 enum PayoutReceipts {
+    #[iden = "marketplace_payout_receipts"]
     Table,
     Id,
     TenantId,

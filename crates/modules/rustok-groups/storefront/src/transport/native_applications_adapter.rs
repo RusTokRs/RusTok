@@ -5,6 +5,13 @@ use crate::application_model::{
     GroupsStorefrontApplicationPolicy, GroupsStorefrontApplicationPolicyQuery,
     GroupsStorefrontSubmitApplicationResult, SubmitGroupMembershipApplicationCommand,
 };
+#[cfg(feature = "ssr")]
+use std::collections::BTreeMap;
+#[cfg(feature = "ssr")]
+use crate::application_model::{
+    GroupsStorefrontApplicationMembership, GroupsStorefrontApplicationQuestion,
+    GroupsStorefrontApplicationRule, GroupsStorefrontMembershipApplication,
+};
 
 #[derive(Debug, Clone)]
 pub struct NativeGroupsApplicationError(pub String);

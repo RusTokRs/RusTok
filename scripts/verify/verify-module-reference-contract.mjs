@@ -687,7 +687,7 @@ requireAll("crates/modules/rustok-taxonomy/src/category_delete.rs", [
 
 requireAll("crates/modules/rustok-blog/src/graphql/mutation.rs", [
   "let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;",
-  "ensure_public_blog_channel_enabled(",
+  "ensure_authenticated_blog_channel_enabled(",
   '"Permission denied: comments:create required"',
 ]);
 

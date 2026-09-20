@@ -359,35 +359,35 @@ async fn post_in_transaction(
 
     let mut transaction_entries = Vec::with_capacity(references.len() * 2);
     let mut response_lines = Vec::with_capacity(references.len());
+    let op_ctx = BalanceTransferOperationContext {
+        receipt,
+        tenant_id,
+        transfer_id,
+        transaction_id,
+        kind: input.kind,
+        source_id: input.source_id,
+        currency_code: currency_code.as_str(),
+        created_at,
+    };
     for (line, reference) in references {
         let debit = insert_transfer_entry(
-            receipt,
-            tenant_id,
-            transfer_id,
-            transaction_id,
-            input.kind,
-            input.source_id,
-            reference,
-            from_bucket,
-            MarketplaceLedgerEntryDirection::Debit,
-            line.amount,
-            currency_code.as_str(),
-            created_at,
+            &op_ctx,
+            BalanceTransferEntryInput {
+                reference,
+                bucket: from_bucket,
+                direction: MarketplaceLedgerEntryDirection::Debit,
+                amount: line.amount,
+            },
         )
         .await?;
         let credit = insert_transfer_entry(
-            receipt,
-            tenant_id,
-            transfer_id,
-            transaction_id,
-            input.kind,
-            input.source_id,
-            reference,
-            to_bucket,
-            MarketplaceLedgerEntryDirection::Credit,
-            line.amount,
-            currency_code.as_str(),
-            created_at,
+            &op_ctx,
+            BalanceTransferEntryInput {
+                reference,
+                bucket: to_bucket,
+                direction: MarketplaceLedgerEntryDirection::Credit,
+                amount: line.amount,
+            },
         )
         .await?;
         balance_transfer_line::ActiveModel {
@@ -435,63 +435,70 @@ async fn post_in_transaction(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
+struct BalanceTransferOperationContext<'a> {
+    pub receipt: &'a NewLedgerReceipt,
+    pub tenant_id: Uuid,
+    pub transfer_id: Uuid,
+    pub transaction_id: Uuid,
+    pub kind: MarketplaceSellerBalanceTransferKind,
+    pub source_id: Uuid,
+    pub currency_code: &'a str,
+    pub created_at: chrono::DateTime<chrono::FixedOffset>,
+}
+
+struct BalanceTransferEntryInput<'a> {
+    pub reference: &'a entry::Model,
+    pub bucket: MarketplaceSellerBalanceBucket,
+    pub direction: MarketplaceLedgerEntryDirection,
+    pub amount: i64,
+}
+
 async fn insert_transfer_entry(
-    receipt: &NewLedgerReceipt,
-    tenant_id: Uuid,
-    transfer_id: Uuid,
-    transaction_id: Uuid,
-    kind: MarketplaceSellerBalanceTransferKind,
-    source_id: Uuid,
-    reference: &entry::Model,
-    bucket: MarketplaceSellerBalanceBucket,
-    direction: MarketplaceLedgerEntryDirection,
-    amount: i64,
-    currency_code: &str,
-    created_at: chrono::DateTime<chrono::FixedOffset>,
+    ctx: &BalanceTransferOperationContext<'_>,
+    input: BalanceTransferEntryInput<'_>,
 ) -> MarketplaceLedgerResult<MarketplaceLedgerEntryResponse> {
     let entry_id = generate_id();
     let model = entry::ActiveModel {
         id: Set(entry_id),
-        tenant_id: Set(tenant_id),
-        transaction_id: Set(transaction_id),
-        order_id: Set(reference.order_id),
-        assessment_id: Set(reference.assessment_id),
-        allocation_id: Set(reference.allocation_id),
-        order_line_item_id: Set(reference.order_line_item_id),
-        seller_id: Set(reference.seller_id),
+        tenant_id: Set(ctx.tenant_id),
+        transaction_id: Set(ctx.transaction_id),
+        order_id: Set(input.reference.order_id),
+        assessment_id: Set(input.reference.assessment_id),
+        allocation_id: Set(input.reference.allocation_id),
+        order_line_item_id: Set(input.reference.order_line_item_id),
+        seller_id: Set(input.reference.seller_id),
         account_code: Set(MarketplaceLedgerAccountCode::SellerPayable
             .as_str()
             .to_string()),
-        direction: Set(direction.as_str().to_string()),
-        currency_code: Set(currency_code.to_string()),
-        amount: Set(amount),
+        direction: Set(input.direction.as_str().to_string()),
+        currency_code: Set(ctx.currency_code.to_string()),
+        amount: Set(input.amount),
         metadata: Set(serde_json::json!({
-            "transfer_id": transfer_id,
-            "transfer_kind": kind.as_str(),
-            "transfer_source_id": source_id,
-            "reference_entry_id": reference.id,
-            "balance_bucket": bucket.as_str(),
+            "transfer_id": ctx.transfer_id,
+            "transfer_kind": ctx.kind.as_str(),
+            "transfer_source_id": ctx.source_id,
+            "seller_balance_bucket": input.bucket.as_str(),
+            "reference_entry_id": input.reference.id,
         })),
-        created_at: Set(created_at),
+        created_at: Set(ctx.created_at),
     }
-    .insert(&receipt.transaction)
+    .insert(&ctx.receipt.transaction)
     .await?;
     entry_balance_bucket::ActiveModel {
         id: Set(generate_id()),
-        tenant_id: Set(tenant_id),
+        tenant_id: Set(ctx.tenant_id),
         entry_id: Set(entry_id),
-        seller_id: Set(reference.seller_id.ok_or_else(|| {
+        seller_id: Set(input.reference.seller_id.ok_or_else(|| {
             MarketplaceLedgerError::Validation(
                 "seller payable reference entry requires seller identity".to_string(),
             )
         })?),
-        balance_bucket: Set(bucket.as_str().to_string()),
-        source_kind: Set(kind.source_kind().to_string()),
-        source_id: Set(source_id),
-        created_at: Set(created_at),
+        balance_bucket: Set(input.bucket.as_str().to_string()),
+        source_kind: Set(ctx.kind.source_kind().to_string()),
+        source_id: Set(ctx.source_id),
+        created_at: Set(ctx.created_at),
     }
-    .insert(&receipt.transaction)
+    .insert(&ctx.receipt.transaction)
     .await?;
     map_entry(model)
 }

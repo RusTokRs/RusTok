@@ -412,14 +412,18 @@ async fn canonicalize_siblings_for_insert_in_tx(
             siblings.len()
         )));
     }
-    siblings.insert(insertion_index, category_id);
+    let mut ordered_sibling_ids = siblings
+        .into_iter()
+        .map(|(_, id)| id)
+        .collect::<Vec<_>>();
+    ordered_sibling_ids.insert(insertion_index, category_id);
 
     rustok_taxonomy::reorder_module_category_siblings_in_tx(
         txn,
         tenant_id,
         category_taxonomy_sync::BLOG_TAXONOMY_SCOPE,
         parent_id,
-        &siblings,
+        &ordered_sibling_ids,
     )
     .await
     .map_err(BlogError::from)

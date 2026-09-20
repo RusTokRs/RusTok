@@ -21,6 +21,7 @@ fn classify_search_error(error: &rustok_core::Error) -> &'static str {
         rustok_core::Error::Serialization(_) => "serialization",
         rustok_core::Error::Scripting(_) => "scripting",
         rustok_core::Error::InvalidIdFormat(_) => "invalid_id",
+        rustok_core::Error::Internal(_) => "internal",
     }
 }
 

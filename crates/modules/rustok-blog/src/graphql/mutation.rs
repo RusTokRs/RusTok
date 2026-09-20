@@ -11,7 +11,6 @@ use uuid::Uuid;
 
 use crate::{ModerateCommentInput, PostService};
 
-use super::query::ensure_public_blog_channel_enabled;
 use super::runtime_data::BlogGraphqlRuntimeData;
 use super::types::*;
 

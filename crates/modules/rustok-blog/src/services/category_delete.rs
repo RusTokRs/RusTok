@@ -8,8 +8,7 @@ use rustok_taxonomy::{
     TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult,
 };
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait,
-    DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use uuid::Uuid;
 
@@ -70,8 +69,7 @@ impl BlogCategoryDeleteCleanup {
             self.blog_category_id,
             crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE,
         )
-        .await
-        .map_err(map_blog_error)?;
+        .await?;
 
         detach_category_from_posts_in_tx(txn, tenant_id, self.blog_category_id).await?;
 

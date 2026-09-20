@@ -989,13 +989,13 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
     assert_eq!(child.parent_comment_id, Some(parent.id));
 
     let fallback_en = comment_service
-        .get_comment(tenant_id, child.id, "en")
+        .get_comment(tenant_id, admin.clone(), child.id, "en")
         .await?;
     assert_eq!(fallback_en.content_text, "Réponse imbriquée");
     assert_eq!(fallback_en.effective_locale, "fr");
 
     let fallback_first = comment_service
-        .get_comment(tenant_id, child.id, "de")
+        .get_comment(tenant_id, admin.clone(), child.id, "de")
         .await?;
     assert_eq!(fallback_first.content_text, "Réponse imbriquée");
     assert_eq!(fallback_first.effective_locale, "fr");

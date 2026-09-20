@@ -196,26 +196,31 @@ async fn post_in_transaction(
         .await?;
         ensure_remaining(receipt, tenant_id, original.seller()?, line.seller_amount).await?;
 
+        let op_ctx = ReversalOperationContext {
+            receipt,
+            tenant_id,
+            reversal_id,
+            transaction_id,
+            kind: input.kind,
+            source_id: input.source_id,
+            currency_code: currency_code.as_str(),
+            created_at,
+        };
         if line.commission_amount > 0 {
             push_entry(
                 &mut entries,
                 &mut links,
                 insert_entry(
-                    receipt,
-                    tenant_id,
-                    reversal_id,
-                    transaction_id,
-                    input.kind,
-                    input.source_id,
-                    line,
-                    original.commission()?,
-                    None,
-                    MarketplaceLedgerAccountCode::PlatformCommissionRevenue,
-                    MarketplaceLedgerEntryDirection::Debit,
-                    line.commission_amount,
-                    None,
-                    currency_code.as_str(),
-                    created_at,
+                    &op_ctx,
+                    ReversalEntryInput {
+                        line,
+                        reversed_entry: original.commission()?,
+                        seller_id: None,
+                        account_code: MarketplaceLedgerAccountCode::PlatformCommissionRevenue,
+                        direction: MarketplaceLedgerEntryDirection::Debit,
+                        amount: line.commission_amount,
+                        bucket: None,
+                    },
                 )
                 .await?,
             );
@@ -225,21 +230,16 @@ async fn post_in_transaction(
                 &mut entries,
                 &mut links,
                 insert_entry(
-                    receipt,
-                    tenant_id,
-                    reversal_id,
-                    transaction_id,
-                    input.kind,
-                    input.source_id,
-                    line,
-                    original.seller()?,
-                    Some(line.seller_id),
-                    MarketplaceLedgerAccountCode::SellerPayable,
-                    MarketplaceLedgerEntryDirection::Debit,
-                    line.seller_amount,
-                    Some(line.seller_balance_bucket),
-                    currency_code.as_str(),
-                    created_at,
+                    &op_ctx,
+                    ReversalEntryInput {
+                        line,
+                        reversed_entry: original.seller()?,
+                        seller_id: Some(line.seller_id),
+                        account_code: MarketplaceLedgerAccountCode::SellerPayable,
+                        direction: MarketplaceLedgerEntryDirection::Debit,
+                        amount: line.seller_amount,
+                        bucket: Some(line.seller_balance_bucket),
+                    },
                 )
                 .await?,
             );
@@ -248,21 +248,16 @@ async fn post_in_transaction(
             &mut entries,
             &mut links,
             insert_entry(
-                receipt,
-                tenant_id,
-                reversal_id,
-                transaction_id,
-                input.kind,
-                input.source_id,
-                line,
-                original.clearing()?,
-                None,
-                MarketplaceLedgerAccountCode::MarketplaceClearing,
-                MarketplaceLedgerEntryDirection::Credit,
-                clearing_amount,
-                None,
-                currency_code.as_str(),
-                created_at,
+                &op_ctx,
+                ReversalEntryInput {
+                    line,
+                    reversed_entry: original.clearing()?,
+                    seller_id: None,
+                    account_code: MarketplaceLedgerAccountCode::MarketplaceClearing,
+                    direction: MarketplaceLedgerEntryDirection::Credit,
+                    amount: clearing_amount,
+                    bucket: None,
+                },
             )
             .await?,
         );
@@ -297,25 +292,32 @@ fn push_entry(
     links.push(link);
 }
 
-#[allow(clippy::too_many_arguments)]
+struct ReversalOperationContext<'a> {
+    pub receipt: &'a NewLedgerReceipt,
+    pub tenant_id: Uuid,
+    pub reversal_id: Uuid,
+    pub transaction_id: Uuid,
+    pub kind: MarketplaceLedgerReversalKind,
+    pub source_id: Uuid,
+    pub currency_code: &'a str,
+    pub created_at: chrono::DateTime<chrono::FixedOffset>,
+}
+
+struct ReversalEntryInput<'a> {
+    pub line: &'a MarketplaceLedgerReversalLineInput,
+    pub reversed_entry: &'a entry::Model,
+    pub seller_id: Option<Uuid>,
+    pub account_code: MarketplaceLedgerAccountCode,
+    pub direction: MarketplaceLedgerEntryDirection,
+    pub amount: i64,
+    pub bucket: Option<MarketplaceSellerBalanceBucket>,
+}
+
 async fn insert_entry(
-    receipt: &NewLedgerReceipt,
-    tenant_id: Uuid,
-    reversal_id: Uuid,
-    transaction_id: Uuid,
-    kind: MarketplaceLedgerReversalKind,
-    source_id: Uuid,
-    line: &MarketplaceLedgerReversalLineInput,
-    reversed_entry: &entry::Model,
-    seller_id: Option<Uuid>,
-    account_code: MarketplaceLedgerAccountCode,
-    direction: MarketplaceLedgerEntryDirection,
-    amount: i64,
-    bucket: Option<MarketplaceSellerBalanceBucket>,
-    currency_code: &str,
-    created_at: chrono::DateTime<chrono::FixedOffset>,
+    ctx: &ReversalOperationContext<'_>,
+    input: ReversalEntryInput<'_>,
 ) -> MarketplaceLedgerResult<MarketplaceLedgerReversalEntryResponse> {
-    if amount <= 0 {
+    if input.amount <= 0 {
         return Err(MarketplaceLedgerError::Validation(
             "reversal entry amount must be positive".to_string(),
         ));
@@ -323,48 +325,48 @@ async fn insert_entry(
     let entry_id = generate_id();
     let model = entry::ActiveModel {
         id: Set(entry_id),
-        tenant_id: Set(tenant_id),
-        transaction_id: Set(transaction_id),
-        order_id: Set(reversed_entry.order_id),
-        assessment_id: Set(line.assessment_id),
-        allocation_id: Set(line.allocation_id),
-        order_line_item_id: Set(line.order_line_item_id),
-        seller_id: Set(seller_id),
-        account_code: Set(account_code.as_str().to_string()),
-        direction: Set(direction.as_str().to_string()),
-        currency_code: Set(currency_code.to_string()),
-        amount: Set(amount),
+        tenant_id: Set(ctx.tenant_id),
+        transaction_id: Set(ctx.transaction_id),
+        order_id: Set(input.reversed_entry.order_id),
+        assessment_id: Set(input.line.assessment_id),
+        allocation_id: Set(input.line.allocation_id),
+        order_line_item_id: Set(input.line.order_line_item_id),
+        seller_id: Set(input.seller_id),
+        account_code: Set(input.account_code.as_str().to_string()),
+        direction: Set(input.direction.as_str().to_string()),
+        currency_code: Set(ctx.currency_code.to_string()),
+        amount: Set(input.amount),
         metadata: Set(serde_json::json!({
-            "reversal_id": reversal_id,
-            "reversal_kind": kind.as_str(),
-            "reversal_source_id": source_id,
+            "reversal_id": ctx.reversal_id,
+            "reversal_kind": ctx.kind.as_str(),
+            "reversal_source_id": ctx.source_id,
         })),
-        created_at: Set(created_at),
+        created_at: Set(ctx.created_at),
     }
-    .insert(&receipt.transaction)
+    .insert(&ctx.receipt.transaction)
     .await?;
     reversal_line::ActiveModel {
         id: Set(generate_id()),
-        tenant_id: Set(tenant_id),
-        reversal_id: Set(reversal_id),
+        tenant_id: Set(ctx.tenant_id),
+        reversal_id: Set(ctx.reversal_id),
         entry_id: Set(entry_id),
-        reversed_entry_id: Set(reversed_entry.id),
-        seller_id: Set(seller_id),
-        assessment_id: Set(line.assessment_id),
-        allocation_id: Set(line.allocation_id),
-        order_line_item_id: Set(line.order_line_item_id),
-        account_code: Set(account_code.as_str().to_string()),
-        direction: Set(direction.as_str().to_string()),
-        seller_balance_bucket: Set(bucket.map(|value| value.as_str().to_string())),
-        amount: Set(amount),
-        created_at: Set(created_at),
+        reversed_entry_id: Set(input.reversed_entry.id),
+        seller_id: Set(input.seller_id),
+        assessment_id: Set(input.line.assessment_id),
+        allocation_id: Set(input.line.allocation_id),
+        order_line_item_id: Set(input.line.order_line_item_id),
+        account_code: Set(input.account_code.as_str().to_string()),
+        direction: Set(input.direction.as_str().to_string()),
+        seller_balance_bucket: Set(input.bucket.map(|value| value.as_str().to_string())),
+        amount: Set(input.amount),
+        created_at: Set(ctx.created_at),
     }
-    .insert(&receipt.transaction)
+    .insert(&ctx.receipt.transaction)
     .await?;
     Ok(MarketplaceLedgerReversalEntryResponse {
         entry: map_entry(model)?,
-        reversed_entry_id: reversed_entry.id,
-        seller_balance_bucket: bucket,
+        reversed_entry_id: input.reversed_entry.id,
+        seller_balance_bucket: input.bucket,
     })
 }
 

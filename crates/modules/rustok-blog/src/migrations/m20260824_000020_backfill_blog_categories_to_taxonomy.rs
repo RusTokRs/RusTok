@@ -13,7 +13,31 @@ use sea_orm::{
 use sea_orm_migration::prelude::*;
 use uuid::Uuid;
 
-use crate::entities::blog_category_translation;
+mod migration_blog_category_translation {
+    use sea_orm::entity::prelude::*;
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "blog_category_translations")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub category_id: Uuid,
+        pub tenant_id: Uuid,
+        pub locale: String,
+        pub name: String,
+        pub slug: String,
+        pub description: Option<String>,
+        pub revision: i64,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+use migration_blog_category_translation as blog_category_translation;
+
 
 mod migration_blog_category_taxonomy_binding {
     use sea_orm::entity::prelude::*;
