@@ -701,7 +701,7 @@ impl ExternalConnector {
         }
     }
 
-    #[cfg_attr(not(any(feature = "iggy", test)), allow(dead_code))]
+    #[cfg(any(feature = "iggy", test))]
     fn connection_strings(config: &ExternalConnectorConfig) -> Result<Vec<String>, ConnectorError> {
         if config.protocol != "tcp" {
             return Err(ConnectorError::Config(
@@ -797,14 +797,6 @@ impl ExternalConnector {
             "failed to connect to every configured Iggy address: {}",
             failures.join("; ")
         )))
-    }
-
-    #[cfg(not(feature = "iggy"))]
-    #[allow(dead_code)]
-    async fn create_and_connect(_config: &ExternalConnectorConfig) -> Result<(), ConnectorError> {
-        Err(ConnectorError::Config(
-            "external Iggy requires the `iggy` connector feature".to_string(),
-        ))
     }
 }
 
@@ -1163,7 +1155,6 @@ impl ConsumerCursor for ExternalConsumerGroupCursor {
 
 /// External message subscriber implementation
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct ExternalMessageSubscriber {
     stream: String,
     topic: String,
@@ -1179,7 +1170,7 @@ impl ExternalMessageSubscriber {
         }
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     fn metadata_for_offset(&self, offset: u64) -> SubscriberMessageMetadata {
         SubscriberMessageMetadata::new(&self.stream, &self.topic, self.partition)
             .with_offset(offset)
@@ -1538,7 +1529,7 @@ impl IggyConnector for BundledConnector {
 ///
 /// The SDK parser does not URL-decode values. Reject its structural delimiters
 /// instead of generating a string that authenticates with unintended values.
-#[cfg_attr(not(any(feature = "iggy", test)), allow(dead_code))]
+#[cfg(any(feature = "iggy", test))]
 fn validate_connection_string_component(
     value: &str,
     field: &str,

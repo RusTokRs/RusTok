@@ -119,7 +119,7 @@ maintainer executes the runner; PostgreSQL runtime proof remains open.
 
 ## Delivered results
 
-1. **Exact connector cursor ownership.** One cursor owns receive and exact scoped commit.
+1. **Exact connector cursor ownership.** One cursor owns receive and exact scoped commit via `ConnectorAckToken`.
 2. **Neutral durable poison result boundary.** PostgreSQL/SQLite DDL, private immutable
    source identity, empty/exact-byte retention, UUID/source collision validation,
    first-diagnostic retention, leased publication claims, terminal recognition, and
@@ -172,6 +172,7 @@ maintainer executes the runner; PostgreSQL runtime proof remains open.
 
 ## Verification
 
+- Contract tests cover every public use case.
 - `node scripts/verify/verify-iggy-connector-source.mjs`
 - `node scripts/verify/verify-iggy-consumer-poison-receipts.mjs`
 - `node scripts/verify/verify-iggy-consumer-poison-inspection.mjs`

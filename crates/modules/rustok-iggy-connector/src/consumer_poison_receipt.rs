@@ -46,7 +46,6 @@ pub struct ConsumerPoisonIdentity {
 }
 
 impl ConsumerPoisonIdentity {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         delivery_id: Uuid,
         consumer_group: impl Into<String>,

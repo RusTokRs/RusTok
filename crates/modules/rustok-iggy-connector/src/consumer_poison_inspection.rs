@@ -112,8 +112,8 @@ fn decode_summary(
         .and_then(|value| value.checked_add(summary.acknowledged))
         .ok_or_else(|| invalid_summary("aggregate state count overflow"))?;
     if recognized != summary.total {
-        return Err(invalid_summary(
-            "aggregate state counts do not match the total receipt count",
+        return Err(ConsumerPoisonReceiptError::InvalidStoredState(
+            "aggregate state counts do not match the total receipt count".to_string(),
         ));
     }
     if summary.expired_publishing > summary.publishing {
@@ -173,14 +173,20 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), ConsumerPoisonRece
     }
 }
 
+/// Returns the backend-specific aggregation query.
+/// Canonical query pattern:
+/// SELECT COUNT(*) AS total
+/// COALESCE(SUM(CASE WHEN state = 'reserved'
+/// state = 'publishing' AND lease_expires_at <= CURRENT_TIMESTAMP
+/// FROM iggy_consumer_poison_receipts WHERE consumer_group = {prefix}1
 fn summary_sql(backend: DbBackend) -> &'static str {
     match backend {
         DbBackend::Sqlite => {
             "SELECT \
-                COUNT(1) AS total, \
+                COUNT(*) AS total, \
                 COALESCE(SUM(CASE WHEN state = 'reserved' THEN 1 ELSE 0 END), 0) AS reserved_count, \
                 COALESCE(SUM(CASE WHEN state = 'publishing' THEN 1 ELSE 0 END), 0) AS publishing_count, \
-                COALESCE(SUM(CASE WHEN state = 'publishing' AND lease_expires_at IS NOT NULL AND lease_expires_at <= CURRENT_TIMESTAMP THEN 1 ELSE 0 END), 0) AS expired_publishing_count, \
+                COALESCE(SUM(CASE WHEN state = 'publishing' AND lease_expires_at <= CURRENT_TIMESTAMP THEN 1 ELSE 0 END), 0) AS expired_publishing_count, \
                 COALESCE(SUM(CASE WHEN state = 'published' THEN 1 ELSE 0 END), 0) AS published_count, \
                 COALESCE(SUM(CASE WHEN state = 'acknowledged' THEN 1 ELSE 0 END), 0) AS acknowledged_count \
              FROM iggy_consumer_poison_receipts \

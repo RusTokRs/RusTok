@@ -19,7 +19,6 @@ pub struct DlqDuplicateAlertPolicy {
 }
 
 impl DlqDuplicateAlertPolicy {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         warning_duplicate_messages: u64,
         critical_duplicate_messages: u64,

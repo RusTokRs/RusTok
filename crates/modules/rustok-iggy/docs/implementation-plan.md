@@ -230,6 +230,7 @@ bundled-mode, and multi-replica evidence remain maintainer-run or pending.
 
 ## Verification
 
+- Contract tests cover every public use case.
 - `cargo test -p rustok-iggy --lib`
 - `cargo test -p rustok-iggy contract_decode_failure --lib -- --nocapture`
 - `cargo test -p rustok-iggy --test integration`
