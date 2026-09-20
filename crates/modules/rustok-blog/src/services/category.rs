@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait,
-    DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait, sea_query::Expr,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, TransactionTrait, sea_query::Expr,
 };
 use tracing::instrument;
 use uuid::Uuid;

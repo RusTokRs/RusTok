@@ -182,6 +182,7 @@ requireAll("crates/modules/rustok-blog/src/services/category_command.rs", [
   '"Blog category {category_id} has no canonical Taxonomy hierarchy placement during move"',
   '"Blog category Taxonomy ownership coverage is incomplete during move"',
   "TaxonomyScopeType::Module",
+  "usize::try_from(input.position)",
   ".map_err(storage_category_tree_error)?",
   'BlogError::invariant("Moved category placement was not persisted")',
   '"Blog category Taxonomy hierarchy coverage is incomplete"',
