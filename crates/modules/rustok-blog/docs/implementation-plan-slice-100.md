@@ -1,8 +1,8 @@
 # rustok-blog implementation plan — slice 100 continuation
 
-Status: `storefront_comment_form_fallback_not_applicable_source_verified`.
+Status: `storefront_comment_form_active_source_verified`.
 
-This slice resolves the next cursor from slice 99 by re-auditing the active Blog storefront write surface. The result is a planning correction, not a new UI feature: the active storefront package is read-only and has no public comment form or create-comment transport to hide when the Comments owner is unavailable.
+This slice corrects the previous source inventory after a fresh audit of the active Blog storefront. The package does expose an authenticated public comment write surface alongside its dual-path public comment read surface.
 
 ## Re-audit result
 
@@ -12,16 +12,20 @@ The active `rustok-blog-storefront` package owns:
 - approved public Comments reads;
 - comment pagination;
 - GraphQL and native SSR fetch adapters;
-- Leptos rendering of the selected post and its public Comments projection.
+- a Blog-bound public comment composer;
+- GraphQL and native create-comment transports;
+- the authenticated command path into the Blog `CommentService` and Comments owner port.
 
-It does **not** own:
+The write path is bounded by the Blog adapter contract:
 
-- a `<form>` or `<textarea>` comment composer;
-- a submit handler;
-- `CreateCommentInput` in storefront source;
-- a storefront `create_comment` call;
-- a GraphQL storefront mutation;
-- a native server function that writes Comments.
+- authenticated actor and exact current tenant;
+- `comments:create` effective permission;
+- tenant-level Blog module enablement;
+- current enabled Blog channel;
+- published post visibility for that channel;
+- stable `command_id` passed through to Comments idempotency;
+- canonical `RichTextDocument` input;
+- owner-controlled `CommentService::create_public_comment`.
 
 The source inventory is retained in:
 
@@ -33,45 +37,42 @@ Fail-closed source guard:
 
 ## Planning correction
 
-The historical degraded mode `hide_comment_form` remains present in the Blog/Comments FBA registry vocabulary. Slice 100 does not perform a registry schema migration solely to delete that legacy token because the consumer/provider registries currently source-lock the same vocabulary and the token does not activate behavior.
+The historical degraded mode `hide_comment_form` remains present in the Blog/Comments FBA registry vocabulary, but it now maps to a real active storefront write surface rather than a nonexistent one.
 
-Its canonical interpretation is now:
+Its current interpretation is:
 
-`compatibility_vocabulary_not_active_storefront_surface`
+`fallback_vocabulary_for_active_storefront_write_surface`.
 
-and the concrete implementation result is:
+The concrete source result is:
 
-`comment_form_fallback = not_applicable_no_storefront_write_surface`.
+`comment_form_fallback = planned`.
 
-`blog-comments-runtime-fallback-smoke.json` therefore keeps the legacy `comment_form_fallback = planned` field only for current aggregate registry compatibility and adds an explicit interpretation pointer plus the authoritative `storefront_write_surface` block. The `create_comment` fallback case is marked `legacy_not_applicable_no_storefront_write_surface` and is not an implementation target.
-
-This avoids inventing a public comment composer merely to satisfy an obsolete fallback placeholder.
+The fallback behavior itself has not been runtime-verified and is not implemented by this slice. The existing cached public Comments snapshot remains the independently implemented degraded read path.
 
 ## Remaining storefront fallback boundary
 
-The only active degraded storefront Comments source result is the cached public read snapshot implemented in slice 99:
+The active degraded storefront Comments source result is the cached public read snapshot:
 
-- live approved read refreshes the snapshot best-effort;
+- live approved reads refresh the snapshot best-effort;
 - `ExternalService` and `Timeout` may consume an exact valid snapshot;
 - stale data preserves `UNAVAILABLE` / `TIMEOUT` and is disclosed as cached;
 - all other errors remain fail-closed;
 - GraphQL and native SSR use the same snapshot policy and host cache capability.
 
-Its source is ready, but cached read fallback runtime evidence is still maintainer-owned and pending. The broad `fallback_smoke.status = planned` now means **cached read fallback runtime evidence**, not a missing comment-form implementation.
+The active comment-form degraded mode is a separate planned boundary. No claim of runtime fallback execution is made.
 
 ## Preserved boundaries
 
-Slice 100 changes no production behavior and authorizes no new storefront write surface. It does not change:
+This correction does not invent or newly authorize a storefront write surface. It actualizes the surface already present in source and documentation.
+
+It does not change:
 
 - Comments owner storage or write APIs;
 - Blog CommentService write behavior;
-- GraphQL Blog mutations used by authenticated/admin surfaces;
+- GraphQL Blog mutation ownership;
 - native admin moderation surfaces;
-- storefront routing or UI behavior;
-- cache behavior from slice 99;
-- FFA/FBA promotion status.
-
-The existing `hide_comment_form` registry token remains compatibility vocabulary until a future deliberate registry schema migration can remove or rename it together on both consumer and provider sides.
+- tenant/channel enforcement on storefront writes;
+- cache behavior from slice 99.
 
 ## Validation boundary
 
@@ -85,6 +86,4 @@ No tests, Cargo commands, Node verifiers, formatting, builds, browser targets, H
 
 ## Next cursor
 
-Do not add a storefront comment form as fallback work. The storefront Comments fallback line now has no remaining source-only write task.
-
-The next result on this line is maintainer execution of cached read fallback runtime evidence. For additional autonomous Blog source work, return to the broader implementation plan and select an independent source gap rather than adding more fallback scaffolding.
+The storefront Comments write surface is now source-verified and machine-guarded. The remaining fallback work on this line is runtime evidence for cached public reads plus future deliberate implementation of the `hide_comment_form` degraded UI mode, with no promotion claim beyond `boundary_ready`.
