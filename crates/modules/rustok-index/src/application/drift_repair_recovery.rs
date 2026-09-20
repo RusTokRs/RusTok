@@ -37,19 +37,34 @@ pub struct IndexDriftRepairRecoveryCommand {
     reason: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexDriftRepairRecoveryCommandParams {
+    pub tenant_id: Uuid,
+    pub finding_id: Uuid,
+    pub command_id: Uuid,
+    pub payload_digest: String,
+    pub decision_id: Uuid,
+    pub expected_revision: Option<u64>,
+    pub action: IndexDriftRepairRecoveryAction,
+    pub actor: IndexDriftFindingLifecycleActor,
+    pub reason: String,
+}
+
 impl IndexDriftRepairRecoveryCommand {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        tenant_id: Uuid,
-        finding_id: Uuid,
-        command_id: Uuid,
-        payload_digest: impl Into<String>,
-        decision_id: Uuid,
-        expected_revision: Option<u64>,
-        action: IndexDriftRepairRecoveryAction,
-        actor: IndexDriftFindingLifecycleActor,
-        reason: impl Into<String>,
+        params: IndexDriftRepairRecoveryCommandParams,
     ) -> Result<Self, IndexDriftRepairRecoveryValidationError> {
+        let IndexDriftRepairRecoveryCommandParams {
+            tenant_id,
+            finding_id,
+            command_id,
+            payload_digest,
+            decision_id,
+            expected_revision,
+            action,
+            actor,
+            reason,
+        } = params;
         if tenant_id.is_nil() {
             return Err(IndexDriftRepairRecoveryValidationError::NilTenantId);
         }
@@ -62,11 +77,9 @@ impl IndexDriftRepairRecoveryCommand {
         if decision_id.is_nil() {
             return Err(IndexDriftRepairRecoveryValidationError::NilDecisionId);
         }
-        let payload_digest = payload_digest.into();
         if !valid_digest(&payload_digest) {
             return Err(IndexDriftRepairRecoveryValidationError::InvalidDigest);
         }
-        let reason = reason.into();
         if !valid_bounded_text(&reason, MAX_REASON_BYTES) {
             return Err(IndexDriftRepairRecoveryValidationError::InvalidReason);
         }

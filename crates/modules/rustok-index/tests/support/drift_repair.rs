@@ -570,15 +570,17 @@ pub fn recovery_command(
     reason: &str,
 ) -> TestResult<IndexDriftRepairRecoveryCommand> {
     Ok(IndexDriftRepairRecoveryCommand::new(
-        tenant_id,
-        finding_id,
-        command_id,
-        payload_digest,
-        decision_id,
-        expected_revision,
-        action,
-        actor(),
-        reason,
+        rustok_index::IndexDriftRepairRecoveryCommandParams {
+            tenant_id,
+            finding_id,
+            command_id,
+            payload_digest,
+            decision_id,
+            expected_revision,
+            action,
+            actor: actor(),
+            reason: reason.to_owned(),
+        },
     )?)
 }
 

@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `60 / 218` components audited (**28%**)
+- **Progress:** `62 / 218` components audited (**28%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -103,8 +103,8 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-iggy-connector](../../crates/modules/rustok-iggy-connector) | `modules` | 21 | 4,972 | 2026-09-20 18:48 | Eliminated allow(clippy::too_many_arguments) in ConsumerPoisonIdentity, removed dead create_and_connect stub, replaced allow(dead_code) with cfg(any(feature = iggy, test)), all 40 migration + unit tests passed, clippy clean |
 | [x] | [admin](../../crates/modules/rustok-iggy-connector/admin) | `modules` | 7 | 612 | 2026-09-20 18:48 | Verified leptos iggy connector admin UI package, zero suppressions/unwraps, all tests passed, clippy clean |
 | [x] | [next-admin](../../crates/modules/rustok-iggy-connector/next-admin) | `modules` | 5 | 367 | 2026-09-20 18:48 | Verified iggy connector next-admin components and typed API contract, zero suppressions |
-| [ ] | [rustok-index](../../crates/modules/rustok-index) | `modules` | 138 | 57,313 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-index/admin) | `modules` | 9 | 2,180 | None |  |
+| [x] | [rustok-index](../../crates/modules/rustok-index) | `modules` | 138 | 57,313 | 2026-09-20 19:50 | Eliminated 6 allow suppressions via typed IndexReconciliationBudget, ProductTestSchemas, PartitionAdmissionPolicyParams, PartitionShadowEvidenceParams, and IndexDriftRepairRecoveryCommandParams, resolved dead_code on ReconciliationLease.schema, all 320+ tests passed, clippy clean |
+| [x] | [admin](../../crates/modules/rustok-index/admin) | `modules` | 9 | 2,180 | 2026-09-20 19:50 | Verified index admin package, zero suppressions/unwraps, all 7 tests passed, clippy clean |
 | [ ] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 35 | 12,002 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-inventory/admin) | `modules` | 10 | 4,267 | None |  |
 | [ ] | [rustok-marketplace](../../crates/modules/rustok-marketplace) | `modules` | 10 | 1,485 | None |  |

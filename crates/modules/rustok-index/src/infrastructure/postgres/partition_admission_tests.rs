@@ -1,24 +1,24 @@
 use super::{
     PartitionAdmissionError, PartitionAdmissionOutcome, PartitionAdmissionPolicy,
-    PartitionAdmissionReason, PartitionBaselineEvidence, PartitionEvidence,
-    PartitionMeasurementCoverage, PartitionShadowEvidence, PartitionStrategy,
-    evaluate_partition_admission,
+    PartitionAdmissionPolicyParams, PartitionAdmissionReason, PartitionBaselineEvidence,
+    PartitionEvidence, PartitionMeasurementCoverage, PartitionShadowEvidence,
+    PartitionShadowEvidenceParams, PartitionStrategy, evaluate_partition_admission,
 };
 
 const EVIDENCE_ID: &str = "1111111111111111111111111111111111111111111111111111111111111111";
 
 fn policy() -> PartitionAdmissionPolicy {
-    PartitionAdmissionPolicy::new(
-        1_000_000,
-        4 * 1024 * 1024 * 1024,
-        16,
-        10_000,
-        500,
-        500,
-        11_000,
-        15_000,
-        250,
-    )
+    PartitionAdmissionPolicy::new(PartitionAdmissionPolicyParams {
+        minimum_total_rows: 1_000_000,
+        minimum_total_bytes: 4 * 1024 * 1024 * 1024,
+        minimum_distinct_tenants: 16,
+        required_tenant_predicate_coverage_bps: 10_000,
+        maximum_query_p95_regression_bps: 500,
+        maximum_mutation_p95_regression_bps: 500,
+        maximum_wal_amplification_bps: 11_000,
+        maximum_partition_size_to_mean_bps: 15_000,
+        maximum_cutover_lock_ms: 250,
+    })
     .unwrap()
 }
 
@@ -35,22 +35,22 @@ fn baseline() -> PartitionBaselineEvidence {
 }
 
 fn shadow() -> PartitionShadowEvidence {
-    PartitionShadowEvidence::new(
-        EVIDENCE_ID,
-        PartitionStrategy::tenant_hash(16).unwrap(),
-        PartitionMeasurementCoverage::new(3, 3, 3, 1),
-        true,
-        true,
-        true,
-        true,
-        0,
-        0,
-        100,
-        200,
-        10_500,
-        12_000,
-        100,
-    )
+    PartitionShadowEvidence::new(PartitionShadowEvidenceParams {
+        evidence_id: EVIDENCE_ID.to_owned(),
+        strategy: PartitionStrategy::tenant_hash(16).unwrap(),
+        measurement_coverage: PartitionMeasurementCoverage::new(3, 3, 3, 1),
+        entity_digest_matches: true,
+        link_digest_matches: true,
+        shadow_caught_up: true,
+        foreign_keys_validated: true,
+        orphan_links: 0,
+        query_plan_regressions: 0,
+        query_p95_regression_bps: 100,
+        mutation_p95_regression_bps: 200,
+        wal_amplification_bps: 10_500,
+        maximum_partition_size_to_mean_bps: 12_000,
+        cutover_lock_ms: 100,
+    })
     .unwrap()
 }
 
@@ -106,22 +106,22 @@ fn admitted_plan_is_stable_and_shadow_only() {
 #[test]
 fn incomplete_or_regressed_evidence_keeps_storage_unpartitioned() {
     let baseline = PartitionBaselineEvidence::new(100, 50, 1024, 512, 4, 9_500).unwrap();
-    let shadow = PartitionShadowEvidence::new(
-        EVIDENCE_ID,
-        PartitionStrategy::tenant_hash(16).unwrap(),
-        PartitionMeasurementCoverage::new(0, 0, 0, 0),
-        false,
-        false,
-        false,
-        false,
-        7,
-        2,
-        800,
-        900,
-        12_000,
-        20_000,
-        500,
-    )
+    let shadow = PartitionShadowEvidence::new(PartitionShadowEvidenceParams {
+        evidence_id: EVIDENCE_ID.to_owned(),
+        strategy: PartitionStrategy::tenant_hash(16).unwrap(),
+        measurement_coverage: PartitionMeasurementCoverage::new(0, 0, 0, 0),
+        entity_digest_matches: false,
+        link_digest_matches: false,
+        shadow_caught_up: false,
+        foreign_keys_validated: false,
+        orphan_links: 7,
+        query_plan_regressions: 2,
+        query_p95_regression_bps: 800,
+        mutation_p95_regression_bps: 900,
+        wal_amplification_bps: 12_000,
+        maximum_partition_size_to_mean_bps: 20_000,
+        cutover_lock_ms: 500,
+    })
     .unwrap();
     let outcome =
         evaluate_partition_admission(&policy(), &PartitionEvidence::new(baseline, shadow)).unwrap();
@@ -204,11 +204,31 @@ fn policy_strategy_and_evidence_validation_fail_closed() {
         Err(PartitionAdmissionError::InvalidModulus)
     );
     assert!(matches!(
-        PartitionAdmissionPolicy::new(0, 1, 2, 10_000, 0, 0, 10_000, 10_000, 1),
+        PartitionAdmissionPolicy::new(PartitionAdmissionPolicyParams {
+            minimum_total_rows: 0,
+            minimum_total_bytes: 1,
+            minimum_distinct_tenants: 2,
+            required_tenant_predicate_coverage_bps: 10_000,
+            maximum_query_p95_regression_bps: 0,
+            maximum_mutation_p95_regression_bps: 0,
+            maximum_wal_amplification_bps: 10_000,
+            maximum_partition_size_to_mean_bps: 10_000,
+            maximum_cutover_lock_ms: 1,
+        }),
         Err(PartitionAdmissionError::InvalidPolicy(_))
     ));
     assert!(matches!(
-        PartitionAdmissionPolicy::new(1, 1, 2, 9_999, 0, 0, 10_000, 10_000, 1),
+        PartitionAdmissionPolicy::new(PartitionAdmissionPolicyParams {
+            minimum_total_rows: 1,
+            minimum_total_bytes: 1,
+            minimum_distinct_tenants: 2,
+            required_tenant_predicate_coverage_bps: 9_999,
+            maximum_query_p95_regression_bps: 0,
+            maximum_mutation_p95_regression_bps: 0,
+            maximum_wal_amplification_bps: 10_000,
+            maximum_partition_size_to_mean_bps: 10_000,
+            maximum_cutover_lock_ms: 1,
+        }),
         Err(PartitionAdmissionError::InvalidPolicy(_))
     ));
     assert!(matches!(
@@ -216,22 +236,22 @@ fn policy_strategy_and_evidence_validation_fail_closed() {
         Err(PartitionAdmissionError::InvalidEvidence(_))
     ));
     assert!(matches!(
-        PartitionShadowEvidence::new(
-            "not-a-sha256",
-            PartitionStrategy::tenant_hash(2).unwrap(),
-            PartitionMeasurementCoverage::new(1, 1, 1, 1),
-            true,
-            true,
-            true,
-            true,
-            0,
-            0,
-            0,
-            0,
-            10_000,
-            10_000,
-            1,
-        ),
+        PartitionShadowEvidence::new(PartitionShadowEvidenceParams {
+            evidence_id: "not-a-sha256".to_owned(),
+            strategy: PartitionStrategy::tenant_hash(2).unwrap(),
+            measurement_coverage: PartitionMeasurementCoverage::new(1, 1, 1, 1),
+            entity_digest_matches: true,
+            link_digest_matches: true,
+            shadow_caught_up: true,
+            foreign_keys_validated: true,
+            orphan_links: 0,
+            query_plan_regressions: 0,
+            query_p95_regression_bps: 0,
+            mutation_p95_regression_bps: 0,
+            wal_amplification_bps: 10_000,
+            maximum_partition_size_to_mean_bps: 10_000,
+            cutover_lock_ms: 1,
+        }),
         Err(PartitionAdmissionError::InvalidEvidence(_))
     ));
 }

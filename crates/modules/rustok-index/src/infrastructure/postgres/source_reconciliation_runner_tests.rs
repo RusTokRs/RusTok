@@ -17,8 +17,8 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::{
-    IndexReconciliationRunError, IndexReconciliationRunRequest, IndexReconciliationRunStatus,
-    PostgresIndexReconciliationRunner,
+    IndexReconciliationBudget, IndexReconciliationRunError, IndexReconciliationRunRequest,
+    IndexReconciliationRunStatus, PostgresIndexReconciliationRunner,
 };
 use crate::{
     EntityKey, EntityName, FieldCardinality, FieldName, IndexField, IndexModule, IndexMutation,
@@ -196,11 +196,7 @@ impl Fixture {
             Uuid::parse_str(TENANT).unwrap(),
             schema_ref(),
             worker,
-            1,
-            max_pages,
-            1,
-            pass_count,
-            Duration::from_secs(60),
+            IndexReconciliationBudget::new(1, max_pages, 1, pass_count, Duration::from_secs(60)),
         )
         .unwrap()
     }
@@ -519,11 +515,7 @@ fn reconciliation_request_bounds_pages_passes_and_heartbeat_cadence() {
             tenant_id,
             schema_ref(),
             "worker-a",
-            10,
-            0,
-            1,
-            2,
-            Duration::from_secs(60),
+            IndexReconciliationBudget::new(10, 0, 1, 2, Duration::from_secs(60)),
         )
         .is_err()
     );
@@ -532,11 +524,7 @@ fn reconciliation_request_bounds_pages_passes_and_heartbeat_cadence() {
             tenant_id,
             schema_ref(),
             "worker-a",
-            10,
-            2,
-            3,
-            2,
-            Duration::from_secs(60),
+            IndexReconciliationBudget::new(10, 2, 3, 2, Duration::from_secs(60)),
         )
         .is_err()
     );
@@ -545,11 +533,7 @@ fn reconciliation_request_bounds_pages_passes_and_heartbeat_cadence() {
             tenant_id,
             schema_ref(),
             "worker-a",
-            10,
-            2,
-            1,
-            0,
-            Duration::from_secs(60),
+            IndexReconciliationBudget::new(10, 2, 1, 0, Duration::from_secs(60)),
         )
         .is_err()
     );
@@ -558,11 +542,7 @@ fn reconciliation_request_bounds_pages_passes_and_heartbeat_cadence() {
             tenant_id,
             schema_ref(),
             "worker-a",
-            10,
-            2,
-            1,
-            9,
-            Duration::from_secs(60),
+            IndexReconciliationBudget::new(10, 2, 1, 9, Duration::from_secs(60)),
         )
         .is_err()
     );

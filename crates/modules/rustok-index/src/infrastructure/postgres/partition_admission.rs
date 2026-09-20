@@ -30,6 +30,19 @@ impl PartitionStrategy {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PartitionAdmissionPolicyParams {
+    pub minimum_total_rows: u64,
+    pub minimum_total_bytes: u64,
+    pub minimum_distinct_tenants: u64,
+    pub required_tenant_predicate_coverage_bps: u32,
+    pub maximum_query_p95_regression_bps: u32,
+    pub maximum_mutation_p95_regression_bps: u32,
+    pub maximum_wal_amplification_bps: u32,
+    pub maximum_partition_size_to_mean_bps: u32,
+    pub maximum_cutover_lock_ms: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PartitionAdmissionPolicy {
     minimum_total_rows: u64,
@@ -44,18 +57,18 @@ pub struct PartitionAdmissionPolicy {
 }
 
 impl PartitionAdmissionPolicy {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        minimum_total_rows: u64,
-        minimum_total_bytes: u64,
-        minimum_distinct_tenants: u64,
-        required_tenant_predicate_coverage_bps: u32,
-        maximum_query_p95_regression_bps: u32,
-        maximum_mutation_p95_regression_bps: u32,
-        maximum_wal_amplification_bps: u32,
-        maximum_partition_size_to_mean_bps: u32,
-        maximum_cutover_lock_ms: u64,
-    ) -> Result<Self, PartitionAdmissionError> {
+    pub fn new(params: PartitionAdmissionPolicyParams) -> Result<Self, PartitionAdmissionError> {
+        let PartitionAdmissionPolicyParams {
+            minimum_total_rows,
+            minimum_total_bytes,
+            minimum_distinct_tenants,
+            required_tenant_predicate_coverage_bps,
+            maximum_query_p95_regression_bps,
+            maximum_mutation_p95_regression_bps,
+            maximum_wal_amplification_bps,
+            maximum_partition_size_to_mean_bps,
+            maximum_cutover_lock_ms,
+        } = params;
         if minimum_total_rows == 0 {
             return Err(PartitionAdmissionError::InvalidPolicy(
                 "minimum_total_rows must be positive",
@@ -241,25 +254,42 @@ pub struct PartitionShadowEvidence {
     cutover_lock_ms: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PartitionShadowEvidenceParams {
+    pub evidence_id: String,
+    pub strategy: PartitionStrategy,
+    pub measurement_coverage: PartitionMeasurementCoverage,
+    pub entity_digest_matches: bool,
+    pub link_digest_matches: bool,
+    pub shadow_caught_up: bool,
+    pub foreign_keys_validated: bool,
+    pub orphan_links: u64,
+    pub query_plan_regressions: u32,
+    pub query_p95_regression_bps: u32,
+    pub mutation_p95_regression_bps: u32,
+    pub wal_amplification_bps: u32,
+    pub maximum_partition_size_to_mean_bps: u32,
+    pub cutover_lock_ms: u64,
+}
+
 impl PartitionShadowEvidence {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        evidence_id: impl Into<String>,
-        strategy: PartitionStrategy,
-        measurement_coverage: PartitionMeasurementCoverage,
-        entity_digest_matches: bool,
-        link_digest_matches: bool,
-        shadow_caught_up: bool,
-        foreign_keys_validated: bool,
-        orphan_links: u64,
-        query_plan_regressions: u32,
-        query_p95_regression_bps: u32,
-        mutation_p95_regression_bps: u32,
-        wal_amplification_bps: u32,
-        maximum_partition_size_to_mean_bps: u32,
-        cutover_lock_ms: u64,
-    ) -> Result<Self, PartitionAdmissionError> {
-        let evidence_id = evidence_id.into();
+    pub fn new(params: PartitionShadowEvidenceParams) -> Result<Self, PartitionAdmissionError> {
+        let PartitionShadowEvidenceParams {
+            evidence_id,
+            strategy,
+            measurement_coverage,
+            entity_digest_matches,
+            link_digest_matches,
+            shadow_caught_up,
+            foreign_keys_validated,
+            orphan_links,
+            query_plan_regressions,
+            query_p95_regression_bps,
+            mutation_p95_regression_bps,
+            wal_amplification_bps,
+            maximum_partition_size_to_mean_bps,
+            cutover_lock_ms,
+        } = params;
         validate_evidence_id(&evidence_id)?;
         if wal_amplification_bps == 0 {
             return Err(PartitionAdmissionError::InvalidEvidence(

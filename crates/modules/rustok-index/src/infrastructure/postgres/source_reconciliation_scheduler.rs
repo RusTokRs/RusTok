@@ -18,8 +18,8 @@ use crate::{
 };
 
 use super::{
-    IndexReconciliationRunError, IndexReconciliationRunRequest, IndexReconciliationRunStatus,
-    PostgresIndexReconciliationRunner,
+    IndexReconciliationBudget, IndexReconciliationRunError, IndexReconciliationRunRequest,
+    IndexReconciliationRunStatus, PostgresIndexReconciliationRunner,
 };
 
 pub const INDEX_RECONCILIATION_WORKER: &str = "index_reconciliation";
@@ -91,11 +91,13 @@ impl IndexReconciliationSchedulerPolicy {
             Uuid::from_u128(1),
             schema,
             INDEX_RECONCILIATION_WORKER,
-            page_limit,
-            max_pages,
-            heartbeat_every_pages,
-            1,
-            lease_duration,
+            IndexReconciliationBudget::new(
+                page_limit,
+                max_pages,
+                heartbeat_every_pages,
+                1,
+                lease_duration,
+            ),
         )?;
         Ok(Self {
             page_limit,
@@ -303,11 +305,13 @@ impl ModuleWorkHandler for PostgresIndexReconciliationWorkAdapter {
             item.tenant_id,
             schema,
             format!("index-reconciliation-{}", invocation_id.simple()),
-            self.policy.page_limit(),
-            self.policy.max_pages(),
-            self.policy.heartbeat_every_pages(),
-            pass_count,
-            self.policy.lease_duration(),
+            IndexReconciliationBudget::new(
+                self.policy.page_limit(),
+                self.policy.max_pages(),
+                self.policy.heartbeat_every_pages(),
+                pass_count,
+                self.policy.lease_duration(),
+            ),
         )
         .map_err(|_| ModuleWorkError::Handler(RUN_FAILED_CODE.to_owned()))?;
         let outcome = self
@@ -393,11 +397,7 @@ fn decode_due_work(
         tenant_id,
         schema.clone(),
         INDEX_RECONCILIATION_WORKER,
-        1,
-        1,
-        1,
-        request.pass_count,
-        Duration::from_secs(1),
+        IndexReconciliationBudget::new(1, 1, 1, request.pass_count, Duration::from_secs(1)),
     )
     .map_err(|_| invalid_stored_job())?;
     Ok(DueReconciliationWork {

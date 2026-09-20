@@ -30,6 +30,33 @@ const MAX_WORKER_ID_BYTES: usize = 191;
 const MAX_ERROR_CODE_BYTES: usize = 128;
 const MAX_LEASE_SECONDS: u64 = 86_400;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IndexReconciliationBudget {
+    pub page_limit: usize,
+    pub max_pages: usize,
+    pub heartbeat_every_pages: usize,
+    pub pass_count: u32,
+    pub lease_duration: Duration,
+}
+
+impl IndexReconciliationBudget {
+    pub fn new(
+        page_limit: usize,
+        max_pages: usize,
+        heartbeat_every_pages: usize,
+        pass_count: u32,
+        lease_duration: Duration,
+    ) -> Self {
+        Self {
+            page_limit,
+            max_pages,
+            heartbeat_every_pages,
+            pass_count,
+            lease_duration,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexReconciliationRunRequest {
     tenant_id: Uuid,
@@ -43,17 +70,19 @@ pub struct IndexReconciliationRunRequest {
 }
 
 impl IndexReconciliationRunRequest {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         tenant_id: Uuid,
         schema: SchemaRef,
         worker_id: impl Into<String>,
-        page_limit: usize,
-        max_pages: usize,
-        heartbeat_every_pages: usize,
-        pass_count: u32,
-        lease_duration: Duration,
+        budget: IndexReconciliationBudget,
     ) -> Result<Self, IndexReconciliationRunError> {
+        let IndexReconciliationBudget {
+            page_limit,
+            max_pages,
+            heartbeat_every_pages,
+            pass_count,
+            lease_duration,
+        } = budget;
         IndexSourceScanRequest::new(tenant_id, schema.clone(), None, page_limit)
             .map_err(IndexReconciliationRunError::InvalidPageRequest)?;
         if !(1..=MAX_PAGES_PER_RUN).contains(&max_pages) {
@@ -339,7 +368,7 @@ impl PostgresIndexReconciliationRunner {
 
             let scan_request = IndexSourceScanRequest::new(
                 request.tenant_id,
-                request.schema.clone(),
+                lease.schema.clone(),
                 state.source_cursor.clone(),
                 request.page_limit,
             )
@@ -466,7 +495,6 @@ struct ReconciliationAcquireRequest {
 struct ReconciliationLease {
     tenant_id: Uuid,
     job_id: Uuid,
-    #[allow(dead_code)]
     schema: SchemaRef,
     source_name: String,
     worker_id: String,

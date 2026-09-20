@@ -258,11 +258,7 @@ fn request(tenant_id: Uuid, worker_id: &str) -> IndexReconciliationRunRequest {
         tenant_id,
         schema_ref(),
         worker_id,
-        1,
-        1,
-        1,
-        1,
-        Duration::from_secs(60),
+        rustok_index::IndexReconciliationBudget::new(1, 1, 1, 1, Duration::from_secs(60)),
     )
     .expect("fixture reconciliation request must be valid")
 }

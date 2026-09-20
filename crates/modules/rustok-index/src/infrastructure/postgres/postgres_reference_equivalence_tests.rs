@@ -238,6 +238,11 @@ impl Fixture {
         let p3 = Uuid::from_u128(103);
         let p4 = Uuid::from_u128(104);
 
+        let product_schemas = ProductTestSchemas {
+            product: &product,
+            channel: &channel,
+            variant: &variant,
+        };
         let records = vec![
             channel_record(&channel, c1, "retail"),
             channel_record(&channel, c2, "wholesale"),
@@ -264,9 +269,7 @@ impl Fixture {
                 &["featured"],
             ),
             product_record(
-                &product,
-                &channel,
-                &variant,
+                product_schemas,
                 p1,
                 10,
                 IndexValue::String("Alpha".to_owned()),
@@ -274,9 +277,7 @@ impl Fixture {
                 &[v1, v2],
             ),
             product_record(
-                &product,
-                &channel,
-                &variant,
+                product_schemas,
                 p2,
                 20,
                 IndexValue::String("Beta".to_owned()),
@@ -284,9 +285,7 @@ impl Fixture {
                 &[v3],
             ),
             product_record(
-                &product,
-                &channel,
-                &variant,
+                product_schemas,
                 p3,
                 15,
                 IndexValue::Null,
@@ -294,9 +293,7 @@ impl Fixture {
                 &[v4],
             ),
             product_record(
-                &product,
-                &channel,
-                &variant,
+                product_schemas,
                 p4,
                 5,
                 IndexValue::String("Delta".to_owned()),
@@ -408,11 +405,15 @@ fn variant_record(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[derive(Clone, Copy)]
+struct ProductTestSchemas<'a> {
+    product: &'a SchemaRef,
+    channel: &'a SchemaRef,
+    variant: &'a SchemaRef,
+}
+
 fn product_record(
-    product: &SchemaRef,
-    channel: &SchemaRef,
-    variant: &SchemaRef,
+    schemas: ProductTestSchemas<'_>,
     entity_id: Uuid,
     score: i64,
     title: IndexValue,
@@ -422,7 +423,7 @@ fn product_record(
     IndexRecord {
         key: EntityKey {
             tenant_id: TENANT,
-            schema: product.clone(),
+            schema: schemas.product.clone(),
             entity_id,
             locale: Some(locale()),
         },
@@ -437,7 +438,7 @@ fn product_record(
             IndexLinkValue {
                 name: link("channel"),
                 targets: vec![LinkedEntityKey {
-                    schema: channel.clone(),
+                    schema: schemas.channel.clone(),
                     entity_id: channel_id,
                     locale: None,
                 }],
@@ -447,7 +448,7 @@ fn product_record(
                 targets: variant_ids
                     .iter()
                     .map(|entity_id| LinkedEntityKey {
-                        schema: variant.clone(),
+                        schema: schemas.variant.clone(),
                         entity_id: *entity_id,
                         locale: Some(locale()),
                     })

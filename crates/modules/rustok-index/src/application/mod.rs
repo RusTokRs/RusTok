@@ -100,10 +100,11 @@ pub use drift_repair::{
 pub use drift_repair_recovery::{
     IndexDriftAuthorizedRepairRecoveryCommand, IndexDriftRepairRecoveryAction,
     IndexDriftRepairRecoveryAuthorization, IndexDriftRepairRecoveryAuthorizer,
-    IndexDriftRepairRecoveryCommand, IndexDriftRepairRecoveryFailure,
-    IndexDriftRepairRecoveryFailureError, IndexDriftRepairRecoveryFailureKind,
-    IndexDriftRepairRecoveryOutcome, IndexDriftRepairRecoveryReceipt,
-    IndexDriftRepairRecoveryService, IndexDriftRepairRecoveryState, IndexDriftRepairRecoveryStore,
+    IndexDriftRepairRecoveryCommand, IndexDriftRepairRecoveryCommandParams,
+    IndexDriftRepairRecoveryFailure, IndexDriftRepairRecoveryFailureError,
+    IndexDriftRepairRecoveryFailureKind, IndexDriftRepairRecoveryOutcome,
+    IndexDriftRepairRecoveryReceipt, IndexDriftRepairRecoveryService,
+    IndexDriftRepairRecoveryState, IndexDriftRepairRecoveryStore,
     IndexDriftRepairRecoveryStoreOutcome, IndexDriftRepairRecoveryValidationError,
 };
 pub use localized_cursor::{

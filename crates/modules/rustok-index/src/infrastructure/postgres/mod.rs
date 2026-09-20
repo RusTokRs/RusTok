@@ -112,9 +112,10 @@ pub use mutation_store::{
 };
 pub use partition_admission::{
     PartitionAdmissionError, PartitionAdmissionOutcome, PartitionAdmissionPolicy,
-    PartitionAdmissionReason, PartitionBaselineEvidence, PartitionEvidence,
-    PartitionMeasurementCoverage, PartitionRelationPlan, PartitionShadowEvidence,
-    PartitionShadowPlan, PartitionStrategy, evaluate_partition_admission,
+    PartitionAdmissionPolicyParams, PartitionAdmissionReason, PartitionBaselineEvidence,
+    PartitionEvidence, PartitionMeasurementCoverage, PartitionRelationPlan,
+    PartitionShadowEvidence, PartitionShadowEvidenceParams, PartitionShadowPlan,
+    PartitionStrategy, evaluate_partition_admission,
 };
 pub use query_admission::{
     PostgresIndexQueryAdmissionCatalog, PostgresIndexQueryAdmissionDescriptor,
@@ -167,9 +168,9 @@ pub use source_reconciliation_retry::{
     PostgresIndexReconciliationRetryStore,
 };
 pub use source_reconciliation_runner::{
-    IndexReconciliationCancelOutcome, IndexReconciliationRunError, IndexReconciliationRunOutcome,
-    IndexReconciliationRunRequest, IndexReconciliationRunStatus, IndexReconciliationTerminalState,
-    PostgresIndexReconciliationRunner,
+    IndexReconciliationBudget, IndexReconciliationCancelOutcome, IndexReconciliationRunError,
+    IndexReconciliationRunOutcome, IndexReconciliationRunRequest, IndexReconciliationRunStatus,
+    IndexReconciliationTerminalState, PostgresIndexReconciliationRunner,
 };
 #[cfg(test)]
 pub(crate) use source_reconciliation_scheduler::IndexReconciliationWorkRegistration;
