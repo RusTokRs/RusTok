@@ -13,6 +13,7 @@ pub mod migrations;
 mod module_term_lookup;
 pub mod module_term_mutation;
 mod normalization;
+mod owner_category_hierarchy_mutation;
 mod owner_category_read;
 mod owner_category_revision;
 mod owner_category_route_sync;
@@ -44,6 +45,10 @@ pub use module_term_mutation::{
     lock_module_term_in_tx, update_module_term_in_tx,
 };
 pub use normalization::{normalize_term_locale, normalize_term_route_key};
+pub use owner_category_hierarchy_mutation::{
+    delete_module_category_placement_and_compact_in_tx,
+    reorder_module_category_siblings_in_tx,
+};
 pub use owner_category_read::{TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader};
 pub use owner_category_revision::{
     MAX_TAXONOMY_CATEGORY_OWNER_PAGE, TaxonomyCategoryOwnerRevision,

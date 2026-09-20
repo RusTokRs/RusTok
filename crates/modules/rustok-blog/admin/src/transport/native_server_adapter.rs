@@ -107,6 +107,13 @@ async fn native_context() -> Result<NativeContext, ServerFnError> {
             "Authenticated actor is not bound to the current tenant",
         ));
     }
+
+    match rustok_api::is_tenant_module_enabled(runtime.db(), tenant.id, "blog").await {
+        Ok(true) => {}
+        Ok(false) => return Err(ServerFnError::new("Blog module is not enabled")),
+        Err(_) => return Err(public_internal_error()),
+    }
+
     let event_bus = runtime
         .shared_get::<TransactionalEventBus>()
         .ok_or_else(public_internal_error)?;

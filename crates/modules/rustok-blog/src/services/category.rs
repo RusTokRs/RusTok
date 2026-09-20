@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait,
-    DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait, sea_query::Expr,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, TransactionTrait, sea_query::Expr,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -15,7 +15,7 @@ use crate::dto::{CreateCategoryInput, MAX_BLOG_CATEGORY_TREE_NODES, UpdateCatego
 use crate::entities::blog_category;
 use crate::error::{BlogError, BlogResult};
 use crate::services::{category_taxonomy_sync, rbac::enforce_scope};
-use rustok_taxonomy::entities::taxonomy_category_hierarchy;
+use rustok_taxonomy::{TaxonomyOwnerCategoryReader, TaxonomyScopeType};
 
 /// Blog-owned Category command core.
 ///
@@ -64,8 +64,6 @@ impl CategoryService {
             Self::ensure_exists_in_tx(&txn, tenant_id, parent_id).await?;
         }
         ensure_hierarchy_coverage_in_tx(&txn, tenant_id).await?;
-        canonicalize_siblings_for_insert_in_tx(&txn, tenant_id, parent_id, requested_position)
-            .await?;
 
         blog_category::ActiveModel {
             id: Set(id),
@@ -89,6 +87,15 @@ impl CategoryService {
             name,
             slug,
             description,
+        )
+        .await?;
+
+        canonicalize_siblings_for_insert_in_tx(
+            &txn,
+            tenant_id,
+            id,
+            parent_id,
+            requested_position,
         )
         .await?;
 
@@ -126,6 +133,25 @@ impl CategoryService {
             .one(&txn)
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
+
+        // Fail closed on missing/foreign canonical ownership; update must never recreate a Taxonomy Category.
+        let category_ids = [category_id];
+        let canonical = TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
+            &txn,
+            tenant_id,
+            TaxonomyScopeType::Module,
+            Some(category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
+            Some(&category_ids),
+            &locale,
+            None,
+        )
+        .await
+        .map_err(BlogError::from)?;
+        if canonical.len() != 1 {
+            return Err(BlogError::invariant(format!(
+                "Blog category {category_id} is missing canonical Taxonomy ownership or hierarchy",
+            )));
+        }
 
         let next_resource_revision = next_category_revision(&category)?;
         let now = Utc::now().fixed_offset();
@@ -187,15 +213,12 @@ impl CategoryService {
             }
         };
 
-        let placement = taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, category_id))
-            .one(&txn)
-            .await?
-            .ok_or_else(|| {
-                BlogError::invariant(format!(
-                    "Blog category {category_id} has no canonical Taxonomy hierarchy placement"
-                ))
-            })?;
-        let (parent_id, position) = (placement.parent_term_id, placement.position);
+        let placement = canonical.into_iter().next().ok_or_else(|| {
+            BlogError::invariant(format!(
+                "Blog category {category_id} has no canonical Taxonomy hierarchy placement"
+            ))
+        })?;
+        let (parent_id, position) = (placement.parent_id, placement.position);
 
         category_taxonomy_sync::sync_category_copy_in_tx(
             &txn,
@@ -338,42 +361,49 @@ async fn ensure_hierarchy_coverage_in_tx(
     Ok(())
 }
 
-async fn load_siblings_in_tx(
+async fn canonicalize_siblings_for_insert_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
+    category_id: Uuid,
     parent_id: Option<Uuid>,
-) -> BlogResult<Vec<taxonomy_category_hierarchy::Model>> {
-    let blog_category_ids = blog_category::Entity::find()
+    requested_position: i32,
+) -> BlogResult<()> {
+    let category_ids = blog_category::Entity::find()
         .filter(blog_category::Column::TenantId.eq(tenant_id))
         .all(txn)
         .await?
         .into_iter()
-        .map(|c| c.id)
+        .map(|category| category.id)
         .collect::<Vec<_>>();
 
-    let mut query = taxonomy_category_hierarchy::Entity::find()
-        .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
-        .filter(taxonomy_category_hierarchy::Column::TermId.is_in(blog_category_ids));
-    query = match parent_id {
-        Some(parent_id) => {
-            query.filter(taxonomy_category_hierarchy::Column::ParentTermId.eq(parent_id))
-        }
-        None => query.filter(taxonomy_category_hierarchy::Column::ParentTermId.is_null()),
-    };
-    Ok(query
-        .order_by_asc(taxonomy_category_hierarchy::Column::Position)
-        .order_by_asc(taxonomy_category_hierarchy::Column::TermId)
-        .all(txn)
-        .await?)
-}
+    let canonical = TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
+        txn,
+        tenant_id,
+        TaxonomyScopeType::Module,
+        Some(category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
+        Some(&category_ids),
+        PLATFORM_FALLBACK_LOCALE,
+        None,
+    )
+    .await
+    .map_err(BlogError::from)?;
+    if canonical.len() != category_ids.len() {
+        return Err(BlogError::invariant(
+            "Blog category Taxonomy hierarchy coverage is incomplete after create",
+        ));
+    }
 
-async fn canonicalize_siblings_for_insert_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    parent_id: Option<Uuid>,
-    requested_position: i32,
-) -> BlogResult<()> {
-    let siblings = load_siblings_in_tx(txn, tenant_id, parent_id).await?;
+    let mut siblings = canonical
+        .into_iter()
+        .filter(|category| category.parent_id == parent_id && category.id != category_id)
+        .map(|category| (category.position, category.id))
+        .collect::<Vec<_>>();
+    siblings.sort_by(|(left_position, left_id), (right_position, right_id)| {
+        left_position
+            .cmp(right_position)
+            .then_with(|| left_id.cmp(right_id))
+    });
+
     let insertion_index = usize::try_from(requested_position)
         .map_err(|_| BlogError::validation("Category position cannot be negative"))?;
     if insertion_index > siblings.len() {
@@ -382,24 +412,17 @@ async fn canonicalize_siblings_for_insert_in_tx(
             siblings.len()
         )));
     }
+    siblings.insert(insertion_index, category_id);
 
-    for (index, sibling) in siblings.into_iter().enumerate() {
-        let desired_index = if index >= insertion_index {
-            index.checked_add(1).ok_or_else(|| {
-                BlogError::validation("Category sibling position exceeds usize range")
-            })?
-        } else {
-            index
-        };
-        let desired_position = i32::try_from(desired_index)
-            .map_err(|_| BlogError::validation("Category sibling position exceeds i32 range"))?;
-        if sibling.position != desired_position {
-            let mut active: taxonomy_category_hierarchy::ActiveModel = sibling.into();
-            active.position = Set(desired_position);
-            active.update(txn).await?;
-        }
-    }
-    Ok(())
+    rustok_taxonomy::reorder_module_category_siblings_in_tx(
+        txn,
+        tenant_id,
+        category_taxonomy_sync::BLOG_TAXONOMY_SCOPE,
+        parent_id,
+        &siblings,
+    )
+    .await
+    .map_err(BlogError::from)
 }
 
 fn validate_category_name(name: &str) -> BlogResult<()> {
