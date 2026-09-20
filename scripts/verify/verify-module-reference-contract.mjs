@@ -309,8 +309,11 @@ requireAll("crates/modules/rustok-blog/src/module.rs", [
   "Action::Manage",
 ]);
 requireAll("crates/modules/rustok-blog/src/module.rs", [
+  'fn slug(&self) ->',
   '"blog"',
+  'fn name(&self) ->',
   '"Blog"',
+  'fn description(&self) ->',
   '"Posts, Comments, Categories, Tags"',
   "Permission::BLOG_POSTS_CREATE",
   "Permission::BLOG_POSTS_READ",
