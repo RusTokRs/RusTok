@@ -24,24 +24,28 @@ async fn seller_event_timeline_is_bounded_newest_first_and_tenant_scoped() {
 
     insert_event(
         &db,
-        tenant_id,
-        seller_id,
-        Some(Uuid::new_v4()),
-        Some("en"),
-        "created",
-        "command",
-        now - chrono::Duration::seconds(1),
+        TestEventParams {
+            tenant_id,
+            seller_id,
+            actor_id: Some(Uuid::new_v4()),
+            locale: Some("en"),
+            event_kind: "created",
+            provenance: "command",
+            created_at: now - chrono::Duration::seconds(1),
+        },
     )
     .await;
     insert_event(
         &db,
-        tenant_id,
-        seller_id,
-        Some(Uuid::new_v4()),
-        Some("en"),
-        "suspended",
-        "command",
-        now,
+        TestEventParams {
+            tenant_id,
+            seller_id,
+            actor_id: Some(Uuid::new_v4()),
+            locale: Some("en"),
+            event_kind: "suspended",
+            provenance: "command",
+            created_at: now,
+        },
     )
     .await;
 
@@ -69,13 +73,15 @@ async fn seller_event_attribution_constraint_accepts_truthful_provenance_only() 
 
     insert_event(
         &db,
-        tenant_id,
-        seller_id,
-        None,
-        None,
-        "legacy_suspension_snapshot",
-        "legacy_snapshot",
-        now,
+        TestEventParams {
+            tenant_id,
+            seller_id,
+            actor_id: None,
+            locale: None,
+            event_kind: "legacy_suspension_snapshot",
+            provenance: "legacy_snapshot",
+            created_at: now,
+        },
     )
     .await;
 
@@ -344,28 +350,31 @@ async fn insert_seller_with_state(
     seller_id
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn insert_event(
-    db: &DatabaseConnection,
+struct TestEventParams<'a> {
     tenant_id: Uuid,
     seller_id: Uuid,
     actor_id: Option<Uuid>,
-    locale: Option<&str>,
-    event_kind: &str,
-    provenance: &str,
+    locale: Option<&'a str>,
+    event_kind: &'a str,
+    provenance: &'a str,
     created_at: chrono::DateTime<chrono::FixedOffset>,
+}
+
+async fn insert_event(
+    db: &DatabaseConnection,
+    params: TestEventParams<'_>,
 ) {
     seller_event::ActiveModel {
         id: Set(Uuid::new_v4()),
-        tenant_id: Set(tenant_id),
-        seller_id: Set(seller_id),
-        actor_id: Set(actor_id),
-        event_kind: Set(event_kind.to_string()),
-        locale: Set(locale.map(str::to_string)),
-        provenance: Set(provenance.to_string()),
+        tenant_id: Set(params.tenant_id),
+        seller_id: Set(params.seller_id),
+        actor_id: Set(params.actor_id),
+        event_kind: Set(params.event_kind.to_string()),
+        locale: Set(params.locale.map(str::to_string)),
+        provenance: Set(params.provenance.to_string()),
         note: Set(None),
         metadata: Set(serde_json::json!({})),
-        created_at: Set(created_at),
+        created_at: Set(params.created_at),
     }
     .insert(db)
     .await

@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use std::fmt::{Display, Formatter};
 
-use crate::model::{MarketplaceSellerAdminEvent, MarketplaceSellerAdminEventHistory};
+use crate::model::MarketplaceSellerAdminEventHistory;
 
 #[derive(Debug, Clone)]
 pub struct NativeMarketplaceSellerEventHistoryError(pub String);

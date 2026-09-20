@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `64 / 218` components audited (**29%**)
+- **Progress:** `73 / 218` components audited (**33%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -107,15 +107,15 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [admin](../../crates/modules/rustok-index/admin) | `modules` | 9 | 2,180 | 2026-09-20 19:50 | Verified index admin package, zero suppressions/unwraps, all 7 tests passed, clippy clean |
 | [x] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 35 | 12,002 | 2026-09-20 20:09 | Eliminated 5 allow suppressions (removed deprecated attributes on trait and introduced LocalReservationOutcomeParams), fixed whitespace padding in inventory_policy_allows_backorder, all 28 tests passed, clippy clean |
 | [x] | [admin](../../crates/modules/rustok-inventory/admin) | `modules` | 10 | 4,267 | 2026-09-20 20:09 | Synchronized boundary tests and documentation with canonical Product catalog service owner reads, all 57 tests passed, zero suppressions, clippy clean |
-| [ ] | [rustok-marketplace](../../crates/modules/rustok-marketplace) | `modules` | 10 | 1,485 | None |  |
-| [ ] | [rustok-marketplace-allocation](../../crates/modules/rustok-marketplace-allocation) | `modules` | 12 | 1,476 | None |  |
-| [ ] | [rustok-marketplace-commission](../../crates/modules/rustok-marketplace-commission) | `modules` | 16 | 2,586 | None |  |
-| [ ] | [rustok-marketplace-ledger](../../crates/modules/rustok-marketplace-ledger) | `modules` | 28 | 6,426 | None |  |
-| [ ] | [rustok-marketplace-listing](../../crates/modules/rustok-marketplace-listing) | `modules` | 31 | 6,385 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-marketplace-listing/admin) | `modules` | 9 | 1,903 | None |  |
-| [ ] | [rustok-marketplace-payout](../../crates/modules/rustok-marketplace-payout) | `modules` | 13 | 1,641 | None |  |
-| [ ] | [rustok-marketplace-seller](../../crates/modules/rustok-marketplace-seller) | `modules` | 48 | 10,637 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-marketplace-seller/admin) | `modules` | 13 | 2,378 | None |  |
+| [x] | [rustok-marketplace](../../crates/modules/rustok-marketplace) | `modules` | 10 | 1,485 | 2026-09-20 20:55 | Verified marketplace orchestration & reversal protocols, zero suppressions/unwraps, all 5 unit + orchestration tests passed, clippy clean |
+| [x] | [rustok-marketplace-allocation](../../crates/modules/rustok-marketplace-allocation) | `modules` | 12 | 1,476 | 2026-09-20 20:55 | Verified multi-vendor allocation batching, zero suppressions/unwraps, all tests passed, clippy clean |
+| [x] | [rustok-marketplace-commission](../../crates/modules/rustok-marketplace-commission) | `modules` | 16 | 2,586 | 2026-09-20 20:55 | Verified commission calculation engine and rule precedence, zero suppressions/unwraps, all 3 tests passed, clippy clean |
+| [x] | [rustok-marketplace-ledger](../../crates/modules/rustok-marketplace-ledger) | `modules` | 28 | 6,426 | 2026-09-20 20:55 | Replaced 3 allow(too_many_arguments) suppressions with typed LedgerTransactionContext, ReversalOperationContext, and BalanceTransferOperationContext, explicitly bound DatabaseBackend::MySql in immutability migration, all 7 tests passed, clippy clean |
+| [x] | [rustok-marketplace-listing](../../crates/modules/rustok-marketplace-listing) | `modules` | 31 | 6,385 | 2026-09-20 20:55 | Replaced 6 allow(too_many_arguments) with AppendListingEventParams, CreateListingTransactionParams, UpdateTermsTransactionParams, TransitionTransactionParams, ReviewTransactionParams, and LegacySnapshotInput, all 6 tests passed, clippy clean |
+| [x] | [admin](../../crates/modules/rustok-marketplace-listing/admin) | `modules` | 9 | 1,903 | 2026-09-20 20:55 | Replaced 2 allow(too_many_arguments) with CreateListingFormSignals and DetailFormSignals, test passed, clippy clean |
+| [x] | [rustok-marketplace-payout](../../crates/modules/rustok-marketplace-payout) | `modules` | 13 | 1,641 | 2026-09-20 20:55 | Fixed SeaORM table name mapping in m20260719_000001_create_marketplace_payouts migration, all tests passed, clippy clean |
+| [x] | [rustok-marketplace-seller](../../crates/modules/rustok-marketplace-seller) | `modules` | 48 | 10,637 | 2026-09-20 20:55 | Eliminated allow(dead_code) by removing duplicate dead prose projection, replaced allow(too_many_arguments) with CommandEventParams, LegacySnapshotInput, and TestEventParams, un-nested collapsible if, all 14 tests passed, clippy clean |
+| [x] | [admin](../../crates/modules/rustok-marketplace-seller/admin) | `modules` | 13 | 2,378 | 2026-09-20 20:55 | Replaced 2 allow(too_many_arguments) with CreateSellerFormSignals and SellerDetailFormSignals, removed unused event import, test passed, clippy clean |
 | [ ] | [rustok-mcp](../../crates/modules/rustok-mcp) | `modules` | 26 | 6,856 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-mcp/admin) | `modules` | 7 | 1,829 | None |  |
 | [ ] | [rustok-media](../../crates/modules/rustok-media) | `modules` | 42 | 12,022 | None |  |

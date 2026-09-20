@@ -201,10 +201,12 @@ pub fn MarketplaceSellerAdmin() -> impl IntoView {
                     {render_create_form(
                         russian,
                         busy,
-                        create_handle,
-                        create_display_name,
-                        create_legal_name,
-                        create_owner_user_id,
+                        CreateSellerFormSignals {
+                            handle: create_handle,
+                            display_name: create_display_name,
+                            legal_name: create_legal_name,
+                            owner_user_id: create_owner_user_id,
+                        },
                         create_command,
                     )}
                 </aside>
@@ -223,12 +225,14 @@ pub fn MarketplaceSellerAdmin() -> impl IntoView {
                                 russian,
                                 detail,
                                 busy,
-                                profile_display_name,
-                                profile_legal_name,
-                                onboarding_note,
-                                suspension_reason,
-                                member_user_id,
-                                member_role,
+                                SellerDetailFormSignals {
+                                    profile_display_name,
+                                    profile_legal_name,
+                                    onboarding_note,
+                                    suspension_reason,
+                                    member_user_id,
+                                    member_role,
+                                },
                                 run_command.clone(),
                             ).into_any(),
                             Err(transport_error) => view! {
@@ -329,16 +333,34 @@ fn render_directory(
     .into_any()
 }
 
-#[allow(clippy::too_many_arguments)]
-fn render_create_form(
-    russian: bool,
-    busy: RwSignal<bool>,
+#[derive(Clone, Copy)]
+struct CreateSellerFormSignals {
     handle: RwSignal<String>,
     display_name: RwSignal<String>,
     legal_name: RwSignal<String>,
     owner_user_id: RwSignal<String>,
+}
+
+#[derive(Clone, Copy)]
+struct SellerDetailFormSignals {
+    profile_display_name: RwSignal<String>,
+    profile_legal_name: RwSignal<String>,
+    onboarding_note: RwSignal<String>,
+    suspension_reason: RwSignal<String>,
+    member_user_id: RwSignal<String>,
+    member_role: RwSignal<String>,
+}
+
+fn render_create_form(
+    russian: bool,
+    busy: RwSignal<bool>,
+    form: CreateSellerFormSignals,
     run_command: Arc<dyn Fn(MarketplaceSellerAdminCommand) + Send + Sync>,
 ) -> impl IntoView {
+    let handle = form.handle;
+    let display_name = form.display_name;
+    let legal_name = form.legal_name;
+    let owner_user_id = form.owner_user_id;
     view! {
         <section class="marketplace-seller-admin__create">
             <h2>{label(russian, "Create seller", "Создать продавца")}</h2>
@@ -381,19 +403,19 @@ fn render_create_form(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn render_detail(
     russian: bool,
     detail: MarketplaceSellerAdminDetail,
     busy: RwSignal<bool>,
-    profile_display_name: RwSignal<String>,
-    profile_legal_name: RwSignal<String>,
-    onboarding_note: RwSignal<String>,
-    suspension_reason: RwSignal<String>,
-    member_user_id: RwSignal<String>,
-    member_role: RwSignal<String>,
+    form: SellerDetailFormSignals,
     run_command: Arc<dyn Fn(MarketplaceSellerAdminCommand) + Send + Sync>,
 ) -> impl IntoView {
+    let profile_display_name = form.profile_display_name;
+    let profile_legal_name = form.profile_legal_name;
+    let onboarding_note = form.onboarding_note;
+    let suspension_reason = form.suspension_reason;
+    let member_user_id = form.member_user_id;
+    let member_role = form.member_role;
     let seller = detail.seller;
     let seller_id = seller.id.clone();
     let profile_command = run_command.clone();

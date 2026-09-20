@@ -212,7 +212,6 @@ where
     .await
 }
 
-#[allow(clippy::collapsible_if)]
 pub(crate) async fn record_seller_translation_change_in_tx<C>(
     connection: &C,
     tenant_id: Uuid,
@@ -252,17 +251,18 @@ LIMIT 1
 "#
         }
     };
-    if let Some(previous) = PreviousChangeRow::find_by_statement(Statement::from_sql_and_values(
+    let previous_row = PreviousChangeRow::find_by_statement(Statement::from_sql_and_values(
         backend,
         previous_sql,
         vec![tenant_id.into(), seller_id.into()],
     ))
     .one(connection)
-    .await?
-    {
-        if previous.resource_revision == resource_revision
-            && MarketplaceSellerTranslationChangeLifecycle::parse(&previous.lifecycle)? == lifecycle
-        {
+    .await?;
+
+    if let Some(previous) = previous_row {
+        let previous_lifecycle =
+            MarketplaceSellerTranslationChangeLifecycle::parse(&previous.lifecycle)?;
+        if previous.resource_revision == resource_revision && previous_lifecycle == lifecycle {
             return Ok(());
         }
     }
