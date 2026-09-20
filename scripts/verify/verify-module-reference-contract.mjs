@@ -357,6 +357,12 @@ for (const path of rustFiles("crates/modules/rustok-blog/src/integrations")) {
   forbid(path, ["crate::entities", "crate::{entities", "crate::entities::"]);
 }
 
+requireAll("crates/modules/rustok-blog/src/module.rs", [
+  "register_seo_target_provider(extensions, seo_targets::BlogSeoTargetProvider)",
+  "register_reaction_subject_provider_factory(",
+  "reaction_subject::BlogReactionSubjectProviderFactory,",
+  "registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));",
+],);
 requireAll("crates/modules/rustok-blog/src/integrations/seo_targets.rs", [
   "let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());",
   "service.get_post_with_locale_fallback(",
