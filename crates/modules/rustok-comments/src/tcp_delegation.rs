@@ -163,6 +163,8 @@ impl CommentsTcpDelegationKeyring {
     }
 
     fn active_secret(&self) -> &CommentsTcpDelegationSecret {
+        // INVARIANT: `single` and `new` constructors guarantee `keys` contains `active_key_id`.
+        // `keys` is stored in an immutable Arc and cannot be modified after construction.
         self.keys
             .get(&self.active_key_id)
             .expect("validated delegation keyring must retain its active key")

@@ -105,8 +105,8 @@ fn comments_admin_native_only_exception_is_documented() {
     }
 
     for marker in [
-        "Отдельный GraphQL/REST fallback для этого UI не добавляется",
-        "зафиксированное исключение из общего dual-path правила",
+        "A separate GraphQL/REST fallback for this UI is not added",
+        "exception from the general dual-path rule",
     ] {
         assert!(
             module_docs.contains(marker),

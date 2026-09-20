@@ -81,11 +81,13 @@ async fn comments_threads_native(
             .list_threads(
                 tenant.id,
                 security_context(&auth),
-                page.max(1),
-                per_page.max(1),
-                Some(target_type.as_str()).filter(|value| !value.trim().is_empty()),
-                thread_status,
-                comment_status,
+                rustok_comments::ListThreadsFilter {
+                    page: page.max(1),
+                    per_page: per_page.max(1),
+                    target_type: Some(target_type).filter(|value| !value.trim().is_empty()),
+                    thread_status,
+                    comment_status,
+                },
             )
             .await
             .map_err(ServerFnError::new)?;
@@ -125,11 +127,13 @@ async fn comments_thread_detail_native(
             .get_thread_detail(
                 tenant.id,
                 security_context(&auth),
-                thread_id,
-                &locale,
-                Some(tenant.default_locale.as_str()),
-                page.max(1),
-                per_page.max(1),
+                rustok_comments::GetThreadDetailFilter {
+                    thread_id,
+                    locale,
+                    fallback_locale: Some(tenant.default_locale),
+                    page: page.max(1),
+                    per_page: per_page.max(1),
+                },
             )
             .await
             .map_err(ServerFnError::new)

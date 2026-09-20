@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `31 / 218` components audited (**14%**)
+- **Progress:** `34 / 218` components audited (**16%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -74,9 +74,9 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 18 | 3,643 | 2026-09-20 09:45 | Audited storefront transport & core: zero suppressions/unwraps, all 16 tests passed, clippy clean |
 | [x] | [rustok-channel](../../crates/modules/rustok-channel) | `modules` | 47 | 11,238 | 2026-09-20 10:05 | Added SQLite schema support in migrations 10-12, zero suppressions/unwraps, all 33 tests passed, clippy clean |
 | [x] | [admin](../../crates/modules/rustok-channel/admin) | `modules` | 14 | 5,226 | 2026-09-20 10:05 | Eliminated allow(too_many_arguments) with typed PolicyRuleFormSignals struct, all 7 tests passed, clippy clean |
-| [ ] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 38 | 8,889 | None |  |
-| [ ] | [rustok-comments-storefront-support](../../crates/modules/rustok-comments-storefront-support) | `modules` | 3 | 171 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 8 | 1,379 | None |  |
+| [x] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 38 | 8,889 | 2026-09-20 10:28 | Eliminated allow(too_many_arguments) with typed ListThreadsFilter and GetThreadDetailFilter, documented keyring invariant, all 20 tests passed, clippy clean |
+| [x] | [rustok-comments-storefront-support](../../crates/modules/rustok-comments-storefront-support) | `modules` | 3 | 171 | 2026-09-20 10:28 | Zero suppressions/unwraps, all 3 tests passed, clippy clean |
+| [x] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 8 | 1,379 | 2026-09-20 10:28 | Updated native server adapter callers to typed filters, English boundary test markers, all 13 tests passed, boundary script verified, clippy clean |
 | [ ] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 295 | 123,544 | None |  |
 | [ ] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 20 | 1,044 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 21 | 5,825 | None |  |

@@ -61,6 +61,24 @@ pub struct ListCommentsFilter {
     pub per_page: u64,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ListThreadsFilter {
+    pub page: u64,
+    pub per_page: u64,
+    pub target_type: Option<String>,
+    pub thread_status: Option<CommentThreadStatus>,
+    pub comment_status: Option<CommentStatus>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetThreadDetailFilter {
+    pub thread_id: Uuid,
+    pub locale: String,
+    pub fallback_locale: Option<String>,
+    pub page: u64,
+    pub per_page: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommentRecord {
     pub id: Uuid,

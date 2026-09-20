@@ -628,16 +628,11 @@ impl CommentsService {
     }
 
     #[instrument(skip(self, security))]
-    #[allow(clippy::too_many_arguments)]
     pub async fn list_threads(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
-        page: u64,
-        per_page: u64,
-        target_type: Option<&str>,
-        thread_status: Option<crate::dto::CommentThreadStatus>,
-        comment_status: Option<crate::dto::CommentStatus>,
+        filter: crate::dto::ListThreadsFilter,
     ) -> CommentsResult<(Vec<CommentThreadSummary>, u64)> {
         record_entrypoint("list_threads");
         let started = Instant::now();
@@ -649,16 +644,20 @@ impl CommentsService {
                 .order_by_desc(comment_thread::Column::LastCommentedAt)
                 .order_by_desc(comment_thread::Column::UpdatedAt);
 
-            if let Some(target_type) = target_type.map(str::trim).filter(|value| !value.is_empty())
+            if let Some(target_type) = filter
+                .target_type
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
             {
                 query = query.filter(comment_thread::Column::TargetType.eq(target_type));
             }
 
-            if let Some(thread_status) = thread_status {
+            if let Some(thread_status) = filter.thread_status {
                 query = query.filter(comment_thread::Column::Status.eq(thread_status));
             }
 
-            if let Some(comment_status) = comment_status {
+            if let Some(comment_status) = filter.comment_status {
                 query = query
                     .join(
                         JoinType::InnerJoin,
@@ -669,9 +668,9 @@ impl CommentsService {
                     .distinct();
             }
 
-            let paginator = query.paginate(&self.db, per_page.max(1));
+            let paginator = query.paginate(&self.db, filter.per_page.max(1));
             let total = paginator.num_items().await?;
-            let threads = paginator.fetch_page(page.saturating_sub(1)).await?;
+            let threads = paginator.fetch_page(filter.page.saturating_sub(1)).await?;
 
             Ok((
                 threads
@@ -687,24 +686,23 @@ impl CommentsService {
     }
 
     #[instrument(skip(self, security))]
-    #[allow(clippy::too_many_arguments)]
     pub async fn get_thread_detail(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
-        thread_id: Uuid,
-        locale: &str,
-        fallback_locale: Option<&str>,
-        page: u64,
-        per_page: u64,
+        filter: crate::dto::GetThreadDetailFilter,
     ) -> CommentsResult<CommentThreadDetail> {
         record_entrypoint("get_thread_detail");
         let started = Instant::now();
         let result = async {
             self.enforce_read_scope(&security, Action::Read)?;
-            let locale = normalize_locale(locale)?;
-            let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
-            let thread = comment_thread::Entity::find_by_id(thread_id)
+            let locale = normalize_locale(&filter.locale)?;
+            let fallback_locale = filter
+                .fallback_locale
+                .as_deref()
+                .map(normalize_locale)
+                .transpose()?;
+            let thread = comment_thread::Entity::find_by_id(filter.thread_id)
                 .filter(comment_thread::Column::TenantId.eq(tenant_id))
                 .one(&self.db)
                 .await?
@@ -718,9 +716,9 @@ impl CommentsService {
                 .filter(comment::Column::ThreadId.eq(thread.id))
                 .filter(comment::Column::DeletedAt.is_null())
                 .order_by_asc(comment::Column::Position)
-                .paginate(&self.db, per_page.max(1));
+                .paginate(&self.db, filter.per_page.max(1));
             let total_comments = paginator.num_items().await?;
-            let comments = paginator.fetch_page(page.saturating_sub(1)).await?;
+            let comments = paginator.fetch_page(filter.page.saturating_sub(1)).await?;
 
             let comment_ids = comments.iter().map(|item| item.id).collect::<Vec<_>>();
             let mut bodies_map: HashMap<Uuid, Vec<comment_body::Model>> = HashMap::new();

@@ -45,7 +45,8 @@ use sea_orm_migration::MigrationTrait;
 
 pub use dto::{
     CommentListItem, CommentRecord, CommentStatus, CommentThreadDetail, CommentThreadStatus,
-    CommentThreadSummary, CreateCommentInput, ListCommentsFilter, UpdateCommentInput,
+    CommentThreadSummary, CreateCommentInput, GetThreadDetailFilter, ListCommentsFilter,
+    ListThreadsFilter, UpdateCommentInput,
 };
 #[cfg(feature = "server")]
 pub use entities::*;
