@@ -476,6 +476,11 @@ requireAll("crates/modules/rustok-blog/storefront/src/transport/native_server_ad
   "request_context",
   ".is_some_and(|context| context.tenant_id != tenant_id)",
 ]);
+requireAll("crates/modules/rustok-blog/admin/src/transport/native_server_adapter.rs", [
+  "is_tenant_module_enabled(runtime.db(), tenant.id, \"blog\")",
+  'Ok(false) => return Err(ServerFnError::new("Blog module is not enabled"))',
+  "Err(_) => return Err(public_internal_error())",
+]);
 requireAll("crates/modules/rustok-comments/src/services.rs", [
   "Comment position is exhausted for thread",
   "active.comment_count = Set(thread.comment_count)",
