@@ -168,6 +168,7 @@ requireAll("crates/modules/rustok-blog/src/migrations/m20260919_000025_fix_blog_
   "ON DELETE SET NULL (category_id)",
   "DROP CONSTRAINT IF EXISTS",
   "Intentionally irreversible",
+  "Err(DbErr::Migration(",
 ]);
 forbid("crates/modules/rustok-blog/src/migrations/m20260919_000023_enforce_blog_post_category_tenant_integrity.rs", [
   "ON DELETE SET NULL;\n",
