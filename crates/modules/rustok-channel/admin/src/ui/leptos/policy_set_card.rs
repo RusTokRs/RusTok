@@ -36,6 +36,16 @@ pub(super) fn PolicySetCard(
     let locale = RwSignal::new(create_form_state.locale.clone());
     let surface = RwSignal::new(create_form_state.surface.clone());
     let oauth_app_id = RwSignal::new(create_form_state.oauth_app_id.clone());
+    let form_signals = PolicyRuleFormSignals {
+        priority,
+        is_active,
+        action_channel_id,
+        host_equals,
+        host_suffix,
+        locale,
+        surface,
+        oauth_app_id,
+    };
     let policy_set_id = policy_set.policy_set.id.clone();
     let policy_set_slug = policy_set.policy_set.slug.clone();
     let activate_ctx = StoredValue::new((
@@ -135,17 +145,7 @@ pub(super) fn PolicySetCard(
 
         if selected_policy_set_id.as_deref() != Some(policy_set_id.as_str()) {
             editing_rule_id.set(None);
-            apply_policy_rule_form_state(
-                priority,
-                is_active,
-                action_channel_id,
-                host_equals,
-                host_suffix,
-                locale,
-                surface,
-                oauth_app_id,
-                &create_form_state_for_selection,
-            );
+            form_signals.apply(&create_form_state_for_selection);
             return;
         }
 
@@ -158,46 +158,16 @@ pub(super) fn PolicySetCard(
                     editing_rule_id.set(Some(rule.id.clone()));
                     let edit_form_state =
                         policy_rule_edit_form_state(rule, &channels_for_selection);
-                    apply_policy_rule_form_state(
-                        priority,
-                        is_active,
-                        action_channel_id,
-                        host_equals,
-                        host_suffix,
-                        locale,
-                        surface,
-                        oauth_app_id,
-                        &edit_form_state,
-                    );
+                    form_signals.apply(&edit_form_state);
                 } else {
                     policy_selection_query_writer.clear_key(AdminQueryKey::PolicyRuleId.as_str());
                     editing_rule_id.set(None);
-                    apply_policy_rule_form_state(
-                        priority,
-                        is_active,
-                        action_channel_id,
-                        host_equals,
-                        host_suffix,
-                        locale,
-                        surface,
-                        oauth_app_id,
-                        &create_form_state_for_selection,
-                    );
+                    form_signals.apply(&create_form_state_for_selection);
                 }
             }
             None => {
                 editing_rule_id.set(None);
-                apply_policy_rule_form_state(
-                    priority,
-                    is_active,
-                    action_channel_id,
-                    host_equals,
-                    host_suffix,
-                    locale,
-                    surface,
-                    oauth_app_id,
-                    &create_form_state_for_selection,
-                );
+                form_signals.apply(&create_form_state_for_selection);
             }
         }
     });
@@ -252,17 +222,7 @@ pub(super) fn PolicySetCard(
                                 ));
                                 query_writer.clear_key(AdminQueryKey::PolicyRuleId.as_str());
                                 editing_rule_id.set(None);
-                                apply_policy_rule_form_state(
-                                    priority,
-                                    is_active,
-                                    action_channel_id,
-                                    host_equals,
-                                    host_suffix,
-                                    locale,
-                                    surface,
-                                    oauth_app_id,
-                                    &create_form_state,
-                                );
+                                form_signals.apply(&create_form_state);
                                 set_refresh_nonce.update(|value| *value += 1);
                             }
                             Err(err) => set_error.set(Some(err.to_string())),
@@ -710,17 +670,7 @@ pub(super) fn PolicySetCard(
                                 move |_| {
                                     query_writer.clear_key(AdminQueryKey::PolicyRuleId.as_str());
                                     editing_rule_id.set(None);
-                                    apply_policy_rule_form_state(
-                                        priority,
-                                        is_active,
-                                        action_channel_id,
-                                        host_equals,
-                                        host_suffix,
-                                        locale,
-                                        surface,
-                                        oauth_app_id,
-                                        &create_form_state,
-                                    );
+                                    form_signals.apply(&create_form_state);
                                 }
                             }
                         >

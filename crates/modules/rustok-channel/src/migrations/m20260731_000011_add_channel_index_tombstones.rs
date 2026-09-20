@@ -7,16 +7,12 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        if manager.get_database_backend() != DatabaseBackend::Postgres {
-            return Err(DbErr::Custom(
-                "rustok-channel migrations require PostgreSQL".to_owned(),
-            ));
-        }
-
-        manager
-            .get_connection()
-            .execute_unprepared(
-                r#"
+        match manager.get_database_backend() {
+            DatabaseBackend::Postgres => {
+                manager
+                    .get_connection()
+                    .execute_unprepared(
+                        r#"
 CREATE TABLE channel_index_tombstones (
     tenant_id UUID NOT NULL,
     channel_id UUID NOT NULL,
@@ -183,23 +179,40 @@ AFTER UPDATE OF id, tenant_id ON channels
 FOR EACH ROW
 EXECUTE FUNCTION rustok_channel_move_index_tombstone();
 "#,
-            )
-            .await?;
-
-        Ok(())
+                    )
+                    .await?;
+                Ok(())
+            }
+            DatabaseBackend::Sqlite => {
+                manager
+                    .get_connection()
+                    .execute_unprepared(
+                        r#"
+CREATE TABLE IF NOT EXISTS channel_index_tombstones (
+    tenant_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    source_version INTEGER NOT NULL,
+    deleted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tenant_id, channel_id)
+);
+"#,
+                    )
+                    .await?;
+                Ok(())
+            }
+            backend => Err(DbErr::Custom(format!(
+                "rustok-channel migrations require PostgreSQL or SQLite (got {backend:?})"
+            ))),
+        }
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        if manager.get_database_backend() != DatabaseBackend::Postgres {
-            return Err(DbErr::Custom(
-                "rustok-channel migrations require PostgreSQL".to_owned(),
-            ));
-        }
-
-        manager
-            .get_connection()
-            .execute_unprepared(
-                r#"
+        match manager.get_database_backend() {
+            DatabaseBackend::Postgres => {
+                manager
+                    .get_connection()
+                    .execute_unprepared(
+                        r#"
 DROP TRIGGER IF EXISTS trg_channels_move_index_tombstone ON channels;
 DROP TRIGGER IF EXISTS trg_channels_clear_index_tombstone ON channels;
 DROP TRIGGER IF EXISTS trg_channels_capture_index_tombstone ON channels;
@@ -212,9 +225,20 @@ DROP FUNCTION IF EXISTS rustok_channel_clear_superseded_index_tombstone(UUID, UU
 DROP FUNCTION IF EXISTS rustok_channel_store_index_tombstone(UUID, UUID, BIGINT);
 DROP TABLE IF EXISTS channel_index_tombstones;
 "#,
-            )
-            .await?;
-
-        Ok(())
+                    )
+                    .await?;
+                Ok(())
+            }
+            DatabaseBackend::Sqlite => {
+                manager
+                    .get_connection()
+                    .execute_unprepared("DROP TABLE IF EXISTS channel_index_tombstones;")
+                    .await?;
+                Ok(())
+            }
+            backend => Err(DbErr::Custom(format!(
+                "rustok-channel migrations require PostgreSQL or SQLite (got {backend:?})"
+            ))),
+        }
     }
 }

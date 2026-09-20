@@ -312,26 +312,29 @@ fn EmptyState(title: String, body: String) -> impl IntoView {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn apply_policy_rule_form_state(
-    priority: RwSignal<i32>,
-    is_active: RwSignal<bool>,
-    action_channel_id: RwSignal<String>,
-    host_equals: RwSignal<String>,
-    host_suffix: RwSignal<String>,
-    locale: RwSignal<String>,
-    surface: RwSignal<String>,
-    oauth_app_id: RwSignal<String>,
-    state: &PolicyRuleFormState,
-) {
-    priority.set(state.priority);
-    is_active.set(state.is_active);
-    action_channel_id.set(state.action_channel_id.clone());
-    host_equals.set(state.host_equals.clone());
-    host_suffix.set(state.host_suffix.clone());
-    locale.set(state.locale.clone());
-    surface.set(state.surface.clone());
-    oauth_app_id.set(state.oauth_app_id.clone());
+#[derive(Clone, Copy)]
+pub(crate) struct PolicyRuleFormSignals {
+    pub priority: RwSignal<i32>,
+    pub is_active: RwSignal<bool>,
+    pub action_channel_id: RwSignal<String>,
+    pub host_equals: RwSignal<String>,
+    pub host_suffix: RwSignal<String>,
+    pub locale: RwSignal<String>,
+    pub surface: RwSignal<String>,
+    pub oauth_app_id: RwSignal<String>,
+}
+
+impl PolicyRuleFormSignals {
+    pub fn apply(&self, state: &PolicyRuleFormState) {
+        self.priority.set(state.priority);
+        self.is_active.set(state.is_active);
+        self.action_channel_id.set(state.action_channel_id.clone());
+        self.host_equals.set(state.host_equals.clone());
+        self.host_suffix.set(state.host_suffix.clone());
+        self.locale.set(state.locale.clone());
+        self.surface.set(state.surface.clone());
+        self.oauth_app_id.set(state.oauth_app_id.clone());
+    }
 }
 
 fn policy_rule_summary(

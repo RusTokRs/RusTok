@@ -7,16 +7,12 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        if manager.get_database_backend() != DatabaseBackend::Postgres {
-            return Err(DbErr::Custom(
-                "rustok-channel migrations require PostgreSQL".to_owned(),
-            ));
-        }
-
-        manager
-            .get_connection()
-            .execute_unprepared(
-                r#"
+        match manager.get_database_backend() {
+            DatabaseBackend::Postgres => {
+                manager
+                    .get_connection()
+                    .execute_unprepared(
+                        r#"
 CREATE TABLE channel_index_identity_generations (
     tenant_id UUID PRIMARY KEY,
     generation BIGINT NOT NULL,
@@ -63,7 +59,7 @@ BEGIN
     UPDATE channel_index_identity_generations
        SET generation = previous_generation + 1,
            updated_at = CURRENT_TIMESTAMP
-     WHERE tenant_id = target_tenant_id;
+      WHERE tenant_id = target_tenant_id;
 END;
 $$;
 
@@ -137,30 +133,59 @@ BEGIN
 END;
 $$;
 "#,
-            )
-            .await?;
-
-        Ok(())
+                    )
+                    .await?;
+                Ok(())
+            }
+            DatabaseBackend::Sqlite => {
+                manager
+                    .get_connection()
+                    .execute_unprepared(
+                        r#"
+CREATE TABLE IF NOT EXISTS channel_index_identity_generations (
+    tenant_id TEXT PRIMARY KEY,
+    generation INTEGER NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"#,
+                    )
+                    .await?;
+                Ok(())
+            }
+            backend => Err(DbErr::Custom(format!(
+                "rustok-channel migrations require PostgreSQL or SQLite (got {backend:?})"
+            ))),
+        }
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        if manager.get_database_backend() != DatabaseBackend::Postgres {
-            return Err(DbErr::Custom(
-                "rustok-channel migrations require PostgreSQL".to_owned(),
-            ));
-        }
-
-        manager
-            .get_connection()
-            .execute_unprepared(
-                r#"
+        match manager.get_database_backend() {
+            DatabaseBackend::Postgres => {
+                manager
+                    .get_connection()
+                    .execute_unprepared(
+                        r#"
 DROP TRIGGER IF EXISTS trg_channels_track_index_identity_generation ON channels;
 DROP FUNCTION IF EXISTS rustok_channel_track_index_identity_generation();
 DROP FUNCTION IF EXISTS rustok_channel_bump_index_identity_generation(UUID);
 DROP TABLE IF EXISTS channel_index_identity_generations;
 "#,
-            )
-            .await?;
-        Ok(())
+                    )
+                    .await?;
+                Ok(())
+            }
+            DatabaseBackend::Sqlite => {
+                manager
+                    .get_connection()
+                    .execute_unprepared(
+                        "DROP TABLE IF EXISTS channel_index_identity_generations;",
+                    )
+                    .await?;
+                Ok(())
+            }
+            backend => Err(DbErr::Custom(format!(
+                "rustok-channel migrations require PostgreSQL or SQLite (got {backend:?})"
+            ))),
+        }
     }
 }
