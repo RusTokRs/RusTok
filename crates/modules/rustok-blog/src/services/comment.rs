@@ -75,6 +75,7 @@ impl CommentService {
         post_id: Uuid,
         input: CreateCommentInput,
     ) -> BlogResult<CommentResponse> {
+        enforce_scope(&security, Resource::Comments, Action::Create)?;
         self.ensure_post_exists(tenant_id, post_id).await?;
 
         if security.user_id.is_none() {
@@ -152,6 +153,7 @@ impl CommentService {
         security: SecurityContext,
         input: UpdateCommentInput,
     ) -> BlogResult<CommentResponse> {
+        enforce_scope(&security, Resource::Comments, Action::Update)?;
         let existing = self
             .comments_thread_port
             .get_comment(
@@ -256,6 +258,7 @@ impl CommentService {
         comment_id: Uuid,
         security: SecurityContext,
     ) -> BlogResult<()> {
+        enforce_scope(&security, Resource::Comments, Action::Delete)?;
         let existing = self
             .comments_thread_port
             .get_comment(
