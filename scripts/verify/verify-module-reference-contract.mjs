@@ -83,8 +83,10 @@ forbid("crates/modules/rustok-blog/src/dto/post.rs", [
   "pub search: Option<String>",
 ]);
 
-requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
-  "if post.version != version",
+requireOrdered("crates/modules/rustok-blog/src/services/post/commands.rs", "enforce_scope(&security, Resource::BlogPosts, Action::Update)?;", "let post = self.find_post(tenant_id, post_id).await?;");
+requireOrdered("crates/modules/rustok-blog/src/services/post/commands.rs", "enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;", "let post = self.find_post(tenant_id, post_id).await?");
+requireOrdered("crates/modules/rustok-blog/src/services/post/commands.rs", "enforce_scope(&security, Resource::BlogPosts, Action::Delete)?;", "let post = self.find_post(tenant_id, post_id).await?");
+
   "Column::Version.eq(version)",
   "ensure_transition(current, BlogPostStatus::Published)?",
   "ensure_transition(current, BlogPostStatus::Draft)?",
