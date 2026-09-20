@@ -507,14 +507,16 @@ impl ForumTopicRouteService {
     ) -> ForumResult<Uuid> {
         record_alias_in_tx(
             txn,
-            tenant_id,
-            topic_id,
-            locale,
-            slug,
-            StoredRouteDisposition::Redirect,
-            Some(target_topic_id),
-            Some(target_locale),
-            reason,
+            RecordTopicAliasParams {
+                tenant_id,
+                topic_id,
+                locale,
+                slug,
+                disposition: StoredRouteDisposition::Redirect,
+                target_topic_id: Some(target_topic_id),
+                target_locale: Some(target_locale),
+                reason,
+            },
         )
         .await
     }
@@ -529,14 +531,16 @@ impl ForumTopicRouteService {
     ) -> ForumResult<Uuid> {
         record_alias_in_tx(
             txn,
-            tenant_id,
-            topic_id,
-            locale,
-            slug,
-            StoredRouteDisposition::Gone,
-            None,
-            None,
-            reason,
+            RecordTopicAliasParams {
+                tenant_id,
+                topic_id,
+                locale,
+                slug,
+                disposition: StoredRouteDisposition::Gone,
+                target_topic_id: None,
+                target_locale: None,
+                reason,
+            },
         )
         .await
     }
@@ -1034,34 +1038,37 @@ fn stored_alias_from_row(row: QueryResult) -> ForumResult<StoredTopicRouteAlias>
     })
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn record_alias_in_tx(
-    txn: &DatabaseTransaction,
+struct RecordTopicAliasParams<'a> {
     tenant_id: Uuid,
     topic_id: Uuid,
-    locale: &str,
-    slug: &str,
+    locale: &'a str,
+    slug: &'a str,
     disposition: StoredRouteDisposition,
     target_topic_id: Option<Uuid>,
-    target_locale: Option<&str>,
-    reason: &str,
+    target_locale: Option<&'a str>,
+    reason: &'a str,
+}
+
+async fn record_alias_in_tx(
+    txn: &DatabaseTransaction,
+    params: RecordTopicAliasParams<'_>,
 ) -> ForumResult<Uuid> {
-    let locale = normalize_route_locale(locale)?;
-    let slug = normalize_route_slug(slug)?;
-    let short_id = ForumTopicRouteService::short_identity(topic_id);
-    let reason = normalize_alias_reason(reason)?;
-    let target_locale = target_locale.map(normalize_route_locale).transpose()?;
-    let disposition_value = match disposition {
+    let locale = normalize_route_locale(params.locale)?;
+    let slug = normalize_route_slug(params.slug)?;
+    let short_id = ForumTopicRouteService::short_identity(params.topic_id);
+    let reason = normalize_alias_reason(params.reason)?;
+    let target_locale = params.target_locale.map(normalize_route_locale).transpose()?;
+    let disposition_value = match params.disposition {
         StoredRouteDisposition::Redirect => "redirect",
         StoredRouteDisposition::Gone => "gone",
     };
-    match disposition {
+    match params.disposition {
         StoredRouteDisposition::Redirect
-            if target_topic_id.is_none() || target_locale.is_none() =>
+            if params.target_topic_id.is_none() || target_locale.is_none() =>
         {
             return Err(ForumError::TopicRouteResolutionConflict);
         }
-        StoredRouteDisposition::Gone if target_topic_id.is_some() || target_locale.is_some() => {
+        StoredRouteDisposition::Gone if params.target_topic_id.is_some() || target_locale.is_some() => {
             return Err(ForumError::TopicRouteResolutionConflict);
         }
         _ => {}
@@ -1080,14 +1087,14 @@ async fn record_alias_in_tx(
             ON CONFLICT (tenant_id, locale, short_id, slug) DO NOTHING
             "#,
             vec![
-                tenant_id.into(),
+                params.tenant_id.into(),
                 alias_id.into(),
-                topic_id.into(),
+                params.topic_id.into(),
                 locale.clone().into(),
                 short_id.clone().into(),
                 slug.clone().into(),
                 disposition_value.into(),
-                target_topic_id.into(),
+                params.target_topic_id.into(),
                 target_locale.clone().into(),
                 reason.clone().into(),
             ],
@@ -1103,14 +1110,14 @@ async fn record_alias_in_tx(
             ON CONFLICT (tenant_id, locale, short_id, slug) DO NOTHING
             "#,
             vec![
-                tenant_id.into(),
+                params.tenant_id.into(),
                 alias_id.into(),
-                topic_id.into(),
+                params.topic_id.into(),
                 locale.clone().into(),
                 short_id.clone().into(),
                 slug.clone().into(),
                 disposition_value.into(),
-                target_topic_id.into(),
+                params.target_topic_id.into(),
                 target_locale.clone().into(),
                 reason.clone().into(),
             ],
@@ -1119,14 +1126,14 @@ async fn record_alias_in_tx(
     };
     txn.execute_raw(statement).await?;
 
-    let aliases = load_route_aliases(txn, tenant_id, &locale, &short_id, &slug).await?;
+    let aliases = load_route_aliases(txn, params.tenant_id, &locale, &short_id, &slug).await?;
     let existing = match aliases.as_slice() {
         [alias] => alias,
         _ => return Err(ForumError::TopicRouteResolutionConflict),
     };
-    if existing.topic_id != topic_id
-        || existing.disposition != disposition
-        || existing.target_topic_id != target_topic_id
+    if existing.topic_id != params.topic_id
+        || existing.disposition != params.disposition
+        || existing.target_topic_id != params.target_topic_id
         || existing.target_locale != target_locale
         || existing.reason != reason
     {

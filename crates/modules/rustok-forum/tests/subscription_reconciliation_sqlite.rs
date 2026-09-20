@@ -1,7 +1,7 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
-    ForumModule, ForumSubscriptionDriftKind, ForumSubscriptionReconciliationService,
-    ForumSubscriptionTargetKind,
+    ForumModule, ForumSubscriptionDriftKind, ForumSubscriptionReconciliationCursors,
+    ForumSubscriptionReconciliationService, ForumSubscriptionTargetKind,
 };
 use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
@@ -168,7 +168,7 @@ async fn subscription_reconciliation_requires_manage_permissions() {
     // 1. Customer rejected
     let customer = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
     let err = service
-        .report_page(tenant_id, &customer, None, None, None, None, None)
+        .report_page(tenant_id, &customer, None, ForumSubscriptionReconciliationCursors::default())
         .await
         .expect_err("customer must be rejected");
     assert!(matches!(err, rustok_forum::ForumError::Forbidden(_)));
@@ -176,7 +176,7 @@ async fn subscription_reconciliation_requires_manage_permissions() {
     // 2. Anonymous rejected
     let anonymous = SecurityContext::new(UserRole::Customer, None);
     let err = service
-        .report_page(tenant_id, &anonymous, None, None, None, None, None)
+        .report_page(tenant_id, &anonymous, None, ForumSubscriptionReconciliationCursors::default())
         .await
         .expect_err("anonymous must be rejected");
     assert!(matches!(err, rustok_forum::ForumError::Forbidden(_)));
@@ -184,7 +184,7 @@ async fn subscription_reconciliation_requires_manage_permissions() {
     // 3. Admin succeeds
     let admin = SecurityContext::system();
     let report = service
-        .report_page(tenant_id, &admin, None, None, None, None, None)
+        .report_page(tenant_id, &admin, None, ForumSubscriptionReconciliationCursors::default())
         .await
         .expect("admin should succeed");
     assert!(report.is_clean());
@@ -212,7 +212,7 @@ async fn subscription_reconciliation_detects_clean_state_and_all_drifts_sqlite()
 
     // 1. Clean check
     let clean = service
-        .report_page(tenant_id, &admin, None, None, None, None, None)
+        .report_page(tenant_id, &admin, None, ForumSubscriptionReconciliationCursors::default())
         .await
         .expect("clean report");
     assert!(clean.is_clean());
@@ -243,7 +243,7 @@ async fn subscription_reconciliation_detects_clean_state_and_all_drifts_sqlite()
     .await;
 
     let drift1 = service
-        .report_page(tenant_id, &admin, None, None, None, None, None)
+        .report_page(tenant_id, &admin, None, ForumSubscriptionReconciliationCursors::default())
         .await
         .expect("drift report 1");
     let d1 = drift1
@@ -285,7 +285,7 @@ async fn subscription_reconciliation_detects_clean_state_and_all_drifts_sqlite()
     .unwrap();
 
     let drift2 = service
-        .report_page(tenant_id, &admin, None, None, None, None, None)
+        .report_page(tenant_id, &admin, None, ForumSubscriptionReconciliationCursors::default())
         .await
         .expect("drift report 2");
     let d2 = drift2
@@ -322,7 +322,7 @@ async fn subscription_reconciliation_detects_clean_state_and_all_drifts_sqlite()
     .unwrap();
 
     let drift3 = service
-        .report_page(tenant_id, &admin, None, None, None, None, None)
+        .report_page(tenant_id, &admin, None, ForumSubscriptionReconciliationCursors::default())
         .await
         .expect("drift report 3");
     let d3 = drift3
@@ -357,7 +357,7 @@ async fn subscription_reconciliation_detects_clean_state_and_all_drifts_sqlite()
     .unwrap();
 
     let drift4 = service
-        .report_page(tenant_id, &admin, None, None, None, None, None)
+        .report_page(tenant_id, &admin, None, ForumSubscriptionReconciliationCursors::default())
         .await
         .expect("drift report 4");
     let d4 = drift4
@@ -403,7 +403,7 @@ async fn subscription_reconciliation_pagination_and_composite_cursors_sqlite() {
 
     // Page 1: limit 2
     let page1 = service
-        .report_page(tenant_id, &admin, Some(2), None, None, None, None)
+        .report_page(tenant_id, &admin, Some(2), ForumSubscriptionReconciliationCursors::default())
         .await
         .expect("page 1 should succeed");
     assert_eq!(page1.effective_limit, 2);
@@ -414,19 +414,13 @@ async fn subscription_reconciliation_pagination_and_composite_cursors_sqlite() {
     assert!(page1.topic_cursor.is_some());
     assert!(page1.category_cursor.is_some());
 
-    let top_cursor = page1.topic_cursor.unwrap();
-    let cat_cursor = page1.category_cursor.unwrap();
-
     // Page 2: continue with cursors
     let page2 = service
         .report_page(
             tenant_id,
             &admin,
             Some(2),
-            Some(top_cursor.target_id),
-            Some(top_cursor.user_id),
-            Some(cat_cursor.target_id),
-            Some(cat_cursor.user_id),
+            ForumSubscriptionReconciliationCursors::new(page1.topic_cursor, page1.category_cursor),
         )
         .await
         .expect("page 2 should succeed");

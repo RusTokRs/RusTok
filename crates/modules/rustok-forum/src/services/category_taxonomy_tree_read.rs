@@ -182,18 +182,16 @@ impl CategoryTaxonomyTreeReadService {
         let mut visited = HashSet::with_capacity(nodes.len());
         let mut active_path = HashSet::new();
         let mut observed_max_depth = 0usize;
+        let mut ctx = CategoryTreeBuildContext {
+            nodes: &nodes,
+            children_by_parent: &children_by_parent,
+            active_path: &mut active_path,
+            visited: &mut visited,
+            observed_max_depth: &mut observed_max_depth,
+        };
         let mut roots = Vec::with_capacity(root_ids.len());
         for root_id in root_ids {
-            roots.push(build_node(
-                root_id,
-                0,
-                &nodes,
-                &children_by_parent,
-                &[],
-                &mut active_path,
-                &mut visited,
-                &mut observed_max_depth,
-            )?);
+            roots.push(build_node(root_id, 0, &[], &mut ctx)?);
         }
         if visited.len() != nodes.len() {
             return Err(ForumError::Validation(
@@ -268,41 +266,44 @@ fn bind_owner_projection(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+struct CategoryTreeBuildContext<'a> {
+    nodes: &'a HashMap<Uuid, CategoryTreeNode>,
+    children_by_parent: &'a HashMap<Option<Uuid>, Vec<Uuid>>,
+    active_path: &'a mut HashSet<Uuid>,
+    visited: &'a mut HashSet<Uuid>,
+    observed_max_depth: &'a mut usize,
+}
+
 fn build_node(
     category_id: Uuid,
     depth: usize,
-    nodes: &HashMap<Uuid, CategoryTreeNode>,
-    children_by_parent: &HashMap<Option<Uuid>, Vec<Uuid>>,
     parent_breadcrumbs: &[CategoryBreadcrumb],
-    active_path: &mut HashSet<Uuid>,
-    visited: &mut HashSet<Uuid>,
-    observed_max_depth: &mut usize,
+    ctx: &mut CategoryTreeBuildContext<'_>,
 ) -> ForumResult<CategoryTreeNode> {
     if depth > MAX_FORUM_CATEGORY_TREE_DEPTH {
         return Err(ForumError::Validation(format!(
             "Forum category tree exceeds the maximum depth of {MAX_FORUM_CATEGORY_TREE_DEPTH}"
         )));
     }
-    if !active_path.insert(category_id) {
+    if !ctx.active_path.insert(category_id) {
         return Err(ForumError::Validation(
             "Taxonomy-backed Forum category tree contains a hierarchy cycle".to_string(),
         ));
     }
-    if !visited.insert(category_id) {
-        active_path.remove(&category_id);
+    if !ctx.visited.insert(category_id) {
+        ctx.active_path.remove(&category_id);
         return Err(ForumError::Validation(
             "Taxonomy-backed Forum category tree contains a category more than once".to_string(),
         ));
     }
 
-    let mut node = nodes.get(&category_id).cloned().ok_or_else(|| {
+    let mut node = ctx.nodes.get(&category_id).cloned().ok_or_else(|| {
         ForumError::Validation(format!(
             "Taxonomy-backed Forum category tree references missing category {category_id}"
         ))
     })?;
     node.depth = depth as u16;
-    *observed_max_depth = (*observed_max_depth).max(depth);
+    *ctx.observed_max_depth = (*ctx.observed_max_depth).max(depth);
 
     let mut breadcrumbs = parent_breadcrumbs.to_vec();
     breadcrumbs.push(CategoryBreadcrumb {
@@ -312,7 +313,8 @@ fn build_node(
     });
     node.breadcrumbs = breadcrumbs.clone();
 
-    let child_ids = children_by_parent
+    let child_ids = ctx
+        .children_by_parent
         .get(&Some(category_id))
         .cloned()
         .unwrap_or_default();
@@ -320,21 +322,10 @@ fn build_node(
     node.has_children = !child_ids.is_empty();
     node.children = child_ids
         .into_iter()
-        .map(|child_id| {
-            build_node(
-                child_id,
-                depth + 1,
-                nodes,
-                children_by_parent,
-                &breadcrumbs,
-                active_path,
-                visited,
-                observed_max_depth,
-            )
-        })
+        .map(|child_id| build_node(child_id, depth + 1, &breadcrumbs, ctx))
         .collect::<ForumResult<Vec<_>>>()?;
 
-    active_path.remove(&category_id);
+    ctx.active_path.remove(&category_id);
     Ok(node)
 }
 

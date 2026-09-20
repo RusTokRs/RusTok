@@ -60,6 +60,28 @@ pub struct ForumSubscriptionCursor {
     pub user_id: Uuid,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ForumSubscriptionReconciliationCursors {
+    pub topic_after_target: Option<Uuid>,
+    pub topic_after_user: Option<Uuid>,
+    pub category_after_target: Option<Uuid>,
+    pub category_after_user: Option<Uuid>,
+}
+
+impl ForumSubscriptionReconciliationCursors {
+    pub fn new(
+        topic_cursor: Option<ForumSubscriptionCursor>,
+        category_cursor: Option<ForumSubscriptionCursor>,
+    ) -> Self {
+        Self {
+            topic_after_target: topic_cursor.map(|c| c.target_id),
+            topic_after_user: topic_cursor.map(|c| c.user_id),
+            category_after_target: category_cursor.map(|c| c.target_id),
+            category_after_user: category_cursor.map(|c| c.user_id),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ForumSubscriptionDrift {
     pub kind: ForumSubscriptionDriftKind,
@@ -114,16 +136,12 @@ impl ForumSubscriptionReconciliationService {
         Self { db }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn report_page(
         &self,
         tenant_id: Uuid,
         security: &SecurityContext,
         requested_limit: Option<u64>,
-        topic_after_target: Option<Uuid>,
-        topic_after_user: Option<Uuid>,
-        category_after_target: Option<Uuid>,
-        category_after_user: Option<Uuid>,
+        cursors: ForumSubscriptionReconciliationCursors,
     ) -> ForumResult<ForumSubscriptionReconciliationReport> {
         rustok_telemetry::metrics::record_module_entrypoint_call(
             "forum",
@@ -132,17 +150,7 @@ impl ForumSubscriptionReconciliationService {
         );
         let started_at = Instant::now();
         let result = match enforce_operations_scope(security) {
-            Ok(()) => {
-                self.report_inner(
-                    tenant_id,
-                    requested_limit,
-                    topic_after_target,
-                    topic_after_user,
-                    category_after_target,
-                    category_after_user,
-                )
-                .await
-            }
+            Ok(()) => self.report_inner(tenant_id, requested_limit, cursors).await,
             Err(error) => Err(error),
         };
         rustok_telemetry::metrics::record_span_duration(
@@ -163,21 +171,20 @@ impl ForumSubscriptionReconciliationService {
         result
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn report_inner(
         &self,
         tenant_id: Uuid,
         requested_limit: Option<u64>,
-        topic_after_target: Option<Uuid>,
-        topic_after_user: Option<Uuid>,
-        category_after_target: Option<Uuid>,
-        category_after_user: Option<Uuid>,
+        cursors: ForumSubscriptionReconciliationCursors,
     ) -> ForumResult<ForumSubscriptionReconciliationReport> {
-        let topic_after =
-            subscription_cursor(topic_after_target, topic_after_user, "topic subscription")?;
+        let topic_after = subscription_cursor(
+            cursors.topic_after_target,
+            cursors.topic_after_user,
+            "topic subscription",
+        )?;
         let category_after = subscription_cursor(
-            category_after_target,
-            category_after_user,
+            cursors.category_after_target,
+            cursors.category_after_user,
             "category subscription",
         )?;
 
@@ -238,10 +245,12 @@ impl ForumSubscriptionReconciliationService {
         let topic_rows = transaction
             .query_all_raw(subscription_statement(
                 backend,
-                TOPIC_SUBSCRIPTIONS_SQLITE,
-                TOPIC_SUBSCRIPTIONS_AFTER_SQLITE,
-                TOPIC_SUBSCRIPTIONS_POSTGRES,
-                TOPIC_SUBSCRIPTIONS_AFTER_POSTGRES,
+                SubscriptionQueryDialects {
+                    initial_sqlite: TOPIC_SUBSCRIPTIONS_SQLITE,
+                    after_sqlite: TOPIC_SUBSCRIPTIONS_AFTER_SQLITE,
+                    initial_postgres: TOPIC_SUBSCRIPTIONS_POSTGRES,
+                    after_postgres: TOPIC_SUBSCRIPTIONS_AFTER_POSTGRES,
+                },
                 tenant_id,
                 topic_after,
                 fetch_limit,
@@ -250,10 +259,12 @@ impl ForumSubscriptionReconciliationService {
         let category_rows = transaction
             .query_all_raw(subscription_statement(
                 backend,
-                CATEGORY_SUBSCRIPTIONS_SQLITE,
-                CATEGORY_SUBSCRIPTIONS_AFTER_SQLITE,
-                CATEGORY_SUBSCRIPTIONS_POSTGRES,
-                CATEGORY_SUBSCRIPTIONS_AFTER_POSTGRES,
+                SubscriptionQueryDialects {
+                    initial_sqlite: CATEGORY_SUBSCRIPTIONS_SQLITE,
+                    after_sqlite: CATEGORY_SUBSCRIPTIONS_AFTER_SQLITE,
+                    initial_postgres: CATEGORY_SUBSCRIPTIONS_POSTGRES,
+                    after_postgres: CATEGORY_SUBSCRIPTIONS_AFTER_POSTGRES,
+                },
                 tenant_id,
                 category_after,
                 fetch_limit,
@@ -384,13 +395,16 @@ fn subscription_cursor(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+struct SubscriptionQueryDialects<'a> {
+    initial_sqlite: &'a str,
+    after_sqlite: &'a str,
+    initial_postgres: &'a str,
+    after_postgres: &'a str,
+}
+
 fn subscription_statement(
     backend: DatabaseBackend,
-    initial_sqlite: &str,
-    after_sqlite: &str,
-    initial_postgres: &str,
-    after_postgres: &str,
+    dialects: SubscriptionQueryDialects<'_>,
     tenant_id: Uuid,
     after: Option<ForumSubscriptionCursor>,
     limit: u64,
@@ -398,12 +412,12 @@ fn subscription_statement(
     match (backend, after) {
         (DatabaseBackend::Sqlite, None) => Ok(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
-            initial_sqlite,
+            dialects.initial_sqlite,
             vec![tenant_id.into(), (limit as i64).into()],
         )),
         (DatabaseBackend::Sqlite, Some(after)) => Ok(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
-            after_sqlite,
+            dialects.after_sqlite,
             vec![
                 tenant_id.into(),
                 after.target_id.into(),
@@ -413,12 +427,12 @@ fn subscription_statement(
         )),
         (DatabaseBackend::Postgres, None) => Ok(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            initial_postgres,
+            dialects.initial_postgres,
             vec![tenant_id.into(), (limit as i64).into()],
         )),
         (DatabaseBackend::Postgres, Some(after)) => Ok(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            after_postgres,
+            dialects.after_postgres,
             vec![
                 tenant_id.into(),
                 after.target_id.into(),

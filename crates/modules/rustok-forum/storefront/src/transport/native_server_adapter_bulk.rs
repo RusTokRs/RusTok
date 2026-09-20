@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 pub async fn mark_storefront_category_read_server(
     category_id: String,
     cursor: Option<String>,
@@ -10,7 +9,6 @@ pub async fn mark_storefront_category_read_server(
         .map_err(|error| ApiError::ServerFn(error.to_string()))
 }
 
-#[allow(dead_code)]
 pub async fn mark_all_storefront_topics_read_server(
     cursor: Option<String>,
     limit: Option<u64>,

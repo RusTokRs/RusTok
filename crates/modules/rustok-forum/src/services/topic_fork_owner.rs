@@ -149,6 +149,46 @@ struct StoredForkOperation {
     forked_at: DateTimeWithTimeZone,
 }
 
+struct TopicForkOperationParams<'a> {
+    operation_id: Uuid,
+    source_topic_id: Uuid,
+    target_topic_id: Uuid,
+    root_reply_id: Uuid,
+    category_id: Uuid,
+    actor_id: Uuid,
+    reason: &'a str,
+    command_fingerprint: &'a str,
+    copied_reply_count: i32,
+    copied_published_reply_count: i32,
+    copied_body_count: i32,
+    copied_reply_revision_count: i32,
+    copied_relation_revision_count: i32,
+    copied_mention_count: i32,
+    copied_quote_count: i32,
+}
+
+impl<'a> TopicForkOperationParams<'a> {
+    fn from_stored(op: &'a StoredForkOperation) -> Self {
+        Self {
+            operation_id: op.operation_id,
+            source_topic_id: op.source_topic_id,
+            target_topic_id: op.target_topic_id,
+            root_reply_id: op.root_reply_id,
+            category_id: op.category_id,
+            actor_id: op.actor_id,
+            reason: &op.reason,
+            command_fingerprint: &op.command_fingerprint,
+            copied_reply_count: op.copied_reply_count,
+            copied_published_reply_count: op.copied_published_reply_count,
+            copied_body_count: op.copied_body_count,
+            copied_reply_revision_count: op.copied_reply_revision_count,
+            copied_relation_revision_count: op.copied_relation_revision_count,
+            copied_mention_count: op.copied_mention_count,
+            copied_quote_count: op.copied_quote_count,
+        }
+    }
+}
+
 /// Idempotently copies one bounded reply subtree into a new same-category topic.
 ///
 /// Source rows are immutable inputs. Copied replies receive deterministic new UUIDs, the copied
@@ -346,15 +386,15 @@ impl ForumTopicForkService {
         validate_source_unchanged_in_tx(&txn, tenant_id, &source, source_solution.as_ref()).await?;
         validate_target_solution_absent_in_tx(&txn, tenant_id, prepared.target_topic_id).await?;
 
-        let payload = topic_fork_payload(
-            prepared.operation_id,
+        let fork_params = TopicForkOperationParams {
+            operation_id: prepared.operation_id,
             source_topic_id,
-            prepared.target_topic_id,
-            prepared.root_reply_id,
-            target.category_id,
+            target_topic_id: prepared.target_topic_id,
+            root_reply_id: prepared.root_reply_id,
+            category_id: target.category_id,
             actor_id,
-            &prepared.reason,
-            &prepared.command_fingerprint,
+            reason: &prepared.reason,
+            command_fingerprint: &prepared.command_fingerprint,
             copied_reply_count,
             copied_published_reply_count,
             copied_body_count,
@@ -362,7 +402,8 @@ impl ForumTopicForkService {
             copied_relation_revision_count,
             copied_mention_count,
             copied_quote_count,
-        );
+        };
+        let payload = topic_fork_payload(&fork_params);
         forum_domain_event::ActiveModel {
             sequence_no: NotSet,
             event_id: Set(prepared.operation_id),
@@ -381,21 +422,7 @@ impl ForumTopicForkService {
         insert_fork_operation_in_tx(
             &txn,
             tenant_id,
-            prepared.operation_id,
-            source_topic_id,
-            prepared.target_topic_id,
-            prepared.root_reply_id,
-            target.category_id,
-            actor_id,
-            &prepared.reason,
-            &prepared.command_fingerprint,
-            copied_reply_count,
-            copied_published_reply_count,
-            copied_body_count,
-            copied_reply_revision_count,
-            copied_relation_revision_count,
-            copied_mention_count,
-            copied_quote_count,
+            &fork_params,
             now,
         )
         .await?;

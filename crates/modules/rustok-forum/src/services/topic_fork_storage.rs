@@ -619,25 +619,10 @@ async fn validate_target_solution_absent_in_tx(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn insert_fork_operation_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
-    operation_id: Uuid,
-    source_topic_id: Uuid,
-    target_topic_id: Uuid,
-    root_reply_id: Uuid,
-    category_id: Uuid,
-    actor_id: Uuid,
-    reason: &str,
-    command_fingerprint: &str,
-    copied_reply_count: i32,
-    copied_published_reply_count: i32,
-    copied_body_count: i32,
-    copied_reply_revision_count: i32,
-    copied_relation_revision_count: i32,
-    copied_mention_count: i32,
-    copied_quote_count: i32,
+    params: &TopicForkOperationParams<'_>,
     now: DateTime<Utc>,
 ) -> ForumResult<()> {
     let (backend, sql) = match txn.get_database_backend() {
@@ -681,22 +666,22 @@ async fn insert_fork_operation_in_tx(
         sql,
         vec![
             tenant_id.into(),
-            operation_id.into(),
-            source_topic_id.into(),
-            target_topic_id.into(),
-            root_reply_id.into(),
-            category_id.into(),
-            actor_id.into(),
-            reason.to_string().into(),
-            command_fingerprint.to_string().into(),
-            copied_reply_count.into(),
-            copied_published_reply_count.into(),
-            copied_body_count.into(),
-            copied_reply_revision_count.into(),
-            copied_relation_revision_count.into(),
-            copied_mention_count.into(),
-            copied_quote_count.into(),
-            operation_id.into(),
+            params.operation_id.into(),
+            params.source_topic_id.into(),
+            params.target_topic_id.into(),
+            params.root_reply_id.into(),
+            params.category_id.into(),
+            params.actor_id.into(),
+            params.reason.to_string().into(),
+            params.command_fingerprint.to_string().into(),
+            params.copied_reply_count.into(),
+            params.copied_published_reply_count.into(),
+            params.copied_body_count.into(),
+            params.copied_reply_revision_count.into(),
+            params.copied_relation_revision_count.into(),
+            params.copied_mention_count.into(),
+            params.copied_quote_count.into(),
+            params.operation_id.into(),
             now.into(),
         ],
     ))
@@ -939,23 +924,8 @@ async fn validate_existing_semantic_event_in_tx(
                 "Forum topic fork immutable semantic event is missing".to_string(),
             )
         })?;
-    let expected_payload = topic_fork_payload(
-        operation.operation_id,
-        operation.source_topic_id,
-        operation.target_topic_id,
-        operation.root_reply_id,
-        operation.category_id,
-        operation.actor_id,
-        &operation.reason,
-        &operation.command_fingerprint,
-        operation.copied_reply_count,
-        operation.copied_published_reply_count,
-        operation.copied_body_count,
-        operation.copied_reply_revision_count,
-        operation.copied_relation_revision_count,
-        operation.copied_mention_count,
-        operation.copied_quote_count,
-    );
+    let expected_payload =
+        topic_fork_payload(&TopicForkOperationParams::from_stored(operation));
     if event.aggregate_type != FORUM_TOPIC_FORK_AGGREGATE_TYPE
         || event.aggregate_id != operation.target_topic_id
         || event.event_type != FORUM_TOPIC_FORK_EVENT_TYPE
@@ -970,40 +940,23 @@ async fn validate_existing_semantic_event_in_tx(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-fn topic_fork_payload(
-    operation_id: Uuid,
-    source_topic_id: Uuid,
-    target_topic_id: Uuid,
-    root_reply_id: Uuid,
-    category_id: Uuid,
-    actor_id: Uuid,
-    reason: &str,
-    command_fingerprint: &str,
-    copied_reply_count: i32,
-    copied_published_reply_count: i32,
-    copied_body_count: i32,
-    copied_reply_revision_count: i32,
-    copied_relation_revision_count: i32,
-    copied_mention_count: i32,
-    copied_quote_count: i32,
-) -> JsonValue {
+fn topic_fork_payload(params: &TopicForkOperationParams<'_>) -> JsonValue {
     json!({
-        "operation_id": operation_id,
-        "source_topic_id": source_topic_id,
-        "target_topic_id": target_topic_id,
-        "root_reply_id": root_reply_id,
-        "category_id": category_id,
-        "actor_id": actor_id,
-        "reason": reason,
-        "command_fingerprint": command_fingerprint,
-        "copied_reply_count": copied_reply_count,
-        "copied_published_reply_count": copied_published_reply_count,
-        "copied_body_count": copied_body_count,
-        "copied_reply_revision_count": copied_reply_revision_count,
-        "copied_relation_revision_count": copied_relation_revision_count,
-        "copied_mention_count": copied_mention_count,
-        "copied_quote_count": copied_quote_count,
+        "operation_id": params.operation_id,
+        "source_topic_id": params.source_topic_id,
+        "target_topic_id": params.target_topic_id,
+        "root_reply_id": params.root_reply_id,
+        "category_id": params.category_id,
+        "actor_id": params.actor_id,
+        "reason": params.reason,
+        "command_fingerprint": params.command_fingerprint,
+        "copied_reply_count": params.copied_reply_count,
+        "copied_published_reply_count": params.copied_published_reply_count,
+        "copied_body_count": params.copied_body_count,
+        "copied_reply_revision_count": params.copied_reply_revision_count,
+        "copied_relation_revision_count": params.copied_relation_revision_count,
+        "copied_mention_count": params.copied_mention_count,
+        "copied_quote_count": params.copied_quote_count,
         "reply_identity_policy": "new_deterministic_ids",
         "root_parent_policy": "detach",
         "quote_identity_policy": "preserve_original_targets",

@@ -268,13 +268,15 @@ impl CategoryService {
             .await?;
         self.read
             .list_paginated_with_locale_fallback_and_hidden_categories(
-                tenant_id,
-                security,
-                locale,
-                page,
-                bounded_forum_read_limit(Some(per_page)),
-                fallback_locale,
-                &hidden_category_ids,
+                super::category_taxonomy_read::CategoryTaxonomyListFilter {
+                    tenant_id,
+                    security,
+                    locale,
+                    page,
+                    per_page: bounded_forum_read_limit(Some(per_page)),
+                    fallback_locale,
+                    hidden_category_ids: &hidden_category_ids,
+                },
             )
             .await
     }

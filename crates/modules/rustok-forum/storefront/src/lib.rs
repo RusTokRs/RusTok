@@ -10,8 +10,10 @@ pub use model::{
     StorefrontForumTopicRouteDisposition, StorefrontForumTopicRouteResolution,
 };
 pub use transport::{
-    TransportError, fetch_storefront_reply_current_revision,
-    fetch_storefront_topic_current_revision, resolve_storefront_category_route,
+    StorefrontForumBulkReadResult, TransportError, fetch_storefront_forum,
+    fetch_storefront_reply_current_revision, fetch_storefront_topic_current_revision,
+    mark_all_storefront_topics_read, mark_storefront_category_read,
+    mark_storefront_topic_read, resolve_storefront_category_route,
     resolve_storefront_topic_route,
 };
 pub use ui::ForumView;

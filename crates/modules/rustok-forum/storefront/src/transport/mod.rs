@@ -57,7 +57,6 @@ pub async fn fetch_storefront_forum(
     }
 }
 
-#[allow(dead_code)]
 pub async fn fetch_storefront_topic_current_revision(
     topic_id: String,
     locale: Option<String>,
@@ -70,7 +69,6 @@ pub async fn fetch_storefront_topic_current_revision(
     }
 }
 
-#[allow(dead_code)]
 pub async fn fetch_storefront_reply_current_revision(
     reply_id: String,
     locale: Option<String>,
@@ -117,7 +115,6 @@ pub async fn mark_storefront_topic_read(
     }
 }
 
-#[allow(dead_code)]
 pub async fn mark_storefront_category_read(
     category_id: String,
     cursor: Option<String>,
@@ -138,7 +135,6 @@ pub async fn mark_storefront_category_read(
     }
 }
 
-#[allow(dead_code)]
 pub async fn mark_all_storefront_topics_read(
     cursor: Option<String>,
     limit: Option<u64>,

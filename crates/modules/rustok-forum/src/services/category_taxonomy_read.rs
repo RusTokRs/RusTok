@@ -87,35 +87,38 @@ impl CategoryTaxonomyReadService {
         })
     }
 
-    #[allow(clippy::too_many_arguments)]
+pub(in crate::services) struct CategoryTaxonomyListFilter<'a> {
+    pub tenant_id: Uuid,
+    pub security: SecurityContext,
+    pub locale: &'a str,
+    pub page: u64,
+    pub per_page: u64,
+    pub fallback_locale: Option<&'a str>,
+    pub hidden_category_ids: &'a [Uuid],
+}
+
     pub(in crate::services) async fn list_paginated_with_locale_fallback_and_hidden_categories(
         &self,
-        tenant_id: Uuid,
-        security: SecurityContext,
-        locale: &str,
-        page: u64,
-        per_page: u64,
-        fallback_locale: Option<&str>,
-        hidden_category_ids: &[Uuid],
+        filter: CategoryTaxonomyListFilter<'_>,
     ) -> ForumResult<(Vec<CategoryListItem>, u64)> {
-        enforce_scope(&security, Resource::ForumCategories, Action::List)?;
+        enforce_scope(&filter.security, Resource::ForumCategories, Action::List)?;
 
         let mut query = forum_category::Entity::find()
-            .filter(forum_category::Column::TenantId.eq(tenant_id))
+            .filter(forum_category::Column::TenantId.eq(filter.tenant_id))
             .filter(
                 forum_category::Column::Id
-                    .not_in_subquery(archived_category_ids_subquery(tenant_id)),
+                    .not_in_subquery(archived_category_ids_subquery(filter.tenant_id)),
             );
-        if !hidden_category_ids.is_empty() {
-            query =
-                query.filter(forum_category::Column::Id.is_not_in(hidden_category_ids.to_vec()));
+        if !filter.hidden_category_ids.is_empty() {
+            query = query
+                .filter(forum_category::Column::Id.is_not_in(filter.hidden_category_ids.to_vec()));
         }
 
         let paginator = query
             .order_by_asc(forum_category::Column::Id)
-            .paginate(&self.db, per_page.max(1));
+            .paginate(&self.db, filter.per_page.max(1));
         let total = paginator.num_items().await?;
-        let categories = paginator.fetch_page(page.saturating_sub(1)).await?;
+        let categories = paginator.fetch_page(filter.page.saturating_sub(1)).await?;
         let category_ids = categories
             .iter()
             .map(|category| category.id)
@@ -126,12 +129,12 @@ impl CategoryTaxonomyReadService {
 
         let projections = TaxonomyOwnerCategoryReader::new(self.db.clone())
             .load_scoped_categories(
-                tenant_id,
+                filter.tenant_id,
                 TaxonomyScopeType::Module,
                 Some("forum"),
                 Some(&category_ids),
-                locale,
-                fallback_locale,
+                filter.locale,
+                filter.fallback_locale,
             )
             .await
             .map_err(map_taxonomy_read_error)?;
@@ -141,7 +144,7 @@ impl CategoryTaxonomyReadService {
             .collect::<HashMap<_, _>>();
 
         let subscription_flags = SubscriptionService::new(self.db.clone())
-            .category_subscription_flags(tenant_id, &category_ids, security.user_id)
+            .category_subscription_flags(filter.tenant_id, &category_ids, filter.security.user_id)
             .await?;
         let mut items = Vec::with_capacity(categories.len());
         for category in categories {

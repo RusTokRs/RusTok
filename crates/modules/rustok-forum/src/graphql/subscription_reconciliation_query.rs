@@ -1,4 +1,4 @@
-use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
+use async_graphql::{Context, FieldError, InputObject, Object, Result, SimpleObject};
 use rustok_api::{
     AuthContext, Permission, TenantContext,
     graphql::{GraphQLError, require_module_enabled},
@@ -9,8 +9,8 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::services::subscription::reconciliation::{
-    ForumSubscriptionCursor, ForumSubscriptionDrift, ForumSubscriptionReconciliationReport,
-    ForumSubscriptionReconciliationService,
+    ForumSubscriptionCursor, ForumSubscriptionDrift, ForumSubscriptionReconciliationCursors,
+    ForumSubscriptionReconciliationReport, ForumSubscriptionReconciliationService,
 };
 
 const MODULE_SLUG: &str = "forum";
@@ -48,6 +48,14 @@ pub struct GqlForumSubscriptionReconciliationReport {
     pub drifts: Vec<GqlForumSubscriptionDrift>,
 }
 
+#[derive(Debug, Clone, Copy, Default, InputObject)]
+pub struct ForumSubscriptionReconciliationCursorsInput {
+    pub topic_after: Option<Uuid>,
+    pub topic_user_after: Option<Uuid>,
+    pub category_after: Option<Uuid>,
+    pub category_user_after: Option<Uuid>,
+}
+
 #[derive(Default)]
 pub struct ForumSubscriptionReconciliationQuery;
 
@@ -58,26 +66,25 @@ impl ForumSubscriptionReconciliationQuery {
     /// Topic and category rows use independent composite `(target_id, user_id)` keyset cursors.
     /// Callers must echo both components of a returned cursor together on the next page. The report
     /// does not infer missing subscriptions from participation policy and does not perform repair.
-    #[allow(clippy::too_many_arguments)]
     async fn forum_subscription_reconciliation_report(
         &self,
         ctx: &Context<'_>,
         limit: Option<i32>,
-        topic_after: Option<Uuid>,
-        topic_user_after: Option<Uuid>,
-        category_after: Option<Uuid>,
-        category_user_after: Option<Uuid>,
+        cursors: Option<ForumSubscriptionReconciliationCursorsInput>,
     ) -> Result<GqlForumSubscriptionReconciliationReport> {
         let (tenant_id, security, requested_limit, db) = reconciliation_context(ctx, limit).await?;
+        let cursors = cursors.unwrap_or_default();
         let report = ForumSubscriptionReconciliationService::new(db)
             .report_page(
                 tenant_id,
                 &security,
                 requested_limit,
-                topic_after,
-                topic_user_after,
-                category_after,
-                category_user_after,
+                ForumSubscriptionReconciliationCursors {
+                    topic_after_target: cursors.topic_after,
+                    topic_after_user: cursors.topic_user_after,
+                    category_after_target: cursors.category_after,
+                    category_after_user: cursors.category_user_after,
+                },
             )
             .await?;
         Ok(map_report(report))

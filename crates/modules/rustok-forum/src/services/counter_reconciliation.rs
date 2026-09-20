@@ -211,10 +211,12 @@ impl ForumCounterReconciliationService {
         let topic_rows = transaction
             .query_all_raw(counter_statement(
                 backend,
-                TOPIC_COUNTER_SQLITE,
-                TOPIC_COUNTER_AFTER_SQLITE,
-                TOPIC_COUNTER_POSTGRES,
-                TOPIC_COUNTER_AFTER_POSTGRES,
+                CounterQueryDialects {
+                    initial_sqlite: TOPIC_COUNTER_SQLITE,
+                    after_sqlite: TOPIC_COUNTER_AFTER_SQLITE,
+                    initial_postgres: TOPIC_COUNTER_POSTGRES,
+                    after_postgres: TOPIC_COUNTER_AFTER_POSTGRES,
+                },
                 tenant_id,
                 topic_after,
                 fetch_limit,
@@ -223,10 +225,12 @@ impl ForumCounterReconciliationService {
         let category_rows = transaction
             .query_all_raw(counter_statement(
                 backend,
-                CATEGORY_COUNTER_SQLITE,
-                CATEGORY_COUNTER_AFTER_SQLITE,
-                CATEGORY_COUNTER_POSTGRES,
-                CATEGORY_COUNTER_AFTER_POSTGRES,
+                CounterQueryDialects {
+                    initial_sqlite: CATEGORY_COUNTER_SQLITE,
+                    after_sqlite: CATEGORY_COUNTER_AFTER_SQLITE,
+                    initial_postgres: CATEGORY_COUNTER_POSTGRES,
+                    after_postgres: CATEGORY_COUNTER_AFTER_POSTGRES,
+                },
                 tenant_id,
                 category_after,
                 fetch_limit,
@@ -298,13 +302,16 @@ fn enforce_operations_scope(security: &SecurityContext) -> ForumResult<()> {
     enforce_scope(security, Resource::ForumTopics, Action::Manage)
 }
 
-#[allow(clippy::too_many_arguments)]
+struct CounterQueryDialects<'a> {
+    initial_sqlite: &'a str,
+    after_sqlite: &'a str,
+    initial_postgres: &'a str,
+    after_postgres: &'a str,
+}
+
 fn counter_statement(
     backend: DatabaseBackend,
-    initial_sqlite: &str,
-    after_sqlite: &str,
-    initial_postgres: &str,
-    after_postgres: &str,
+    dialects: CounterQueryDialects<'_>,
     tenant_id: Uuid,
     after: Option<Uuid>,
     limit: u64,
@@ -312,22 +319,22 @@ fn counter_statement(
     match (backend, after) {
         (DatabaseBackend::Sqlite, None) => Ok(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
-            initial_sqlite,
+            dialects.initial_sqlite,
             vec![tenant_id.into(), (limit as i64).into()],
         )),
         (DatabaseBackend::Sqlite, Some(after)) => Ok(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
-            after_sqlite,
+            dialects.after_sqlite,
             vec![tenant_id.into(), after.into(), (limit as i64).into()],
         )),
         (DatabaseBackend::Postgres, None) => Ok(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            initial_postgres,
+            dialects.initial_postgres,
             vec![tenant_id.into(), (limit as i64).into()],
         )),
         (DatabaseBackend::Postgres, Some(after)) => Ok(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            after_postgres,
+            dialects.after_postgres,
             vec![tenant_id.into(), after.into(), (limit as i64).into()],
         )),
         (other, _) => Err(ForumError::Validation(format!(
