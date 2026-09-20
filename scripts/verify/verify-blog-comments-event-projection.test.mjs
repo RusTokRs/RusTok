@@ -638,9 +638,5 @@ test('rejects stale optimistic projection artifacts in the evidence contract', (
 });
 
 function readFile(root, target) {
-  return JSON.parse(readFileSyncCompat(target));
-}
-
-function readFileSyncCompat(target) {
-  return require('node:fs').readFileSync(target, 'utf8');
+  return JSON.parse(readFileSync(target, 'utf8'));
 }
