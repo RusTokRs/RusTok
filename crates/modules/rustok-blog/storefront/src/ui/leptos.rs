@@ -317,8 +317,13 @@ fn PublicCommentsList(comments: BlogCommentList, comments_page: u64) -> impl Int
     };
 
     if comments.availability != BlogCommentsAvailability::Available && !comments.cached_snapshot {
-        let message =
-            degraded_message.expect("degraded comments without a snapshot need a message");
+        let message = degraded_message.unwrap_or_else(|| {
+            t(
+                locale.as_deref(),
+                "blog.comments.unavailable",
+                "Comments are temporarily unavailable.",
+            )
+        });
         return view! {
             <section class="mt-8 border-t border-border pt-6">
                 <h4 class="text-lg font-semibold text-foreground">{title}</h4>

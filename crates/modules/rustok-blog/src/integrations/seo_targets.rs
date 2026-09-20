@@ -24,6 +24,7 @@ pub struct BlogSeoTargetProvider;
 #[async_trait]
 impl SeoTargetProvider for BlogSeoTargetProvider {
     fn slug(&self) -> SeoTargetSlug {
+        // INVARIANT: builtin_slug::BLOG_POST is a compile-time static slug conforming to SeoTargetSlug format.
         SeoTargetSlug::new(builtin_slug::BLOG_POST)
             .expect("builtin SEO target slug must stay valid")
     }
@@ -299,6 +300,7 @@ fn map_post_response(post: PostResponse) -> SeoLoadedTargetRecord {
     populate_image_template_fields(&mut template_fields, open_graph_images.as_slice());
 
     SeoLoadedTargetRecord {
+        // INVARIANT: builtin_slug::BLOG_POST is a compile-time static slug conforming to SeoTargetSlug format.
         target_kind: SeoTargetSlug::new(builtin_slug::BLOG_POST)
             .expect("builtin SEO target slug must stay valid"),
         target_id: post.id,

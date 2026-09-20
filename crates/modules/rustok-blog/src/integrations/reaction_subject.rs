@@ -130,11 +130,13 @@ fn blog_reaction_catalog_v1() -> ReactionProviderResult<ReactionCatalog> {
 }
 
 fn blog_reaction_source() -> ReactionSourceSlug {
+    // INVARIANT: BLOG_REACTION_SOURCE is a compile-time static slug conforming to ReactionSourceSlug format.
     ReactionSourceSlug::new(BLOG_REACTION_SOURCE)
         .expect("Blog reaction source constant must remain valid")
 }
 
 fn blog_post_reaction_kind() -> ReactionSubjectKind {
+    // INVARIANT: BLOG_POST_REACTION_KIND is a compile-time static slug conforming to ReactionSubjectKind format.
     ReactionSubjectKind::new(BLOG_POST_REACTION_KIND)
         .expect("Blog post reaction kind constant must remain valid")
 }

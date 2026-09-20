@@ -805,6 +805,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     </section>
 
                     <SeoEntityPanel
+                        // INVARIANT: seo_builtin_slug::BLOG_POST is a compile-time static slug conforming to SeoTargetSlug format.
                         target_kind=SeoTargetSlug::new(seo_builtin_slug::BLOG_POST).expect("builtin SEO target slug")
                         target_id=Signal::derive(move || editing_post_id.get())
                         locale=Signal::derive({

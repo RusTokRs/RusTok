@@ -211,12 +211,11 @@ fn snapshot_matches(
 }
 
 fn snapshot_key(identity: &PublicCommentsSnapshotIdentity) -> String {
-    let encoded = serde_json::to_vec(identity)
-        .expect("public comments snapshot identity must remain serializable");
+    let encoded = serde_json::to_vec(identity).unwrap_or_default();
     let digest = sha256_digest(&[b"blog-public-comments-snapshot-v1\0", encoded.as_slice()]);
     let mut hex = String::with_capacity(digest.len() * 2);
     for byte in digest {
-        write!(&mut hex, "{byte:02x}").expect("hex encoding into String cannot fail");
+        let _ = write!(&mut hex, "{byte:02x}");
     }
     format!("snapshot:{hex}")
 }
