@@ -315,7 +315,9 @@ impl CommentService {
             .await
     }
 
-    #[instrument(skip(self, security))]
+    /// Public comment listing revalidates Blog post visibility and channel authority
+    /// before reading either live Comments data or a degraded snapshot.
+    #[instrument(skip(self))]
     pub async fn list_public_for_post_with_locale_fallback(
         &self,
         tenant_id: Uuid,
