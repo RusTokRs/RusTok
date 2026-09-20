@@ -134,25 +134,30 @@ impl ProductStorefrontIndexBudgetedProjectionExecutor {
             phases: Arc::new(shadow),
         }
     }
+}
 
+#[derive(Debug, Clone)]
+pub(crate) struct StorefrontBudgetedExecutionParams {
+    pub context: PortContext,
+    pub fallback_locale: String,
+    pub public_channel_slug: Option<String>,
+    pub public_channel_id: Option<Uuid>,
+    pub query: StorefrontProductListQuery,
+    pub decision: ProductStorefrontIndexServingBudgetDecision,
+}
+
+impl ProductStorefrontIndexBudgetedProjectionExecutor {
     #[cfg(test)]
     pub(crate) fn from_phases(phases: Arc<dyn ProductStorefrontIndexProjectionPhases>) -> Self {
         Self { phases }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn execute_after_owner(
         &self,
         authoritative: StorefrontProductList,
-        context: PortContext,
-        fallback_locale: String,
-        public_channel_slug: Option<String>,
-        public_channel_id: Option<Uuid>,
-        query: StorefrontProductListQuery,
-        decision: ProductStorefrontIndexServingBudgetDecision,
-    ) -> Result<ProductStorefrontIndexBudgetedExecution, ProductStorefrontIndexBudgetedStartError>
-    {
-        let (index_execution_budget_ms, tag_hydration_budget_ms, safety_margin_ms) = match decision
+        params: StorefrontBudgetedExecutionParams,
+    ) -> Result<ProductStorefrontIndexBudgetedExecution, ProductStorefrontIndexBudgetedStartError> {
+        let (index_execution_budget_ms, tag_hydration_budget_ms, safety_margin_ms) = match params.decision
         {
             ProductStorefrontIndexServingBudgetDecision::Eligible {
                 index_execution_ms,
@@ -166,16 +171,16 @@ impl ProductStorefrontIndexBudgetedProjectionExecutor {
             }
         };
 
-        let mut index_context = context.clone();
+        let mut index_context = params.context.clone();
         index_context.deadline_ms = Some(index_execution_budget_ms);
         let projected = match timeout(
             Duration::from_millis(index_execution_budget_ms),
             self.phases.execute_projected(
                 index_context,
-                fallback_locale.clone(),
-                public_channel_slug,
-                public_channel_id,
-                query,
+                params.fallback_locale.clone(),
+                params.public_channel_slug,
+                params.public_channel_id,
+                params.query,
             ),
         )
         .await
@@ -194,13 +199,13 @@ impl ProductStorefrontIndexBudgetedProjectionExecutor {
 
         let tag_hydration = match projected.as_ref() {
             Ok(projected) => {
-                let mut tag_context = context;
+                let mut tag_context = params.context;
                 tag_context.deadline_ms = Some(tag_hydration_budget_ms);
                 Some(
                     match timeout(
                         Duration::from_millis(tag_hydration_budget_ms),
                         self.phases
-                            .hydrate_projected_tags(tag_context, fallback_locale, projected),
+                            .hydrate_projected_tags(tag_context, params.fallback_locale, projected),
                     )
                     .await
                     {

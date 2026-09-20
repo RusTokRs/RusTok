@@ -208,12 +208,14 @@ async fn execute(
     executor
         .execute_after_owner(
             authoritative,
-            context(),
-            "en".to_owned(),
-            Some("online".to_owned()),
-            Some(Uuid::from_u128(0x9200)),
-            StorefrontProductListQuery::default(),
-            decision,
+            super::storefront_budgeted_execution::StorefrontBudgetedExecutionParams {
+                context: context(),
+                fallback_locale: "en".to_owned(),
+                public_channel_slug: Some("online".to_owned()),
+                public_channel_id: Some(Uuid::from_u128(0x9200)),
+                query: StorefrontProductListQuery::default(),
+                decision,
+            },
         )
         .await
 }

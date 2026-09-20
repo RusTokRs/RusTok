@@ -123,8 +123,7 @@ pub enum CompositionModuleKind {
 
 /// Builds the module registry for the features selected in this distribution.
 pub fn build_registry() -> ModuleRegistry {
-    #[allow(unused_mut)]
-    let mut registry = ModuleRegistry::new()
+    let registry = ModuleRegistry::new()
         .register(ModulesModule)
         .register(AuthModule)
         .register(CacheModule::new())
@@ -139,161 +138,83 @@ pub fn build_registry() -> ModuleRegistry {
         .register(SocialGraphModule);
 
     #[cfg(feature = "mod-cart")]
-    {
-        registry = registry.register(rustok_cart::CartModule);
-    }
+    let registry = registry.register(rustok_cart::CartModule);
     #[cfg(feature = "mod-customer")]
-    {
-        registry = registry.register(rustok_customer::CustomerModule);
-    }
+    let registry = registry.register(rustok_customer::CustomerModule);
     #[cfg(feature = "mod-product")]
-    {
-        registry = registry.register(rustok_product::ProductModule);
-    }
+    let registry = registry.register(rustok_product::ProductModule);
     #[cfg(feature = "mod-product_relations")]
-    {
-        registry = registry.register(rustok_product_relations::ProductRelationsModule);
-    }
+    let registry = registry.register(rustok_product_relations::ProductRelationsModule);
     #[cfg(feature = "mod-brand")]
-    {
-        registry = registry.register(rustok_brand::BrandModule);
-    }
+    let registry = registry.register(rustok_brand::BrandModule);
     #[cfg(feature = "mod-product_bundles")]
-    {
-        registry = registry.register(rustok_product_bundles::ProductBundlesModule);
-    }
+    let registry = registry.register(rustok_product_bundles::ProductBundlesModule);
     #[cfg(feature = "mod-profiles")]
-    {
-        registry = registry.register(rustok_profiles::ProfilesModule);
-    }
+    let registry = registry.register(rustok_profiles::ProfilesModule);
     #[cfg(feature = "mod-region")]
-    {
-        registry = registry.register(rustok_region::RegionModule);
-    }
+    let registry = registry.register(rustok_region::RegionModule);
     #[cfg(feature = "mod-pricing")]
-    {
-        registry = registry.register(rustok_pricing::PricingModule);
-    }
+    let registry = registry.register(rustok_pricing::PricingModule);
     #[cfg(feature = "mod-inventory")]
-    {
-        registry = registry.register(rustok_inventory::InventoryModule);
-    }
+    let registry = registry.register(rustok_inventory::InventoryModule);
     #[cfg(feature = "mod-order")]
-    {
-        registry = registry.register(rustok_order::OrderModule);
-    }
+    let registry = registry.register(rustok_order::OrderModule);
     #[cfg(feature = "mod-payment")]
-    {
-        registry = registry.register(rustok_payment::PaymentModule);
-    }
+    let registry = registry.register(rustok_payment::PaymentModule);
     #[cfg(feature = "mod-fulfillment")]
-    {
-        registry = registry.register(rustok_fulfillment::FulfillmentModule);
-    }
+    let registry = registry.register(rustok_fulfillment::FulfillmentModule);
     #[cfg(feature = "mod-commerce")]
-    {
-        registry = registry.register(rustok_commerce::CommerceModule);
-    }
+    let registry = registry.register(rustok_commerce::CommerceModule);
     #[cfg(feature = "mod-marketplace_seller")]
-    {
-        registry = registry.register(rustok_marketplace_seller::MarketplaceSellerModule);
-    }
+    let registry = registry.register(rustok_marketplace_seller::MarketplaceSellerModule);
     #[cfg(feature = "mod-marketplace_listing")]
-    {
-        registry = registry.register(rustok_marketplace_listing::MarketplaceListingModule);
-    }
+    let registry = registry.register(rustok_marketplace_listing::MarketplaceListingModule);
     #[cfg(feature = "mod-marketplace_allocation")]
-    {
-        registry = registry.register(rustok_marketplace_allocation::MarketplaceAllocationModule);
-    }
+    let registry = registry.register(rustok_marketplace_allocation::MarketplaceAllocationModule);
     #[cfg(feature = "mod-marketplace_commission")]
-    {
-        registry = registry.register(rustok_marketplace_commission::MarketplaceCommissionModule);
-    }
+    let registry = registry.register(rustok_marketplace_commission::MarketplaceCommissionModule);
     #[cfg(feature = "mod-marketplace_ledger")]
-    {
-        registry = registry.register(rustok_marketplace_ledger::MarketplaceLedgerModule);
-    }
+    let registry = registry.register(rustok_marketplace_ledger::MarketplaceLedgerModule);
     #[cfg(feature = "mod-marketplace_payout")]
-    {
-        registry = registry.register(rustok_marketplace_payout::MarketplacePayoutModule);
-    }
+    let registry = registry.register(rustok_marketplace_payout::MarketplacePayoutModule);
     #[cfg(feature = "mod-marketplace")]
-    {
-        registry = registry.register(rustok_marketplace::MarketplaceModule);
-    }
+    let registry = registry.register(rustok_marketplace::MarketplaceModule);
     #[cfg(feature = "mod-moderation")]
-    {
-        registry = registry.register(rustok_moderation::ModerationModule);
-    }
+    let registry = registry.register(rustok_moderation::ModerationModule);
     #[cfg(feature = "mod-content")]
-    {
-        registry = registry.register(rustok_content::ContentModule);
-    }
+    let registry = registry.register(rustok_content::ContentModule);
     #[cfg(feature = "mod-blog")]
-    {
-        registry = registry.register(rustok_blog::BlogModule);
-    }
+    let registry = registry.register(rustok_blog::BlogModule);
     #[cfg(feature = "mod-reactions")]
-    {
-        registry = registry.register(rustok_reactions::ReactionsModule);
-    }
+    let registry = registry.register(rustok_reactions::ReactionsModule);
     #[cfg(feature = "mod-forum")]
-    {
-        registry = registry.register(rustok_forum::ForumModule);
-    }
+    let registry = registry.register(rustok_forum::ForumModule);
     #[cfg(feature = "mod-notifications")]
-    {
-        registry = registry.register(rustok_notifications::NotificationsModule);
-    }
+    let registry = registry.register(rustok_notifications::NotificationsModule);
     #[cfg(feature = "mod-comments")]
-    {
-        registry = registry.register(rustok_comments::CommentsModule);
-    }
+    let registry = registry.register(rustok_comments::CommentsModule);
     #[cfg(feature = "mod-pages")]
-    {
-        registry = registry.register(rustok_pages::PagesModule);
-    }
+    let registry = registry.register(rustok_pages::PagesModule);
     #[cfg(feature = "mod-navigation")]
-    {
-        registry = registry.register(rustok_navigation::NavigationModule);
-    }
+    let registry = registry.register(rustok_navigation::NavigationModule);
     #[cfg(feature = "mod-page_builder")]
-    {
-        registry = registry.register(rustok_page_builder::PageBuilderModule);
-    }
+    let registry = registry.register(rustok_page_builder::PageBuilderModule);
     #[cfg(feature = "mod-taxonomy")]
-    {
-        registry = registry.register(rustok_taxonomy::TaxonomyModule);
-    }
+    let registry = registry.register(rustok_taxonomy::TaxonomyModule);
     #[cfg(feature = "mod-alloy")]
-    {
-        registry = registry.register(alloy::AlloyModule);
-    }
+    let registry = registry.register(alloy::AlloyModule);
     #[cfg(feature = "mod-flex")]
-    {
-        registry = registry.register(flex::FlexModule);
-    }
+    let registry = registry.register(flex::FlexModule);
     #[cfg(feature = "mod-media")]
-    {
-        registry = registry.register(rustok_media::MediaModule);
-    }
+    let registry = registry.register(rustok_media::MediaModule);
     #[cfg(feature = "mod-translation")]
-    {
-        registry = registry.register(rustok_translation::TranslationModule);
-    }
+    let registry = registry.register(rustok_translation::TranslationModule);
     #[cfg(feature = "mod-seo")]
-    {
-        registry = registry.register(rustok_seo::SeoModule);
-    }
+    let registry = registry.register(rustok_seo::SeoModule);
     #[cfg(feature = "mod-workflow")]
-    {
-        registry = registry.register(rustok_workflow::WorkflowModule);
-    }
+    let registry = registry.register(rustok_workflow::WorkflowModule);
     #[cfg(feature = "mod-ai")]
-    {
-        registry = registry.register(rustok_ai::AiModule);
-    }
+    let registry = registry.register(rustok_ai::AiModule);
 
     generated_promotions::register_promoted_modules(registry)
 }
