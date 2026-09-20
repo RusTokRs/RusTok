@@ -21,7 +21,10 @@ impl MigrationTrait for Migration {
     async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
         // Intentionally irreversible: rolling back this migration would restore
         // the unsafe composite SET NULL action that can null a non-null tenant_id.
-        Ok(())
+        Err(DbErr::Migration(
+            "Blog post category tenant-delete-action migration is intentionally irreversible"
+                .to_string(),
+        ))
     }
 }
 

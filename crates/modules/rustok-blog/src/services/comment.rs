@@ -60,6 +60,7 @@ impl CommentService {
         public_channel_slug: Option<&str>,
         input: CreateCommentInput,
     ) -> BlogResult<CommentResponse> {
+        enforce_scope(&security, Resource::Comments, Action::Create)?;
         self.ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
             .await?;
 
@@ -75,6 +76,7 @@ impl CommentService {
         post_id: Uuid,
         input: CreateCommentInput,
     ) -> BlogResult<CommentResponse> {
+        enforce_scope(&security, Resource::Comments, Action::Create)?;
         self.ensure_post_exists(tenant_id, post_id).await?;
 
         if security.user_id.is_none() {
@@ -108,31 +110,40 @@ impl CommentService {
         Self::map_comment_record(record)
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn get_comment(
         &self,
         tenant_id: Uuid,
+        security: SecurityContext,
         comment_id: Uuid,
         locale: &str,
     ) -> BlogResult<CommentResponse> {
-        self.get_comment_with_locale_fallback(tenant_id, comment_id, locale, None)
-            .await
+        self.get_comment_with_locale_fallback(
+            tenant_id,
+            security,
+            comment_id,
+            locale,
+            None,
+        )
+        .await
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn get_comment_with_locale_fallback(
         &self,
         tenant_id: Uuid,
+        security: SecurityContext,
         comment_id: Uuid,
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> BlogResult<CommentResponse> {
+        enforce_scope(&security, Resource::Comments, Action::Read)?;
         let record = self
             .comments_thread_port
             .get_comment(
                 comments_read_port_context(
                     tenant_id,
-                    &SecurityContext::system(),
+                    &security,
                     locale,
                     comment_id,
                 )?,
@@ -152,6 +163,7 @@ impl CommentService {
         security: SecurityContext,
         input: UpdateCommentInput,
     ) -> BlogResult<CommentResponse> {
+        enforce_scope(&security, Resource::Comments, Action::Update)?;
         let existing = self
             .comments_thread_port
             .get_comment(
@@ -256,6 +268,7 @@ impl CommentService {
         comment_id: Uuid,
         security: SecurityContext,
     ) -> BlogResult<()> {
+        enforce_scope(&security, Resource::Comments, Action::Delete)?;
         let existing = self
             .comments_thread_port
             .get_comment(
@@ -311,6 +324,9 @@ impl CommentService {
         filter: ListCommentsFilter,
         fallback_locale: Option<&str>,
     ) -> BlogResult<(Vec<CommentListItem>, u64)> {
+        if !security.is_public_read() {
+            enforce_scope(&security, Resource::Comments, Action::List)?;
+        }
         self.ensure_post_exists(tenant_id, post_id).await?;
 
         let locale = filter

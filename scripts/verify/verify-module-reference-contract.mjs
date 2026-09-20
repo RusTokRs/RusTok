@@ -23,6 +23,16 @@ function forbid(path, markers) {
     if (source.includes(marker)) fail(`${path}: forbidden reference-module pattern ${marker}`);
   }
 }
+function requireOrdered(path, before, after) {
+  const source = read(path);
+  const beforeIndex = source.indexOf(before);
+  const afterIndex = source.indexOf(after);
+  if (beforeIndex === -1) fail(`${path}: missing ordered invariant marker ${before}`);
+  else if (afterIndex === -1) fail(`${path}: missing ordered invariant marker ${after}`);
+  else if (beforeIndex >= afterIndex) {
+    fail(`${path}: expected ${before} before ${after}`);
+  }
+}
 function rustFiles(path) {
   const root = join(repoRoot, path);
   const out = [];
@@ -73,8 +83,11 @@ forbid("crates/modules/rustok-blog/src/dto/post.rs", [
   "pub search: Option<String>",
 ]);
 
+requireOrdered("crates/modules/rustok-blog/src/services/post/commands.rs", "enforce_scope(&security, Resource::BlogPosts, Action::Update)?;", "let post = self.find_post(tenant_id, post_id).await?;");
+requireOrdered("crates/modules/rustok-blog/src/services/post/commands.rs", "enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;", "let post = self.find_post(tenant_id, post_id).await?");
+requireOrdered("crates/modules/rustok-blog/src/services/post/commands.rs", "enforce_scope(&security, Resource::BlogPosts, Action::Delete)?;", "let post = self.find_post(tenant_id, post_id).await?");
+
 requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
-  "if post.version != version",
   "Column::Version.eq(version)",
   "ensure_transition(current, BlogPostStatus::Published)?",
   "ensure_transition(current, BlogPostStatus::Draft)?",
@@ -120,6 +133,17 @@ requireAll("crates/modules/rustok-blog/src/controllers/comments.rs", [
   "ensure_blog_module_enabled(&runtime, tenant.id).await?;",
   "ensure_blog_permission(",
 ]);
+requireAll("crates/modules/rustok-blog/src/services/comment.rs", [
+  "pub async fn get_comment(",
+  "security: SecurityContext",
+  "enforce_scope(&security, Resource::Comments, Action::Read)?;",
+  "tenant_id,\n                    &security,",
+]);
+requireOrdered(
+  "crates/modules/rustok-blog/src/services/comment.rs",
+  "enforce_scope(&security, Resource::Comments, Action::List)?;",
+  "self.ensure_post_exists(tenant_id, post_id).await?;",
+);
 
 requireAll("crates/modules/rustok-blog/src/services/post/mod.rs", [
   "other => Err(BlogError::invariant(format!(",
@@ -168,6 +192,7 @@ requireAll("crates/modules/rustok-blog/src/migrations/m20260919_000025_fix_blog_
   "ON DELETE SET NULL (category_id)",
   "DROP CONSTRAINT IF EXISTS",
   "Intentionally irreversible",
+  "Err(DbErr::Migration(",
 ]);
 forbid("crates/modules/rustok-blog/src/migrations/m20260919_000023_enforce_blog_post_category_tenant_integrity.rs", [
   "ON DELETE SET NULL;\n",
@@ -385,6 +410,12 @@ requireAll("crates/modules/rustok-blog/src/services/comment_projection.rs", [
   "let post_updated =",
   "return Ok(false);",
   "if post_updated",
+  "lock_exclusive()",
+  "Column::CommentId.eq(change.comment_id)",
+  "order_by_desc(blog_comment_projection_delivery::Column::EventId)",
+  "delivery.event_id >= envelope.id",
+  "fn projection_applied_delta(",
+  "delta: Set(change.delta)",
 ]);
 forbid("crates/modules/rustok-blog/src/services/comment_projection.rs", [
   "blog_post::Column::Version",
@@ -503,6 +534,21 @@ requireAll("crates/modules/rustok-blog/src/services/comment.rs", [
   "Self::ensure_blog_target(&existing)?;",
   "comments_read_port_context(",
 ]);
+requireOrdered(
+  "crates/modules/rustok-blog/src/services/comment.rs",
+  "enforce_scope(&security, Resource::Comments, Action::Create)?;",
+  "self.ensure_post_exists(tenant_id, post_id).await?;",
+);
+requireOrdered(
+  "crates/modules/rustok-blog/src/services/comment.rs",
+  "enforce_scope(&security, Resource::Comments, Action::Update)?;",
+  "let existing = self",
+);
+requireOrdered(
+  "crates/modules/rustok-blog/src/services/comment.rs",
+  "enforce_scope(&security, Resource::Comments, Action::Delete)?;",
+  "let existing = self",
+);
 
 requireAll("crates/modules/rustok-blog/admin/src/model.rs", [
   "pub version: i32",
@@ -821,3 +867,9 @@ if (failures.length > 0) {
 }
 
 console.log("Canonical module reference-contract verification passed for rustok-blog.");
+
+requireAll("crates/modules/rustok-blog/docs/implementation-plan-current.md", [
+  "comment_form_fallback = planned",
+  "active storefront has an authenticated create-comment surface",
+  "`hide_comment_form` remains a planned degraded mode",
+]);

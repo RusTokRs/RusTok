@@ -166,6 +166,7 @@ impl PostService {
         security: SecurityContext,
         input: UpdatePostInput,
     ) -> BlogResult<()> {
+        enforce_scope(&security, Resource::BlogPosts, Action::Update)?;
         let post = self.find_post(tenant_id, post_id).await?;
         enforce_owned_scope(
             &security,
@@ -444,6 +445,7 @@ impl PostService {
         post_id: Uuid,
         security: SecurityContext,
     ) -> BlogResult<()> {
+        enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;
         let post = self.find_post(tenant_id, post_id).await?;
         enforce_owned_scope(
             &security,
@@ -491,6 +493,7 @@ impl PostService {
         post_id: Uuid,
         security: SecurityContext,
     ) -> BlogResult<()> {
+        enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;
         let post = self.find_post(tenant_id, post_id).await?;
         enforce_owned_scope(
             &security,
@@ -543,6 +546,7 @@ impl PostService {
             )));
         }
 
+        enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;
         let post = self.find_post(tenant_id, post_id).await?;
         enforce_owned_scope(
             &security,
@@ -590,6 +594,7 @@ impl PostService {
         post_id: Uuid,
         security: SecurityContext,
     ) -> BlogResult<()> {
+        enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;
         let post = self.find_post(tenant_id, post_id).await?;
         enforce_owned_scope(
             &security,
@@ -636,6 +641,7 @@ impl PostService {
         post_id: Uuid,
         security: SecurityContext,
     ) -> BlogResult<()> {
+        enforce_scope(&security, Resource::BlogPosts, Action::Delete)?;
         let post = self.find_post(tenant_id, post_id).await?;
         enforce_owned_scope(
             &security,
