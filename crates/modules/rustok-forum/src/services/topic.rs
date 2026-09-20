@@ -43,7 +43,7 @@ use rustok_taxonomy::{TaxonomyService, TaxonomyTermKind};
 
 use crate::dto::{ListTopicsFilter, TopicListItem, TopicResponse, UpdateTopicInput};
 use crate::entities::{
-    forum_solution, forum_topic, forum_topic_channel_access, forum_topic_tag,
+    forum_reply, forum_solution, forum_topic, forum_topic_channel_access, forum_topic_tag,
     forum_topic_translation,
 };
 use crate::error::{ForumError, ForumResult};
@@ -53,7 +53,7 @@ use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 use crate::services::subscription::SubscriptionService;
 use crate::services::user_stats::UserStatsService;
 use crate::services::vote::{VoteService, VoteSummary};
-use crate::state_machine::TopicStatus;
+use crate::state_machine::{ReplyStatus, TopicStatus};
 
 mod topic_field_definitions_storage {
     rustok_core::define_field_definitions_entity!("topic_field_definitions");
@@ -164,13 +164,54 @@ impl TopicService {
         topic_id: Uuid,
         delta: i32,
     ) -> ForumResult<forum_topic::Model> {
+        if delta == 0 {
+            return Self::find_topic_in_tx(txn, tenant_id, topic_id).await;
+        }
+
+        let now = Utc::now();
+        let reply_count = if delta > 0 {
+            Expr::col(forum_topic::Column::ReplyCount).add(delta).into()
+        } else {
+            let decrement = delta.checked_abs().ok_or_else(|| {
+                ForumError::Validation("Forum reply counter delta overflow".to_string())
+            })?;
+            Expr::case(
+                Expr::col(forum_topic::Column::ReplyCount).gt(decrement),
+                Expr::col(forum_topic::Column::ReplyCount).sub(decrement),
+            )
+            .finally(0)
+            .into()
+        };
+
+        let updated = forum_topic::Entity::update_many()
+            .filter(forum_topic::Column::TenantId.eq(tenant_id))
+            .filter(forum_topic::Column::Id.eq(topic_id))
+            .col_expr(forum_topic::Column::ReplyCount, reply_count)
+            .col_expr(forum_topic::Column::UpdatedAt, Expr::val(now))
+            .exec(txn)
+            .await?;
+        if updated.rows_affected != 1 {
+            return Err(ForumError::TopicNotFound(topic_id));
+        }
+
+        let last_reply_at = if delta > 0 {
+            Some(now.into())
+        } else {
+            forum_reply::Entity::find()
+                .filter(forum_reply::Column::TenantId.eq(tenant_id))
+                .filter(forum_reply::Column::TopicId.eq(topic_id))
+                .filter(forum_reply::Column::Status.eq(ReplyStatus::Approved))
+                .order_by_desc(forum_reply::Column::CreatedAt)
+                .one(txn)
+                .await?
+                .map(|reply| reply.created_at)
+        };
+
         let topic = Self::find_topic_in_tx(txn, tenant_id, topic_id).await?;
-        let mut active: forum_topic::ActiveModel = topic.clone().into();
-        active.reply_count = Set((topic.reply_count + delta).max(0));
-        active.last_reply_at = Set(Some(Utc::now().into()));
-        active.updated_at = Set(Utc::now().into());
-        active.update(txn).await?;
-        Ok(topic)
+        let mut active: forum_topic::ActiveModel = topic.into();
+        active.last_reply_at = Set(last_reply_at);
+        active.updated_at = Set(now.into());
+        Ok(active.update(txn).await?)
     }
 
     pub(crate) async fn set_pinned_in_tx(
