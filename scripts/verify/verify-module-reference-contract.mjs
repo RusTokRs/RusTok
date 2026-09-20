@@ -179,6 +179,8 @@ requireAll("crates/modules/rustok-blog/src/services/category_delete.rs", [
   '"Blog category Taxonomy hierarchy placement disappeared before delete completed"',
   "hierarchy_rows.len() != blog_category_ids.len()",
   '"Blog category Taxonomy hierarchy coverage is incomplete during sibling canonicalization"',
+  "TaxonomyScopeType::Module",
+  "taxonomy_term::Column::ScopeValue.eq(crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE)",
   "detach_category_from_posts_in_tx",
   "blog_post::Column::CategoryId.eq(category_id)",
   "blog_post::Column::Version.eq(post.version)",
