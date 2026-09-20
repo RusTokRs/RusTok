@@ -644,7 +644,6 @@ pub async fn change_password_native(
 
         #[derive(Deserialize)]
         struct RestStatusResponse {
-            #[allow(dead_code)]
             status: String,
         }
 
@@ -666,12 +665,14 @@ pub async fn change_password_native(
             return Err(ServerFnError::new(extract_http_error(response).await));
         }
 
-        let _ = response
+        let payload = response
             .json::<RestStatusResponse>()
             .await
             .map_err(ServerFnError::new)?;
 
-        Ok(SuccessPayload { success: true })
+        Ok(SuccessPayload {
+            success: payload.status == "ok",
+        })
     }
     #[cfg(not(feature = "ssr"))]
     {

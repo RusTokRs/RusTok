@@ -260,13 +260,15 @@ pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
                 .rsa_public_key_pem
                 .as_deref()
                 .filter(|key| !key.trim().is_empty());
-            if private_key.is_none() || public_key.is_none() {
-                return Err(AuthError::Internal(
-                    "RS256 requires both non-empty rsa_private_key_pem and rsa_public_key_pem"
-                        .to_string(),
-                ));
+            match (private_key, public_key) {
+                (Some(priv_key), Some(pub_key)) => validate_rs256_key_pair(priv_key, pub_key)?,
+                _ => {
+                    return Err(AuthError::Internal(
+                        "RS256 requires both non-empty rsa_private_key_pem and rsa_public_key_pem"
+                            .to_string(),
+                    ));
+                }
             }
-            validate_rs256_key_pair(private_key.unwrap(), public_key.unwrap())?;
         }
     }
 

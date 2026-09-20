@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `18 / 218` components audited (**8%**)
+- **Progress:** `21 / 218` components audited (**10%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -61,9 +61,9 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-ai-product](../../crates/modules/rustok-ai-product) | `modules` | 1 | 307 | 2026-09-20 07:33 | Verified clean, 1 file, 307 LOC, all 6 tests passed |
 | [x] | [rustok-ai-translation](../../crates/modules/rustok-ai-translation) | `modules` | 1 | 1,657 | 2026-09-20 07:33 | Audited lib.rs: eliminated Tier 0 bare expects on schema serialization and manifest hashing with safe fallbacks, all 18 tests passed |
 | [x] | [admin](../../crates/modules/rustok-ai/admin) | `modules` | 17 | 8,440 | 2026-09-20 07:10 | Audited native_server_adapter.rs, transport/mod.rs, ui/leptos.rs: removed dead_code suppression on cancel_run and re-exported in transport facade, safely handled optional browser window/location in WebSocket URL builder |
-| [ ] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 50 | 11,107 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-auth/admin) | `modules` | 18 | 5,550 | None |  |
-| [ ] | [cli](../../crates/modules/rustok-auth/cli) | `modules` | 1 | 333 | None |  |
+| [x] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 50 | 11,107 | 2026-09-20 07:44 | Audited config.rs: eliminated Tier 0 unwrap in RS256 key pair validation via pattern matching, all 36 tests passed |
+| [x] | [admin](../../crates/modules/rustok-auth/admin) | `modules` | 18 | 5,550 | 2026-09-20 07:44 | Audited native_server_adapter.rs: removed allow(dead_code) suppression on change-password REST response status and validated payload, all 16 tests passed |
+| [x] | [cli](../../crates/modules/rustok-auth/cli) | `modules` | 1 | 333 | 2026-09-20 07:44 | Verified clean CLI module, 1 file, 333 LOC, all 4 tests passed |
 | [ ] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 126 | 29,040 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-blog/admin) | `modules` | 16 | 4,914 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-blog/storefront) | `modules` | 12 | 2,601 | None |  |
