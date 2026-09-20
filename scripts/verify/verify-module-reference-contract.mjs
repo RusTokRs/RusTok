@@ -794,6 +794,9 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
   "enforce_scope(&security, Resource::Tags, Action::Update)?;",
   "enforce_scope(&security, Resource::Tags, Action::Delete)?;",
   "ensure_module_owned_term(&term)?;",
+  "if post.version <= 0",
+  ".checked_add(1)",
+  '.filter(|next| *next > 0)',
 ]);
 
 const allowedBlogPostMutationSources = new Set([
