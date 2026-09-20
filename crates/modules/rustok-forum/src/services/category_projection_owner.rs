@@ -112,11 +112,8 @@ impl CategoryProjectionOwnerService {
         let requested_slug = input.slug.clone();
         let requested_description = input.description.clone();
         let txn = self.db.begin().await?;
-        let category = forum_category::Entity::find_by_id(category_id)
-            .filter(forum_category::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(ForumError::CategoryNotFound(category_id))?;
+        let category =
+            CategoryService::find_category_for_update_in_tx(&txn, tenant_id, category_id).await?;
 
         let mut active: forum_category::ActiveModel = category.into();
         active.updated_at = Set(Utc::now().into());
