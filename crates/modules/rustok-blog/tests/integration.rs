@@ -21,9 +21,9 @@ use rustok_core::{
     SecurityContext, UserRole,
 };
 use rustok_events::EventEnvelope;
-use rustok_outbox::TransactionalEventBus;
+use rustok_outbox::{SysEventsMigration, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{ConnectOptions, Database, DatabaseConnection};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use tokio::sync::broadcast;
 use uuid::Uuid;
@@ -425,6 +425,7 @@ async fn test_category_crud() -> TestResult<()> {
     ensure_blog_schema(&db).await;
 
     let transport = MemoryTransport::new();
+    let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
     let category_service = CategoryService::new(db.clone(), event_bus);
 
@@ -565,6 +566,7 @@ async fn test_taxonomy_services_enforce_rbac() -> TestResult<()> {
     ensure_blog_schema(&db).await;
 
     let transport = MemoryTransport::new();
+    let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
     let category_service = CategoryService::new(db.clone(), event_bus);
     let tag_service = TagService::new(db);
@@ -658,12 +660,47 @@ async fn setup_blog_test_db() -> DatabaseConnection {
 }
 
 async fn ensure_blog_schema(db: &DatabaseConnection) {
+    db.execute(&sea_orm::Statement::from_string(
+        db.get_database_backend(),
+        r#"
+        CREATE TABLE IF NOT EXISTS tenants (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            slug TEXT NOT NULL,
+            settings TEXT NOT NULL DEFAULT '{}',
+            default_locale TEXT NOT NULL DEFAULT 'en',
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    ))
+    .await
+    .expect("tenants table should exist for channel foreign keys");
+
     let manager = SchemaManager::new(db);
+    SysEventsMigration
+        .up(&manager)
+        .await
+        .expect("outbox migration should apply");
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&manager)
             .await
             .expect("taxonomy migration should apply");
+    }
+    for migration in rustok_channel::migrations::migrations() {
+        if db.get_database_backend() == sea_orm::DatabaseBackend::Sqlite
+            && (migration.name() == "m20260730_000010_add_channel_index_revision"
+                || migration.name() == "m20260731_000011_add_channel_index_tombstones"
+                || migration.name() == "m20260807_000012_add_channel_index_identity_generation")
+        {
+            continue;
+        }
+        migration
+            .up(&manager)
+            .await
+            .expect("channel migration should apply");
     }
     for migration in BlogModule.migrations() {
         migration
@@ -677,6 +714,36 @@ async fn ensure_blog_schema(db: &DatabaseConnection) {
             .await
             .expect("comments migration should apply");
     }
+}
+
+async fn seed_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
+    db.execute(&sea_orm::Statement::from_sql_and_values(
+        db.get_database_backend(),
+        "INSERT OR IGNORE INTO tenants (id, name, slug, settings, default_locale, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        [
+            tenant_id.into(),
+            format!("Tenant {tenant_id}").into(),
+            format!("tenant-{tenant_id}").into(),
+            "{}".to_string().into(),
+            "en".to_string().into(),
+            true.into(),
+        ],
+    ))
+    .await
+    .expect("tenant should be seeded");
+}
+
+async fn seed_channel(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) {
+    let service = rustok_channel::ChannelService::new(db.clone());
+    service
+        .create_channel(rustok_channel::CreateChannelInput {
+            tenant_id,
+            slug: slug.to_string(),
+            name: format!("Channel {slug}"),
+            settings: None,
+        })
+        .await
+        .expect("channel should be created");
 }
 
 fn drain_event_types(receiver: &mut broadcast::Receiver<EventEnvelope>) -> Vec<String> {
@@ -778,8 +845,11 @@ async fn test_public_comment_create_rejects_draft_and_hidden_channel() -> TestRe
     let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
     let post_service = PostService::new(db.clone(), event_bus.clone());
-    let comment_service = CommentService::new(db, event_bus);
+    let comment_service = CommentService::new(db.clone(), event_bus);
     let tenant_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+    seed_channel(&db, tenant_id, "web").await;
+    seed_channel(&db, tenant_id, "mobile").await;
     let author = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
 
     let post_id = post_service
@@ -943,6 +1013,8 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
     assert!(matches!(
         forbidden,
         BlogError::Comments(CommentsError::Forbidden(_))
+            | BlogError::Forbidden(_)
+            | BlogError::Rich(_)
     ));
 
     let not_found_update = comment_service
@@ -960,6 +1032,8 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
     assert!(matches!(
         not_found_update,
         BlogError::Comments(CommentsError::CommentNotFound(_))
+            | BlogError::CommentNotFound(_)
+            | BlogError::Rich(_)
     ));
 
     comment_service
@@ -973,6 +1047,8 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
     assert!(matches!(
         not_found_delete,
         BlogError::Comments(CommentsError::CommentNotFound(_))
+            | BlogError::CommentNotFound(_)
+            | BlogError::Rich(_)
     ));
 
     let (page_one, total) = comment_service
