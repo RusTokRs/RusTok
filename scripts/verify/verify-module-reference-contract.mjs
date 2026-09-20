@@ -278,6 +278,16 @@ requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
   "// Serialize before reading hierarchy so a concurrent structural move cannot be",
 ]);
+requireAll("crates/modules/rustok-blog/src/domain/richtext.rs", [
+  'BlogError::invariant("Stored article content is not a document")',
+  '"Stored article content violates the Article richtext contract"',
+  '"Stored article content cannot be projected as Article richtext"',
+  '"Stored article content cannot produce Article plain text"',
+]);
+forbid("crates/modules/rustok-blog/src/domain/richtext.rs", [
+  'map_err(|_| BlogError::validation("Stored article content is not a document"))',
+]);
+
 requireAll("crates/modules/rustok-blog/src/module.rs", [
   '"dependencies"',
   '["content", "comments", "taxonomy", "outbox", "channel"]',
