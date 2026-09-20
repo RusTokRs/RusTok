@@ -179,6 +179,9 @@ pub enum Error {
     #[error("Validation error: {0}")]
     Validation(String),
 
+    #[error("Internal error: {0}")]
+    Internal(String),
+
     #[error("External error: {0}")]
     External(String),
 }
@@ -195,6 +198,7 @@ impl From<Error> for RichError {
             Error::Forbidden(_) => ErrorKind::Forbidden,
             Error::Cache(_) => ErrorKind::Internal,
             Error::Scripting(_) => ErrorKind::Internal,
+            Error::Internal(_) => ErrorKind::Internal,
             Error::Validation(_) => ErrorKind::Validation,
             Error::External(_) => ErrorKind::ExternalService,
         };
