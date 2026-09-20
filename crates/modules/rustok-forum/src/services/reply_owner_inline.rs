@@ -44,7 +44,7 @@ impl ReplyService {
             .await?;
 
         let txn = self.db.begin().await?;
-        let topic = TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
+        let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
         match topic.status {
             TopicStatus::Closed => return Err(ForumError::TopicClosed),
             TopicStatus::Archived => return Err(ForumError::TopicArchived),
