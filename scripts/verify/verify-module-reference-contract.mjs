@@ -283,6 +283,9 @@ requireAll("crates/modules/rustok-blog/src/module.rs", [
   '["content", "comments", "taxonomy", "outbox", "channel"]',
 ]);
 requireAll("crates/modules/rustok-blog/rustok-module.toml", [
+  'content = { version_req = ">=0.1.0" }',
+  'comments = { version_req = ">=0.1.0" }',
+  'outbox = { version_req = ">=0.1.0" }',
   'taxonomy = { version_req = ">=0.1.0" }',
   'channel = { version_req = ">=0.1.0" }',
 ]);
