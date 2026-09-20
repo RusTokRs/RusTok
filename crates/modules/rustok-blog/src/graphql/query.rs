@@ -439,6 +439,45 @@ async fn require_public_blog_channel_enabled(ctx: &Context<'_>) -> Result<()> {
     .await
 }
 
+pub(super) async fn ensure_authenticated_blog_channel_enabled(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    request_context: Option<&RequestContext>,
+) -> Result<()> {
+    let Some(request_context) = request_context else {
+        return Err(
+            <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::internal_error(
+                "Blog comment creation requires current channel context",
+            ),
+        );
+    };
+    let Some(channel_id) = request_context.channel_id else {
+        return Err(
+            <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::internal_error(
+                "Blog comment creation requires current channel",
+            ),
+        );
+    };
+
+    let enabled = ChannelService::new(db.clone())
+        .is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)
+        .await
+        .map_err(|_| {
+            <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::internal_error(
+                "Unable to verify Blog channel availability",
+            )
+        })?;
+
+    if enabled {
+        Ok(())
+    } else {
+        Err(async_graphql::Error::new(
+            "Blog is not available for the current channel",
+        )
+        .extend_with(|_, ext| ext.set("code", "MODULE_NOT_ENABLED")))
+    }
+}
+
 pub(super) async fn ensure_public_blog_channel_enabled(
     db: &DatabaseConnection,
     tenant_id: Uuid,
