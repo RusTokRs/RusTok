@@ -635,6 +635,26 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
   "ensure_module_owned_term(&term)?;",
 ]);
 
+const allowedBlogPostMutationSources = new Set([
+  "crates/modules/rustok-blog/src/services/post/commands.rs",
+  "crates/modules/rustok-blog/src/services/tag.rs",
+  "crates/modules/rustok-blog/src/services/category_delete.rs",
+  "crates/modules/rustok-blog/src/services/comment_projection.rs",
+]);
+for (const path of rustFiles("crates/modules/rustok-blog/src/services")) {
+  if (allowedBlogPostMutationSources.has(path)) continue;
+  forbid(path, [
+    "blog_post::Entity::update_many",
+    "blog_post::ActiveModel",
+    "blog_post::Entity::delete_many",
+    "blog_post_translation::ActiveModel",
+    "blog_post_channel_visibility::Entity::delete_many",
+    "blog_post_channel_visibility::ActiveModel",
+    "blog_post_tag::Entity::delete_many",
+    "blog_post_tag::ActiveModel",
+  ]);
+}
+
 
 
 requireAll("crates/modules/rustok-blog/src/services/post/repository.rs", [
