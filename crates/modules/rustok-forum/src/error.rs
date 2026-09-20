@@ -70,6 +70,9 @@ pub enum ForumError {
     #[error("Forum relation revision changed concurrently")]
     RelationRevisionConflict,
 
+    #[error("Forum topic changed concurrently: {0}")]
+    TopicUpdateConflict(Uuid),
+
     #[error("Forum topic move operation conflicts with an existing command: {0}")]
     TopicMoveOperationConflict(Uuid),
 
@@ -183,6 +186,7 @@ impl ForumError {
             Self::QuoteTargetUnavailable => "FORUM_QUOTE_TARGET_UNAVAILABLE",
             Self::RelationRevisionUnavailable => "FORUM_RELATION_REVISION_UNAVAILABLE",
             Self::RelationRevisionConflict => "FORUM_RELATION_REVISION_CONFLICT",
+            Self::TopicUpdateConflict(_) => "FORUM_TOPIC_UPDATE_CONFLICT",
             Self::TopicMoveOperationConflict(_) => "FORUM_TOPIC_MOVE_OPERATION_CONFLICT",
             Self::TopicMergeOperationConflict(_) => "FORUM_TOPIC_MERGE_OPERATION_CONFLICT",
             Self::TopicForkOperationConflict(_) => "FORUM_TOPIC_FORK_OPERATION_CONFLICT",
@@ -239,6 +243,7 @@ impl ForumError {
         match self {
             Self::CapabilityFailure { retryable, .. } => *retryable,
             Self::Database(_) | Self::Internal(_) | Self::RelationRevisionConflict => true,
+            Self::TopicUpdateConflict(_) => true,
             _ => false,
         }
     }
