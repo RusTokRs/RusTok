@@ -7,7 +7,7 @@ use rustok_api::{AuthContext, RequestContext, TenantContext};
 use rustok_web::HttpResult;
 use uuid::Uuid;
 
-use super::{BlogHttpRuntime, posts::{ensure_blog_module_enabled, ensure_blog_permission}};
+use super::{BlogHttpRuntime, ensure_blog_module_enabled, posts::ensure_blog_permission};
 use crate::{CommentResponse, ModerateCommentInput};
 
 #[utoipa::path(
