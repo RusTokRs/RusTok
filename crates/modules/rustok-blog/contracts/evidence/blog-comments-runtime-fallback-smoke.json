@@ -43,7 +43,7 @@
     "propagated_error_policy": "all_other_blog_errors",
     "cached_thread_snapshot": "source_verified_no_compile",
     "comment_form_fallback": "planned",
-    "comment_form_fallback_interpretation": "legacy_registry_compatibility_only_see_storefront_write_surface",
+    "comment_form_fallback_interpretation": "active_storefront_write_surface_degraded_mode_planned",
     "degraded_payload": {
       "cache_hit": {
         "cached_snapshot": true,
@@ -88,13 +88,13 @@
     "runtime_evidence": "pending"
   },
   "storefront_write_surface": {
-    "status": "source_verified_absent",
+    "status": "source_verified_present",
     "inventory": "crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json",
-    "active_comment_form": false,
-    "active_create_comment_transport": false,
+    "active_comment_form": true,
+    "active_create_comment_transport": true,
     "legacy_degraded_mode": "hide_comment_form",
-    "legacy_registry_semantics": "compatibility_vocabulary_not_active_storefront_surface",
-    "comment_form_fallback": "not_applicable_no_storefront_write_surface"
+    "legacy_registry_semantics": "fallback_vocabulary_for_active_storefront_write_surface",
+    "comment_form_fallback": "planned"
   },
   "fallback_smoke": {
     "status": "planned",
@@ -124,8 +124,8 @@
           "with_error_code(error.code)"
         ],
         "degraded_mode": "hide_comment_form",
-        "mode_status": "legacy_not_applicable_no_storefront_write_surface",
-        "expected_consumer_behavior": "the active storefront has no public comment form or create-comment transport; hide_comment_form is retained only as registry compatibility vocabulary and is not an implementation target"
+        "mode_status": "planned_runtime_execution_only",
+        "expected_consumer_behavior": "the active storefront has an authenticated create-comment surface; hide_comment_form remains a planned degraded mode for provider unavailability and has not been runtime-verified"
       },
       {
         "operation": "list_comments_for_target",
