@@ -405,6 +405,12 @@ requireAll("crates/modules/rustok-blog/src/services/comment_projection.rs", [
   "let post_updated =",
   "return Ok(false);",
   "if post_updated",
+  "lock_exclusive()",
+  "Column::CommentId.eq(change.comment_id)",
+  "order_by_desc(blog_comment_projection_delivery::Column::EventId)",
+  "delivery.event_id >= envelope.id",
+  "fn projection_applied_delta(",
+  "delta: Set(change.delta)",
 ]);
 forbid("crates/modules/rustok-blog/src/services/comment_projection.rs", [
   "blog_post::Column::Version",
