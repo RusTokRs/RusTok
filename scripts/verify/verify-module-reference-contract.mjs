@@ -413,6 +413,16 @@ requireAll("crates/modules/rustok-blog/src/module.rs", [
   "reaction_subject::BlogReactionSubjectProviderFactory,",
   "registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));",
 ],);
+requireAll("crates/modules/rustok-blog/src/module.rs", [
+  "rustok_core::Error::Internal(format!(",
+  "blog SEO target registration failed: {error}",
+  "blog reaction subject factory registration failed: {error}",
+]);
+forbid("crates/modules/rustok-blog/src/module.rs", [
+  "rustok_core::Error::Validation(format!(\n                    \"blog SEO target registration failed: {error}\"",
+  "rustok_core::Error::Validation(format!(\n                \"blog reaction subject factory registration failed: {error}\"",
+]);
+
 requireAll("crates/modules/rustok-blog/src/integrations/seo_targets.rs", [
   "let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());",
   "service.get_post_with_locale_fallback(",
