@@ -55,7 +55,8 @@ impl ReplyService {
         }
 
         let category =
-            CategoryService::find_category_in_tx(&txn, tenant_id, topic.category_id).await?;
+            CategoryService::find_category_for_update_in_tx(&txn, tenant_id, topic.category_id)
+                .await?;
 
         if let Some(parent_reply_id) = input.parent_reply_id {
             let parent =
