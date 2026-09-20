@@ -860,6 +860,12 @@ requireAll("crates/modules/rustok-blog/src/dto/post.rs", [
   "max_length = 1000",
 ]);
 
+requireAll("crates/modules/rustok-blog/docs/implementation-plan-current.md", [
+  "comment_form_fallback = planned",
+  "active storefront has an authenticated create-comment surface",
+  "`hide_comment_form` remains a planned degraded mode",
+]);
+
 if (failures.length > 0) {
   console.error("Canonical module reference-contract verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
@@ -867,9 +873,3 @@ if (failures.length > 0) {
 }
 
 console.log("Canonical module reference-contract verification passed for rustok-blog.");
-
-requireAll("crates/modules/rustok-blog/docs/implementation-plan-current.md", [
-  "comment_form_fallback = planned",
-  "active storefront has an authenticated create-comment surface",
-  "`hide_comment_form` remains a planned degraded mode",
-]);
