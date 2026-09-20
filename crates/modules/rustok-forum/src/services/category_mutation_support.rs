@@ -3,6 +3,7 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
     DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, Statement,
     TransactionTrait,
+    sea_query::Expr,
 };
 use tracing::instrument;
 use uuid::Uuid;
