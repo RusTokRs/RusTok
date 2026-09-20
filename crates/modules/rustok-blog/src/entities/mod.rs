@@ -1,7 +1,6 @@
 //! Blog persistence entities. These are crate-private implementation details.
 
 pub mod blog_category;
-pub(crate) mod blog_category_translation;
 pub mod blog_comment_projection_delivery;
 pub mod blog_post;
 pub mod blog_post_channel_visibility;

@@ -9,8 +9,8 @@ use uuid::Uuid;
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 use rustok_taxonomy::{
-    entities::{taxonomy_category_hierarchy, taxonomy_term},
-    TaxonomyScopeType, TaxonomyTermKind,
+    entities::taxonomy_category_hierarchy,
+    TaxonomyOwnerCategoryReader, TaxonomyScopeType,
 };
 
 use crate::dto::{
@@ -57,17 +57,21 @@ impl CategoryCommandService {
         }
         ensure_parent_exists(&blog_ids, input.parent_id)?;
 
-        let canonical_terms = taxonomy_term::Entity::find()
-            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
-            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category))
-            .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
-            .filter(
-                taxonomy_term::Column::ScopeValue
-                    .eq(crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
+        // Taxonomy remains the storage owner; validate the complete canonical Category projection
+        // through its storage-encapsulating owner reader before mutating the hierarchy.
+        let category_ids = blog_ids.iter().copied().collect::<Vec<_>>();
+        let canonical_terms =
+            TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
+                &txn,
+                tenant_id,
+                TaxonomyScopeType::Module,
+                Some(crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
+                Some(&category_ids),
+                rustok_api::PLATFORM_FALLBACK_LOCALE,
+                None,
             )
-            .filter(taxonomy_term::Column::Id.is_in(blog_ids.iter().copied()))
-            .all(&txn)
-            .await?;
+            .await
+            .map_err(BlogError::from)?;
         if canonical_terms.len() != blog_ids.len() {
             return Err(BlogError::invariant(
                 "Blog category Taxonomy ownership coverage is incomplete during move",

@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -35,6 +35,14 @@ function rustFiles(path) {
     }
   }
   return out;
+}
+
+const legacyCategoryTranslationEntity =
+  join(repoRoot, "crates/modules/rustok-blog/src/entities/blog_category_translation.rs");
+if (existsSync(legacyCategoryTranslationEntity)) {
+  fail(
+    "crates/modules/rustok-blog/src/entities/blog_category_translation.rs: retired Blog category translation entity must not exist",
+  );
 }
 
 requireAll("crates/modules/rustok-blog/build.rs", [
@@ -163,9 +171,10 @@ requireAll("crates/modules/rustok-blog/src/services/category.rs", [
 
 requireAll("crates/modules/rustok-blog/src/services/category_command.rs", [
   "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
+  "TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(",
+  "Some(crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE)",
   '"Blog category {category_id} has no canonical Taxonomy hierarchy placement during move"',
   '"Blog category Taxonomy ownership coverage is incomplete during move"',
-  "TaxonomyTermKind::Category",
   "TaxonomyScopeType::Module",
   ".map_err(storage_category_tree_error)?",
   'BlogError::invariant("Moved category placement was not persisted")',
@@ -174,6 +183,10 @@ requireAll("crates/modules/rustok-blog/src/services/category_command.rs", [
 ]);
 forbid("crates/modules/rustok-blog/src/services/category_command.rs", [
   "or_insert((None, 0))",
+  "taxonomy_term::Entity::find(",
+  "taxonomy_term::Column::",
+  "entities::{taxonomy_category_hierarchy, taxonomy_term}",
+  "TaxonomyTermKind::Category",
 ]);
 requireAll("crates/modules/rustok-blog/src/services/category_delete.rs", [
   "rustok_taxonomy::lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?",
