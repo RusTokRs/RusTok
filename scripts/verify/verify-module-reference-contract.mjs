@@ -423,6 +423,39 @@ forbid("crates/modules/rustok-blog/src/services/comment_projection.rs", [
   "DomainEvent::BlogPostUpdated {\n                    post_id: change.post_id",
 ]);
 
+requireAll("scripts/verify/verify-blog-comments-event-projection.mjs", [
+  "implementation-plan-current.md",
+  "lock_exclusive()",
+  "projection_applied_delta(",
+  "order_by_desc(blog_comment_projection_delivery::Column::EventId)",
+  "delivery.event_id >= envelope.id",
+  "OnConflict::column(blog_comment_projection_delivery::Column::EventId)",
+  "projection_delta_tracks_comment_state_not_delivery_order()",
+]);
+requireAll("scripts/verify/verify-blog-comments-event-projection.mjs", [
+  "implementation-plan-current.md",
+  "lock_exclusive()",
+  "projection_applied_delta(",
+  "order_by_desc(blog_comment_projection_delivery::Column::EventId)",
+  "delivery.event_id >= envelope.id",
+  "OnConflict::column(blog_comment_projection_delivery::Column::EventId)",
+]);
+
+requireAll("scripts/verify/verify-blog-comments-event-projection.test.mjs", [
+  "missingPostLock",
+  "missingDeliveryOrdering",
+  "missingStateDelta",
+  "rejects a projection without Blog-post row locking",
+  "rejects a projection without per-comment event ordering",
+]);
+forbid("scripts/verify/verify-blog-comments-event-projection.test.mjs", [
+  "missingRetryLimitCase",
+  "missingRetryDecisionHelper",
+  "missingRetryPolicyHarness",
+  "optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears",
+  "ProjectionUpdateDecision",
+]);
+
 requireAll("crates/modules/rustok-blog/src/graphql/query.rs", [
   "Err(BlogError::Forbidden(_)) if is_public_request(ctx) => return Ok(None)",
   "query_tenant_id(ctx, tenant, tenant_id)?",
@@ -794,6 +827,9 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
   "enforce_scope(&security, Resource::Tags, Action::Update)?;",
   "enforce_scope(&security, Resource::Tags, Action::Delete)?;",
   "ensure_module_owned_term(&term)?;",
+  "if post.version <= 0",
+  ".checked_add(1)",
+  '.filter(|next| *next > 0)',
 ]);
 
 const allowedBlogPostMutationSources = new Set([
@@ -860,6 +896,12 @@ requireAll("crates/modules/rustok-blog/src/dto/post.rs", [
   "max_length = 1000",
 ]);
 
+requireAll("crates/modules/rustok-blog/docs/implementation-plan-current.md", [
+  "comment_form_fallback = planned",
+  "active storefront has an authenticated create-comment surface",
+  "`hide_comment_form` remains a planned degraded mode",
+]);
+
 if (failures.length > 0) {
   console.error("Canonical module reference-contract verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
@@ -867,9 +909,3 @@ if (failures.length > 0) {
 }
 
 console.log("Canonical module reference-contract verification passed for rustok-blog.");
-
-requireAll("crates/modules/rustok-blog/docs/implementation-plan-current.md", [
-  "comment_form_fallback = planned",
-  "active storefront has an authenticated create-comment surface",
-  "`hide_comment_form` remains a planned degraded mode",
-]);
