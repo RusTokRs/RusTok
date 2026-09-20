@@ -42,6 +42,7 @@ pub async fn list_posts(
     request_context: RequestContext,
     Query(mut query): Query<PostListQuery>,
 ) -> HttpResult<Json<crate::PostListResponse>> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
         &auth,
@@ -106,6 +107,7 @@ pub async fn get_post(
     Path(id): Path<Uuid>,
     Query(params): Query<HashMap<String, String>>,
 ) -> HttpResult<Json<PostResponse>> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
         &auth,
@@ -150,6 +152,7 @@ pub async fn create_post(
     auth: AuthContext,
     Json(input): Json<CreatePostInput>,
 ) -> HttpResult<(StatusCode, Json<Uuid>)> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
         &auth,
@@ -188,6 +191,7 @@ pub async fn update_post(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdatePostInput>,
 ) -> HttpResult<()> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
         &auth,
@@ -224,6 +228,7 @@ pub async fn delete_post(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
         &auth,
@@ -260,6 +265,7 @@ pub async fn publish_post(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<()> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
         &auth,
@@ -296,6 +302,7 @@ pub async fn unpublish_post(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<()> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
         &auth,
@@ -309,6 +316,25 @@ pub async fn unpublish_post(
         .await
         .map_err(crate::error::public::to_http_error)?;
     Ok(())
+}
+
+pub(super) async fn ensure_blog_module_enabled(
+    runtime: &BlogHttpRuntime,
+    tenant_id: Uuid,
+) -> HttpResult<()> {
+    match rustok_api::is_tenant_module_enabled(&runtime.db_clone(), tenant_id, "blog").await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(HttpError::new(
+            StatusCode::FORBIDDEN,
+            "MODULE_NOT_ENABLED",
+            "Module 'blog' is not enabled for this tenant",
+        )),
+        Err(_) => Err(HttpError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "INTERNAL_SERVER_ERROR",
+            "The Blog operation could not be completed",
+        )),
+    }
 }
 
 pub(super) fn ensure_blog_permission(
@@ -352,6 +378,7 @@ pub async fn archive_post(
     Path(id): Path<Uuid>,
     Json(input): Json<ArchivePostInput>,
 ) -> HttpResult<()> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
         &auth,
@@ -385,6 +412,7 @@ pub async fn restore_post(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<()> {
+    ensure_blog_module_enabled(&runtime, tenant.id).await?;
     ensure_blog_permission(
         &tenant,
         &auth,
