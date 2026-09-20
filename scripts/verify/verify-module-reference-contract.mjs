@@ -23,6 +23,16 @@ function forbid(path, markers) {
     if (source.includes(marker)) fail(`${path}: forbidden reference-module pattern ${marker}`);
   }
 }
+function requireOrdered(path, before, after) {
+  const source = read(path);
+  const beforeIndex = source.indexOf(before);
+  const afterIndex = source.indexOf(after);
+  if (beforeIndex === -1) fail(`${path}: missing ordered invariant marker ${before}`);
+  else if (afterIndex === -1) fail(`${path}: missing ordered invariant marker ${after}`);
+  else if (beforeIndex >= afterIndex) {
+    fail(`${path}: expected ${before} before ${after}`);
+  }
+}
 function rustFiles(path) {
   const root = join(repoRoot, path);
   const out = [];
@@ -504,6 +514,21 @@ requireAll("crates/modules/rustok-blog/src/services/comment.rs", [
   "Self::ensure_blog_target(&existing)?;",
   "comments_read_port_context(",
 ]);
+requireOrdered(
+  "crates/modules/rustok-blog/src/services/comment.rs",
+  "enforce_scope(&security, Resource::Comments, Action::Create)?;",
+  "self.ensure_post_exists(tenant_id, post_id).await?;",
+);
+requireOrdered(
+  "crates/modules/rustok-blog/src/services/comment.rs",
+  "enforce_scope(&security, Resource::Comments, Action::Update)?;",
+  "let existing = self",
+);
+requireOrdered(
+  "crates/modules/rustok-blog/src/services/comment.rs",
+  "enforce_scope(&security, Resource::Comments, Action::Delete)?;",
+  "let existing = self",
+);
 
 requireAll("crates/modules/rustok-blog/admin/src/model.rs", [
   "pub version: i32",
