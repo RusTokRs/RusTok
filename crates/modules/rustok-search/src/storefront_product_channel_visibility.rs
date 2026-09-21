@@ -136,7 +136,10 @@ mod tests {
     use sea_orm::Value;
     use uuid::Uuid;
 
-    use super::{product_channel_visibility_sql, product_payload_visible_for_storefront};
+    use super::{
+        blog_channel_visibility_sql, blog_payload_visible_for_storefront,
+        product_channel_visibility_sql, product_payload_visible_for_storefront,
+    };
     use crate::TrustedStorefrontChannel;
 
     fn channel(slug: Option<&str>) -> TrustedStorefrontChannel {
