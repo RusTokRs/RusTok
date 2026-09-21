@@ -134,6 +134,8 @@ export function EmailSettingsForm({
               id='smtp-password'
               type='password'
               value={settings.smtpPassword}
+              placeholder='Leave blank to keep the current password'
+              autoComplete='new-password'
               onChange={(e) =>
                 setSettings((s) => ({ ...s, smtpPassword: e.target.value }))
               }
