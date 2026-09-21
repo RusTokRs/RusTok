@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `100 / 218` components audited (**46%**)
+- **Progress:** `101 / 218` components audited (**46%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -143,7 +143,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [admin](../../crates/modules/rustok-page-builder/admin) | `modules` | 69 | 18,637 | 2026-09-21 06:38 | Documented validated exact field set invariant in consumer property editor, verified authoring, canvas document, SSR drop/assets/forms, all 95 tests passed, clippy clean |
 | [x] | [rustok-pages](../../crates/modules/rustok-pages) | `modules` | 170 | 46,835 | 2026-09-21 07:13 | Audited core Pages service writes: tenant-scoped queries, page/version and translation CAS, published-document immutability, route ownership/history uniqueness, immutable artifact publish/rebuild/rollback receipts; closed builder-capability TOCTOU by enforcing the tenant feature gate inside create/document transactions. |
 | [x] | [admin](../../crates/modules/rustok-pages/admin) | `modules` | 24 | 5,904 | 2026-09-21 07:19 | Audited admin access policy, GraphQL transports, SSR Page Builder facade, browser intent preflight, rollback retry identity, scenario baseline CAS, metadata revision CAS, and same-origin inline editor launch; no additional production correctness/security finding found. |
-| [ ] | [storefront](../../crates/modules/rustok-pages/storefront) | `modules` | 17 | 4,717 | None |  |
+| [x] | [storefront](../../crates/modules/rustok-pages/storefront) | `modules` | 17 | 4,717 | 2026-09-21 07:24 | Audited native/GraphQL storefront transport, host route resolution, published artifact rendering, locale/channel-aware caching, authenticated inline editing, and public visibility; closed arbitrary tenant fallback in server functions by binding fallback resolution to the host-configured tenant. |
 | [ ] | [rustok-payment](../../crates/modules/rustok-payment) | `modules` | 85 | 20,644 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-payment/storefront) | `modules` | 11 | 1,316 | None |  |
 | [ ] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 47 | 18,461 | None |  |
