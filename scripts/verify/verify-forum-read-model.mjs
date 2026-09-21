@@ -23,6 +23,7 @@ for (const arg of args) {
 const paths = {
   dto: "crates/modules/rustok-forum/src/dto/read_model.rs",
   service: "crates/modules/rustok-forum/src/services/read_model.rs",
+  serviceOwner: "crates/modules/rustok-forum/src/services/read_model_owner.rs",
   compatibility: "crates/modules/rustok-forum/src/services/bounded_compat.rs",
   categoryOwner: "crates/modules/rustok-forum/src/services/category_owner.rs",
   servicesRegistry: "crates/modules/rustok-forum/src/services/mod.rs",
@@ -47,7 +48,7 @@ function text(path) {
 
 function verifyStatic() {
   const dto = text(paths.dto);
-  const service = text(paths.service);
+  const service = `${text(paths.service)}\n${text(paths.serviceOwner)}`;
   const compatibility = text(paths.compatibility);
   const categoryOwner = text(paths.categoryOwner);
   const servicesRegistry = text(paths.servicesRegistry);
@@ -77,14 +78,14 @@ function verifyStatic() {
     "CATEGORY_CURSOR_VERSION",
     "TOPIC_CURSOR_VERSION",
     "REPLY_CURSOR_VERSION",
-    "order_by_asc(forum_category::Column::Position)",
+    "row.canonical.position",
     "order_by_desc(forum_topic::Column::UpdatedAt)",
     "order_by_asc(forum_reply::Column::Position)",
   ]) {
     if (!service.includes(token)) fail(`${paths.service}: missing token ${token}`);
   }
 
-  const overfetches = service.match(/\.limit\(limit \+ 1\)/g) ?? [];
+  const overfetches = service.match(/\.limit\((?:limit|MAX_FORUM_CATEGORY_TREE_NODES) \+ 1\)/g) ?? [];
   if (overfetches.length !== 3) {
     fail(`${paths.service}: expected 3 limit+1 keyset overfetches, found ${overfetches.length}`);
   }
@@ -111,13 +112,13 @@ function verifyStatic() {
       fail(`${paths.categoryOwner}: missing bounded category token ${token}`);
     }
   }
-  if (!servicesRegistry.includes("mod category;")) {
+  if (!servicesRegistry.includes("mod category;") && !servicesRegistry.includes("mod category {")) {
     fail(`${paths.servicesRegistry}: raw category persistence module must stay private`);
   }
   if (!servicesRegistry.includes("pub use category_owner::CategoryService;")) {
     fail(`${paths.servicesRegistry}: bounded category owner is not the public export`);
   }
-  if (servicesRegistry.includes("pub mod category;")) {
+  if (servicesRegistry.includes("pub mod category;") || servicesRegistry.includes("pub mod category {")) {
     fail(`${paths.servicesRegistry}: raw category persistence module is publicly reachable`);
   }
 

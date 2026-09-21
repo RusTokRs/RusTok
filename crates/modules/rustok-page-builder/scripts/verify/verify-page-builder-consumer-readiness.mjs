@@ -225,10 +225,18 @@ if (arg === "forum") {
     path.join(repoRoot, "crates", "modules", "rustok-forum", "src", "controllers", "mod.rs"),
     "utf8",
   );
-  const moderationSource = fs.readFileSync(
-    path.join(repoRoot, "crates", "modules", "rustok-forum", "src", "services", "moderation.rs"),
-    "utf8",
-  );
+  const moderationSource = [
+    "moderation.rs",
+    "moderation_owner.rs",
+    "moderation_public_owner.rs",
+  ]
+    .map((file) =>
+      fs.readFileSync(
+        path.join(repoRoot, "crates", "modules", "rustok-forum", "src", "services", file),
+        "utf8",
+      ),
+    )
+    .join("\n");
   const combinedForumSource = `${routesSource}\n${moderationSource}`;
   for (const assertion of fallbackMatrix.assertions ?? []) {
     if (assertion.expected_http_class !== "non_5xx") {

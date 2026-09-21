@@ -8,6 +8,15 @@ pub struct FieldError {
     pub message: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum FormSubmissionStatus {
+    #[default]
+    Idle,
+    Submitting,
+    Success,
+    Failure(String),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FormState {
     pub is_submitting: bool,
@@ -54,6 +63,36 @@ impl FormState {
             message: message.into(),
         });
         self
+    }
+
+    pub fn set_submitting(&mut self) {
+        self.is_submitting = true;
+        self.form_error = None;
+    }
+
+    pub fn set_submitted_success(&mut self) {
+        self.is_submitting = false;
+        self.form_error = None;
+        self.field_errors.clear();
+    }
+
+    pub fn set_submitted_failure(&mut self, message: impl Into<String>) {
+        self.is_submitting = false;
+        self.form_error = Some(message.into());
+    }
+
+    pub fn submission_status(&self) -> FormSubmissionStatus {
+        if self.is_submitting {
+            FormSubmissionStatus::Submitting
+        } else if let Some(ref err) = self.form_error {
+            FormSubmissionStatus::Failure(err.clone())
+        } else {
+            FormSubmissionStatus::Idle
+        }
+    }
+
+    pub fn is_success(&self) -> bool {
+        !self.is_submitting && self.form_error.is_none() && self.field_errors.is_empty()
     }
 
     pub fn field_error(&self, field: &str) -> Option<&str> {
@@ -107,6 +146,23 @@ mod tests {
         state.reset();
         assert!(!state.has_errors());
         assert!(!state.is_submitting);
+        assert_eq!(state.submission_status(), FormSubmissionStatus::Idle);
+
+        state.set_submitting();
+        assert!(state.is_submitting);
+        assert_eq!(state.submission_status(), FormSubmissionStatus::Submitting);
+
+        state.set_submitted_failure("Network error");
+        assert!(!state.is_submitting);
+        assert_eq!(
+            state.submission_status(),
+            FormSubmissionStatus::Failure("Network error".to_string())
+        );
+
+        state.set_submitted_success();
+        assert!(!state.is_submitting);
+        assert!(state.is_success());
+        assert_eq!(state.submission_status(), FormSubmissionStatus::Idle);
     }
 }
 

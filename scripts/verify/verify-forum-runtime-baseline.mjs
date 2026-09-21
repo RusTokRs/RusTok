@@ -186,7 +186,7 @@ function verifyStaticBaseline() {
     "forum_reply_revisions",
     "forum_soft_delete_topic",
     "forum_soft_delete_reply",
-    "forum_hard_delete_context",
+    "forum_topic_delete_revision_update",
     "idx_forum_topics_tenant_deleted",
     "idx_forum_replies_tenant_topic_deleted",
   ]);

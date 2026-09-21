@@ -7,7 +7,7 @@
   "fallback_profiles": ["embedded_native"],
   "degraded_modes": ["hide_comment_form", "show_cached_thread_snapshot"],
   "cases": [
-    { "operation": "create_comment", "write": true, "source_order": ["context.require_policy(PortCallPolicy::write())?", "self.service", ".create_comment(", ".map_err(comments_error_to_port_error)"] },
+    { "operation": "create_comment", "write": true, "source_order": ["context.require_policy(PortCallPolicy::write())?", "self.service", ".create_comment_record_in_tx(", ".map_err(comments_error_to_port_error)"] },
     { "operation": "get_comment", "write": false, "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.service", ".get_comment(", ".map_err(comments_error_to_port_error)"] },
     { "operation": "list_comments_for_target", "write": false, "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.service", ".list_comments_for_target(", ".map_err(comments_error_to_port_error)"] },
     { "operation": "list_public_comments_for_target", "write": false, "source_order": ["context.require_policy(PortCallPolicy::read())?", "crate::public_read::list_public_comments_for_target(", ".map_err(comments_error_to_port_error)"] },

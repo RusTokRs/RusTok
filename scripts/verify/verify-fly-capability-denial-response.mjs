@@ -94,7 +94,7 @@ for (const marker of [
   requireMarker('pagesExports', marker, `Pages admin export is missing ${marker}`);
 }
 for (const marker of [
-  'leptos_auth::api::fetch_current_user(',
+  'leptos_auth::transport::fetch_current_user(',
   'PagesBrowserIntentProblem',
   'let problem = PagesBrowserIntentProblem::from(&error);',
   'StatusCode::from_u16(problem.status)',

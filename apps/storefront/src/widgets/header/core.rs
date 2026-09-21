@@ -14,7 +14,10 @@ pub(super) fn build_header_links(locale: &str) -> HeaderLinks {
 }
 
 fn storefront_root_for_locale(locale: &str) -> String {
-    format!("/{}", locale.trim().to_lowercase())
+    let normalized = rustok_ui_core::normalize_ui_text(locale)
+        .map(|s| s.to_lowercase())
+        .unwrap_or_else(|| "en".to_string());
+    format!("/{}", normalized)
 }
 
 #[cfg(test)]

@@ -144,8 +144,7 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
                 error.to_string(),
             )
         })?;
-        let result = self
-            .service
+        let result = self.service
             .create_comment_record_in_tx(&txn, tenant_id, security, request)
             .await
             .map_err(comments_error_to_port_error);

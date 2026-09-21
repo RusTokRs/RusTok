@@ -100,7 +100,7 @@
       "capability_required_server_order": [
         "pages_request_page_id(&request)?",
         "ensure_requested_page(&snapshot",
-        "leptos_auth::api::fetch_current_user",
+        "leptos_auth::transport::fetch_current_user",
         "PageBuilderRequestAuth::new",
         "PortContext::new",
         ".with_deadline(PAGE_BUILDER_PORT_DEADLINE)",

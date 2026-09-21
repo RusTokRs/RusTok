@@ -220,7 +220,7 @@ requireMarkers('pagesLib', [
 ], 'Pages public access and problem exports');
 
 requireMarkers('adminMain', [
-  'leptos_auth::api::fetch_current_user(',
+  'leptos_auth::transport::fetch_current_user(',
   'pages_editor_capability_policy_for_role(Some(',
   'PagesBrowserIntentProblem',
   'let problem = PagesBrowserIntentProblem::from(&error);',
