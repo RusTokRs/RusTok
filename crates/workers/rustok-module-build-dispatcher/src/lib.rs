@@ -83,34 +83,38 @@ impl IggyModuleBuildDeliverySource {
         else {
             return Ok(None);
         };
-        validate_delivery_envelope(&consumed.envelope)?;
-
-        let DomainEvent::ModuleBuildQueued {
-            request_id,
-            tenant_id,
-            ..
-        } = &consumed.envelope.event
-        else {
-            return Err(format!(
-                "module-build topic contained unexpected event type {}",
-                consumed.envelope.event_type
-            ));
-        };
-        if *tenant_id != consumed.envelope.tenant_id {
-            return Err(format!(
-                "module-build event {} has mismatched envelope and payload tenant IDs",
-                consumed.envelope.id
-            ));
-        }
-
-        let delivery = ModuleBuildDelivery {
-            delivery_id: consumed.envelope.id,
-            request_id: *request_id,
-            tenant_id: *tenant_id,
-        };
+        let delivery = parse_build_delivery(&consumed.envelope)?;
         *pending = Some((delivery.delivery_id, consumed));
         Ok(Some(delivery))
     }
+}
+
+fn parse_build_delivery(envelope: &EventEnvelope) -> Result<ModuleBuildDelivery, String> {
+    validate_delivery_envelope(envelope)?;
+
+    let DomainEvent::ModuleBuildQueued {
+        request_id,
+        tenant_id,
+        ..
+    } = &envelope.event
+    else {
+        return Err(format!(
+            "module-build topic contained unexpected event type {}",
+            envelope.event_type
+        ));
+    };
+    if *tenant_id != envelope.tenant_id {
+        return Err(format!(
+            "module-build event {} has mismatched envelope and payload tenant IDs",
+            envelope.id
+        ));
+    }
+
+    Ok(ModuleBuildDelivery {
+        delivery_id: envelope.id,
+        request_id: *request_id,
+        tenant_id: *tenant_id,
+    })
 }
 
 fn validate_delivery_envelope(envelope: &EventEnvelope) -> Result<(), String> {

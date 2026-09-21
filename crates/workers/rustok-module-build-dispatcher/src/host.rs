@@ -40,48 +40,60 @@ impl ModuleBuildDispatcherConfig {
             "RUSTOK_MODULE_BUILD_DISPATCHER_WORKER_ENDPOINT",
             required_env("RUSTOK_MODULE_BUILD_DISPATCHER_WORKER_ENDPOINT")?,
         )?;
-        let addresses = required_env("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_ADDRESSES")?
-            .split(',')
-            .map(str::trim)
-            .filter(|address| !address.is_empty())
-            .map(ToOwned::to_owned)
-            .collect::<Vec<_>>();
-        if addresses.is_empty() {
-            return Err(
-                "RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_ADDRESSES must contain at least one address"
-                    .to_string(),
-            );
-        }
-        let idle_poll_delay_ms = optional_u64(
-            "RUSTOK_MODULE_BUILD_DISPATCHER_IDLE_POLL_DELAY_MS",
-            Self::DEFAULT_IDLE_POLL_DELAY_MS,
-        )?;
-        if idle_poll_delay_ms == 0 || idle_poll_delay_ms > Self::MAX_IDLE_POLL_DELAY_MS {
-            return Err(format!(
-                "RUSTOK_MODULE_BUILD_DISPATCHER_IDLE_POLL_DELAY_MS must be between 1 and {}",
-                Self::MAX_IDLE_POLL_DELAY_MS
-            ));
-        }
+        let idle_poll_delay = parse_idle_poll_delay()?;
+        let iggy = parse_iggy_config()?;
 
         Ok(Self {
             database_url,
             worker_endpoint,
-            iggy: IggyConfig {
-                mode: IggyMode::External,
-                external: ExternalConfig {
-                    addresses,
-                    protocol: optional_env("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_PROTOCOL", "tcp"),
-                    username: required_env("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_USERNAME")?,
-                    password: required_env("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_PASSWORD")?,
-                    tls_enabled: required_true("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_TLS_ENABLED")?,
-                    tls_domain: env::var("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_TLS_DOMAIN").ok(),
-                    tls_ca_file: env::var("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_TLS_CA_FILE").ok(),
-                },
-                ..IggyConfig::default()
-            },
-            idle_poll_delay: Duration::from_millis(idle_poll_delay_ms),
+            iggy,
+            idle_poll_delay,
         })
     }
+}
+
+fn parse_idle_poll_delay() -> Result<Duration, String> {
+    let idle_poll_delay_ms = optional_u64(
+        "RUSTOK_MODULE_BUILD_DISPATCHER_IDLE_POLL_DELAY_MS",
+        ModuleBuildDispatcherConfig::DEFAULT_IDLE_POLL_DELAY_MS,
+    )?;
+    if idle_poll_delay_ms == 0
+        || idle_poll_delay_ms > ModuleBuildDispatcherConfig::MAX_IDLE_POLL_DELAY_MS
+    {
+        return Err(format!(
+            "RUSTOK_MODULE_BUILD_DISPATCHER_IDLE_POLL_DELAY_MS must be between 1 and {}",
+            ModuleBuildDispatcherConfig::MAX_IDLE_POLL_DELAY_MS
+        ));
+    }
+    Ok(Duration::from_millis(idle_poll_delay_ms))
+}
+
+fn parse_iggy_config() -> Result<IggyConfig, String> {
+    let addresses = required_env("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_ADDRESSES")?
+        .split(',')
+        .map(str::trim)
+        .filter(|address| !address.is_empty())
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    if addresses.is_empty() {
+        return Err(
+            "RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_ADDRESSES must contain at least one address"
+                .to_string(),
+        );
+    }
+    Ok(IggyConfig {
+        mode: IggyMode::External,
+        external: ExternalConfig {
+            addresses,
+            protocol: optional_env("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_PROTOCOL", "tcp"),
+            username: required_env("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_USERNAME")?,
+            password: required_env("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_PASSWORD")?,
+            tls_enabled: required_true("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_TLS_ENABLED")?,
+            tls_domain: env::var("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_TLS_DOMAIN").ok(),
+            tls_ca_file: env::var("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_TLS_CA_FILE").ok(),
+        },
+        ..IggyConfig::default()
+    })
 }
 
 /// Runs the independent result-first delivery host until it receives a process
@@ -96,10 +108,11 @@ pub async fn run_dispatcher(config: ModuleBuildDispatcherConfig) -> Result<(), S
     let db = Database::connect(options)
         .await
         .map_err(|error| format!("module-build dispatcher database connection failed: {error}"))?;
-    let transport =
-        Arc::new(IggyTransport::new(config.iggy).await.map_err(|error| {
-            format!("module-build dispatcher broker connection failed: {error}")
-        })?);
+    let transport = Arc::new(
+        IggyTransport::new(config.iggy)
+            .await
+            .map_err(|error| format!("module-build dispatcher broker connection failed: {error}"))?,
+    );
     let source = IggyModuleBuildDeliverySource::open(Arc::clone(&transport)).await?;
     let tls = MutualTlsClientConfig::from_env_prefix("RUSTOK_MODULE_BUILD")?;
     let endpoint = Endpoint::from_shared(config.worker_endpoint.clone())
@@ -117,6 +130,16 @@ pub async fn run_dispatcher(config: ModuleBuildDispatcherConfig) -> Result<(), S
         "Module build dispatcher started"
     );
 
+    run_dispatcher_event_loop(source, service, worker, transport, config.idle_poll_delay).await
+}
+
+async fn run_dispatcher_event_loop(
+    source: IggyModuleBuildDeliverySource,
+    service: rustok_modules::SeaOrmModuleBuildService,
+    worker: GrpcModuleBuildWorker,
+    transport: Arc<IggyTransport>,
+    idle_poll_delay: Duration,
+) -> Result<(), String> {
     loop {
         tokio::select! {
             shutdown = tokio::signal::ctrl_c() => {
@@ -136,7 +159,7 @@ pub async fn run_dispatcher(config: ModuleBuildDispatcherConfig) -> Result<(), S
                             ));
                         }
                     }
-                    Ok(None) => tokio::time::sleep(config.idle_poll_delay).await,
+                    Ok(None) => tokio::time::sleep(idle_poll_delay).await,
                     Err(error) => {
                         error!(error = %error, "Module build broker receive failed; terminating without acknowledgement");
                         return Err(format!(
