@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `193 / 212` components audited (**91%**)
+- **Progress:** `194 / 212` components audited (**92%**)
 - **Total Workspace Codebase:** `1,853,842` LOC across `212` modules/apps
 
 ---
@@ -216,7 +216,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-migrations](../../crates/utils/rustok-migrations) | `utils` | 65 | 14,997 | 2026-09-22 03:20 | Audited the canonical migration registry/order/dependency validation, installer owner/remaining schema split, SQLite compatibility boundary, high-risk registry identity/artifact backfills, Flex localization backfills, lease/receipt migrations, and destructive down paths. Fixed a real privileged-filesystem issue in the registry identity/artifact migration: legacy artifact sources are now confined to the managed storage root, destination keys reject traversal/absolute/control components, symlink destinations are rejected, and regression coverage was added. |
 | [x] | [rustok-module-sdk](../../crates/utils/rustok-module-sdk) | `utils` | 2 | 60 | 2026-09-22 03:40 | Audited the frozen WIT guest contract and generated bindings for capability invocation, package/world identity, input/output serialization boundaries, and export macros. No tenant/auth/secret authority exists in the guest SDK; capability authorization remains host-owned and no additional production security or concurrency finding remained. |
 | [x] | [rustok-module-template](../../crates/utils/rustok-module-template) | `utils` | 2 | 329 | 2026-09-22 04:00 | Audited generated module source/manifest rendering, identity validation, sandbox contract, brokered capability declarations, build-policy defaults, Index boundary documentation, and host-owned artifact descriptor generation. Template policy is fail-closed (no git dependencies, build scripts, or native links), and no additional production security or tenant-scope finding remained. |
-| [ ] | [rustok-secrets](../../crates/utils/rustok-secrets) | `utils` | 3 | 1,306 | None |  |
+| [x] | [rustok-secrets](../../crates/utils/rustok-secrets) | `utils` | 3 | 1,306 | 2026-09-21 22:45 | Audited secret reference registry, access policy, short-lived cache, redacted Debug formatting, and Env/MountedFile/Vault/Kubernetes/Cloud resolvers; added non-blocking in_cluster_async with tokio::fs, refactored synchronous in_cluster stream read, and documented registry registration invariants. Zero suppressions, all 13 tests passed, clippy clean |
 | [ ] | [rustok-storage](../../crates/utils/rustok-storage) | `utils` | 4 | 774 | None |  |
 | [ ] | [rustok-test-utils](../../crates/utils/rustok-test-utils) | `utils` | 7 | 1,917 | None |  |
 | [ ] | [utoipa-swagger-ui-vendored](../../crates/utils/utoipa-swagger-ui-vendored) | `utils` | 2 | 34 | None |  |
