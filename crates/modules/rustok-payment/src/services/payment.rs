@@ -1,8 +1,9 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
+    TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -265,7 +266,10 @@ impl PaymentService {
         order_id: Uuid,
         metadata: serde_json::Value,
     ) -> PaymentResult<PaymentCollectionResponse> {
-        let collection = self.load_collection(tenant_id, collection_id).await?;
+        let txn = self.db.begin().await?;
+        let collection = self
+            .load_collection_for_update_in_tx(&txn, tenant_id, collection_id)
+            .await?;
         if let Some(existing_order_id) = collection.order_id
             && existing_order_id != order_id
         {
@@ -279,8 +283,9 @@ impl PaymentService {
         active.order_id = Set(Some(order_id));
         active.metadata = Set(merge_metadata(collection_metadata, metadata));
         active.updated_at = Set(Utc::now().into());
-        active.update(&self.db).await?;
+        active.update(&txn).await?;
 
+        txn.commit().await?;
         self.get_collection(tenant_id, collection_id).await
     }
 
@@ -405,7 +410,9 @@ impl PaymentService {
         input: CompleteRefundInput,
     ) -> PaymentResult<RefundResponse> {
         let txn = self.db.begin().await?;
-        let refund = self.load_refund_in_tx(&txn, tenant_id, refund_id).await?;
+        let refund = self
+            .load_refund_for_update_in_tx(&txn, tenant_id, refund_id)
+            .await?;
         if !RefundStatusKind::from_raw(refund.status.as_str()).can_complete() {
             return Err(PaymentError::InvalidTransition {
                 from: refund.status,
@@ -468,7 +475,7 @@ impl PaymentService {
 
         let txn = self.db.begin().await?;
         let collection = self
-            .load_collection_in_tx(&txn, tenant_id, collection_id)
+            .load_collection_for_update_in_tx(&txn, tenant_id, collection_id)
             .await?;
         if !PaymentCollectionStatusKind::from_raw(collection.status.as_str()).can_authorize() {
             return Err(PaymentError::InvalidTransition {
@@ -649,6 +656,30 @@ impl PaymentService {
             .await
     }
 
+    async fn load_collection_for_update_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        collection_id: Uuid,
+    ) -> PaymentResult<entities::payment_collection::Model> {
+        let query = entities::payment_collection::Entity::find_by_id(collection_id)
+            .filter(entities::payment_collection::Column::TenantId.eq(tenant_id));
+        let collection = match txn.get_database_backend() {
+            DatabaseBackend::Postgres | DatabaseBackend::MySql => query.lock_exclusive().one(txn).await?,
+            DatabaseBackend::Sqlite => {
+                let statement = Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    "UPDATE payment_collections SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                    [tenant_id.into(), collection_id.into()],
+                );
+                txn.execute(statement).await?;
+                query.one(txn).await?
+            }
+            _ => query.one(txn).await?,
+        };
+        collection.ok_or(PaymentError::PaymentCollectionNotFound(collection_id))
+    }
+
     async fn load_collection_in_tx<C>(
         &self,
         conn: &C,
@@ -697,6 +728,30 @@ impl PaymentService {
             .one(conn)
             .await?
             .ok_or(PaymentError::PaymentNotFound(collection_id))
+    }
+
+    async fn load_refund_for_update_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        refund_id: Uuid,
+    ) -> PaymentResult<entities::refund::Model> {
+        let query = entities::refund::Entity::find_by_id(refund_id)
+            .filter(entities::refund::Column::TenantId.eq(tenant_id));
+        let refund = match txn.get_database_backend() {
+            DatabaseBackend::Postgres | DatabaseBackend::MySql => query.lock_exclusive().one(txn).await?,
+            DatabaseBackend::Sqlite => {
+                let statement = Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    "UPDATE refunds SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                    [tenant_id.into(), refund_id.into()],
+                );
+                txn.execute(statement).await?;
+                query.one(txn).await?
+            }
+            _ => query.one(txn).await?,
+        };
+        refund.ok_or(PaymentError::RefundNotFound(refund_id))
     }
 
     async fn load_refund_in_tx<C>(
