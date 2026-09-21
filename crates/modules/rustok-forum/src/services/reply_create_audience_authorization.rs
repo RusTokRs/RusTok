@@ -1,6 +1,6 @@
 use rustok_api::{Action, PortContext, Resource};
 use rustok_core::SecurityContext;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -64,10 +64,40 @@ impl ForumReplyCreateAudienceAuthorizationService {
             .one(&self.db)
             .await?
             .ok_or(ForumError::TopicNotFound(topic_id))?;
-        let category_id = topic.category_id;
         let policy =
             load_topic_reply_create_audience_policy_for_topic(&self.db, tenant_id, &topic).await?;
+        self.evaluate_policy(tenant_id, &topic, security, context, policy)
+            .await
+    }
 
+    pub(crate) async fn require_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        topic: &forum_topic::Model,
+        security: &SecurityContext,
+        context: Option<PortContext>,
+    ) -> ForumResult<ForumReplyCreateAudienceAuthorization> {
+        enforce_scope(security, Resource::ForumReplies, Action::Create)?;
+        if topic.tenant_id != tenant_id {
+            return Err(ForumError::TopicNotFound(topic.id));
+        }
+        let policy =
+            load_topic_reply_create_audience_policy_for_topic(txn, tenant_id, topic).await?;
+        self.evaluate_policy(tenant_id, topic, security, context, policy)
+            .await
+    }
+
+    async fn evaluate_policy(
+        &self,
+        tenant_id: Uuid,
+        topic: &forum_topic::Model,
+        security: &SecurityContext,
+        context: Option<PortContext>,
+        policy: super::topic_reply_create_audience::ForumTopicReplyCreateAudiencePolicy,
+    ) -> ForumResult<ForumReplyCreateAudienceAuthorization> {
+        let topic_id = topic.id;
+        let category_id = topic.category_id;
         let mut evaluated_layers = 0usize;
         let mut last_reason = ForumAudienceDecisionReason::Unrestricted;
         for layer in policy.inherited_category_layers {
