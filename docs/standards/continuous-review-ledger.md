@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `102 / 218` components audited (**46%**)
+- **Progress:** `103 / 218` components audited (**47%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -145,7 +145,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [admin](../../crates/modules/rustok-pages/admin) | `modules` | 24 | 5,904 | 2026-09-21 07:19 | Audited admin access policy, GraphQL transports, SSR Page Builder facade, browser intent preflight, rollback retry identity, scenario baseline CAS, metadata revision CAS, and same-origin inline editor launch; no additional production correctness/security finding found. |
 | [x] | [storefront](../../crates/modules/rustok-pages/storefront) | `modules` | 17 | 4,717 | 2026-09-21 07:24 | Audited native/GraphQL storefront transport, host route resolution, published artifact rendering, locale/channel-aware caching, authenticated inline editing, and public visibility; closed arbitrary tenant fallback in server functions by binding fallback resolution to the host-configured tenant. |
 | [x] | [rustok-payment](../../crates/modules/rustok-payment) | `modules` | 85 | 20,644 | 2026-09-21 07:27 | Audited payment collection/refund lifecycles, provider-operation journal CAS, webhook inbox/lease/idempotency/tenant binding, provider request/result validation, admin and checkout command ports; fixed cross-backend lifecycle races with transactional row locks and CAS, serialized refund capacity reservations, and rejected terminalized collection reuse. |
-| [ ] | [storefront](../../crates/modules/rustok-payment/storefront) | `modules` | 11 | 1,316 | None |  |
+| [x] | [storefront](../../crates/modules/rustok-payment/storefront) | `modules` | 11 | 1,316 | 2026-09-21 07:31 | Audited storefront native server functions, GraphQL transport, request/error safety, customer/cart ownership, tenant context, guest-cart behavior, and create/reuse flow; no additional production correctness or tenant-isolation finding after the payment lifecycle fixes. |
 | [ ] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 47 | 18,461 | None |  |
 | [ ] | [rustok-pricing-persistence](../../crates/modules/rustok-pricing-persistence) | `modules` | 5 | 190 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-pricing/admin) | `modules` | 13 | 7,537 | None |  |
