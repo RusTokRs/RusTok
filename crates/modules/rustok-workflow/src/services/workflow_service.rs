@@ -1,8 +1,9 @@
 use chrono::Utc;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, Order, QueryFilter, QueryOrder,
-    QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, Order, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
+    TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -118,14 +119,12 @@ impl WorkflowService {
         actor_id: Option<Uuid>,
         input: UpdateWorkflowInput,
     ) -> WorkflowResult<()> {
-        let existing = WorkflowEntity::find_by_id(id)
-            .filter(workflow::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or(WorkflowError::NotFound(id))?;
+        let transaction = self.db.begin().await?;
+        let existing = lock_workflow_for_update(&transaction, tenant_id, id).await?;
 
-        // Save version snapshot before applying the update
-        self.save_version_internal(id, actor_id, &existing).await?;
+        // Save version snapshot before applying the update while the workflow row is locked.
+        self.save_version_internal_on(&transaction, id, actor_id, &existing)
+            .await?;
 
         let mut model: WorkflowActiveModel = existing.into();
         if let Some(name) = input.name {
@@ -145,20 +144,18 @@ impl WorkflowService {
             model.webhook_slug = Set(slug_val);
         }
         model.updated_at = Set(Utc::now().fixed_offset());
-        model.update(&self.db).await?;
+        model.update(&transaction).await?;
+        transaction.commit().await?;
 
         Ok(())
     }
 
     pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> WorkflowResult<()> {
-        let existing = WorkflowEntity::find_by_id(id)
-            .filter(workflow::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or(WorkflowError::NotFound(id))?;
-
+        let transaction = self.db.begin().await?;
+        let existing = lock_workflow_for_update(&transaction, tenant_id, id).await?;
         let model: WorkflowActiveModel = existing.into();
-        model.delete(&self.db).await?;
+        model.delete(&transaction).await?;
+        transaction.commit().await?;
 
         Ok(())
     }
@@ -171,12 +168,10 @@ impl WorkflowService {
         workflow_id: Uuid,
         input: CreateWorkflowStepInput,
     ) -> WorkflowResult<Uuid> {
-        // Verify workflow belongs to tenant
-        WorkflowEntity::find_by_id(workflow_id)
-            .filter(workflow::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or(WorkflowError::NotFound(workflow_id))?;
+        let transaction = self.db.begin().await?;
+        // Lock the parent workflow so concurrent workflow updates/restores cannot
+        // interleave with step creation.
+        lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
 
         let step_id = Uuid::new_v4();
         let model = WorkflowStepActiveModel {
@@ -188,7 +183,8 @@ impl WorkflowService {
             on_error: Set(input.on_error),
             timeout_ms: Set(input.timeout_ms),
         };
-        model.insert(&self.db).await?;
+        model.insert(&transaction).await?;
+        transaction.commit().await?;
 
         Ok(step_id)
     }
@@ -200,16 +196,12 @@ impl WorkflowService {
         step_id: Uuid,
         input: UpdateWorkflowStepInput,
     ) -> WorkflowResult<()> {
-        // Verify ownership
-        WorkflowEntity::find_by_id(workflow_id)
-            .filter(workflow::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or(WorkflowError::NotFound(workflow_id))?;
+        let transaction = self.db.begin().await?;
+        lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
 
         let existing = WorkflowStepEntity::find_by_id(step_id)
             .filter(workflow_step::Column::WorkflowId.eq(workflow_id))
-            .one(&self.db)
+            .one(&transaction)
             .await?
             .ok_or(WorkflowError::StepNotFound(step_id))?;
 
@@ -229,7 +221,8 @@ impl WorkflowService {
         if let Some(timeout_ms) = input.timeout_ms {
             model.timeout_ms = Set(Some(timeout_ms));
         }
-        model.update(&self.db).await?;
+        model.update(&transaction).await?;
+        transaction.commit().await?;
 
         Ok(())
     }
@@ -240,21 +233,18 @@ impl WorkflowService {
         workflow_id: Uuid,
         step_id: Uuid,
     ) -> WorkflowResult<()> {
-        // Verify ownership
-        WorkflowEntity::find_by_id(workflow_id)
-            .filter(workflow::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or(WorkflowError::NotFound(workflow_id))?;
+        let transaction = self.db.begin().await?;
+        lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
 
         let existing = WorkflowStepEntity::find_by_id(step_id)
             .filter(workflow_step::Column::WorkflowId.eq(workflow_id))
-            .one(&self.db)
+            .one(&transaction)
             .await?
             .ok_or(WorkflowError::StepNotFound(step_id))?;
 
         let model: WorkflowStepActiveModel = existing.into();
-        model.delete(&self.db).await?;
+        model.delete(&transaction).await?;
+        transaction.commit().await?;
 
         Ok(())
     }
@@ -450,30 +440,32 @@ impl WorkflowService {
     // ── Versioning ─────────────────────────────────────────────────────────────
 
     /// Save a version snapshot of the current workflow state.
-    async fn save_version_internal(
+    async fn save_version_internal_on<C>(
         &self,
+        conn: &C,
         workflow_id: Uuid,
         actor_id: Option<Uuid>,
         wf: &crate::entities::Workflow,
-    ) -> WorkflowResult<i32> {
-        use sea_orm::sea_query::Expr;
-
-        // Get next version number
+    ) -> WorkflowResult<i32>
+    where
+        C: ConnectionTrait,
+    {
+        // Get next version number while the parent workflow row is already locked
+        // by the caller. This serializes version allocation for this workflow.
         let max_version: Option<i32> = WorkflowVersionEntity::find()
             .filter(workflow_version::Column::WorkflowId.eq(workflow_id))
             .order_by(workflow_version::Column::Version, Order::Desc)
             .limit(1)
-            .one(&self.db)
+            .one(conn)
             .await?
             .map(|v| v.version);
 
         let version = max_version.unwrap_or(0) + 1;
 
-        // Load current steps for the snapshot
         let steps = WorkflowStepEntity::find()
             .filter(workflow_step::Column::WorkflowId.eq(workflow_id))
             .order_by(workflow_step::Column::Position, Order::Asc)
-            .all(&self.db)
+            .all(conn)
             .await?;
 
         let snapshot = serde_json::json!({
@@ -501,22 +493,19 @@ impl WorkflowService {
             created_by: Set(actor_id),
             created_at: Set(Utc::now().fixed_offset()),
         };
-        ver.insert(&self.db).await?;
+        ver.insert(conn).await?;
 
-        // Prune old versions — keep at most 20
         let old_versions = WorkflowVersionEntity::find()
             .filter(workflow_version::Column::WorkflowId.eq(workflow_id))
             .order_by(workflow_version::Column::Version, Order::Desc)
             .offset(20)
-            .all(&self.db)
+            .all(conn)
             .await?;
 
         for old in old_versions {
             let am: WorkflowVersionActiveModel = old.into();
-            am.delete(&self.db).await?;
+            am.delete(conn).await?;
         }
-
-        let _ = Expr::value(0i32); // suppress unused import warning
 
         Ok(version)
     }
@@ -592,23 +581,20 @@ impl WorkflowService {
         version: i32,
         actor_id: Option<Uuid>,
     ) -> WorkflowResult<()> {
-        let existing = WorkflowEntity::find_by_id(workflow_id)
-            .filter(workflow::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or(WorkflowError::NotFound(workflow_id))?;
+        let transaction = self.db.begin().await?;
+        let existing = lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
 
         let ver = WorkflowVersionEntity::find()
             .filter(workflow_version::Column::WorkflowId.eq(workflow_id))
             .filter(workflow_version::Column::Version.eq(version))
-            .one(&self.db)
+            .one(&transaction)
             .await?
             .ok_or_else(|| WorkflowError::StepNotFound(Uuid::nil()))?;
 
-        let snapshot = &ver.snapshot;
+        let snapshot = ver.snapshot.clone();
 
-        // Save current state as a new version before restoring
-        self.save_version_internal(workflow_id, actor_id, &existing)
+        // Save current state as a new version before restoring.
+        self.save_version_internal_on(&transaction, workflow_id, actor_id, &existing)
             .await?;
 
         // Apply snapshot
@@ -623,13 +609,20 @@ impl WorkflowService {
         if let Some(tc) = snapshot.get("trigger_config").cloned() {
             model.trigger_config = Set(tc);
         }
+        if let Some(slug) = snapshot.get("webhook_slug") {
+            model.webhook_slug = Set(
+                slug.as_str()
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string),
+            );
+        }
         model.updated_at = Set(Utc::now().fixed_offset());
-        model.update(&self.db).await?;
+        model.update(&transaction).await?;
 
         // Restore steps: delete all current steps and re-insert from snapshot
         WorkflowStepEntity::delete_many()
             .filter(workflow_step::Column::WorkflowId.eq(workflow_id))
-            .exec(&self.db)
+            .exec(&transaction)
             .await?;
 
         if let Some(steps) = snapshot.get("steps").and_then(|v| v.as_array()) {
@@ -664,10 +657,11 @@ impl WorkflowService {
                     on_error: Set(on_error),
                     timeout_ms: Set(timeout_ms),
                 };
-                am.insert(&self.db).await?;
+                am.insert(&transaction).await?;
             }
         }
 
+        transaction.commit().await?;
         Ok(())
     }
 
@@ -728,6 +722,31 @@ impl WorkflowService {
 
         Ok(())
     }
+}
+
+async fn lock_workflow_for_update(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    workflow_id: Uuid,
+) -> WorkflowResult<crate::entities::Workflow> {
+    let query = WorkflowEntity::find_by_id(workflow_id)
+        .filter(workflow::Column::TenantId.eq(tenant_id));
+
+    let workflow = match txn.get_database_backend() {
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => query.lock_exclusive().one(txn).await?,
+        DatabaseBackend::Sqlite => {
+            let statement = Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE workflows SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                [tenant_id.into(), workflow_id.into()],
+            );
+            txn.execute(statement).await?;
+            query.one(txn).await?
+        }
+        _ => query.one(txn).await?,
+    };
+
+    workflow.ok_or(WorkflowError::NotFound(workflow_id))
 }
 
 fn execution_to_response(
