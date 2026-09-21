@@ -503,9 +503,8 @@ fn projector_operation_for_event(event: &DomainEvent) -> &'static str {
                 "delete_forum_scope"
             }
         }
-        DomainEvent::ProfileUpdated { .. } | DomainEvent::UserDeleted { .. } => {
-            "rebuild_forum_author_projection"
-        }
+        DomainEvent::ProfileUpdated { .. } => "rebuild_forum_author_projection",
+        DomainEvent::UserDeleted { .. } => "rebuild_blog_author_projection",
         DomainEvent::ForumTopicCreated { .. }
         | DomainEvent::ForumTopicReplied { .. }
         | DomainEvent::ForumTopicStatusChanged { .. }
