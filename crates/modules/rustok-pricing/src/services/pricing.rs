@@ -843,6 +843,15 @@ impl PricingService {
         let txn = self.db.begin().await?;
         let variant = load_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
 
+        let normalized_channel_slug = normalize_channel_slug(channel_slug.as_deref());
+        validate_channel_scope_in_tx(
+            &txn,
+            tenant_id,
+            channel_id,
+            normalized_channel_slug.as_deref(),
+        )
+        .await?;
+
         let (price_list_id, channel_id, channel_slug) = match price_list_id {
             Some(price_list_id) => {
                 let price_list =
@@ -862,11 +871,7 @@ impl PricingService {
                     normalize_channel_slug(channel_slug.as_deref()),
                 )
             }
-            None => (
-                None,
-                channel_id,
-                normalize_channel_slug(channel_slug.as_deref()),
-            ),
+            None => (None, channel_id, normalized_channel_slug),
         };
 
         if amount < Decimal::ZERO {
@@ -983,6 +988,16 @@ impl PricingService {
         let variant = load_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
 
         for price_input in &prices {
+            let normalized_channel_slug =
+                normalize_channel_slug(price_input.channel_slug.as_deref());
+            validate_channel_scope_in_tx(
+                &txn,
+                tenant_id,
+                price_input.channel_id,
+                normalized_channel_slug.as_deref(),
+            )
+            .await?;
+
             if price_input.amount < Decimal::ZERO {
                 return Err(CommerceError::InvalidPrice(
                     "Amount cannot be negative".into(),
