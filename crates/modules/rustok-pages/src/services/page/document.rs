@@ -38,10 +38,6 @@ impl PageService {
                 "Page document save accepts only the current Fly/GrapesJS body format",
             ));
         }
-        if body_uses_builder_capability(Some(&body)) {
-            self.ensure_builder_enabled(tenant_id).await?;
-        }
-
         let observed = self.find_page(tenant_id, page_id).await?;
         enforce_owned_scope(
             &security,
@@ -54,6 +50,7 @@ impl PageService {
         let response_locale = body.locale.clone();
         let txn = self.db.begin().await?;
         let locked_page = self.find_page_for_update(&txn, tenant_id, page_id).await?;
+        super::lifecycle::ensure_builder_enabled_in_tx(&txn, tenant_id).await?;
         enforce_owned_scope(
             &security,
             Resource::Pages,
