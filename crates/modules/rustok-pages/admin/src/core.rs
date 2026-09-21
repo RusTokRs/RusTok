@@ -77,13 +77,7 @@ pub fn missing_required_page_field(draft: &CreatePageDraft) -> Option<PageRequir
 }
 
 pub fn status_badge_class(status: &str) -> &'static str {
-    match status.to_ascii_lowercase().as_str() {
-        "published" => {
-            "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-        }
-        "archived" => "bg-muted text-muted-foreground",
-        _ => "bg-primary/10 text-primary",
-    }
+    rustok_ui_core::badges::status_badge_class(status)
 }
 
 #[derive(Debug, Clone)]

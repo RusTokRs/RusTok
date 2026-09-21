@@ -7,7 +7,7 @@ use rustok_ui_core::{AdminQueryKey, UiRouteContext, normalize_ui_text};
 use crate::core::{
     InventoryHealthState, apply_variant_quantity_update, apply_variant_reservation_release_update,
     apply_variant_reservation_update, inventory_health_state, parse_availability_quantity,
-    parse_reserve_quantity, parse_set_quantity, summarize_inventory,
+    parse_reserve_quantity, parse_set_quantity, status_badge, summarize_inventory,
 };
 use crate::i18n::t;
 use crate::model::{
@@ -63,8 +63,8 @@ pub fn InventoryAdmin() -> impl IntoView {
             crate::transport::fetch_products(
                 bootstrap.current_tenant.id,
                 locale_value,
-                text_or_none(search_value),
-                text_or_none(status_value),
+                normalize_ui_text(search_value.as_str()),
+                normalize_ui_text(status_value.as_str()),
             )
             .await
         },
@@ -896,18 +896,6 @@ fn bool_label(locale: Option<&str>, value: bool) -> String {
         t(locale, "inventory.bool.yes", "yes")
     } else {
         t(locale, "inventory.bool.no", "no")
-    }
-}
-
-fn text_or_none(value: String) -> Option<String> {
-    normalize_ui_text(value.as_str())
-}
-
-fn status_badge(status: &str) -> &'static str {
-    match status {
-        "ACTIVE" => "border-emerald-200 bg-emerald-50 text-emerald-700",
-        "ARCHIVED" => "border-slate-200 bg-slate-100 text-slate-700",
-        _ => "border-amber-200 bg-amber-50 text-amber-700",
     }
 }
 

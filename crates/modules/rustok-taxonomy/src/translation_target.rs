@@ -159,7 +159,6 @@ impl TaxonomyTranslationTargetProvider {
         })?;
         owner.authorize(context, tenant_id, term.kind, term.id, action)
     }
-}
 
     fn descriptor_value() -> TranslationTargetProviderDescriptor {
         TranslationTargetProviderDescriptor {

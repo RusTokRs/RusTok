@@ -41,14 +41,14 @@ pub(crate) fn storefront_payload_visible_for_channel(
     entity_type: &str,
     channel: &TrustedStorefrontChannel,
 ) -> bool {
-    let Some(allowed_slugs) = match entity_type {
+    let Some(allowed_slugs) = (match entity_type {
         "product" => payload
             .get("channel_visibility")
             .and_then(|value| value.get("allowed_channel_slugs"))
             .and_then(JsonValue::as_array),
         "blog_post" => payload.get("channel_slugs").and_then(JsonValue::as_array),
         _ => return true,
-    } else {
+    }) else {
         return false;
     };
 
@@ -67,6 +67,29 @@ pub(crate) fn storefront_payload_visible_for_channel(
             .filter(|value| !value.is_empty())
             .is_some_and(|value| value.eq_ignore_ascii_case(&channel_slug))
     })
+}
+
+pub(crate) fn product_payload_visible_for_storefront(
+    payload: &JsonValue,
+    channel: &TrustedStorefrontChannel,
+) -> bool {
+    storefront_payload_visible_for_channel(payload, "product", channel)
+}
+
+pub(crate) fn product_channel_visibility_sql(
+    entity_type_column: &str,
+    payload_column: &str,
+    channel: &TrustedStorefrontChannel,
+    bound_values: &mut Vec<Value>,
+    next_param: &mut usize,
+) -> String {
+    storefront_channel_visibility_sql(
+        entity_type_column,
+        payload_column,
+        channel,
+        bound_values,
+        next_param,
+    )
 }
 
 fn normalized_trusted_channel_slug(channel: &TrustedStorefrontChannel) -> Option<String> {

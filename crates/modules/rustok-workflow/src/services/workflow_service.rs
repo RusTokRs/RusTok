@@ -740,7 +740,7 @@ async fn lock_workflow_for_update(
                 "UPDATE workflows SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
                 [tenant_id.into(), workflow_id.into()],
             );
-            txn.execute(statement).await?;
+            txn.execute_raw(statement).await?;
             query.one(txn).await?
         }
         _ => query.one(txn).await?,

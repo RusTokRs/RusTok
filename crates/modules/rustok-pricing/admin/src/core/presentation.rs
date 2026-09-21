@@ -522,11 +522,7 @@ pub(crate) fn format_price_row_scope(
 }
 
 pub(crate) fn status_badge(status: &str) -> &'static str {
-    match status {
-        "ACTIVE" => "border-emerald-200 bg-emerald-50 text-emerald-700",
-        "ARCHIVED" => "border-slate-200 bg-slate-100 text-slate-700",
-        _ => "border-amber-200 bg-amber-50 text-amber-700",
-    }
+    rustok_ui_core::badges::status_badge_class(status)
 }
 
 pub(crate) fn format_adjustment_preview(

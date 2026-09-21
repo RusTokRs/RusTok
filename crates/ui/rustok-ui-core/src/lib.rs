@@ -8,13 +8,17 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+pub mod badges;
 pub mod css;
+pub mod money;
 pub mod pagination;
 pub mod route_selection;
 pub mod selection;
 pub mod ui;
 
+pub use badges::{UiBadgeTone, status_badge_class, status_badge_tone, ui_badge_container_class};
 pub use css::{css_background_accent_class, css_hex_accent_class, normalize_css_hex_color};
+pub use money::{format_ui_discount_badge, format_ui_price};
 pub use pagination::{UiPaginationState, UiSortDirection, UiSortState};
 pub use route_selection::{
     AdminQueryDependency, AdminQueryKey, AdminRouteQuerySchema, admin_route_query_schema,
@@ -28,3 +32,4 @@ pub use ui::{
     ui_busy_key_matches_action, ui_busy_key_with_id, ui_optional_busy_key_with_id,
     ui_scoped_busy_key,
 };
+

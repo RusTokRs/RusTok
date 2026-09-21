@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    Statement, TransactionTrait,
 };
 use uuid::Uuid;
 use rustok_product::entities::{product, product_variant};
@@ -39,7 +39,7 @@ async fn lock_bundle_for_update(
                 "UPDATE product_bundles SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
                 [tenant_id.into(), bundle_id.into()],
             );
-            txn.execute(statement).await?;
+            txn.execute_raw(statement).await?;
             query.one(txn).await?
         }
         _ => query.one(txn).await?,
@@ -465,7 +465,9 @@ impl BundlePort for BundleService {
         }
 
         if let Some(bundle_product_id) = input.bundle_product_id {
-            validate_product_ref_in_tx(&txn, tenant_id, bundle_product_id).await?;
+            if let Some(product_id) = bundle_product_id {
+                validate_product_ref_in_tx(&txn, tenant_id, product_id).await?;
+            }
             active.bundle_product_id = Set(bundle_product_id);
         }
 

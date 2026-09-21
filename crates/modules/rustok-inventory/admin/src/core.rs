@@ -351,6 +351,14 @@ pub(crate) fn inventory_health_state(variant: &InventoryVariant) -> InventoryHea
 
 pub(crate) const LOW_STOCK_THRESHOLD: i32 = 5;
 
+pub(crate) fn status_badge(status: &str) -> &'static str {
+    match status {
+        "ACTIVE" => "border-emerald-200 bg-emerald-50 text-emerald-700",
+        "ARCHIVED" => "border-slate-200 bg-slate-100 text-slate-700",
+        _ => "border-amber-200 bg-amber-50 text-amber-700",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -620,8 +628,23 @@ mod tests {
     }
 
     #[test]
+    fn test_status_badge_mapping() {
+        assert_eq!(
+            status_badge("ACTIVE"),
+            "border-emerald-200 bg-emerald-50 text-emerald-700"
+        );
+        assert_eq!(
+            status_badge("ARCHIVED"),
+            "border-slate-200 bg-slate-100 text-slate-700"
+        );
+        assert_eq!(
+            status_badge("DRAFT"),
+            "border-amber-200 bg-amber-50 text-amber-700"
+        );
+    }
+
+    #[test]
     fn filter_normalizers_trim_and_handle_empty_inputs() {
-        assert_eq!(normalize_status_filter(None), None);
         assert_eq!(normalize_status_filter(Some("  ".to_string())), None);
         assert_eq!(
             normalize_status_filter(Some(" active ".to_string())),

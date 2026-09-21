@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, Order, QueryFilter, QueryOrder, QuerySelect, Set, Statement, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, Order, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
+    TransactionTrait,
 };
 use uuid::Uuid;
 use rustok_product::entities::product;
@@ -35,7 +36,7 @@ async fn lock_product_for_update(
                 "UPDATE products SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
                 [tenant_id.into(), product_id.into()],
             );
-            txn.execute(statement).await?;
+            txn.execute_raw(statement).await?;
             query.one(txn).await?
         }
         _ => query.one(txn).await?,
