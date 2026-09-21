@@ -11,6 +11,7 @@ mod comment_projection;
 mod post;
 mod rbac;
 mod tag;
+mod taxonomy_translation_owner;
 
 pub use category_command::CategoryCommandService;
 pub use category_owner::CategoryService;
@@ -19,6 +20,7 @@ pub use comment_projection::BlogCommentProjectionHandler;
 pub use post::PostService;
 pub(crate) use post::{is_post_visible_for_channel, load_post_subject_snapshot};
 pub use tag::TagService;
+pub use taxonomy_translation_owner::BlogTaxonomyTranslationOwner;
 
 #[cfg(test)]
 mod tag_tenant_integrity_tests;
