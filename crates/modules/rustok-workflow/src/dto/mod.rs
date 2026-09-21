@@ -11,8 +11,10 @@ pub struct CreateWorkflowInput {
     pub name: String,
     pub description: Option<String>,
     pub trigger_config: serde_json::Value,
-    /// Optional unique webhook slug for this workflow
+    /// Optional unique webhook slug for this workflow.
     pub webhook_slug: Option<String>,
+    /// HMAC-SHA256 secret required when webhook_slug is set.
+    pub webhook_secret: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -21,8 +23,11 @@ pub struct UpdateWorkflowInput {
     pub description: Option<String>,
     pub status: Option<WorkflowStatus>,
     pub trigger_config: Option<serde_json::Value>,
-    /// Set to Some("") to clear the webhook slug, or Some("slug") to set it
+    /// Set to Some("") to clear the webhook slug, or Some("slug") to set it.
     pub webhook_slug: Option<String>,
+    /// Set to rotate the HMAC-SHA256 webhook secret. An empty value clears it.
+    /// A webhook slug cannot remain configured without a secret.
+    pub webhook_secret: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
