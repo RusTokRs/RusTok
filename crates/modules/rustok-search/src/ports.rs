@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
 use rustok_core::Error;
+use uuid::Uuid;
 
 use crate::{
     PgSearchEngine, SearchEngine, SearchQuery, SearchResult, SearchSuggestion,
@@ -25,6 +26,27 @@ impl SearchQueryPort for PgSearchEngine {
         mut request: SearchQuery,
     ) -> Result<SearchResult, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        let context_tenant_id = Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
+            PortError::validation(
+                "search.tenant_id_invalid",
+                "search port context contains an invalid tenant identifier",
+            )
+        })?;
+        if context_tenant_id.is_nil() {
+            return Err(PortError::validation(
+                "search.tenant_id_invalid",
+                "search port context contains an invalid tenant identifier",
+            ));
+        }
+        if let Some(request_tenant_id) = request.tenant_id
+            && request_tenant_id != context_tenant_id
+        {
+            return Err(PortError::forbidden(
+                "search.tenant_scope_mismatch",
+                "search request tenant does not match the authoritative port context",
+            ));
+        }
+        request.tenant_id = Some(context_tenant_id);
         request.locale.get_or_insert_with(|| context.locale.clone());
         self.search(request)
             .await
@@ -50,6 +72,25 @@ impl SearchSuggestionPort for PgSearchEngine {
         mut request: SearchSuggestionQuery,
     ) -> Result<Vec<SearchSuggestion>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        let context_tenant_id = Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
+            PortError::validation(
+                "search.tenant_id_invalid",
+                "search port context contains an invalid tenant identifier",
+            )
+        })?;
+        if context_tenant_id.is_nil() {
+            return Err(PortError::validation(
+                "search.tenant_id_invalid",
+                "search port context contains an invalid tenant identifier",
+            ));
+        }
+        if request.tenant_id != context_tenant_id {
+            return Err(PortError::forbidden(
+                "search.tenant_scope_mismatch",
+                "search request tenant does not match the authoritative port context",
+            ));
+        }
+        request.tenant_id = context_tenant_id;
         request.locale.get_or_insert_with(|| context.locale.clone());
         SearchSuggestionService::suggestions(self.connection(), request)
             .await
