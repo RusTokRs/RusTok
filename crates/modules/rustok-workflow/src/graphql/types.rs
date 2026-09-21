@@ -307,6 +307,7 @@ pub struct GqlCreateWorkflowInput {
     pub description: Option<String>,
     pub trigger_config: Value,
     pub webhook_slug: Option<String>,
+    pub webhook_secret: Option<String>,
 }
 
 #[derive(InputObject)]
@@ -316,6 +317,7 @@ pub struct GqlUpdateWorkflowInput {
     pub status: Option<GqlWorkflowStatus>,
     pub trigger_config: Option<Value>,
     pub webhook_slug: Option<String>,
+    pub webhook_secret: Option<String>,
 }
 
 #[derive(InputObject)]
