@@ -1,8 +1,9 @@
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
-    EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    Statement, TransactionTrait, sea_query::Expr,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -272,13 +273,18 @@ impl McpManagementService {
         client_id: Uuid,
         input: RotateMcpTokenInput,
     ) -> Result<RotateMcpTokenResult> {
-        let client = require_client(db, tenant_id, client_id).await?;
         let token_name = input
             .token_name
             .clone()
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "rotated".to_string());
         let txn = db.begin().await.map_err(map_db_err)?;
+        let client = lock_client_for_update_txn(&txn, tenant_id, client_id).await?;
+        if !client.is_active() {
+            return Err(Error::BadRequest(
+                "MCP client is inactive and cannot issue a new token".to_string(),
+            ));
+        }
 
         if input.revoke_existing_tokens {
             revoke_active_tokens_txn(&txn, client.id).await?;
@@ -332,8 +338,8 @@ impl McpManagementService {
         client_id: Uuid,
         input: UpdateMcpPolicyInput,
     ) -> Result<mcp_policies::Model> {
-        let client = require_client(db, tenant_id, client_id).await?;
         let txn = db.begin().await.map_err(map_db_err)?;
+        let client = lock_client_for_update_txn(&txn, tenant_id, client_id).await?;
 
         let allowed_tools = dedupe(input.allowed_tools);
         let denied_tools = dedupe(input.denied_tools);
@@ -452,8 +458,8 @@ impl McpManagementService {
         revoked_by: Option<Uuid>,
         reason: Option<String>,
     ) -> Result<mcp_clients::Model> {
-        let client = require_client(db, tenant_id, client_id).await?;
         let txn = db.begin().await.map_err(map_db_err)?;
+        let client = lock_client_for_update_txn(&txn, tenant_id, client_id).await?;
 
         revoke_active_tokens_txn(&txn, client.id).await?;
 
@@ -823,6 +829,33 @@ impl McpManagementService {
     }
 }
 
+async fn lock_client_for_update_txn(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    client_id: Uuid,
+) -> Result<mcp_clients::Model> {
+    let query = mcp_clients::Entity::find_by_id(client_id)
+        .filter(mcp_clients::Column::TenantId.eq(tenant_id));
+
+    let client = match txn.get_database_backend() {
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => {
+            query.lock_exclusive().one(txn).await?
+        }
+        DatabaseBackend::Sqlite => {
+            let statement = Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE mcp_clients SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                [tenant_id.into(), client_id.into()],
+            );
+            txn.execute(statement).await?;
+            query.one(txn).await?
+        }
+        _ => query.one(txn).await?,
+    };
+
+    client.ok_or(Error::NotFound)
+}
+
 async fn require_client(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -1004,6 +1037,8 @@ mod tests {
         assert_eq!(values, vec!["tool.a".to_string(), "tool.z".to_string()]);
     }
 
+    // Concurrency-sensitive rotation/deactivation paths lock the client row
+    // inside their transaction before touching child tokens.
     #[test]
     fn token_preview_does_not_leak_full_secret() {
         let preview = token_preview("mcp_super_secret_token_value");
