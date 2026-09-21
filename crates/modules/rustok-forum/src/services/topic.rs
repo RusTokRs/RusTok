@@ -169,30 +169,55 @@ impl TopicService {
     ) -> ForumResult<forum_topic::Model> {
         let query = forum_topic::Entity::find_by_id(topic_id)
             .filter(forum_topic::Column::TenantId.eq(tenant_id));
-        match txn.get_database_backend() {
-            DatabaseBackend::Postgres => query
-                .lock_exclusive()
-                .one(txn)
-                .await?
-                .ok_or(ForumError::TopicNotFound(topic_id)),
-            DatabaseBackend::Sqlite => {
-                let statement = Statement::from_sql_and_values(
-                    DatabaseBackend::Sqlite,
-                    "UPDATE forum_topics SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2 AND deleted_at IS NULL",
-                    vec![tenant_id.into(), topic_id.into()],
-                );
-                if txn.execute_raw(statement).await?.rows_affected() != 1 {
-                    return Err(ForumError::TopicNotFound(topic_id));
-                }
-                query
-                    .one(txn)
-                    .await?
-                    .ok_or(ForumError::TopicNotFound(topic_id))
+        let statement = match txn.get_database_backend() {
+            DatabaseBackend::Postgres => Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "UPDATE forum_topics SET updated_at = updated_at WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL",
+                vec![tenant_id.into(), topic_id.into()],
+            ),
+            DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE forum_topics SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2 AND deleted_at IS NULL",
+                vec![tenant_id.into(), topic_id.into()],
+            ),
+            backend => {
+                return Err(ForumError::Validation(format!(
+                    "Forum topic row locking does not support database backend {backend:?}"
+                )));
             }
-            backend => Err(ForumError::Validation(format!(
-                "Forum topic row locking does not support database backend {backend:?}"
-            ))),
+        };
+
+        if txn.execute_raw(statement).await?.rows_affected() != 1 {
+            let deleted_statement = match txn.get_database_backend() {
+                DatabaseBackend::Postgres => Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "SELECT deleted_at FROM forum_topics WHERE tenant_id = $1 AND id = $2",
+                    vec![tenant_id.into(), topic_id.into()],
+                ),
+                DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    "SELECT deleted_at FROM forum_topics WHERE tenant_id = ?1 AND id = ?2",
+                    vec![tenant_id.into(), topic_id.into()],
+                ),
+                backend => {
+                    return Err(ForumError::Validation(format!(
+                        "Forum topic deleted-state lookup does not support database backend {backend:?}"
+                    )));
+                }
+            };
+            if let Some(row) = txn.query_one_raw(deleted_statement).await? {
+                let deleted_at: Option<String> = row.try_get("", "deleted_at")?;
+                if deleted_at.is_some() {
+                    return Err(ForumError::TopicDeleted);
+                }
+            }
+            return Err(ForumError::TopicNotFound(topic_id));
         }
+
+        query
+            .one(txn)
+            .await?
+            .ok_or(ForumError::TopicNotFound(topic_id))
     }
 
     pub(crate) async fn claim_topic_update_in_tx(
