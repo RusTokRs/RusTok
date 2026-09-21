@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `170 / 218` components audited (**78%**)
+- **Progress:** `171 / 218` components audited (**79%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -193,7 +193,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [fly](../../crates/ui/fly) | `ui` | 65 | 23,474 | 2026-09-21 16:45 | Audited the framework-neutral Fly editor core: bundle/hash integrity, codec round-trip boundaries, runtime context contracts/dependencies/gates, internal links, safe URL and metadata handling, action/form capability gates, page rendering, CSS/HTML escaping, asset/style validation, and interaction materialization. No production auth/tenant boundary exists in this crate by design, and no additional XSS, URL, capability, or concurrency finding remained. |
 | [x] | [fly-browser](../../crates/ui/fly-browser) | `ui` | 9 | 816 | 2026-09-21 16:58 | Audited the SSR-first browser adapter and bundled JavaScript bridge: message origin/source validation, protocol/instance/sequence checks, browser resource limits, pending-intent leases/timeouts, CSRF and same-origin fetch credentials, draft/revision/project-hash propagation, drag/drop intents, and consumer-owned endpoint delegation. No additional production security or tenant-scope finding remained. |
 | [x] | [fly-leptos](../../crates/ui/fly-leptos) | `ui` | 5 | 1,691 | 2026-09-21 17:12 | Audited Leptos SSR/wasm feature separation, iframe/browser runtime, exact origin/source message validation, monotonic sequence handling, explicit outbound postMessage origins, pointer/resize lifecycle cleanup, and authenticated real-DOM inline-edit grants with session/page/revision/project-hash binding, expiry, sequence, field allow-list, and bounded plain-text input; no additional production security, tenant-scope, or concurrency finding remained. |
-| [ ] | [fly-ui](../../crates/ui/fly-ui) | `ui` | 20 | 5,225 | None |  |
+| [x] | [fly-ui](../../crates/ui/fly-ui) | `ui` | 20 | 5,225 | 2026-09-21 17:40 | Audited capability intersection/normalization, command-to-capability mapping, contribution assembly filters, tenant/permission/provider-health policy inputs, palette access, drag/drop legality, keyboard/resize behavior, state-machine mutation gates, save/publish diagnostics, and cleanup/history state. Browser-supplied drop candidates are rechecked for legality before command generation and `command_for_drop` is crate-private; no additional production security, tenant-scope, or concurrency finding remained. |
 | [ ] | [leptos-auth](../../crates/ui/leptos-auth) | `ui` | 9 | 1,494 | None |  |
 | [ ] | [leptos-forms](../../crates/ui/leptos-forms) | `ui` | 5 | 363 | None |  |
 | [ ] | [leptos-shadcn-pagination](../../crates/ui/leptos-shadcn-pagination) | `ui` | 1 | 98 | None |  |
