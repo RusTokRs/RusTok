@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `181 / 218` components audited (**83%**)
+- **Progress:** `182 / 218` components audited (**83%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -204,7 +204,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [leptos-zustand](../../crates/ui/leptos-zustand) | `ui` | 1 | 18 | 2026-09-21 19:55 | Audited the generic serializable StoreSnapshot/StoreUpdate state DTOs; no rendering, network, auth, tenant, persistence, or concurrency boundary exists in this crate and no production finding remained. |
 | [x] | [rustok-graphql](../../crates/ui/rustok-graphql) | `ui` | 1 | 338 | 2026-09-21 20:10 | Audited the framework-agnostic GraphQL HTTP client for endpoint derivation, SSR/WASM defaults, auth/tenant/locale header forwarding, response/error mapping, persisted-query extensions, timeout/client lifecycle, and raw-client delegation. Endpoint remains an adapter/configuration input rather than request-derived authority; client tenant slug is transport metadata and backend auth context remains authoritative. No confirmed production security, tenant-scope, URL, or concurrency finding remained. |
 | [x] | [rustok-graphql-leptos](../../crates/ui/rustok-graphql-leptos) | `ui` | 1 | 206 | 2026-09-21 20:28 | Audited Leptos GraphQL query/mutation/lazy-query hooks for endpoint/token/tenant forwarding, locale propagation, request lifecycle, and client-side concurrency. Fixed a real stale-response race: parallel or refetched GraphQL requests now carry monotonic request generations, and older responses/errors are ignored instead of overwriting newer state. |
-| [ ] | [rustok-ui-auth](../../crates/ui/rustok-ui-auth) | `ui` | 1 | 54 | None |  |
+| [x] | [rustok-ui-auth](../../crates/ui/rustok-ui-auth) | `ui` | 1 | 54 | 2026-09-21 20:48 | Audited shared client auth/session DTOs, expiry policy, error mapping, and serialization/debug boundaries. Fixed a real secret-leak risk by removing derived Debug from AuthSession and redacting both access and refresh tokens in its custom Debug implementation; backend Auth/RBAC remains authoritative. |
 | [ ] | [rustok-ui-core](../../crates/ui/rustok-ui-core) | `ui` | 5 | 1,280 | None |  |
 | [ ] | [rustok-ui-forms](../../crates/ui/rustok-ui-forms) | `ui` | 1 | 75 | None |  |
 | [ ] | [rustok-ui-i18n](../../crates/ui/rustok-ui-i18n) | `ui` | 26 | 3,489 | None |  |
