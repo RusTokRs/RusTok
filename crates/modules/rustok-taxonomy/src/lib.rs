@@ -67,7 +67,10 @@ pub use owner_category_sync::{
 pub use owner_identity::taxonomy_term_identity_exists;
 pub use owner_read::{TaxonomyOwnerReader, TaxonomyOwnerTerm, TaxonomyOwnerTermNames};
 pub use services::TaxonomyService;
-pub use translation_target::TaxonomyTranslationTargetProvider;
+pub use translation_target::{
+    TaxonomyModuleTermTranslationOwner, TaxonomyModuleTermTranslationOwnerRegistry,
+    TaxonomyTranslationTargetProvider,
+};
 
 #[cfg(test)]
 mod translation_target_tests;
