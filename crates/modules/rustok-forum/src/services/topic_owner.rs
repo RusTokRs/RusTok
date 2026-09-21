@@ -715,8 +715,9 @@ async fn restore_reply_from_delete_snapshot_in_tx(
     topic_id: Uuid,
     snapshot: &ReplyDeleteSnapshot,
 ) -> ForumResult<()> {
-    let (statement, values) = match txn.get_database_backend() {
-        DatabaseBackend::Postgres => (
+    let statement = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
             r#"
             UPDATE forum_replies
             SET status = $3, deleted_at = NULL, updated_at = CURRENT_TIMESTAMP
@@ -729,7 +730,8 @@ async fn restore_reply_from_delete_snapshot_in_tx(
                 snapshot.reply_id.into(),
             ],
         ),
-        DatabaseBackend::Sqlite => (
+        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
             r#"
             UPDATE forum_replies
             SET status = ?, deleted_at = NULL, updated_at = CURRENT_TIMESTAMP
@@ -748,13 +750,7 @@ async fn restore_reply_from_delete_snapshot_in_tx(
             )))
         }
     };
-    let result = txn
-        .execute_raw(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            statement,
-            values,
-        ))
-        .await?;
+    let result = txn.execute_raw(statement).await?;
     if result.rows_affected() != 1 {
         return Err(ForumError::TopicRestoreUnavailable(topic_id));
     }
@@ -909,11 +905,7 @@ async fn restore_topic_from_delete_snapshot_in_tx(
             )))
         }
     };
-    let result = txn.execute_raw(Statement::from_sql_and_values(
-        txn.get_database_backend(),
-        statement,
-        vec![],
-    )).await?;
+    let result = txn.execute_raw(statement).await?;
     if result.rows_affected() != 1 {
         return Err(ForumError::TopicRestoreUnavailable(topic_id));
     }
