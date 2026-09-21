@@ -64,17 +64,9 @@ async fn storefront_pages_native(
                 normalize_tenant_fallback_locale(tenant.default_locale.as_str()),
             )
         } else {
-            let slug = tenant_slug
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .ok_or_else(|| {
-                    ServerFnError::new(
-                        "pages/storefront-data requires tenant context or tenant slug",
-                    )
-                })?;
+            let slug = super::configured_fallback_tenant_slug(tenant_slug.as_deref())?;
             let tenant = TenantService::new(runtime_ctx.db_clone())
-                .get_tenant_by_slug(slug)
+                .get_tenant_by_slug(&slug)
                 .await
                 .map_err(ServerFnError::new)?;
             (
