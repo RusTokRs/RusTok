@@ -7,7 +7,7 @@ use axum::{
 use rustok_web::{HttpError, HttpResult};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::Value;
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::WorkflowService;
 
@@ -35,29 +35,25 @@ pub async fn receive(
             )
         })?;
 
-    let payload: Value = serde_json::from_slice(&body)
-        .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&body).into_owned()));
-
-    if let Some(signature) = headers.get("x-webhook-signature") {
-        info!(
-            tenant_slug = %tenant_slug,
-            webhook_slug = %webhook_slug,
-            signature = ?signature,
-            "Workflow webhook received with signature"
-        );
-    } else {
-        warn!(
-            tenant_slug = %tenant_slug,
-            webhook_slug = %webhook_slug,
-            "Workflow webhook received without X-Webhook-Signature"
-        );
-    }
+    let signature = headers
+        .get("x-webhook-signature")
+        .and_then(|value| value.to_str().ok());
 
     let service = WorkflowService::new(db);
     let executions = service
-        .trigger_by_webhook(tenant.id, &webhook_slug, payload)
+        .trigger_by_webhook(tenant.id, &webhook_slug, &body, signature)
         .await
-        .map_err(|err| HttpError::bad_request("workflow_operation_failed", err.to_string()))?;
+        .map_err(|err| match err {
+            crate::WorkflowError::WebhookSignatureMissing
+            | crate::WorkflowError::WebhookSignatureInvalid
+            | crate::WorkflowError::WebhookSecretNotConfigured => {
+                HttpError::unauthorized(
+                    "workflow_webhook_unauthorized",
+                    "Webhook signature verification failed".to_string(),
+                )
+            }
+            other => HttpError::bad_request("workflow_operation_failed", other.to_string()),
+        })?;
 
     info!(
         tenant_slug = %tenant_slug,
