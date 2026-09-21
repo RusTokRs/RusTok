@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 
+use crate::shared::api::configured_tenant_slug;
 use super::seo_page_context::{
     ResolvedSeoAlternateLink, ResolvedSeoDocument, ResolvedSeoImageAsset, ResolvedSeoLinkTag,
     ResolvedSeoMetaTag, ResolvedSeoOpenGraph, ResolvedSeoPageContext, ResolvedSeoPagination,
@@ -19,6 +20,17 @@ pub(crate) async fn resolve_seo_page_context(
         use leptos::prelude::expect_context;
         use rustok_core::ModuleRuntimeExtensions;
         use rustok_tenant::TenantService;
+
+        let configured = configured_tenant_slug().ok_or_else(|| {
+            ServerFnError::new(
+                "storefront SEO server function requires a configured host tenant",
+            )
+        })?;
+        if tenant_slug.trim() != configured {
+            return Err(ServerFnError::new(
+                "storefront SEO tenant does not match the configured host tenant",
+            ));
+        }
 
         let runtime = expect_context::<rustok_api::HostRuntimeContext>();
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
