@@ -25,11 +25,11 @@ use rustok_translation_targets::{
     },
     validate_translation_apply_context, validate_translation_read_context,
 };
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait};
+use sea_orm::{ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait};
 use uuid::Uuid;
 
 use crate::{
-    ApplyExactTaxonomyTranslationInput, TaxonomyError, TaxonomyService,
+    ApplyExactTaxonomyTranslationInput, TaxonomyError, TaxonomyService, TaxonomyTermKind,
     entities::{
         taxonomy_term::{Column as TermColumn, Entity as TermEntity, Model as TermModel},
         taxonomy_term_translation::{
@@ -50,17 +50,116 @@ const REQUIRED_FIELD_COUNT: u64 = 2;
 const OPTIONAL_FIELD_COUNT: u64 = 1;
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
+#[async_trait]
+pub trait TaxonomyModuleTermTranslationOwner: Send + Sync {
+    fn module_slug(&self) -> &str;
+
+    fn authorize(
+        &self,
+        context: &PortContext,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        term_id: Uuid,
+        action: Action,
+    ) -> Result<(), PortError>;
+
+    async fn on_translation_applied_in_tx(
+        &self,
+        transaction: &DatabaseTransaction,
+        context: &PortContext,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        term_id: Uuid,
+    ) -> Result<(), PortError>;
+}
+
+#[derive(Clone, Default)]
+pub struct TaxonomyModuleTermTranslationOwnerRegistry {
+    owners: BTreeMap<String, Arc<dyn TaxonomyModuleTermTranslationOwner>>,
+}
+
+impl TaxonomyModuleTermTranslationOwnerRegistry {
+    pub fn register<T>(&mut self, owner: T) -> Result<(), String>
+    where
+        T: TaxonomyModuleTermTranslationOwner + 'static,
+    {
+        let module_slug = owner.module_slug().trim();
+        if module_slug.is_empty() {
+            return Err("taxonomy translation owner module slug must not be empty".to_string());
+        }
+        if self.owners.contains_key(module_slug) {
+            return Err(format!("taxonomy translation owner {} is already registered", module_slug));
+        }
+        self.owners.insert(module_slug.to_string(), Arc::new(owner));
+        Ok(())
+    }
+
+    fn get(&self, module_slug: &str) -> Option<Arc<dyn TaxonomyModuleTermTranslationOwner>> {
+        self.owners.get(module_slug).cloned()
+    }
+}
+
 #[derive(Clone)]
 /// Owner adapter for exact taxonomy term localization. It calls the canonical
 /// Taxonomy service and never exposes owner tables to Translation directly.
 pub struct TaxonomyTranslationTargetProvider {
     service: Arc<TaxonomyService>,
+    owner_registry: Arc<TaxonomyModuleTermTranslationOwnerRegistry>,
 }
 
 impl TaxonomyTranslationTargetProvider {
     pub fn new(service: Arc<TaxonomyService>) -> Self {
-        Self { service }
+        Self::with_owner_registry(service, TaxonomyModuleTermTranslationOwnerRegistry::default())
     }
+
+    pub fn with_owner_registry(
+        service: Arc<TaxonomyService>,
+        owner_registry: TaxonomyModuleTermTranslationOwnerRegistry,
+    ) -> Self {
+        Self {
+            service,
+            owner_registry: Arc::new(owner_registry),
+        }
+    }
+
+    async fn load_term(&self, tenant_id: Uuid, term_id: Uuid) -> Result<TermModel, PortError> {
+        TermEntity::find_by_id(term_id)
+            .filter(TermColumn::TenantId.eq(tenant_id))
+            .one(self.service.database())
+            .await
+            .map_err(taxonomy_database_error_to_port_error)?
+            .ok_or_else(|| PortError::not_found(
+                "taxonomy.translation_resource_not_found",
+                format!("taxonomy translation resource not found: {term_id}"),
+            ))
+    }
+
+    fn authorize_term(
+        &self,
+        context: &PortContext,
+        tenant_id: Uuid,
+        term: &TermModel,
+        action: Action,
+    ) -> Result<(), PortError> {
+        if term.scope_type != crate::TaxonomyScopeType::Module {
+            return Ok(());
+        }
+        let module_slug = term.scope_value.trim();
+        if module_slug.is_empty() {
+            return Err(PortError::invariant_violation(
+                "taxonomy.translation_owner_scope_invalid",
+                "module-owned Taxonomy term has an empty owner scope",
+            ));
+        }
+        let owner = self.owner_registry.get(module_slug).ok_or_else(|| {
+            PortError::forbidden(
+                "taxonomy.translation_owner_permission_denied",
+                "module-owned Taxonomy terms require owner authorization",
+            )
+        })?;
+        owner.authorize(context, tenant_id, term.kind, term.id, action)
+    }
+}
 
     fn descriptor_value() -> TranslationTargetProviderDescriptor {
         TranslationTargetProviderDescriptor {
@@ -142,6 +241,7 @@ impl TaxonomyTranslationTargetProvider {
 
     async fn progress_facts(
         &self,
+        context: &PortContext,
         tenant_id: Uuid,
         request: &TranslationTargetProgressRequest,
     ) -> Result<TranslationTargetProgressFacts, PortError> {
@@ -154,6 +254,14 @@ impl TaxonomyTranslationTargetProvider {
             .all(self.service.database())
             .await
             .map_err(taxonomy_database_error_to_port_error)?;
+        let terms = terms
+            .into_iter()
+            .filter_map(|term| match self.authorize_term(context, tenant_id, &term, Action::Read) {
+                Ok(()) => Some(Ok(term)),
+                Err(error) if error.kind == rustok_api::PortErrorKind::Forbidden => None,
+                Err(error) => Some(Err(error)),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         let term_ids = terms.iter().map(|term| term.id).collect::<Vec<_>>();
         let targets = if term_ids.is_empty() {
             Vec::new()
@@ -307,8 +415,16 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
                 .or_default()
                 .push(translation);
         }
-        let resources = terms
+        let authorized_terms = terms
             .iter()
+            .filter_map(|term| match self.authorize_term(&context, tenant_id, term, Action::Read) {
+                Ok(()) => Some(Ok(term)),
+                Err(error) if error.kind == rustok_api::PortErrorKind::Forbidden => None,
+                Err(error) => Some(Err(error)),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let resources = authorized_terms
+            .into_iter()
             .map(|term| {
                 summary_from_models(
                     term,
@@ -345,6 +461,9 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
             ));
         }
         let tenant_id = parse_tenant_id(&context)?;
+        let term_id = parse_identity(&request.identity)?;
+        let term = self.load_term(tenant_id, term_id).await?;
+        self.authorize_term(&context, tenant_id, &term, Action::Read)?;
         self.load_snapshot(tenant_id, &request).await
     }
 
@@ -359,6 +478,9 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
             .validate()
             .map_err(|error| contract_validation_error(error.to_string()))?;
         let tenant_id = parse_tenant_id(&context)?;
+        let term_id = parse_identity(&request.identity)?;
+        let term = self.load_term(tenant_id, term_id).await?;
+        self.authorize_term(&context, tenant_id, &term, Action::Update)?;
         let snapshot = self
             .load_snapshot(tenant_id, &read_request_from_patch(&request))
             .await?;
@@ -377,6 +499,8 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
             .map_err(|error| contract_validation_error(error.to_string()))?;
         let tenant_id = parse_tenant_id(&context)?;
         let term_id = parse_identity(&request.identity)?;
+        let term = self.load_term(tenant_id, term_id).await?;
+        self.authorize_term(&context, tenant_id, &term, Action::Update)?;
         let idempotency_key = context.idempotency_key.as_deref().unwrap_or_default();
         let lease = match idempotency::admit(
             self.service.database(),
@@ -468,6 +592,25 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
             )
             .await
             .map_err(taxonomy_error_to_port_error)?;
+
+            if term.scope_type == crate::TaxonomyScopeType::Module {
+                let owner = self.owner_registry.get(term.scope_value.trim()).ok_or_else(|| {
+                    PortError::forbidden(
+                        "taxonomy.translation_owner_permission_denied",
+                        "module-owned Taxonomy terms require owner authorization",
+                    )
+                })?;
+                owner
+                    .on_translation_applied_in_tx(
+                        &transaction,
+                        &context,
+                        tenant_id,
+                        term.kind,
+                        term.id,
+                    )
+                    .await?;
+            }
+
             idempotency::complete(&transaction, lease, &receipt).await?;
             transaction
                 .commit()
@@ -497,7 +640,7 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
 
         for _ in 0..PROGRESS_STABILITY_ATTEMPTS {
             let cursor_before = self.latest_change_cursor(tenant_id).await?;
-            let mut facts = self.progress_facts(tenant_id, &request).await?;
+            let mut facts = self.progress_facts(&context, tenant_id, &request).await?;
             let cursor_after = self.latest_change_cursor(tenant_id).await?;
             if cursor_before == cursor_after {
                 facts.owner_change_cursor = cursor_after;
