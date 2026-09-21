@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `158 / 218` components audited (**72%**)
+- **Progress:** `159 / 218` components audited (**73%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -181,7 +181,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [render](../../crates/modules/rustok-seo/render) | `modules` | 1 | 699 | 2026-09-21 12:33 | Audited the server-independent SEO head renderer for HTML injection, attribute escaping, structured-data emission, deterministic ordering, and public metadata rendering; fixed JSON-LD script breakout by escaping <, >, and & before embedding serialized JSON in script content. |
 | [x] | [rustok-social-graph](../../crates/modules/rustok-social-graph) | `modules` | 36 | 8,796 | 2026-09-21 12:45 | Audited relation storage/FKs and uniqueness, GraphQL auth and tenant binding, command-port actor ownership and CAS/idempotency, privacy read/index scopes, monotonic index revisions, DLQ receipt claims, and maintenance replay/cleanup authorization; no additional production security, tenant-scope, or concurrency finding remained. |
 | [x] | [rustok-social-graph-cli](../../crates/modules/rustok-social-graph-cli) | `modules` | 1 | 324 | 2026-09-21 12:52 | Audited the owner-local receipt-cleanup command, explicit tenant/retention/limit parsing, system-actor PortContext, idempotency scope, runtime DB boundary, and delegation to the backend maintenance port; no additional production security, tenant-scope, or concurrency finding remained. |
-| [ ] | [rustok-tax](../../crates/modules/rustok-tax) | `modules` | 5 | 1,586 | None |  |
+| [x] | [rustok-tax](../../crates/modules/rustok-tax) | `modules` | 5 | 1,586 | 2026-09-21 13:00 | Audited the transport-neutral tax calculation port, policy admission, tenant/channel context handling, provider selection, currency/rate validation, taxable-target binding, result invariants, and decimal tax calculation; no additional production security, tenant-scope, or concurrency finding remained. |
 | [ ] | [rustok-taxonomy](../../crates/modules/rustok-taxonomy) | `modules` | 51 | 13,035 | None |  |
 | [ ] | [rustok-tenant](../../crates/modules/rustok-tenant) | `modules` | 28 | 3,836 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-tenant/admin) | `modules` | 8 | 726 | None |  |
