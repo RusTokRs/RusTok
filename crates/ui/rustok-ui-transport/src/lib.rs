@@ -20,6 +20,16 @@ pub enum UiTransportPath {
     Graphql,
 }
 
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UiTransportRetrySafety {
+    /// The operation is safe to execute again if the first transport's response is lost.
+    SafeToRetry,
+    /// The operation may have side effects and must not be retried through another transport.
+    AtMostOnce,
+}
+
 impl UiTransportPath {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -179,6 +189,7 @@ where
 pub async fn execute_transport_policy<T, N, NFut, NE, G, GFut, GE>(
     surface: impl Into<String>,
     path: UiTransportPath,
+    retry_safety: UiTransportRetrySafety,
     fallback_allowed: bool,
     native: N,
     graphql: G,
@@ -191,7 +202,7 @@ where
     GFut: Future<Output = Result<T, GE>>,
     GE: Display,
 {
-    if fallback_allowed {
+    if fallback_allowed && retry_safety == UiTransportRetrySafety::SafeToRetry {
         execute_with_fallback(surface, path, native, graphql).await
     } else {
         execute_selected_transport(surface, path, native, graphql).await
@@ -201,7 +212,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        UiTransportError, UiTransportPath, execute_selected_transport, execute_transport_policy,
+        UiTransportError, UiTransportPath, UiTransportRetrySafety, execute_selected_transport,
+        execute_transport_policy,
         execute_with_fallback,
     };
 
@@ -413,6 +425,7 @@ mod tests {
         let error = execute_transport_policy(
             "orders",
             UiTransportPath::NativeServer,
+            UiTransportRetrySafety::AtMostOnce,
             false,
             || async { Err::<(), _>("native failed") },
             || async {
@@ -429,10 +442,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn transport_policy_does_not_fallback_at_most_once_even_when_enabled() {
+        let error = execute_transport_policy(
+            "orders",
+            UiTransportPath::NativeServer,
+            UiTransportRetrySafety::AtMostOnce,
+            true,
+            || async { Err::<(), _>("native failed after possible side effect") },
+            || async {
+                panic!("unsafe mutation fallback must not be attempted");
+                #[allow(unreachable_code)]
+                Ok::<(), &'static str>(())
+            },
+        )
+        .await
+        .expect_err("at-most-once operations must not fallback");
+
+        assert!(!error.fallback_attempted);
+        assert_eq!(error.failed_path, UiTransportPath::NativeServer);
+    }
+
+    #[tokio::test]
     async fn transport_policy_respects_fallback_allowed() {
         let result = execute_transport_policy(
             "orders",
             UiTransportPath::NativeServer,
+            UiTransportRetrySafety::SafeToRetry,
             true,
             || async { Err::<&'static str, _>("native failed") },
             || async { Ok::<_, &'static str>("graphql fallback success") },

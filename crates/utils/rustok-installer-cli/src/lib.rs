@@ -27,7 +27,8 @@ pub fn command_provider(runtime: &RuntimeComposition) -> Box<dyn CommandProvider
 impl CommandProvider for InstallerCommandProvider {
     fn commands(&self) -> Vec<CommandDescriptor> {
         vec![
-            CommandDescriptor::new("seed", "apply", "Apply a typed tenant seed profile"),
+            CommandDescriptor::new("seed", "apply", "Apply a typed tenant seed profile")
+                .with_dry_run(),
             CommandDescriptor::new(
                 "install",
                 "plan",
@@ -42,7 +43,8 @@ impl CommandProvider for InstallerCommandProvider {
                 "install",
                 "apply",
                 "Apply the typed installer plan through the shared executor",
-            ),
+            )
+            .with_dry_run(),
             CommandDescriptor::new(
                 "install",
                 "status",

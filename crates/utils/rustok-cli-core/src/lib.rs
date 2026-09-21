@@ -67,6 +67,8 @@ pub enum CliCoreError {
     InvalidInput { message: String },
     #[error("command failed: {message}")]
     CommandFailed { message: String },
+    #[error("command {namespace} {name} does not support --dry-run")]
+    DryRunNotSupported { namespace: String, name: String },
 }
 
 pub type CliCoreResult<T> = Result<T, CliCoreError>;

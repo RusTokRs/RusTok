@@ -155,6 +155,70 @@ impl BuildService {
             .await?)
     }
 
+    /// Atomically claims a specific queued build for execution.
+    ///
+    /// The status predicate makes concurrent workers mutually exclusive for the same build:
+    /// exactly one caller can transition queued to running.
+    pub async fn claim_queued_build(&self, build_id: Uuid) -> anyhow::Result<Option<Build>> {
+        let claimed = self
+            .db
+            .transaction::<_, Option<Build>, sea_orm::DbErr>(|txn| {
+                Box::pin(async move {
+                    let now = Utc::now();
+                    let updated = BuildEntity::update_many()
+                        .col_expr(
+                            crate::build::Column::Status,
+                            sea_orm::sea_query::Expr::value(BuildStatus::Running),
+                        )
+                        .col_expr(
+                            crate::build::Column::StartedAt,
+                            sea_orm::sea_query::Expr::value(Some(now)),
+                        )
+                        .col_expr(
+                            crate::build::Column::UpdatedAt,
+                            sea_orm::sea_query::Expr::value(now),
+                        )
+                        .filter(crate::build::Column::Id.eq(build_id))
+                        .filter(crate::build::Column::Status.eq(BuildStatus::Queued))
+                        .exec(txn)
+                        .await?;
+
+                    if updated.rows_affected != 1 {
+                        return Ok(None);
+                    }
+
+                    BuildEntity::find_by_id(build_id).one(txn).await
+                })
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!(format!("Failed to claim build {build_id}: {e}")))?;
+
+        if let Some(build) = claimed.as_ref() {
+            self.event_publisher
+                .publish(BuildEvent::BuildStarted {
+                    build_id: build.id,
+                    stage: build.stage.clone(),
+                    progress: build.progress,
+                })
+                .await?;
+        }
+
+        Ok(claimed)
+    }
+
+    /// Claims the oldest queued build atomically.
+    ///
+    /// Concurrent workers may observe the same candidate, but only one can satisfy
+    /// the queued-status compare-and-swap. The losing worker receives None.
+    pub async fn claim_next_queued_build(&self) -> anyhow::Result<Option<Build>> {
+        let candidate = self.next_queued_build().await?;
+        let Some(candidate) = candidate else {
+            return Ok(None);
+        };
+
+        self.claim_queued_build(candidate.id).await
+    }
+
     pub async fn list_builds_page(&self, limit: u64, offset: u64) -> anyhow::Result<Vec<Build>> {
         validate_history_page(limit, offset)?;
         let builds = BuildEntity::find()

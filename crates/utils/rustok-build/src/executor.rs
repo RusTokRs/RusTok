@@ -40,11 +40,11 @@ impl BuildExecutionService {
             bail!("build {} is already running", running.id);
         }
 
-        let Some(build) = self.build_service.next_queued_build().await? else {
+        let Some(build) = self.build_service.claim_next_queued_build().await? else {
             return Ok(None);
         };
 
-        self.execute_build(build.id, dry_run).await.map(Some)
+        self.execute_claimed_build(build, dry_run).await.map(Some)
     }
 
     pub async fn execute_build(
@@ -52,30 +52,42 @@ impl BuildExecutionService {
         build_id: Uuid,
         dry_run: bool,
     ) -> anyhow::Result<BuildExecutionReport> {
-        let build = self
+        let existing = self
             .build_service
             .get_build(build_id)
             .await?
             .ok_or_else(|| anyhow!("Build not found"))?;
 
-        if build.is_final() {
+        if existing.is_final() {
             bail!(
                 "build {} is already final and cannot be executed again",
-                build.id
+                existing.id
             );
         }
-        if build.status == BuildStatus::Running {
-            bail!("build {} is already running", build.id);
+        if existing.status == BuildStatus::Running {
+            bail!("build {} is already running", existing.id);
         }
         if let Some(running) = self
             .build_service
             .running_build()
             .await?
-            .filter(|running| running.id != build.id)
+            .filter(|running| running.id != build_id)
         {
             bail!("build {} is already running", running.id);
         }
 
+        let Some(build) = self.build_service.claim_queued_build(build_id).await? else {
+            bail!("build {} could not be claimed for execution", build_id);
+        };
+
+        self.execute_claimed_build(build, dry_run).await
+    }
+
+    async fn execute_claimed_build(
+        &self,
+        build: crate::build::Model,
+        dry_run: bool,
+    ) -> anyhow::Result<BuildExecutionReport> {
         let plan = parse_execution_plan(build.id, build.modules_delta.as_ref())?;
         let manifest_path = build_manifest_snapshot_path(build.id);
         let server_spec =

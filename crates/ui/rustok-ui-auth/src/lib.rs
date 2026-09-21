@@ -11,7 +11,7 @@ pub struct AuthUser {
     pub role: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AuthSession {
     pub token: String,
     pub refresh_token: String,
@@ -29,6 +29,18 @@ pub enum AuthError {
     Network,
     #[error("HTTP error: {0}")]
     Http(u16),
+}
+
+impl std::fmt::Debug for AuthSession {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AuthSession")
+            .field("token", &"<redacted>")
+            .field("refresh_token", &"<redacted>")
+            .field("expires_at", &self.expires_at)
+            .field("tenant", &self.tenant)
+            .finish()
+    }
 }
 
 impl AuthSession {
