@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `185 / 218` components audited (**85%**)
+- **Progress:** `186 / 218` components audited (**85%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -208,7 +208,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-ui-core](../../crates/ui/rustok-ui-core) | `ui` | 5 | 1,280 | 2026-09-21 21:10 | Audited shared UI DTOs and helpers for CSS/HTML safety, route/query construction, navigation paths, selection/filter state, money formatting, badge/status mapping, and busy-key semantics. CSS inputs are reduced to finite class palettes, query keys use typed/static intents, navigation paths are URL-encoded through the URL API, and no auth/tenant/network authority exists in this crate. No additional production security, tenant-scope, or concurrency finding remained. |
 | [x] | [rustok-ui-forms](../../crates/ui/rustok-ui-forms) | `ui` | 1 | 75 | 2026-09-21 21:35 | Audited shared form submission state, field-error mapping, status transitions, serialization/debug surfaces, and validation issue conversion; no server/auth/tenant/network/secret boundary exists in this crate and no production security, tenant-scope, or concurrency finding remained. |
 | [x] | [rustok-ui-i18n](../../crates/ui/rustok-ui-i18n) | `ui` | 26 | 3,489 | 2026-09-21 22:05 | Audited locale normalization/fallback candidates, Fluent bundle construction, duplicate/default-locale handling, strict vs lenient startup semantics, interpolation/bidi isolation, key normalization macros, and diagnostic/error surfaces. Inputs are bounded and catalog ownership is static/module-local; no auth/tenant/network authority or production security/concurrency finding remained. |
-| [ ] | [rustok-ui-transport](../../crates/ui/rustok-ui-transport) | `ui` | 1 | 266 | None |  |
+| [x] | [rustok-ui-transport](../../crates/ui/rustok-ui-transport) | `ui` | 1 | 266 | 2026-09-21 22:30 | Audited native/GraphQL transport selection and fallback semantics. Found a reusable side-effect retry hazard: generic fallback could execute a secondary transport after a primary mutation response was lost. Added explicit `UiTransportRetrySafety` and made fallback conditional on `SafeToRetry`; `AtMostOnce` operations never fallback even when enabled, with regression coverage. |
 | [ ] | [rustok-build](../../crates/utils/rustok-build) | `utils` | 12 | 2,033 | None |  |
 | [ ] | [rustok-build-publication](../../crates/utils/rustok-build-publication) | `utils` | 4 | 862 | None |  |
 | [ ] | [rustok-build-source](../../crates/utils/rustok-build-source) | `utils` | 2 | 1,570 | None |  |
