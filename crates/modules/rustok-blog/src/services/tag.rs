@@ -95,11 +95,6 @@ impl TagService {
         input: UpdateTagInput,
     ) -> BlogResult<TagResponse> {
         enforce_scope(&security, Resource::Tags, Action::Update)?;
-        let term = self
-            .find_visible_term(tenant_id, tag_id, PLATFORM_FALLBACK_LOCALE)
-            .await?;
-        ensure_module_owned_term(&term)?;
-
         let locale = normalize_locale(&input.locale)?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         let term = update_module_term_in_tx(
@@ -136,11 +131,6 @@ impl TagService {
         security: SecurityContext,
     ) -> BlogResult<()> {
         enforce_scope(&security, Resource::Tags, Action::Delete)?;
-        let term = self
-            .find_visible_term(tenant_id, tag_id, PLATFORM_FALLBACK_LOCALE)
-            .await?;
-        ensure_module_owned_term(&term)?;
-
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         lock_module_term_in_tx(
             &txn,
@@ -570,18 +560,6 @@ pub(crate) async fn find_post_ids_by_tag(
             }
         })
         .collect())
-}
-
-fn ensure_module_owned_term(term: &TaxonomyOwnerTerm) -> BlogResult<()> {
-    if term.scope_type == TaxonomyScopeType::Module
-        && term.scope_value.as_deref() == Some(BLOG_SCOPE_VALUE)
-    {
-        return Ok(());
-    }
-
-    Err(BlogError::forbidden(
-        "Global taxonomy tags must be managed through rustok-taxonomy",
-    ))
 }
 
 fn bounded_tag_page_size(value: u64) -> u64 {
