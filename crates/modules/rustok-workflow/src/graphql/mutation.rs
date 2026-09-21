@@ -40,6 +40,7 @@ impl WorkflowMutation {
                     description: input.description,
                     trigger_config: input.trigger_config,
                     webhook_slug: input.webhook_slug,
+                    webhook_secret: input.webhook_secret,
                 },
             )
             .await
@@ -72,6 +73,7 @@ impl WorkflowMutation {
                     status: input.status.map(Into::into),
                     trigger_config: input.trigger_config,
                     webhook_slug: input.webhook_slug,
+                    webhook_secret: input.webhook_secret,
                 },
             )
             .await
