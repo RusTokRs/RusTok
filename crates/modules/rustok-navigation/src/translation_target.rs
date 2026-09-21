@@ -71,8 +71,10 @@ impl NavigationMenuTranslationTargetProvider {
 
     fn descriptor_value() -> TranslationTargetProviderDescriptor {
         TranslationTargetProviderDescriptor {
+            // INVARIANT: static owner slug "navigation" is a valid non-empty ASCII identifier.
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
                 .expect("static Navigation owner slug must satisfy the target contract"),
+            // INVARIANT: static resource kind "menu" is a valid non-empty ASCII identifier.
             resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
                 .expect("static Navigation resource kind must satisfy the target contract"),
             display_name: "Navigation menu".to_string(),
@@ -384,6 +386,7 @@ impl TranslationTargetProvider for NavigationMenuTranslationTargetProvider {
             menus.truncate(usize::from(request.limit));
         }
         let next_cursor = has_more.then(|| menus.last()).flatten().map(|menu| {
+            // INVARIANT: UUID string representation is non-empty printable ASCII and satisfies the opaque cursor contract.
             OpaqueCursor::new(menu.id.to_string())
                 .expect("Navigation UUID cursor must satisfy the opaque cursor contract")
         });
@@ -608,6 +611,7 @@ impl TranslationTargetProvider for NavigationMenuTranslationTargetProvider {
             .await
             .map_err(navigation_database_error_to_port_error)?;
         let next_cursor = rows.last().map(|change| {
+            // INVARIANT: UUID string representation is non-empty printable ASCII and satisfies the opaque cursor contract.
             OpaqueCursor::new(change.id.to_string())
                 .expect("Navigation change UUID must satisfy the opaque cursor contract")
         });
@@ -821,10 +825,13 @@ fn exact_locales(aggregate: &MenuAggregate) -> Result<Vec<TenantLocale>, PortErr
 
 fn menu_identity(menu_id: Uuid) -> TranslationResourceIdentity {
     TranslationResourceIdentity {
+        // INVARIANT: static owner slug "navigation" is a valid non-empty ASCII identifier.
         owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
             .expect("static Navigation owner slug must satisfy the target contract"),
+        // INVARIANT: static resource kind "menu" is a valid non-empty ASCII identifier.
         resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
             .expect("static Navigation resource kind must satisfy the target contract"),
+        // INVARIANT: UUID string representation is non-empty printable ASCII and satisfies the resource id contract.
         resource_id: ResourceId::new(menu_id.to_string())
             .expect("Navigation menu UUID must satisfy the resource id contract"),
         subresource_id: None,
@@ -838,6 +845,7 @@ fn translation_fields(
 ) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
     let mut fields = Vec::with_capacity(items.len() + 1);
     fields.push(field_snapshot(
+        // INVARIANT: static field key "name" is a valid non-empty ASCII identifier.
         FieldKey::new(MENU_NAME_FIELD_KEY).expect("static Navigation field key must be valid"),
         source.menu_translation.name.as_str(),
         target.map(|rows| rows.menu_translation.name.as_str()),

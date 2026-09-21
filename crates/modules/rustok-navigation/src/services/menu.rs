@@ -340,7 +340,11 @@ impl MenuService {
         for item in items {
             let title = item_titles
                 .get(&item.id)
-                .expect("validated menu item title map must include every item")
+                .ok_or_else(|| {
+                    NavigationError::validation(
+                        "Menu translation must provide one title for every menu item",
+                    )
+                })?
                 .clone();
             match target_items_by_id.get(&item.id) {
                 Some(target) => {

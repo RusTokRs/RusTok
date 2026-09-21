@@ -3,7 +3,6 @@ use crate::{
     ActiveMenuBindingResponse, BindActiveMenuInput, CreateMenuInput, MenuBindingService,
     MenuLocation, MenuResponse, MenuService, NavigationError,
 };
-use anyhow::Context;
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -34,10 +33,10 @@ pub struct NavigationHttpRuntime {
     db: DatabaseConnection,
 }
 impl NavigationHttpRuntime {
-    fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
-        Ok(Self {
+    fn from_host(runtime: &HostRuntimeContext) -> Self {
+        Self {
             db: runtime.db_clone(),
-        })
+        }
     }
 }
 fn security(auth: &AuthContext) -> rustok_core::SecurityContext {
@@ -151,8 +150,8 @@ pub async fn bind_active_menu(
         .map_err(map_error)
 }
 
-pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
-    let state = NavigationHttpRuntime::from_host(runtime).context("navigation HTTP runtime")?;
+pub fn axum_router(runtime: &HostRuntimeContext) -> Result<axum::Router, NavigationError> {
+    let state = NavigationHttpRuntime::from_host(runtime);
     Ok(axum::Router::new()
         .route("/api/menus/{id}", axum::routing::get(get_menu))
         .route(

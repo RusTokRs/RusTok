@@ -6,7 +6,6 @@ license.workspace = true
 description = "Tenant and channel scoped navigation menu owner"
 
 [dependencies]
-anyhow.workspace = true
 async-graphql.workspace = true
 async-trait.workspace = true
 axum.workspace = true

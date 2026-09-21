@@ -1,7 +1,6 @@
 use super::ApiError;
-use crate::model::{StorefrontMenu, StorefrontMenuItem, StorefrontMenuLocation};
+use crate::model::{StorefrontMenu, StorefrontMenuLocation};
 use leptos::prelude::*;
-use rustok_api::PLATFORM_FALLBACK_LOCALE;
 
 pub async fn fetch_active_menu_server(
     tenant_slug: Option<String>,
