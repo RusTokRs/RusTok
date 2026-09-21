@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `204 / 212` components audited (**96%**)
+- **Progress:** `205 / 212` components audited (**97%**)
 - **Total Workspace Codebase:** `1,853,842` LOC across `212` modules/apps
 
 ---
@@ -227,7 +227,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-module-build-dispatcher](../../crates/workers/rustok-module-build-dispatcher) | `workers` | 3 | 478 | 2026-09-22 00:20 | Audited broker queue consumer, mTLS build worker client connection, result-first execution flow, and shutdown coordinator; decomposed host from_env, run_dispatcher loop, and receive delivery parser to comply with function metrics. Zero suppressions, all tests passed, clippy clean |
 | [x] | [rustok-module-build-transport](../../crates/workers/rustok-module-build-transport) | `workers` | 6 | 325 | 2026-09-22 00:25 | Audited gRPC protobuf contracts and client/server adapters for module-build and distribution workers; verified fail-closed admission and error propagation, zero unwrap/panic, clippy clean. |
 | [x] | [rustok-module-build-worker](../../crates/workers/rustok-module-build-worker) | `workers` | 8 | 4,121 | 2026-09-22 00:50 | Audited OCI build worker runner, policy engine, artifact publication bundle collector, and SLSA provenance inspection; eliminated blocking fs::read in isolation attestation, fixed DirBuilder unused_mut in build publication, verified zero unwrap/panic in runtime code, all 10 tests passed, clippy clean. |
-| [ ] | [rustok-registry-validation-worker](../../crates/workers/rustok-registry-validation-worker) | `workers` | 2 | 763 | None |  |
+| [x] | [rustok-registry-validation-worker](../../crates/workers/rustok-registry-validation-worker) | `workers` | 2 | 815 | 2026-09-22 01:10 | Audited origin-aware registry validation worker, OCI and Alloy publication verification, retry loops, and fail-closed admission; decomposed main and worker functions to comply with metrics limits. Zero suppressions, all tests passed, clippy clean. |
 | [ ] | [rustok-sandbox](../../crates/workers/rustok-sandbox) | `workers` | 19 | 7,659 | None |  |
 | [ ] | [rustok-sandbox-transport](../../crates/workers/rustok-sandbox-transport) | `workers` | 5 | 1,095 | None |  |
 | [ ] | [rustok-sandbox-worker](../../crates/workers/rustok-sandbox-worker) | `workers` | 3 | 692 | None |  |
