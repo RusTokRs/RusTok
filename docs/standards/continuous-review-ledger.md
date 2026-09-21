@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `176 / 218` components audited (**81%**)
+- **Progress:** `177 / 218` components audited (**81%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -199,7 +199,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [leptos-shadcn-pagination](../../crates/ui/leptos-shadcn-pagination) | `ui` | 1 | 98 | 2026-09-21 18:45 | Audited the pagination primitives for navigation URL injection. Fixed a real reusable UI URL-sink by sanitizing PaginationLink/Previous/Next hrefs to allow only relative/hash/query or http(s) URLs and reject executable/opaque schemes, protocol-relative targets, and control characters. |
 | [x] | [leptos-table](../../crates/ui/leptos-table) | `ui` | 1 | 48 | 2026-09-21 18:55 | Audited the framework-neutral table state model for pagination, sort, and filter inputs; no rendering, URL, network, auth, tenant, or concurrency boundary exists in this crate and no production finding remained. |
 | [x] | [leptos-ui](../../crates/ui/leptos-ui) | `ui` | 7 | 503 | 2026-09-21 19:20 | Audited shared Leptos UI primitives and richtext sinks. RichTextHtml consumes only server-derived RichTextView; the canonical rustok-content renderer enforces allowlisted schema/nodes/marks, bounded size/depth, escaped text/attributes, and safe link schemes. RichText editor iframe is same-origin framed, sandboxed with `allow-scripts` but no `allow-same-origin`, and assets are embedded/server-owned. No additional production security, tenant-scope, or concurrency finding remained. |
-| [ ] | [leptos-ui-routing](../../crates/ui/leptos-ui-routing) | `ui` | 1 | 233 | None |  |
+| [x] | [leptos-ui-routing](../../crates/ui/leptos-ui-routing) | `ui` | 1 | 233 | 2026-09-21 19:35 | Audited SSR/browser query reads and writes, host-provided route query sanitization, current-path navigation construction, and locale context; no arbitrary destination URL sink, auth/tenant boundary, network call, or concurrency state exists in this crate. |
 | [ ] | [leptos-zod](../../crates/ui/leptos-zod) | `ui` | 1 | 22 | None |  |
 | [ ] | [leptos-zustand](../../crates/ui/leptos-zustand) | `ui` | 1 | 18 | None |  |
 | [ ] | [rustok-graphql](../../crates/ui/rustok-graphql) | `ui` | 1 | 338 | None |  |
