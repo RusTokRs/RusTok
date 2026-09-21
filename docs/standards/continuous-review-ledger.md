@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `196 / 218` components audited (**90%**)
+- **Progress:** `197 / 218` components audited (**90%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -219,7 +219,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-installer](../../crates/utils/rustok-installer) | `utils` | 11 | 4,102 | 2026-09-22 01:55 | Audited installer preflight, topology/distribution admission, state-machine/recovery transitions, secret resolution/redaction, seed/admin transaction boundaries, deployment receipt validation, and durable session locking. Found and fixed a real global-lock race in rustok-installer-persistence: concurrent sessions could both observe no active lock and acquire independently; lock acquisition is now serialized at the authoritative persistence write point (PostgreSQL SERIALIZABLE, transactional write path for SQLite), with empty owners rejected. No additional production tenant-scope or integrity bypass remained. |
 | [x] | [rustok-installer-cli](../../crates/utils/rustok-installer-cli) | `utils` | 1 | 443 | 2026-09-22 02:20 | Audited installer/seed CLI dispatch, dry-run semantics, secret/reference parsing and redaction, signed base-distribution receipt admission, instance-root binding, tenant/bootstrap inputs, lock options, and durable status rendering. Fixed an integration regression after the CLI dry-run safety gate: seed apply and install apply explicitly declare with_dry_run(), matching their non-mutating implementation paths. |
 | [x] | [rustok-installer-persistence](../../crates/utils/rustok-installer-persistence) | `utils` | 7 | 1,380 | 2026-09-22 02:55 | Audited durable installer sessions, receipts, state persistence, global install lock acquisition, tenant assignment, seed/module lifecycle writes, bootstrap idempotency, admin/role transactions, and PostgreSQL/SQLite persistence boundaries. Fixed two real production safety issues: serialized global lock acquisition at the DB boundary (PostgreSQL SERIALIZABLE, transactional SQLite path) and fail-closed rejection of the Dev seed profile for production, including the deterministic demo-customer password path; preflight now rejects the same configuration before DB access. |
-| [ ] | [rustok-migrations](../../crates/utils/rustok-migrations) | `utils` | 65 | 14,997 | None |  |
+| [x] | [rustok-migrations](../../crates/utils/rustok-migrations) | `utils` | 65 | 14,997 | 2026-09-22 03:20 | Audited the canonical migration registry/order/dependency validation, installer owner/remaining schema split, SQLite compatibility boundary, high-risk registry identity/artifact backfills, Flex localization backfills, lease/receipt migrations, and destructive down paths. Fixed a real privileged-filesystem issue in the registry identity/artifact migration: legacy artifact sources are now confined to the managed storage root, destination keys reject traversal/absolute/control components, symlink destinations are rejected, and regression coverage was added. |
 | [ ] | [rustok-module-sdk](../../crates/utils/rustok-module-sdk) | `utils` | 2 | 60 | None |  |
 | [ ] | [rustok-module-template](../../crates/utils/rustok-module-template) | `utils` | 2 | 329 | None |  |
 | [ ] | [rustok-secrets](../../crates/utils/rustok-secrets) | `utils` | 3 | 1,306 | None |  |
