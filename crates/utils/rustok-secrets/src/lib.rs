@@ -110,6 +110,7 @@ impl SecretResolverRegistry {
         reference: &SecretRef,
     ) -> Result<SecretString, SecretError> {
         self.validate_reference_for_tenant(tenant_id, reference)?;
+        // INVARIANT: `validate_reference_for_tenant` immediately above confirms resolver registration exists.
         let registration = self
             .resolvers
             .get(&reference.resolver)

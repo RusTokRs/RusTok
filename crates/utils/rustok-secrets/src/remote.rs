@@ -186,15 +186,45 @@ pub struct KubernetesSecretResolver {
 }
 
 impl KubernetesSecretResolver {
+    /// Asynchronously creates a secret resolver using in-cluster Kubernetes service account credentials.
+    pub async fn in_cluster_async(namespace: impl Into<String>) -> Result<Self, SecretError> {
+        let namespace = namespace.into();
+        validate_dns_name(&namespace, "Kubernetes namespace")?;
+        let host = std::env::var("KUBERNETES_SERVICE_HOST").map_err(kubernetes_error)?;
+        let port =
+            std::env::var("KUBERNETES_SERVICE_PORT_HTTPS").unwrap_or_else(|_| "443".to_string());
+        let ca = tokio::fs::read("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+            .await
+            .map_err(kubernetes_error)?;
+        Self::from_ca_bytes(namespace, &host, &port, &ca)
+    }
+
+    /// Creates a secret resolver using in-cluster Kubernetes service account credentials during synchronous bootstrap.
     pub fn in_cluster(namespace: impl Into<String>) -> Result<Self, SecretError> {
         let namespace = namespace.into();
         validate_dns_name(&namespace, "Kubernetes namespace")?;
         let host = std::env::var("KUBERNETES_SERVICE_HOST").map_err(kubernetes_error)?;
         let port =
             std::env::var("KUBERNETES_SERVICE_PORT_HTTPS").unwrap_or_else(|_| "443".to_string());
-        let ca = std::fs::read("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
-            .map_err(kubernetes_error)?;
-        let certificate = reqwest::Certificate::from_pem(&ca).map_err(kubernetes_error)?;
+        let ca = {
+            use std::io::Read;
+            let mut file =
+                std::fs::File::open("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+                    .map_err(kubernetes_error)?;
+            let mut buffer = Vec::new();
+            file.read_to_end(&mut buffer).map_err(kubernetes_error)?;
+            buffer
+        };
+        Self::from_ca_bytes(namespace, &host, &port, &ca)
+    }
+
+    fn from_ca_bytes(
+        namespace: String,
+        host: &str,
+        port: &str,
+        ca: &[u8],
+    ) -> Result<Self, SecretError> {
+        let certificate = reqwest::Certificate::from_pem(ca).map_err(kubernetes_error)?;
         let client = reqwest::Client::builder()
             .add_root_certificate(certificate)
             .redirect(reqwest::redirect::Policy::none())
@@ -496,6 +526,11 @@ mod tests {
     #[test]
     fn kubernetes_resolver_rejects_invalid_namespace_before_cluster_discovery() {
         assert!(KubernetesSecretResolver::in_cluster("invalid namespace").is_err());
+    }
+
+    #[tokio::test]
+    async fn kubernetes_resolver_async_rejects_invalid_namespace_before_cluster_discovery() {
+        assert!(KubernetesSecretResolver::in_cluster_async("invalid namespace").await.is_err());
     }
 
     #[tokio::test]
