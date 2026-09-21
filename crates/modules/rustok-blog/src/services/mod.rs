@@ -11,6 +11,8 @@ mod comment_projection;
 mod post;
 mod rbac;
 mod tag;
+#[cfg(test)]
+mod tag_lifecycle_tests;
 
 pub use category_command::CategoryCommandService;
 pub use category_owner::CategoryService;
