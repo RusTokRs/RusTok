@@ -15,6 +15,7 @@ fn main() {
         "cargo:rerun-if-changed=../../../utils/rustok-build/src/module_manifest_contribution.rs"
     );
 
+    // INVARIANT: CARGO_MANIFEST_DIR is set by Cargo during build.
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let manifest_path = manifest_dir.join(MODULE_MANIFEST_RELATIVE_PATH);
     let source = fs::read_to_string(&manifest_path)
@@ -39,6 +40,7 @@ fn main() {
             normalized.module_id
         );
     }
+    // INVARIANT: CARGO_PKG_VERSION is set by Cargo during build.
     let cargo_version = env::var("CARGO_PKG_VERSION").expect("CARGO_PKG_VERSION");
     if normalized.owner_version != cargo_version {
         panic!(
@@ -83,6 +85,7 @@ fn main() {
         .property_editor_component_type
         .as_deref()
         .unwrap_or_else(|| panic!("metadata property editor must declare component_type"));
+    // INVARIANT: Normalized manifest was validated from valid TOML structure and is guaranteed serializable.
     let manifest_json = normalized
         .manifest_json()
         .expect("generated Pages contribution manifest must serialize");
@@ -147,7 +150,9 @@ fn main() {
         "pub const GENERATED_PAGES_CONTRIBUTION_MANIFEST_JSON: &str = {manifest_json:?};\n"
     ));
 
+    // INVARIANT: OUT_DIR is set by Cargo during build.
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
+    // INVARIANT: Target OUT_DIR is guaranteed writable during build.
     fs::write(out_dir.join(GENERATED_FILE), generated)
         .expect("write generated Pages contribution manifest");
 }

@@ -467,7 +467,7 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
         page.map(|page| {
             let seed = crate::core::edit_form_seed_from_page(&page, &self.default_locale);
             let project = crate::core::parse_project_data(&seed.project_data_text)
-                .map_err(PageBuilderServiceError::Validation)?;
+                .map_err(|error| PageBuilderServiceError::Validation(error.to_string()))?;
             canonicalize_builder_project(project)
                 .map_err(|error| PageBuilderServiceError::Validation(error.to_string()))
         })
@@ -602,8 +602,8 @@ pub fn controller_from_project(
     revision_id: &str,
     raw_project: &str,
 ) -> Result<AdminCanvasController, PageBuilderAdminFacadeError> {
-    let project =
-        crate::core::parse_project_data(raw_project).map_err(PageBuilderAdminFacadeError::new)?;
+    let project = crate::core::parse_project_data(raw_project)
+        .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
     let project = canonicalize_builder_project(project)?;
     AdminCanvasController::new(page_id, revision_id, project)
         .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))

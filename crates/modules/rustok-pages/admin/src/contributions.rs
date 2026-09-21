@@ -12,6 +12,7 @@ include!(concat!(env!("OUT_DIR"), "/pages_contribution_manifest.rs"));
 
 static GENERATED_PAGES_CONTRIBUTION_MANIFEST: LazyLock<GeneratedPagesManifest> =
     LazyLock::new(|| {
+        // INVARIANT: GENERATED_PAGES_CONTRIBUTION_MANIFEST_JSON is generated and verified at build time by build.rs.
         serde_json::from_str(GENERATED_PAGES_CONTRIBUTION_MANIFEST_JSON)
             .expect("build-generated Pages contribution manifest must deserialize")
     });
@@ -43,9 +44,11 @@ pub fn pages_metadata_property_schema() -> ConsumerPropertyEditorSchema {
                 "generated Pages metadata contribution is missing property editor `{PAGES_METADATA_PROPERTY_EDITOR_ID}`"
             )
         });
+    // INVARIANT: Property schema was generated and validated at compile time by build.rs from canonical module metadata.
     let schema =
         serde_json::from_value::<ConsumerPropertyEditorSchema>(editor.property_schema.clone())
             .expect("generated Pages metadata property schema must deserialize");
+    // INVARIANT: Property schema satisfies Page Builder contract as validated at compile time by build.rs.
     schema
         .validate()
         .expect("generated Pages metadata property schema must satisfy Page Builder contract");

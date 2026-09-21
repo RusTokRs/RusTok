@@ -159,17 +159,25 @@ pub fn default_project_data_text(title: &str) -> String {
     project_to_pretty_json(&default_project_data(title))
 }
 
-pub fn parse_project_data(raw: &str) -> Result<Value, String> {
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum ProjectDataParseError {
+    #[error("Validation error: invalid project JSON ({0})")]
+    InvalidJson(String),
+    #[error("Validation error: project JSON root must be an object")]
+    RootNotObject,
+}
+
+pub fn parse_project_data(raw: &str) -> Result<Value, ProjectDataParseError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Ok(default_project_data(""));
     }
 
     let parsed: Value = serde_json::from_str(trimmed)
-        .map_err(|error| format!("Validation error: invalid project JSON ({error})"))?;
+        .map_err(|error| ProjectDataParseError::InvalidJson(error.to_string()))?;
 
     if !parsed.is_object() {
-        return Err("Validation error: project JSON root must be an object".to_string());
+        return Err(ProjectDataParseError::RootNotObject);
     }
 
     Ok(parsed)
@@ -210,5 +218,17 @@ mod tests {
     #[test]
     fn slugify_produces_current_route_slugs() {
         assert_eq!(slugify("Hello, Current Pages!"), "hello-current-pages");
+    }
+
+    #[test]
+    fn parse_project_data_returns_typed_error_for_invalid_json() {
+        let err = parse_project_data("{not json").unwrap_err();
+        assert!(matches!(err, ProjectDataParseError::InvalidJson(_)));
+    }
+
+    #[test]
+    fn parse_project_data_returns_typed_error_for_non_object() {
+        let err = parse_project_data("[\"array\"]").unwrap_err();
+        assert_eq!(err, ProjectDataParseError::RootNotObject);
     }
 }
