@@ -108,7 +108,8 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
         | ForumError::TopicLocked
         | ForumError::TopicDeleted
         | ForumError::TopicRestoreUnavailable(_)
-        | ForumError::ReplyDeleted => HttpError::new(
+        | ForumError::ReplyDeleted
+        | ForumError::ReplyRestoreUnavailable(_) => HttpError::new(
             StatusCode::CONFLICT,
             code,
             "The forum resource state does not allow this operation",
@@ -253,6 +254,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
             get(replies::get_reply)
                 .put(content_commands::update_reply)
                 .delete(replies::delete_reply),
+        )
+        .route(
+            "/api/forum/replies/{id}/restore",
+            axum::routing::post(replies::restore_reply),
         )
         .route(
             "/api/forum/replies/{id}/quotes",

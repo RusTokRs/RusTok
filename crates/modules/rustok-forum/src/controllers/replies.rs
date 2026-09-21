@@ -291,6 +291,34 @@ pub async fn delete_reply(
 
 #[utoipa::path(
     post,
+    path = "/api/forum/replies/{id}/restore",
+    tag = "forum",
+    params(("id" = Uuid, Path, description = "Reply ID")),
+    responses(
+        (status = 204, description = "Reply restored"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 409, description = "Reply cannot be restored"),
+        (status = 404, description = "Reply not found")
+    )
+)]
+pub async fn restore_reply(
+    State(runtime): State<crate::controllers::ForumHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+) -> HttpResult<StatusCode> {
+    runtime
+        .reply_service()
+        .restore(tenant.id, id, forum_security(&auth))
+        .await
+        .map_err(crate::controllers::map_forum_error)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+
+#[utoipa::path(
+    post,
     path = "/api/forum/replies/{reply_id}/vote/{value}",
     tag = "forum",
     params(

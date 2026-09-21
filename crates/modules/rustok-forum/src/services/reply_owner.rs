@@ -112,6 +112,116 @@ impl ReplyService {
         Ok(())
     }
 
+    /// Restore a previously soft-deleted reply from its immutable delete snapshot.
+    ///
+    /// Deleted remains terminal in the ordinary state machine; restore is an
+    /// explicit lifecycle inverse and does not loosen normal moderation transitions.
+    #[instrument(skip(self, security))]
+    pub async fn restore(
+        &self,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+        security: SecurityContext,
+    ) -> ForumResult<()> {
+        enforce_scope(&security, Resource::ForumReplies, Action::Manage)?;
+
+        let txn = self.db.begin().await?;
+        let reply = reply::ReplyService::find_reply_in_tx(&txn, tenant_id, reply_id).await?;
+        if reply.status != ReplyStatus::Deleted {
+            return Err(ForumError::ReplyRestoreUnavailable(reply_id));
+        }
+
+        let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, reply.topic_id).await?;
+        let snapshot = load_reply_delete_snapshot_in_tx(&txn, tenant_id, reply_id)
+            .await?
+            .ok_or(ForumError::ReplyRestoreUnavailable(reply_id))?;
+
+        if snapshot.solution_marked_at.is_some()
+            && forum_solution::Entity::find()
+                .filter(forum_solution::Column::TenantId.eq(tenant_id))
+                .filter(forum_solution::Column::TopicId.eq(topic.id))
+                .one(&txn)
+                .await?
+                .is_some()
+        {
+            return Err(ForumError::ReplyRestoreUnavailable(reply_id));
+        }
+
+        restore_reply_from_delete_snapshot_in_tx(&txn, tenant_id, &reply, &snapshot).await?;
+
+        if snapshot.previous_status == ReplyStatus::Approved {
+            TopicService::adjust_reply_count_in_tx(&txn, tenant_id, reply.topic_id, 1).await?;
+            CategoryService::adjust_counters_in_tx(
+                &txn,
+                tenant_id,
+                topic.category_id,
+                0,
+                1,
+            )
+            .await?;
+            UserStatsService::adjust_reply_count_in_tx(
+                &txn,
+                tenant_id,
+                snapshot.author_id,
+                1,
+            )
+            .await?;
+        }
+
+        if let Some(marked_at) = snapshot.solution_marked_at.as_deref() {
+            let marked_at = marked_at
+                .parse::<chrono::DateTime<chrono::FixedOffset>>()
+                .map_err(|_| ForumError::ReplyRestoreUnavailable(reply_id))?;
+            restore_reply_solution_in_tx(
+                &txn,
+                tenant_id,
+                topic.id,
+                reply.id,
+                snapshot.solution_marked_by_user_id,
+                marked_at,
+            )
+            .await?;
+            UserStatsService::adjust_solution_count_in_tx(
+                &txn,
+                tenant_id,
+                snapshot.author_id,
+                1,
+            )
+            .await?;
+        }
+
+        self.event_bus
+            .publish_in_tx(
+                &txn,
+                tenant_id,
+                security.user_id,
+                DomainEvent::ForumReplyStatusChanged {
+                    reply_id,
+                    topic_id: topic.id,
+                    old_status: ReplyStatus::Deleted.to_string(),
+                    new_status: snapshot.previous_status.to_string(),
+                    moderator_id: security.user_id,
+                },
+            )
+            .await?;
+
+        if snapshot.previous_status == ReplyStatus::Approved {
+            publish_forum_category_projection_in_tx(
+                &self.event_bus,
+                &txn,
+                tenant_id,
+                security.user_id,
+                topic.category_id,
+            )
+            .await?;
+        }
+
+        clear_reply_delete_snapshot_in_tx(&txn, tenant_id, reply_id).await?;
+
+        txn.commit().await?;
+        Ok(())
+    }
+
     /// Applies the complete Forum-owned reply removal mutation inside an
     /// existing owner transaction.
     ///
@@ -133,12 +243,16 @@ impl ReplyService {
         reply.status.validate_transition(&ReplyStatus::Deleted)?;
 
         let topic = TopicService::find_topic_in_tx(txn, tenant_id, reply.topic_id).await?;
-        let solution_removed = forum_solution::Entity::find()
+        let solution = forum_solution::Entity::find()
             .filter(forum_solution::Column::TenantId.eq(tenant_id))
             .filter(forum_solution::Column::TopicId.eq(reply.topic_id))
             .one(txn)
-            .await?
+            .await?;
+        let solution_removed = solution
+            .as_ref()
             .is_some_and(|solution| solution.reply_id == reply_id);
+
+        record_reply_delete_snapshot_in_tx(txn, tenant_id, &reply, solution.as_ref()).await?;
 
         forum_solution::Entity::delete_many()
             .filter(forum_solution::Column::TenantId.eq(tenant_id))
@@ -243,6 +357,243 @@ async fn allocate_reply_position_in_tx(
             "Unsupported forum database backend: {backend:?}"
         ))),
     }
+}
+
+#[derive(Clone, Debug)]
+struct ReplyDeleteSnapshot {
+    topic_id: Uuid,
+    author_id: Option<Uuid>,
+    previous_status: ReplyStatus,
+    solution_marked_by_user_id: Option<Uuid>,
+    solution_marked_at: Option<String>,
+}
+
+async fn record_reply_delete_snapshot_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    reply: &forum_reply::Model,
+    solution: Option<&forum_solution::Model>,
+) -> ForumResult<()> {
+    let statement = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            INSERT INTO forum_reply_delete_snapshots (
+                tenant_id, reply_id, topic_id, author_id,
+                previous_status, solution_marked_by_user_id, solution_marked_at, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+            "#,
+            vec![
+                tenant_id.into(),
+                reply.id.into(),
+                reply.topic_id.into(),
+                reply.author_id.into(),
+                reply.status.to_string().into(),
+                solution.and_then(|value| value.marked_by_user_id).into(),
+                solution.map(|value| value.marked_at.to_rfc3339()).into(),
+            ],
+        ),
+        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            r#"
+            INSERT INTO forum_reply_delete_snapshots (
+                tenant_id, reply_id, topic_id, author_id,
+                previous_status, solution_marked_by_user_id, solution_marked_at, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            "#,
+            vec![
+                tenant_id.into(),
+                reply.id.into(),
+                reply.topic_id.into(),
+                reply.author_id.into(),
+                reply.status.to_string().into(),
+                solution.and_then(|value| value.marked_by_user_id).into(),
+                solution.map(|value| value.marked_at.to_rfc3339()).into(),
+            ],
+        ),
+        backend => {
+            return Err(ForumError::Validation(format!(
+                "Forum reply delete snapshots do not support database backend {backend:?}"
+            )))
+        }
+    };
+    txn.execute_raw(statement).await?;
+    Ok(())
+}
+
+async fn load_reply_delete_snapshot_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    reply_id: Uuid,
+) -> ForumResult<Option<ReplyDeleteSnapshot>> {
+    let statement = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            SELECT topic_id, author_id, previous_status,
+                   solution_marked_by_user_id, solution_marked_at
+            FROM forum_reply_delete_snapshots
+            WHERE tenant_id = $1 AND reply_id = $2
+            "#,
+            vec![tenant_id.into(), reply_id.into()],
+        ),
+        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            r#"
+            SELECT topic_id, author_id, previous_status,
+                   solution_marked_by_user_id, solution_marked_at
+            FROM forum_reply_delete_snapshots
+            WHERE tenant_id = ? AND reply_id = ?
+            "#,
+            vec![tenant_id.into(), reply_id.into()],
+        ),
+        backend => {
+            return Err(ForumError::Validation(format!(
+                "Forum reply restore does not support database backend {backend:?}"
+            )))
+        }
+    };
+    let Some(row) = txn.query_one_raw(statement).await? else {
+        return Ok(None);
+    };
+    let status_value: String = row.try_get("", "previous_status")?;
+    let previous_status = ReplyStatus::from_str_value(&status_value)
+        .filter(|status| *status != ReplyStatus::Deleted)
+        .ok_or(ForumError::ReplyRestoreUnavailable(reply_id))?;
+    Ok(Some(ReplyDeleteSnapshot {
+        topic_id: row.try_get("", "topic_id")?,
+        author_id: row.try_get("", "author_id")?,
+        previous_status,
+        solution_marked_by_user_id: row.try_get("", "solution_marked_by_user_id")?,
+        solution_marked_at: row.try_get("", "solution_marked_at")?,
+    }))
+}
+
+async fn restore_reply_from_delete_snapshot_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    reply: &forum_reply::Model,
+    snapshot: &ReplyDeleteSnapshot,
+) -> ForumResult<()> {
+    let statement = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE forum_replies
+            SET status = $3, deleted_at = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE tenant_id = $1 AND topic_id = $2 AND id = $4 AND deleted_at IS NOT NULL
+            "#,
+            vec![
+                tenant_id.into(),
+                snapshot.topic_id.into(),
+                snapshot.previous_status.to_string().into(),
+                reply.id.into(),
+            ],
+        ),
+        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            r#"
+            UPDATE forum_replies
+            SET status = ?, deleted_at = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE tenant_id = ? AND topic_id = ? AND id = ? AND deleted_at IS NOT NULL
+            "#,
+            vec![
+                snapshot.previous_status.to_string().into(),
+                tenant_id.into(),
+                snapshot.topic_id.into(),
+                reply.id.into(),
+            ],
+        ),
+        backend => {
+            return Err(ForumError::Validation(format!(
+                "Forum reply restore does not support database backend {backend:?}"
+            )))
+        }
+    };
+    let result = txn.execute_raw(statement).await?;
+    if result.rows_affected() != 1 {
+        return Err(ForumError::ReplyRestoreUnavailable(reply.id));
+    }
+    Ok(())
+}
+
+async fn restore_reply_solution_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    topic_id: Uuid,
+    reply_id: Uuid,
+    marked_by_user_id: Option<Uuid>,
+    marked_at: chrono::DateTime<chrono::FixedOffset>,
+) -> ForumResult<()> {
+    let statement = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            INSERT INTO forum_solutions (
+                tenant_id, topic_id, reply_id, marked_by_user_id, marked_at
+            )
+            VALUES ($1, $2, $3, $4, $5)
+            "#,
+            vec![
+                tenant_id.into(),
+                topic_id.into(),
+                reply_id.into(),
+                marked_by_user_id.into(),
+                marked_at.into(),
+            ],
+        ),
+        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            r#"
+            INSERT INTO forum_solutions (
+                tenant_id, topic_id, reply_id, marked_by_user_id, marked_at
+            )
+            VALUES (?, ?, ?, ?, ?)
+            "#,
+            vec![
+                tenant_id.into(),
+                topic_id.into(),
+                reply_id.into(),
+                marked_by_user_id.into(),
+                marked_at.into(),
+            ],
+        ),
+        backend => {
+            return Err(ForumError::Validation(format!(
+                "Forum reply restore does not support database backend {backend:?}"
+            )))
+        }
+    };
+    txn.execute_raw(statement).await?;
+    Ok(())
+}
+
+async fn clear_reply_delete_snapshot_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    reply_id: Uuid,
+) -> ForumResult<()> {
+    let statement = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "DELETE FROM forum_reply_delete_snapshots WHERE tenant_id = $1 AND reply_id = $2",
+            vec![tenant_id.into(), reply_id.into()],
+        ),
+        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "DELETE FROM forum_reply_delete_snapshots WHERE tenant_id = ? AND reply_id = ?",
+            vec![tenant_id.into(), reply_id.into()],
+        ),
+        backend => {
+            return Err(ForumError::Validation(format!(
+                "Forum reply restore does not support database backend {backend:?}"
+            )))
+        }
+    };
+    txn.execute_raw(statement).await?;
+    Ok(())
 }
 
 async fn claim_reply_delete_in_tx(

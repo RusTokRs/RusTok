@@ -241,6 +241,15 @@ impl ReplyService {
         self.inner.delete(tenant_id, reply_id, security).await
     }
 
+    pub async fn restore(
+        &self,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+        security: SecurityContext,
+    ) -> ForumResult<()> {
+        self.inner.restore(tenant_id, reply_id, security).await
+    }
+
     pub async fn list_for_topic(
         &self,
         tenant_id: Uuid,
