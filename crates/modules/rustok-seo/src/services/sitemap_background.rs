@@ -66,17 +66,46 @@ impl SeoService {
     pub(super) async fn execute_next_sitemap_job_background(
         &self,
     ) -> SeoResult<Option<crate::dto::SeoSitemapJobRecord>> {
+        const JOB_LEASE_SECS: i64 = 30 * 60;
+        let now = chrono::Utc::now().fixed_offset();
+        let stale_before = now - chrono::Duration::seconds(JOB_LEASE_SECS);
+
         let active = crate::entities::seo_sitemap_job::Entity::find()
-            .filter(
-                crate::entities::seo_sitemap_job::Column::Status
-                    .is_in([SITEMAP_JOB_RUNNING, SITEMAP_JOB_SUBMITTING]),
-            )
+            .filter(crate::entities::seo_sitemap_job::Column::Status.is_in([
+                SITEMAP_JOB_RUNNING,
+                SITEMAP_JOB_SUBMITTING,
+            ]))
             .order_by_asc(crate::entities::seo_sitemap_job::Column::UpdatedAt)
             .one(&self.db)
             .await?;
 
         let job = if let Some(job) = active {
-            job
+            if job.updated_at > stale_before {
+                return Ok(None);
+            }
+
+            let claimed = crate::entities::seo_sitemap_job::Entity::update_many()
+                .col_expr(
+                    crate::entities::seo_sitemap_job::Column::UpdatedAt,
+                    sea_orm::sea_query::Expr::value(now),
+                )
+                .filter(crate::entities::seo_sitemap_job::Column::Id.eq(job.id))
+                .filter(crate::entities::seo_sitemap_job::Column::Status.is_in([
+                    SITEMAP_JOB_RUNNING,
+                    SITEMAP_JOB_SUBMITTING,
+                ]))
+                .filter(crate::entities::seo_sitemap_job::Column::UpdatedAt.lte(stale_before))
+                .exec(&self.db)
+                .await?;
+
+            if claimed.rows_affected != 1 {
+                return Ok(None);
+            }
+
+            crate::entities::seo_sitemap_job::Entity::find_by_id(job.id)
+                .one(&self.db)
+                .await?
+                .ok_or(SeoError::NotFound)?
         } else {
             let Some(job) = crate::entities::seo_sitemap_job::Entity::find()
                 .filter(crate::entities::seo_sitemap_job::Column::Status.eq(SITEMAP_JOB_QUEUED))
@@ -87,14 +116,32 @@ impl SeoService {
                 return Ok(None);
             };
 
-            let now = chrono::Utc::now().fixed_offset();
-            let mut active: crate::entities::seo_sitemap_job::ActiveModel = job.into();
-            active.status = Set(SITEMAP_JOB_RUNNING.to_string());
-            active.started_at = Set(Some(now));
-            active.completed_at = Set(None);
-            active.last_error = Set(None);
-            active.updated_at = Set(now);
-            active.update(&self.db).await?
+            let claimed = crate::entities::seo_sitemap_job::Entity::update_many()
+                .col_expr(
+                    crate::entities::seo_sitemap_job::Column::Status,
+                    sea_orm::sea_query::Expr::value(SITEMAP_JOB_RUNNING),
+                )
+                .col_expr(
+                    crate::entities::seo_sitemap_job::Column::StartedAt,
+                    sea_orm::sea_query::Expr::value(Some(now)),
+                )
+                .col_expr(
+                    crate::entities::seo_sitemap_job::Column::UpdatedAt,
+                    sea_orm::sea_query::Expr::value(now),
+                )
+                .filter(crate::entities::seo_sitemap_job::Column::Id.eq(job.id))
+                .filter(crate::entities::seo_sitemap_job::Column::Status.eq(SITEMAP_JOB_QUEUED))
+                .exec(&self.db)
+                .await?;
+
+            if claimed.rows_affected != 1 {
+                return Ok(None);
+            }
+
+            crate::entities::seo_sitemap_job::Entity::find_by_id(job.id)
+                .one(&self.db)
+                .await?
+                .ok_or(SeoError::NotFound)?
         };
 
         let result = if job.status == SITEMAP_JOB_SUBMITTING {
