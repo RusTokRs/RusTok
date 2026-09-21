@@ -9,7 +9,9 @@ use crate::engine::{
     SearchQuery, SearchResult, SearchResultItem,
 };
 use crate::ranking::SearchRankingProfile;
-use crate::storefront_product_channel_visibility::product_channel_visibility_sql;
+use crate::storefront_product_channel_visibility::{
+    blog_channel_visibility_sql, product_channel_visibility_sql,
+};
 pub struct PgSearchEngine {
     db: DatabaseConnection,
 }
@@ -118,6 +120,14 @@ fn build_filter_clause(
     if let Some(channel) = storefront_channel {
         clauses.push(product_channel_visibility_sql(
             "entity_type",
+            "payload",
+            channel,
+            &mut values,
+            &mut next_param,
+        ));
+        clauses.push(blog_channel_visibility_sql(
+            "entity_type",
+            "source_module",
             "payload",
             channel,
             &mut values,
