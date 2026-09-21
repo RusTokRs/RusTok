@@ -563,18 +563,6 @@ pub(crate) async fn find_post_ids_by_tag(
         .collect())
 }
 
-fn ensure_module_owned_term(term: &TaxonomyOwnerTerm) -> BlogResult<()> {
-    if term.scope_type == TaxonomyScopeType::Module
-        && term.scope_value.as_deref() == Some(BLOG_SCOPE_VALUE)
-    {
-        return Ok(());
-    }
-
-    Err(BlogError::forbidden(
-        "Global taxonomy tags must be managed through rustok-taxonomy",
-    ))
-}
-
 fn bounded_tag_page_size(value: u64) -> u64 {
     value.clamp(1, MAX_TAGS_PER_PAGE)
 }
