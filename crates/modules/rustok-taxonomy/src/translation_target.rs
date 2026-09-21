@@ -241,6 +241,7 @@ impl TaxonomyTranslationTargetProvider {
 
     async fn progress_facts(
         &self,
+        context: &PortContext,
         tenant_id: Uuid,
         request: &TranslationTargetProgressRequest,
     ) -> Result<TranslationTargetProgressFacts, PortError> {
@@ -253,6 +254,14 @@ impl TaxonomyTranslationTargetProvider {
             .all(self.service.database())
             .await
             .map_err(taxonomy_database_error_to_port_error)?;
+        let terms = terms
+            .into_iter()
+            .filter_map(|term| match self.authorize_term(context, tenant_id, &term, Action::Read) {
+                Ok(()) => Some(Ok(term)),
+                Err(error) if error.kind == rustok_api::PortErrorKind::Forbidden => None,
+                Err(error) => Some(Err(error)),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         let term_ids = terms.iter().map(|term| term.id).collect::<Vec<_>>();
         let targets = if term_ids.is_empty() {
             Vec::new()
@@ -406,8 +415,16 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
                 .or_default()
                 .push(translation);
         }
-        let resources = terms
+        let authorized_terms = terms
             .iter()
+            .filter_map(|term| match self.authorize_term(&context, tenant_id, term, Action::Read) {
+                Ok(()) => Some(Ok(term)),
+                Err(error) if error.kind == rustok_api::PortErrorKind::Forbidden => None,
+                Err(error) => Some(Err(error)),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let resources = authorized_terms
+            .into_iter()
             .map(|term| {
                 summary_from_models(
                     term,
@@ -623,7 +640,7 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
 
         for _ in 0..PROGRESS_STABILITY_ATTEMPTS {
             let cursor_before = self.latest_change_cursor(tenant_id).await?;
-            let mut facts = self.progress_facts(tenant_id, &request).await?;
+            let mut facts = self.progress_facts(&context, tenant_id, &request).await?;
             let cursor_after = self.latest_change_cursor(tenant_id).await?;
             if cursor_before == cursor_after {
                 facts.owner_change_cursor = cursor_after;
