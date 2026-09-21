@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 struct TopicTranslationUpsertInput {
     title: Option<String>,
@@ -12,6 +12,7 @@ struct TopicResponseParts {
     vote_summary: VoteSummary,
     is_subscribed: bool,
     solution_reply_id: Option<Uuid>,
+    is_deleted: bool,
 }
 
 use chrono::Utc;
@@ -96,6 +97,7 @@ impl TopicService {
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let topic = self.find_topic(tenant_id, topic_id).await?;
+        let is_deleted = self.is_topic_deleted(tenant_id, topic_id).await?;
         let translations = self.load_translations(tenant_id, topic_id).await?;
         let channel_slugs = self.load_channel_slugs(tenant_id, topic_id).await?;
         let metadata = self
@@ -130,6 +132,7 @@ impl TopicService {
                 vote_summary,
                 is_subscribed,
                 solution_reply_id,
+                is_deleted,
             },
             &locale,
             fallback_locale.as_deref(),
@@ -439,6 +442,76 @@ impl TopicService {
         Ok(tags)
     }
 
+    async fn is_topic_deleted(&self, tenant_id: Uuid, topic_id: Uuid) -> ForumResult<bool> {
+        let statement = match self.db.get_database_backend() {
+            DatabaseBackend::Postgres => Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT CASE WHEN deleted_at IS NULL THEN 0 ELSE 1 END AS is_deleted FROM forum_topics WHERE tenant_id = $1 AND id = $2",
+                vec![tenant_id.into(), topic_id.into()],
+            ),
+            DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "SELECT CASE WHEN deleted_at IS NULL THEN 0 ELSE 1 END AS is_deleted FROM forum_topics WHERE tenant_id = ?1 AND id = ?2",
+                vec![tenant_id.into(), topic_id.into()],
+            ),
+            backend => {
+                return Err(ForumError::Validation(format!(
+                    "Forum topic deleted-state lookup does not support database backend {backend:?}"
+                )))
+            }
+        };
+        let row = self
+            .db
+            .query_one(statement)
+            .await?
+            .ok_or(ForumError::TopicNotFound(topic_id))?;
+        let is_deleted: i64 = row.try_get("", "is_deleted")?;
+        Ok(is_deleted == 1)
+    }
+
+    async fn load_deleted_topic_ids(
+        &self,
+        tenant_id: Uuid,
+        topic_ids: &[Uuid],
+    ) -> ForumResult<HashSet<Uuid>> {
+        if topic_ids.is_empty() {
+            return Ok(HashSet::new());
+        }
+
+        let backend = self.db.get_database_backend();
+        let placeholders = (0..topic_ids.len())
+            .map(|index| match backend {
+                DatabaseBackend::Postgres => format!("{}{}", "$", index + 2),
+                DatabaseBackend::Sqlite => format!("?{}", index + 2),
+                _ => "?".to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join(
+);
+        let tenant_placeholder = match backend {
+            DatabaseBackend::Postgres => "$1",
+            DatabaseBackend::Sqlite => "?1",
+            backend => {
+                return Err(ForumError::Validation(format!(
+                    "Forum topic deleted-state lookup does not support database backend {backend:?}"
+                )))
+            }
+        };
+        let sql = format!("SELECT id FROM forum_topics WHERE tenant_id = {} AND deleted_at IS NOT NULL AND id IN ({})",
+            tenant_placeholder, placeholders
+        );
+        let mut values = Vec::with_capacity(topic_ids.len() + 1);
+        values.push(tenant_id.into());
+        values.extend(topic_ids.iter().copied().map(Into::into));
+
+        let statement = Statement::from_sql_and_values(backend, sql, values);
+        let rows = self.db.query_all(statement).await?;
+        let mut ids = HashSet::with_capacity(rows.len());
+        for row in rows {
+            ids.insert(row.try_get("", "id")?);
+        }
+        Ok(ids)
+    }
     async fn load_solution_reply_ids_map(
         &self,
         tenant_id: Uuid,
@@ -573,6 +646,9 @@ impl TopicService {
         let solution_reply_ids = self
             .load_solution_reply_ids_map(tenant_id, &topic_ids)
             .await?;
+        let deleted_topic_ids = self
+            .load_deleted_topic_ids(tenant_id, &topic_ids)
+            .await?;
         let schema = load_topic_custom_fields_schema(&self.db, tenant_id).await?;
         let vote_summaries = VoteService::new(self.db.clone())
             .topic_vote_summaries(tenant_id, &topic_ids, viewer_user_id)
@@ -624,6 +700,7 @@ impl TopicService {
                     .unwrap_or_default(),
                 metadata,
                 status: topic.status.to_string(),
+                is_deleted: deleted_topic_ids.contains(&topic.id),
                 channel_slugs: channels.get(&topic.id).cloned().unwrap_or_default(),
                 vote_score: vote_summaries
                     .get(&topic.id)
@@ -867,6 +944,7 @@ fn to_topic_response(
         current_user_vote: parts.vote_summary.current_user_vote,
         is_subscribed: parts.is_subscribed,
         solution_reply_id: parts.solution_reply_id,
+        is_deleted: parts.is_deleted,
         is_pinned: topic.is_pinned,
         is_locked: topic.is_locked,
         reply_count: topic.reply_count,
