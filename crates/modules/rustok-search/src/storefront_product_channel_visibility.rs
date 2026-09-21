@@ -34,6 +34,42 @@ pub(crate) fn storefront_channel_visibility_sql(
     format!(
         "(CASE\n            WHEN {entity_type_column} = 'product' THEN\n                CASE\n                    WHEN jsonb_typeof({product_allowed_slugs}) IS DISTINCT FROM 'array' THEN FALSE\n                    WHEN jsonb_array_length({product_allowed_slugs}) = 0 THEN TRUE\n                    ELSE {product_channel_match}\n                END\n            WHEN {entity_type_column} = 'blog_post' THEN\n                CASE\n                    WHEN jsonb_typeof({blog_allowed_slugs}) IS DISTINCT FROM 'array' THEN FALSE\n                    WHEN jsonb_array_length({blog_allowed_slugs}) = 0 THEN TRUE\n                    ELSE {blog_channel_match}\n                END\n            ELSE TRUE\n        END)"
     )
+    #[test]
+    fn blog_post_visibility_uses_channel_slugs_and_fails_closed() {
+        let visible = serde_json::json!({
+            "channel_slugs": ["web"]
+        });
+        assert!(storefront_payload_visible_for_channel(
+            &visible,
+            "blog_post",
+            &channel(Some("WEB"))
+        ));
+        assert!(!storefront_payload_visible_for_channel(
+            &visible,
+            "blog_post",
+            &channel(Some("mobile"))
+        ));
+        assert!(!storefront_payload_visible_for_channel(
+            &serde_json::json!({}),
+            "blog_post",
+            &channel(Some("web"))
+        ));
+        assert!(!storefront_payload_visible_for_channel(
+            &serde_json::json!({"channel_slugs": "web"}),
+            "blog_post",
+            &channel(Some("web"))
+        ));
+    }
+
+    #[test]
+    fn unrelated_documents_remain_visible() {
+        assert!(storefront_payload_visible_for_channel(
+            &serde_json::json!({}),
+            "forum_topic",
+            &channel(Some("web"))
+        ));
+    }
+
 }
 
 pub(crate) fn storefront_payload_visible_for_channel(
@@ -99,12 +135,14 @@ mod tests {
             "channel_visibility": { "allowed_channel_slugs": [] }
         });
 
-        assert!(product_payload_visible_for_storefront(
+        assert!(storefront_payload_visible_for_channel(
             &payload,
+            "product",
             &channel(Some("web"))
         ));
-        assert!(product_payload_visible_for_storefront(
+        assert!(storefront_payload_visible_for_channel(
             &payload,
+            "product",
             &channel(None)
         ));
     }
@@ -115,16 +153,19 @@ mod tests {
             "channel_visibility": { "allowed_channel_slugs": ["web"] }
         });
 
-        assert!(product_payload_visible_for_storefront(
+        assert!(storefront_payload_visible_for_channel(
             &payload,
+            "product",
             &channel(Some(" Web "))
         ));
-        assert!(!product_payload_visible_for_storefront(
+        assert!(!storefront_payload_visible_for_channel(
             &payload,
+            "product",
             &channel(Some("mobile"))
         ));
-        assert!(!product_payload_visible_for_storefront(
+        assert!(!storefront_payload_visible_for_channel(
             &payload,
+            "product",
             &channel(None)
         ));
     }
@@ -147,7 +188,7 @@ mod tests {
     fn sql_scope_guards_array_length_with_case() {
         let mut values = Vec::<Value>::new();
         let mut next_param = 4;
-        let sql = product_channel_visibility_sql(
+        let sql = storefront_channel_visibility_sql(
             "entity_type",
             "payload",
             &channel(Some("Web")),
@@ -155,8 +196,8 @@ mod tests {
             &mut next_param,
         );
 
-        assert!(sql.contains("entity_type <> 'product'"));
-        assert!(sql.contains("OR CASE"));
+        assert!(sql.contains("entity_type = 'product'"));
+        assert!(sql.contains("entity_type = 'blog_post'"));
         assert!(sql.contains("IS DISTINCT FROM 'array' THEN FALSE"));
         assert!(sql.contains("WHEN jsonb_array_length"));
         assert!(sql.contains("? $4"));
@@ -165,7 +206,7 @@ mod tests {
 
         let mut unscoped_values = Vec::<Value>::new();
         let mut unscoped_next_param = 4;
-        let unscoped_sql = product_channel_visibility_sql(
+        let unscoped_sql = storefront_channel_visibility_sql(
             "entity_type",
             "payload",
             &channel(None),
