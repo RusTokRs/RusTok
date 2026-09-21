@@ -11,6 +11,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_api::{locale_tags_match, normalize_locale_tag};
+use rustok_channel::entities::channel;
 use rustok_core::events::ValidateEvent;
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
@@ -300,6 +301,13 @@ impl PricingService {
         let txn = self.db.begin().await?;
         let price_list = resolve_active_price_list_tx(&txn, tenant_id, price_list_id).await?;
         let channel_slug = normalize_channel_slug(channel_slug.as_deref());
+        validate_channel_scope_in_tx(
+            &txn,
+            tenant_id,
+            channel_id,
+            channel_slug.as_deref(),
+        )
+        .await?;
 
         let mut active_price_list: entities::price_list::ActiveModel = price_list.clone().into();
         active_price_list.channel_id = Set(channel_id);
@@ -839,6 +847,13 @@ impl PricingService {
             Some(price_list_id) => {
                 let price_list =
                     resolve_active_price_list_tx(&txn, tenant_id, price_list_id).await?;
+                validate_channel_scope_in_tx(
+                    &txn,
+                    tenant_id,
+                    price_list.channel_id,
+                    price_list.channel_slug.as_deref(),
+                )
+                .await?;
                 let (channel_id, channel_slug) =
                     validate_or_inherit_price_list_scope(&price_list, channel_id, channel_slug)?;
                 (
@@ -1728,7 +1743,55 @@ async fn resolve_requested_price_list_id(
     Ok(Some(price_list_id))
 }
 
-async async fn load_variant_for_update_in_tx(
+async async fn validate_channel_scope_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    channel_id: Option<Uuid>,
+    channel_slug: Option<&str>,
+) -> CommerceResult<()> {
+    let normalized_slug = normalize_channel_slug(channel_slug);
+    match channel_id {
+        Some(channel_id) => {
+            let model = channel::Entity::find_by_id(channel_id)
+                .filter(channel::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+                .ok_or_else(|| {
+                    CommerceError::Validation(
+                        "channel_id must reference a channel owned by the price-list tenant"
+                            .to_string(),
+                    )
+                })?;
+            if let Some(slug) = normalized_slug.as_deref()
+                && slug != normalize_channel_slug(Some(model.slug.as_str())).as_deref().unwrap_or_default()
+            {
+                return Err(CommerceError::Validation(
+                    "channel_id and channel_slug must reference the same tenant channel"
+                        .to_string(),
+                ));
+            }
+        }
+        None => {
+            if let Some(slug) = normalized_slug {
+                let exists = channel::Entity::find()
+                    .filter(channel::Column::TenantId.eq(tenant_id))
+                    .filter(channel::Column::Slug.eq(slug.clone()))
+                    .one(txn)
+                    .await?
+                    .is_some();
+                if !exists {
+                    return Err(CommerceError::Validation(
+                        "channel_slug must reference a channel owned by the price-list tenant"
+                            .to_string(),
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn load_variant_for_update_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     variant_id: Uuid,
