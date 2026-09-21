@@ -833,13 +833,26 @@ impl PricingService {
         max_quantity: Option<i32>,
     ) -> CommerceResult<()> {
         let txn = self.db.begin().await?;
-        let channel_slug = normalize_channel_slug(channel_slug.as_deref());
+        let variant = load_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
 
-        let variant = entities::product_variant::Entity::find_by_id(variant_id)
-            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(CommerceError::VariantNotFound(variant_id))?;
+        let (price_list_id, channel_id, channel_slug) = match price_list_id {
+            Some(price_list_id) => {
+                let price_list =
+                    resolve_active_price_list_tx(&txn, tenant_id, price_list_id).await?;
+                let (channel_id, channel_slug) =
+                    validate_or_inherit_price_list_scope(&price_list, channel_id, channel_slug)?;
+                (
+                    Some(price_list_id),
+                    channel_id,
+                    normalize_channel_slug(channel_slug.as_deref()),
+                )
+            }
+            None => (
+                None,
+                channel_id,
+                normalize_channel_slug(channel_slug.as_deref()),
+            ),
+        };
 
         if amount < Decimal::ZERO {
             return Err(CommerceError::InvalidPrice(
@@ -952,12 +965,7 @@ impl PricingService {
         prices: Vec<PriceInput>,
     ) -> CommerceResult<()> {
         let txn = self.db.begin().await?;
-
-        let variant = entities::product_variant::Entity::find_by_id(variant_id)
-            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(CommerceError::VariantNotFound(variant_id))?;
+        let variant = load_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
 
         for price_input in &prices {
             if price_input.amount < Decimal::ZERO {
@@ -1720,7 +1728,30 @@ async fn resolve_requested_price_list_id(
     Ok(Some(price_list_id))
 }
 
-async fn resolve_active_price_list(
+async async fn load_variant_for_update_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    variant_id: Uuid,
+) -> CommerceResult<entities::product_variant::Model> {
+    let query = entities::product_variant::Entity::find_by_id(variant_id)
+        .filter(entities::product_variant::Column::TenantId.eq(tenant_id));
+    let variant = match txn.get_database_backend() {
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => query.lock_exclusive().one(txn).await?,
+        DatabaseBackend::Sqlite => {
+            let statement = Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE product_variants SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                [tenant_id.into(), variant_id.into()],
+            );
+            txn.execute(statement).await?;
+            query.one(txn).await?
+        }
+        _ => query.one(txn).await?,
+    };
+    variant.ok_or(CommerceError::VariantNotFound(variant_id))
+}
+
+fn resolve_active_price_list(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     price_list_id: Uuid,
