@@ -49,7 +49,10 @@ impl MemoryProbe for CgroupMemoryProbe {
         if metadata.file_type().is_symlink() || !metadata.is_file() {
             return Err("sandbox worker cgroup memory observer is invalid".to_string());
         }
-        let value = std::fs::read_to_string(path)
+        let mut file = std::fs::File::open(path)
+            .map_err(|_| "sandbox worker cgroup memory observation failed".to_string())?;
+        let mut value = String::new();
+        std::io::Read::read_to_string(&mut file, &mut value)
             .map_err(|_| "sandbox worker cgroup memory observation failed".to_string())?;
         value
             .trim()
@@ -146,44 +149,63 @@ where
         let peak = Arc::new(AtomicU64::new(initial));
         let failed = Arc::new(AtomicBool::new(false));
         let stop = Arc::new(AtomicBool::new(false));
-        let sampler = {
-            let memory = self.memory.clone();
-            let peak = Arc::clone(&peak);
-            let failed = Arc::clone(&failed);
-            let stop = Arc::clone(&stop);
-            tokio::spawn(async move {
-                while !stop.load(Ordering::Acquire) {
-                    match memory.current_bytes() {
-                        Ok(value) => update_peak(&peak, value),
-                        Err(_) => {
-                            failed.store(true, Ordering::Release);
-                            return;
-                        }
-                    }
-                    tokio::time::sleep(MEMORY_SAMPLE_INTERVAL).await;
-                }
-            })
-        };
+        let sampler = spawn_memory_sampler(
+            self.memory.clone(),
+            Arc::clone(&peak),
+            Arc::clone(&failed),
+            Arc::clone(&stop),
+        );
 
         let result = self.inner.execute(request, host).await;
-        stop.store(true, Ordering::Release);
-        if sampler.await.is_err() {
-            failed.store(true, Ordering::Release);
-        }
-        match self.memory.current_bytes() {
-            Ok(value) => update_peak(&peak, value),
-            Err(_) => failed.store(true, Ordering::Release),
-        }
-        if failed.load(Ordering::Acquire) {
-            return Err(rustok_sandbox::SandboxError::Internal(
-                "sandbox worker memory observation unavailable".to_string(),
-            ));
-        }
-
+        let peak_bytes =
+            finish_memory_sampling(sampler, &stop, &self.memory, &peak, &failed).await?;
         let mut outcome = result?;
-        outcome.metrics.peak_memory_bytes = Some(peak.load(Ordering::Acquire));
+        outcome.metrics.peak_memory_bytes = Some(peak_bytes);
         Ok(outcome)
     }
+}
+
+fn spawn_memory_sampler(
+    memory: WorkerMemoryObserver,
+    peak: Arc<AtomicU64>,
+    failed: Arc<AtomicBool>,
+    stop: Arc<AtomicBool>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        while !stop.load(Ordering::Acquire) {
+            match memory.current_bytes() {
+                Ok(value) => update_peak(&peak, value),
+                Err(_) => {
+                    failed.store(true, Ordering::Release);
+                    return;
+                }
+            }
+            tokio::time::sleep(MEMORY_SAMPLE_INTERVAL).await;
+        }
+    })
+}
+
+async fn finish_memory_sampling(
+    sampler: tokio::task::JoinHandle<()>,
+    stop: &AtomicBool,
+    memory: &WorkerMemoryObserver,
+    peak: &AtomicU64,
+    failed: &AtomicBool,
+) -> SandboxResult<u64> {
+    stop.store(true, Ordering::Release);
+    if sampler.await.is_err() {
+        failed.store(true, Ordering::Release);
+    }
+    match memory.current_bytes() {
+        Ok(value) => update_peak(peak, value),
+        Err(_) => failed.store(true, Ordering::Release),
+    }
+    if failed.load(Ordering::Acquire) {
+        return Err(rustok_sandbox::SandboxError::Internal(
+            "sandbox worker memory observation unavailable".to_string(),
+        ));
+    }
+    Ok(peak.load(Ordering::Acquire))
 }
 
 fn observed_memory(memory: &WorkerMemoryObserver) -> SandboxResult<u64> {
@@ -327,11 +349,7 @@ struct ResourceLimits {
     wall_clock_ms: u64,
 }
 
-fn load_attestation(
-    path: &Path,
-    runtime: HardenedRuntime,
-    image_digest: &str,
-) -> Result<IsolationAttestation, String> {
+fn read_attestation_bytes(path: &Path) -> Result<Vec<u8>, String> {
     if !path.is_absolute() {
         return Err("sandbox isolation attestation path must be absolute".to_string());
     }
@@ -343,31 +361,50 @@ fn load_attestation(
     if metadata.len() == 0 || metadata.len() > MAX_ATTESTATION_BYTES {
         return Err("sandbox isolation attestation size is invalid".to_string());
     }
-    let bytes = std::fs::read(path)
+    let mut file = std::fs::File::open(path)
         .map_err(|error| format!("sandbox isolation attestation cannot be read: {error}"))?;
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut file, &mut bytes)
+        .map_err(|error| format!("sandbox isolation attestation cannot be read: {error}"))?;
+    Ok(bytes)
+}
+
+impl IsolationAttestation {
+    fn validate(&self, runtime: HardenedRuntime, image_digest: &str) -> Result<(), String> {
+        if self.protocol_revision != 1
+            || self.runtime != runtime.as_str()
+            || self.image_digest != image_digest
+            || !is_sha256_digest(&self.image_digest)
+            || self.privileged
+            || self.host_mounts
+            || self.container_socket
+            || self.host_pid
+            || self.host_network
+            || self.network_mode != "rpc_only"
+            || self.ingress_mode != "mtls_grpc"
+            || !self.egress_denied
+            || self.database_access
+            || self.secret_access
+            || !self.read_only_root
+            || !self.resource_limits.is_bounded()
+        {
+            return Err(
+                "sandbox isolation attestation does not match the hardened worker policy".to_string(),
+            );
+        }
+        Ok(())
+    }
+}
+
+fn load_attestation(
+    path: &Path,
+    runtime: HardenedRuntime,
+    image_digest: &str,
+) -> Result<IsolationAttestation, String> {
+    let bytes = read_attestation_bytes(path)?;
     let attestation: IsolationAttestation = serde_json::from_slice(&bytes)
         .map_err(|error| format!("sandbox isolation attestation is invalid JSON: {error}"))?;
-    if attestation.protocol_revision != 1
-        || attestation.runtime != runtime.as_str()
-        || attestation.image_digest != image_digest
-        || !is_sha256_digest(&attestation.image_digest)
-        || attestation.privileged
-        || attestation.host_mounts
-        || attestation.container_socket
-        || attestation.host_pid
-        || attestation.host_network
-        || attestation.network_mode != "rpc_only"
-        || attestation.ingress_mode != "mtls_grpc"
-        || !attestation.egress_denied
-        || attestation.database_access
-        || attestation.secret_access
-        || !attestation.read_only_root
-        || !attestation.resource_limits.is_bounded()
-    {
-        return Err(
-            "sandbox isolation attestation does not match the hardened worker policy".to_string(),
-        );
-    }
+    attestation.validate(runtime, image_digest)?;
     Ok(attestation)
 }
 
