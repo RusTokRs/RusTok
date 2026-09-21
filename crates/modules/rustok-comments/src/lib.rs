@@ -194,4 +194,26 @@ mod tests {
         let module = CommentsModule;
         assert!(!module.migrations().is_empty());
     }
+
+
+    #[tokio::test]
+    async fn module_registers_target_deletion_handler() {
+        let db = rustok_test_utils::setup_test_db().await;
+        let extensions = rustok_core::ModuleRuntimeExtensions::default();
+        let context = rustok_core::ModuleEventListenerContext {
+            db,
+            extensions: &extensions,
+        };
+        let mut registry = rustok_core::ModuleEventListenerRegistry::new();
+
+        CommentsModule.register_event_listeners(&mut registry, &context);
+
+        let handlers = registry.into_handlers();
+        assert_eq!(handlers.len(), 1);
+        assert_eq!(
+            handlers[0].name(),
+            "comments_target_deletion",
+            "Comments must register target lifecycle cleanup"
+        );
+    }
 }
