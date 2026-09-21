@@ -345,6 +345,29 @@ impl PageService {
         Ok(())
     }
 
+    pub(super) async fn ensure_builder_enabled_in_tx(
+        txn: &sea_orm::DatabaseTransaction,
+        tenant_id: Uuid,
+    ) -> PagesResult<()> {
+        let query = || {
+            rustok_tenant::entities::tenant_module::Entity::find()
+                .filter(rustok_tenant::entities::tenant_module::Column::TenantId.eq(tenant_id))
+                .filter(
+                    rustok_tenant::entities::tenant_module::Column::ModuleSlug.eq("pages"),
+                )
+        };
+        let module = match txn.get_database_backend() {
+            DbBackend::Sqlite => query().one(txn).await?,
+            DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
+            _ => unreachable!("unsupported SeaORM database backend"),
+        };
+        let enabled = module.as_ref().map(is_builder_enabled).unwrap_or(true);
+        if !enabled {
+            return Err(PagesError::feature_disabled(FEATURE_BUILDER_ENABLED));
+        }
+        Ok(())
+    }
+
     async fn load_tenant_pages_module(
         &self,
         tenant_id: Uuid,
