@@ -25,11 +25,11 @@ use rustok_translation_targets::{
     },
     validate_translation_apply_context, validate_translation_read_context,
 };
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait};
+use sea_orm::{ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait};
 use uuid::Uuid;
 
 use crate::{
-    ApplyExactTaxonomyTranslationInput, TaxonomyError, TaxonomyService,
+    ApplyExactTaxonomyTranslationInput, TaxonomyError, TaxonomyService, TaxonomyTermKind,
     entities::{
         taxonomy_term::{Column as TermColumn, Entity as TermEntity, Model as TermModel},
         taxonomy_term_translation::{
@@ -50,17 +50,116 @@ const REQUIRED_FIELD_COUNT: u64 = 2;
 const OPTIONAL_FIELD_COUNT: u64 = 1;
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
+#[async_trait]
+pub trait TaxonomyModuleTermTranslationOwner: Send + Sync {
+    fn module_slug(&self) -> &str;
+
+    fn authorize(
+        &self,
+        context: &PortContext,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        term_id: Uuid,
+        action: Action,
+    ) -> Result<(), PortError>;
+
+    async fn on_translation_applied_in_tx(
+        &self,
+        transaction: &DatabaseTransaction,
+        context: &PortContext,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        term_id: Uuid,
+    ) -> Result<(), PortError>;
+}
+
+#[derive(Clone, Default)]
+pub struct TaxonomyModuleTermTranslationOwnerRegistry {
+    owners: BTreeMap<String, Arc<dyn TaxonomyModuleTermTranslationOwner>>,
+}
+
+impl TaxonomyModuleTermTranslationOwnerRegistry {
+    pub fn register<T>(&mut self, owner: T) -> Result<(), String>
+    where
+        T: TaxonomyModuleTermTranslationOwner + 'static,
+    {
+        let module_slug = owner.module_slug().trim();
+        if module_slug.is_empty() {
+            return Err("taxonomy translation owner module slug must not be empty".to_string());
+        }
+        if self.owners.contains_key(module_slug) {
+            return Err(format!("taxonomy translation owner {} is already registered", module_slug));
+        }
+        self.owners.insert(module_slug.to_string(), Arc::new(owner));
+        Ok(())
+    }
+
+    fn get(&self, module_slug: &str) -> Option<Arc<dyn TaxonomyModuleTermTranslationOwner>> {
+        self.owners.get(module_slug).cloned()
+    }
+}
+
 #[derive(Clone)]
 /// Owner adapter for exact taxonomy term localization. It calls the canonical
 /// Taxonomy service and never exposes owner tables to Translation directly.
 pub struct TaxonomyTranslationTargetProvider {
     service: Arc<TaxonomyService>,
+    owner_registry: Arc<TaxonomyModuleTermTranslationOwnerRegistry>,
 }
 
 impl TaxonomyTranslationTargetProvider {
     pub fn new(service: Arc<TaxonomyService>) -> Self {
-        Self { service }
+        Self::with_owner_registry(service, TaxonomyModuleTermTranslationOwnerRegistry::default())
     }
+
+    pub fn with_owner_registry(
+        service: Arc<TaxonomyService>,
+        owner_registry: TaxonomyModuleTermTranslationOwnerRegistry,
+    ) -> Self {
+        Self {
+            service,
+            owner_registry: Arc::new(owner_registry),
+        }
+    }
+
+    async fn load_term(&self, tenant_id: Uuid, term_id: Uuid) -> Result<TermModel, PortError> {
+        TermEntity::find_by_id(term_id)
+            .filter(TermColumn::TenantId.eq(tenant_id))
+            .one(self.service.database())
+            .await
+            .map_err(taxonomy_database_error_to_port_error)?
+            .ok_or_else(|| PortError::not_found(
+                "taxonomy.translation_resource_not_found",
+                format!("taxonomy translation resource not found: {term_id}"),
+            ))
+    }
+
+    fn authorize_term(
+        &self,
+        context: &PortContext,
+        tenant_id: Uuid,
+        term: &TermModel,
+        action: Action,
+    ) -> Result<(), PortError> {
+        if term.scope_type != crate::TaxonomyScopeType::Module {
+            return Ok(());
+        }
+        let module_slug = term.scope_value.trim();
+        if module_slug.is_empty() {
+            return Err(PortError::invariant_violation(
+                "taxonomy.translation_owner_scope_invalid",
+                "module-owned Taxonomy term has an empty owner scope",
+            ));
+        }
+        let owner = self.owner_registry.get(module_slug).ok_or_else(|| {
+            PortError::forbidden(
+                "taxonomy.translation_owner_permission_denied",
+                "module-owned Taxonomy terms require owner authorization",
+            )
+        })?;
+        owner.authorize(context, tenant_id, term.kind, term.id, action)
+    }
+}
 
     fn descriptor_value() -> TranslationTargetProviderDescriptor {
         TranslationTargetProviderDescriptor {
