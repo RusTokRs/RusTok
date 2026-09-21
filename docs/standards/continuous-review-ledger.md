@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `180 / 218` components audited (**83%**)
+- **Progress:** `181 / 218` components audited (**83%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -203,7 +203,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [leptos-zod](../../crates/ui/leptos-zod) | `ui` | 1 | 22 | 2026-09-21 19:45 | Audited the lightweight validation-error DTOs and serialization boundary; no server/auth/tenant/network/rendering state or unsafe execution exists in this crate, and no production security, tenant-scope, or concurrency finding remained. |
 | [x] | [leptos-zustand](../../crates/ui/leptos-zustand) | `ui` | 1 | 18 | 2026-09-21 19:55 | Audited the generic serializable StoreSnapshot/StoreUpdate state DTOs; no rendering, network, auth, tenant, persistence, or concurrency boundary exists in this crate and no production finding remained. |
 | [x] | [rustok-graphql](../../crates/ui/rustok-graphql) | `ui` | 1 | 338 | 2026-09-21 20:10 | Audited the framework-agnostic GraphQL HTTP client for endpoint derivation, SSR/WASM defaults, auth/tenant/locale header forwarding, response/error mapping, persisted-query extensions, timeout/client lifecycle, and raw-client delegation. Endpoint remains an adapter/configuration input rather than request-derived authority; client tenant slug is transport metadata and backend auth context remains authoritative. No confirmed production security, tenant-scope, URL, or concurrency finding remained. |
-| [ ] | [rustok-graphql-leptos](../../crates/ui/rustok-graphql-leptos) | `ui` | 1 | 206 | None |  |
+| [x] | [rustok-graphql-leptos](../../crates/ui/rustok-graphql-leptos) | `ui` | 1 | 206 | 2026-09-21 20:28 | Audited Leptos GraphQL query/mutation/lazy-query hooks for endpoint/token/tenant forwarding, locale propagation, request lifecycle, and client-side concurrency. Fixed a real stale-response race: parallel or refetched GraphQL requests now carry monotonic request generations, and older responses/errors are ignored instead of overwriting newer state. |
 | [ ] | [rustok-ui-auth](../../crates/ui/rustok-ui-auth) | `ui` | 1 | 54 | None |  |
 | [ ] | [rustok-ui-core](../../crates/ui/rustok-ui-core) | `ui` | 5 | 1,280 | None |  |
 | [ ] | [rustok-ui-forms](../../crates/ui/rustok-ui-forms) | `ui` | 1 | 75 | None |  |
