@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `103 / 218` components audited (**47%**)
+- **Progress:** `104 / 218` components audited (**47%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -146,7 +146,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [storefront](../../crates/modules/rustok-pages/storefront) | `modules` | 17 | 4,717 | 2026-09-21 07:24 | Audited native/GraphQL storefront transport, host route resolution, published artifact rendering, locale/channel-aware caching, authenticated inline editing, and public visibility; closed arbitrary tenant fallback in server functions by binding fallback resolution to the host-configured tenant. |
 | [x] | [rustok-payment](../../crates/modules/rustok-payment) | `modules` | 85 | 20,644 | 2026-09-21 07:27 | Audited payment collection/refund lifecycles, provider-operation journal CAS, webhook inbox/lease/idempotency/tenant binding, provider request/result validation, admin and checkout command ports; fixed cross-backend lifecycle races with transactional row locks and CAS, serialized refund capacity reservations, and rejected terminalized collection reuse. |
 | [x] | [storefront](../../crates/modules/rustok-payment/storefront) | `modules` | 11 | 1,316 | 2026-09-21 07:31 | Audited storefront native server functions, GraphQL transport, request/error safety, customer/cart ownership, tenant context, guest-cart behavior, and create/reuse flow; no additional production correctness or tenant-isolation finding after the payment lifecycle fixes. |
-| [ ] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 47 | 18,461 | None |  |
+| [x] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 47 | 18,461 | 2026-09-21 07:38 | Audited price-list CRUD/translation CAS, active-list resolution, canonical price upserts, rule/scope writes, read/write ports, channel/tenant binding, and money-integrity constraints; fixed rule/scope TOCTOU, duplicate canonical price races via variant serialization, and MySQL channel cross-tenant integrity gaps. |
 | [ ] | [rustok-pricing-persistence](../../crates/modules/rustok-pricing-persistence) | `modules` | 5 | 190 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-pricing/admin) | `modules` | 13 | 7,537 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-pricing/storefront) | `modules` | 10 | 2,465 | None |  |
