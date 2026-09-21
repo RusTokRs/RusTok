@@ -1,10 +1,12 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
+    TransactionTrait,
 };
 use uuid::Uuid;
+use rustok_product::entities::{product, product_variant};
 
 use crate::dto::{
     BundleDto, BundleFilter, BundleItemDto, BundleItemInput, BundleListResponse,
@@ -22,6 +24,93 @@ use crate::entities::{
 };
 use crate::error::{BundleError, BundleResult};
 use crate::ports::BundlePort;
+
+async fn lock_bundle_for_update(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    bundle_id: Uuid,
+) -> BundleResult<crate::entities::bundle::Model> {
+    let query = Bundle::find_by_id(bundle_id).filter(BundleColumn::TenantId.eq(tenant_id));
+    let bundle = match txn.get_database_backend() {
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => query.lock_exclusive().one(txn).await?,
+        DatabaseBackend::Sqlite => {
+            let statement = Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE product_bundles SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                [tenant_id.into(), bundle_id.into()],
+            );
+            txn.execute(statement).await?;
+            query.one(txn).await?
+        }
+        _ => query.one(txn).await?,
+    };
+    bundle.ok_or(BundleError::NotFound(bundle_id))
+}
+
+async fn validate_product_ref_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    product_id: Uuid,
+) -> BundleResult<()> {
+    let exists = product::Entity::find_by_id(product_id)
+        .filter(product::Column::TenantId.eq(tenant_id))
+        .one(txn)
+        .await?
+        .is_some();
+    if !exists {
+        return Err(BundleError::InvalidInput(
+            "Bundle item product does not belong to the current tenant".into(),
+        ));
+    }
+    Ok(())
+}
+
+async fn validate_variant_ref_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    product_id: Uuid,
+    variant_id: Uuid,
+) -> BundleResult<()> {
+    let variant = product_variant::Entity::find_by_id(variant_id)
+        .filter(product_variant::Column::TenantId.eq(tenant_id))
+        .one(txn)
+        .await?
+        .ok_or_else(|| {
+            BundleError::InvalidInput(
+                "Bundle item variant does not belong to the current tenant".into(),
+            )
+        })?;
+    if variant.product_id != product_id {
+        return Err(BundleError::InvalidInput(
+            "Bundle item variant does not belong to the selected product".into(),
+        ));
+    }
+    Ok(())
+}
+
+async fn validate_bundle_product_ref_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    bundle_product_id: Option<Uuid>,
+) -> BundleResult<()> {
+    if let Some(product_id) = bundle_product_id {
+        validate_product_ref_in_tx(txn, tenant_id, product_id).await?;
+    }
+    Ok(())
+}
+
+async fn validate_bundle_item_refs_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    product_id: Uuid,
+    variant_id: Option<Uuid>,
+) -> BundleResult<()> {
+    validate_product_ref_in_tx(txn, tenant_id, product_id).await?;
+    if let Some(variant_id) = variant_id {
+        validate_variant_ref_in_tx(txn, tenant_id, product_id, variant_id).await?;
+    }
+    Ok(())
+}
 
 #[derive(Clone)]
 pub struct BundleService {
@@ -271,6 +360,22 @@ impl BundlePort for BundleService {
 
         let txn = self.db.begin().await?;
 
+        validate_bundle_product_ref_in_tx(&txn, tenant_id, input.bundle_product_id).await?;
+        for item in &input.items {
+            if item.quantity < 1 {
+                return Err(BundleError::InvalidInput(
+                    "Item quantity must be at least 1".into(),
+                ));
+            }
+            validate_bundle_item_refs_in_tx(
+                &txn,
+                tenant_id,
+                item.product_id,
+                item.variant_id,
+            )
+            .await?;
+        }
+
         let bundle_id = Uuid::new_v4();
         let now = Utc::now();
 
@@ -306,11 +411,6 @@ impl BundlePort for BundleService {
 
         let mut inserted_items = Vec::new();
         for (idx, item_input) in input.items.into_iter().enumerate() {
-            if item_input.quantity < 1 {
-                return Err(BundleError::InvalidInput(
-                    "Item quantity must be at least 1".into(),
-                ));
-            }
             let item_active = BundleItemActiveModel {
                 id: Set(Uuid::new_v4()),
                 bundle_id: Set(bundle_id),
@@ -341,13 +441,8 @@ impl BundlePort for BundleService {
         id: Uuid,
         input: UpdateBundleInput,
     ) -> BundleResult<BundleDto> {
-        let bundle = Bundle::find_by_id(id)
-            .filter(BundleColumn::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or(BundleError::NotFound(id))?;
-
         let txn = self.db.begin().await?;
+        let bundle = lock_bundle_for_update(&txn, tenant_id, id).await?;
         let now = Utc::now();
         let mut active: BundleActiveModel = bundle.into();
 
@@ -370,6 +465,7 @@ impl BundlePort for BundleService {
         }
 
         if let Some(bundle_product_id) = input.bundle_product_id {
+            validate_product_ref_in_tx(&txn, tenant_id, bundle_product_id).await?;
             active.bundle_product_id = Set(bundle_product_id);
         }
 
@@ -447,13 +543,8 @@ impl BundlePort for BundleService {
     }
 
     async fn delete_bundle(&self, tenant_id: Uuid, id: Uuid) -> BundleResult<()> {
-        let bundle = Bundle::find_by_id(id)
-            .filter(BundleColumn::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or(BundleError::NotFound(id))?;
-
         let txn = self.db.begin().await?;
+        let bundle = lock_bundle_for_update(&txn, tenant_id, id).await?;
         BundleTranslation::delete_many()
             .filter(BundleTranslationColumn::BundleId.eq(id))
             .exec(&txn)
@@ -476,11 +567,8 @@ impl BundlePort for BundleService {
         bundle_id: Uuid,
         item: BundleItemInput,
     ) -> BundleResult<BundleItemDto> {
-        let _ = Bundle::find_by_id(bundle_id)
-            .filter(BundleColumn::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or(BundleError::NotFound(bundle_id))?;
+        let txn = self.db.begin().await?;
+        let _bundle = lock_bundle_for_update(&txn, tenant_id, bundle_id).await?;
 
         if item.quantity < 1 {
             return Err(BundleError::InvalidInput(
@@ -496,11 +584,13 @@ impl BundlePort for BundleService {
             None => {
                 let count = BundleItem::find()
                     .filter(BundleItemColumn::BundleId.eq(bundle_id))
-                    .count(&self.db)
+                    .count(&txn)
                     .await?;
                 count as i32
             }
         };
+
+        validate_bundle_item_refs_in_tx(&txn, tenant_id, item.product_id, item.variant_id).await?;
 
         let active = BundleItemActiveModel {
             id: Set(item_id),
@@ -514,7 +604,8 @@ impl BundlePort for BundleService {
             created_at: Set(now.into()),
         };
 
-        let inserted = active.insert(&self.db).await?;
+        let inserted = active.insert(&txn).await?;
+        txn.commit().await?;
 
         Ok(BundleItemDto {
             id: inserted.id,
@@ -535,19 +626,17 @@ impl BundlePort for BundleService {
         bundle_id: Uuid,
         item_id: Uuid,
     ) -> BundleResult<()> {
-        let _ = Bundle::find_by_id(bundle_id)
-            .filter(BundleColumn::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or(BundleError::NotFound(bundle_id))?;
+        let txn = self.db.begin().await?;
+        let _bundle = lock_bundle_for_update(&txn, tenant_id, bundle_id).await?;
 
         let item = BundleItem::find_by_id(item_id)
             .filter(BundleItemColumn::BundleId.eq(bundle_id))
-            .one(&self.db)
+            .one(&txn)
             .await?
             .ok_or(BundleError::ItemNotFound(item_id))?;
 
-        BundleItem::delete_by_id(item.id).exec(&self.db).await?;
+        BundleItem::delete_by_id(item.id).exec(&txn).await?;
+        txn.commit().await?;
 
         Ok(())
     }
