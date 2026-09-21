@@ -54,6 +54,14 @@ fn map_workflow_error(
             "Workflow request is invalid",
             "validation",
         ),
+        WorkflowError::WebhookSignatureMissing
+        | WorkflowError::WebhookSignatureInvalid
+        | WorkflowError::WebhookSecretNotConfigured => (
+            StatusCode::UNAUTHORIZED,
+            "workflow_webhook_unauthorized",
+            "Webhook signature verification failed",
+            "webhook_unauthorized",
+        ),
         WorkflowError::StepFailed(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "workflow_execution_failed",
