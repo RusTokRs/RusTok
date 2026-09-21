@@ -219,6 +219,8 @@ impl TopicService {
         )
         .await?;
 
+        clear_topic_delete_snapshots_in_tx(&txn, tenant_id, topic_id).await?;
+
         txn.commit().await?;
         Ok(())
     }
@@ -908,6 +910,49 @@ async fn restore_topic_from_delete_snapshot_in_tx(
     let result = txn.execute_raw(statement).await?;
     if result.rows_affected() != 1 {
         return Err(ForumError::TopicRestoreUnavailable(topic_id));
+    }
+    Ok(())
+}
+
+async fn clear_topic_delete_snapshots_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    topic_id: Uuid,
+) -> ForumResult<()> {
+    let statements = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => vec![
+            Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "DELETE FROM forum_topic_reply_delete_snapshots WHERE tenant_id = $1 AND topic_id = $2",
+                vec![tenant_id.into(), topic_id.into()],
+            ),
+            Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "DELETE FROM forum_topic_delete_snapshots WHERE tenant_id = $1 AND topic_id = $2",
+                vec![tenant_id.into(), topic_id.into()],
+            ),
+        ],
+        DatabaseBackend::Sqlite => vec![
+            Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "DELETE FROM forum_topic_reply_delete_snapshots WHERE tenant_id = ? AND topic_id = ?",
+                vec![tenant_id.into(), topic_id.into()],
+            ),
+            Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "DELETE FROM forum_topic_delete_snapshots WHERE tenant_id = ? AND topic_id = ?",
+                vec![tenant_id.into(), topic_id.into()],
+            ),
+        ],
+        backend => {
+            return Err(ForumError::Validation(format!(
+                "Forum topic restore does not support database backend {backend:?}"
+            )))
+        }
+    };
+
+    for statement in statements {
+        txn.execute_raw(statement).await?;
     }
     Ok(())
 }
