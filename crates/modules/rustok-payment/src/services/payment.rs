@@ -440,7 +440,9 @@ impl PaymentService {
         input: CancelRefundInput,
     ) -> PaymentResult<RefundResponse> {
         let txn = self.db.begin().await?;
-        let refund = self.load_refund_in_tx(&txn, tenant_id, refund_id).await?;
+        let refund = self
+            .load_refund_for_update_in_tx(&txn, tenant_id, refund_id)
+            .await?;
         if !RefundStatusKind::from_raw(refund.status.as_str()).can_cancel() {
             return Err(PaymentError::InvalidTransition {
                 from: refund.status,
@@ -534,7 +536,7 @@ impl PaymentService {
     ) -> PaymentResult<PaymentCollectionResponse> {
         let txn = self.db.begin().await?;
         let collection = self
-            .load_collection_in_tx(&txn, tenant_id, collection_id)
+            .load_collection_for_update_in_tx(&txn, tenant_id, collection_id)
             .await?;
         if !PaymentCollectionStatusKind::from_raw(collection.status.as_str()).can_capture() {
             return Err(PaymentError::InvalidTransition {
@@ -585,7 +587,7 @@ impl PaymentService {
     ) -> PaymentResult<PaymentCollectionResponse> {
         let txn = self.db.begin().await?;
         let collection = self
-            .load_collection_in_tx(&txn, tenant_id, collection_id)
+            .load_collection_for_update_in_tx(&txn, tenant_id, collection_id)
             .await?;
         let collection_status = PaymentCollectionStatusKind::from_raw(collection.status.as_str());
         if !collection_status.can_cancel() {
