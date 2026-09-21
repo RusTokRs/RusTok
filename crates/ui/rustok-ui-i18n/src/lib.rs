@@ -26,8 +26,7 @@ pub use unic_langid::LanguageIdentifier;
 pub use bundle::{
     FluentCatalog, build_fluent_bundle, build_fluent_catalog, try_build_fluent_catalog,
 };
-pub use error::{BundleBuildError, I18nError};
-pub use locale::{locale_candidates, normalize_admin_locale, normalize_locale_tag};
+pub use error::{BundleBuildError, I18nError, MessageKeyError};
 #[allow(deprecated)]
 #[deprecated(
     since = "0.1.0",
@@ -40,9 +39,11 @@ pub use locale::push_locale_candidate;
     note = "Internal helper; will be made private before 1.0."
 )]
 pub use locale::push_unique;
+pub use locale::{locale_candidates, normalize_admin_locale, normalize_locale_tag};
 pub use messages::{
-    PreparedUiMessages, UiLocaleTranslator, UiMessages, UiTranslator, resolve_fluent_message,
-    try_resolve_fluent_message, with_kebab_key,
+    MAX_MESSAGE_KEY_LEN, MessageSchema, PreparedUiMessages, UiLocaleTranslator, UiMessages,
+    UiTranslator, extract_locale_schemas, resolve_fluent_message, try_resolve_fluent_message,
+    validate_catalog_schemas, validate_message_key, with_kebab_key,
 };
 
 #[cfg(test)]

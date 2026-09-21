@@ -9,7 +9,7 @@
     "./register": "./src/register.ts"
   },
   "dependencies": {
-    "@rustok/next-fluent": "file:../../../../packages/next-fluent",
+    "@rustok/next-fluent": "github:RusTokRs/next-fluent",
     "react": "^19.2.0"
   },
   "license": "BUSL-1.1"

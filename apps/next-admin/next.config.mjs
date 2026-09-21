@@ -61,12 +61,7 @@ const baseConfig = {
       '@/components': path.resolve(__dirname, 'src/components'),
       '@/config': path.resolve(__dirname, 'src/config'),
       '@/constants': path.resolve(__dirname, 'src/constants'),
-      '@/hooks': path.resolve(__dirname, 'src/hooks'),
-      '@rustok/next-fluent$': path.resolve(__dirname, '../../packages/next-fluent/dist/index.js'),
-      '@rustok/next-fluent/client$': path.resolve(__dirname, '../../packages/next-fluent/dist/client.js'),
-      '@rustok/next-fluent/server$': path.resolve(__dirname, '../../packages/next-fluent/dist/server.js'),
-      '@rustok/next-fluent/middleware$': path.resolve(__dirname, '../../packages/next-fluent/dist/middleware.js'),
-      '@rustok/next-fluent/typegen$': path.resolve(__dirname, '../../packages/next-fluent/dist/typegen.js')
+      '@/hooks': path.resolve(__dirname, 'src/hooks')
     };
     return config;
   }

@@ -8,15 +8,18 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-use std::sync::OnceLock;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Once, OnceLock};
 
 use fluent_bundle::FluentArgs;
+use fluent_syntax::ast;
 use unic_langid::LanguageIdentifier;
 
 use crate::bundle::{
-    FluentCatalog, FluentCatalogBuildReport, build_fluent_catalog_report, try_build_fluent_catalog,
+    FluentCatalog, FluentCatalogBuildReport, build_fluent_catalog_report,
+    parse_language_identifier, try_build_fluent_catalog,
 };
-use crate::error::{BundleBuildError, I18nError};
+use crate::error::{BundleBuildError, I18nError, MessageKeyError};
 use crate::locale::{MAX_LOCALE_TAG_LEN, locale_candidates};
 
 /// Ephemeral translator facade over a borrowed `FluentCatalog`.
@@ -118,13 +121,7 @@ impl<'a> UiLocaleTranslator<'a> {
     }
 
     pub fn resolve(&self, key: &str) -> Option<String> {
-        resolve_fluent_candidates(
-            self.fluent_catalog,
-            &self.candidates,
-            effective_locale(&self.candidates),
-            key,
-            None,
-        )
+        resolve_fluent_candidates(self.fluent_catalog, &self.candidates, key, None)
     }
 
     pub fn t(&self, key: &str, fallback: &str) -> String {
@@ -151,14 +148,8 @@ impl<'a> UiLocaleTranslator<'a> {
         args: Option<&FluentArgs<'args>>,
         fallback: &str,
     ) -> String {
-        resolve_fluent_candidates(
-            self.fluent_catalog,
-            &self.candidates,
-            effective_locale(&self.candidates),
-            key,
-            args,
-        )
-        .unwrap_or_else(|| fallback.to_string())
+        resolve_fluent_candidates(self.fluent_catalog, &self.candidates, key, args)
+            .unwrap_or_else(|| fallback.to_string())
     }
 }
 
@@ -167,17 +158,27 @@ impl<'a> UiLocaleTranslator<'a> {
 /// `PreparedUiMessages` is constructed with [`UiMessages::prepare`]. Unlike the
 /// lazy [`UiMessages::fluent_catalog`] path, construction rejects malformed
 /// locale tags, malformed FTL resources, duplicate normalized locales, an
-/// invalid configured default locale, and a default locale without an exact
-/// normalized catalog entry before any lookup can occur.
+/// invalid configured default locale, a default locale without an exact
+/// normalized catalog entry, and schema mismatches between locales before
+/// any lookup can occur.
 pub struct PreparedUiMessages {
-    default_locale: &'static str,
+    default_locale: String,
     fluent_catalog: FluentCatalog,
 }
 
+impl std::fmt::Debug for PreparedUiMessages {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PreparedUiMessages")
+            .field("default_locale", &self.default_locale)
+            .field("locales", &self.fluent_catalog.keys().collect::<Vec<_>>())
+            .finish()
+    }
+}
+
 impl PreparedUiMessages {
-    /// Returns the configured default locale.
-    pub const fn default_locale(&self) -> &'static str {
-        self.default_locale
+    /// Returns the validated and normalized default locale tag.
+    pub fn default_locale(&self) -> &str {
+        &self.default_locale
     }
 
     /// Returns the validated Fluent catalog.
@@ -186,13 +187,13 @@ impl PreparedUiMessages {
     }
 
     /// Borrows this prepared catalog through the common translator facade.
-    pub const fn translator(&self) -> UiTranslator<'_> {
-        UiTranslator::new(&self.fluent_catalog, self.default_locale)
+    pub fn translator(&self) -> UiTranslator<'_> {
+        UiTranslator::new(&self.fluent_catalog, &self.default_locale)
     }
 
     /// Prepares one effective locale for repeated lookups against this validated catalog.
     pub fn for_locale(&self, locale: Option<&str>) -> UiLocaleTranslator<'_> {
-        UiLocaleTranslator::new(&self.fluent_catalog, locale, self.default_locale)
+        UiLocaleTranslator::new(&self.fluent_catalog, locale, &self.default_locale)
     }
 
     /// Strictly resolves and formats a message without applying literal fallback text.
@@ -223,6 +224,157 @@ impl PreparedUiMessages {
     }
 }
 
+/// Message schema representing the set of variables used by a message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MessageSchema {
+    /// Ordered, deduplicated set of variable identifier names required by this message.
+    pub variables: BTreeSet<String>,
+}
+
+fn collect_pattern_variables(pattern: &ast::Pattern<&str>, out: &mut BTreeSet<String>) {
+    for element in &pattern.elements {
+        if let ast::PatternElement::Placeable { expression } = element {
+            collect_expression_variables(expression, out);
+        }
+    }
+}
+
+fn collect_expression_variables(expr: &ast::Expression<&str>, out: &mut BTreeSet<String>) {
+    match expr {
+        ast::Expression::Inline(inline) => collect_inline_variables(inline, out),
+        ast::Expression::Select { selector, variants } => {
+            collect_inline_variables(selector, out);
+            for variant in variants {
+                collect_pattern_variables(&variant.value, out);
+            }
+        }
+    }
+}
+
+fn collect_inline_variables(inline: &ast::InlineExpression<&str>, out: &mut BTreeSet<String>) {
+    match inline {
+        ast::InlineExpression::VariableReference { id } => {
+            out.insert(id.name.to_string());
+        }
+        ast::InlineExpression::Placeable { expression } => {
+            collect_expression_variables(expression, out);
+        }
+        ast::InlineExpression::FunctionReference { arguments, .. } => {
+            for pos in &arguments.positional {
+                collect_inline_variables(pos, out);
+            }
+            for named in &arguments.named {
+                collect_inline_variables(&named.value, out);
+            }
+        }
+        ast::InlineExpression::TermReference {
+            arguments: Some(args),
+            ..
+        } => {
+            for pos in &args.positional {
+                collect_inline_variables(pos, out);
+            }
+            for named in &args.named {
+                collect_inline_variables(&named.value, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_message_variables(msg: &ast::Message<&str>) -> BTreeSet<String> {
+    let mut vars = BTreeSet::new();
+    if let Some(ref pattern) = msg.value {
+        collect_pattern_variables(pattern, &mut vars);
+    }
+    for attr in &msg.attributes {
+        collect_pattern_variables(&attr.value, &mut vars);
+    }
+    vars
+}
+
+/// Parses an FTL resource and extracts the variable schema for each message entry.
+pub fn extract_locale_schemas(
+    locale: &str,
+    ftl_source: &str,
+) -> Result<BTreeMap<String, MessageSchema>, BundleBuildError> {
+    let resource = fluent_syntax::parser::parse(ftl_source).map_err(|(_, errors)| {
+        BundleBuildError::FluentParse {
+            locale: locale.to_string(),
+            errors: errors.into_iter().map(|e| format!("{e:?}")).collect(),
+        }
+    })?;
+
+    let mut schemas = BTreeMap::new();
+    for entry in resource.body {
+        if let ast::Entry::Message(msg) = entry {
+            let variables = collect_message_variables(&msg);
+            schemas.insert(msg.id.name.to_string(), MessageSchema { variables });
+        }
+    }
+    Ok(schemas)
+}
+
+/// Validates that message schemas across all bundles match the default locale schema.
+///
+/// Invariants enforced:
+/// 1. Messages present in both the default locale and a non-default locale must use the exact same variable names.
+/// 2. Non-default locales must not declare extra messages that are missing from the default locale catalog.
+pub fn validate_catalog_schemas(
+    bundles: &[(&str, &str)],
+    default_locale: &str,
+) -> Result<(), BundleBuildError> {
+    let mut locale_schemas: BTreeMap<String, BTreeMap<String, MessageSchema>> = BTreeMap::new();
+
+    for (locale_tag, ftl_source) in bundles {
+        let langid = parse_language_identifier(locale_tag)?;
+        let normalized = langid.to_string();
+        let schemas = extract_locale_schemas(&normalized, ftl_source)?;
+        locale_schemas.insert(normalized, schemas);
+    }
+
+    let default_schemas = match locale_schemas.get(default_locale) {
+        Some(schemas) => schemas,
+        None => {
+            return Err(BundleBuildError::MissingDefaultLocale {
+                locale: default_locale.to_string(),
+            });
+        }
+    };
+
+    for (locale, schemas) in &locale_schemas {
+        if locale == default_locale {
+            continue;
+        }
+
+        // Check for extra messages in non-default locale that default locale lacks
+        for msg_id in schemas.keys() {
+            if !default_schemas.contains_key(msg_id) {
+                return Err(BundleBuildError::ExtraMessage {
+                    locale: locale.clone(),
+                    message: msg_id.clone(),
+                });
+            }
+        }
+
+        // Check for variable parity for messages that exist in both
+        for (msg_id, default_schema) in default_schemas {
+            if let Some(locale_schema) = schemas.get(msg_id)
+                && locale_schema.variables != default_schema.variables
+            {
+                return Err(BundleBuildError::MessageSchemaMismatch {
+                    locale: locale.clone(),
+                    message: msg_id.clone(),
+                    expected: default_schema.variables.iter().cloned().collect(),
+                    actual: locale_schema.variables.iter().cloned().collect(),
+                });
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Primary thread-safe (`Send + Sync`) container for module-owned UI translations.
 ///
 /// Stores compile-time embedded message bundles and lazily initializes one
@@ -234,6 +386,7 @@ pub struct UiMessages {
     default_locale: &'static str,
     bundles: &'static [(&'static str, &'static str)],
     fluent_catalog: OnceLock<FluentCatalogBuildReport>,
+    diagnostics_logged: Once,
 }
 
 impl UiMessages {
@@ -246,6 +399,7 @@ impl UiMessages {
             default_locale,
             bundles,
             fluent_catalog: OnceLock::new(),
+            diagnostics_logged: Once::new(),
         }
     }
 
@@ -253,33 +407,37 @@ impl UiMessages {
     ///
     /// The normalized default locale must also have an exact catalog entry, matching
     /// the `@rustok/next-fluent` configuration invariant that `defaultLocale` is one
-    /// of the configured locales.
+    /// of the configured locales. Additionally, cross-locale message schemas are
+    /// validated for variable parity against the default locale.
     ///
     /// This is intended for tests and CI. Production startup code that wants to
     /// validate once and reuse the exact validated catalog should call [`Self::prepare`].
     pub fn validate(&self) -> Result<(), BundleBuildError> {
         let default_locale = normalize_default_locale(self.default_locale)?;
         let fluent_catalog = try_build_fluent_catalog(self.bundles)?;
-        ensure_default_locale_present(&fluent_catalog, &default_locale)
+        ensure_default_locale_present(&fluent_catalog, &default_locale)?;
+        validate_catalog_schemas(self.bundles, &default_locale)
     }
 
     /// Builds a fail-closed catalog once and returns an owned prepared runtime.
     ///
     /// This avoids the validate-then-rebuild pattern: the returned object serves
     /// lookups from the same strict catalog that passed construction. The normalized
-    /// default locale must be present in that exact catalog.
+    /// default locale must be present in that exact catalog, and message schemas
+    /// must match across all locales.
     pub fn prepare(&self) -> Result<PreparedUiMessages, BundleBuildError> {
         let default_locale = normalize_default_locale(self.default_locale)?;
         let fluent_catalog = try_build_fluent_catalog(self.bundles)?;
         ensure_default_locale_present(&fluent_catalog, &default_locale)?;
+        validate_catalog_schemas(self.bundles, &default_locale)?;
         Ok(PreparedUiMessages {
-            default_locale: self.default_locale,
+            default_locale,
             fluent_catalog,
         })
     }
 
     fn fluent_catalog_report(&self) -> &FluentCatalogBuildReport {
-        self.fluent_catalog.get_or_init(|| {
+        let report = self.fluent_catalog.get_or_init(|| {
             let mut report = build_fluent_catalog_report(self.bundles);
 
             match normalize_default_locale(self.default_locale) {
@@ -287,37 +445,43 @@ impl UiMessages {
                     if let Err(error) =
                         ensure_default_locale_present(report.catalog(), &default_locale)
                     {
-                        tracing::error!(
-                            %error,
-                            default_locale = self.default_locale,
-                            "Configured Fluent default locale is absent from the usable catalog"
-                        );
                         report.push_diagnostic(error);
                     }
                 }
                 Err(error) => {
-                    match &error {
-                        BundleBuildError::LocaleTooLong { length, max_len } => {
-                            tracing::error!(
-                                length,
-                                max_len,
-                                "Configured Fluent default locale is oversized"
-                            );
-                        }
-                        _ => {
-                            tracing::error!(
-                                %error,
-                                default_locale = self.default_locale,
-                                "Configured Fluent default locale is invalid"
-                            );
-                        }
-                    }
                     report.push_diagnostic(error);
                 }
             }
 
             report
-        })
+        });
+
+        self.diagnostics_logged.call_once(|| {
+            for diagnostic in report.diagnostics() {
+                match diagnostic {
+                    BundleBuildError::LocaleTooLong { length, max_len } => {
+                        tracing::error!(length, max_len, "Skipping oversized Fluent locale");
+                    }
+                    BundleBuildError::InvalidLocale { locale, .. } => {
+                        tracing::error!(%diagnostic, locale = locale.as_str(), "Skipping invalid Fluent locale");
+                    }
+                    BundleBuildError::DuplicateLocale { locale } => {
+                        tracing::error!(%diagnostic, locale = locale.as_str(), "Skipping duplicate normalized Fluent locale");
+                    }
+                    BundleBuildError::MissingDefaultLocale { locale } => {
+                        tracing::error!(%diagnostic, default_locale = locale.as_str(), "Configured Fluent default locale is absent from the usable catalog");
+                    }
+                    BundleBuildError::InvalidDefaultLocale { locale, .. } => {
+                        tracing::error!(%diagnostic, default_locale = locale.as_str(), "Configured Fluent default locale is invalid");
+                    }
+                    _ => {
+                        tracing::error!(%diagnostic, "Skipping invalid Fluent bundle entry");
+                    }
+                }
+            }
+        });
+
+        report
     }
 
     /// Accesses the underlying lazily initialized lenient `FluentCatalog`.
@@ -467,6 +631,93 @@ pub fn with_kebab_key<R>(key: &str, f: impl FnOnce(&str) -> R) -> R {
     f(&kebab)
 }
 
+/// Maximum supported byte length for message keys.
+pub const MAX_MESSAGE_KEY_LEN: usize = 256;
+
+/// Validates that a message key is non-empty, within length bounds, and free of control or NUL characters.
+pub fn validate_message_key(key: &str) -> Result<(), I18nError> {
+    if key.is_empty() {
+        return Err(I18nError::InvalidMessageKey {
+            key: String::new(),
+            reason: MessageKeyError::Empty,
+        });
+    }
+
+    if key.len() > MAX_MESSAGE_KEY_LEN {
+        return Err(I18nError::InvalidMessageKey {
+            key: truncate_for_diagnostic(key, 128),
+            reason: MessageKeyError::TooLong {
+                length: key.len(),
+                max_len: MAX_MESSAGE_KEY_LEN,
+            },
+        });
+    }
+
+    if key.bytes().any(|b| b.is_ascii_control() || b == 0) {
+        return Err(I18nError::InvalidMessageKey {
+            key: truncate_for_diagnostic(key, 128),
+            reason: MessageKeyError::InvalidCharacters,
+        });
+    }
+
+    Ok(())
+}
+
+fn truncate_for_diagnostic(s: &str, max_bytes: usize) -> String {
+    if s.len() <= max_bytes {
+        s.to_string()
+    } else {
+        let mut truncated = String::with_capacity(max_bytes + 3);
+        for c in s.chars() {
+            if truncated.len() + c.len_utf8() > max_bytes {
+                break;
+            }
+            truncated.push(c);
+        }
+        truncated.push_str("...");
+        truncated
+    }
+}
+
+enum LookupResult {
+    Found(String),
+    Missing,
+    Failed(I18nError),
+}
+
+fn lookup_fluent_candidates<'args>(
+    catalog: &FluentCatalog,
+    candidates: &[String],
+    key: &str,
+    args: Option<&FluentArgs<'args>>,
+) -> LookupResult {
+    if let Err(err) = validate_message_key(key) {
+        return LookupResult::Failed(err);
+    }
+
+    with_kebab_key(key, |lookup_key| {
+        for candidate in candidates {
+            if let Some(bundle) = catalog.get(candidate.as_str())
+                && let Some(message) = bundle.get_message(lookup_key)
+                && let Some(pattern) = message.value()
+            {
+                let mut errors = vec![];
+                let formatted = bundle.format_pattern(pattern, args, &mut errors);
+                if !errors.is_empty() {
+                    return LookupResult::Failed(I18nError::FormattingFailed {
+                        locale: candidate.clone(),
+                        key: key.to_string(),
+                        errors,
+                    });
+                }
+                return LookupResult::Found(formatted.to_string());
+            }
+        }
+
+        LookupResult::Missing
+    })
+}
+
 /// Strictly resolves a message against the `FluentCatalog` using the locale
 /// fallback candidate chain.
 pub fn try_resolve_fluent_message<'args>(
@@ -493,30 +744,14 @@ fn try_resolve_fluent_candidates<'args>(
     key: &str,
     args: Option<&FluentArgs<'args>>,
 ) -> Result<String, I18nError> {
-    with_kebab_key(key, |lookup_key| {
-        for candidate in candidates {
-            if let Some(bundle) = catalog.get(candidate.as_str())
-                && let Some(message) = bundle.get_message(lookup_key)
-                && let Some(pattern) = message.value()
-            {
-                let mut errors = vec![];
-                let formatted = bundle.format_pattern(pattern, args, &mut errors);
-                if !errors.is_empty() {
-                    return Err(I18nError::FormattingFailed {
-                        locale: candidate.clone(),
-                        key: key.to_string(),
-                        errors,
-                    });
-                }
-                return Ok(formatted.to_string());
-            }
-        }
-
-        Err(I18nError::MessageNotFound {
+    match lookup_fluent_candidates(catalog, candidates, key, args) {
+        LookupResult::Found(msg) => Ok(msg),
+        LookupResult::Missing => Err(I18nError::MessageNotFound {
             locale: effective_locale.to_string(),
             key: key.to_string(),
-        })
-    })
+        }),
+        LookupResult::Failed(err) => Err(err),
+    }
 }
 
 /// Resolves a message using lenient UI semantics.
@@ -532,27 +767,20 @@ pub fn resolve_fluent_message<'args>(
     args: Option<&FluentArgs<'args>>,
 ) -> Option<String> {
     let candidates = locale_candidates(locale, default_locale);
-    resolve_fluent_candidates(
-        catalog,
-        &candidates,
-        effective_locale(&candidates),
-        key,
-        args,
-    )
+    resolve_fluent_candidates(catalog, &candidates, key, args)
 }
 
 fn resolve_fluent_candidates<'args>(
     catalog: &FluentCatalog,
     candidates: &[String],
-    effective_locale: &str,
     key: &str,
     args: Option<&FluentArgs<'args>>,
 ) -> Option<String> {
-    match try_resolve_fluent_candidates(catalog, candidates, effective_locale, key, args) {
-        Ok(message) => Some(message),
-        Err(I18nError::MessageNotFound { .. }) => None,
-        Err(error) => {
-            tracing::warn!(%error, key, "Fluent message resolution failed");
+    match lookup_fluent_candidates(catalog, candidates, key, args) {
+        LookupResult::Found(message) => Some(message),
+        LookupResult::Missing => None,
+        LookupResult::Failed(error) => {
+            tracing::warn!(%error, key = %truncate_for_diagnostic(key, 128), "Fluent message resolution failed");
             None
         }
     }

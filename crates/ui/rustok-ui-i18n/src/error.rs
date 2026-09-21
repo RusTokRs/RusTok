@@ -10,6 +10,35 @@
 
 use std::fmt;
 
+/// Reason why a message key failed validation.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MessageKeyError {
+    /// The message key was empty.
+    Empty,
+    /// The message key length exceeded the maximum supported byte length.
+    TooLong { length: usize, max_len: usize },
+    /// The message key contains control characters or NUL bytes.
+    InvalidCharacters,
+}
+
+impl fmt::Display for MessageKeyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => write!(f, "Message key cannot be empty"),
+            Self::TooLong { length, max_len } => {
+                write!(
+                    f,
+                    "Message key length {length} bytes exceeds the maximum supported of {max_len} bytes"
+                )
+            }
+            Self::InvalidCharacters => {
+                write!(f, "Message key contains control characters or NUL bytes")
+            }
+        }
+    }
+}
+
 /// Errors that can occur when building and parsing a Fluent bundle.
 ///
 /// This enum is non-exhaustive so new diagnostics can be added without forcing
@@ -41,6 +70,15 @@ pub enum BundleBuildError {
     },
     /// More than one bundle normalized to the same locale key.
     DuplicateLocale { locale: String },
+    /// Message in a non-default locale has a different variable set than the default locale.
+    MessageSchemaMismatch {
+        locale: String,
+        message: String,
+        expected: Vec<String>,
+        actual: Vec<String>,
+    },
+    /// Message in a non-default locale does not exist in the default locale schema.
+    ExtraMessage { locale: String, message: String },
 }
 
 impl fmt::Display for BundleBuildError {
@@ -76,6 +114,23 @@ impl fmt::Display for BundleBuildError {
             Self::DuplicateLocale { locale } => {
                 write!(f, "Duplicate Fluent catalog locale '{locale}'")
             }
+            Self::MessageSchemaMismatch {
+                locale,
+                message,
+                expected,
+                actual,
+            } => {
+                write!(
+                    f,
+                    "Message schema mismatch for '{message}' in locale '{locale}': expected variables {expected:?}, got {actual:?}"
+                )
+            }
+            Self::ExtraMessage { locale, message } => {
+                write!(
+                    f,
+                    "Message '{message}' in locale '{locale}' does not exist in default locale catalog"
+                )
+            }
         }
     }
 }
@@ -108,6 +163,11 @@ pub enum I18nError {
         key: String,
         errors: Vec<fluent_bundle::FluentError>,
     },
+    /// Message key is invalid.
+    InvalidMessageKey {
+        key: String,
+        reason: MessageKeyError,
+    },
 }
 
 impl fmt::Display for I18nError {
@@ -126,6 +186,13 @@ impl fmt::Display for I18nError {
                     f,
                     "Formatting errors for message '{key}' in locale '{locale}': {errors:?}"
                 )
+            }
+            Self::InvalidMessageKey { key, reason } => {
+                if key.is_empty() {
+                    write!(f, "Invalid message key: {reason}")
+                } else {
+                    write!(f, "Invalid message key '{key}': {reason}")
+                }
             }
         }
     }

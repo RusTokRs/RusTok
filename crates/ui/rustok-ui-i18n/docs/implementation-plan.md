@@ -202,7 +202,7 @@ Repository API evidence:
 - optional machine-readable evidence: `cargo xtask i18n-api-inventory --json`
 
 Next.js Fluent parity surface:
-- `cd packages/next-fluent && npm run verify`
+- `https://github.com/RusTokRs/next-fluent` (`npm test`)
 
 Future test work:
 - native fuzz targets only after shared project fuzz infrastructure exists;

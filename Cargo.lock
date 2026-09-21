@@ -16859,6 +16859,7 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "fluent-bundle",
+ "fluent-syntax",
  "proptest",
  "tracing",
  "unic-langid",

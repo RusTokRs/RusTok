@@ -151,6 +151,7 @@ chrono = { version = "0.4", features = ["serde"] }
 # Text Processing & Localization
 unicode-normalization = "0.1"
 fluent-bundle = "0.16.0"
+fluent-syntax = "0.12.0"
 unic-langid = "0.9.6"
 
 # Leptos
