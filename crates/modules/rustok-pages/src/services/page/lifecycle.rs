@@ -13,7 +13,6 @@ use rustok_core::{
     error::{ErrorKind, RichError},
 };
 use rustok_events::DomainEvent;
-use rustok_tenant::TenantService;
 
 use crate::dto::PageResponse;
 use crate::entities::{page, page_body, page_translation};
@@ -336,15 +335,6 @@ impl PageService {
         self.get(tenant_id, security, page_id).await
     }
 
-    pub(super) async fn ensure_builder_enabled(&self, tenant_id: Uuid) -> PagesResult<()> {
-        let module = self.load_tenant_pages_module(tenant_id).await?;
-        let enabled = module.as_ref().map(is_builder_enabled).unwrap_or(true);
-        if !enabled {
-            return Err(PagesError::feature_disabled(FEATURE_BUILDER_ENABLED));
-        }
-        Ok(())
-    }
-
     pub(super) async fn ensure_builder_enabled_in_tx(
         txn: &sea_orm::DatabaseTransaction,
         tenant_id: Uuid,
@@ -368,16 +358,6 @@ impl PageService {
         Ok(())
     }
 
-    async fn load_tenant_pages_module(
-        &self,
-        tenant_id: Uuid,
-    ) -> PagesResult<Option<serde_json::Value>> {
-        TenantService::new(self.db.clone())
-            .find_tenant_module(tenant_id, "pages")
-            .await
-            .map(|module| module.map(|module| module.settings))
-            .map_err(Into::into)
-    }
 }
 
 fn builder_reviewed_publish_required() -> PagesError {
