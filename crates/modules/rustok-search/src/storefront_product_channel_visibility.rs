@@ -34,42 +34,6 @@ pub(crate) fn storefront_channel_visibility_sql(
     format!(
         "(CASE\n            WHEN {entity_type_column} = 'product' THEN\n                CASE\n                    WHEN jsonb_typeof({product_allowed_slugs}) IS DISTINCT FROM 'array' THEN FALSE\n                    WHEN jsonb_array_length({product_allowed_slugs}) = 0 THEN TRUE\n                    ELSE {product_channel_match}\n                END\n            WHEN {entity_type_column} = 'blog_post' THEN\n                CASE\n                    WHEN jsonb_typeof({blog_allowed_slugs}) IS DISTINCT FROM 'array' THEN FALSE\n                    WHEN jsonb_array_length({blog_allowed_slugs}) = 0 THEN TRUE\n                    ELSE {blog_channel_match}\n                END\n            ELSE TRUE\n        END)"
     )
-    #[test]
-    fn blog_post_visibility_uses_channel_slugs_and_fails_closed() {
-        let visible = serde_json::json!({
-            "channel_slugs": ["web"]
-        });
-        assert!(storefront_payload_visible_for_channel(
-            &visible,
-            "blog_post",
-            &channel(Some("WEB"))
-        ));
-        assert!(!storefront_payload_visible_for_channel(
-            &visible,
-            "blog_post",
-            &channel(Some("mobile"))
-        ));
-        assert!(!storefront_payload_visible_for_channel(
-            &serde_json::json!({}),
-            "blog_post",
-            &channel(Some("web"))
-        ));
-        assert!(!storefront_payload_visible_for_channel(
-            &serde_json::json!({"channel_slugs": "web"}),
-            "blog_post",
-            &channel(Some("web"))
-        ));
-    }
-
-    #[test]
-    fn unrelated_documents_remain_visible() {
-        assert!(storefront_payload_visible_for_channel(
-            &serde_json::json!({}),
-            "forum_topic",
-            &channel(Some("web"))
-        ));
-    }
-
 }
 
 pub(crate) fn storefront_payload_visible_for_channel(
@@ -172,14 +136,16 @@ mod tests {
 
     #[test]
     fn missing_or_malformed_projection_fails_closed() {
-        assert!(!product_payload_visible_for_storefront(
+        assert!(!storefront_payload_visible_for_channel(
             &serde_json::json!({}),
+            "product",
             &channel(Some("web"))
         ));
-        assert!(!product_payload_visible_for_storefront(
+        assert!(!storefront_payload_visible_for_channel(
             &serde_json::json!({
                 "channel_visibility": { "allowed_channel_slugs": "web" }
             }),
+            "product",
             &channel(Some("web"))
         ));
     }
@@ -216,5 +182,40 @@ mod tests {
         assert!(unscoped_sql.contains("ELSE FALSE"));
         assert!(unscoped_values.is_empty());
         assert_eq!(unscoped_next_param, 4);
+    }
+    #[test]
+    fn blog_post_visibility_uses_channel_slugs_and_fails_closed() {
+        let visible = serde_json::json!({
+            "channel_slugs": ["web"]
+        });
+        assert!(storefront_payload_visible_for_channel(
+            &visible,
+            "blog_post",
+            &channel(Some("WEB"))
+        ));
+        assert!(!storefront_payload_visible_for_channel(
+            &visible,
+            "blog_post",
+            &channel(Some("mobile"))
+        ));
+        assert!(!storefront_payload_visible_for_channel(
+            &serde_json::json!({}),
+            "blog_post",
+            &channel(Some("web"))
+        ));
+        assert!(!storefront_payload_visible_for_channel(
+            &serde_json::json!({"channel_slugs": "web"}),
+            "blog_post",
+            &channel(Some("web"))
+        ));
+    }
+
+    #[test]
+    fn unrelated_documents_remain_visible() {
+        assert!(storefront_payload_visible_for_channel(
+            &serde_json::json!({}),
+            "forum_topic",
+            &channel(Some("web"))
+        ));
     }
 }
