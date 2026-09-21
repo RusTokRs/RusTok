@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `147 / 218` components audited (**68%**)
+- **Progress:** `148 / 218` components audited (**68%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -170,7 +170,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-reactions-storefront](../../crates/modules/rustok-reactions-storefront) | `modules` | 6 | 616 | 2026-09-21 11:03 | Audited public reaction transport/UI: auth-owned tenant/actor context, canonical subject revision validation, GraphQL inputs excluding tenant/actor identity, generated command IDs, stale-write refresh behavior, and safe reaction snapshot rendering. |
 | [x] | [rustok-region](../../crates/modules/rustok-region) | `modules` | 39 | 8,559 | 2026-09-21 11:10 | Audited Region CRUD, tenant-scoped reads, exclusive-row serialization, translation/tax-policy replacement transactions, exact-locale translation CAS, revision high-water/change cursors, permission floors, and canonical Region translation-target provider; no additional production finding. |
 | [x] | [admin](../../crates/modules/rustok-region/admin) | `modules` | 8 | 2,944 | 2026-09-21 11:17 | Audited Region admin server functions/UI: trusted AuthContext/TenantContext usage, permission gates for bootstrap/list/read/create/update, tenant-scoped RegionService calls, input normalization, and error boundaries; no additional production finding. |
-| [ ] | [storefront](../../crates/modules/rustok-region/storefront) | `modules` | 9 | 1,739 | None |  |
+| [x] | [storefront](../../crates/modules/rustok-region/storefront) | `modules` | 9 | 1,739 | 2026-09-21 11:24 | Audited native/GraphQL public region data, tenant context, locale/default-locale fallback, public currency/tax presentation, region selection routing, error fallback semantics, and UI rendering; no additional production tenant-isolation or privacy finding. |
 | [ ] | [rustok-search](../../crates/modules/rustok-search) | `modules` | 95 | 30,084 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-search/admin) | `modules` | 20 | 6,725 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-search/storefront) | `modules` | 11 | 3,453 | None |  |
