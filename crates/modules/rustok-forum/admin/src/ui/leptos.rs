@@ -202,6 +202,11 @@ pub fn ForumAdmin() -> impl IntoView {
         "forum.error.deleteTopic",
         "Failed to delete topic",
     );
+    let restore_topic_error = t(
+        ui_locale.as_deref(),
+        "forum.error.restoreTopic",
+        "Failed to restore topic",
+    );
     let locale_switch_load_error = t(
         ui_locale.as_deref(),
         "forum.error.localeSwitchLoad",
@@ -996,6 +1001,30 @@ pub fn ForumAdmin() -> impl IntoView {
         });
     });
 
+    let restore_topic = Callback::new({
+        let restore_topic_error = restore_topic_error.clone();
+        move |topic_id: String| {
+            let token_value = token.get_untracked();
+            let tenant_value = tenant.get_untracked();
+            set_error.set(None);
+            set_busy_key.set(Some(forum_admin_busy_key(
+                ForumAdminBusySurface::Topic,
+                ForumAdminBusyAction::Moderate,
+                Some(topic_id.as_str()),
+            )));
+            spawn_local(async move {
+                match transport::restore_topic(token_value, tenant_value, topic_id).await {
+                    Ok(()) => set_refresh_nonce.update(|value| *value += 1),
+                    Err(err) => set_error.set(Some(forum_admin_transport_error_message(
+                        restore_topic_error.as_str(),
+                        err,
+                    ))),
+                }
+                set_busy_key.set(None);
+            });
+        }
+    });
+
     let topic_count = move || result_item_count(topics.get());
     let category_count = move || result_item_count(categories.get());
     let reply_preview_count = move || result_item_count(replies.get());
@@ -1147,6 +1176,7 @@ pub fn ForumAdmin() -> impl IntoView {
                         on_locale_switch=switch_topic_locale
                         on_edit=open_topic
                         on_delete=delete_topic
+                        on_restore=restore_topic
                         on_submit=submit_topic
                         on_submit_reply=submit_reply
                         on_reset=reset_topic
@@ -1240,6 +1270,7 @@ fn CategoriesPage(
     on_locale_switch: Callback<String>,
     on_edit: Callback<String>,
     on_delete: Callback<String>,
+    on_restore: Callback<String>,
     on_submit: impl Fn(SubmitEvent) + 'static,
     on_reset: Callback<()>,
 ) -> impl IntoView {
@@ -1940,7 +1971,7 @@ fn TopicsPage(
                         </button>
                     </div>
                     <Suspense fallback=move || view! { <div class="mt-6 h-72 animate-pulse rounded-[1.5rem] bg-muted"></div> }>
-                        {move || topics.get().map(|result| render_topic_feed(result, editing_id.get(), busy_key.get(), on_edit, on_delete, topic_feed_locale.clone()))}
+                        {move || topics.get().map(|result| render_topic_feed(result, editing_id.get(), busy_key.get(), on_edit, on_delete, on_restore, topic_feed_locale.clone()))}
                     </Suspense>
                 </section>
             </div>
@@ -2169,6 +2200,7 @@ fn render_category_grid(
     busy_key: Option<String>,
     on_edit: Callback<String>,
     on_delete: Callback<String>,
+    on_restore: Callback<String>,
     locale: Option<String>,
 ) -> AnyView {
     let no_categories_label = t(
@@ -2197,6 +2229,7 @@ fn render_category_grid(
         edit: t(locale.as_deref(), "forum.render.edit", "Edit"),
     };
     let delete_label = t(locale.as_deref(), "forum.render.delete", "Delete");
+    let restore_label = t(locale.as_deref(), "forum.render.restore", "Restore");
     match forum_admin_collection_state(result) {
         ForumAdminCollectionState::Empty => view! { <div class="mt-6 rounded-[1.5rem] border border-dashed border-border p-8 text-sm text-muted-foreground">{no_categories_label}</div> }.into_any(),
         ForumAdminCollectionState::Ready(items) => view! {
@@ -2390,8 +2423,37 @@ fn render_topic_feed(
                                 </div>
                             </div>
                             <div class="mt-5 flex flex-wrap gap-2">
-                                <button type="button" class=forum_admin_action_button_class(ForumAdminActionButtonKind::Action) on:click={ let item_id = item_id.clone(); move |_| on_edit.run(item_id.clone()) } disabled=vm.is_busy>{vm.action_label.clone()}</button>
-                                <button type="button" class=forum_admin_action_button_class(ForumAdminActionButtonKind::Delete) on:click={ let item_id = item_id.clone(); move |_| on_delete.run(item_id.clone()) } disabled=vm.is_busy>{delete_label.clone()}</button>
+                                {if item.is_deleted {
+                                    view! {
+                                        <button
+                                            type="button"
+                                            class=forum_admin_action_button_class(ForumAdminActionButtonKind::Action)
+                                            on:click={ let item_id = item_id.clone(); move |_| on_restore.run(item_id.clone()) }
+                                            disabled=vm.is_busy
+                                        >
+                                            {restore_label.clone()}
+                                        </button>
+                                    }.into_any()
+                                } else {
+                                    view! {
+                                        <button
+                                            type="button"
+                                            class=forum_admin_action_button_class(ForumAdminActionButtonKind::Action)
+                                            on:click={ let item_id = item_id.clone(); move |_| on_edit.run(item_id.clone()) }
+                                            disabled=vm.is_busy
+                                        >
+                                            {vm.action_label.clone()}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class=forum_admin_action_button_class(ForumAdminActionButtonKind::Delete)
+                                            on:click={ let item_id = item_id.clone(); move |_| on_delete.run(item_id.clone()) }
+                                            disabled=vm.is_busy
+                                        >
+                                            {delete_label.clone()}
+                                        </button>
+                                    }.into_any()
+                                }}
                             </div>
                         </article>
                     }
