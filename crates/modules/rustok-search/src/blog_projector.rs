@@ -80,6 +80,73 @@ impl BlogSearchProjector {
         result
     }
 
+    pub(crate) async fn refresh_author_projection(
+        &self,
+        tenant_id: Uuid,
+        author_id: Uuid,
+    ) -> Result<()> {
+        self.ensure_postgres()?;
+        let started_at = Instant::now();
+        let result = self
+            .refresh_author_projection_in(&self.db, tenant_id, author_id)
+            .await;
+        record_projector_operation(
+            "refresh_blog_author_projection",
+            tenant_id,
+            &result,
+            started_at.elapsed(),
+        );
+        result
+    }
+
+    async fn refresh_author_projection_in<C>(
+        &self,
+        conn: &C,
+        tenant_id: Uuid,
+        author_id: Uuid,
+    ) -> Result<()>
+    where
+        C: ConnectionTrait,
+    {
+        let statement = Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            r#"
+            UPDATE search_documents AS sd
+            SET
+                keywords_text = CONCAT_WS(
+                    ' ',
+                    COALESCE(sd.payload->>'category_name', ''),
+                    COALESCE(u.name, ''),
+                    COALESCE(sd.payload->>'seo_title', ''),
+                    COALESCE(sd.payload->>'seo_description', ''),
+                    COALESCE((
+                        SELECT string_agg(value, ' ' ORDER BY value)
+                        FROM jsonb_array_elements_text(
+                            COALESCE(sd.payload->'tags', '[]'::jsonb)
+                        ) AS tags(value)
+                    ), '')
+                ),
+                payload = jsonb_set(
+                    sd.payload,
+                    '{author_name}',
+                    COALESCE(to_jsonb(u.name), 'null'::jsonb),
+                    true
+                ),
+                indexed_at = NOW()
+            FROM users AS u
+            WHERE sd.tenant_id = $1
+              AND sd.source_module = 'blog'
+              AND sd.entity_type = 'blog_post'
+              AND sd.payload->>'author_id' = $2::text
+              AND u.tenant_id = $1
+              AND u.id = $2
+            "#,
+            vec![tenant_id.into(), author_id.into()],
+        );
+        conn.execute_raw(statement).await.map_err(Error::Database)?;
+        Ok(())
+    }
+
     pub(crate) async fn delete_post(&self, tenant_id: Uuid, post_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
         let started_at = Instant::now();
