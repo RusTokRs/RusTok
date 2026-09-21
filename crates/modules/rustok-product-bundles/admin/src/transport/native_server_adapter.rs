@@ -53,7 +53,7 @@ async fn bundle_directory_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
+        use rustok_api::{AuthContext, HostRuntimeContext, Permission, TenantContext, has_effective_permission};
         use rustok_product_bundles::{BundleFilter, BundlePort, BundleService};
 
         let runtime = expect_context::<HostRuntimeContext>();
@@ -64,7 +64,7 @@ async fn bundle_directory_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_tenant(&auth, &tenant)?;
+        ensure_tenant(&auth, &tenant, Permission::PRODUCTS_READ)?;
 
         let page = filters.page.max(1);
         let per_page = filters.per_page.clamp(1, 100);
@@ -136,7 +136,7 @@ async fn bundle_detail_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_tenant(&auth, &tenant)?;
+        ensure_tenant(&auth, &tenant, Permission::PRODUCTS_UPDATE)?;
 
         let id = parse_uuid(bundle_id.as_str(), "bundle_id")?;
         let service = BundleService::new(runtime.db_clone());
@@ -474,11 +474,18 @@ async fn bundle_command_native(
 fn ensure_tenant(
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
+    required_permission: rustok_api::Permission,
 ) -> Result<(), ServerFnError> {
     if auth.tenant_id != tenant.id {
         return Err(ServerFnError::new(
             "Permission denied: bundle tenant mismatch",
         ));
+    }
+    if !rustok_api::has_effective_permission(&auth.permissions, &required_permission) {
+        return Err(ServerFnError::new(format!(
+            "Permission denied: required permission {}",
+            required_permission
+        )));
     }
     Ok(())
 }
