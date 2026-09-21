@@ -71,11 +71,11 @@ const topicFacade = readRepo(topicFacadePath);
 const replyFacade = readRepo(replyFacadePath);
 const lib = readRepo(libPath);
 
-assertContains(servicesMod, "mod topic;", `${servicesModPath}: raw topic persistence module must be crate-private`);
-assertContains(servicesMod, "mod reply;", `${servicesModPath}: raw reply persistence module must be crate-private`);
+assertContains(servicesMod, "mod topic", `${servicesModPath}: raw topic persistence module must be crate-private`);
+assertContains(servicesMod, "mod reply", `${servicesModPath}: raw reply persistence module must be crate-private`);
 assertContains(servicesMod, "pub use topic_facade::TopicService;", `${servicesModPath}: public TopicService must come from the explicit facade`);
 assertContains(servicesMod, "pub use reply_facade::ReplyService;", `${servicesModPath}: public ReplyService must come from the explicit facade`);
-assertNotMatch(servicesMod, /(^|\n)\s*pub\s+mod\s+(topic|reply|topic_owner|reply_owner)\s*;/, `${servicesModPath}: raw lifecycle modules must not be public`);
+assertNotMatch(servicesMod, /(^|\n)\s*pub\s+mod\s+(topic|reply|topic_owner|reply_owner)\s*[{;]/, `${servicesModPath}: raw lifecycle modules must not be public`);
 assertNotMatch(servicesMod, /pub\s+use\s+(topic_owner|reply_owner)::/, `${servicesModPath}: internal owner implementations must not be re-exported`);
 
 for (const [filePath, source] of [

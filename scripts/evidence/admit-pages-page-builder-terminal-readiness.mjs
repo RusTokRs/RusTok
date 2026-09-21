@@ -507,7 +507,9 @@ function main() {
   const contract = JSON.parse(contractRecord.bytes.toString("utf8"));
   if (
     contract.format !== "pages_page_builder_terminal_readiness_admission_source_v1" ||
-    contract.status !== "source_ready_maintainer_execution_pending"
+    contract.status !== "source_ready_maintainer_execution_pending" ||
+    contract.output?.status !==
+      "rollout_accessibility_prerequisites_admitted_terminal_inventory_pending"
   ) {
     fail("terminal readiness admission contract identity drifted");
   }

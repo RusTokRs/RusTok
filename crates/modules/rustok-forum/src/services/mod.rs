@@ -143,6 +143,7 @@ mod topic_owner {
 mod topic_read_state_lock;
 mod topic_reply_create_audience;
 mod topic_reply_range_move;
+mod topic_route_tombstone_visibility;
 mod topic_solution_lock;
 mod topic_split;
 mod topic_subscription_lock;
@@ -323,7 +324,7 @@ pub use topic_move::{
     ForumTopicMoveResult, ForumTopicMoveService, MAX_FORUM_TOPIC_MOVE_REASON_LEN,
     MoveForumTopicInput,
 };
-pub use topic_owner::route_tombstone_visibility::ForumTopicRouteTombstoneVisibilityService;
+pub use topic_route_tombstone_visibility::ForumTopicRouteTombstoneVisibilityService;
 pub use topic_reply_create_audience::{
     ForumTopicReplyCreateAudiencePolicy, ForumTopicReplyCreateAudiencePolicyService,
     SetForumTopicReplyCreateAudiencePolicyInput,

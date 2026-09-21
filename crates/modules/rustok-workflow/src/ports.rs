@@ -84,6 +84,24 @@ fn workflow_error_to_port_error(error: WorkflowError) -> PortError {
         | WorkflowError::InvalidStepConfig(message) => {
             PortError::validation("workflow.validation", message)
         }
+        WorkflowError::WebhookSignatureMissing => PortError::new(
+            PortErrorKind::Forbidden,
+            "workflow.webhook_signature_missing",
+            "webhook signature is missing",
+            false,
+        ),
+        WorkflowError::WebhookSignatureInvalid => PortError::new(
+            PortErrorKind::Forbidden,
+            "workflow.webhook_signature_invalid",
+            "webhook signature is invalid",
+            false,
+        ),
+        WorkflowError::WebhookSecretNotConfigured => PortError::new(
+            PortErrorKind::Unavailable,
+            "workflow.webhook_secret_not_configured",
+            "webhook secret is not configured",
+            false,
+        ),
         WorkflowError::Database(message) => PortError::unavailable(
             "workflow.database_unavailable",
             format!("workflow database error: {message}"),

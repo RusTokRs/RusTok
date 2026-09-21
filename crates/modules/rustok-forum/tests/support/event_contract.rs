@@ -25,7 +25,8 @@ pub const EXPECTED_FORUM_EVENT_TYPES: &[&str] = &[
     "forum.solution.unmarked",
     "forum.topic.vote_changed",
     "forum.reply.vote_changed",
-    "forum.subscription.changed",
+    "forum.category.subscription_changed",
+    "forum.topic.subscription_changed",
     "forum.topic.tags_changed",
 ];
 

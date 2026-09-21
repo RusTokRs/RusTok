@@ -69,13 +69,27 @@ impl CategoryProjectionOwnerService {
         .insert(&txn)
         .await?;
 
+        let icon = match input.icon.as_deref() {
+            Some(icon) => Some(
+                crate::category_presentation::normalize_category_icon_key(icon).ok_or_else(
+                    || {
+                        ForumError::Validation(
+                            "Forum category icon must be a bounded kebab-case design token"
+                                .to_string(),
+                        )
+                    },
+                )?,
+            ),
+            None => None,
+        };
+
         taxonomy_sync::sync_category_copy_in_tx(
             &txn,
             tenant_id,
             id,
             input.parent_id,
             requested_position,
-            input.icon,
+            icon,
             input.color,
             locale,
             canonical_name,
@@ -137,6 +151,19 @@ impl CategoryProjectionOwnerService {
         let (icon, color) = match existing_presentation {
             Some(p) => (input.icon.or(p.icon_key), input.color.or(p.color)),
             None => (input.icon, input.color),
+        };
+        let icon = match icon.as_deref() {
+            Some(icon) => Some(
+                crate::category_presentation::normalize_category_icon_key(icon).ok_or_else(
+                    || {
+                        ForumError::Validation(
+                            "Forum category icon must be a bounded kebab-case design token"
+                                .to_string(),
+                        )
+                    },
+                )?,
+            ),
+            None => None,
         };
 
         let existing_canonical =

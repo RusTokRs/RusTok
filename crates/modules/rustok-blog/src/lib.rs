@@ -12,6 +12,8 @@ mod module;
 pub mod controllers;
 pub mod dto;
 mod entities;
+#[doc(hidden)]
+pub use self::entities::*;
 pub mod error;
 pub mod graphql;
 pub mod migrations;

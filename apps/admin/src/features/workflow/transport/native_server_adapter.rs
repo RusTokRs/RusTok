@@ -331,6 +331,7 @@ pub(super) async fn create_workflow_native(
                     description: input.description,
                     trigger_config: input.trigger_config,
                     webhook_slug: None,
+                    webhook_secret: None,
                 },
             )
             .await

@@ -106,10 +106,16 @@ requireText(
   "pub const fn stable_code",
   `${errorPath}: stable Forum error-code mapping is missing`,
 );
+const categoryWriteBoundary = [
+  entityPath,
+  "crates/modules/rustok-forum/src/services/category_projection_owner.rs",
+]
+  .map(read)
+  .join("\n");
 requireText(
-  entity,
+  categoryWriteBoundary,
   "normalize_category_icon_key",
-  `${entityPath}: database write boundary does not validate icon tokens`,
+  "category write boundary does not validate icon tokens",
 );
 
 reject(
