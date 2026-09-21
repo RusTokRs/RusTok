@@ -347,3 +347,101 @@ fn comments_error_to_port_error(error: CommentsError) -> PortError {
         CommentsError::Validation(message) => PortError::validation("comments.validation", message),
     }
 }
+
+
+#[cfg(test)]
+mod create_idempotency_tests {
+    use super::*;
+    use rustok_core::{MigrationSource, UserRole};
+    use rustok_outbox::{OutboxTransport, SysEventsMigration};
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
+    use rustok_test_utils::setup_test_db;
+    use std::sync::Arc;
+
+    fn body(text: &str) -> rustok_api::RichTextDocument {
+        serde_json::from_value(serde_json::json!({
+            "type": "doc",
+            "content": [{
+                "type": "paragraph",
+                "content": [{"type": "text", "text": text}]
+            }]
+        }))
+        .expect("test comment body should deserialize")
+    }
+
+    fn context(tenant_id: Uuid, user_id: Uuid, key: &str) -> PortContext {
+        PortContext::new(
+            tenant_id.to_string(),
+            PortActor::user(user_id.to_string()),
+            "en",
+            "comments-create-idempotency",
+        )
+        .with_claim("comments:create")
+        .with_claim("comments:read")
+        .with_role(UserRole::Customer.to_string())
+        .with_idempotency_key(key)
+        .with_deadline(std::time::Duration::from_secs(5))
+    }
+
+    async fn setup_database() -> DatabaseConnection {
+        let db = setup_test_db().await;
+        let manager = SchemaManager::new(&db);
+        SysEventsMigration
+            .up(&manager)
+            .await
+            .expect("outbox migration should apply");
+        for migration in CommentsModule.migrations() {
+            migration
+                .up(&manager)
+                .await
+                .expect("Comments migration should apply");
+        }
+        db
+    }
+
+    #[tokio::test]
+    async fn create_comment_replays_same_request_and_conflicts_on_changed_payload() {
+        let db = setup_database().await;
+        let tenant_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let post_id = Uuid::new_v4();
+        let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+        let provider = in_process_comments_thread_port(db.clone(), event_bus);
+
+        let request = CreateCommentInput {
+            target_type: "blog_post".to_string(),
+            target_id: post_id,
+            locale: "en".to_string(),
+            body: body("hello"),
+            parent_comment_id: None,
+            status: CommentStatus::Pending,
+        };
+
+        let first = provider
+            .create_comment(context(tenant_id, user_id, "comment-create-1"), request.clone())
+            .await
+            .expect("first logical create should succeed");
+
+        let replay = provider
+            .create_comment(context(tenant_id, user_id, "comment-create-1"), request.clone())
+            .await
+            .expect("same logical create should replay");
+
+        assert_eq!(replay.id, first.id);
+        assert_eq!(replay.thread_id, first.thread_id);
+        assert_eq!(replay.body_text, first.body_text);
+
+        let mut conflicting = request;
+        conflicting.body = body("changed");
+        let error = provider
+            .create_comment(
+                context(tenant_id, user_id, "comment-create-1"),
+                conflicting,
+            )
+            .await
+            .expect_err("reusing the key for changed payload must conflict");
+
+        assert_eq!(error.kind, PortErrorKind::Conflict);
+        assert_eq!(error.code, "outbox.operation_receipt_conflict");
+    }
+}
