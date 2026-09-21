@@ -913,3 +913,31 @@ enum RegistryGovernanceEvents {
     ActorPrincipal,
     PublisherPrincipal,
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::safe_registry_storage_suffix;
+
+    #[test]
+    fn accepts_safe_relative_registry_storage_paths() {
+        assert_eq!(
+            safe_registry_storage_suffix("2026/06/module.crate"),
+            Some("2026/06/module.crate".to_string())
+        );
+    }
+
+    #[test]
+    fn rejects_traversal_absolute_and_control_paths() {
+        for value in [
+            "../outside.crate",
+            "nested/../../outside.crate",
+            "/etc/passwd",
+            r"nested\..\outside.crate",
+            "nested/
+/outside.crate",
+        ] {
+            assert_eq!(safe_registry_storage_suffix(value), None, "{value:?}");
+        }
+    }
+}
