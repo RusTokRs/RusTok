@@ -1532,6 +1532,8 @@ impl DomainEvent {
                 | Self::VariantUpdated { .. }
                 | Self::InventoryUpdated { .. }
                 | Self::PriceUpdated { .. }
+                | Self::UserUpdated { .. }
+                | Self::UserDeleted { .. }
                 | Self::TagAttached { .. }
                 | Self::TagDetached { .. }
                 | Self::ProfileUpdated { .. }

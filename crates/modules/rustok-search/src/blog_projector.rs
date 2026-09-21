@@ -15,6 +15,56 @@ pub(crate) struct BlogSearchProjector {
     db: DatabaseConnection,
 }
 
+const AUTHOR_PROJECTION_REFRESH_SQL: &str = r#"
+UPDATE search_documents AS sd
+SET
+    keywords_text = CONCAT_WS(
+        ' ',
+        COALESCE(sd.payload->>'category_name', ''),
+        COALESCE((
+            SELECT CASE
+                WHEN LOWER(u.status::text) = 'active' THEN COALESCE(u.name, '')
+                ELSE ''
+            END
+            FROM users AS u
+            WHERE u.tenant_id = sd.tenant_id
+              AND u.id = $2
+        ), ''),
+        COALESCE(sd.payload->>'seo_title', ''),
+        COALESCE(sd.payload->>'seo_description', ''),
+        COALESCE((
+            SELECT string_agg(value, ' ' ORDER BY value)
+            FROM jsonb_array_elements_text(
+                CASE
+                    WHEN jsonb_typeof(COALESCE(sd.payload->'tags', '[]'::jsonb)) = 'array'
+                        THEN COALESCE(sd.payload->'tags', '[]'::jsonb)
+                    ELSE '[]'::jsonb
+                END
+            ) AS tags(value)
+        ), '')
+    ),
+    payload = jsonb_set(
+        sd.payload,
+        '{author_name}',
+        COALESCE((
+            SELECT CASE
+                WHEN LOWER(u.status::text) = 'active'
+                    THEN COALESCE(to_jsonb(u.name), 'null'::jsonb)
+                ELSE 'null'::jsonb
+            END
+            FROM users AS u
+            WHERE u.tenant_id = sd.tenant_id
+              AND u.id = $2
+        ), 'null'::jsonb),
+        true
+    ),
+    indexed_at = NOW()
+WHERE sd.tenant_id = $1
+  AND sd.source_module = 'blog'
+  AND sd.entity_type = 'blog_post'
+  AND sd.payload->>'author_id' = $2::text
+"#;
+
 impl BlogSearchProjector {
     pub(crate) fn new(db: DatabaseConnection) -> Self {
         Self { db }
@@ -56,6 +106,43 @@ impl BlogSearchProjector {
         .await;
         record_projector_operation("upsert_blog_post", tenant_id, &result, started_at.elapsed());
         result
+    }
+
+    pub(crate) async fn refresh_author_projection(
+        &self,
+        tenant_id: Uuid,
+        author_id: Uuid,
+    ) -> Result<()> {
+        self.ensure_postgres()?;
+        let started_at = Instant::now();
+        let result = self
+            .refresh_author_projection_in(&self.db, tenant_id, author_id)
+            .await;
+        record_projector_operation(
+            "refresh_blog_author_projection",
+            tenant_id,
+            &result,
+            started_at.elapsed(),
+        );
+        result
+    }
+
+    async fn refresh_author_projection_in<C>(
+        &self,
+        conn: &C,
+        tenant_id: Uuid,
+        author_id: Uuid,
+    ) -> Result<()>
+    where
+        C: ConnectionTrait,
+    {
+        let statement = Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            AUTHOR_PROJECTION_REFRESH_SQL,
+            vec![tenant_id.into(), author_id.into()],
+        );
+        conn.execute_raw(statement).await.map_err(Error::Database)?;
+        Ok(())
     }
 
     pub(crate) async fn delete_post(&self, tenant_id: Uuid, post_id: Uuid) -> Result<()> {
@@ -219,7 +306,10 @@ impl BlogSearchProjector {
                 CONCAT_WS(
                     ' ',
                     COALESCE(bct.name, bct_fallback.name, bct_term.canonical_key, ''),
-                    COALESCE(u.name, ''),
+                    CASE
+                        WHEN LOWER(u.status::text) = 'active' THEN COALESCE(u.name, '')
+                        ELSE ''
+                    END,
                     COALESCE(bt.seo_title, ''),
                     COALESCE(bt.seo_description, ''),
                     COALESCE(tags.tag_names, '')
@@ -240,7 +330,10 @@ impl BlogSearchProjector {
                     'category_name', COALESCE(bct.name, bct_fallback.name, bct_term.canonical_key),
                     'category_slug', COALESCE(bct.slug, bct_fallback.slug, bct_term.canonical_key),
                     'author_id', p.author_id,
-                    'author_name', u.name,
+                    'author_name', CASE
+                        WHEN LOWER(u.status::text) = 'active' THEN u.name
+                        ELSE NULL
+                    END,
                     'tags', COALESCE(tags.tag_list, '[]'::jsonb),
                     'channel_slugs', COALESCE(channels.channel_slugs, '[]'::jsonb),
                     'comment_count', p.comment_count,
@@ -474,7 +567,22 @@ fn classify_error(error: &Error) -> &'static str {
 mod tests {
     use rustok_api::RichTextDocument;
 
-    use super::{compose_search_body, project_canonical_article_plain_text};
+    use super::{
+        compose_search_body, project_canonical_article_plain_text, AUTHOR_PROJECTION_REFRESH_SQL,
+    };
+
+    #[test]
+    fn author_projection_refresh_is_tenant_scoped_and_in_place() {
+        assert!(AUTHOR_PROJECTION_REFRESH_SQL.contains("UPDATE search_documents AS sd"));
+        assert!(AUTHOR_PROJECTION_REFRESH_SQL.contains("sd.tenant_id = $1"));
+        assert!(AUTHOR_PROJECTION_REFRESH_SQL.contains("sd.payload->>'author_id' = $2::text"));
+        assert!(AUTHOR_PROJECTION_REFRESH_SQL.contains("sd.source_module = 'blog'"));
+        assert!(AUTHOR_PROJECTION_REFRESH_SQL.contains("sd.entity_type = 'blog_post'"));
+        assert!(AUTHOR_PROJECTION_REFRESH_SQL.contains("LOWER(u.status::text) = 'active'"));
+        assert!(AUTHOR_PROJECTION_REFRESH_SQL.contains("payload = jsonb_set"));
+        assert!(!AUTHOR_PROJECTION_REFRESH_SQL.contains("INSERT INTO search_documents"));
+        assert!(!AUTHOR_PROJECTION_REFRESH_SQL.contains("DELETE FROM search_documents"));
+    }
 
     #[test]
     fn canonical_article_search_text_uses_article_policy() {

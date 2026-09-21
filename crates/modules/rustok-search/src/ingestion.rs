@@ -109,105 +109,8 @@ impl SearchIngestionHandler {
             | DomainEvent::ForumTopicStatusChanged { .. }
             | DomainEvent::ForumTopicPinned { .. }
             | DomainEvent::ForumReplyStatusChanged { .. }
-            | DomainEvent::ProfileUpdated { .. }
-            | DomainEvent::UserDeleted { .. } => projector.rebuild_tenant(envelope.tenant_id).await,
-            DomainEvent::TenantModuleToggled {
-                module_slug,
-                enabled,
-                ..
-            } if module_slug == "forum" => {
-                self.handle_forum_module_toggle(envelope.tenant_id, *enabled)
-                    .await
-            }
-            DomainEvent::LocaleEnabled { .. }
-            | DomainEvent::LocaleDisabled { .. }
-            | DomainEvent::TenantCreated { .. }
-            | DomainEvent::TenantUpdated { .. } => self.rebuild_tenant(envelope.tenant_id).await,
-            DomainEvent::ReindexRequested {
-                target_type,
-                target_id,
-            } => match (target_type.as_str(), target_id) {
-                ("search", _) => self.rebuild_tenant(envelope.tenant_id).await,
-                ("forum", _) | ("forum_topic", Some(_)) => {
-                    projector.rebuild_tenant(envelope.tenant_id).await
-                }
-                ("forum_category", Some(category_id)) => {
-                    projector
-                        .refresh_entity(envelope.tenant_id, "forum_category", *category_id)
-                        .await
-                }
-                _ => Ok(()),
-            },
-            _ => Err(Error::Validation(format!(
-                "Unsupported Forum projection inbox event `{}`",
-                envelope.event.event_type()
-            ))),
-        }
-    }
-
-    async fn reconcile_forum_inbox(&self, tenant_id: Uuid, limit: usize) -> HandlerResult {
-        let Some(inbox) = &self.forum_inbox else {
-            return Ok(());
-        };
-        for _ in 0..limit {
-            let Some(claim) = inbox.claim_next(tenant_id).await? else {
-                break;
-            };
-            match self.apply_forum_inbox_event(claim.envelope()).await {
-                Ok(()) => claim.complete().await?,
-                Err(error) => {
-                    claim.retry(&error).await?;
-                    return Err(error);
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl EventHandler for SearchIngestionHandler {
-    fn name(&self) -> &'static str {
-        "search_ingestion"
-    }
-
-    fn handles(&self, event: &DomainEvent) -> bool {
-        match event {
-            DomainEvent::NodeCreated { .. }
-            | DomainEvent::NodeUpdated { .. }
-            | DomainEvent::NodeTranslationUpdated { .. }
-            | DomainEvent::NodePublished { .. }
-            | DomainEvent::NodeUnpublished { .. }
-            | DomainEvent::NodeDeleted { .. }
-            | DomainEvent::BodyUpdated { .. }
-            | DomainEvent::CategoryUpdated { .. }
-            | DomainEvent::ProductCreated { .. }
-            | DomainEvent::ProductUpdated { .. }
-            | DomainEvent::ProductPublished { .. }
-            | DomainEvent::ProductDeleted { .. }
-            | DomainEvent::VariantCreated { .. }
-            | DomainEvent::VariantUpdated { .. }
-            | DomainEvent::VariantDeleted { .. }
-            | DomainEvent::InventoryUpdated { .. }
-            | DomainEvent::PriceUpdated { .. }
-            | DomainEvent::BlogPostCreated { .. }
-            | DomainEvent::BlogPostPublished { .. }
-            | DomainEvent::BlogPostUnpublished { .. }
-            | DomainEvent::BlogPostUpdated { .. }
-            | DomainEvent::BlogPostArchived { .. }
-            | DomainEvent::BlogPostDeleted { .. }
-            | DomainEvent::LocaleEnabled { .. }
-            | DomainEvent::LocaleDisabled { .. }
-            | DomainEvent::TenantCreated { .. }
-            | DomainEvent::TenantUpdated { .. } => true,
-            DomainEvent::ForumTopicCreated { .. }
-            | DomainEvent::ForumTopicReplied { .. }
-            | DomainEvent::ForumTopicStatusChanged { .. }
-            | DomainEvent::ForumTopicPinned { .. }
-            | DomainEvent::ForumReplyStatusChanged { .. }
-            | DomainEvent::ProfileUpdated { .. }
-            | DomainEvent::UserDeleted { .. } => self.forum_projector.is_some(),
-            DomainEvent::TagAttached { target_type, .. }
+            | DomainEvent::ProfileUpdated { .. } => self.forum_projector.is_some(),
+                        DomainEvent::TagAttached { target_type, .. }
             | DomainEvent::TagDetached { target_type, .. } => target_type == "node",
             DomainEvent::TenantModuleToggled { module_slug, .. } => {
                 module_slug == "blog" || (module_slug == "forum" && self.forum_projector.is_some())
@@ -242,6 +145,19 @@ impl EventHandler for SearchIngestionHandler {
         );
 
         async {
+            if matches!(
+                &envelope.event,
+                DomainEvent::UserUpdated { .. } | DomainEvent::UserDeleted { .. }
+            ) {
+                let user_id = match &envelope.event {
+                    DomainEvent::UserUpdated { user_id } | DomainEvent::UserDeleted { user_id } => *user_id,
+                    _ => unreachable!(),
+                };
+                self.blog_projector
+                    .refresh_author_projection(envelope.tenant_id, user_id)
+                    .await?;
+            }
+
             if let Some(scope) = ForumProjectionScope::for_event(&envelope.event)
                 && let Some(inbox) = &self.forum_inbox
             {
@@ -406,6 +322,12 @@ mod tests {
             target_type: "search".to_string(),
             target_id: None,
         }));
+        assert!(handler.handles(&DomainEvent::UserUpdated {
+            user_id: Uuid::new_v4(),
+        }));
+        assert!(handler.handles(&DomainEvent::UserDeleted {
+            user_id: Uuid::new_v4(),
+        }));
         assert!(handler.handles(&DomainEvent::TenantModuleToggled {
             tenant_id: Uuid::new_v4(),
             module_slug: "blog".to_string(),
@@ -496,8 +418,9 @@ fn projector_operation_for_event(event: &DomainEvent) -> &'static str {
                 "delete_forum_scope"
             }
         }
-        DomainEvent::ProfileUpdated { .. } | DomainEvent::UserDeleted { .. } => {
-            "rebuild_forum_author_projection"
+        DomainEvent::ProfileUpdated { .. } => "rebuild_forum_author_projection",
+        DomainEvent::UserUpdated { .. } | DomainEvent::UserDeleted { .. } => {
+            "refresh_blog_author_projection"
         }
         DomainEvent::ForumTopicCreated { .. }
         | DomainEvent::ForumTopicReplied { .. }

@@ -526,6 +526,10 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             None
         };
 
+        let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(
+            self.db.clone(),
+        )) as Arc<dyn EventTransport>);
+
         if let Some(plan) = role_mutation_plan.as_ref() {
             let generation = durable_generation.ok_or_else(|| {
                 AuthAdminMutationError::Internal(
@@ -535,9 +539,6 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             let event = plan
                 .integration_event(generation)
                 .map_err(map_role_mutation_policy_error)?;
-            let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(
-                self.db.clone(),
-            )) as Arc<dyn EventTransport>);
             if let Err(error) = event_bus
                 .publish_contract_in_tx(&tx, plan.tenant_id(), Some(plan.actor_id()), event)
                 .await
@@ -553,6 +554,31 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
                 );
                 return Err(AuthAdminMutationError::Internal(
                     "durable RBAC role mutation event is unavailable".to_string(),
+                ));
+            }
+        }
+
+        if user_row_update_requested || role_mutation_plan.is_some() {
+            if let Err(error) = event_bus
+                .publish_in_tx(
+                    &tx,
+                    context.tenant_id,
+                    Some(context.actor_id),
+                    DomainEvent::UserUpdated { user_id: user.id },
+                )
+                .await
+            {
+                let rollback_error = tx.rollback().await.err();
+                tracing::error!(
+                    %error,
+                    ?rollback_error,
+                    tenant_id = %context.tenant_id,
+                    actor_id = %context.actor_id,
+                    user_id = %user.id,
+                    "Durable UserUpdated publication failed; user update rolled back"
+                );
+                return Err(AuthAdminMutationError::Internal(
+                    "durable UserUpdated event is unavailable".to_string(),
                 ));
             }
         }
