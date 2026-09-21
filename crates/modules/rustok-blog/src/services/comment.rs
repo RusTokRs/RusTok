@@ -384,7 +384,7 @@ impl CommentService {
         Ok(())
     }
 
-    async fn ensure_public_post_visible(
+    pub(crate) async fn ensure_public_post_visible(
         &self,
         tenant_id: Uuid,
         post_id: Uuid,
