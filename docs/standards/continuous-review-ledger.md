@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `139 / 218` components audited (**64%**)
+- **Progress:** `140 / 218` components audited (**64%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -162,7 +162,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-profiles](../../crates/modules/rustok-profiles) | `modules` | 52 | 8,990 | 2026-09-21 10:24 | Audited profile GraphQL read/write boundaries, privacy and follower checks, tenant/self ownership, media validation, handle/locale/visibility writes, profile upsert/event transactions, translation/tag integrity, and unique `(tenant, handle)`/`(profile, locale)` constraints; no additional production finding. |
 | [x] | [cli](../../crates/modules/rustok-profiles/cli) | `modules` | 1 | 338 | 2026-09-21 10:28 | Audited profiles backfill command boundary: required tenant ID, tenant/user/enrichment reads, tenant-scoped profile mutations, dry-run/event behavior, and operational visibility options; no additional production authorization or cross-tenant finding. |
 | [x] | [storefront](../../crates/modules/rustok-profiles/storefront) | `modules` | 9 | 1,464 | 2026-09-21 10:34 | Audited native/GraphQL profile reads, tenant and privacy boundaries, public media owner validation, authenticated follow mutations, idempotency/revision handling, locale fallback, and client transport selection; no additional production security/correctness finding. |
-| [ ] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 55 | 11,022 | None |  |
+| [x] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 55 | 11,022 | 2026-09-21 10:41 | Audited role mutation authority/continuity, tenant-integrity triggers, control-plane admission, durable permission invalidation generation, relation-based permission resolution/cache fencing, artifact permission catalog/assignment idempotency, and system-role repair; no additional production correctness or authorization finding. |
 | [ ] | [admin](../../crates/modules/rustok-rbac/admin) | `modules` | 8 | 503 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-rbac/cli) | `modules` | 1 | 243 | None |  |
 | [ ] | [rustok-reactions](../../crates/modules/rustok-reactions) | `modules` | 7 | 2,836 | None |  |
