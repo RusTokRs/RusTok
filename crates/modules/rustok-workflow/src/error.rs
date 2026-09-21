@@ -27,6 +27,15 @@ pub enum WorkflowError {
     #[error("Invalid step config: {0}")]
     InvalidStepConfig(String),
 
+    #[error("Webhook signature is missing")]
+    WebhookSignatureMissing,
+
+    #[error("Webhook signature is invalid")]
+    WebhookSignatureInvalid,
+
+    #[error("Webhook secret is not configured")]
+    WebhookSecretNotConfigured,
+
     #[error("Database error: {0}")]
     Database(#[from] sea_orm::DbErr),
 
