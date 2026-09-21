@@ -215,9 +215,14 @@ pub fn build_shared_runtime_extensions_with_host_providers(
 
     #[cfg(feature = "mod-taxonomy")]
     {
-        let provider = rustok_taxonomy::TaxonomyTranslationTargetProvider::new(Arc::new(
-            rustok_taxonomy::TaxonomyService::new(db.clone()),
-        ));
+        let owner_registry = extensions
+            .get::<rustok_taxonomy::TaxonomyModuleTermTranslationOwnerRegistry>()
+            .cloned()
+            .unwrap_or_default();
+        let provider = rustok_taxonomy::TaxonomyTranslationTargetProvider::with_owner_registry(
+            Arc::new(rustok_taxonomy::TaxonomyService::new(db.clone())),
+            owner_registry,
+        );
         rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
             .map_err(|error| {
                 Error::Message(format!(
