@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `168 / 218` components audited (**77%**)
+- **Progress:** `169 / 218` components audited (**78%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -191,7 +191,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-workflow](../../crates/modules/rustok-workflow) | `modules` | 52 | 6,794 | 2026-09-21 16:05 | Audited workflow CRUD/versioning, tenant-scoped execution reads, trigger/webhook paths, event idempotency, transactional workflow/step mutation locks, execution state transitions, retry behavior, HTTP SSRF controls, script/notification abstractions, and GraphQL/HTTP permissions. Fixed unauthenticated webhook execution: webhook secrets are now explicitly configured, HMAC-SHA256 signatures are verified over the raw request body with constant-time comparison, missing/invalid signatures fail closed, and webhook signatures are no longer logged. |
 | [x] | [admin](../../crates/modules/rustok-workflow/admin) | `modules` | 14 | 1,120 | 2026-09-21 16:28 | Audited native/GraphQL admin transport, auth and tenant forwarding, workflow permission gates, template creation path, UI tenant/token context, and rendered admin surface. Fixed a real source-integrity defect: `lib.rs`/UI/transport referenced a missing `core.rs`; restored the module-compatible core view-model and transport-context layer. No additional production security or tenant-scope finding remained. |
 | [x] | [fly](../../crates/ui/fly) | `ui` | 65 | 23,474 | 2026-09-21 16:45 | Audited the framework-neutral Fly editor core: bundle/hash integrity, codec round-trip boundaries, runtime context contracts/dependencies/gates, internal links, safe URL and metadata handling, action/form capability gates, page rendering, CSS/HTML escaping, asset/style validation, and interaction materialization. No production auth/tenant boundary exists in this crate by design, and no additional XSS, URL, capability, or concurrency finding remained. |
-| [ ] | [fly-browser](../../crates/ui/fly-browser) | `ui` | 9 | 816 | None |  |
+| [x] | [fly-browser](../../crates/ui/fly-browser) | `ui` | 9 | 816 | 2026-09-21 16:58 | Audited the SSR-first browser adapter and bundled JavaScript bridge: message origin/source validation, protocol/instance/sequence checks, browser resource limits, pending-intent leases/timeouts, CSRF and same-origin fetch credentials, draft/revision/project-hash propagation, drag/drop intents, and consumer-owned endpoint delegation. No additional production security or tenant-scope finding remained. |
 | [ ] | [fly-leptos](../../crates/ui/fly-leptos) | `ui` | 5 | 1,691 | None |  |
 | [ ] | [fly-ui](../../crates/ui/fly-ui) | `ui` | 20 | 5,225 | None |  |
 | [ ] | [leptos-auth](../../crates/ui/leptos-auth) | `ui` | 9 | 1,494 | None |  |
