@@ -278,8 +278,11 @@ function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-blog-boundary-"));
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/lib.rs", libSource(options));
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/core.rs", coreSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/core/commands.rs", "");
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/core/presentation.rs", "");
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/model.rs", "pub struct BlogPostDraft; pub struct BlogPostDetail;");
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/leptos.rs", uiSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/components.rs", "");
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/richtext.rs", richtextAdapterSource(options));
   writeFixtureFile(root, "crates/ui/leptos-ui/src/richtext.rs", sharedRichtextAdapterSource(options));
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/moderation.rs", moderationSource(options));

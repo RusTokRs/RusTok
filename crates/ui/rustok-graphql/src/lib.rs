@@ -9,7 +9,6 @@
  */
 
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
-use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::str::FromStr;
@@ -22,22 +21,22 @@ pub const AUTH_HEADER: &str = "Authorization";
 pub const ACCEPT_LANGUAGE_HEADER: &str = "Accept-Language";
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
-pub fn default_client() -> &'static ClientWithMiddleware {
-    static CLIENT: OnceLock<ClientWithMiddleware> = OnceLock::new();
-    CLIENT.get_or_init(|| {
-        let mut builder = reqwest::Client::builder().timeout(DEFAULT_TIMEOUT);
+pub fn default_client() -> Result<&'static ClientWithMiddleware, GraphqlHttpError> {
+    static CLIENT: OnceLock<Result<ClientWithMiddleware, GraphqlHttpError>> = OnceLock::new();
+    match CLIENT.get_or_init(|| {
+        let builder = reqwest::Client::builder();
 
         #[cfg(not(target_arch = "wasm32"))]
-        {
-            builder = builder.pool_max_idle_per_host(10);
-        }
+        let builder = builder.timeout(DEFAULT_TIMEOUT).pool_max_idle_per_host(10);
 
-        let retry_policy = ExponentialBackoff::builder().build_with_max_retries(3);
-
-        ClientBuilder::new(builder.build().expect("failed to build reqwest client"))
-            .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+        builder
             .build()
-    })
+            .map(|client| ClientBuilder::new(client).build())
+            .map_err(|_| GraphqlHttpError::Network)
+    }) {
+        Ok(client) => Ok(client),
+        Err(error) => Err(error.clone()),
+    }
 }
 
 pub fn graphql_endpoint_from_base(base: &str) -> String {
@@ -68,8 +67,8 @@ pub fn default_graphql_url() -> String {
         if let Ok(url) = std::env::var("RUSTOK_GRAPHQL_URL") {
             return url;
         }
-        let base = std::env::var("RUSTOK_API_URL")
-            .unwrap_or_else(|_| "http://localhost:5150".to_string());
+        let base =
+            std::env::var("RUSTOK_API_URL").unwrap_or_else(|_| "http://localhost:5150".to_string());
         graphql_endpoint_from_base(&base)
     }
 }
@@ -176,7 +175,7 @@ where
     T: DeserializeOwned,
 {
     execute_with_client(
-        default_client(),
+        default_client()?,
         endpoint,
         request,
         token,
@@ -253,7 +252,6 @@ where
     execute_with_client(&client, endpoint, request, token, tenant_slug, locale).await
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::{GraphqlHttpError, GraphqlRequest, persisted_query_extension};
@@ -299,8 +297,8 @@ mod tests {
 
     #[test]
     fn default_client_returns_same_instance() {
-        let client1 = super::default_client();
-        let client2 = super::default_client();
+        let client1 = super::default_client().expect("default client should build");
+        let client2 = super::default_client().expect("default client should remain available");
         assert!(std::ptr::eq(client1, client2));
     }
 
@@ -335,4 +333,3 @@ mod tests {
         assert!(!mutation.is_query());
     }
 }
-

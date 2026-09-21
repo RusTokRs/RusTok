@@ -1,9 +1,9 @@
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    Statement, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
@@ -301,13 +301,7 @@ impl PricingService {
         let txn = self.db.begin().await?;
         let price_list = resolve_active_price_list_tx(&txn, tenant_id, price_list_id).await?;
         let channel_slug = normalize_channel_slug(channel_slug.as_deref());
-        validate_channel_scope_in_tx(
-            &txn,
-            tenant_id,
-            channel_id,
-            channel_slug.as_deref(),
-        )
-        .await?;
+        validate_channel_scope_in_tx(&txn, tenant_id, channel_id, channel_slug.as_deref()).await?;
 
         let mut active_price_list: entities::price_list::ActiveModel = price_list.clone().into();
         active_price_list.channel_id = Set(channel_id);
@@ -1758,7 +1752,7 @@ async fn resolve_requested_price_list_id(
     Ok(Some(price_list_id))
 }
 
-async async fn validate_channel_scope_in_tx(
+async fn validate_channel_scope_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     channel_id: Option<Uuid>,
@@ -1778,7 +1772,10 @@ async async fn validate_channel_scope_in_tx(
                     )
                 })?;
             if let Some(slug) = normalized_slug.as_deref()
-                && slug != normalize_channel_slug(Some(model.slug.as_str())).as_deref().unwrap_or_default()
+                && slug
+                    != normalize_channel_slug(Some(model.slug.as_str()))
+                        .as_deref()
+                        .unwrap_or_default()
             {
                 return Err(CommerceError::Validation(
                     "channel_id and channel_slug must reference the same tenant channel"
@@ -1814,14 +1811,16 @@ async fn load_variant_for_update_in_tx(
     let query = entities::product_variant::Entity::find_by_id(variant_id)
         .filter(entities::product_variant::Column::TenantId.eq(tenant_id));
     let variant = match txn.get_database_backend() {
-        DatabaseBackend::Postgres | DatabaseBackend::MySql => query.lock_exclusive().one(txn).await?,
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => {
+            query.lock_exclusive().one(txn).await?
+        }
         DatabaseBackend::Sqlite => {
             let statement = Statement::from_sql_and_values(
                 DatabaseBackend::Sqlite,
                 "UPDATE product_variants SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
                 [tenant_id.into(), variant_id.into()],
             );
-            txn.execute(statement).await?;
+            txn.execute_raw(statement).await?;
             query.one(txn).await?
         }
         _ => query.one(txn).await?,
@@ -1829,7 +1828,7 @@ async fn load_variant_for_update_in_tx(
     variant.ok_or(CommerceError::VariantNotFound(variant_id))
 }
 
-fn resolve_active_price_list(
+async fn resolve_active_price_list(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     price_list_id: Uuid,
@@ -1852,14 +1851,16 @@ async fn resolve_active_price_list_tx(
     let query = entities::price_list::Entity::find_by_id(price_list_id)
         .filter(entities::price_list::Column::TenantId.eq(tenant_id));
     let price_list = match txn.get_database_backend() {
-        DatabaseBackend::Postgres | DatabaseBackend::MySql => query.lock_exclusive().one(txn).await?,
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => {
+            query.lock_exclusive().one(txn).await?
+        }
         DatabaseBackend::Sqlite => {
             let statement = Statement::from_sql_and_values(
                 DatabaseBackend::Sqlite,
                 "UPDATE price_lists SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
                 [tenant_id.into(), price_list_id.into()],
             );
-            txn.execute(statement).await?;
+            txn.execute_raw(statement).await?;
             query.one(txn).await?
         }
         _ => query.one(txn).await?,

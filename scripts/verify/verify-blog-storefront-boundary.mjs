@@ -206,11 +206,11 @@ assertNotContains(transport, "crate::api", `${files.transport}: transport facade
 
 for (const marker of [
   "ChannelService::new",
-  ".is_module_enabled(channel_id, MODULE_SLUG)",
+  ".is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)",
   "normalize_channel_slug",
   "is_visible_for_public_channel",
-  "request_context.channel_slug",
-  "Module '{MODULE_SLUG}' is not enabled for channel",
+  "ctx.channel_slug",
+  "Blog is not available for the current channel",
   "CommentService::new",
   "list_public_comments_with_snapshot(",
   "SecurityContext::public_read()",
@@ -225,7 +225,7 @@ for (const marker of [
 assertNotContains(native, "body: Some(post.body)", `${files.native}: native adapter must not map legacy body`);
 assertNotContains(native, "body_format: post.body_format", `${files.native}: native adapter must not map legacy body format`);
 assertContains(native, "#[server(prefix = \"/api/fn\", endpoint = \"blog/storefront-data\")]", `${files.native}: native adapter must own server function endpoint`);
-assertContains(native, "expect_context::<HostRuntimeContext>()", `${files.native}: native adapter must use the host runtime context`);
+assertContains(native, "use_context::<HostRuntimeContext>()", `${files.native}: native adapter must use the host runtime context`);
 assertContains(native, "shared_get::<TransactionalEventBus>()", `${files.native}: native adapter must receive the event bus through the host runtime context`);
 assertContains(native, "runtime_ctx.db_clone()", `${files.native}: native adapter must receive DB through the host runtime context`);
 assertContains(native, 'endpoint = "blog/comment-create"', `${files.native}: native adapter must expose the Blog-bound comment endpoint`);

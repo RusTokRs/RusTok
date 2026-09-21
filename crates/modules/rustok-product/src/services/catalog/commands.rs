@@ -1,5 +1,5 @@
 use super::*;
-use sea_orm::{DatabaseBackend, DatabaseTransaction, FromQueryResult};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult};
 
 async fn find_product_for_update_in_tx(
     txn: &DatabaseTransaction,
@@ -18,7 +18,7 @@ async fn find_product_for_update_in_tx(
                 "UPDATE products SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
                 [tenant_id.into(), product_id.into()],
             );
-            txn.execute(statement).await?;
+            txn.execute_raw(statement).await?;
             query.one(txn).await?
         }
         _ => query.one(txn).await?,
@@ -43,7 +43,7 @@ async fn find_variant_for_update_in_tx(
                 "UPDATE product_variants SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
                 [tenant_id.into(), variant_id.into()],
             );
-            txn.execute(statement).await?;
+            txn.execute_raw(statement).await?;
             query.one(txn).await?
         }
         _ => query.one(txn).await?,
@@ -1082,7 +1082,7 @@ impl CatalogService {
             .ok_or(CommerceError::VariantNotFound(variant_id))?;
         let product_id = observed_variant.product_id;
         let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
-        let variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
+        let _variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
 
         let count = entities::product_variant::Entity::find()
             .filter(entities::product_variant::Column::ProductId.eq(product_id))

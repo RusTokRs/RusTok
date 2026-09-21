@@ -8,3 +8,6 @@ description = "Framework-agnostic transport result helpers for RusTok FFA UI pac
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

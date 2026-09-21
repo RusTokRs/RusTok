@@ -180,15 +180,15 @@ graphql_adapter::fetch_blog(request);`,
     root,
     "crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs",
     `#[server(prefix = "/api/fn", endpoint = "blog/storefront-data")]
-expect_context::<HostRuntimeContext>()
+use_context::<HostRuntimeContext>()
 shared_get::<TransactionalEventBus>()
 runtime_ctx.db_clone()
 ChannelService::new
-.is_module_enabled(channel_id, MODULE_SLUG)
+.is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)
 normalize_channel_slug
 is_visible_for_public_channel
-request_context.channel_slug
-Module '{MODULE_SLUG}' is not enabled for channel
+ctx.channel_slug
+Blog is not available for the current channel
 ${options.missingComments ? "" : `CommentService::new
 list_public_comments_with_snapshot(
 SecurityContext::public_read()

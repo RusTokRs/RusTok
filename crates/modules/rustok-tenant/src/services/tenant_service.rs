@@ -1,8 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
+    DbBackend, DbErr, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    TransactionTrait,
 };
 use sha2::{Digest, Sha256};
 use tracing::instrument;
@@ -242,6 +243,34 @@ impl TenantService {
             .await
             .map(|module| module.map(to_module_response))
             .map_err(Into::into)
+    }
+
+    /// Returns one tenant module configuration while holding a shared row lock
+    /// for the caller's transaction.
+    ///
+    /// Owner modules use this boundary when a tenant-module capability must
+    /// remain stable for the duration of a cross-module write transaction.
+    pub async fn find_tenant_module_locked_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> TenantResult<Option<TenantModuleResponse>> {
+        let query = || {
+            tenant_module::Entity::find()
+                .filter(tenant_module::Column::TenantId.eq(tenant_id))
+                .filter(tenant_module::Column::ModuleSlug.eq(module_slug))
+        };
+        let module = match txn.get_database_backend() {
+            DbBackend::Sqlite => query().one(txn).await?,
+            DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
+            backend => {
+                return Err(DbErr::Custom(format!(
+                    "tenant module locking is unsupported for {backend:?}"
+                ))
+                .into());
+            }
+        };
+        Ok(module.map(to_module_response))
     }
 
     pub(crate) async fn read_locale_policy_owned(

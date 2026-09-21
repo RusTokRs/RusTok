@@ -4,13 +4,17 @@ use leptos::prelude::*;
 
 use crate::core::{
     NotificationStorefrontGroupItemsPage, NotificationStorefrontGroupItemsRequest,
-    NotificationStorefrontGroupStateCommand, NotificationStorefrontGroupStatePage,
+    NotificationStorefrontGroupStateAction, NotificationStorefrontGroupStateCommand,
+    NotificationStorefrontGroupStatePage, NotificationStorefrontGroupSummary,
     NotificationStorefrontGroupSummaryPage, NotificationStorefrontGroupSummaryRequest,
+    NotificationStorefrontItem, NotificationStorefrontItemState,
     NotificationStorefrontOpenDecision, NotificationStorefrontOpenRequest,
-    NotificationStorefrontUnreadCount,
+    NotificationStorefrontPriority, NotificationStorefrontUnreadCount,
 };
 
 use serde::{Deserialize, Serialize};
+
+const PUBLIC_CAPABILITY_UNAVAILABLE: &str = "notification inbox capability is unavailable";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NativeNotificationStorefrontError(pub String);

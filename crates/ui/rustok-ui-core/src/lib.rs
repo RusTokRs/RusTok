@@ -11,6 +11,7 @@
 pub mod css;
 pub mod pagination;
 pub mod route_selection;
+pub mod selection;
 pub mod ui;
 
 pub use css::{css_background_accent_class, css_hex_accent_class, normalize_css_hex_color};
@@ -19,6 +20,7 @@ pub use route_selection::{
     AdminQueryDependency, AdminQueryKey, AdminRouteQuerySchema, admin_route_query_schema,
     is_legacy_admin_query_key, sanitize_admin_route_query,
 };
+pub use selection::{UiFilterOperator, UiFilterRule, UiSelectionState};
 pub use ui::{
     UiRouteContext, UiRouteQueryIntent, UiRouteQueryUpdate, UiRouteQueryWrite,
     normalize_optional_ui_text, normalize_required_ui_text, normalize_ui_text, parse_ui_csv,

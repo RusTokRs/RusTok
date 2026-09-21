@@ -18,35 +18,25 @@ implementations with `thread::yield_now()`.
 - This crate defines the execution contract between UI adapters and underlying
   transports. It owns neither domain data schemas nor UI components.
 
+## Completed foundations
+
+1. **Zero-unsafe codebase and standard test runtime.**
+   All custom `RawWaker` / `RawWakerVTable` implementations and busy-loop spinning
+   `block_on` are completely eliminated in favor of standard async test macros
+   (`#[tokio::test]`), achieving 100% safe, clean test execution.
+
+2. **Resilient fallback execution strategy.**
+   `execute_with_fallback` and `execute_transport_policy` allow UI surfaces to try
+   primary transport (native server functions) and automatically fall back to
+   secondary (GraphQL) with structured diagnostic evidence (`UiTransportError::fallback_failed`)
+   when primary is degraded, failing closed if both transports fail.
+
 ## Open results
 
-1. **Eliminate custom `unsafe` wakers in favor of `std::task::Waker::noop()`.**
-   Done when all custom `RawWaker` / `RawWakerVTable` implementations in tests
-   are completely replaced by `std::task::Waker::noop()` (standard in Rust 1.85+)
-   or `futures_util::task::noop_waker_ref()`, achieving zero `unsafe` code.
-   **Depends on:** Rust 1.85+ compiler (workspace targets Rust 1.96).
-   **Verification:** `cargo test -p rustok-ui-transport --lib` and absence of
-   `unsafe` blocks in `crates/ui/rustok-ui-transport`.
-
-2. **Standardize test runtime execution.**
-   Done when busy-loop spinning `block_on` is removed in favor of standard
-   async test macros (`#[tokio::test]`) or `futures::executor::block_on`.
-   **Depends on:** Result 1.
-   **Verification:** all async unit tests pass cleanly without manual thread yielding.
-
-3. **Establish resilient fallback execution strategy.**
-   Done when `execute_with_fallback` allows UI surfaces to try primary transport
-   (e.g. native server function) and automatically fall back to secondary
-   (GraphQL) with structured diagnostic evidence if the primary path is degraded.
-   **Depends on:** Result 1.
-   **Verification:** unit tests simulating primary transport failure and verifying
-   fallback execution and error reporting.
-
-4. **Standardize transport error taxonomy across modules.**
+1. **Standardize transport error taxonomy across modules.**
    Done when module transport facades adopt canonical `UiTransportError`
    conversions instead of defining conflicting `TransportError`/`ApiError`
    aliases.
-   **Depends on:** Result 3.
    **Verification:** compilation check across module transport packages.
 
 ## Verification

@@ -1,9 +1,9 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    Statement, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -677,14 +677,16 @@ impl PaymentService {
         let query = entities::payment_collection::Entity::find_by_id(collection_id)
             .filter(entities::payment_collection::Column::TenantId.eq(tenant_id));
         let collection = match txn.get_database_backend() {
-            DatabaseBackend::Postgres | DatabaseBackend::MySql => query.lock_exclusive().one(txn).await?,
+            DatabaseBackend::Postgres | DatabaseBackend::MySql => {
+                query.lock_exclusive().one(txn).await?
+            }
             DatabaseBackend::Sqlite => {
                 let statement = Statement::from_sql_and_values(
                     DatabaseBackend::Sqlite,
                     "UPDATE payment_collections SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
                     [tenant_id.into(), collection_id.into()],
                 );
-                txn.execute(statement).await?;
+                txn.execute_raw(statement).await?;
                 query.one(txn).await?
             }
             _ => query.one(txn).await?,
@@ -751,14 +753,16 @@ impl PaymentService {
         let query = entities::refund::Entity::find_by_id(refund_id)
             .filter(entities::refund::Column::TenantId.eq(tenant_id));
         let refund = match txn.get_database_backend() {
-            DatabaseBackend::Postgres | DatabaseBackend::MySql => query.lock_exclusive().one(txn).await?,
+            DatabaseBackend::Postgres | DatabaseBackend::MySql => {
+                query.lock_exclusive().one(txn).await?
+            }
             DatabaseBackend::Sqlite => {
                 let statement = Statement::from_sql_and_values(
                     DatabaseBackend::Sqlite,
                     "UPDATE refunds SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
                     [tenant_id.into(), refund_id.into()],
                 );
-                txn.execute(statement).await?;
+                txn.execute_raw(statement).await?;
                 query.one(txn).await?
             }
             _ => query.one(txn).await?,

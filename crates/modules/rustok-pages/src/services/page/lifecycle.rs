@@ -13,6 +13,7 @@ use rustok_core::{
     error::{ErrorKind, RichError},
 };
 use rustok_events::DomainEvent;
+use rustok_tenant::TenantService;
 
 use crate::dto::PageResponse;
 use crate::entities::{page, page_body, page_translation};
@@ -339,18 +340,20 @@ impl PageService {
         txn: &sea_orm::DatabaseTransaction,
         tenant_id: Uuid,
     ) -> PagesResult<()> {
-        let query = || {
-            rustok_tenant::entities::tenant_module::Entity::find()
-                .filter(rustok_tenant::entities::tenant_module::Column::TenantId.eq(tenant_id))
-                .filter(
-                    rustok_tenant::entities::tenant_module::Column::ModuleSlug.eq("pages"),
-                )
-        };
-        let module = match txn.get_database_backend() {
-            DbBackend::Sqlite => query().one(txn).await?,
-            DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
-            _ => unreachable!("unsupported SeaORM database backend"),
-        };
+        let module =
+            TenantService::find_tenant_module_locked_in_tx(txn, tenant_id, "pages").await?;
+        let enabled = module
+            .as_ref()
+            .map(|module| is_builder_enabled(&module.settings))
+            .unwrap_or(true);
+        if !enabled {
+            return Err(PagesError::feature_disabled(FEATURE_BUILDER_ENABLED));
+        }
+        Ok(())
+    }
+
+    pub(super) async fn ensure_builder_enabled(&self, tenant_id: Uuid) -> PagesResult<()> {
+        let module = self.load_tenant_pages_module(tenant_id).await?;
         let enabled = module.as_ref().map(is_builder_enabled).unwrap_or(true);
         if !enabled {
             return Err(PagesError::feature_disabled(FEATURE_BUILDER_ENABLED));
@@ -358,6 +361,16 @@ impl PageService {
         Ok(())
     }
 
+    async fn load_tenant_pages_module(
+        &self,
+        tenant_id: Uuid,
+    ) -> PagesResult<Option<serde_json::Value>> {
+        TenantService::new(self.db.clone())
+            .find_tenant_module(tenant_id, "pages")
+            .await
+            .map(|module| module.map(|module| module.settings))
+            .map_err(Into::into)
+    }
 }
 
 fn builder_reviewed_publish_required() -> PagesError {

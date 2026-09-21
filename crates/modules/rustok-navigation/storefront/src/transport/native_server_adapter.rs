@@ -1,5 +1,5 @@
 use super::ApiError;
-use crate::model::{StorefrontMenu, StorefrontMenuLocation};
+use crate::model::{StorefrontMenu, StorefrontMenuItem, StorefrontMenuLocation};
 use leptos::prelude::*;
 
 pub async fn fetch_active_menu_server(
@@ -21,7 +21,7 @@ async fn active_menu_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_api::HostRuntimeContext;
+        use rustok_api::{HostRuntimeContext, PLATFORM_FALLBACK_LOCALE};
         use rustok_channel::ChannelService;
         use rustok_core::SecurityContext;
         use rustok_navigation::{

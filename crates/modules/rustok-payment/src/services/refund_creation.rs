@@ -2,8 +2,8 @@ use chrono::Utc;
 use rust_decimal::Decimal;
 use rustok_core::generate_id;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, QueryFilter, QuerySelect, Set, Statement, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, QueryFilter, QuerySelect, Set, Statement, TransactionTrait,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -138,7 +138,7 @@ impl PaymentRefundCreationService {
                     "UPDATE payment_collections SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
                     [tenant_id.into(), collection_id.into()],
                 );
-                txn.execute(statement).await?;
+                txn.execute_raw(statement).await?;
                 query.one(txn).await?
             }
             _ => query.one(txn).await?,

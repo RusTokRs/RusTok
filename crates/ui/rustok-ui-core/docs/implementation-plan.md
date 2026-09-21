@@ -16,30 +16,32 @@ often relies on manual string manipulation.
 - This crate defines headless UI data structures and contracts. It contains zero
   rendering or framework dependencies (no Leptos, no Dioxus).
 
+## Completed foundations
+
+1. **Standardized URL joining and query serialization.**
+   Route URL manipulation uses `safe_join_url` backed by `url::Url`, preventing
+   uncontrolled path and slash concatenation bugs.
+
+2. **Canonical Headless UI pagination and sorting states.**
+   `UiPaginationState` (page, per_page, total_items, offset, total_pages, has_next,
+   has_previous) and `UiSortState` / `UiSortDirection` are exported, providing
+   uniform pagination and sort math without framework dependencies.
+
+3. **Framework-agnostic `UiRouteContext` and `UiRouteQueryIntent`.**
+   `UiRouteContext`, `UiRouteQueryIntent`, `UiRouteQueryUpdate`, and `UiRouteQueryWrite`
+   standardize route parameter update intents across Leptos, Dioxus, and headless hosts.
+
+4. **Canonical Headless UI selection and filter state models.**
+   `UiSelectionState` (toggle, select all, deselect, clear, is_all_selected,
+   is_partially_selected, count) and `UiFilterRule` / `UiFilterOperator` provide
+   reusable table selection and filter primitives across module list views.
+
 ## Open results
 
-1. **Standardize URL joining and query serialization.**
-   Done when route URL manipulation replaces string concatenation with `url::Url`,
-   and query parameter parsing/encoding standardizes on `serde_qs` and
-   `serde_urlencoded` (both available in workspace).
-   **Depends on:** using workspace `url` and `serde_qs`.
-   **Verification:** unit tests for URL construction and complex query string
-   serialization/deserialization.
-
-2. **Provide canonical Headless UI pagination and sorting states.**
-   Done when `UiPaginationState` (page, per_page, total_items, total_pages,
-   offset, has_next, has_previous) and `UiSortState` (field, direction) are
-   exported from this crate, eliminating duplicated pagination math in
-   module admin/storefront list views.
-   **Depends on:** Result 1.
-   **Verification:** unit tests verifying boundary conditions (page 0, empty
-   dataset, single-page results).
-
-3. **Solidify framework-agnostic `UiRouteContext` and `UiRouteQueryIntent`.**
-   Done when intent writing (`push`, `replace`, `clear`) provides a uniform
-   contract across Leptos router, Dioxus router, and headless external hosts.
-   **Depends on:** Result 1.
-   **Verification:** `cargo test -p rustok-ui-core --lib`.
+1. **Audit and standardize table state across module UI packages.**
+   Done when module table/list views standardize on `UiPaginationState`, `UiSortState`,
+   `UiSelectionState`, and `UiFilterRule` from `rustok-ui-core`.
+   **Verification:** compilation check across module admin list views.
 
 ## Verification
 

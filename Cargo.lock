@@ -15292,7 +15292,6 @@ version = "0.1.0"
 dependencies = [
  "reqwest 0.13.4",
  "reqwest-middleware",
- "reqwest-retry",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -16569,6 +16568,7 @@ dependencies = [
  "chrono",
  "rust_decimal",
  "rustok-api",
+ "rustok-channel",
  "rustok-commerce-foundation",
  "rustok-core",
  "rustok-events",
@@ -17892,6 +17892,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

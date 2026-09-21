@@ -44,8 +44,11 @@ function assertNotContains(text, pattern, description) {
 
 const libPath = "crates/modules/rustok-blog/admin/src/lib.rs";
 const corePath = "crates/modules/rustok-blog/admin/src/core.rs";
+const coreCommandsPath = "crates/modules/rustok-blog/admin/src/core/commands.rs";
+const corePresentationPath = "crates/modules/rustok-blog/admin/src/core/presentation.rs";
 const modelPath = "crates/modules/rustok-blog/admin/src/model.rs";
 const uiPath = "crates/modules/rustok-blog/admin/src/ui/leptos.rs";
+const uiComponentsPath = "crates/modules/rustok-blog/admin/src/ui/components.rs";
 const richtextAdapterPath = "crates/modules/rustok-blog/admin/src/ui/richtext.rs";
 const sharedRichtextAdapterPath = "crates/ui/leptos-ui/src/richtext.rs";
 const moderationPath = "crates/modules/rustok-blog/admin/src/moderation.rs";
@@ -71,8 +74,11 @@ if (existsSync(repoPath(legacyApiPath))) {
 for (const filePath of [
   libPath,
   corePath,
+  coreCommandsPath,
+  corePresentationPath,
   modelPath,
   uiPath,
+  uiComponentsPath,
   richtextAdapterPath,
   sharedRichtextAdapterPath,
   moderationPath,
@@ -94,9 +100,13 @@ for (const filePath of [
 }
 
 const lib = readRepo(libPath);
-const core = readRepo(corePath);
+const core = [corePath, coreCommandsPath, corePresentationPath]
+  .map(readRepo)
+  .join("\n");
 const model = readRepo(modelPath);
 const ui = readRepo(uiPath);
+const uiComponents = readRepo(uiComponentsPath);
+const uiBoundary = `${ui}\n${uiComponents}`;
 const richtextAdapter = readRepo(richtextAdapterPath);
 const sharedRichtextAdapter = readRepo(sharedRichtextAdapterPath);
 const moderation = readRepo(moderationPath);
@@ -278,14 +288,14 @@ assertNotContains(
 for (const marker of ["mount_richtext_frame", "dispose_richtext_frame", 'sandbox="allow-scripts"', "serde_json::from_str"]) {
   assertNotContains(richtextAdapter, marker, `${richtextAdapterPath}: owner wrapper must not duplicate shared frame lifecycle ${marker}`);
 }
-assertContains(ui, "core::blog_post_admin_posts_load_view_from_list", `${uiPath}: UI must use core-owned posts load result view-list normalization policy`);
-assertContains(ui, "core::blog_post_admin_status_badge_view", `${uiPath}: UI must use core-owned status badge presentation policy`);
-assertContains(ui, "core::blog_post_admin_editor_form_copy_view", `${uiPath}: UI must use core-owned editor form copy presentation policy`);
-assertContains(ui, "core::blog_post_admin_editor_field_classes_view", `${uiPath}: UI must use core-owned editor field class presentation policy`);
-assertContains(ui, "core::blog_post_admin_title_input_view", `${uiPath}: UI must use core-owned title input/autoslug policy`);
-assertContains(ui, "core::blog_post_admin_posts_table_view_from_items", `${uiPath}: UI must use core-owned posts-table normalization and row view-model policy`);
-assertContains(ui, "core::blog_post_admin_table_classes_view", `${uiPath}: UI must use core-owned posts-table class presentation policy`);
-assertContains(ui, "core::blog_post_admin_shell_classes_view", `${uiPath}: UI must use core-owned admin shell class presentation policy`);
+assertContains(uiBoundary, "core::blog_post_admin_posts_load_view_from_list", `${uiPath}: UI must use core-owned posts load result view-list normalization policy`);
+assertContains(uiBoundary, "core::blog_post_admin_status_badge_view", `${uiPath}: UI must use core-owned status badge presentation policy`);
+assertContains(uiBoundary, "core::blog_post_admin_editor_form_copy_view", `${uiPath}: UI must use core-owned editor form copy presentation policy`);
+assertContains(uiBoundary, "core::blog_post_admin_editor_field_classes_view", `${uiPath}: UI must use core-owned editor field class presentation policy`);
+assertContains(uiBoundary, "core::blog_post_admin_title_input_view", `${uiPath}: UI must use core-owned title input/autoslug policy`);
+assertContains(uiBoundary, "core::blog_post_admin_posts_table_view_from_items", `${uiPath}: UI must use core-owned posts-table normalization and row view-model policy`);
+assertContains(uiBoundary, "core::blog_post_admin_table_classes_view", `${uiPath}: UI must use core-owned posts-table class presentation policy`);
+assertContains(uiBoundary, "core::blog_post_admin_shell_classes_view", `${uiPath}: UI must use core-owned admin shell class presentation policy`);
 assertContains(ui, "core::blog_post_load_result_view", `${uiPath}: UI must use core-owned load result policy`);
 assertContains(ui, "core::blog_post_transport_failure_issue", `${uiPath}: UI must use core-owned transport failure issue mapping`);
 assertContains(ui, "core::blog_post_save_result_view", `${uiPath}: UI must use core-owned save result policy`);

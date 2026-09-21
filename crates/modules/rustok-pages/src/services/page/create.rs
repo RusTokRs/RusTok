@@ -65,7 +65,7 @@ impl PageService {
         let txn = self.db.begin().await?;
 
         if body_uses_builder_capability(body.as_ref()) {
-            super::lifecycle::ensure_builder_enabled_in_tx(&txn, tenant_id).await?;
+            Self::ensure_builder_enabled_in_tx(&txn, tenant_id).await?;
         }
 
         for translation in &input.translations {

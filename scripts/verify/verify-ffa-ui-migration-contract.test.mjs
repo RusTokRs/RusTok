@@ -310,11 +310,13 @@ function withFixture({
 
   ["en", "ru"].forEach((locale) => {
     writeFileSync(
-      path.join(root, "crates", "modules", "rustok-region", "storefront", "locales", `${locale}.json`),
-      JSON.stringify({
-        "region.error.status.nativeUnavailable": "Native unavailable",
-        "region.error.status.graphqlUnavailable": "GraphQL unavailable",
-      }),
+      path.join(root, "crates", "modules", "rustok-region", "storefront", "locales", `${locale}.ftl`),
+      [
+        "# region.error.status.nativeUnavailable",
+        "region-error-status-nativeUnavailable = Native unavailable",
+        "# region.error.status.graphqlUnavailable",
+        "region-error-status-graphqlUnavailable = GraphQL unavailable",
+      ].join("\n"),
     );
   });
 

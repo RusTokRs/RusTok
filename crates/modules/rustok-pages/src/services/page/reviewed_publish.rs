@@ -14,7 +14,7 @@ use rustok_page_builder::{
     PageBuilderStaticLandingSanitizationError, StaticLandingPage,
     compile_materialized_static_landing, sanitize_static_landing_project,
 };
-use rustok_tenant::entities::tenant_module;
+use rustok_tenant::TenantService;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseTransaction,
     DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
@@ -302,16 +302,7 @@ async fn ensure_builder_publish_enabled_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
 ) -> PagesResult<()> {
-    let query = || {
-        tenant_module::Entity::find()
-            .filter(tenant_module::Column::TenantId.eq(tenant_id))
-            .filter(tenant_module::Column::ModuleSlug.eq("pages"))
-    };
-    let module = match txn.get_database_backend() {
-        DbBackend::Sqlite => query().one(txn).await?,
-        DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
-        _ => unreachable!("unsupported SeaORM database backend"),
-    };
+    let module = TenantService::find_tenant_module_locked_in_tx(txn, tenant_id, "pages").await?;
     let enabled = module.as_ref().is_none_or(|module| {
         is_builder_enabled(&module.settings) && is_builder_publish_enabled(&module.settings)
     });

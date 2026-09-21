@@ -16,7 +16,7 @@ use crate::entities::{page, page_body, page_translation};
 use crate::error::{PagesError, PagesResult};
 use crate::services::rbac::enforce_owned_scope;
 
-use super::helpers::{body_uses_builder_capability, normalize_page_body_input};
+use super::helpers::normalize_page_body_input;
 use super::{PAGE_KIND, PageService};
 
 pub const PAGE_DOCUMENT_REVISION_CONFLICT: &str = "PAGE_DOCUMENT_REVISION_CONFLICT";
@@ -50,7 +50,7 @@ impl PageService {
         let response_locale = body.locale.clone();
         let txn = self.db.begin().await?;
         let locked_page = self.find_page_for_update(&txn, tenant_id, page_id).await?;
-        super::lifecycle::ensure_builder_enabled_in_tx(&txn, tenant_id).await?;
+        Self::ensure_builder_enabled_in_tx(&txn, tenant_id).await?;
         enforce_owned_scope(
             &security,
             Resource::Pages,

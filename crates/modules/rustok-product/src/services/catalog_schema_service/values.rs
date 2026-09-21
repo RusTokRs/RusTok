@@ -5,6 +5,7 @@ mod variant_translation;
 use super::*;
 use crate::services::write_transaction::record_product_operation_result;
 use rustok_api::TenantLocale;
+use sea_orm::{ColumnTrait, ConnectionTrait};
 
 async fn lock_product_for_update_in_tx(
     txn: &DatabaseTransaction,
@@ -21,7 +22,7 @@ async fn lock_product_for_update_in_tx(
                 "UPDATE products SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
                 [tenant_id.into(), product_id.into()],
             );
-            txn.execute(statement).await?;
+            txn.execute_raw(statement).await?;
             query.one(txn).await?
         }
         _ => query.one(txn).await?,

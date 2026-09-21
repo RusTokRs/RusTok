@@ -4,10 +4,11 @@
 
 `rustok-graphql` owns the framework-agnostic GraphQL HTTP client boundary:
 request/response/error types, persisted-query extensions, and HTTP execution.
-Currently, `execute()` instantiates a new `reqwest::Client` on each invocation,
-missing connection pooling and socket reuse. More than 55 module transport
-adapters duplicate the `graphql_url()` resolution logic, and transient network
-retry is unconfigured or ad-hoc.
+`execute()` uses one pooled `reqwest::Client` on native and browser targets.
+Automatic middleware retry is intentionally absent because the shared HTTP
+layer cannot safely infer whether a GraphQL `POST` contains an idempotent query
+or a mutation. More than 55 module transport adapters still duplicate endpoint
+resolution logic.
 
 ## FFA/FBA boundary
 
@@ -20,22 +21,20 @@ retry is unconfigured or ad-hoc.
 
 ## Open results
 
-1. **Adopt `reqwest-middleware` and `reqwest-retry` connection pool.**
-   Done when `rustok-graphql` provides a shared `ClientWithMiddleware` pipeline
-   with configurable timeouts and connection reuse instead of allocating raw
-   `reqwest::Client::new()` per call.
-   **Depends on:** wiring workspace dependencies `reqwest-middleware` and
-   `reqwest-retry`.
-   **Verification:** `cargo test -p rustok-graphql --lib` proving client reuse
-   and timeout mapping to `GraphqlHttpError::Timeout`.
+1. **Maintain one native/browser-safe pooled client.**
+   The shared `ClientWithMiddleware` pipeline has configurable timeout and
+   connection reuse without allocating a client per call. Client construction
+   failure uses the existing fail-closed `GraphqlHttpError::Network` contract
+   rather than panicking or expanding the public error vocabulary.
+   **Verification:** `cargo test -p rustok-graphql --lib` and
+   `cargo check -p rustok-graphql --target wasm32-unknown-unknown`.
 
-2. **Establish idempotent GraphQL retry policy.**
-   Done when transient failures (502, 503, 504, connection reset) on read-only
-   GraphQL Queries are retried with exponential backoff and jitter, while
-   GraphQL Mutations are strictly excluded from automatic retry to prevent
-   duplicate mutations or state corruption.
-   **Depends on:** custom `RetryPolicy` implementation for GraphQL operation types.
-   **Verification:** unit tests for query retry and mutation non-retry.
+2. **Keep retries owner-explicit and idempotency-aware.**
+   The generic client must not automatically retry GraphQL `POST` requests.
+   A future query-only retry API may be added only with an explicit operation
+   classification and tests proving mutations are never retried.
+   **Verification:** dependency and source checks proving no generic retry
+   middleware wraps all GraphQL operations.
 
 3. **Centralize `graphql_url()` and endpoint resolution.**
    Done when a canonical `graphql_url(base_url, endpoint)` helper is exported

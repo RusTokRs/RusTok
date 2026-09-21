@@ -14,6 +14,8 @@
 - Dioxus hooks or context integration.
 - GraphQL schema ownership.
 - Native `#[server]` fallback policy.
+- Automatic request retry; operation owners must provide explicit idempotency or
+  query-only retry semantics when required.
 
 ## Verification
 
