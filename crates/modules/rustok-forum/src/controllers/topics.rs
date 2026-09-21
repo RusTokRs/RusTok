@@ -289,6 +289,35 @@ pub async fn delete_topic(
 
 #[utoipa::path(
     post,
+    path = "/api/forum/topics/{id}/restore",
+    tag = "forum",
+    params(("id" = Uuid, Path, description = "Topic ID")),
+    responses(
+        (status = 204, description = "Topic restored"),
+        (status = 400, description = "Topic restore is unavailable"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 409, description = "Topic cannot be restored"),
+        (status = 404, description = "Topic not found")
+    )
+)]
+pub async fn restore_topic(
+    State(runtime): State<crate::controllers::ForumHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+) -> HttpResult<StatusCode> {
+    runtime
+        .topic_service()
+        .restore(tenant.id, id, forum_security(&auth))
+        .await
+        .map_err(crate::controllers::map_forum_error)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+
+#[utoipa::path(
+    post,
     path = "/api/forum/topics/{topic_id}/solution/{reply_id}",
     tag = "forum",
     params(

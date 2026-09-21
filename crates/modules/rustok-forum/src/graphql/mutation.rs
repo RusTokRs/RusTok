@@ -172,6 +172,33 @@ impl ForumContentMutation {
         Ok(true)
     }
 
+    async fn restore_forum_topic(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+        id: Uuid,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = ctx.data::<AuthContext>()?;
+
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        TopicService::new(db.clone(), event_bus.clone())
+            .restore(
+                tenant_id,
+                id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+            )
+            .await?;
+
+        Ok(true)
+    }
+
     async fn set_forum_category_subscription(
         &self,
         ctx: &Context<'_>,

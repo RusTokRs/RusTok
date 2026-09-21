@@ -230,6 +230,7 @@ impl ForumError {
             Self::TopicArchived => "FORUM_TOPIC_ARCHIVED",
             Self::TopicLocked => "FORUM_TOPIC_LOCKED",
             Self::TopicDeleted => "FORUM_TOPIC_DELETED",
+            Self::TopicRestoreUnavailable(_) => "FORUM_TOPIC_RESTORE_UNAVAILABLE",
             Self::ReplyDeleted => "FORUM_REPLY_DELETED",
             Self::Validation(_) => "FORUM_VALIDATION_FAILED",
             Self::Forbidden(_) => "FORUM_FORBIDDEN",

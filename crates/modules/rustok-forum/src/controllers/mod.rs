@@ -107,6 +107,7 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
         | ForumError::TopicArchived
         | ForumError::TopicLocked
         | ForumError::TopicDeleted
+        | ForumError::TopicRestoreUnavailable(_)
         | ForumError::ReplyDeleted => HttpError::new(
             StatusCode::CONFLICT,
             code,
@@ -206,6 +207,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
                 ))
                 .put(content_commands::update_topic)
                 .delete(topics::delete_topic),
+        )
+        .route(
+            "/api/forum/topics/{id}/restore",
+            axum::routing::post(topics::restore_topic),
         )
         .route(
             "/api/forum/topics/{id}/quotes",
