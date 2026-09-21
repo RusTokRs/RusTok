@@ -60,13 +60,13 @@ impl PageService {
                 )));
             }
         }
-        if body_uses_builder_capability(body.as_ref()) {
-            self.ensure_builder_enabled(tenant_id).await?;
-        }
-
         let now = Utc::now();
         let page_id = Uuid::new_v4();
         let txn = self.db.begin().await?;
+
+        if body_uses_builder_capability(body.as_ref()) {
+            super::lifecycle::ensure_builder_enabled_in_tx(&txn, tenant_id).await?;
+        }
 
         for translation in &input.translations {
             let slug = normalize_slug(
