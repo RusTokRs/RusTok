@@ -107,6 +107,13 @@ pub struct ReactionSubjectRegistryEntry {
     pub supported_kinds: Vec<ReactionSubjectKind>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ReactionSubjectDeletionBinding {
+    pub source: ReactionSourceSlug,
+    pub kind: ReactionSubjectKind,
+    pub target_type: String,
+}
+
 #[async_trait]
 pub trait ReactionSubjectProvider: Send + Sync {
     fn source(&self) -> ReactionSourceSlug;
@@ -114,6 +121,14 @@ pub trait ReactionSubjectProvider: Send + Sync {
     fn display_name(&self) -> &'static str;
 
     fn supported_kinds(&self) -> Vec<ReactionSubjectKind>;
+
+    /// Declares source-owned lifecycle targets whose deletion removes persisted
+    /// Reactions subject state. The registry supplies these bindings to the
+    /// generic target-deletion handler; providers remain responsible for the
+    /// source/kind mapping.
+    fn deletion_bindings(&self) -> Vec<ReactionSubjectDeletionBinding> {
+        Vec::new()
+    }
 
     async fn authorize(
         &self,
@@ -204,6 +219,13 @@ impl ReactionSubjectRegistry {
         ReactionSourceSlug::new(source)
             .ok()
             .and_then(|source| self.get(&source))
+    }
+
+    pub fn deletion_bindings(&self) -> Vec<ReactionSubjectDeletionBinding> {
+        self.providers
+            .values()
+            .flat_map(|provider| provider.deletion_bindings())
+            .collect()
     }
 
     pub fn entries(&self) -> Vec<ReactionSubjectRegistryEntry> {

@@ -88,6 +88,14 @@ impl ReactionSubjectProvider for BlogReactionSubjectProvider {
         vec![blog_post_reaction_kind()]
     }
 
+    fn deletion_bindings(&self) -> Vec<rustok_reactions_api::ReactionSubjectDeletionBinding> {
+        vec![rustok_reactions_api::ReactionSubjectDeletionBinding {
+            source: blog_reaction_source(),
+            kind: blog_post_reaction_kind(),
+            target_type: "blog_post".to_string(),
+        }]
+    }
+
     async fn authorize(
         &self,
         context: PortContext,
@@ -155,6 +163,16 @@ mod tests {
         assert_eq!(catalog.selection(), ReactionSelectionPolicy::Single);
         assert_eq!(catalog.keys().len(), 1);
         assert_eq!(catalog.keys()[0].as_str(), BLOG_REACTION_V1_KEY);
+    }
+
+    #[test]
+    fn blog_post_deletion_binding_matches_the_owner_target() {
+        let binding = BlogReactionSubjectProvider::new;
+        let _ = binding;
+        let source = blog_reaction_source();
+        let kind = blog_post_reaction_kind();
+        assert_eq!(source.as_str(), BLOG_REACTION_SOURCE);
+        assert_eq!(kind.as_str(), BLOG_POST_REACTION_KIND);
     }
 
     #[test]

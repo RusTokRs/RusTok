@@ -4,14 +4,17 @@ pub mod graphql;
 pub mod migrations;
 mod reconciliation;
 mod service;
+mod target_lifecycle;
 
 use async_trait::async_trait;
+use std::sync::Arc;
 use rustok_core::{
-    MigrationDependencyDescriptor, MigrationSource, ModuleRuntimeExtensions, RusToKModule,
+    MigrationDependencyDescriptor, MigrationSource, ModuleEventListenerContext,
+    ModuleEventListenerRegistry, ModuleRuntimeExtensions, RusToKModule,
 };
 use rustok_reactions_api::{
     ensure_reaction_subject_factory_registry, ensure_reaction_subject_registry,
-};
+    reaction_subject_registry_from_extensions,};
 use sea_orm_migration::MigrationTrait;
 
 pub use reconciliation::{
@@ -47,6 +50,19 @@ impl RusToKModule for ReactionsModule {
         &["outbox"]
     }
 
+    fn register_event_listeners(
+        &self,
+        registry: &mut ModuleEventListenerRegistry,
+        ctx: &ModuleEventListenerContext<'_>,
+    ) {
+        let subject_registry = reaction_subject_registry_from_extensions(ctx.extensions)
+            .unwrap_or_else(|| Arc::new(ReactionSubjectRegistry::default()));
+        registry.register(target_lifecycle::ReactionTargetDeletionHandler::new(
+            ctx.db.clone(),
+            subject_registry,
+        ));
+    }
+
     fn register_runtime_extensions(
         &self,
         extensions: &mut ModuleRuntimeExtensions,
@@ -78,6 +94,12 @@ mod tests {
     use super::ReactionsModule;
 
     #[test]
+    #[test]
+    fn module_registers_target_deletion_listener() {
+        let module = ReactionsModule;
+        let _ = module;
+    }
+
     fn module_initializes_registries_and_declares_owner_schema() {
         let module = ReactionsModule;
         assert_eq!(module.slug(), "reactions");
