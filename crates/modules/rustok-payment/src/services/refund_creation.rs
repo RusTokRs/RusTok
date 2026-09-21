@@ -2,8 +2,8 @@ use chrono::Utc;
 use rust_decimal::Decimal;
 use rustok_core::generate_id;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, QueryFilter, QuerySelect, Set, Statement, TransactionTrait,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -48,11 +48,9 @@ impl PaymentRefundCreationService {
         }
 
         let txn = self.db.begin().await?;
-        let collection = payment_collection::Entity::find_by_id(collection_id)
-            .filter(payment_collection::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(PaymentError::PaymentCollectionNotFound(collection_id))?;
+        let collection = self
+            .load_collection_for_update_in_tx(&txn, tenant_id, collection_id)
+            .await?;
         if PaymentCollectionStatusKind::from_raw(collection.status.as_str())
             != PaymentCollectionStatusKind::Captured
         {
@@ -120,6 +118,32 @@ impl PaymentRefundCreationService {
             }
             Err(error) => Err(error.into()),
         }
+    }
+
+    async fn load_collection_for_update_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        collection_id: Uuid,
+    ) -> PaymentResult<payment_collection::Model> {
+        let query = payment_collection::Entity::find_by_id(collection_id)
+            .filter(payment_collection::Column::TenantId.eq(tenant_id));
+        let collection = match txn.get_database_backend() {
+            DatabaseBackend::Postgres | DatabaseBackend::MySql => {
+                query.lock_exclusive().one(txn).await?
+            }
+            DatabaseBackend::Sqlite => {
+                let statement = Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    "UPDATE payment_collections SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                    [tenant_id.into(), collection_id.into()],
+                );
+                txn.execute(statement).await?;
+                query.one(txn).await?
+            }
+            _ => query.one(txn).await?,
+        };
+        collection.ok_or(PaymentError::PaymentCollectionNotFound(collection_id))
     }
 
     pub async fn find_by_creation_key(
