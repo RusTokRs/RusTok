@@ -108,7 +108,7 @@ async fn product_relations_command_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
+        use rustok_api::{AuthContext, HostRuntimeContext, Permission, TenantContext};
         use rustok_product_relations::{
             ProductRelationService, ProductRelationsPort,
             dto::{CreateProductRelationInput, RelationType, ReorderProductRelationsInput},
