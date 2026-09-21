@@ -677,6 +677,19 @@ impl PostService {
             .await
             .map_err(BlogError::from)?;
 
+        self.event_bus
+            .publish_in_tx(
+                &txn,
+                tenant_id,
+                security.user_id,
+                DomainEvent::TargetDeleted {
+                    target_type: "blog_post".to_string(),
+                    target_id: post_id,
+                },
+            )
+            .await
+            .map_err(BlogError::from)?;
+
         txn.commit().await.map_err(BlogError::from)?;
         Ok(())
     }
