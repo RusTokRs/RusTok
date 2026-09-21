@@ -67,6 +67,10 @@ export function pseudoLocalizeFtl(ftlContent: string, options: PseudoOptions = {
   const lines = ftlContent.split(/\r?\n/);
   const resultLines: string[] = [];
 
+  // Regex that matches the opening of a Fluent select expression.
+  // e.g. `{ $count ->` or `{$gender->` at the start of a value.
+  const selectOpenRegex = /^\{\s*\$[a-zA-Z][a-zA-Z0-9_-]*\s*->/;
+
   for (const line of lines) {
     // Preserve comments and empty lines
     if (line.startsWith('#') || !line.trim()) {
@@ -78,9 +82,11 @@ export function pseudoLocalizeFtl(ftlContent: string, options: PseudoOptions = {
     const msgMatch = line.match(/^([a-zA-Z][a-zA-Z0-9_-]*\s*=\s*)(.*)$/);
     if (msgMatch) {
       const [, prefix, value] = msgMatch;
-      if (value.trim()) {
+      const trimmedValue = value.trim();
+      if (trimmedValue && !selectOpenRegex.test(trimmedValue)) {
         resultLines.push(`${prefix}${pseudoLocalizeText(value, options)}`);
       } else {
+        // Empty value or selector opening — preserve as-is
         resultLines.push(line);
       }
       continue;
@@ -90,7 +96,8 @@ export function pseudoLocalizeFtl(ftlContent: string, options: PseudoOptions = {
     const attrMatch = line.match(/^(\s+\.[a-zA-Z][a-zA-Z0-9_-]*\s*=\s*)(.*)$/);
     if (attrMatch) {
       const [, prefix, value] = attrMatch;
-      if (value.trim()) {
+      const trimmedValue = value.trim();
+      if (trimmedValue && !selectOpenRegex.test(trimmedValue)) {
         resultLines.push(`${prefix}${pseudoLocalizeText(value, options)}`);
       } else {
         resultLines.push(line);
@@ -110,9 +117,32 @@ export function pseudoLocalizeFtl(ftlContent: string, options: PseudoOptions = {
       continue;
     }
 
-    // Any other line
+    // Match selector closing `}` on its own line — preserve
+    if (/^\s*\}\s*$/.test(line)) {
+      resultLines.push(line);
+      continue;
+    }
+
+    // Match selector opening on a continuation line (e.g. indented `{ $count ->`)
+    if (/^\s+/.test(line) && selectOpenRegex.test(line.trim())) {
+      resultLines.push(line);
+      continue;
+    }
+
+    // Continuation line: indented text that is part of the previous message
+    if (/^\s+/.test(line) && line.trim()) {
+      const indentMatch = line.match(/^(\s+)(.*)$/);
+      if (indentMatch) {
+        const [, indent, text] = indentMatch;
+        resultLines.push(`${indent}${pseudoLocalizeText(text, options)}`);
+        continue;
+      }
+    }
+
+    // Any other line — preserve
     resultLines.push(line);
   }
 
   return resultLines.join('\n');
 }
+

@@ -52,11 +52,15 @@ export function parseRichText(
     const isSelfClosing = fullMatch.endsWith('/>');
 
     if (isSelfClosing) {
-      const renderFnOrEl = values[tagName];
-      if (typeof renderFnOrEl === 'function') {
-        stack[stack.length - 1].children.push(renderFnOrEl(null));
-      } else if (React.isValidElement(renderFnOrEl)) {
-        stack[stack.length - 1].children.push(renderFnOrEl);
+      if (Object.hasOwn(values, tagName)) {
+        const renderFnOrEl = values[tagName];
+        if (typeof renderFnOrEl === 'function') {
+          stack[stack.length - 1].children.push(renderFnOrEl(null));
+        } else if (React.isValidElement(renderFnOrEl)) {
+          stack[stack.length - 1].children.push(renderFnOrEl);
+        } else {
+          stack[stack.length - 1].children.push(fullMatch);
+        }
       } else {
         stack[stack.length - 1].children.push(fullMatch);
       }
@@ -64,7 +68,7 @@ export function parseRichText(
       // Check if this closes the currently open tag
       if (stack.length > 1 && stack[stack.length - 1].tag === tagName) {
         const finishedNode = stack.pop()!;
-        const renderFnOrEl = values[tagName];
+        const renderFnOrEl = Object.hasOwn(values, tagName) ? values[tagName] : undefined;
         const innerChildren =
           finishedNode.children.length === 1
             ? finishedNode.children[0]
@@ -89,7 +93,7 @@ export function parseRichText(
       }
     } else {
       // Open tag
-      if (tagName in values) {
+      if (Object.hasOwn(values, tagName)) {
         stack.push({ tag: tagName, children: [] });
       } else {
         stack[stack.length - 1].children.push(fullMatch);

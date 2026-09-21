@@ -190,8 +190,8 @@ user-greeting = Welcome, { $name }!
   assert.ok(dts.includes("export type AppMessageKey"));
   assert.ok(dts.includes("'app-title'"));
   assert.ok(dts.includes("'app.title'"));
-  assert.ok(dts.includes("'cart.items': { count: string | number | Date }"));
-  assert.ok(dts.includes("'user.greeting': { name: string | number | Date }"));
+  assert.ok(dts.includes("'cart.items': { 'count': string | number | Date }"));
+  assert.ok(dts.includes("'user.greeting': { 'name': string | number | Date }"));
 });
 
 test('CURRENCY and PERCENT built-in functions format monetary and percentage values', () => {

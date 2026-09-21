@@ -29,6 +29,8 @@ export function extractMessagesFromFtl(ftlContent: string): ExtractedMessage[] {
     }
 
     // Message definition: `my-message-id = ...`
+    // FTL terms start with `-` (e.g. `-brand-name = ...`) and are not callable
+    // messages — they must not appear in generated type declarations.
     const msgMatch = line.match(/^([a-zA-Z][a-zA-Z0-9_-]*)\s*=/);
     if (msgMatch) {
       const id = msgMatch[1];
@@ -75,8 +77,7 @@ export function extractMessagesFromFtl(ftlContent: string): ExtractedMessage[] {
 }
 
 export function generateTypeDeclarations(
-  ftlContents: string | readonly string[],
-  options: { exportName?: string } = {}
+  ftlContents: string | readonly string[]
 ): string {
   const contents = Array.isArray(ftlContents) ? ftlContents : [ftlContents];
   const allMessages: ExtractedMessage[] = [];
@@ -85,7 +86,13 @@ export function generateTypeDeclarations(
   for (const content of contents) {
     const extracted = extractMessagesFromFtl(content);
     for (const msg of extracted) {
-      if (!seenIds.has(msg.id)) {
+      if (seenIds.has(msg.id)) {
+        // Last definition wins, matching runtime allowOverrides: true semantics.
+        const idx = allMessages.findIndex((m) => m.id === msg.id);
+        if (idx !== -1) {
+          allMessages[idx] = msg;
+        }
+      } else {
         seenIds.add(msg.id);
         allMessages.push(msg);
       }
@@ -104,7 +111,7 @@ export function generateTypeDeclarations(
       return `  '${m.dotId}'?: Record<string, never>;\n  '${m.id}'?: Record<string, never>;`;
     }
     const varsType = m.variables
-      .map((v) => `${v}: string | number | Date`)
+      .map((v) => `'${v}': string | number | Date`)
       .join('; ');
     return `  '${m.dotId}': { ${varsType} };\n  '${m.id}': { ${varsType} };`;
   });

@@ -132,12 +132,7 @@ export function FormattedMessage<
   className,
   as: Component,
 }: FormattedMessageProps<Key, ArgsMap>): React.ReactNode {
-  let t: Translations<Key, ArgsMap>;
-  try {
-    t = useTranslations<Key, ArgsMap>();
-  } catch {
-    return fallback !== undefined ? fallback : id;
-  }
+  const t = useTranslations<Key, ArgsMap>();
 
   if (!t.has(id)) {
     if (fallback !== undefined) return fallback;

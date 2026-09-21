@@ -23,11 +23,17 @@ export function createI18nMiddleware(options: I18nMiddlewareOptions) {
 
   const {
     locales,
-    defaultLocale,
+    defaultLocale: rawDefaultLocale,
     localePrefix = 'always',
     cookieName = 'rustok-locale',
     headerName = 'x-rustok-effective-locale',
   } = options;
+
+  // Resolve defaultLocale to its exact spelling in `locales` so that string
+  // comparisons (e.g. `matchedPrefix === defaultLocale` in as-needed mode)
+  // work correctly even when defaultLocale was configured with a different
+  // alias (e.g. `en_US` vs `en-US`). validateI18nConfig guarantees a match.
+  const defaultLocale = matchSupportedLocale(rawDefaultLocale, locales) ?? rawDefaultLocale;
 
   return async function middleware(request: NextMiddlewareRequestLike) {
     let NextResponse: any;

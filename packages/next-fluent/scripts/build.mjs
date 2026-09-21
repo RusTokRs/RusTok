@@ -30,13 +30,9 @@ await build({
 });
 
 const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-try {
-  execSync(`${npmCmd} exec tsc -- --declaration --emitDeclarationOnly --outDir dist`, {
-    cwd: root,
-    stdio: 'inherit'
-  });
-} catch {
-  // If tsc has warnings, continue
-}
+execSync(`${npmCmd} exec tsc -- --declaration --emitDeclarationOnly --outDir dist`, {
+  cwd: root,
+  stdio: 'inherit'
+});
 
 console.log('[next-fluent] Build completed successfully.');
