@@ -2,7 +2,7 @@ use sea_orm::{ConnectionTrait, DbBackend, Statement};
 
 use sea_orm_migration::prelude::*;
 use serde_json::json;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use uuid::Uuid;
 
 #[derive(DeriveMigrationName)]
@@ -765,9 +765,11 @@ fn derive_artifact_storage_key(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .and_then(|value| value.strip_prefix("/registry-artifacts/"))
+        .and_then(safe_registry_storage_suffix)
     {
         return Some(format!("registry/artifacts/{url}"));
     }
+
     let filename = artifact_path
         .and_then(|value| Path::new(value).file_name())
         .and_then(|value| value.to_str())
@@ -780,21 +782,78 @@ fn derive_artifact_storage_key(
                 .map(ToString::to_string)
         })
         .unwrap_or_else(|| format!("{slug}-{version}.crate"));
+
     scope_id.map(|value| format!("registry/artifacts/{value}/{filename}"))
 }
 
-fn copy_legacy_artifact_to_default_storage(path: &str, key: &str) -> std::io::Result<()> {
-    let source = Path::new(path);
-    if !source.is_file() {
-        return Ok(());
+fn safe_registry_storage_suffix(value: &str) -> Option<String> {
+    let path = Path::new(value);
+    let mut components = Vec::new();
+
+    for component in path.components() {
+        let Component::Normal(segment) = component else {
+            return None;
+        };
+        let segment = segment.to_str()?.trim();
+        if segment.is_empty() || segment == "." || segment == ".." || segment.chars().any(char::is_control) {
+            return None;
+        }
+        components.push(segment.to_string());
     }
-    let destination = default_storage_root().join(key);
+
+    if components.is_empty() {
+        None
+    } else {
+        Some(components.join("/"))
+    }
+}
+
+fn copy_legacy_artifact_to_default_storage(path: &str, key: &str) -> std::io::Result<()> {
+    let root = default_storage_root();
+    std::fs::create_dir_all(&root)?;
+
+    let source = PathBuf::from(path);
+    let source = if source.is_absolute() {
+        source
+    } else {
+        std::env::current_dir()?.join(source)
+    };
+
+    let canonical_root = std::fs::canonicalize(&root)?;
+    let canonical_source = match std::fs::canonicalize(&source) {
+        Ok(value) => value,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+
+    if canonical_source.strip_prefix(&canonical_root).is_err() || !canonical_source.is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "legacy registry artifact path escapes the managed registry storage root",
+        ));
+    }
+
+    let destination = root.join(key);
+    if let Ok(metadata) = std::fs::symlink_metadata(&destination) {
+        if metadata.file_type().is_symlink() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "registry artifact destination must not be a symlink",
+            ));
+        }
+        if metadata.file_type().is_file() {
+            return Ok(());
+        }
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "registry artifact destination already exists as a non-file",
+        ));
+    }
+
     if let Some(parent) = destination.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    if !destination.exists() {
-        std::fs::copy(source, destination)?;
-    }
+    std::fs::copy(canonical_source, destination)?;
     Ok(())
 }
 
