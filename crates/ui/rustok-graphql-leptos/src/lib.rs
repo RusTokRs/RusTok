@@ -56,6 +56,7 @@ where
     let (error, set_error) = signal(None);
     let (loading, set_loading) = signal(true);
     let (refetch_trigger, set_refetch_trigger) = signal(0u32);
+    let (request_generation, set_request_generation) = signal(0u64);
 
     Effect::new(move |_| {
         let _ = refetch_trigger.get();
@@ -68,19 +69,22 @@ where
         let variables = variables.clone();
         let token = token.clone();
         let tenant = tenant.clone();
+        let generation = request_generation.get_untracked() + 1;
+        set_request_generation.set(generation);
 
         spawn_local(async move {
             let request = GraphqlRequest::new(query, variables);
 
             match execute::<V, T>(&endpoint, request, token, tenant, get_locale()).await {
-                Ok(response) => {
+                Ok(response) if request_generation.get_untracked() == generation => {
                     set_data.set(Some(response));
                     set_loading.set(false);
                 }
-                Err(error) => {
+                Err(error) if request_generation.get_untracked() == generation => {
                     set_error.set(Some(error));
                     set_loading.set(false);
                 }
+                _ => {}
             }
         });
     });
@@ -121,6 +125,7 @@ where
     let (data, set_data) = signal(None);
     let (error, set_error) = signal(None);
     let (loading, set_loading) = signal(false);
+    let (request_generation, set_request_generation) = signal(0u64);
 
     let mutate_fn = StoredValue::new(Arc::new(move |variables: Value| {
         set_loading.set(true);
@@ -130,19 +135,22 @@ where
         let mutation = mutation.clone();
         let token = token.clone();
         let tenant = tenant.clone();
+        let generation = request_generation.get_untracked() + 1;
+        set_request_generation.set(generation);
 
         spawn_local(async move {
             let request = GraphqlRequest::new(mutation, Some(variables));
 
             match execute::<Value, T>(&endpoint, request, token, tenant, get_locale()).await {
-                Ok(response) => {
+                Ok(response) if request_generation.get_untracked() == generation => {
                     set_data.set(Some(response));
                     set_loading.set(false);
                 }
-                Err(error) => {
+                Err(error) if request_generation.get_untracked() == generation => {
                     set_error.set(Some(error));
                     set_loading.set(false);
                 }
+                _ => {}
             }
         });
     }) as Arc<dyn Fn(Value) + Send + Sync>);
@@ -169,6 +177,7 @@ where
     let (error, set_error) = signal(None);
     let (loading, set_loading) = signal(false);
     let (_refetch_trigger, set_refetch_trigger) = signal(0u32);
+    let (request_generation, set_request_generation) = signal(0u64);
 
     let fetch: LazyQueryFetchFn<V> = Box::new(move |variables: Option<V>| {
         set_loading.set(true);
@@ -178,19 +187,22 @@ where
         let query = query.clone();
         let token = token.clone();
         let tenant = tenant.clone();
+        let generation = request_generation.get_untracked() + 1;
+        set_request_generation.set(generation);
 
         spawn_local(async move {
             let request = GraphqlRequest::new(query, variables);
 
             match execute::<V, T>(&endpoint, request, token, tenant, get_locale()).await {
-                Ok(response) => {
+                Ok(response) if request_generation.get_untracked() == generation => {
                     set_data.set(Some(response));
                     set_loading.set(false);
                 }
-                Err(error) => {
+                Err(error) if request_generation.get_untracked() == generation => {
                     set_error.set(Some(error));
                     set_loading.set(false);
                 }
+                _ => {}
             }
         });
     });
