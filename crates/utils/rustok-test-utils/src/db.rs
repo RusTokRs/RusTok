@@ -84,15 +84,7 @@ pub async fn setup_test_db() -> DatabaseConnection {
 ///     // Test with content migrations only...
 /// }
 /// ```
-pub async fn setup_test_db_with_migrations<M>() -> DatabaseConnection
-where
-    M: sea_orm_migration::MigratorTrait,
-{
-    let lock = DB_LOCK
-        .get_or_init(|| async { Arc::new(Mutex::new(())) })
-        .await;
-    let _guard = lock.lock().await;
-
+fn in_memory_sqlite_options() -> ConnectOptions {
     let db_url = format!(
         "sqlite:file:rustok_test_{}?mode=memory&cache=shared",
         Uuid::new_v4()
@@ -103,8 +95,19 @@ where
     opts.max_connections(1)
         .min_connections(1)
         .sqlx_logging(false);
+    opts
+}
 
-    let db = Database::connect(opts)
+pub async fn setup_test_db_with_migrations<M>() -> DatabaseConnection
+where
+    M: sea_orm_migration::MigratorTrait,
+{
+    let lock = DB_LOCK
+        .get_or_init(|| async { Arc::new(Mutex::new(())) })
+        .await;
+    let _guard = lock.lock().await;
+
+    let db = Database::connect(in_memory_sqlite_options())
         .await
         .expect("Failed to connect to test database");
 
