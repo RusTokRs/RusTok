@@ -196,6 +196,7 @@ impl EventHandler for SearchIngestionHandler {
             | DomainEvent::BlogPostUpdated { .. }
             | DomainEvent::BlogPostArchived { .. }
             | DomainEvent::BlogPostDeleted { .. }
+            | DomainEvent::UserUpdated { .. }
             | DomainEvent::LocaleEnabled { .. }
             | DomainEvent::LocaleDisabled { .. }
             | DomainEvent::TenantCreated { .. }
@@ -330,6 +331,11 @@ impl EventHandler for SearchIngestionHandler {
                         .delete_post(envelope.tenant_id, *post_id)
                         .await
                 }
+                DomainEvent::UserUpdated { user_id } => {
+                    self.blog_projector
+                        .upsert_author(envelope.tenant_id, *user_id)
+                        .await
+                }
                 DomainEvent::TenantModuleToggled {
                     module_slug,
                     enabled,
@@ -401,6 +407,9 @@ mod tests {
         }));
         assert!(handler.handles(&DomainEvent::ProductUpdated {
             product_id: Uuid::new_v4(),
+        }));
+        assert!(handler.handles(&DomainEvent::UserUpdated {
+            user_id: Uuid::new_v4(),
         }));
         assert!(handler.handles(&DomainEvent::ReindexRequested {
             target_type: "search".to_string(),
@@ -525,6 +534,7 @@ fn projector_operation_for_event(event: &DomainEvent) -> &'static str {
         | DomainEvent::InventoryUpdated { .. }
         | DomainEvent::PriceUpdated { .. } => "upsert_product",
         DomainEvent::BlogPostDeleted { .. } => "delete_blog_post",
+        DomainEvent::UserUpdated { .. } => "rebuild_blog_author_projection",
         DomainEvent::BlogPostCreated { .. }
         | DomainEvent::BlogPostPublished { .. }
         | DomainEvent::BlogPostUnpublished { .. }
