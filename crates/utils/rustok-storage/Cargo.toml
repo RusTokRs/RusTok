@@ -17,6 +17,7 @@ uuid.workspace = true
 chrono = { workspace = true }
 object_store.workspace = true
 reqwest = { version = "0.13", default-features = false }
+tokio = { workspace = true, features = ["fs"] }
 
 [dev-dependencies]
 bytes = "1"

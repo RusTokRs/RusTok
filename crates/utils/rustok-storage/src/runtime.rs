@@ -14,18 +14,41 @@ pub struct StorageRuntime {
 impl StorageRuntime {
     pub async fn from_config(config: &StorageConfig) -> object_store::Result<Self> {
         match config.driver {
-            StorageDriver::Local => Self::local(&config.local),
+            StorageDriver::Local => Self::local_async(&config.local).await,
             #[cfg(feature = "s3")]
             StorageDriver::S3 => Self::s3(&config.s3),
         }
     }
 
+    /// Asynchronously creates a local file system storage runtime using non-blocking directory creation.
+    pub async fn local_async(config: &LocalStorageConfig) -> object_store::Result<Self> {
+        let base_dir = PathBuf::from(&config.base_dir);
+        tokio::fs::create_dir_all(&base_dir)
+            .await
+            .map_err(|source| object_store::Error::Generic {
+                store: "LocalFileSystem",
+                source: Box::new(source),
+            })?;
+        Self::build_local(base_dir, config)
+    }
+
+    /// Synchronously creates a local file system storage runtime for bootstrap environments.
     pub fn local(config: &LocalStorageConfig) -> object_store::Result<Self> {
         let base_dir = PathBuf::from(&config.base_dir);
-        std::fs::create_dir_all(&base_dir).map_err(|source| object_store::Error::Generic {
-            store: "LocalFileSystem",
-            source: Box::new(source),
-        })?;
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .create(&base_dir)
+            .map_err(|source| object_store::Error::Generic {
+                store: "LocalFileSystem",
+                source: Box::new(source),
+            })?;
+        Self::build_local(base_dir, config)
+    }
+
+    fn build_local(
+        base_dir: PathBuf,
+        config: &LocalStorageConfig,
+    ) -> object_store::Result<Self> {
         let store = LocalFileSystem::new_with_prefix(&base_dir)?
             .with_automatic_cleanup(true)
             .with_fsync(config.fsync);
