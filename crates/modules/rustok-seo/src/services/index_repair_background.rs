@@ -91,16 +91,42 @@ mod index_repair_background_impl {
         pub(crate) async fn execute_next_index_repair_replay_job_background(
             &self,
         ) -> SeoResult<Option<crate::dto::SeoIndexRepairReplayResultRecord>> {
-            let running = job_entity::Entity::find()
+            const JOB_LEASE_SECS: i64 = 30 * 60;
+            let now = chrono::Utc::now().fixed_offset();
+            let stale_before = now - chrono::Duration::seconds(JOB_LEASE_SECS);
+
+            let active = job_entity::Entity::find()
                 .filter(job_entity::Column::Status.eq(INDEX_REPAIR_JOB_RUNNING))
                 .order_by_asc(job_entity::Column::UpdatedAt)
                 .one(&self.db)
                 .await?;
 
-            let job = if let Some(running) = running {
-                running
+            let job = if let Some(job) = active {
+                if job.updated_at > stale_before {
+                    return Ok(None);
+                }
+
+                let claimed = job_entity::Entity::update_many()
+                    .col_expr(
+                        job_entity::Column::UpdatedAt,
+                        sea_orm::sea_query::Expr::value(now),
+                    )
+                    .filter(job_entity::Column::Id.eq(job.id))
+                    .filter(job_entity::Column::Status.eq(INDEX_REPAIR_JOB_RUNNING))
+                    .filter(job_entity::Column::UpdatedAt.lte(stale_before))
+                    .exec(&self.db)
+                    .await?;
+
+                if claimed.rows_affected != 1 {
+                    return Ok(None);
+                }
+
+                job_entity::Entity::find_by_id(job.id)
+                    .one(&self.db)
+                    .await?
+                    .ok_or(SeoError::NotFound)?
             } else {
-                let Some(queued) = job_entity::Entity::find()
+                let Some(job) = job_entity::Entity::find()
                     .filter(job_entity::Column::Status.eq(INDEX_REPAIR_JOB_QUEUED))
                     .order_by_asc(job_entity::Column::CreatedAt)
                     .one(&self.db)
@@ -109,14 +135,40 @@ mod index_repair_background_impl {
                     return Ok(None);
                 };
 
-                let now = chrono::Utc::now().fixed_offset();
-                let mut active: job_entity::ActiveModel = queued.into();
-                active.status = Set(INDEX_REPAIR_JOB_RUNNING.to_string());
-                active.started_at = Set(Some(now));
-                active.completed_at = Set(None);
-                active.last_error = Set(None);
-                active.updated_at = Set(now);
-                active.update(&self.db).await?
+                let claimed = job_entity::Entity::update_many()
+                    .col_expr(
+                        job_entity::Column::Status,
+                        sea_orm::sea_query::Expr::value(INDEX_REPAIR_JOB_RUNNING),
+                    )
+                    .col_expr(
+                        job_entity::Column::StartedAt,
+                        sea_orm::sea_query::Expr::value(Some(now)),
+                    )
+                    .col_expr(
+                        job_entity::Column::CompletedAt,
+                        sea_orm::sea_query::Expr::value(Option::<chrono::DateTime<chrono::FixedOffset>>::None),
+                    )
+                    .col_expr(
+                        job_entity::Column::LastError,
+                        sea_orm::sea_query::Expr::value(Option::<String>::None),
+                    )
+                    .col_expr(
+                        job_entity::Column::UpdatedAt,
+                        sea_orm::sea_query::Expr::value(now),
+                    )
+                    .filter(job_entity::Column::Id.eq(job.id))
+                    .filter(job_entity::Column::Status.eq(INDEX_REPAIR_JOB_QUEUED))
+                    .exec(&self.db)
+                    .await?;
+
+                if claimed.rows_affected != 1 {
+                    return Ok(None);
+                }
+
+                job_entity::Entity::find_by_id(job.id)
+                    .one(&self.db)
+                    .await?
+                    .ok_or(SeoError::NotFound)?
             };
 
             let result = self
