@@ -83,6 +83,13 @@ pub fn evaluate_preflight_with_deployment(
         ));
     }
 
+    if plan.environment.is_production() && plan.seed_profile == SeedProfile::Dev {
+        issues.push(error(
+            "dev_seed_production",
+            "development seed profile is not allowed for production installs.",
+        ));
+    }
+
     for (name, secret) in [
         ("database.url", &plan.database.url),
         ("admin.password", &plan.admin.password),
