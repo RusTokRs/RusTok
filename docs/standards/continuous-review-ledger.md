@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `198 / 218` components audited (**91%**)
+- **Progress:** `199 / 218` components audited (**91%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -221,7 +221,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-installer-persistence](../../crates/utils/rustok-installer-persistence) | `utils` | 7 | 1,380 | 2026-09-22 02:55 | Audited durable installer sessions, receipts, state persistence, global install lock acquisition, tenant assignment, seed/module lifecycle writes, bootstrap idempotency, admin/role transactions, and PostgreSQL/SQLite persistence boundaries. Fixed two real production safety issues: serialized global lock acquisition at the DB boundary (PostgreSQL SERIALIZABLE, transactional SQLite path) and fail-closed rejection of the Dev seed profile for production, including the deterministic demo-customer password path; preflight now rejects the same configuration before DB access. |
 | [x] | [rustok-migrations](../../crates/utils/rustok-migrations) | `utils` | 65 | 14,997 | 2026-09-22 03:20 | Audited the canonical migration registry/order/dependency validation, installer owner/remaining schema split, SQLite compatibility boundary, high-risk registry identity/artifact backfills, Flex localization backfills, lease/receipt migrations, and destructive down paths. Fixed a real privileged-filesystem issue in the registry identity/artifact migration: legacy artifact sources are now confined to the managed storage root, destination keys reject traversal/absolute/control components, symlink destinations are rejected, and regression coverage was added. |
 | [x] | [rustok-module-sdk](../../crates/utils/rustok-module-sdk) | `utils` | 2 | 60 | 2026-09-22 03:40 | Audited the frozen WIT guest contract and generated bindings for capability invocation, package/world identity, input/output serialization boundaries, and export macros. No tenant/auth/secret authority exists in the guest SDK; capability authorization remains host-owned and no additional production security or concurrency finding remained. |
-| [ ] | [rustok-module-template](../../crates/utils/rustok-module-template) | `utils` | 2 | 329 | None |  |
+| [x] | [rustok-module-template](../../crates/utils/rustok-module-template) | `utils` | 2 | 329 | 2026-09-22 04:00 | Audited generated module source/manifest rendering, identity validation, sandbox contract, brokered capability declarations, build-policy defaults, Index boundary documentation, and host-owned artifact descriptor generation. Template policy is fail-closed (no git dependencies, build scripts, or native links), and no additional production security or tenant-scope finding remained. |
 | [ ] | [rustok-secrets](../../crates/utils/rustok-secrets) | `utils` | 3 | 1,306 | None |  |
 | [ ] | [rustok-storage](../../crates/utils/rustok-storage) | `utils` | 4 | 774 | None |  |
 | [ ] | [rustok-test-utils](../../crates/utils/rustok-test-utils) | `utils` | 7 | 1,917 | None |  |
