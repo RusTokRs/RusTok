@@ -1,8 +1,8 @@
 use chrono::Utc;
 use rustok_installer::{InstallPlan, InstallReceipt, InstallState, redact_install_plan};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder,
+    AccessMode, ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, IsolationLevel, QueryFilter, QueryOrder, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -70,26 +70,55 @@ impl InstallerPersistenceService {
         owner: &str,
         ttl: chrono::Duration,
     ) -> Result<install_session::Model, sea_orm::DbErr> {
-        let now = Utc::now();
-        if let Some(existing) = install_session::Entity::find()
-            .filter(install_session::Column::Id.ne(session.id))
-            .filter(install_session::Column::LockExpiresAt.gt(now))
-            .filter(install_session::Column::Status.is_not_in(final_state_values()))
-            .order_by_desc(install_session::Column::LockExpiresAt)
-            .one(&self.db)
-            .await?
-        {
-            return Err(sea_orm::DbErr::Custom(format!(
-                "installer lock is already held by session {}",
-                existing.id
-            )));
+        let owner = owner.trim();
+        if owner.is_empty() {
+            return Err(sea_orm::DbErr::Custom(
+                "installer lock owner must not be empty".to_string(),
+            ));
         }
+        let ttl = ttl.max(chrono::Duration::seconds(1));
+        let session_id = session.id;
+        let owner = owner.to_string();
 
-        let mut active: install_session::ActiveModel = session.into();
-        active.lock_owner = Set(Some(owner.to_string()));
-        active.lock_expires_at = Set(Some(now + ttl));
-        active.updated_at = Set(now);
-        active.update(&self.db).await
+        let claim = move |txn: &DatabaseTransaction| {
+            let session = session.clone();
+            let owner = owner.clone();
+            Box::pin(async move {
+                acquire_lock_in_transaction(txn, session, &owner, ttl).await
+            })
+        };
+
+        match self.db.get_database_backend() {
+            sea_orm::DbBackend::Postgres => self
+                .db
+                .transaction_with_config(
+                    claim,
+                    Some(IsolationLevel::Serializable),
+                    Some(AccessMode::ReadWrite),
+                )
+                .await
+                .map_err(|error| match error {
+                    sea_orm::TransactionError::Connection(error)
+                    | sea_orm::TransactionError::Transaction(error) => error,
+                }),
+            _ => self
+                .db
+                .transaction(claim)
+                .await
+                .map_err(|error| match error {
+                    sea_orm::TransactionError::Connection(error)
+                    | sea_orm::TransactionError::Transaction(error) => error,
+                }),
+        }
+        .map_err(|error| match error {
+            sea_orm::DbErr::Conn(e) => sea_orm::DbErr::Conn(e),
+            other => other,
+        })
+        .and_then(|result| {
+            result.ok_or_else(|| sea_orm::DbErr::RecordNotFound(
+                format!("install session {session_id} not found"),
+            ))
+        })
     }
 
     pub async fn set_state(
@@ -155,6 +184,34 @@ impl InstallerPersistenceService {
             .all(&self.db)
             .await
     }
+}
+
+async fn acquire_lock_in_transaction(
+    txn: &DatabaseTransaction,
+    session: install_session::Model,
+    owner: &str,
+    ttl: chrono::Duration,
+) -> Result<Option<install_session::Model>, sea_orm::DbErr> {
+    let now = Utc::now();
+    if let Some(existing) = install_session::Entity::find()
+        .filter(install_session::Column::Id.ne(session.id))
+        .filter(install_session::Column::LockExpiresAt.gt(now))
+        .filter(install_session::Column::Status.is_not_in(final_state_values()))
+        .order_by_desc(install_session::Column::LockExpiresAt)
+        .one(txn)
+        .await?
+    {
+        return Err(sea_orm::DbErr::Custom(format!(
+            "installer lock is already held by session {}",
+            existing.id
+        )));
+    }
+
+    let mut active: install_session::ActiveModel = session.into();
+    active.lock_owner = Set(Some(owner.to_string()));
+    active.lock_expires_at = Set(Some(now + ttl));
+    active.updated_at = Set(now);
+    active.update(txn).await.map(Some)
 }
 
 fn parse_session_uuid(value: &str) -> Result<Uuid, sea_orm::DbErr> {
