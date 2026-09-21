@@ -18,8 +18,8 @@ use tonic::{Request, Response, Status};
 use crate::SANDBOX_WORKER_PROTOCOL_REVISION;
 use crate::proto::sandbox_worker_service_server::SandboxWorkerService;
 use crate::proto::{
-    CapabilityRequest, HostFrame, ReadinessRequest, ReadinessResponse, WorkerFrame,
-    capability_result, host_frame, worker_frame,
+    CapabilityRequest, HostFrame, ReadinessRequest, ReadinessResponse, SandboxRequestPayload,
+    WorkerFrame, capability_result, host_frame, worker_frame,
 };
 
 #[async_trait]
@@ -54,42 +54,42 @@ impl SandboxWorkerGrpcService {
             execution_permit: Arc::new(tokio::sync::Semaphore::new(1)),
         })
     }
-}
 
-#[tonic::async_trait]
-impl SandboxWorkerService for SandboxWorkerGrpcService {
-    type ExecuteStream = Pin<Box<dyn Stream<Item = Result<WorkerFrame, Status>> + Send + 'static>>;
-
-    async fn get_readiness(
-        &self,
-        _request: Request<ReadinessRequest>,
-    ) -> Result<Response<ReadinessResponse>, Status> {
-        Ok(Response::new(ReadinessResponse {
-            ready: self.readiness.check_readiness().await.is_ok(),
-            executor: SandboxExecutorKind::Rhai.to_string(),
-            protocol_revision: SANDBOX_WORKER_PROTOCOL_REVISION,
-        }))
+    fn spawn_executor_task(
+        executor: Arc<dyn SandboxExecutor>,
+        permit: tokio::sync::OwnedSemaphorePermit,
+        execution_id: String,
+        outbound: mpsc::Sender<Result<WorkerFrame, Status>>,
+        pending: PendingCalls,
+        sandbox_request: SandboxRequest,
+        cancellation: SandboxCancellation,
+        reader: tokio::task::JoinHandle<()>,
+    ) {
+        tokio::spawn(async move {
+            let _permit = permit;
+            let callback = CallbackBroker::new(
+                execution_id.clone(),
+                outbound.clone(),
+                pending,
+                Duration::from_millis(sandbox_request.policy.limits.wall_clock_ms),
+            );
+            let result = execute_request(executor, sandbox_request, callback, cancellation).await;
+            let terminal = terminal_frame(&execution_id, result);
+            let _ = outbound.send(Ok(terminal)).await;
+            reader.abort();
+        });
     }
 
-    async fn execute(
+    async fn parse_initial_request(
         &self,
-        request: Request<tonic::Streaming<HostFrame>>,
-    ) -> Result<Response<Self::ExecuteStream>, Status> {
-        self.readiness.check_readiness().await.map_err(|_| {
-            Status::failed_precondition("sandbox worker isolation policy is not ready")
-        })?;
-        let mut inbound = request.into_inner();
-        let permit = Arc::clone(&self.execution_permit)
-            .try_acquire_owned()
-            .map_err(|_| {
-                Status::resource_exhausted("sandbox worker is executing another request")
-            })?;
+        inbound: &mut tonic::Streaming<HostFrame>,
+    ) -> Result<(String, SandboxRequest), Status> {
         let first = inbound
             .message()
             .await?
             .ok_or_else(|| Status::invalid_argument("sandbox request stream is empty"))?;
         validate_host_envelope(&first).map_err(Status::invalid_argument)?;
-        let execution_id = first.execution_id.clone();
+        let execution_id = first.execution_id;
         let payload = match first.frame {
             Some(host_frame::Frame::RequestPayload(payload)) => payload,
             _ => {
@@ -98,6 +98,15 @@ impl SandboxWorkerService for SandboxWorkerGrpcService {
                 ));
             }
         };
+        let sandbox_request = self.validate_sandbox_request(payload, &execution_id).await?;
+        Ok((execution_id, sandbox_request))
+    }
+
+    async fn validate_sandbox_request(
+        &self,
+        payload: SandboxRequestPayload,
+        execution_id: &str,
+    ) -> Result<SandboxRequest, Status> {
         let mut sandbox_request: SandboxRequest = serde_json::from_slice(&payload.request_json)
             .map_err(|error| {
                 Status::invalid_argument(format!("invalid sandbox request: {error}"))
@@ -127,6 +136,39 @@ impl SandboxWorkerService for SandboxWorkerGrpcService {
                 "sandbox request execution identity does not match its frame",
             ));
         }
+        Ok(sandbox_request)
+    }
+}
+
+#[tonic::async_trait]
+impl SandboxWorkerService for SandboxWorkerGrpcService {
+    type ExecuteStream = Pin<Box<dyn Stream<Item = Result<WorkerFrame, Status>> + Send + 'static>>;
+
+    async fn get_readiness(
+        &self,
+        _request: Request<ReadinessRequest>,
+    ) -> Result<Response<ReadinessResponse>, Status> {
+        Ok(Response::new(ReadinessResponse {
+            ready: self.readiness.check_readiness().await.is_ok(),
+            executor: SandboxExecutorKind::Rhai.to_string(),
+            protocol_revision: SANDBOX_WORKER_PROTOCOL_REVISION,
+        }))
+    }
+
+    async fn execute(
+        &self,
+        request: Request<tonic::Streaming<HostFrame>>,
+    ) -> Result<Response<Self::ExecuteStream>, Status> {
+        self.readiness.check_readiness().await.map_err(|_| {
+            Status::failed_precondition("sandbox worker isolation policy is not ready")
+        })?;
+        let permit = Arc::clone(&self.execution_permit)
+            .try_acquire_owned()
+            .map_err(|_| {
+                Status::resource_exhausted("sandbox worker is executing another request")
+            })?;
+        let mut inbound = request.into_inner();
+        let (execution_id, sandbox_request) = self.parse_initial_request(&mut inbound).await?;
 
         let (outbound, output) = mpsc::channel(8);
         let pending = Arc::new(Mutex::new(HashMap::new()));
@@ -138,20 +180,16 @@ impl SandboxWorkerService for SandboxWorkerGrpcService {
             cancellation.clone(),
         ));
 
-        let executor = Arc::clone(&self.executor);
-        tokio::spawn(async move {
-            let _permit = permit;
-            let callback = CallbackBroker::new(
-                execution_id.clone(),
-                outbound.clone(),
-                pending,
-                Duration::from_millis(sandbox_request.policy.limits.wall_clock_ms),
-            );
-            let result = execute_request(executor, sandbox_request, callback, cancellation).await;
-            let terminal = terminal_frame(&execution_id, result);
-            let _ = outbound.send(Ok(terminal)).await;
-            reader.abort();
-        });
+        Self::spawn_executor_task(
+            Arc::clone(&self.executor),
+            permit,
+            execution_id,
+            outbound,
+            pending,
+            sandbox_request,
+            cancellation,
+            reader,
+        );
 
         Ok(Response::new(Box::pin(ReceiverStream::new(output))))
     }
@@ -198,6 +236,28 @@ impl CapabilityBroker for CallbackBroker {
                 limit: u64::MAX - 1,
             });
         }
+        let receiver = self.dispatch_capability_call(call_id, call).await?;
+        match tokio::time::timeout(self.timeout, receiver).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => Err(SandboxError::Aborted(
+                "sandbox capability callback was abandoned".to_string(),
+            )),
+            Err(_) => {
+                self.pending.lock().await.remove(&call_id);
+                Err(SandboxError::Timeout {
+                    limit_ms: self.timeout.as_millis().try_into().unwrap_or(u64::MAX),
+                })
+            }
+        }
+    }
+}
+
+impl CallbackBroker {
+    async fn dispatch_capability_call(
+        &self,
+        call_id: u64,
+        call: &CapabilityCall,
+    ) -> SandboxResult<oneshot::Receiver<SandboxResult<CapabilityResponse>>> {
         let payload = serde_json::to_vec(call).map_err(|error| {
             SandboxError::Internal(format!("could not encode capability call: {error}"))
         })?;
@@ -220,18 +280,7 @@ impl CapabilityBroker for CallbackBroker {
                 "sandbox host stream closed during a capability call".to_string(),
             ));
         }
-        match tokio::time::timeout(self.timeout, receiver).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err(SandboxError::Aborted(
-                "sandbox capability callback was abandoned".to_string(),
-            )),
-            Err(_) => {
-                self.pending.lock().await.remove(&call_id);
-                Err(SandboxError::Timeout {
-                    limit_ms: self.timeout.as_millis().try_into().unwrap_or(u64::MAX),
-                })
-            }
-        }
+        Ok(receiver)
     }
 }
 
@@ -299,58 +348,69 @@ async fn read_host_frames(
             cancellation.cancel();
             return;
         }
-        match frame.frame {
-            Some(host_frame::Frame::CapabilityResult(result)) => {
-                let outcome = match result.result {
-                    Some(capability_result::Result::ResponsePayload(payload)) => {
-                        serde_json::from_slice::<CapabilityResponse>(&payload).map_err(|error| {
-                            SandboxError::Aborted(format!(
-                                "invalid capability response payload: {error}"
-                            ))
-                        })
-                    }
-                    Some(capability_result::Result::ErrorPayload(payload)) => {
-                        match serde_json::from_slice::<SandboxError>(&payload) {
-                            Ok(error) => Err(error),
-                            Err(error) => Err(SandboxError::Aborted(format!(
-                                "invalid capability error payload: {error}"
-                            ))),
-                        }
-                    }
-                    None => Err(SandboxError::Aborted(
-                        "capability result is empty".to_string(),
-                    )),
-                };
-                let Some(sender) = pending.lock().await.remove(&result.call_id) else {
-                    fail_pending(
-                        &pending,
-                        SandboxError::Aborted(
-                            "sandbox host returned an unknown capability call id".to_string(),
-                        ),
-                    )
-                    .await;
-                    cancellation.cancel();
-                    return;
-                };
-                let _ = sender.send(outcome);
-            }
-            Some(host_frame::Frame::CancelExecution(_)) => {
-                fail_pending(&pending, SandboxError::Cancelled).await;
-                cancellation.cancel();
-                return;
-            }
-            Some(host_frame::Frame::RequestPayload(_)) | None => {
+        if !dispatch_host_frame(frame.frame, &pending, &cancellation).await {
+            return;
+        }
+    }
+}
+
+async fn dispatch_host_frame(
+    frame: Option<host_frame::Frame>,
+    pending: &PendingCalls,
+    cancellation: &SandboxCancellation,
+) -> bool {
+    match frame {
+        Some(host_frame::Frame::CapabilityResult(result)) => {
+            let outcome = decode_capability_result(result.result);
+            let Some(sender) = pending.lock().await.remove(&result.call_id) else {
                 fail_pending(
-                    &pending,
+                    pending,
                     SandboxError::Aborted(
-                        "sandbox host sent an invalid post-start frame".to_string(),
+                        "sandbox host returned an unknown capability call id".to_string(),
                     ),
                 )
                 .await;
                 cancellation.cancel();
-                return;
+                return false;
+            };
+            let _ = sender.send(outcome);
+            true
+        }
+        Some(host_frame::Frame::CancelExecution(_)) => {
+            fail_pending(pending, SandboxError::Cancelled).await;
+            cancellation.cancel();
+            false
+        }
+        Some(host_frame::Frame::RequestPayload(_)) | None => {
+            fail_pending(
+                pending,
+                SandboxError::Aborted("sandbox host sent an invalid post-start frame".to_string()),
+            )
+            .await;
+            cancellation.cancel();
+            false
+        }
+    }
+}
+
+fn decode_capability_result(
+    result: Option<capability_result::Result>,
+) -> SandboxResult<CapabilityResponse> {
+    match result {
+        Some(capability_result::Result::ResponsePayload(payload)) => {
+            serde_json::from_slice::<CapabilityResponse>(&payload).map_err(|error| {
+                SandboxError::Aborted(format!("invalid capability response payload: {error}"))
+            })
+        }
+        Some(capability_result::Result::ErrorPayload(payload)) => {
+            match serde_json::from_slice::<SandboxError>(&payload) {
+                Ok(error) => Err(error),
+                Err(error) => Err(SandboxError::Aborted(format!(
+                    "invalid capability error payload: {error}"
+                ))),
             }
         }
+        None => Err(SandboxError::Aborted("capability result is empty".to_string())),
     }
 }
 
