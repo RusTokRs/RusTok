@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `166 / 218` components audited (**76%**)
+- **Progress:** `167 / 218` components audited (**77%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -189,7 +189,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-translation-targets](../../crates/modules/rustok-translation-targets) | `modules` | 3 | 1,729 | 2026-09-21 15:10 | Audited provider contract/registry, capability combinations, opaque revisions and CAS helpers, protected-token/data-classification rules, apply/read context policy, and real Pages/Product owner adapters. Provider descriptors expose read/apply permission floors as metadata, but every registered owner adapter independently enforces authoritative Resource/Action permissions and tenant-scoped owner reads/writes; no additional production security, tenant-scope, or concurrency finding remained. |
 | [x] | [admin](../../crates/modules/rustok-translation/admin) | `modules` | 9 | 13,412 | 2026-09-21 15:28 | Audited native server-function and GraphQL transports, auth/request/tenant context binding, translation operation dispatch, permission/idempotency delegation, machine/import/export controls, tenant/locale forwarding, and UI rendering; no additional production security, tenant-scope, or concurrency finding remained. |
 | [x] | [rustok-workflow](../../crates/modules/rustok-workflow) | `modules` | 52 | 6,794 | 2026-09-21 16:05 | Audited workflow CRUD/versioning, tenant-scoped execution reads, trigger/webhook paths, event idempotency, transactional workflow/step mutation locks, execution state transitions, retry behavior, HTTP SSRF controls, script/notification abstractions, and GraphQL/HTTP permissions. Fixed unauthenticated webhook execution: webhook secrets are now explicitly configured, HMAC-SHA256 signatures are verified over the raw request body with constant-time comparison, missing/invalid signatures fail closed, and webhook signatures are no longer logged. |
-| [ ] | [admin](../../crates/modules/rustok-workflow/admin) | `modules` | 14 | 1,120 | None |  |
+| [x] | [admin](../../crates/modules/rustok-workflow/admin) | `modules` | 14 | 1,120 | 2026-09-21 16:28 | Audited native/GraphQL admin transport, auth and tenant forwarding, workflow permission gates, template creation path, UI tenant/token context, and rendered admin surface. Fixed a real source-integrity defect: `lib.rs`/UI/transport referenced a missing `core.rs`; restored the module-compatible core view-model and transport-context layer. No additional production security or tenant-scope finding remained. |
 | [ ] | [fly](../../crates/ui/fly) | `ui` | 65 | 23,474 | None |  |
 | [ ] | [fly-browser](../../crates/ui/fly-browser) | `ui` | 9 | 816 | None |  |
 | [ ] | [fly-leptos](../../crates/ui/fly-leptos) | `ui` | 5 | 1,691 | None |  |
