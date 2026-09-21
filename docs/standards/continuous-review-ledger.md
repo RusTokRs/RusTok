@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `115 / 218` components audited (**53%**)
+- **Progress:** `116 / 218` components audited (**53%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -31,7 +31,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [email](../../apps/next-admin/packages/email) | `apps` | 5 | 289 | 2026-09-21 09:20 | Audited email settings API/form/page plus server platform-settings authorization and tenant scoping. Found and fixed plaintext SMTP credential exposure through generic settings GraphQL; email secrets are now redacted, while blank password updates preserve the existing secret. |
 | [x] | [rbac](../../apps/next-admin/packages/rbac) | `apps` | 5 | 211 | 2026-09-21 09:24 | Audited role list/assignment API and UI plus Rust RBAC GraphQL/owner writer: direct control-plane principal, tenant-bound actor/target, users:manage permission, hierarchy ceiling, last-active-SuperAdmin continuity, and transactional persistence are enforced server-side. |
 | [x] | [rustok-ai](../../apps/next-admin/packages/rustok-ai) | `apps` | 1 | 4,055 | 2026-09-21 09:30 | Audited AI control-plane UI GraphQL/WebSocket flows, provider/task/tool/session/approval wiring, tenant forwarding, credential references, and browser-side action controls; backend remains authoritative for tenant scope, permissions, and SecretRef policy. No additional production finding. |
-| [ ] | [rustok-mcp](../../apps/next-admin/packages/rustok-mcp) | `apps` | 1 | 1,041 | None |  |
+| [x] | [rustok-mcp](../../apps/next-admin/packages/rustok-mcp) | `apps` | 1 | 1,041 | 2026-09-21 09:42 | Audited MCP control-plane UI and backend token/client management, tool authorization, delegated-user authority, tenant scoping, audit events, one-time token exposure, and scaffold workspace confinement; fixed concurrent token rotation/deactivation by locking the tenant-scoped client row inside the transaction. |
 | [ ] | [rustok-product](../../apps/next-admin/packages/rustok-product) | `apps` | 1 | 340 | None |  |
 | [ ] | [search](../../apps/next-admin/packages/search) | `apps` | 1 | 2,913 | None |  |
 | [ ] | [translation](../../apps/next-admin/packages/translation) | `apps` | 4 | 5,421 | None |  |
