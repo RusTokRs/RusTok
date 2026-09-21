@@ -217,50 +217,62 @@ where
         work: &ModuleArtifactNodeAssignmentWorkItem,
     ) -> Result<(), ArtifactNodeAgentError> {
         match work.assignment.phase {
-            ModuleReconciliationPhase::Pending => match self.materializer.prepare(work).await {
-                Ok(_) => {
-                    self.report(work, ModuleReconciliationPhase::Prepared, None, None)
-                        .await
-                }
-                Err(ArtifactNodeMaterializationError::Retryable { detail }) => {
-                    Err(ArtifactNodeAgentError::Retryable(detail))
-                }
-                Err(ArtifactNodeMaterializationError::Terminal { code, detail }) => {
-                    self.report(
-                        work,
-                        ModuleReconciliationPhase::Failed,
-                        None,
-                        Some(ModuleReconciliationFailure { code, detail }),
-                    )
-                    .await
-                }
-            },
-            ModuleReconciliationPhase::Prepared => {
-                match self.materializer.verify_ready(work).await {
-                    Ok(preparation) => {
-                        self.report(
-                            work,
-                            ModuleReconciliationPhase::Healthy,
-                            Some(health_evidence(work, &preparation)?),
-                            None,
-                        )
-                        .await
-                    }
-                    Err(ArtifactNodeMaterializationError::Retryable { detail }) => {
-                        Err(ArtifactNodeAgentError::Retryable(detail))
-                    }
-                    Err(ArtifactNodeMaterializationError::Terminal { code, detail }) => {
-                        self.report(
-                            work,
-                            ModuleReconciliationPhase::Failed,
-                            None,
-                            Some(ModuleReconciliationFailure { code, detail }),
-                        )
-                        .await
-                    }
-                }
-            }
+            ModuleReconciliationPhase::Pending => self.handle_pending_assignment(work).await,
+            ModuleReconciliationPhase::Prepared => self.handle_prepared_assignment(work).await,
             _ => Err(ArtifactNodeAgentError::UnexpectedAssignmentPhase),
+        }
+    }
+
+    async fn handle_pending_assignment(
+        &self,
+        work: &ModuleArtifactNodeAssignmentWorkItem,
+    ) -> Result<(), ArtifactNodeAgentError> {
+        match self.materializer.prepare(work).await {
+            Ok(_) => {
+                self.report(work, ModuleReconciliationPhase::Prepared, None, None)
+                    .await
+            }
+            Err(ArtifactNodeMaterializationError::Retryable { detail }) => {
+                Err(ArtifactNodeAgentError::Retryable(detail))
+            }
+            Err(ArtifactNodeMaterializationError::Terminal { code, detail }) => {
+                self.report(
+                    work,
+                    ModuleReconciliationPhase::Failed,
+                    None,
+                    Some(ModuleReconciliationFailure { code, detail }),
+                )
+                .await
+            }
+        }
+    }
+
+    async fn handle_prepared_assignment(
+        &self,
+        work: &ModuleArtifactNodeAssignmentWorkItem,
+    ) -> Result<(), ArtifactNodeAgentError> {
+        match self.materializer.verify_ready(work).await {
+            Ok(preparation) => {
+                self.report(
+                    work,
+                    ModuleReconciliationPhase::Healthy,
+                    Some(health_evidence(work, &preparation)?),
+                    None,
+                )
+                .await
+            }
+            Err(ArtifactNodeMaterializationError::Retryable { detail }) => {
+                Err(ArtifactNodeAgentError::Retryable(detail))
+            }
+            Err(ArtifactNodeMaterializationError::Terminal { code, detail }) => {
+                self.report(
+                    work,
+                    ModuleReconciliationPhase::Failed,
+                    None,
+                    Some(ModuleReconciliationFailure { code, detail }),
+                )
+                .await
+            }
         }
     }
 
@@ -713,7 +725,7 @@ mod tests {
             heartbeats: Mutex::new(Vec::new()),
         });
         let mut materializer = successful_materializer();
-        materializer.delay = Some(std::time::Duration::from_millis(25));
+        materializer.delay = Some(std::time::Duration::from_millis(60));
         let agent = ArtifactNodeAgent::new(
             controller.clone(),
             std::sync::Arc::new(materializer),

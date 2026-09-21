@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use rustok_modules::{
-    ArtifactBlobStore, ArtifactPayloadKind, ModuleArtifactNodeAssignmentWorkItem,
-    ModuleInstallationError, StorageArtifactBlobStore,
+    ArtifactBlobStore, ArtifactPayloadKind, ModuleArtifactNodeAssignment,
+    ModuleArtifactNodeAssignmentWorkItem, ModuleInstallationError, StorageArtifactBlobStore,
 };
 use rustok_runtime::{
     InstanceLayout, ModulePayloadCacheError, materialize_module_payload, record_prepared_module,
@@ -54,47 +54,7 @@ impl StorageArtifactNodeMaterializer {
             .map_err(classify_blob_error)?;
         materialize_module_payload(&self.layout, &assignment.payload_digest, &bytes)
             .map_err(classify_cache_error)?;
-        let runtime_fingerprint = match assignment.payload_kind {
-            ArtifactPayloadKind::Rhai => {
-                self.rhai
-                    .prepare_artifact_payload(
-                        &assignment.executor_abi,
-                        &assignment.payload_media_type,
-                        &assignment.payload_digest,
-                        &bytes,
-                    )
-                    .map_err(|_| {
-                        ArtifactNodeMaterializationError::terminal(
-                            "rhai_payload_invalid",
-                            "the owner-assigned Rhai payload cannot be prepared",
-                        )
-                    })?
-                    .runtime_fingerprint
-            }
-            ArtifactPayloadKind::WasmComponent => {
-                self.wasm
-                    .prepare_component(&assignment.payload_digest, &assignment.executor_abi, &bytes)
-                    .map_err(|_| {
-                        ArtifactNodeMaterializationError::terminal(
-                            "wasm_component_invalid",
-                            "the owner-assigned Wasm Component cannot be prepared",
-                        )
-                    })?
-                    .runtime_fingerprint
-            }
-            ArtifactPayloadKind::StaticPromoted => {
-                return Err(ArtifactNodeMaterializationError::terminal(
-                    "static_promotion_assignment_invalid",
-                    "static promotion artifacts cannot be assigned to the dynamic node agent",
-                ));
-            }
-            ArtifactPayloadKind::Sidecar => {
-                return Err(ArtifactNodeMaterializationError::terminal(
-                    "sidecar_assignment_unsupported",
-                    "the node agent has no sidecar runtime implementation",
-                ));
-            }
-        };
+        let runtime_fingerprint = self.prepare_runtime_payload(assignment, &bytes)?;
         record_prepared_module(
             &self.layout,
             &runtime_fingerprint,
@@ -104,6 +64,62 @@ impl StorageArtifactNodeMaterializer {
         Ok(NodeArtifactPreparation {
             runtime_fingerprint,
         })
+    }
+
+    fn prepare_runtime_payload(
+        &self,
+        assignment: &ModuleArtifactNodeAssignment,
+        bytes: &[u8],
+    ) -> Result<String, ArtifactNodeMaterializationError> {
+        match assignment.payload_kind {
+            ArtifactPayloadKind::Rhai => self.prepare_rhai(assignment, bytes),
+            ArtifactPayloadKind::WasmComponent => self.prepare_wasm(assignment, bytes),
+            ArtifactPayloadKind::StaticPromoted => Err(ArtifactNodeMaterializationError::terminal(
+                "static_promotion_assignment_invalid",
+                "static promotion artifacts cannot be assigned to the dynamic node agent",
+            )),
+            ArtifactPayloadKind::Sidecar => Err(ArtifactNodeMaterializationError::terminal(
+                "sidecar_assignment_unsupported",
+                "the node agent has no sidecar runtime implementation",
+            )),
+        }
+    }
+
+    fn prepare_rhai(
+        &self,
+        assignment: &ModuleArtifactNodeAssignment,
+        bytes: &[u8],
+    ) -> Result<String, ArtifactNodeMaterializationError> {
+        self.rhai
+            .prepare_artifact_payload(
+                &assignment.executor_abi,
+                &assignment.payload_media_type,
+                &assignment.payload_digest,
+                bytes,
+            )
+            .map(|p| p.runtime_fingerprint)
+            .map_err(|_| {
+                ArtifactNodeMaterializationError::terminal(
+                    "rhai_payload_invalid",
+                    "the owner-assigned Rhai payload cannot be prepared",
+                )
+            })
+    }
+
+    fn prepare_wasm(
+        &self,
+        assignment: &ModuleArtifactNodeAssignment,
+        bytes: &[u8],
+    ) -> Result<String, ArtifactNodeMaterializationError> {
+        self.wasm
+            .prepare_component(&assignment.payload_digest, &assignment.executor_abi, bytes)
+            .map(|p| p.runtime_fingerprint)
+            .map_err(|_| {
+                ArtifactNodeMaterializationError::terminal(
+                    "wasm_component_invalid",
+                    "the owner-assigned Wasm Component cannot be prepared",
+                )
+            })
     }
 }
 

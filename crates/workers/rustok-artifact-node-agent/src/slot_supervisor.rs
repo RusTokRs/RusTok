@@ -115,24 +115,25 @@ impl SlotSupervisor {
         }
     }
 
+    pub fn set_slot_state(&mut self, slot: DeploymentSlot, state: SlotState) {
+        match slot {
+            DeploymentSlot::SlotA => self.slot_a = state,
+            DeploymentSlot::SlotB => self.slot_b = state,
+        }
+    }
+
     /// Pre-stages candidate payload bytes on the standby slot.
     pub fn pre_stage_candidate(
         &mut self,
         candidate_digest: String,
     ) -> Result<DeploymentSlot, SlotSupervisorError> {
         let target_slot = self.standby_slot();
-        match target_slot {
-            DeploymentSlot::SlotA => {
-                self.slot_a = SlotState::PreStaged {
-                    artifact_digest: candidate_digest,
-                };
-            }
-            DeploymentSlot::SlotB => {
-                self.slot_b = SlotState::PreStaged {
-                    artifact_digest: candidate_digest,
-                };
-            }
-        }
+        self.set_slot_state(
+            target_slot,
+            SlotState::PreStaged {
+                artifact_digest: candidate_digest,
+            },
+        );
         Ok(target_slot)
     }
 
@@ -143,20 +144,13 @@ impl SlotSupervisor {
     ) -> Result<DeploymentSlot, SlotSupervisorError> {
         let target_slot = self.standby_slot();
         let port = self.get_slot_port(target_slot);
-        match target_slot {
-            DeploymentSlot::SlotA => {
-                self.slot_a = SlotState::Standby {
-                    artifact_digest: candidate_digest,
-                    port,
-                };
-            }
-            DeploymentSlot::SlotB => {
-                self.slot_b = SlotState::Standby {
-                    artifact_digest: candidate_digest,
-                    port,
-                };
-            }
-        }
+        self.set_slot_state(
+            target_slot,
+            SlotState::Standby {
+                artifact_digest: candidate_digest,
+                port,
+            },
+        );
         Ok(target_slot)
     }
 
@@ -177,42 +171,26 @@ impl SlotSupervisor {
             other => return Err(SlotSupervisorError::CandidateNotReady(other)),
         };
 
-        // Transition candidate to Serving
-        match candidate_slot {
-            DeploymentSlot::SlotA => {
-                self.slot_a = SlotState::Serving {
-                    artifact_digest: candidate_digest,
-                    port: candidate_port,
-                };
-            }
-            DeploymentSlot::SlotB => {
-                self.slot_b = SlotState::Serving {
-                    artifact_digest: candidate_digest,
-                    port: candidate_port,
-                };
-            }
-        }
+        self.set_slot_state(
+            candidate_slot,
+            SlotState::Serving {
+                artifact_digest: candidate_digest,
+                port: candidate_port,
+            },
+        );
 
-        // Transition predecessor to Standby (hot-standby for instant rollback)
         if let SlotState::Serving {
             artifact_digest,
             port,
         } = predecessor_state
         {
-            match predecessor_slot {
-                DeploymentSlot::SlotA => {
-                    self.slot_a = SlotState::Standby {
-                        artifact_digest,
-                        port,
-                    };
-                }
-                DeploymentSlot::SlotB => {
-                    self.slot_b = SlotState::Standby {
-                        artifact_digest,
-                        port,
-                    };
-                }
-            }
+            self.set_slot_state(
+                predecessor_slot,
+                SlotState::Standby {
+                    artifact_digest,
+                    port,
+                },
+            );
         }
 
         self.active_slot = candidate_slot;
@@ -235,42 +213,26 @@ impl SlotSupervisor {
             other => return Err(SlotSupervisorError::PredecessorNotAvailable(other)),
         };
 
-        // Promote predecessor back to Serving
-        match predecessor_slot {
-            DeploymentSlot::SlotA => {
-                self.slot_a = SlotState::Serving {
-                    artifact_digest: predecessor_digest,
-                    port: predecessor_port,
-                };
-            }
-            DeploymentSlot::SlotB => {
-                self.slot_b = SlotState::Serving {
-                    artifact_digest: predecessor_digest,
-                    port: predecessor_port,
-                };
-            }
-        }
+        self.set_slot_state(
+            predecessor_slot,
+            SlotState::Serving {
+                artifact_digest: predecessor_digest,
+                port: predecessor_port,
+            },
+        );
 
-        // Demote failed candidate to Empty or Standby
         if let SlotState::Serving {
             artifact_digest,
             port,
         } = failed_candidate_state
         {
-            match failed_candidate_slot {
-                DeploymentSlot::SlotA => {
-                    self.slot_a = SlotState::Standby {
-                        artifact_digest,
-                        port,
-                    };
-                }
-                DeploymentSlot::SlotB => {
-                    self.slot_b = SlotState::Standby {
-                        artifact_digest,
-                        port,
-                    };
-                }
-            }
+            self.set_slot_state(
+                failed_candidate_slot,
+                SlotState::Standby {
+                    artifact_digest,
+                    port,
+                },
+            );
         }
 
         self.active_slot = predecessor_slot;
@@ -362,34 +324,10 @@ impl HttpSsrSwitchingCoordinator {
         candidate_digest: &str,
     ) -> Result<PreSwitchFailureReceipt, SlotSupervisorError> {
         let standby_slot = self.supervisor.standby_slot();
-        match self.supervisor.get_slot_state(standby_slot) {
-            SlotState::PreStaged { artifact_digest }
-            | SlotState::Standby {
-                artifact_digest, ..
-            } => {
-                if artifact_digest != candidate_digest {
-                    return Err(SlotSupervisorError::InvalidTransition(format!(
-                        "Digest mismatch on standby slot: expected {candidate_digest}, got {artifact_digest}"
-                    )));
-                }
-            }
-            SlotState::Empty => {
-                return Err(SlotSupervisorError::InvalidTransition(
-                    "No candidate in standby slot to fail".to_string(),
-                ));
-            }
-            SlotState::Serving { .. } => {
-                return Err(SlotSupervisorError::InvalidTransition(
-                    "Standby slot cannot be in Serving state".to_string(),
-                ));
-            }
-        }
+        validate_standby_digest(self.supervisor.get_slot_state(standby_slot), candidate_digest)?;
 
         // Demote standby slot back to Empty
-        match standby_slot {
-            DeploymentSlot::SlotA => self.supervisor.slot_a = SlotState::Empty,
-            DeploymentSlot::SlotB => self.supervisor.slot_b = SlotState::Empty,
-        }
+        self.supervisor.set_slot_state(standby_slot, SlotState::Empty);
 
         Ok(PreSwitchFailureReceipt {
             candidate_digest: candidate_digest.to_string(),
@@ -443,6 +381,32 @@ impl HttpSsrSwitchingCoordinator {
             recovery_attempts_consumed: self.recovery_attempts_consumed,
             demoted_candidate_slot: failed_candidate_slot,
         })
+    }
+}
+
+fn validate_standby_digest(
+    state: &SlotState,
+    candidate_digest: &str,
+) -> Result<(), SlotSupervisorError> {
+    match state {
+        SlotState::PreStaged { artifact_digest }
+        | SlotState::Standby {
+            artifact_digest, ..
+        } => {
+            if artifact_digest != candidate_digest {
+                Err(SlotSupervisorError::InvalidTransition(format!(
+                    "Digest mismatch on standby slot: expected {candidate_digest}, got {artifact_digest}"
+                )))
+            } else {
+                Ok(())
+            }
+        }
+        SlotState::Empty => Err(SlotSupervisorError::InvalidTransition(
+            "No candidate in standby slot to fail".to_string(),
+        )),
+        SlotState::Serving { .. } => Err(SlotSupervisorError::InvalidTransition(
+            "Standby slot cannot be in Serving state".to_string(),
+        )),
     }
 }
 

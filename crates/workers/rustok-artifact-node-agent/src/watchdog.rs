@@ -137,24 +137,7 @@ impl NodeWatchdog {
         exit_code: Option<i32>,
         diagnostic_message: String,
     ) -> Result<WatchdogRecoveryReceipt, SlotSupervisorError> {
-        let (failed_digest, predecessor_digest) = {
-            let active_state = supervisor.active_state();
-            let standby_state = supervisor.standby_state();
-
-            let active_d = match active_state {
-                SlotState::Serving {
-                    artifact_digest, ..
-                } => artifact_digest.clone(),
-                _ => "unknown_candidate".to_string(),
-            };
-            let standby_d = match standby_state {
-                SlotState::Standby {
-                    artifact_digest, ..
-                } => artifact_digest.clone(),
-                _ => "unknown_predecessor".to_string(),
-            };
-            (active_d, standby_d)
-        };
+        let (failed_digest, predecessor_digest) = extract_crash_digests(supervisor);
 
         let recovered_slot = supervisor.revert_to_predecessor()?;
         let recovered_at = Utc::now();
@@ -180,6 +163,22 @@ impl NodeWatchdog {
             recovered_at,
         })
     }
+}
+
+fn extract_crash_digests(supervisor: &SlotSupervisor) -> (String, String) {
+    let active_d = match supervisor.active_state() {
+        SlotState::Serving {
+            artifact_digest, ..
+        } => artifact_digest.clone(),
+        _ => "unknown_candidate".to_string(),
+    };
+    let standby_d = match supervisor.standby_state() {
+        SlotState::Standby {
+            artifact_digest, ..
+        } => artifact_digest.clone(),
+        _ => "unknown_predecessor".to_string(),
+    };
+    (active_d, standby_d)
 }
 
 #[cfg(test)]
