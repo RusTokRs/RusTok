@@ -13,7 +13,7 @@ use url::Url;
 
 use crate::state_machine::BlogPostStatus;
 use crate::{
-    PostListQuery, PostResponse, PostService, PostSortField, PostSortOrder, PostSummary,
+    BlogError, PostListQuery, PostResponse, PostService, PostSortField, PostSortOrder, PostSummary,
 };
 
 const BULK_FETCH_SIZE: u32 = 48;
@@ -344,5 +344,15 @@ fn summarize_text(value: &str) -> Option<String> {
         None
     } else {
         Some(rustok_core::truncate(normalized.as_str(), 180))
+    }
+}
+
+fn optional_post(
+    result: Result<PostResponse, BlogError>,
+) -> Result<Option<PostResponse>, BlogError> {
+    match result {
+        Ok(post) => Ok(Some(post)),
+        Err(BlogError::PostNotFound(_)) => Ok(None),
+        Err(other) => Err(other),
     }
 }

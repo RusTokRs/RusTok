@@ -5,8 +5,9 @@ use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 
 use chrono::{Duration, Utc};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
+    TransactionTrait, sea_query::Expr,
 };
 
 use crate::auth::{
@@ -421,7 +422,7 @@ async fn find_refresh_session_for_update_in_tx(
                         token_hash.to_string().into(),
                     ],
                 );
-                txn.execute(statement)
+                txn.execute_raw(statement)
                     .await
                     .map_err(AuthLifecycleError::from)?;
             }
@@ -442,7 +443,7 @@ async fn find_refresh_session_for_update_in_tx(
         let token_hash = hash_refresh_token(refresh_token);
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
 
-        let session = find_refresh_session_for_update_in_tx(&txn, tenant_id, &token_hash)
+        let session = Self::find_refresh_session_for_update_in_tx(&txn, tenant_id, &token_hash)
             .await?
             .ok_or(AuthLifecycleError::InvalidRefreshToken)?;
 
@@ -538,7 +539,7 @@ async fn find_user_for_password_change_in_tx(
                     "UPDATE users SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
                     [tenant_id.into(), existing.id.into()],
                 );
-                txn.execute(statement)
+                txn.execute_raw(statement)
                     .await
                     .map_err(AuthLifecycleError::from)?;
             }
@@ -557,7 +558,7 @@ async fn find_user_for_password_change_in_tx(
         new_password: &str,
     ) -> std::result::Result<(), AuthLifecycleError> {
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
-        let user = find_user_for_password_change_in_tx(&txn, tenant_id, user_id).await?
+        let user = Self::find_user_for_password_change_in_tx(&txn, tenant_id, user_id).await?
             .ok_or(AuthLifecycleError::InvalidCredentials)?;
 
         if !verify_password(current_password, &user.password_hash)
@@ -743,12 +744,15 @@ async fn find_user_for_password_change_in_tx(
         })
     }
 
-    async fn resolve_effective_role(
-        db: &DatabaseConnection,
+    async fn resolve_effective_role<C>(
+        db: &C,
         tenant_id: uuid::Uuid,
         user_id: uuid::Uuid,
-    ) -> std::result::Result<rustok_core::UserRole, AuthLifecycleError> {
-        let permissions = RbacService::get_user_permissions(db, &tenant_id, &user_id)
+    ) -> std::result::Result<rustok_core::UserRole, AuthLifecycleError>
+    where
+        C: ConnectionTrait,
+    {
+        let permissions = RbacService::get_user_permissions_authoritative(db, &tenant_id, &user_id)
             .await
             .map_err(AuthLifecycleError::from)?;
         Ok(infer_user_role_from_permissions(&permissions))

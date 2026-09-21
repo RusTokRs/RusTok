@@ -53,7 +53,7 @@ async fn bundle_directory_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_api::{AuthContext, HostRuntimeContext, Permission, TenantContext, has_effective_permission};
+        use rustok_api::{AuthContext, HostRuntimeContext, Permission, TenantContext};
         use rustok_product_bundles::{BundleFilter, BundlePort, BundleService};
 
         let runtime = expect_context::<HostRuntimeContext>();
@@ -125,7 +125,7 @@ async fn bundle_detail_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
+        use rustok_api::{AuthContext, HostRuntimeContext, Permission, TenantContext};
         use rustok_product_bundles::{BundlePort, BundleService};
 
         let runtime = expect_context::<HostRuntimeContext>();
@@ -202,7 +202,7 @@ async fn bundle_command_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
+        use rustok_api::{AuthContext, HostRuntimeContext, Permission, TenantContext};
         use rustok_product_bundles::{
             BundlePort, BundleService, CreateBundleInput, UpdateBundleInput,
             dto::BundleItemInput,

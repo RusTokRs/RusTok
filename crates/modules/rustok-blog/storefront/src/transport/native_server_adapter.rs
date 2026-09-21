@@ -265,6 +265,7 @@ async fn storefront_blog_native(
                 post.id,
                 requested_locale.as_str(),
                 Some(fallback_locale.as_str()),
+                public_channel_slug.as_deref(),
                 comments_page,
                 COMMENTS_PAGE_SIZE,
             )

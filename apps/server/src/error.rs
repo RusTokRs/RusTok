@@ -31,8 +31,12 @@ pub enum Error {
     InvalidHeaderValue(#[from] InvalidHeaderValue),
     #[error(transparent)]
     Http(#[from] HttpError),
+    #[error(transparent)]
+    Core(#[from] rustok_core::Error),
     #[error("{0}")]
     Unauthorized(String),
+    #[error("{0}")]
+    Forbidden(String),
     #[error("not found")]
     NotFound,
     #[error("{0}")]
@@ -53,6 +57,9 @@ impl IntoResponse for Error {
             Self::Http(error) => error.into_response(),
             Self::Unauthorized(message) => {
                 error_response(StatusCode::UNAUTHORIZED, "unauthorized", message)
+            }
+            Self::Forbidden(message) => {
+                error_response(StatusCode::FORBIDDEN, "forbidden", message)
             }
             Self::NotFound => error_response(StatusCode::NOT_FOUND, "not_found", "Not found"),
             Self::BadRequest(message) | Self::Validation(message) => {
