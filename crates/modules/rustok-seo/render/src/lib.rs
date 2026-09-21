@@ -391,7 +391,7 @@ mod tests {
         let head = render_head_html(&context);
 
         assert!(!head.contains("</script><script>"));
-        assert!(head.contains(r#"\\u003c/script>\\u003cscript>alert(1)\\u003c/script>\\u0026"#));
+        assert!(head.contains(r#"\u003c/script>\u003cscript>alert(1)\u003c/script>\u0026"#));
     }
 
     #[test]
