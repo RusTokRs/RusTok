@@ -219,7 +219,10 @@ impl BlogSearchProjector {
                 CONCAT_WS(
                     ' ',
                     COALESCE(bct.name, bct_fallback.name, bct_term.canonical_key, ''),
-                    COALESCE(u.name, ''),
+                    CASE
+                        WHEN LOWER(u.status::text) = 'active' THEN COALESCE(u.name, '')
+                        ELSE ''
+                    END,
                     COALESCE(bt.seo_title, ''),
                     COALESCE(bt.seo_description, ''),
                     COALESCE(tags.tag_names, '')
@@ -240,7 +243,10 @@ impl BlogSearchProjector {
                     'category_name', COALESCE(bct.name, bct_fallback.name, bct_term.canonical_key),
                     'category_slug', COALESCE(bct.slug, bct_fallback.slug, bct_term.canonical_key),
                     'author_id', p.author_id,
-                    'author_name', u.name,
+                    'author_name', CASE
+                        WHEN LOWER(u.status::text) = 'active' THEN u.name
+                        ELSE NULL
+                    END,
                     'tags', COALESCE(tags.tag_list, '[]'::jsonb),
                     'channel_slugs', COALESCE(channels.channel_slugs, '[]'::jsonb),
                     'comment_count', p.comment_count,
