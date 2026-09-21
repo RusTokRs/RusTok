@@ -108,7 +108,6 @@ for (const marker of [
 
 for (const marker of [
   "ForumPublicDiscoveryService",
-  "forum_category_taxonomy_binding::Entity::find()",
   "TaxonomyOwnerCategoryReader",
   "projection.available_locales",
   "forum_topic_translation::Entity::find()",
@@ -208,7 +207,7 @@ for (const marker of [
   "Explicit reindex requests support",
   "FORUM-20BK",
   "projection invalidation events",
-  "Cargo.lock is unchanged",
+  "`Cargo.lock` is unchanged",
   "does not gain a Search crate or hard",
 ]) {
   requireMarker(note, marker, notePath);

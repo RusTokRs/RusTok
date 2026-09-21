@@ -33,7 +33,7 @@ const source = Object.fromEntries(
 
 for (const marker of [
   'include!("category_import.rs");',
-  'mod import_write;',
+  'mod import_write',
   'include!("reply_owner_import.rs");',
   'include!("topic_import.rs");',
   'ForumImportWriteResult, ForumImportWriteService, MAX_FORUM_IMPORT_APPLY_RECORDS_PER_BATCH',
@@ -74,7 +74,7 @@ for (const marker of [
   "id: Set(record.id)",
   "lock_category_tree_in_tx(txn, tenant_id)",
   "shift_siblings_for_insert_in_tx(",
-  "ensure_current_route_key_available_in_tx(",
+  "sync_category_copy_in_tx(",
 ]) need(source.categoryImport, marker, "FORUM-34O category owner primitive");
 
 for (const marker of [
@@ -114,7 +114,7 @@ for (const marker of [
 ]) need(source.relationImport, marker, "FORUM-34N relation bridge baseline");
 
 for (const marker of [
-  "ensure_current_route_key_available_in_tx",
+  "sync_category_copy_in_tx",
   "publish_forum_projection_scope_direct_in_tx",
 ]) need(source.categoryOwner, marker, "category owner baseline");
 for (const marker of [

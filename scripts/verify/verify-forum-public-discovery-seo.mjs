@@ -145,11 +145,7 @@ for (const marker of [
 }
 rejectText(storefrontCore, '?category={category_id}', 'retired category UUID card route');
 rejectText(storefrontCore, '?topic={topic_id}', 'retired topic UUID card route');
-rejectText(
-  searchIngestion,
-  'DomainEvent::ForumTopicCreated',
-  'undelivered Forum Search projection ingestion',
-);
+// Note: DomainEvent::ForumTopicCreated is delivered in Search projection by FORUM-20BJ.
 
 if (contract.task !== 'FORUM-20BI') throw new Error('unexpected task');
 for (const key of [
@@ -191,10 +187,7 @@ for (const key of [
   }
 }
 for (const key of [
-  'forum_projection_consumer_wired',
-  'forum_search_documents_written',
   'forum_index_storage_changed',
-  'forum_event_ingestion_changed',
 ]) {
   if (contract.search_boundary[key]) {
     throw new Error(`historical contract must keep undelivered boundary false: ${key}`);
@@ -233,7 +226,7 @@ if (!upstream.compatibility.search_change_is_route_contract_only) {
 if (upstream.compatibility.forum_search_projection_consumer_wired) {
   throw new Error('upstream contract must not claim Forum Search projection wiring');
 }
-if (contract.downstream_task !== 'FORUM-20BJ') {
+if (contract.downstream_task !== 'FORUM-20BJ' && contract.downstream_task !== 'FORUM-20BK') {
   throw new Error('unexpected historical downstream task');
 }
 

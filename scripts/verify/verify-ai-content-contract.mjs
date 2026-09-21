@@ -27,7 +27,7 @@ assertIncludes(source, 'CONTENT_AI_POLICY_MATRIX', 'content AI policy matrix');
 assertIncludes(source, 'ContentAiApprovalMode::OperatorApproval', 'moderation approval routing');
 assertIncludes(source, 'ContentAiApprovalMode::Auto', 'blog draft auto routing');
 assertIncludes(plan, 'ai-content-fba-registry.json', 'implementation plan evidence');
-assertIncludes(plan, 'Exercise content policy through the composed AI runtime', 'implementation plan priority');
+assertIncludes(plan, 'Add only product-approved content verticals', 'implementation plan priority');
 assertIncludes(readme, 'all optional text fields', 'docs validation summary');
 
 console.log('AI content contract static verification passed');
