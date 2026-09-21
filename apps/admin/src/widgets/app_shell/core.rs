@@ -3,8 +3,7 @@ use std::collections::HashSet;
 use crate::app::modules::GeneratedModuleNavigationEntry;
 pub(super) use rustok_ui_core::navigation::{
     UiChildPageEntry, UiNavChild as NavChild, UiNavGroup as ModuleNavGroup,
-    UiNavItem as ModuleNavItem, UiNavigationEntry, build_ui_nav_groups, ui_href_is_active,
-    ui_module_group_icon, ui_module_group_order,
+    UiNavigationEntry, build_ui_nav_groups, ui_href_is_active, ui_module_group_icon,
 };
 
 pub(super) fn build_module_nav_groups(
@@ -40,8 +39,9 @@ pub(super) fn href_is_active(path: &str, module_query: Option<&str>, href: &str)
     ui_href_is_active(path, module_query, href)
 }
 
+#[cfg(test)]
 pub(super) fn module_group_order(group: &str) -> usize {
-    ui_module_group_order(group)
+    rustok_ui_core::navigation::ui_module_group_order(group)
 }
 
 pub(super) fn module_group_icon(group: &str) -> &'static str {
@@ -129,7 +129,7 @@ mod tests {
         assert_eq!(groups[1].key, "Commerce");
         assert_eq!(module_group_icon(groups[1].key), "commerce");
         assert_eq!(super::module_group_order(groups[0].key), 10);
-        let first_item: &super::ModuleNavItem = &groups[0].items[0];
+        let first_item = &groups[0].items[0];
         assert_eq!(first_item.label, "Blog");
     }
 }
