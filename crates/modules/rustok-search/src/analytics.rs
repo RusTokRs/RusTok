@@ -167,6 +167,12 @@ impl SearchAnalyticsService {
             FROM search_query_logs q
             WHERE q.id = $2
               AND q.tenant_id = $1
+              AND EXISTS (
+                  SELECT 1
+                  FROM search_documents sd
+                  WHERE sd.document_id = $3
+                    AND sd.tenant_id = $1
+              )
             "#,
             vec![
                 record.tenant_id.into(),
