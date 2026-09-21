@@ -181,7 +181,7 @@ impl SettingsService {
 
         // 1. DB row
         if let Some(row) = Entity::find_by_category(ctx.db(), tenant_id, cat).await? {
-            return Ok(row.settings);
+            return Ok(redact_secrets(cat, row.settings));
         }
 
         // 2. YAML
@@ -205,7 +205,11 @@ impl SettingsService {
         let mut result: Vec<(String, Value)> = db_rows
             .into_iter()
             .filter(|row| category::ALL.contains(&row.category.as_str()))
-            .map(|row| (row.category, row.settings))
+            .map(|row| {
+                let category = row.category;
+                let settings = redact_secrets(&category, row.settings);
+                (category, settings)
+            })
             .collect();
 
         // Fill in categories that are not yet in the DB
@@ -243,6 +247,8 @@ impl SettingsService {
     ) -> Result<Value, SettingsError> {
         ensure_supported_category(cat)?;
 
+        let settings = preserve_email_secrets(ctx, tenant_id, cat, settings).await?;
+
         validators
             .validate(cat, &settings)
             .map_err(SettingsError::ValidationFailed)?;
@@ -262,7 +268,7 @@ impl SettingsService {
             }
         }
 
-        Ok(settings)
+        Ok(redact_secrets(cat, settings))
     }
 
     // ── Private helpers ────────────────────────────────────────────────────
@@ -276,6 +282,83 @@ impl SettingsService {
             _ => Value::Null,
         }
     }
+}
+
+fn redact_secrets(cat: &str, mut settings: Value) -> Value {
+    if cat != category::EMAIL {
+        return settings;
+    }
+
+    if let Some(object) = settings.as_object_mut() {
+        if object.contains_key("smtpPassword") {
+            object.insert("smtpPassword".to_string(), Value::String(String::new()));
+        }
+        if let Some(smtp) = object.get_mut("smtp").and_then(Value::as_object_mut)
+            && smtp.contains_key("password")
+        {
+            smtp.insert("password".to_string(), Value::String(String::new()));
+        }
+    }
+
+    settings
+}
+
+async fn preserve_email_secrets(
+    ctx: &ServerRuntimeContext,
+    tenant_id: Uuid,
+    cat: &str,
+    incoming: Value,
+) -> Result<Value, SettingsError> {
+    if cat != category::EMAIL {
+        return Ok(incoming);
+    }
+
+    let Some(existing) = Entity::find_by_category(ctx.db(), tenant_id, cat).await? else {
+        return Ok(incoming);
+    };
+
+    Ok(preserve_email_secret_fields(existing.settings, incoming))
+}
+
+fn preserve_email_secret_fields(existing: Value, mut incoming: Value) -> Value {
+    let (Some(existing_object), Some(incoming_object)) =
+        (existing.as_object(), incoming.as_object_mut())
+    else {
+        return incoming;
+    };
+
+    if incoming_object
+        .get("smtpPassword")
+        .and_then(Value::as_str)
+        .is_some_and(str::is_empty)
+    {
+        if let Some(existing_password) = existing_object
+            .get("smtpPassword")
+            .filter(|value| !value.as_str().unwrap_or_default().is_empty())
+        {
+            incoming_object.insert("smtpPassword".to_string(), existing_password.clone());
+        }
+    }
+
+    if let Some(incoming_smtp) = incoming_object
+        .get_mut("smtp")
+        .and_then(Value::as_object_mut)
+        && incoming_smtp
+            .get("password")
+            .and_then(Value::as_str)
+            .is_some_and(str::is_empty)
+    {
+        if let Some(existing_password) = existing_object
+            .get("smtp")
+            .and_then(Value::as_object)
+            .and_then(|smtp| smtp.get("password"))
+            .filter(|value| !value.as_str().unwrap_or_default().is_empty())
+        {
+            incoming_smtp.insert("password".to_string(), existing_password.clone());
+        }
+    }
+
+    incoming
 }
 
 fn ensure_supported_category(cat: &str) -> Result<(), SettingsError> {
@@ -366,6 +449,56 @@ mod tests {
     fn validator_registry_passes_unknown_category() {
         let reg = ValidatorRegistry::default();
         assert!(reg.validate("general", &json!({ "any": "value" })).is_ok());
+    }
+
+    #[test]
+    fn email_secrets_are_redacted_from_generic_settings_reads() {
+        let value = redact_secrets(
+            category::EMAIL,
+            json!({
+                "smtpPassword": "super-secret",
+                "smtp": { "password": "nested-secret" },
+                "from": "mail@example.com"
+            }),
+        );
+
+        assert_eq!(value["smtpPassword"], "");
+        assert_eq!(value["smtp"]["password"], "");
+        assert_eq!(value["from"], "mail@example.com");
+    }
+
+    #[test]
+    fn empty_email_password_preserves_existing_secret() {
+        let value = preserve_email_secret_fields(
+            json!({
+                "smtpPassword": "super-secret",
+                "smtp": { "password": "nested-secret" }
+            }),
+            json!({
+                "smtpPassword": "",
+                "smtp": { "password": "" }
+            }),
+        );
+
+        assert_eq!(value["smtpPassword"], "super-secret");
+        assert_eq!(value["smtp"]["password"], "nested-secret");
+    }
+
+    #[test]
+    fn non_empty_email_password_replaces_existing_secret() {
+        let value = preserve_email_secret_fields(
+            json!({
+                "smtpPassword": "old-secret",
+                "smtp": { "password": "old-nested-secret" }
+            }),
+            json!({
+                "smtpPassword": "new-secret",
+                "smtp": { "password": "new-nested-secret" }
+            }),
+        );
+
+        assert_eq!(value["smtpPassword"], "new-secret");
+        assert_eq!(value["smtp"]["password"], "new-nested-secret");
     }
 
     #[test]
