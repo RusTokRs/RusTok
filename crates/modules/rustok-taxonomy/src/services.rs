@@ -222,8 +222,8 @@ impl TaxonomyService {
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let term = self.find_term(tenant_id, term_id).await?;
-        let translations = self.load_translations(term_id).await?;
-        let aliases = self.load_aliases(term_id).await?;
+        let translations = self.load_translations(tenant_id, term_id).await?;
+        let aliases = self.load_aliases(tenant_id, term_id).await?;
 
         Ok(build_term_response(
             term,
@@ -508,7 +508,9 @@ impl TaxonomyService {
         }
 
         let term_ids = terms.iter().map(|term| term.id).collect::<Vec<_>>();
-        let translations_by_term = self.load_translations_map(&term_ids).await?;
+        let translations_by_term = self
+            .load_translations_map(tenant_id, &term_ids)
+            .await?;
         let items = terms
             .into_iter()
             .map(|term| {
@@ -766,16 +768,23 @@ impl TaxonomyService {
 
     async fn load_translations(
         &self,
+        tenant_id: Uuid,
         term_id: Uuid,
     ) -> TaxonomyResult<Vec<taxonomy_term_translation::Model>> {
         Ok(taxonomy_term_translation::Entity::find()
+            .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
             .filter(taxonomy_term_translation::Column::TermId.eq(term_id))
             .all(&self.db)
             .await?)
     }
 
-    async fn load_aliases(&self, term_id: Uuid) -> TaxonomyResult<Vec<taxonomy_term_alias::Model>> {
+    async fn load_aliases(
+        &self,
+        tenant_id: Uuid,
+        term_id: Uuid,
+    ) -> TaxonomyResult<Vec<taxonomy_term_alias::Model>> {
         Ok(taxonomy_term_alias::Entity::find()
+            .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
             .filter(taxonomy_term_alias::Column::TermId.eq(term_id))
             .all(&self.db)
             .await?)
@@ -783,6 +792,7 @@ impl TaxonomyService {
 
     async fn load_translations_map(
         &self,
+        tenant_id: Uuid,
         term_ids: &[Uuid],
     ) -> TaxonomyResult<HashMap<Uuid, Vec<taxonomy_term_translation::Model>>> {
         if term_ids.is_empty() {
@@ -790,6 +800,7 @@ impl TaxonomyService {
         }
         let mut map = HashMap::new();
         for translation in taxonomy_term_translation::Entity::find()
+            .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
             .filter(taxonomy_term_translation::Column::TermId.is_in(term_ids.to_vec()))
             .all(&self.db)
             .await?
