@@ -358,6 +358,7 @@ impl WorkflowMutation {
                         .map(str::to_string),
                     trigger_config,
                     webhook_slug: None,
+                    webhook_secret: None,
                 },
             )
             .await
