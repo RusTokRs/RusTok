@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `105 / 218` components audited (**48%**)
+- **Progress:** `106 / 218` components audited (**49%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -148,7 +148,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [storefront](../../crates/modules/rustok-payment/storefront) | `modules` | 11 | 1,316 | 2026-09-21 07:31 | Audited storefront native server functions, GraphQL transport, request/error safety, customer/cart ownership, tenant context, guest-cart behavior, and create/reuse flow; no additional production correctness or tenant-isolation finding after the payment lifecycle fixes. |
 | [x] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 47 | 18,461 | 2026-09-21 07:38 | Audited price-list CRUD/translation CAS, active-list resolution, canonical price upserts, rule/scope writes, read/write ports, channel/tenant binding, and money-integrity constraints; fixed rule/scope TOCTOU, duplicate canonical price races via variant serialization, and MySQL channel cross-tenant integrity gaps. |
 | [x] | [rustok-pricing-persistence](../../crates/modules/rustok-pricing-persistence) | `modules` | 5 | 190 | 2026-09-21 07:41 | Audited pricing entities and transaction-aware bootstrap persistence; verified decimal/legacy columns, tenant/list/variant linkage, translation uniqueness, cascade FKs, and thin persistence boundaries. No additional production finding. |
-| [ ] | [admin](../../crates/modules/rustok-pricing/admin) | `modules` | 13 | 7,537 | None |  |
+| [x] | [admin](../../crates/modules/rustok-pricing/admin) | `modules` | 13 | 7,537 | 2026-09-21 07:47 | Audited admin server functions, GraphQL transport, permission gates, tenant context, price-list rule/scope writes, channel selection, request validation, and error safety; fixed a hardcoded SQLite backend in active price-list validation. |
 | [ ] | [storefront](../../crates/modules/rustok-pricing/storefront) | `modules` | 10 | 2,465 | None |  |
 | [ ] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 168 | 62,712 | None |  |
 | [ ] | [rustok-product-bundles](../../crates/modules/rustok-product-bundles) | `modules` | 22 | 3,848 | None |  |
