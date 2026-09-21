@@ -105,7 +105,14 @@ mod tests {
                     target_type: "blog_post".to_string(),
                     target_id,
                     locale: "en".to_string(),
-                    body: CommentsService::test_document_for_tests("hello"),
+                    body: serde_json::from_value(serde_json::json!({
+                        "type": "doc",
+                        "content": [{
+                            "type": "paragraph",
+                            "content": [{"type": "text", "text": "hello"}]
+                        }]
+                    }))
+                    .expect("test comment body should deserialize"),
                     parent_comment_id: None,
                     status: crate::CommentStatus::Pending,
                 },
@@ -114,6 +121,11 @@ mod tests {
             .expect("comment should create a target thread");
 
         let handler = CommentTargetDeletionHandler::new(db.clone());
+        assert!(handler.handles(&DomainEvent::TargetDeleted {
+            target_type: "blog_post".to_string(),
+            target_id,
+        }));
+        assert!(!handler.handles(&DomainEvent::BlogPostDeleted { post_id: target_id }));
         let envelope = event(tenant_id, target_id);
         envelope
             .event
@@ -147,22 +159,4 @@ mod tests {
             .expect("replayed target deletion should remain idempotent");
     }
 
-    #[test]
-    fn handler_owns_only_the_generic_target_deletion_event() {
-        let handler = CommentTargetDeletionHandler::new(
-            setup_test_db_blocking(),
-        );
-        let target_id = Uuid::new_v4();
-        assert!(handler.handles(&DomainEvent::TargetDeleted {
-            target_type: "blog_post".to_string(),
-            target_id,
-        }));
-        assert!(!handler.handles(&DomainEvent::BlogPostDeleted { post_id: target_id }));
-    }
-
-    fn setup_test_db_blocking() -> sea_orm::DatabaseConnection {
-        // This test only checks the routing predicate; a placeholder connection is never used.
-        // The helper is kept local so no async runtime is needed for the assertion.
-        futures::executor::block_on(setup_test_db())
-    }
 }
