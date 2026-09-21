@@ -110,10 +110,6 @@ impl InstallerPersistenceService {
                     | sea_orm::TransactionError::Transaction(error) => error,
                 }),
         }
-        .map_err(|error| match error {
-            sea_orm::DbErr::Conn(e) => sea_orm::DbErr::Conn(e),
-            other => other,
-        })
         .and_then(|result| {
             result.ok_or_else(|| sea_orm::DbErr::RecordNotFound(
                 format!("install session {session_id} not found"),
