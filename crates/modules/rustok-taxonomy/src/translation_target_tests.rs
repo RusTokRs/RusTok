@@ -406,10 +406,20 @@ async fn module_owned_translation_requires_owner_and_runs_owner_side_effect_hook
         subresource_id: None,
     };
 
+    let taxonomy_reader = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(Uuid::new_v4().to_string()),
+        "en",
+        "taxonomy-only-read",
+    )
+    .with_claim("taxonomy:read")
+    .with_role("manager")
+    .with_deadline(Duration::from_secs(5));
+
     let provider = TaxonomyTranslationTargetProvider::new(service.clone());
     let list = provider
         .list_resources(
-            read_context(tenant_id),
+            taxonomy_reader.clone(),
             ListTranslationResourcesRequest {
                 source_locale: TenantLocale::new("en").unwrap(),
                 target_locale: TenantLocale::new("fr").unwrap(),
@@ -423,7 +433,7 @@ async fn module_owned_translation_requires_owner_and_runs_owner_side_effect_hook
 
     let denied = provider
         .read_resource(
-            read_context(tenant_id),
+            taxonomy_reader.clone(),
             ReadTranslationResourceRequest {
                 identity: identity.clone(),
                 source_locale: TenantLocale::new("en").unwrap(),
