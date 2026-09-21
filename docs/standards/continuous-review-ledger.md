@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `136 / 218` components audited components audited (**62%**)
+- **Progress:** `137 / 218` components audited (**63%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -159,7 +159,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-product-transport](../../crates/modules/rustok-product-transport) | `modules` | 8 | 1,699 | 2026-09-21 10:55 | Audited gRPC bearer auth, trusted service actor and tenant binding, PortContext replacement, client metadata propagation, TLS/loopback endpoint validation, and transport error mapping; no additional production security/correctness finding. |
 | [x] | [admin](../../crates/modules/rustok-product/admin) | `modules` | 20 | 12,023 | 2026-09-21 11:08 | Audited Product admin native/GraphQL transports, catalog/schema/value mutations, lifecycle forwarding, error safety, permission gates, tenant context, idempotency/retry identity and revision-bearing mutations; all native server functions enforce effective product permissions and trusted tenant context. No additional production finding. |
 | [x] | [storefront](../../crates/modules/rustok-product/storefront) | `modules` | 12 | 3,098 | 2026-09-21 10:16 | Audited native/GraphQL storefront transports, published-product visibility, tenant/channel context, locale fallback, public inventory projection, pricing context, and client-side catalog controls; no additional production correctness or tenant-isolation finding. |
-| [ ] | [rustok-profiles](../../crates/modules/rustok-profiles) | `modules` | 52 | 8,990 | None |  |
+| [x] | [rustok-profiles](../../crates/modules/rustok-profiles) | `modules` | 52 | 8,990 | 2026-09-21 10:24 | Audited profile GraphQL read/write boundaries, privacy and follower checks, tenant/self ownership, media validation, handle/locale/visibility writes, profile upsert/event transactions, translation/tag integrity, and unique `(tenant, handle)`/`(profile, locale)` constraints; no additional production finding. |
 | [ ] | [cli](../../crates/modules/rustok-profiles/cli) | `modules` | 1 | 338 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-profiles/storefront) | `modules` | 9 | 1,464 | None |  |
 | [ ] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 55 | 11,022 | None |  |
