@@ -715,6 +715,7 @@ impl WorkflowService {
                     description: Some(template.description.to_string()),
                     trigger_config: template.trigger_config.clone(),
                     webhook_slug: None,
+                    webhook_secret: None,
                 },
             )
             .await?;
