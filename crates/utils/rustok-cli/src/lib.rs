@@ -172,12 +172,19 @@ impl<'a> CommandRegistry<'a> {
     }
 
     pub async fn execute(&self, request: CommandRequest) -> CliCoreResult<CommandOutcome> {
-        if !self
+        let descriptor = self
             .commands
             .iter()
-            .any(|command| command.namespace == request.namespace && command.name == request.name)
-        {
-            return Err(CliCoreError::UnknownCommand {
+            .find(|command| {
+                command.namespace == request.namespace && command.name == request.name
+            })
+            .ok_or_else(|| CliCoreError::UnknownCommand {
+                namespace: request.namespace.clone(),
+                name: request.name.clone(),
+            })?;
+
+        if request.dry_run && !descriptor.supports_dry_run {
+            return Err(CliCoreError::DryRunNotSupported {
                 namespace: request.namespace,
                 name: request.name,
             });
@@ -457,6 +464,27 @@ mod tests {
 
         assert_eq!(commands[0].namespace, "core");
         assert_eq!(commands[0].name, "list");
+    }
+
+    #[tokio::test]
+    async fn registry_rejects_dry_run_for_commands_without_support() {
+        let provider = BuiltInProvider;
+        let registry = CommandRegistry::from_providers(&[&provider]).unwrap();
+        let error = registry
+            .execute(CommandRequest {
+                namespace: "core".to_string(),
+                name: "list".to_string(),
+                args: serde_json::Value::Null,
+                dry_run: true,
+            })
+            .await
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            rustok_cli_core::CliCoreError::DryRunNotSupported { namespace, name }
+                if namespace == "core" && name == "list"
+        ));
     }
 
     #[tokio::test]
