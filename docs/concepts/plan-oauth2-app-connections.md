@@ -868,7 +868,7 @@ All OAuth2 events are written to the audit log:
 | 3 | **High** | `/oauth/revoke` not implemented | **Fixed** | Added `revoke_handler` + route + `revoke_token_by_hash` in service |
 | 4 | **High** | `sync_app_connections` not implemented | **Fixed** | Full function implemented with upsert embedded/first-party + orphan deactivation |
 | 5 | **High** | `oauth_tokens` missing `updated_at` | **Fixed** | Column added in migration + field in entity model |
-| 6 | **Medium** | Workspace doesn't compile | **Fixed** | `leptos_i18n`/`leptos_i18n_build` updated to 0.6.1 |
+| 6 | **Medium** | Workspace doesn't compile | **Superseded** | The former `leptos_i18n` integration was removed when host catalogs moved to `rustok-ui-i18n`. |
 | 7 | **Low** | Partial indexes without WHERE | **Fixed** | Migrations use raw SQL with WHERE clauses |
 | 8 | **Medium** | `find_active_by_hash` signature mismatch | **Fixed** | Added `app_id` parameter in model |
 

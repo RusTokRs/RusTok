@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::features::email::transport;
 use crate::shared::ui::{Alert, AlertVariant, Button, Input, PageHeader};
-use crate::{t_string, use_i18n};
+use crate::use_admin_locale;
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -21,7 +21,7 @@ where
 
 #[component]
 pub fn EmailSettingsPage() -> impl IntoView {
-    let i18n = use_i18n();
+    let i18n = use_admin_locale();
     let token = use_token();
     let tenant = use_tenant();
 
@@ -96,14 +96,14 @@ pub fn EmailSettingsPage() -> impl IntoView {
     view! {
         <section class="flex flex-1 flex-col p-4 md:px-6">
             <PageHeader
-                title=t_string!(i18n, email.title)
-                subtitle=t_string!(i18n, email.subtitle).to_string()
-                eyebrow=t_string!(i18n, email.eyebrow).to_string()
+                title=i18n.translate("email.title")
+                subtitle=i18n.translate("email.subtitle").to_string()
+                eyebrow=i18n.translate("email.eyebrow").to_string()
             />
 
             <div class="rounded-xl border border-border bg-card p-6 shadow-sm max-w-xl">
                 <h4 class="mb-4 text-lg font-semibold text-card-foreground">
-                    {move || t_string!(i18n, email.smtp.title)}
+                    {move || i18n.translate("email.smtp.title")}
                 </h4>
 
                 <Suspense fallback=move || view! {
@@ -121,32 +121,32 @@ pub fn EmailSettingsPage() -> impl IntoView {
                                     value=smtp_host
                                     set_value=set_smtp_host
                                     placeholder="smtp.example.com"
-                                    label=move || t_string!(i18n, email.smtp.host)
+                                    label=move || i18n.translate("email.smtp.host")
                                 />
                                 <Input
                                     value=smtp_port
                                     set_value=set_smtp_port
                                     placeholder="587"
-                                    label=move || t_string!(i18n, email.smtp.port)
+                                    label=move || i18n.translate("email.smtp.port")
                                 />
                                 <Input
                                     value=smtp_username
                                     set_value=set_smtp_username
                                     placeholder="noreply@example.com"
-                                    label=move || t_string!(i18n, email.smtp.username)
+                                    label=move || i18n.translate("email.smtp.username")
                                 />
                                 <Input
                                     value=from_address
                                     set_value=set_from_address
                                     placeholder="noreply@example.com"
-                                    label=move || t_string!(i18n, email.smtp.fromAddress)
+                                    label=move || i18n.translate("email.smtp.fromAddress")
                                 />
 
                                 <Show when=move || save_result.get().is_some()>
                                     {move || match save_result.get() {
                                         Some(Ok(true)) => view! {
                                             <Alert variant=AlertVariant::Success>
-                                                {t_string!(i18n, email.saved)}
+                                                {i18n.translate("email.saved")}
                                             </Alert>
                                         }.into_any(),
                                         Some(Err(e)) => view! {
@@ -160,9 +160,9 @@ pub fn EmailSettingsPage() -> impl IntoView {
 
                                 <Button on_click=Callback::new(move |_| save()) disabled=Signal::derive(move || saving.get())>
                                     {move || if saving.get() {
-                                        t_string!(i18n, email.saving).to_string()
+                                        i18n.translate("email.saving").to_string()
                                     } else {
-                                        t_string!(i18n, email.save).to_string()
+                                        i18n.translate("email.save").to_string()
                                     }}
                                 </Button>
                             </div>

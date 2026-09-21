@@ -2662,7 +2662,7 @@ mod tests {
             },
         );
 
-        let lines = validation_job_event_context_lines(&event, Locale::en);
+        let lines = validation_job_event_context_lines(&event, Locale::En);
 
         assert!(lines.iter().any(|line| line == "Attempt: 2"));
         assert!(!lines.is_empty());
@@ -2680,7 +2680,7 @@ mod tests {
             },
         );
 
-        let lines = moderation_history_context_lines(&event, Locale::en);
+        let lines = moderation_history_context_lines(&event, Locale::En);
 
         assert!(lines.iter().any(|line| line == "Version: v1.2.3"));
         assert!(
@@ -2698,7 +2698,7 @@ mod tests {
     #[test]
     fn registry_review_policy_lines_drop_operator_override_copy() {
         let owner = sample_owner("owner:module");
-        let lines = registry_review_policy_lines(None, None, Some(&owner), Locale::en);
+        let lines = registry_review_policy_lines(None, None, Some(&owner), Locale::En);
 
         assert_eq!(
             lines.first().map(String::as_str),
@@ -2718,7 +2718,7 @@ mod tests {
             "example-module",
             None,
             Some("9a6b5c9e-0d3e-4b62-9f2f-c11d1aa6f12f"),
-            Locale::en,
+            Locale::En,
         );
 
         assert!(message.contains("example-module"));
@@ -2749,7 +2749,7 @@ mod tests {
             None,
             Some(&owner),
             &[],
-            Locale::en,
+            Locale::En,
         );
 
         let approve_hint = hints
@@ -2778,7 +2778,7 @@ mod tests {
             None,
             Some(&owner),
             &[],
-            Locale::en,
+            Locale::En,
         );
         let owner_transfer_api_hint = api_hints
             .iter()

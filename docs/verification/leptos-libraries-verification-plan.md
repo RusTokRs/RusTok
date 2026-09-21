@@ -32,14 +32,17 @@ Verification relies on the current-state contract:
 ### Shared Leptos crates
 
 - [ ] `crates/ui/leptos-auth`
-- [ ] `crates/ui/leptos-forms`
-- [ ] `crates/ui/leptos-zustand`
-- [ ] `crates/ui/rustok-graphql`
-- [ ] `crates/ui/leptos-shadcn-pagination`
 - [ ] `crates/ui/leptos-ui`
-- [ ] `crates/ui/leptos-zod`
-- [ ] `crates/ui/leptos-table`
-- [ ] `crates/ui/leptos-hook-form`
+- [ ] `crates/ui/leptos-ui-routing`
+
+### Shared framework-agnostic FFA crates
+
+- [ ] `crates/ui/rustok-graphql`
+- [ ] `crates/ui/rustok-ui-auth`
+- [ ] `crates/ui/rustok-ui-core`
+- [ ] `crates/ui/rustok-ui-forms`
+- [ ] `crates/ui/rustok-ui-i18n`
+- [ ] `crates/ui/rustok-ui-transport`
 
 ### Host consumers
 
@@ -103,7 +106,7 @@ Verification relies on the current-state contract:
 
 ## Targeted Local Checks
 
-- [ ] targeted `cargo check` / `cargo test` for affected `crates/modules/leptos-*`
+- [ ] targeted `cargo check` / `cargo test` for affected `crates/ui/leptos-*` and `crates/ui/rustok-ui-*`
 - [ ] targeted `cargo check` / `cargo test` for `apps/admin` and `apps/storefront`, if the host integration path changed
 - [ ] `npm run verify:i18n:ui`, if shared locale/UI contracts changed
 - [ ] `npm run verify:i18n:contract`, if locale/runtime contract changed

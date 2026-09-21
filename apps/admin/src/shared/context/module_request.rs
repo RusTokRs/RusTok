@@ -6,7 +6,7 @@ use leptos_router::hooks::{use_location, use_navigate, use_query_map};
 use leptos_ui_routing::{RouteLocale, RouteQueryPolicy};
 use rustok_ui_core::{UiRouteContext, sanitize_admin_route_query};
 
-use crate::{Locale, use_i18n};
+use crate::{Locale, use_admin_locale};
 
 #[component]
 pub fn ModuleRequestProvider(
@@ -33,10 +33,10 @@ pub fn ModuleRequestProvider(
             &raw_query.get(),
         )
     });
-    let i18n = use_i18n();
-    let reactive_locale = Signal::derive(move || match i18n.get_locale() {
-        Locale::en => Some("en".to_string()),
-        Locale::ru => Some("ru".to_string()),
+    let i18n = use_admin_locale();
+    let reactive_locale = Signal::derive(move || match i18n.current() {
+        Locale::En => Some("en".to_string()),
+        Locale::Ru => Some("ru".to_string()),
     });
 
     Effect::new(move |_| {

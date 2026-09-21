@@ -270,11 +270,13 @@ Below captures the alignment of the plan with the current repository state.
 
 ### 2) UI packages in code are currently Leptos-specific
 
-- Basic shared UI crates depend on Leptos:
+- Framework-specific adapter crates depend on Leptos:
   - `crates/ui/leptos-ui/Cargo.toml`
   - `crates/ui/leptos-ui-routing/Cargo.toml`
-  - `crates/ui/rustok-graphql/Cargo.toml`
   - `crates/ui/leptos-auth/Cargo.toml`
+- Framework-neutral GraphQL execution, UI state, form-result, auth-value,
+  transport, and i18n contracts live in `rustok-graphql` and `rustok-ui-*`
+  crates without Leptos dependencies.
 - Module-owned UI packages actively use `leptos::*`, `#[component]`, `leptos_router` and Leptos hooks (example: `rustok-search`, `rustok-workflow`, `rustok-commerce`, `rustok-cart`).
 
 ### 3) Data already flows through native/GraphQL hybrid

@@ -7,8 +7,8 @@ use crate::app::providers::enabled_modules::use_enabled_modules;
 use crate::shared::ui::{
     Badge, BadgeVariant, Card, CardContent, CardDescription, CardHeader, CardTitle, PageHeader,
 };
+use crate::use_admin_locale;
 use crate::widgets::stats_card::StatsCard;
-use crate::{t_string, use_i18n};
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -24,7 +24,7 @@ where
 
 #[component]
 pub fn Dashboard() -> impl IntoView {
-    let i18n = use_i18n();
+    let i18n = use_admin_locale();
     let current_user = use_current_user();
     let token = use_token();
     let tenant = use_tenant();
@@ -59,8 +59,8 @@ pub fn Dashboard() -> impl IntoView {
                         .and_then(|user| user.name)
                         .unwrap_or_else(|| "Dashboard".to_string())
                 }
-                eyebrow=move || t_string!(i18n, app.nav.dashboard).to_string()
-                subtitle=move || t_string!(i18n, app.dashboard.subtitle).to_string()
+                eyebrow=move || i18n.translate("app.nav.dashboard").to_string()
+                subtitle=move || i18n.translate("app.dashboard.subtitle").to_string()
             />
 
             <div class="flex flex-1 flex-col gap-6">
@@ -83,25 +83,25 @@ pub fn Dashboard() -> impl IntoView {
                         .map(|stats| {
                             vec![
                                 (
-                                    t_string!(i18n, app.dashboard.stats.users),
+                                    i18n.translate("app.dashboard.stats.users"),
                                     stats.total_users.to_string(),
                                     format!("{:+.1}%", stats.users_change),
                                     stats.users_change >= 0.0,
                                 ),
                                 (
-                                    t_string!(i18n, app.dashboard.stats.posts),
+                                    i18n.translate("app.dashboard.stats.posts"),
                                     stats.total_posts.to_string(),
                                     format!("{:+.1}%", stats.posts_change),
                                     stats.posts_change >= 0.0,
                                 ),
                                 (
-                                    t_string!(i18n, app.dashboard.stats.orders),
+                                    i18n.translate("app.dashboard.stats.orders"),
                                     stats.total_orders.to_string(),
                                     format!("{:+.1}%", stats.orders_change),
                                     stats.orders_change >= 0.0,
                                 ),
                                 (
-                                    t_string!(i18n, app.dashboard.stats.revenue),
+                                    i18n.translate("app.dashboard.stats.revenue"),
                                     format!("${}", stats.total_revenue),
                                     format!("{:+.1}%", stats.revenue_change),
                                     stats.revenue_change >= 0.0,
@@ -110,10 +110,10 @@ pub fn Dashboard() -> impl IntoView {
                         })
                         .unwrap_or_else(|| {
                             vec![
-                                (t_string!(i18n, app.dashboard.stats.users), "-".to_string(), "0.0%".to_string(), true),
-                                (t_string!(i18n, app.dashboard.stats.posts), "-".to_string(), "0.0%".to_string(), true),
-                                (t_string!(i18n, app.dashboard.stats.orders), "-".to_string(), "0.0%".to_string(), true),
-                                (t_string!(i18n, app.dashboard.stats.revenue), "-".to_string(), "0.0%".to_string(), true),
+                                (i18n.translate("app.dashboard.stats.users"), "-".to_string(), "0.0%".to_string(), true),
+                                (i18n.translate("app.dashboard.stats.posts"), "-".to_string(), "0.0%".to_string(), true),
+                                (i18n.translate("app.dashboard.stats.orders"), "-".to_string(), "0.0%".to_string(), true),
+                                (i18n.translate("app.dashboard.stats.revenue"), "-".to_string(), "0.0%".to_string(), true),
                             ]
                         });
 
@@ -128,7 +128,7 @@ pub fn Dashboard() -> impl IntoView {
                                             value=value
                                             icon=view! { <span class="size-5 text-center text-base leading-5">"вЂў"</span> }.into_any()
                                             trend=hint
-                                            trend_label=t_string!(i18n, app.dashboard.stats.vsLastMonth)
+                                            trend_label=i18n.translate("app.dashboard.stats.vsLastMonth")
                                             trend_up=trend_up
                                         />
                                     }
@@ -142,8 +142,8 @@ pub fn Dashboard() -> impl IntoView {
             <div class="grid grid-cols-1 gap-4">
                 <Card>
                     <CardHeader>
-                        <CardTitle>{move || t_string!(i18n, app.dashboard.activity.title)}</CardTitle>
-                        <CardDescription>{move || t_string!(i18n, app.dashboard.subtitle).to_string()}</CardDescription>
+                        <CardTitle>{move || i18n.translate("app.dashboard.activity.title")}</CardTitle>
+                        <CardDescription>{move || i18n.translate("app.dashboard.subtitle").to_string()}</CardDescription>
                     </CardHeader>
                     <CardContent>
                     <Suspense
@@ -167,7 +167,7 @@ pub fn Dashboard() -> impl IntoView {
                             if activities.is_empty() {
                                 view! {
                                     <div class="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                                        {t_string!(i18n, app.dashboard.activity.empty)}
+                                        {i18n.translate("app.dashboard.activity.empty")}
                                     </div>
                                 }.into_any()
                             } else {
@@ -181,7 +181,7 @@ pub fn Dashboard() -> impl IntoView {
                                                 .user
                                                 .as_ref()
                                                 .and_then(|u| u.name.clone())
-                                                .unwrap_or_else(|| t_string!(i18n, app.dashboard.activity.system).to_string());
+                                                .unwrap_or_else(|| i18n.translate("app.dashboard.activity.system").to_string());
                                             view! {
                                                 <div class="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
                                                     <div class="min-w-0">
@@ -221,7 +221,7 @@ pub fn Dashboard() -> impl IntoView {
 fn format_time_ago(timestamp: &str) -> String {
     use chrono::{DateTime, Utc};
 
-    let i18n = use_i18n();
+    let i18n = use_admin_locale();
 
     let Ok(dt) = timestamp.parse::<DateTime<Utc>>() else {
         return timestamp.to_string();
@@ -235,13 +235,13 @@ fn format_time_ago(timestamp: &str) -> String {
     let days = duration.num_days();
 
     if minutes < 1 {
-        t_string!(i18n, app.time.justNow).to_string()
+        i18n.translate("app.time.justNow").to_string()
     } else if minutes < 60 {
-        format!("{} {}", minutes, t_string!(i18n, app.time.minutesAgo))
+        format!("{} {}", minutes, i18n.translate("app.time.minutesAgo"))
     } else if hours < 24 {
-        format!("{}{}", hours, t_string!(i18n, app.time.hoursAgo))
+        format!("{}{}", hours, i18n.translate("app.time.hoursAgo"))
     } else if days < 30 {
-        format!("{}{}", days, t_string!(i18n, app.time.daysAgo))
+        format!("{}{}", days, i18n.translate("app.time.daysAgo"))
     } else {
         dt.format("%d.%m.%Y").to_string()
     }

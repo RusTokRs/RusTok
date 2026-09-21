@@ -6,22 +6,22 @@ use leptos_ui::ButtonVariant;
 
 #[component]
 pub fn HomePage(
-    hero_title: &'static str,
-    hero_subtitle: &'static str,
-    cta_primary: &'static str,
-    cta_secondary: &'static str,
-    featured_title: &'static str,
-    featured_subtitle: &'static str,
+    hero_title: String,
+    hero_subtitle: String,
+    cta_primary: String,
+    cta_secondary: String,
+    featured_title: String,
+    featured_subtitle: String,
     products: Vec<ProductCardData>,
-    badge_new: &'static str,
-    cta_view: &'static str,
-    story_title: &'static str,
-    story_body: &'static str,
-    newsletter_title: &'static str,
-    newsletter_body: &'static str,
-    newsletter_placeholder: &'static str,
-    newsletter_cta: &'static str,
-    newsletter_note: &'static str,
+    badge_new: String,
+    cta_view: String,
+    story_title: String,
+    story_body: String,
+    newsletter_title: String,
+    newsletter_body: String,
+    newsletter_placeholder: String,
+    newsletter_cta: String,
+    newsletter_note: String,
     after_hero_views: Vec<AnyView>,
     after_catalog_views: Vec<AnyView>,
     before_footer_views: Vec<AnyView>,
@@ -63,6 +63,8 @@ pub fn HomePage(
                         {products
                             .into_iter()
                             .map(|product| {
+                                let badge_new = badge_new.clone();
+                                let cta_view = cta_view.clone();
                                 view! {
                                     <ProductCard
                                         product=product

@@ -7,12 +7,12 @@ use leptos::prelude::*;
 #[component]
 pub fn Header(
     locale: String,
-    nav_home: &'static str,
-    nav_catalog: &'static str,
-    nav_about: &'static str,
-    nav_contact: &'static str,
-    nav_language: &'static str,
-    cta_primary: &'static str,
+    nav_home: String,
+    nav_catalog: String,
+    nav_about: String,
+    nav_contact: String,
+    nav_language: String,
+    cta_primary: String,
     navigation_views: Vec<AnyView>,
     #[prop(optional)] action_views: Vec<AnyView>,
 ) -> impl IntoView {

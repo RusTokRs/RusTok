@@ -53,7 +53,7 @@ resolution logic.
 ## Verification
 
 - `cargo test -p rustok-graphql --lib`
-- `cargo check -p rustok-graphql-leptos`
+- targeted checks for module transport adapters changed alongside the client
 - Verification of zero direct `reqwest::Client::new()` allocations in module
   GraphQL transport adapters.
 

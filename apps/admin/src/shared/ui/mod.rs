@@ -4,7 +4,7 @@ pub use leptos_ui::*;
 pub mod page_header;
 pub use page_header::PageHeader;
 
-use crate::{Locale, t_string, use_i18n};
+use crate::{Locale, use_admin_locale};
 
 #[cfg(target_arch = "wasm32")]
 const THEME_STORAGE_KEY: &str = "rustok-admin-theme";
@@ -96,31 +96,31 @@ pub fn Input(
 
 #[component]
 pub fn LanguageToggle() -> impl IntoView {
-    let i18n = use_i18n();
+    let i18n = use_admin_locale();
 
     view! {
         <select
-            aria-label=move || t_string!(i18n, app.nav.language).to_string()
-            prop:value=move || match i18n.get_locale() {
-                Locale::ru => "ru",
-                Locale::en => "en",
+            aria-label=move || i18n.translate("app.nav.language").to_string()
+            prop:value=move || match i18n.current() {
+                Locale::Ru => "ru",
+                Locale::En => "en",
             }
             on:change=move |ev| match event_target_value(&ev).as_str() {
-                "ru" => i18n.set_locale(Locale::ru),
-                "en" => i18n.set_locale(Locale::en),
+                "ru" => i18n.set(Locale::Ru),
+                "en" => i18n.set(Locale::En),
                 _ => {}
             }
             class="h-9 min-w-32 rounded-md border border-input bg-background px-3 py-1 text-sm font-medium text-foreground shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
-            <option value="ru">{move || t_string!(i18n, app.nav.languageRu)}</option>
-            <option value="en">{move || t_string!(i18n, app.nav.languageEn)}</option>
+            <option value="ru">{move || i18n.translate("app.nav.languageRu")}</option>
+            <option value="en">{move || i18n.translate("app.nav.languageEn")}</option>
         </select>
     }
 }
 
 #[component]
 pub fn ThemeModeToggle() -> impl IntoView {
-    let i18n = use_i18n();
+    let i18n = use_admin_locale();
     let (theme, set_theme) = signal(initial_theme_mode());
 
     Effect::new(move |_| {
@@ -150,12 +150,12 @@ pub fn ThemeModeToggle() -> impl IntoView {
     view! {
         <button
             type="button"
-            aria-label=move || t_string!(i18n, app.theme.toggle).to_string()
+            aria-label=move || i18n.translate("app.theme.toggle").to_string()
             title=move || {
                 if theme.get().is_dark() {
-                    t_string!(i18n, app.theme.dark).to_string()
+                    i18n.translate("app.theme.dark").to_string()
                 } else {
-                    t_string!(i18n, app.theme.light).to_string()
+                    i18n.translate("app.theme.light").to_string()
                 }
             }
             class="relative inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md border border-input bg-background text-foreground shadow-xs outline-none transition-[background-color,color,box-shadow] hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
@@ -193,7 +193,7 @@ pub fn ThemeModeToggle() -> impl IntoView {
             >
                 <path d="M12 3a6.9 6.9 0 0 0 9 9 9 9 0 1 1-9-9Z" />
             </svg>
-            <span class="sr-only">{move || t_string!(i18n, app.theme.toggle)}</span>
+            <span class="sr-only">{move || i18n.translate("app.theme.toggle")}</span>
         </button>
     }
 }

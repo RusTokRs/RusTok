@@ -286,9 +286,9 @@ from complete operation safety and retention through serving cutover.
   and the corresponding `README.md`.
 - For infrastructure/capability crates see `crates/modules/*`
   and `docs/modules/crates-registry.md`.
-- For UI libraries use `crates/modules/leptos-*`, `crates/ui/leptos-ui`,
-  `crates/modules/rustok-ui-*`, `crates/ui/rustok-graphql`
-  and `crates/ui/rustok-graphql-leptos`.
+- For UI libraries use `crates/ui/leptos-*`, `crates/ui/leptos-ui`,
+  `crates/ui/leptos-auth`, `crates/ui/leptos-ui-routing`,
+  `crates/ui/rustok-ui-*` and `crates/ui/rustok-graphql`.
 - Every crate must have an up-to-date `README.md`,
   and `docs/` if needed.
 

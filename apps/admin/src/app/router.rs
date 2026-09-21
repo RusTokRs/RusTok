@@ -4,7 +4,7 @@ use leptos_auth::context::AuthProvider;
 use leptos_router::components::{ParentRoute, Redirect, Route, Router, Routes};
 use leptos_router::path;
 
-use crate::I18nContextProvider;
+use crate::AdminLocaleProvider;
 use crate::pages::{
     cache::CachePage, dashboard::Dashboard, email_settings::EmailSettingsPage,
     installer::InstallerPage, module_admin::ModuleAdminPage, modules::Modules, not_found::NotFound,
@@ -19,7 +19,7 @@ use rustok_auth_admin::{
 #[component]
 pub fn App() -> impl IntoView {
     view! {
-        <I18nContextProvider>
+        <AdminLocaleProvider>
             <AuthProvider>
                 <Router>
                     <Routes fallback=|| view! { <NotFound /> }>
@@ -61,6 +61,6 @@ pub fn App() -> impl IntoView {
                     </Routes>
                 </Router>
             </AuthProvider>
-        </I18nContextProvider>
+        </AdminLocaleProvider>
     }
 }

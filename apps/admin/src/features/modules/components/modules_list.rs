@@ -11,15 +11,15 @@ use crate::features::modules::transport;
 #[cfg(target_arch = "wasm32")]
 use crate::shared::api as shared_api;
 use crate::shared::ui::ui_success_message as UiSuccessMessage;
-use crate::{t, t_string, use_i18n};
+use crate::use_admin_locale;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_ui_forms::FormState;
 use leptos_router::hooks::{use_navigate, use_query_map};
 use leptos_use::use_interval_fn;
 use rustok_api::{MarketplaceRegistryFreshness, MarketplaceRegistryStatus};
 use rustok_api::{ModuleRetentionHoldView, ModuleTransitionCheckpointView};
+use rustok_ui_forms::FormState;
 use std::collections::{HashMap, HashSet};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::{JsCast, closure::Closure};
@@ -393,7 +393,7 @@ pub fn ModulesList(
     active_build: Option<BuildJob>,
     build_history: Vec<BuildJob>,
 ) -> impl IntoView {
-    let i18n = use_i18n();
+    let i18n = use_admin_locale();
     let (module_list, set_module_list) = signal(modules);
     let (marketplace_catalog, set_marketplace_catalog) = signal(marketplace_modules);
     let (registry_freshness, set_registry_freshness) = signal(marketplace_registry_freshness);
@@ -993,9 +993,9 @@ pub fn ModulesList(
                         applied_catalog_filters.get(),
                     );
                     let status = if result.enabled {
-                        t_string!(i18n, modules.toast.enabled)
+                        i18n.translate("modules.toast.enabled")
                     } else {
-                        t_string!(i18n, modules.toast.disabled)
+                        i18n.translate("modules.toast.disabled")
                     };
                     set_success_message.set(Some(status.to_string()));
                 }
@@ -1973,7 +1973,7 @@ pub fn ModulesList(
                             </div>
                         </div>
                         <div class="space-y-3">
-                            <div class="flex items-center gap-2"><svg class="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg><h3 class="text-lg font-semibold text-foreground">{t!(i18n, modules.section.core)}</h3><span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">{t!(i18n, modules.always_active)}</span></div>
+                            <div class="flex items-center gap-2"><svg class="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg><h3 class="text-lg font-semibold text-foreground">{i18n.translate("modules.section.core")}</h3><span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">{i18n.translate("modules.always_active")}</span></div>
                             <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                                 {move || core_modules().into_iter().map(|module| {
                                     let slug = module.module_slug.clone();
@@ -1991,7 +1991,7 @@ pub fn ModulesList(
                             </div>
                         </div>
                         <div class="space-y-3">
-                            <div class="flex items-center gap-2"><svg class="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg><h3 class="text-lg font-semibold text-foreground">{t!(i18n, modules.section.optional)}</h3><span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{move || format!("{} installed", installed_optional_modules().len())}</span></div>
+                            <div class="flex items-center gap-2"><svg class="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg><h3 class="text-lg font-semibold text-foreground">{i18n.translate("modules.section.optional")}</h3><span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{move || format!("{} installed", installed_optional_modules().len())}</span></div>
                             <Show when=move || !installed_optional_modules().is_empty() fallback=move || view! { <div class="rounded-xl border border-border bg-card p-6 shadow-sm"><p class="text-sm text-muted-foreground">"No optional modules are installed yet. Use the Marketplace tab to queue the first install."</p></div> }>
                                 <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                                     {move || installed_optional_modules().into_iter().map(|module| {

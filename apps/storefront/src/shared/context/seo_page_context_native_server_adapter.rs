@@ -1,6 +1,5 @@
 use leptos::prelude::*;
 
-use crate::shared::api::configured_tenant_slug;
 use super::seo_page_context::{
     ResolvedSeoAlternateLink, ResolvedSeoDocument, ResolvedSeoImageAsset, ResolvedSeoLinkTag,
     ResolvedSeoMetaTag, ResolvedSeoOpenGraph, ResolvedSeoPageContext, ResolvedSeoPagination,
@@ -8,6 +7,7 @@ use super::seo_page_context::{
     ResolvedSeoStructuredDataBlock, ResolvedSeoTwitterCard, ResolvedSeoVerification,
     ResolvedSeoVerificationTag,
 };
+use crate::shared::api::configured_tenant_slug;
 
 #[server(prefix = "/api/fn", endpoint = "storefront/seo-page-context")]
 pub(crate) async fn resolve_seo_page_context(
@@ -22,9 +22,7 @@ pub(crate) async fn resolve_seo_page_context(
         use rustok_tenant::TenantService;
 
         let configured = configured_tenant_slug().ok_or_else(|| {
-            ServerFnError::new(
-                "storefront SEO server function requires a configured host tenant",
-            )
+            ServerFnError::new("storefront SEO server function requires a configured host tenant")
         })?;
         if tenant_slug.trim() != configured {
             return Err(ServerFnError::new(

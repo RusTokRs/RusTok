@@ -115,12 +115,12 @@ Leptos adapter is not deleted — both coexist until the host migration is compl
 ### FFA GraphQL Client Boundary
 
 `transport/graphql_adapter.rs` uses `rustok-graphql`, the framework-agnostic GraphQL HTTP client.
-Leptos-specific reactive hooks live in `rustok-graphql-leptos` and must not be imported
-from transport/core code.
+Leptos-specific resources, signals, and effects remain in `ui/leptos.rs`; they call the
+module transport facade and must not move into transport/core code. The platform does not
+retain a generic reactive GraphQL hooks crate without a concrete shared consumer.
 
-When Dioxus is introduced, add a sibling Dioxus hooks adapter if reactive GraphQL hooks are
-needed. The module transport facade remains unchanged because GraphQL request execution is
-already framework-neutral.
+When Dioxus is introduced, its resource bindings call the same module transport facade. The
+facade remains unchanged because GraphQL request execution is already framework-neutral.
 
 **Current target state:**
 ```
@@ -146,7 +146,9 @@ They are **not** responsible for:
 - domain logic that belongs to a module
 - knowing about module-internal transport or core
 
-**Current state:** Host apps still use `leptos_i18n` for their shell/navigation i18n.
+**Current state:** Host and module catalogs use `rustok-ui-i18n`. Leptos hosts own only
+the reactive propagation of a host-provided effective locale; they do not own message
+parsing, fallback, formatting, or catalog generation.
 Module-owned UI packages use `rustok-ui-i18n` (`UiMessages`), which resolves
 messages against host-provided `UiRouteContext.locale` without any framework coupling.
 `UiRouteContext` itself is a framework-agnostic UI contract from `rustok-ui-core`.

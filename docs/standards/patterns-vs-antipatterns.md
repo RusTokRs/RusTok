@@ -149,8 +149,8 @@ Each section contains: what to do correctly (✅), what is forbidden (❌), why,
 |---|-------------|---------------|--------|--------|
 | 8.1.1 | `rustok-graphql` for Rust FFA GraphQL adapters; host-injected Apollo executor for Next UI packages | Manual fetch + manual JSON parsing | No typing, manual error handling | — |
 | 8.1.2 | `leptos-auth` for auth state management | Manual JWT management in localStorage | Race conditions, no refresh logic | — |
-| 8.1.3 | Host-local state; adopt `leptos-zustand` only after its shared runtime contract is approved | Adding an unimplemented shared-state dependency to avoid prop drilling | `leptos-zustand` currently provides serializable DTOs, not a state container | [plan](../../crates/ui/leptos-zustand/docs/implementation-plan.md) |
-| 8.1.4 | `leptos-hook-form` for forms | Manual form state + onChange handlers | Boilerplate, no validation | — |
+| 8.1.3 | Keep framework lifecycle state host-local; move only stable cross-framework state transitions into the owning core | Adding a speculative global-state package to avoid prop drilling | Creates a second state owner without a real shared lifecycle | — |
+| 8.1.4 | `rustok-ui-forms` for portable submission/error state plus framework-local bindings | Reimplementing form lifecycle/error envelopes per adapter | Divergent validation UX and duplicated state semantics | — |
 | 8.1.5 | `iu-leptos` components from design system | Custom components with own styles | Visual inconsistency | — |
 | 8.1.6 | SSR for storefront (SEO) | CSR-only storefront | No SEO, slow First Contentful Paint | — |
 | 8.1.7 | CSR for admin panel (WASM) | SSR for admin panel | Admin doesn't need SEO, CSR is simpler | — |

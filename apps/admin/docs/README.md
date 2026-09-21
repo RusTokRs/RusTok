@@ -34,6 +34,10 @@ lives in `src/widgets/app_shell/core.rs` without Leptos dependencies, while `sid
 a Leptos render/bind adapter. This split is enforced by a quick verifier
 `npm run verify:frontend:host-ffa-contract`.
 
+Host-shell messages use Fluent catalogs through the framework-neutral `rustok-ui-i18n` owner.
+`app/providers/locale.rs` is only a Leptos lifecycle adapter for the effective locale signal and
+explicit operator selection persistence; it does not parse catalogs or define fallback semantics.
+
 `/workflows` redirects to the owner-owned overview and templates surface at
 `/modules/workflow`. The host still composes only the workflow detail editor, execution history,
 and version history through `src/features/workflow/`; its native server-function adapter uses

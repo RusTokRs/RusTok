@@ -9,7 +9,7 @@ use crate::entities::module::model::{MarketplaceModuleVersion, RegistryReleaseLi
 use crate::entities::module::{MarketplaceModule, ModuleSettingField, TenantModule};
 use crate::features::modules::transport::{self, RegistryMutationResult, RegistryPublishStatus};
 use crate::shared::ui::Button;
-use crate::{Locale, use_i18n};
+use crate::{Locale, use_admin_locale};
 
 use super::detail::{
     governance::{
@@ -35,7 +35,7 @@ use super::detail::{
 
 fn tr(locale: Locale, en: &'static str, ru: &'static str) -> &'static str {
     match locale {
-        Locale::ru => ru,
+        Locale::Ru => ru,
         _ => en,
     }
 }
@@ -182,7 +182,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
         on_refresh_detail,
         on_close,
     } = input;
-    let locale = use_i18n().get_locale();
+    let locale = use_admin_locale().current();
     let detail = module.clone();
     let detail_for_body = StoredValue::new(module.clone());
     let admin_surface_for_body = StoredValue::new(admin_surface.clone());

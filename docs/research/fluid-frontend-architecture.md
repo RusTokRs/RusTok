@@ -363,7 +363,9 @@ topology is an implementation detail, not an architectural constraint.
 For i18n to be FFA-compatible, message resolution must be completely framework-neutral:
 - `rustok-ui-i18n` owns `UiMessages` (supporting Fluent and JSON catalogs), locale normalization and fallback resolution. It has no framework dependencies and is universally reusable across Leptos, Dioxus, CLI, etc. without separate adapter crates.
 
-`leptos_i18n` remains Leptos-specific and must not be used by module-owned FFA UI packages. Host apps may keep it for shell/navigation until host-level FFA migration.
+`leptos_i18n` is not part of the target architecture. Host and module-owned catalogs use
+`rustok-ui-i18n`; framework adapters may provide reactive locale context but must not own
+message parsing, fallback, formatting, or catalog generation.
 
 The key principle: i18n core must work without framework imports, so any UI framework can use it directly.
 

@@ -20,7 +20,6 @@ default = ["ssr"]
 pages-inline-edit-launch = ["rustok-pages-admin/inline-edit-launch"]
 csr = [
   "leptos/csr",
-  "leptos_i18n/csr",
   "dep:wasm-bindgen",
   "dep:web-sys",
   "dep:console_error_panic_hook",
@@ -36,7 +35,6 @@ csr = [
 ]
 hydrate = [
   "leptos/hydrate",
-  "leptos_i18n/hydrate",
   "dep:wasm-bindgen",
   "dep:web-sys",
   "dep:console_error_panic_hook",
@@ -81,7 +79,6 @@ hydrate = [
 ssr = [
   "leptos/ssr",
   "leptos_router/ssr",
-  "leptos_i18n/ssr",
   "dep:axum",
   "dep:tokio",
   "dep:leptos_axum",
@@ -151,15 +148,9 @@ leptos-auth = { workspace = true, default-features = false }
 rustok-graphql = { workspace = true }
 leptos-ui-routing = { workspace = true }
 leptos-ui = { workspace = true }
-leptos-forms = { workspace = true }
 rustok-ui-forms = { workspace = true }
-leptos-zod = { workspace = true }
-leptos-struct-table = { workspace = true }
-leptos-zustand = { workspace = true }
-leptos-shadcn-pagination = { workspace = true }
 leptos-use = { workspace = true }
-leptos_i18n.workspace = true
-leptos-chartistry = { workspace = true }
+rustok-ui-i18n.workspace = true
 serde_urlencoded = { workspace = true }
 chrono = { workspace = true }
 console_error_panic_hook = { version = "0.1", optional = true }
@@ -232,7 +223,6 @@ gloo-storage = { workspace = true }
 tower.workspace = true
 
 [build-dependencies]
-leptos_i18n_build = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 toml = { workspace = true }
 
@@ -255,18 +245,12 @@ normal = [
   "leptos_axum",
   "rustok-graphql",
   "rustok-ui-forms",
-  "leptos-struct-table",
-  "leptos-zod",
-  "leptos-zustand",
-  "leptos-shadcn-pagination",
   "leptos-use",
-  "leptos_i18n",
-  "leptos-chartistry",
+  "rustok-ui-i18n",
   "gloo-storage",
   "serde_urlencoded",
   "chrono",
   "toml",
-  "leptos-forms",
   "uuid",
   "rustok-api",
   "rustok-ui-transport",
@@ -314,12 +298,6 @@ normal = [
 
 [package.metadata.cargo-machete]
 ignored = [
-  "leptos-chartistry",
-  "leptos-forms",
-  "leptos-shadcn-pagination",
-  "leptos-struct-table",
-  "leptos-zod",
-  "leptos-zustand",
   "rustok-blog-admin",
   "rustok-channel-admin",
   "rustok-comments",

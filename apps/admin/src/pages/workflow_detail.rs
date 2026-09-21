@@ -8,7 +8,7 @@ use crate::entities::workflow::{WorkflowDetail, WorkflowExecution};
 use crate::features::workflow::{
     ExecutionHistory, StatusBadge, VersionHistory, WorkflowStepEditor, transport,
 };
-use crate::{t_string, use_i18n};
+use crate::use_admin_locale;
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -35,7 +35,7 @@ struct WorkflowPageData {
 
 #[component]
 pub fn WorkflowDetailPage() -> impl IntoView {
-    let i18n = use_i18n();
+    let i18n = use_admin_locale();
     let token = use_token();
     let tenant = use_tenant();
     let params = use_params::<WorkflowParams>();
@@ -74,7 +74,7 @@ pub fn WorkflowDetailPage() -> impl IntoView {
         <section class="flex flex-1 flex-col p-4 md:px-6">
             <div class="mb-4">
                 <A href="/workflows" attr:class="text-sm text-muted-foreground hover:text-foreground">
-                    "← " {t_string!(i18n, workflows.back)}
+                    "← " {i18n.translate("workflows.back")}
                 </A>
             </div>
 
@@ -99,7 +99,7 @@ pub fn WorkflowDetailPage() -> impl IntoView {
                             }.into_any(),
                             Ok(None) => view! {
                                 <div class="rounded-lg border border-border px-4 py-12 text-center text-sm text-muted-foreground">
-                                    {t_string!(i18n, workflows.not_found)}
+                                    {i18n.translate("workflows.not_found")}
                                 </div>
                             }.into_any(),
                             Ok(Some(data)) => {
@@ -124,7 +124,7 @@ pub fn WorkflowDetailPage() -> impl IntoView {
                                                     href=format!("/workflows/{}/edit", wf.id)
                                                     attr:class="rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
                                                 >
-                                                    {t_string!(i18n, workflows.edit)}
+                                                    {i18n.translate("workflows.edit")}
                                                 </A>
                                             </div>
                                         </div>
@@ -132,7 +132,7 @@ pub fn WorkflowDetailPage() -> impl IntoView {
                                         // Stats row
                                         <div class="grid grid-cols-3 gap-4">
                                             <div class="rounded-xl border border-border bg-card p-4">
-                                                <p class="text-xs text-muted-foreground">{t_string!(i18n, workflows.trigger)}</p>
+                                                <p class="text-xs text-muted-foreground">{i18n.translate("workflows.trigger")}</p>
                                                 <p class="mt-1 font-mono text-sm">
                                                     {wf.trigger_config.get("type")
                                                         .and_then(|v: &serde_json::Value| v.as_str())
@@ -141,18 +141,18 @@ pub fn WorkflowDetailPage() -> impl IntoView {
                                                 </p>
                                             </div>
                                             <div class="rounded-xl border border-border bg-card p-4">
-                                                <p class="text-xs text-muted-foreground">{t_string!(i18n, workflows.steps)}</p>
+                                                <p class="text-xs text-muted-foreground">{i18n.translate("workflows.steps")}</p>
                                                 <p class="mt-1 text-sm font-semibold">{steps.len()}</p>
                                             </div>
                                             <div class="rounded-xl border border-border bg-card p-4">
-                                                <p class="text-xs text-muted-foreground">{t_string!(i18n, workflows.failures)}</p>
+                                                <p class="text-xs text-muted-foreground">{i18n.translate("workflows.failures")}</p>
                                                 <p class="mt-1 text-sm font-semibold">{wf.failure_count}</p>
                                             </div>
                                         </div>
 
                                         // Steps editor
                                         <div>
-                                            <h2 class="mb-3 text-lg font-semibold">{t_string!(i18n, workflows.steps)}</h2>
+                                            <h2 class="mb-3 text-lg font-semibold">{i18n.translate("workflows.steps")}</h2>
                                             <WorkflowStepEditor
                                                 workflow_id=wf_id.clone()
                                                 steps=steps
@@ -164,7 +164,7 @@ pub fn WorkflowDetailPage() -> impl IntoView {
 
                                         // Execution history
                                         <div>
-                                            <h2 class="mb-3 text-lg font-semibold">{t_string!(i18n, workflows.executions)}</h2>
+                                            <h2 class="mb-3 text-lg font-semibold">{i18n.translate("workflows.executions")}</h2>
                                             <ExecutionHistory executions=executions />
                                         </div>
 

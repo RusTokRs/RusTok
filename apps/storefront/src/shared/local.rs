@@ -1,123 +1,102 @@
 use serde::{Deserialize, Serialize};
 
+static MESSAGES: rustok_ui_i18n::UiMessages = rustok_ui_i18n::UiMessages::new(
+    "en",
+    &[
+        ("en", include_str!("../../locales/en.ftl")),
+        ("ru", include_str!("../../locales/ru.ftl")),
+    ],
+);
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LocaleStrings {
-    pub hero_title: &'static str,
-    pub hero_subtitle: &'static str,
-    pub cta_primary: &'static str,
-    pub cta_secondary: &'static str,
-    pub featured_title: &'static str,
-    pub featured_subtitle: &'static str,
-    pub story_title: &'static str,
-    pub story_body: &'static str,
-    pub newsletter_title: &'static str,
-    pub newsletter_body: &'static str,
-    pub newsletter_cta: &'static str,
-    pub newsletter_placeholder: &'static str,
-    pub newsletter_note: &'static str,
-    pub cta_view: &'static str,
-    pub nav_home: &'static str,
-    pub nav_catalog: &'static str,
-    pub nav_about: &'static str,
-    pub nav_contact: &'static str,
-    pub nav_language: &'static str,
-    pub footer_tagline: &'static str,
-    pub badge_new: &'static str,
+    pub hero_title: String,
+    pub hero_subtitle: String,
+    pub cta_primary: String,
+    pub cta_secondary: String,
+    pub featured_title: String,
+    pub featured_subtitle: String,
+    pub story_title: String,
+    pub story_body: String,
+    pub newsletter_title: String,
+    pub newsletter_body: String,
+    pub newsletter_cta: String,
+    pub newsletter_placeholder: String,
+    pub newsletter_note: String,
+    pub cta_view: String,
+    pub nav_home: String,
+    pub nav_catalog: String,
+    pub nav_about: String,
+    pub nav_contact: String,
+    pub nav_language: String,
+    pub footer_tagline: String,
+    pub badge_new: String,
+}
+
+fn message(locale: &str, key: &str) -> String {
+    MESSAGES.t(Some(locale), key, key)
 }
 
 pub fn locale_strings(locale: &str) -> LocaleStrings {
-    match locale {
-        "ru" => LocaleStrings {
-            hero_title: "Витрина RusToK",
-            hero_subtitle: "SSR-платформа на Rust для быстрой коммерции и красивых витрин.",
-            cta_primary: "Открыть каталог",
-            cta_secondary: "О платформе",
-            featured_title: "Избранные коллекции",
-            featured_subtitle: "Заполните карточки товарами из Commerce-модуля и настройте промо.",
-            story_title: "Бренд, которому доверяют",
-            story_body: "RusToK помогает собрать надежную витрину: события, поисковые индексы, многоязычность.",
-            newsletter_title: "Подписка на обновления",
-            newsletter_body: "Подключайте рассылки и промо-кампании прямо из ядра.",
-            newsletter_cta: "Подписаться",
-            newsletter_placeholder: "email@rustok.local",
-            newsletter_note: "Никакого спама. Отписка в любой момент.",
-            cta_view: "Смотреть",
-            nav_home: "Главная",
-            nav_catalog: "Каталог",
-            nav_about: "О нас",
-            nav_contact: "Контакты",
-            nav_language: "Язык",
-            footer_tagline: "RusToK — модульная платформа для современной коммерции.",
-            badge_new: "Новинка",
-        },
-        _ => LocaleStrings {
-            hero_title: "RusToK Storefront",
-            hero_subtitle: "SSR-first Rust commerce with fast discovery and clean design.",
-            cta_primary: "Browse catalog",
-            cta_secondary: "Platform overview",
-            featured_title: "Featured collections",
-            featured_subtitle: "Plug Commerce data in and curate promotions in minutes.",
-            story_title: "A brand you can trust",
-            story_body: "RusToK ships with events, search indexes, and multilingual support.",
-            newsletter_title: "Stay in the loop",
-            newsletter_body: "Connect newsletters and promotions from the core.",
-            newsletter_cta: "Subscribe",
-            newsletter_placeholder: "email@rustok.local",
-            newsletter_note: "No spam. Opt-out anytime.",
-            cta_view: "View",
-            nav_home: "Home",
-            nav_catalog: "Catalog",
-            nav_about: "About",
-            nav_contact: "Contact",
-            nav_language: "Language",
-            footer_tagline: "RusToK — the modular platform for modern commerce.",
-            badge_new: "New",
-        },
+    LocaleStrings {
+        hero_title: message(locale, "hero.title"),
+        hero_subtitle: message(locale, "hero.subtitle"),
+        cta_primary: message(locale, "cta.primary"),
+        cta_secondary: message(locale, "cta.secondary"),
+        featured_title: message(locale, "featured.title"),
+        featured_subtitle: message(locale, "featured.subtitle"),
+        story_title: message(locale, "story.title"),
+        story_body: message(locale, "story.body"),
+        newsletter_title: message(locale, "newsletter.title"),
+        newsletter_body: message(locale, "newsletter.body"),
+        newsletter_cta: message(locale, "newsletter.cta"),
+        newsletter_placeholder: message(locale, "newsletter.placeholder"),
+        newsletter_note: message(locale, "newsletter.note"),
+        cta_view: message(locale, "cta.view"),
+        nav_home: message(locale, "nav.home"),
+        nav_catalog: message(locale, "nav.catalog"),
+        nav_about: message(locale, "nav.about"),
+        nav_contact: message(locale, "nav.contact"),
+        nav_language: message(locale, "nav.language"),
+        footer_tagline: message(locale, "footer.tagline"),
+        badge_new: message(locale, "badge.new"),
     }
 }
 
 pub fn featured_products(locale: &str) -> Vec<crate::entities::product::ProductCardData> {
     use crate::entities::product::ProductCardData;
-    match locale {
-        "ru" => vec![
-            ProductCardData {
-                title: "Смарт-аксессуары",
-                description: "Функциональные гаджеты для повседневной жизни.",
-                price: "от 4 990 ₽",
-                badge: Some("Лидер продаж"),
-            },
-            ProductCardData {
-                title: "Экологичная коллекция",
-                description: "Натуральные материалы и премиальная отделка.",
-                price: "от 2 490 ₽",
-                badge: None,
-            },
-            ProductCardData {
-                title: "Городская классика",
-                description: "Минималистичные силуэты для любого сезона.",
-                price: "от 6 500 ₽",
-                badge: Some("Новинка"),
-            },
-        ],
-        _ => vec![
-            ProductCardData {
-                title: "Smart accessories",
-                description: "Functional gadgets for everyday life.",
-                price: "from $89",
-                badge: Some("Best seller"),
-            },
-            ProductCardData {
-                title: "Eco collection",
-                description: "Natural materials with premium finishing.",
-                price: "from $49",
-                badge: None,
-            },
-            ProductCardData {
-                title: "City essentials",
-                description: "Minimal silhouettes for every season.",
-                price: "from $129",
-                badge: Some("New"),
-            },
-        ],
+
+    vec![
+        ProductCardData {
+            title: message(locale, "product.smart.title"),
+            description: message(locale, "product.smart.description"),
+            price: message(locale, "product.smart.price"),
+            badge: Some(message(locale, "product.smart.badge")),
+        },
+        ProductCardData {
+            title: message(locale, "product.eco.title"),
+            description: message(locale, "product.eco.description"),
+            price: message(locale, "product.eco.price"),
+            badge: None,
+        },
+        ProductCardData {
+            title: message(locale, "product.city.title"),
+            description: message(locale, "product.city.description"),
+            price: message(locale, "product.city.price"),
+            badge: Some(message(locale, "product.city.badge")),
+        },
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MESSAGES, featured_products, locale_strings};
+
+    #[test]
+    fn host_catalogs_are_valid_and_locale_specific() {
+        assert!(MESSAGES.initialization_diagnostics().is_empty());
+        assert_eq!(locale_strings("en").nav_home, "Home");
+        assert_eq!(locale_strings("ru").nav_home, "Главная");
+        assert_eq!(featured_products("ru")[0].title, "Смарт-аксессуары");
     }
 }

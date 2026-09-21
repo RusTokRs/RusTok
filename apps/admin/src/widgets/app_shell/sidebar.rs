@@ -5,14 +5,14 @@ use leptos_router::hooks::{use_location, use_query_map};
 
 use crate::app::modules::module_navigation_entries;
 use crate::app::providers::enabled_modules::use_enabled_modules;
+use crate::use_admin_locale;
 use crate::widgets::app_shell::core::{
     NavChild, build_module_nav_groups, href_is_active, module_group_icon,
 };
-use crate::{t_string, use_i18n};
 
 #[component]
 pub fn Sidebar(#[prop(into)] sidebar_open: Signal<bool>) -> impl IntoView {
-    let i18n = use_i18n();
+    let i18n = use_admin_locale();
     let current_user = use_current_user();
     let tenant = use_tenant();
     let enabled_modules = use_enabled_modules();
@@ -22,8 +22,8 @@ pub fn Sidebar(#[prop(into)] sidebar_open: Signal<bool>) -> impl IntoView {
         build_module_nav_groups(
             module_navigation_entries(),
             &enabled,
-            t_string!(i18n, app.nav.overview).as_ref(),
-            t_string!(i18n, app.nav.settings).as_ref(),
+            i18n.translate("app.nav.overview").as_ref(),
+            i18n.translate("app.nav.settings").as_ref(),
         )
     });
 
@@ -51,7 +51,7 @@ pub fn Sidebar(#[prop(into)] sidebar_open: Signal<bool>) -> impl IntoView {
                                     tenant
                                         .get()
                                         .filter(|value| !value.trim().is_empty())
-                                        .unwrap_or_else(|| t_string!(i18n, app.brand.title).to_string())
+                                        .unwrap_or_else(|| i18n.translate("app.brand.title").to_string())
                                 }}
                             </span>
                             <span class="truncate text-xs text-sidebar-foreground/60">
@@ -69,9 +69,9 @@ pub fn Sidebar(#[prop(into)] sidebar_open: Signal<bool>) -> impl IntoView {
                 )
             }>
                 <Show when=move || sidebar_open.get()>
-                    <NavGroupLabel label=move || t_string!(i18n, app.nav.group.overview).to_string() />
+                    <NavGroupLabel label=move || i18n.translate("app.nav.group.overview").to_string() />
                 </Show>
-                <NavLink sidebar_open=sidebar_open href="/dashboard" icon="grid" label=move || t_string!(i18n, app.nav.dashboard).to_string() />
+                <NavLink sidebar_open=sidebar_open href="/dashboard" icon="grid" label=move || i18n.translate("app.nav.dashboard").to_string() />
 
                 {move || {
                     let role = current_user
@@ -86,43 +86,43 @@ pub fn Sidebar(#[prop(into)] sidebar_open: Signal<bool>) -> impl IntoView {
                     view! {
                         <div class="pt-3">
                             <Show when=move || sidebar_open.get()>
-                                <NavGroupLabel label=move || t_string!(i18n, app.nav.group.management).to_string() />
+                                <NavGroupLabel label=move || i18n.translate("app.nav.group.management").to_string() />
                             </Show>
                             <NavContainer
                                 sidebar_open=sidebar_open
-                                label=move || t_string!(i18n, app.nav.group.access).to_string()
+                                label=move || i18n.translate("app.nav.group.access").to_string()
                                 icon="users"
                                 children=vec![
-                                    NavChild { href: "/users".to_string(), label: t_string!(i18n, app.nav.users).to_string() },
+                                    NavChild { href: "/users".to_string(), label: i18n.translate("app.nav.users").to_string() },
                                 ]
                             />
                             <NavContainer
                                 sidebar_open=sidebar_open
-                                label=move || t_string!(i18n, app.nav.group.platform).to_string()
+                                label=move || i18n.translate("app.nav.group.platform").to_string()
                                 icon="box"
                                 children=vec![
-                                    NavChild { href: "/modules".to_string(), label: t_string!(i18n, app.nav.modules).to_string() },
-                                    NavChild { href: "/apps".to_string(), label: t_string!(i18n, app.nav.apps).to_string() },
-                                    NavChild { href: "/install".to_string(), label: t_string!(i18n, app.nav.installer).to_string() },
+                                    NavChild { href: "/modules".to_string(), label: i18n.translate("app.nav.modules").to_string() },
+                                    NavChild { href: "/apps".to_string(), label: i18n.translate("app.nav.apps").to_string() },
+                                    NavChild { href: "/install".to_string(), label: i18n.translate("app.nav.installer").to_string() },
                                 ]
                             />
                             <NavContainer
                                 sidebar_open=sidebar_open
-                                label=move || t_string!(i18n, app.nav.group.operations).to_string()
+                                label=move || i18n.translate("app.nav.group.operations").to_string()
                                 icon="activity"
                                 children=vec![
-                                    NavChild { href: "/ai".to_string(), label: t_string!(i18n, app.nav.ai).to_string() },
-                                    NavChild { href: "/mcp".to_string(), label: t_string!(i18n, app.nav.mcp).to_string() },
-                                    NavChild { href: "/email".to_string(), label: t_string!(i18n, app.nav.email).to_string() },
-                                    NavChild { href: "/cache".to_string(), label: t_string!(i18n, app.nav.cache).to_string() },
-                                    NavChild { href: "/events".to_string(), label: t_string!(i18n, events.title).to_string() },
+                                    NavChild { href: "/ai".to_string(), label: i18n.translate("app.nav.ai").to_string() },
+                                    NavChild { href: "/mcp".to_string(), label: i18n.translate("app.nav.mcp").to_string() },
+                                    NavChild { href: "/email".to_string(), label: i18n.translate("app.nav.email").to_string() },
+                                    NavChild { href: "/cache".to_string(), label: i18n.translate("app.nav.cache").to_string() },
+                                    NavChild { href: "/events".to_string(), label: i18n.translate("events.title").to_string() },
                                 ]
                             />
 
                             <Show when=move || !module_nav_groups.get().is_empty()>
                                 <div class="pt-3">
                                     <Show when=move || sidebar_open.get()>
-                                        <NavGroupLabel label=move || t_string!(i18n, app.nav.modulePlugins).to_string() />
+                                        <NavGroupLabel label=move || i18n.translate("app.nav.modulePlugins").to_string() />
                                     </Show>
                                     {move || {
                                         module_nav_groups
@@ -162,10 +162,10 @@ pub fn Sidebar(#[prop(into)] sidebar_open: Signal<bool>) -> impl IntoView {
 
                 <div class="pt-3">
                     <Show when=move || sidebar_open.get()>
-                        <NavGroupLabel label=move || t_string!(i18n, app.nav.group.account).to_string() />
+                        <NavGroupLabel label=move || i18n.translate("app.nav.group.account").to_string() />
                     </Show>
-                    <NavLink sidebar_open=sidebar_open href="/profile" icon="user" label=move || t_string!(i18n, app.nav.profile).to_string() />
-                    <NavLink sidebar_open=sidebar_open href="/security" icon="lock" label=move || t_string!(i18n, app.nav.security).to_string() />
+                    <NavLink sidebar_open=sidebar_open href="/profile" icon="user" label=move || i18n.translate("app.nav.profile").to_string() />
+                    <NavLink sidebar_open=sidebar_open href="/security" icon="lock" label=move || i18n.translate("app.nav.security").to_string() />
                 </div>
             </nav>
 
@@ -182,7 +182,7 @@ pub fn Sidebar(#[prop(into)] sidebar_open: Signal<bool>) -> impl IntoView {
                     <Show when=move || sidebar_open.get()>
                         <div class="grid min-w-0 flex-1 text-left text-sm leading-tight">
                             <span class="truncate font-semibold">
-                                {move || current_user.get().and_then(|u| u.name.clone()).unwrap_or_else(|| t_string!(i18n, app.menu.defaultUser).to_string())}
+                                {move || current_user.get().and_then(|u| u.name.clone()).unwrap_or_else(|| i18n.translate("app.menu.defaultUser").to_string())}
                             </span>
                             <span class="truncate text-xs text-sidebar-foreground/60">
                                 {move || current_user.get().map(|u| u.email.clone()).unwrap_or_default()}
@@ -349,14 +349,14 @@ fn set_expanded(expanded: RwSignal<bool>, next: bool) {
 }
 
 fn module_group_label(group: &str) -> String {
-    let i18n = use_i18n();
+    let i18n = use_admin_locale();
 
     match group {
-        "Content" => t_string!(i18n, app.nav.group.content).to_string(),
-        "Commerce" => t_string!(i18n, app.nav.group.commerce).to_string(),
-        "Runtime" => t_string!(i18n, app.nav.group.runtime).to_string(),
-        "Governance" => t_string!(i18n, app.nav.group.governance).to_string(),
-        "Automation" => t_string!(i18n, app.nav.group.automation).to_string(),
-        _ => t_string!(i18n, app.nav.group.other).to_string(),
+        "Content" => i18n.translate("app.nav.group.content").to_string(),
+        "Commerce" => i18n.translate("app.nav.group.commerce").to_string(),
+        "Runtime" => i18n.translate("app.nav.group.runtime").to_string(),
+        "Governance" => i18n.translate("app.nav.group.governance").to_string(),
+        "Automation" => i18n.translate("app.nav.group.automation").to_string(),
+        _ => i18n.translate("app.nav.group.other").to_string(),
     }
 }

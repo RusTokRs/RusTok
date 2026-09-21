@@ -94,6 +94,21 @@ pub fn get_stored_locale() -> Option<String> {
     }
 }
 
+/// Persist an explicit admin UI locale selection for subsequent UI renders
+/// and transport requests.
+pub fn set_stored_locale(locale: &str) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Err(error) = gloo_storage::LocalStorage::set("rustok-admin-locale", locale) {
+            tracing::warn!(%error, "failed to persist admin locale selection");
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = locale;
+    }
+}
+
 fn build_request_context(token: Option<String>, tenant_slug: Option<String>) -> ApiRequestContext {
     ApiRequestContext {
         token,

@@ -1523,36 +1523,6 @@
       "completed_at": null,
       "notes": ""
     },
-    "crates/ui/leptos-forms": {
-      "name": "leptos-forms",
-      "path": "crates/ui/leptos-forms",
-      "category": "ui",
-      "files": 5,
-      "loc": 363,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
-    "crates/ui/leptos-shadcn-pagination": {
-      "name": "leptos-shadcn-pagination",
-      "path": "crates/ui/leptos-shadcn-pagination",
-      "category": "ui",
-      "files": 1,
-      "loc": 98,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
-    "crates/ui/leptos-table": {
-      "name": "leptos-table",
-      "path": "crates/ui/leptos-table",
-      "category": "ui",
-      "files": 1,
-      "loc": 48,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
     "crates/ui/leptos-ui": {
       "name": "leptos-ui",
       "path": "crates/ui/leptos-ui",
@@ -1573,42 +1543,12 @@
       "completed_at": null,
       "notes": ""
     },
-    "crates/ui/leptos-zod": {
-      "name": "leptos-zod",
-      "path": "crates/ui/leptos-zod",
-      "category": "ui",
-      "files": 1,
-      "loc": 22,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
-    "crates/ui/leptos-zustand": {
-      "name": "leptos-zustand",
-      "path": "crates/ui/leptos-zustand",
-      "category": "ui",
-      "files": 1,
-      "loc": 18,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
     "crates/ui/rustok-graphql": {
       "name": "rustok-graphql",
       "path": "crates/ui/rustok-graphql",
       "category": "ui",
       "files": 1,
       "loc": 338,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
-    "crates/ui/rustok-graphql-leptos": {
-      "name": "rustok-graphql-leptos",
-      "path": "crates/ui/rustok-graphql-leptos",
-      "category": "ui",
-      "files": 1,
-      "loc": 206,
       "completed": false,
       "completed_at": null,
       "notes": ""

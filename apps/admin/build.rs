@@ -1,4 +1,3 @@
-use leptos_i18n_build::{Config, TranslationsInfos};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -94,13 +93,6 @@ struct AdminChildPageEntry {
 fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo::rerun-if-changed=build.rs");
     println!("cargo::rerun-if-changed=Cargo.toml");
-
-    let i18n_mod_directory = PathBuf::from(std::env::var_os("OUT_DIR").unwrap()).join("i18n");
-    let cfg = Config::new("en")?.add_locale("ru")?;
-    let translations_infos = TranslationsInfos::parse(cfg)?;
-    translations_infos.emit_diagnostics();
-    translations_infos.rerun_if_locales_changed();
-    translations_infos.generate_i18n_module(i18n_mod_directory)?;
 
     generate_admin_module_codegen()?;
 

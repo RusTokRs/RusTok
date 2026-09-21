@@ -191,8 +191,8 @@ for (const marker of [
 ]) need(builderLib, marker, "feature-gated Page Builder inline source");
 
 for (const marker of [
-  'csr = ["leptos/csr", "leptos_i18n/csr"]',
-  'hydrate = ["leptos/hydrate", "leptos_i18n/hydrate"]',
+  'csr = ["leptos/csr"]',
+  'hydrate = ["leptos/hydrate"]',
   '"rustok-pages-storefront/ssr"',
   "pages-inline-edit = [",
   "pages-inline-edit-hydrate = [",

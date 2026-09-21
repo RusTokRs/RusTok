@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 #[component]
-pub fn Footer(tagline: &'static str, navigation_views: Vec<AnyView>) -> impl IntoView {
+pub fn Footer(tagline: String, navigation_views: Vec<AnyView>) -> impl IntoView {
     view! {
         <footer id="contact" class="mt-20 border-t border-border bg-muted/40 px-4 py-10">
             <div class="container-app space-y-5 text-center">

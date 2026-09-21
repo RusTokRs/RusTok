@@ -13,7 +13,7 @@ use crate::features::auth::UserMenu;
 use crate::shared::api::queries::ADMIN_GLOBAL_SEARCH_QUERY;
 use crate::shared::api::request;
 use crate::shared::ui::{LanguageToggle, ThemeModeToggle};
-use crate::{t_string, use_i18n};
+use crate::use_admin_locale;
 
 #[derive(Clone, Copy, PartialEq)]
 struct Breadcrumb {
@@ -73,7 +73,7 @@ pub fn Header(
     #[prop(into)] sidebar_open: Signal<bool>,
     set_sidebar_open: WriteSignal<bool>,
 ) -> impl IntoView {
-    let i18n = use_i18n();
+    let i18n = use_admin_locale();
     let location = use_location();
 
     let breadcrumbs = Memo::new(move |_| resolve_breadcrumbs(&location.pathname.get()));
@@ -82,7 +82,7 @@ pub fn Header(
     Effect::new(move |_| {
         let title = format!(
             "{} - {}",
-            t_string!(i18n, app.brand.title),
+            i18n.translate("app.brand.title"),
             resolve_label(i18n, title_key.get())
         );
         set_document_title(&title);
@@ -102,7 +102,7 @@ pub fn Header(
                 </button>
                 <A href="/dashboard" attr:class="flex items-center gap-2 font-medium text-foreground md:hidden">
                     <span class="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground">"R"</span>
-                    <span>{move || t_string!(i18n, app.brand.title).to_string()}</span>
+                    <span>{move || i18n.translate("app.brand.title").to_string()}</span>
                 </A>
                 <span class="hidden h-4 w-px bg-border md:block"></span>
                 {move || {
@@ -169,7 +169,7 @@ fn SidebarToggleIcon(#[prop(into)] sidebar_open: Signal<bool>) -> impl IntoView 
 
 #[component]
 fn HeaderGlobalSearch() -> impl IntoView {
-    let i18n = use_i18n();
+    let i18n = use_admin_locale();
     let token = use_token();
     let tenant = use_tenant();
     let navigate = use_navigate();
@@ -292,7 +292,7 @@ fn HeaderGlobalSearch() -> impl IntoView {
             <input
                 type="search"
                 prop:value=query
-                placeholder=move || t_string!(i18n, app.search.placeholder).to_string()
+                placeholder=move || i18n.translate("app.search.placeholder").to_string()
                 class="h-9 w-72 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring xl:w-96"
                 on:focus=move |_| set_is_open.set(true)
                 on:blur=move |_| set_is_open.set(false)
@@ -322,14 +322,14 @@ fn HeaderGlobalSearch() -> impl IntoView {
                             open_full_search.run(());
                         }
                     >
-                        <span class="font-medium text-card-foreground">{t_string!(i18n, app.search.openFull)}</span>
+                        <span class="font-medium text-card-foreground">{i18n.translate("app.search.openFull")}</span>
                         <span class="text-xs text-muted-foreground">{move || query.get()}</span>
                     </button>
 
                     <div class="max-h-[24rem] overflow-y-auto">
                         <Show when=move || is_loading.get()>
                             <div class="px-4 py-3 text-sm text-muted-foreground">
-                                {t_string!(i18n, app.search.loading)}
+                                {i18n.translate("app.search.loading")}
                             </div>
                         </Show>
 
@@ -350,10 +350,10 @@ fn HeaderGlobalSearch() -> impl IntoView {
                         <Show when=move || !is_loading.get() && error.get().is_none() && results.get().is_empty()>
                             <div class="border-t border-border px-4 py-4">
                                 <div class="text-sm font-medium text-card-foreground">
-                                    {t_string!(i18n, app.search.noResults)}
+                                    {i18n.translate("app.search.noResults")}
                                 </div>
                                 <p class="mt-1 text-xs text-muted-foreground">
-                                    {t_string!(i18n, app.search.noResultsBody)}
+                                    {i18n.translate("app.search.noResultsBody")}
                                 </p>
                             </div>
                         </Show>
@@ -416,19 +416,18 @@ fn HeaderGlobalSearchResultRow(
 }
 
 /// Resolve a navigation label key to its translation.
-/// Uses compile-time checked keys via t_string! for known routes.
-fn resolve_label(i18n: leptos_i18n::I18nContext<crate::i18n::Locale>, key: &str) -> String {
-    let s: &str = match key {
-        "app.nav.dashboard" => t_string!(i18n, app.nav.dashboard),
-        "app.nav.users" => t_string!(i18n, app.nav.users),
-        "app.nav.profile" => t_string!(i18n, app.nav.profile),
-        "app.nav.security" => t_string!(i18n, app.nav.security),
-        "app.nav.modules" => t_string!(i18n, app.nav.modules),
-        "app.nav.search" => t_string!(i18n, app.nav.search),
-        "users.detail.title" => t_string!(i18n, users.detail.title),
-        _ => key,
-    };
-    s.to_string()
+/// Maps route keys to the canonical host message catalog.
+fn resolve_label(i18n: crate::AdminLocaleContext, key: &str) -> String {
+    match key {
+        "app.nav.dashboard" => i18n.translate("app.nav.dashboard"),
+        "app.nav.users" => i18n.translate("app.nav.users"),
+        "app.nav.profile" => i18n.translate("app.nav.profile"),
+        "app.nav.security" => i18n.translate("app.nav.security"),
+        "app.nav.modules" => i18n.translate("app.nav.modules"),
+        "app.nav.search" => i18n.translate("app.nav.search"),
+        "users.detail.title" => i18n.translate("users.detail.title"),
+        _ => key.to_string(),
+    }
 }
 
 fn resolve_breadcrumbs(pathname: &str) -> Vec<Breadcrumb> {

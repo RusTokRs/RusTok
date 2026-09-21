@@ -72,7 +72,6 @@ members = [
 
 [patch.crates-io]
 utoipa-swagger-ui-vendored = { path = "crates/utils/utoipa-swagger-ui-vendored" }
-leptos-shadcn-pagination = { path = "crates/ui/leptos-shadcn-pagination" }
 
 [workspace.package]
 version = "0.1.0"
@@ -161,19 +160,9 @@ leptos_router = "0.8.13"
 leptos-auth = { path = "crates/ui/leptos-auth", default-features = false }
 iu-leptos = { path = "UI/leptos" }
 leptos-ui = { path = "crates/ui/leptos-ui" }
-leptos-forms = { path = "crates/ui/leptos-forms" }
 rustok-ui-forms = { path = "crates/ui/rustok-ui-forms" }
 rustok-ui-auth = { path = "crates/ui/rustok-ui-auth" }
-leptos-table = { path = "crates/ui/leptos-table" }
-leptos-zod = { path = "crates/ui/leptos-zod" }
-leptos-struct-table = "0.19.0"
-leptos-zustand = { path = "crates/ui/leptos-zustand" }
-leptos-shadcn-pagination = { path = "crates/ui/leptos-shadcn-pagination" }
 leptos-use = "0.19.0"
-leptos_i18n = { version = "0.6.1" }
-leptos_i18n_build = { version = "0.6.1", features = ["pretty_print"] }
-leptos-next-metadata = "1.5.0"
-leptos-chartistry = "0.2"
 gloo-storage = "0.4.0"
 serde_qs = "1.1"
 serde_urlencoded = "0.7.1"
@@ -319,7 +308,6 @@ rustok-modules-cli = { path = "crates/modules/rustok-modules/cli" }
 rustok-static-distribution-worker = { path = "crates/workers/rustok-static-distribution-worker" }
 rustok-worker-transport = { path = "crates/workers/rustok-worker-transport" }
 rustok-graphql = { path = "crates/ui/rustok-graphql" }
-rustok-graphql-leptos = { path = "crates/ui/rustok-graphql-leptos" }
 rustok-ui-core = { path = "crates/ui/rustok-ui-core" }
 rustok-ui-i18n = { path = "crates/ui/rustok-ui-i18n" }
 rustok-ui-transport = { path = "crates/ui/rustok-ui-transport" }

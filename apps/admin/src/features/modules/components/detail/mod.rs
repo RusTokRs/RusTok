@@ -11,7 +11,7 @@ use crate::entities::module::model::MarketplaceModuleVersion;
 
 pub fn tr(locale: Locale, en: &'static str, ru: &'static str) -> &'static str {
     match locale {
-        Locale::ru => ru,
+        Locale::Ru => ru,
         _ => en,
     }
 }

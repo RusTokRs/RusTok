@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 use crate::entities::module::{MarketplaceModule, ModuleInfo};
-use crate::{Locale, t, t_string, use_i18n};
+use crate::{Locale, use_admin_locale};
 
 fn short_checksum(value: Option<&str>) -> Option<String> {
     let value = value?;
@@ -14,7 +14,7 @@ fn short_checksum(value: Option<&str>) -> Option<String> {
 
 fn tr(locale: Locale, en: &'static str, ru: &'static str) -> &'static str {
     match locale {
-        Locale::ru => ru,
+        Locale::Ru => ru,
         _ => en,
     }
 }
@@ -45,8 +45,8 @@ pub fn ModuleCard(
     #[prop(default = None)] on_inspect: Option<Callback<String>>,
     #[prop(default = None)] on_uninstall: Option<Callback<String>>,
 ) -> impl IntoView {
-    let i18n = use_i18n();
-    let locale = i18n.get_locale();
+    let i18n = use_admin_locale();
+    let locale = i18n.current();
     let is_core = module.is_core();
     let module_name = module.name.clone();
     let module_description = module.description.clone();
@@ -117,7 +117,7 @@ pub fn ModuleCard(
                     <div class="flex flex-wrap items-center gap-2">
                         {is_core.then(|| view! {
                             <span class="inline-flex items-center rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground">
-                                {t!(i18n, modules.badge.core)}
+                                {i18n.translate("modules.badge.core")}
                             </span>
                         })}
                         {(!is_core).then(|| view! {
@@ -291,14 +291,14 @@ pub fn ModuleCard(
                         {(!module_dependencies.is_empty()).then(|| {
                             let deps = module_dependencies.join(", ");
                             view! {
-                                <span>{format!("{}: {}", t_string!(i18n, modules.depends_on), deps)}</span>
+                                <span>{format!("{}: {}", i18n.translate("modules.depends_on"), deps)}</span>
                             }
                         })}
                     </div>
                     {if is_core {
                         view! {
                             <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">
-                                {t!(i18n, modules.always_on)}
+                                {i18n.translate("modules.always_on")}
                             </span>
                         }
                             .into_any()
@@ -310,9 +310,9 @@ pub fn ModuleCard(
                                         if !platform_installed.get() {
                                             tr(locale, "Unavailable", "Недоступно").to_string()
                                         } else if tenant_enabled.get() {
-                                            t_string!(i18n, modules.enabled).to_string()
+                                            i18n.translate("modules.enabled").to_string()
                                         } else {
-                                            t_string!(i18n, modules.disabled).to_string()
+                                            i18n.translate("modules.disabled").to_string()
                                         }
                                     }}
                                 </span>

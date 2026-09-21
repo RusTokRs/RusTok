@@ -7,7 +7,7 @@ use crate::app::modules::page_for_route_segment;
 use crate::app::page_builder_contributions::PageBuilderContributionScope;
 use crate::app::providers::enabled_modules::use_enabled_modules_context;
 use crate::shared::context::module_request::ModuleRequestProvider;
-use crate::{t_string, use_i18n};
+use crate::use_admin_locale;
 
 #[derive(Params, PartialEq)]
 struct ModuleAdminParams {
@@ -17,7 +17,7 @@ struct ModuleAdminParams {
 
 #[component]
 pub fn ModuleAdminPage() -> impl IntoView {
-    let i18n = use_i18n();
+    let i18n = use_admin_locale();
     let params = use_params::<ModuleAdminParams>();
     let enabled_modules = use_enabled_modules_context();
 
@@ -101,7 +101,7 @@ pub fn ModuleAdminPage() -> impl IntoView {
                                 </span>
                                 <h1 class="text-2xl font-semibold text-card-foreground">{page.title.to_string()}</h1>
                                 <p class="text-sm text-muted-foreground">
-                                    {t_string!(i18n, modules.moduleDisabled)}
+                                    {i18n.translate("modules.moduleDisabled")}
                                 </p>
                             </div>
                         </div>
@@ -114,10 +114,10 @@ pub fn ModuleAdminPage() -> impl IntoView {
                                     "module route"
                                 </span>
                                 <h1 class="text-2xl font-semibold text-card-foreground">
-                                    {t_string!(i18n, modules.moduleNotFoundTitle)}
+                                    {i18n.translate("modules.moduleNotFoundTitle")}
                                 </h1>
                                 <p class="text-sm text-muted-foreground">
-                                    {t_string!(i18n, modules.moduleNotFound)}
+                                    {i18n.translate("modules.moduleNotFound")}
                                 </p>
                             </div>
                         </div>

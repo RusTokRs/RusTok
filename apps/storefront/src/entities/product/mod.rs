@@ -4,18 +4,14 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ProductCardData {
-    pub title: &'static str,
-    pub description: &'static str,
-    pub price: &'static str,
-    pub badge: Option<&'static str>,
+    pub title: String,
+    pub description: String,
+    pub price: String,
+    pub badge: Option<String>,
 }
 
 #[component]
-pub fn ProductCard(
-    product: ProductCardData,
-    badge_new: &'static str,
-    cta_view: &'static str,
-) -> impl IntoView {
+pub fn ProductCard(product: ProductCardData, badge_new: String, cta_view: String) -> impl IntoView {
     let badge = product.badge.unwrap_or(badge_new);
     view! {
         <div class="rounded-xl border border-border bg-card shadow">

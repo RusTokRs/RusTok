@@ -27,6 +27,10 @@ The first host-level FFA slice has already been applied to the storefront header
 `src/widgets/header/core.rs` without Leptos dependencies, while `header/mod.rs` remains the Leptos
 render adapter. This split is enforced by the fast verifier `npm run verify:frontend:host-ffa-contract`.
 
+Host-shell copy and demo-card copy are resolved from Fluent catalogs by `rustok-ui-i18n` using the
+effective locale already supplied by the runtime. The storefront host has no framework-owned i18n
+catalog generator or package-local locale fallback chain.
+
 Host context server functions are split by concern: enabled-module, canonical-route and SEO page-context
 adapters live next to their context contracts. Module-specific canonical mounts may call a module-owned
 route facade and perform only HTTP composition in the host.

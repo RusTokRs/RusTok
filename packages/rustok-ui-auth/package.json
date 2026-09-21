@@ -1,5 +1,5 @@
 {
-  "name": "leptos-table",
+  "name": "@rustok/ui-auth",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     "clean": "rm -rf dist"
   },
   "exports": {
-    "./next": "./next/index.ts"
+    "./browser": "./browser/index.ts"
   },
   "devDependencies": {
     "typescript": "^5.4.0"

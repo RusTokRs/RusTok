@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
-use crate::shared::api::configured_tenant_slug;
 use super::canonical_route::ResolvedCanonicalRoute;
+use crate::shared::api::configured_tenant_slug;
 
 #[server(prefix = "/api/fn", endpoint = "storefront/resolve-canonical-route")]
 pub(crate) async fn resolve_canonical_route(

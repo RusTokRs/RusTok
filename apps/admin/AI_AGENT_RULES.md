@@ -47,12 +47,10 @@ Before writing reusable code, check whether it already exists in shared librarie
 - `leptos-ui` - Button, Input, Badge, Alert, Card, Label, Spinner, Checkbox, Switch, Textarea, Select, LanguageToggle
 - `leptos-ui-routing` - `UiRouteContext`, `module_route_base()`, `query_value()`
 - `rustok-graphql` - framework-agnostic GraphQL HTTP client
-- `rustok-graphql-leptos` - Leptos GraphQL hooks adapter
+- `rustok-ui-core` - framework-agnostic route, pagination, sorting, filtering, selection, and presentation contracts
+- `rustok-ui-forms` - framework-agnostic form submission and validation-result state
+- `rustok-ui-auth` - framework-agnostic client auth/session values and expiry policy
 - `leptos-auth` - auth hooks and session
-- `leptos-forms` - form state management
-- `leptos-table` - table with pagination
-- `leptos-zod` - schema validation
-- `leptos-zustand` - serializable state DTOs only; do not treat it as a runtime store before owner approval
 
 ### 2. Do Not Invent Custom i18n
 

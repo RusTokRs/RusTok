@@ -7,7 +7,7 @@ import {
   ADMIN_TOKEN_KEY,
   ADMIN_TENANT_KEY,
   ADMIN_USER_KEY,
-} from "leptos-auth/next";
+} from "@rustok/ui-auth/browser";
 
 export {
   getClientAuth,

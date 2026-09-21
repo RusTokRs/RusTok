@@ -10,8 +10,8 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["ssr"]
-csr = ["leptos/csr", "leptos_i18n/csr"]
-hydrate = ["leptos/hydrate", "leptos_i18n/hydrate"]
+csr = ["leptos/csr"]
+hydrate = ["leptos/hydrate"]
 pages-inline-edit = [
   "dep:rustok-pages-storefront",
   "rustok-pages-storefront/inline-edit",
@@ -34,9 +34,7 @@ ssr = [
   "dep:any_spawner",
   "leptos-ui-routing/ssr",
   "leptos/ssr",
-  "leptos_i18n/ssr",
   "dep:leptos_axum",
-  "dep:leptos-next-metadata",
   "dep:rustok-content",
   "dep:rustok-core",
   "dep:rustok-outbox",
@@ -97,13 +95,8 @@ rustok-graphql = { workspace = true }
 leptos-ui = { workspace = true }
 leptos-ui-routing.workspace = true
 rustok-ui-forms = { workspace = true }
-leptos-zod = { workspace = true }
-leptos-table = { workspace = true }
-leptos-zustand = { workspace = true }
-leptos-shadcn-pagination = { workspace = true }
 leptos-use = { workspace = true }
-leptos_i18n = { workspace = true }
-leptos-next-metadata = { workspace = true, optional = true }
+rustok-ui-i18n.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_urlencoded.workspace = true
@@ -142,7 +135,6 @@ wasm-bindgen = { version = "0.2", optional = true }
 web-sys = { version = "0.3", features = ["Document", "Element", "HtmlElement", "Location", "Window"] }
 
 [build-dependencies]
-leptos_i18n_build = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 toml = { workspace = true }
 
@@ -164,13 +156,8 @@ normal = [
   "rustok-graphql",
   "rustok-ui-transport",
   "rustok-ui-forms",
-  "leptos-table",
-  "leptos-zod",
-  "leptos-zustand",
-  "leptos-shadcn-pagination",
   "leptos-use",
-  "leptos_i18n",
-  "leptos-next-metadata",
+  "rustok-ui-i18n",
   "leptos_router",
   "rustok-blog-storefront",
   "rustok-cart-storefront",
@@ -195,14 +182,9 @@ normal = [
 ignored = [
   "futures",
   "rustok-ui-forms",
-  "leptos-next-metadata",
-  "leptos-shadcn-pagination",
-  "leptos-table",
   "leptos-ui-routing",
   "leptos-use",
-  "leptos-zod",
-  "leptos-zustand",
-  "leptos_i18n",
+  "rustok-ui-i18n",
   "leptos_router",
   "rustok-cart-storefront",
   "rustok-commerce-storefront",

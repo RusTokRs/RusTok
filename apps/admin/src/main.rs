@@ -21,7 +21,6 @@ async fn main() {
     use leptos::logging::log;
     use leptos::prelude::*;
     use leptos_auth::provide_server_auth_snapshot;
-    use rustok_ui_auth::AuthError;
     use leptos_axum::{LeptosRoutes, generate_route_list};
     use rustok_admin::app::{
         App, admin_security_headers, auth_ssr::auth_snapshot_from_headers, request_auth_snapshot,
@@ -33,6 +32,7 @@ async fn main() {
         dispatch_pages_browser_intent_with_capabilities, fetch_pages_builder_rollout_snapshot,
         pages_editor_capabilities_for_snapshot, pages_editor_capability_policy_for_role,
     };
+    use rustok_ui_auth::AuthError;
     use serde_json::{Value, json};
 
     async fn page_builder_intent(

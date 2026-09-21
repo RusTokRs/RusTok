@@ -109,8 +109,8 @@ if (graphEvidence.source_contract?.host_client_profiles_keep_optional_pages_modu
 
 for (const marker of [
   'crate-type = ["cdylib", "rlib"]',
-  'csr = ["leptos/csr", "leptos_i18n/csr"]',
-  'hydrate = ["leptos/hydrate", "leptos_i18n/hydrate"]',
+  'csr = ["leptos/csr"]',
+  'hydrate = ["leptos/hydrate"]',
   '"dep:rustok-pages-storefront"',
   '"rustok-pages-storefront/ssr"',
   'rustok-pages-storefront = { path = "../../crates/modules/rustok-pages/storefront", default-features = false, optional = true }',

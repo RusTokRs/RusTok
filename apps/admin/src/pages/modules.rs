@@ -10,7 +10,7 @@ use crate::features::modules::components::ModulesList;
 use crate::features::modules::transport;
 use crate::shared::api::ApiError;
 use crate::shared::ui::PageHeader;
-use crate::{t_string, use_i18n};
+use crate::use_admin_locale;
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -38,7 +38,7 @@ struct ModulesPageData {
 
 #[component]
 pub fn Modules() -> impl IntoView {
-    let i18n = use_i18n();
+    let i18n = use_admin_locale();
     let token = use_token();
     let tenant = use_tenant();
 
@@ -107,9 +107,9 @@ pub fn Modules() -> impl IntoView {
     view! {
         <section class="flex flex-1 flex-col p-4 md:px-6">
             <PageHeader
-                title=t_string!(i18n, modules.title)
-                eyebrow=t_string!(i18n, modules.eyebrow).to_string()
-                subtitle=t_string!(i18n, modules.subtitle).to_string()
+                title=i18n.translate("modules.title")
+                eyebrow=i18n.translate("modules.eyebrow").to_string()
+                subtitle=i18n.translate("modules.subtitle").to_string()
             />
 
             <Suspense
@@ -154,7 +154,7 @@ pub fn Modules() -> impl IntoView {
                             Err(err) => {
                                 view! {
                                     <div class="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                        {format!("{}: {}", t_string!(i18n, modules.error.load), err)}
+                                        {format!("{}: {}", i18n.translate("modules.error.load"), err)}
                                     </div>
                                 }.into_any()
                             }

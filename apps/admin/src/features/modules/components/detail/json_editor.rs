@@ -1,6 +1,6 @@
 use super::{humanize_setting_key, humanize_token, tr};
 use crate::Locale;
-use crate::use_i18n;
+use crate::use_admin_locale;
 use leptos::prelude::*;
 
 #[derive(Clone, Debug)]
@@ -42,7 +42,7 @@ pub fn json_value_preview(value: &serde_json::Value) -> String {
 }
 
 pub fn parse_object_root(raw: &str) -> Result<serde_json::Map<String, serde_json::Value>, String> {
-    match parse_json_editor_value(raw, "object", Locale::en)? {
+    match parse_json_editor_value(raw, "object", Locale::En)? {
         Some(serde_json::Value::Object(object)) => Ok(object),
         Some(_) => Err("Expected a JSON object".to_string()),
         None => Ok(serde_json::Map::new()),
@@ -50,7 +50,7 @@ pub fn parse_object_root(raw: &str) -> Result<serde_json::Map<String, serde_json
 }
 
 pub fn parse_array_root(raw: &str) -> Result<Vec<serde_json::Value>, String> {
-    match parse_json_editor_value(raw, "array", Locale::en)? {
+    match parse_json_editor_value(raw, "array", Locale::En)? {
         Some(serde_json::Value::Array(array)) => Ok(array),
         Some(_) => Err("Expected a JSON array".to_string()),
         None => Ok(Vec::new()),
@@ -203,7 +203,7 @@ pub fn add_item_button_label(value_type: &str, locale: Locale) -> String {
 }
 
 pub fn parse_json_root(raw: &str, root_type: &str) -> Result<serde_json::Value, String> {
-    Ok(parse_json_editor_value(raw, root_type, Locale::en)?
+    Ok(parse_json_editor_value(raw, root_type, Locale::En)?
         .unwrap_or_else(|| default_json_root(root_type)))
 }
 
@@ -594,7 +594,7 @@ pub fn reset_json_editor_value(field_type: &str) -> String {
 }
 
 pub fn append_object_property(raw: &str) -> Result<String, String> {
-    let mut object = match parse_json_editor_value(raw, "object", Locale::en)? {
+    let mut object = match parse_json_editor_value(raw, "object", Locale::En)? {
         Some(serde_json::Value::Object(object)) => object,
         Some(_) => return Err("Expected a JSON object".to_string()),
         None => serde_json::Map::new(),
@@ -617,7 +617,7 @@ pub fn append_object_property(raw: &str) -> Result<String, String> {
 }
 
 pub fn append_array_item(raw: &str) -> Result<String, String> {
-    let mut array = match parse_json_editor_value(raw, "array", Locale::en)? {
+    let mut array = match parse_json_editor_value(raw, "array", Locale::En)? {
         Some(serde_json::Value::Array(array)) => array,
         Some(_) => return Err("Expected a JSON array".to_string()),
         None => Vec::new(),
@@ -1187,7 +1187,7 @@ pub fn StructuredObjectEditor(
     object_shape: Option<serde_json::Value>,
     on_input: Callback<String>,
 ) -> impl IntoView {
-    let locale = use_i18n().get_locale();
+    let locale = use_admin_locale().current();
     let object_entries = Signal::derive(move || parse_object_root(&value.get()));
     let declared_properties = setting_shape_properties(object_shape.as_ref());
     let object_shape_for_items = StoredValue::new(object_shape.clone());
@@ -1429,7 +1429,7 @@ pub fn StructuredArrayEditor(
     array_item_shape: Option<serde_json::Value>,
     on_input: Callback<String>,
 ) -> impl IntoView {
-    let locale = use_i18n().get_locale();
+    let locale = use_admin_locale().current();
     let array_entries = Signal::derive(move || parse_array_root(&value.get()));
     let array_item_shape_for_items = StoredValue::new(array_item_shape.clone());
 
@@ -1693,7 +1693,7 @@ pub fn ComplexSettingEditor(
     #[prop(into)] disabled: Signal<bool>,
     on_input: Callback<String>,
 ) -> impl IntoView {
-    let locale = use_i18n().get_locale();
+    let locale = use_admin_locale().current();
     let status = Signal::derive({
         let field_type = field_type.clone();
         move || json_editor_summary(&field_type, &value.get(), locale)
