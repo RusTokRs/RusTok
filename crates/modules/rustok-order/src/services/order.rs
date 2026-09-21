@@ -8,7 +8,7 @@ use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement, TransactionTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -1367,18 +1367,24 @@ async fn load_tenant_default_locale<C>(conn: &C, tenant_id: Uuid) -> OrderResult
 where
     C: ConnectionTrait,
 {
-    let row = conn
-        .query_one_raw(Statement::from_sql_and_values(
-            conn.get_database_backend(),
-            "SELECT default_locale FROM tenants WHERE id = ?",
-            vec![tenant_id.into()],
-        ))
-        .await?;
+    use sea_orm::sea_query::ExprTrait;
 
-    let default_locale = row
-        .and_then(|row| row.try_get::<String>("", "default_locale").ok())
-        .and_then(|locale| normalize_locale_tag(&locale))
-        .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+    let query = sea_orm::sea_query::Query::select()
+        .column(sea_orm::sea_query::Alias::new("default_locale"))
+        .from(sea_orm::sea_query::Alias::new("tenants"))
+        .and_where(
+            sea_orm::sea_query::Expr::col(sea_orm::sea_query::Alias::new("id")).eq(tenant_id),
+        )
+        .to_owned();
+
+    let default_locale = match conn.query_one(&query).await {
+        Ok(Some(row)) => row
+            .try_get::<String>("", "default_locale")
+            .ok()
+            .and_then(|locale| normalize_locale_tag(&locale))
+            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string()),
+        _ => PLATFORM_FALLBACK_LOCALE.to_string(),
+    };
 
     Ok(default_locale)
 }

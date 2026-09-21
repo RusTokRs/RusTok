@@ -129,13 +129,13 @@ async fn order_tax_lines_insert_without_provider_id_use_region_default() {
 
     db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
-        "INSERT INTO order_tax_lines (id, tenant_id, order_id, line_item_id, shipping_option_id, rate, amount, description, metadata, created_at, updated_at) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        "INSERT INTO order_tax_lines (id, order_id, order_line_item_id, shipping_option_id, rate, amount, currency_code, description, metadata, created_at, updated_at) VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
         vec![
             rustok_core::generate_id().into(),
-            tenant_id.into(),
             created.id.into(),
             Decimal::from_str("7.00").expect("valid decimal").into(),
             Decimal::from_str("3.50").expect("valid decimal").into(),
+            created.currency_code.clone().into(),
             "VAT backfill smoke".to_string().into(),
             serde_json::json!({"scope": "order"}).into(),
         ],
@@ -155,13 +155,13 @@ async fn order_tax_lines_insert_without_provider_id_use_region_default() {
 
     db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
-        "INSERT INTO order_tax_lines (id, tenant_id, order_id, line_item_id, shipping_option_id, rate, amount, description, provider_id, metadata, created_at, updated_at) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        "INSERT INTO order_tax_lines (id, order_id, order_line_item_id, shipping_option_id, rate, amount, currency_code, description, provider_id, metadata, created_at, updated_at) VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
         vec![
             rustok_core::generate_id().into(),
-            tenant_id.into(),
             created.id.into(),
             Decimal::from_str("9.00").expect("valid decimal").into(),
             Decimal::from_str("4.00").expect("valid decimal").into(),
+            created.currency_code.clone().into(),
             "VAT explicit provider".to_string().into(),
             "custom_tax".to_string().into(),
             serde_json::json!({"scope": "order"}).into(),

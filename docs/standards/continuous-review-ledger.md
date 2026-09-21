@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `90 / 218` components audited (**41%**)
+- **Progress:** `93 / 218` components audited (**43%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -133,9 +133,9 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-notifications-api](../../crates/modules/rustok-notifications-api) | `modules` | 4 | 1,119 | 2026-09-21 05:40 | Verified API contracts, typed errors and audience page limits, zero suppressions, all 6 tests passed, clippy clean |
 | [x] | [admin](../../crates/modules/rustok-notifications/admin) | `modules` | 6 | 127 | 2026-09-21 05:40 | Verified admin routes and i18n copy, all tests passed, clippy clean |
 | [x] | [storefront](../../crates/modules/rustok-notifications/storefront) | `modules` | 16 | 3,139 | 2026-09-21 05:40 | Replaced string errors in navigate_to_route with typed NotificationNavigationError, fixed literal count placeholder in ftl, removed unused imports, all 30 tests passed, clippy clean |
-| [ ] | [rustok-order](../../crates/modules/rustok-order) | `modules` | 80 | 18,288 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-order/admin) | `modules` | 13 | 1,998 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-order/storefront) | `modules` | 11 | 930 | None |  |
+| [x] | [rustok-order](../../crates/modules/rustok-order) | `modules` | 80 | 18,288 | 2026-09-21 06:20 | Made tenant locale query backend-portable via sea-query, wired ensure_order_schema in tests, fixed order_tax_lines SeaORM entity default_value and test SQL fixtures, verified all 35 tests, clippy clean |
+| [x] | [admin](../../crates/modules/rustok-order/admin) | `modules` | 13 | 1,998 | 2026-09-21 06:20 | Made core and ui modules public in lib.rs, introduced typed OrderCommandError enum for command validation, verified all 12 tests, clippy clean |
+| [x] | [storefront](../../crates/modules/rustok-order/storefront) | `modules` | 11 | 930 | 2026-09-21 06:20 | Verified storefront contracts, error handling and locale resolution, zero suppressions/unwraps, all 5 tests passed, clippy clean |
 | [ ] | [rustok-outbox](../../crates/modules/rustok-outbox) | `modules` | 25 | 4,285 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-outbox/admin) | `modules` | 8 | 493 | None |  |
 | [ ] | [rustok-page-builder](../../crates/modules/rustok-page-builder) | `modules` | 100 | 27,600 | None |  |

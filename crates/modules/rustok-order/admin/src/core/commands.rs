@@ -22,16 +22,31 @@ pub struct OrderCancelCommand {
     pub reason: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OrderCommandError {
+    MissingRequiredField(String),
+}
+
+impl std::fmt::Display for OrderCommandError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingRequiredField(msg) => write!(f, "{msg}"),
+        }
+    }
+}
+
+impl std::error::Error for OrderCommandError {}
+
 pub fn prepare_mark_paid_command(
     payment_id: impl AsRef<str>,
     payment_method: impl AsRef<str>,
     requirements_message: String,
-) -> Result<OrderMarkPaidCommand, String> {
+) -> Result<OrderMarkPaidCommand, OrderCommandError> {
     let Some(payment_id) = text_or_none(payment_id) else {
-        return Err(requirements_message);
+        return Err(OrderCommandError::MissingRequiredField(requirements_message));
     };
     let Some(payment_method) = text_or_none(payment_method) else {
-        return Err(requirements_message);
+        return Err(OrderCommandError::MissingRequiredField(requirements_message));
     };
 
     Ok(OrderMarkPaidCommand {
@@ -44,12 +59,12 @@ pub fn prepare_ship_order_command(
     tracking_number: impl AsRef<str>,
     carrier: impl AsRef<str>,
     requirements_message: String,
-) -> Result<OrderShipCommand, String> {
+) -> Result<OrderShipCommand, OrderCommandError> {
     let Some(tracking_number) = text_or_none(tracking_number) else {
-        return Err(requirements_message);
+        return Err(OrderCommandError::MissingRequiredField(requirements_message));
     };
     let Some(carrier) = text_or_none(carrier) else {
-        return Err(requirements_message);
+        return Err(OrderCommandError::MissingRequiredField(requirements_message));
     };
 
     Ok(OrderShipCommand {
@@ -88,7 +103,10 @@ mod tests {
         let error = prepare_mark_paid_command(" ", "manual", "Payment fields required".to_string())
             .expect_err("blank payment id must fail before transport");
 
-        assert_eq!(error, "Payment fields required");
+        assert_eq!(
+            error,
+            OrderCommandError::MissingRequiredField("Payment fields required".to_string())
+        );
     }
 
     #[test]
@@ -106,7 +124,10 @@ mod tests {
             prepare_ship_order_command("track", " ", "Shipping fields required".to_string())
                 .expect_err("blank carrier must fail before transport");
 
-        assert_eq!(error, "Shipping fields required");
+        assert_eq!(
+            error,
+            OrderCommandError::MissingRequiredField("Shipping fields required".to_string())
+        );
     }
 
     #[test]

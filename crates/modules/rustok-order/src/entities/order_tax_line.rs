@@ -11,6 +11,7 @@ pub struct Model {
     pub order_line_item_id: Option<Uuid>,
     pub shipping_option_id: Option<Uuid>,
     pub description: Option<String>,
+    #[sea_orm(default_value = "region_default")]
     pub provider_id: String,
     pub rate: Decimal,
     pub amount: Decimal,

@@ -6,10 +6,7 @@ use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortErrorKind
 use rustok_order::{
     CheckoutCompletionPort, CheckoutResultByOperationRequest, CheckoutResultRequest,
     CompleteCheckoutPortRequest,
-    entities::{
-        order, order_adjustment, order_checkout_identity, order_line_item,
-        order_line_item_translation, order_tax_line,
-    },
+    entities::{order, order_checkout_identity},
     in_process_checkout_completion_port,
 };
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
@@ -19,6 +16,8 @@ use sea_orm::{
 };
 use serde_json::json;
 use uuid::Uuid;
+
+mod support;
 
 struct TestDatabase {
     db: DatabaseConnection,
@@ -41,43 +40,23 @@ impl TestDatabase {
             .await
             .unwrap();
 
+        support::ensure_order_schema(&db).await;
+
         let backend = DbBackend::Sqlite;
         let schema = Schema::new(backend);
-        for statement in [
-            schema
-                .create_table_from_entity(order::Entity)
-                .if_not_exists()
-                .to_owned(),
-            schema
-                .create_table_from_entity(order_line_item::Entity)
-                .if_not_exists()
-                .to_owned(),
-            schema
-                .create_table_from_entity(order_line_item_translation::Entity)
-                .if_not_exists()
-                .to_owned(),
-            schema
-                .create_table_from_entity(order_adjustment::Entity)
-                .if_not_exists()
-                .to_owned(),
-            schema
-                .create_table_from_entity(order_tax_line::Entity)
-                .if_not_exists()
-                .to_owned(),
-            schema
-                .create_table_from_entity(order_checkout_identity::Entity)
-                .if_not_exists()
-                .to_owned(),
-        ] {
-            db.execute_raw(backend.build(&statement)).await.unwrap();
-        }
+        let statement = schema
+            .create_table_from_entity(order_checkout_identity::Entity)
+            .if_not_exists()
+            .to_owned();
+        db.execute_raw(backend.build(&statement)).await.unwrap();
+
         db.execute_unprepared(
-            "CREATE UNIQUE INDEX ux_test_completion_identity_order ON order_checkout_identities (tenant_id, order_id);",
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_test_completion_identity_order ON order_checkout_identities (tenant_id, order_id);",
         )
         .await
         .unwrap();
         db.execute_unprepared(
-            "CREATE UNIQUE INDEX ux_test_completion_identity_cart ON order_checkout_identities (tenant_id, source_cart_id);",
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_test_completion_identity_cart ON order_checkout_identities (tenant_id, source_cart_id);",
         )
         .await
         .unwrap();

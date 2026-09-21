@@ -279,7 +279,7 @@ pub fn OrderAdmin() -> impl IntoView {
         ) {
             Ok(command) => command,
             Err(error) => {
-                set_error.set(Some(error));
+                set_error.set(Some(error.to_string()));
                 return;
             }
         };
@@ -353,7 +353,7 @@ pub fn OrderAdmin() -> impl IntoView {
         ) {
             Ok(command) => command,
             Err(error) => {
-                set_error.set(Some(error));
+                set_error.set(Some(error.to_string()));
                 return;
             }
         };
