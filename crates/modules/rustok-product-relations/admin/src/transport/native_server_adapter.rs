@@ -45,7 +45,7 @@ async fn product_relations_list_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
+        use rustok_api::{AuthContext, HostRuntimeContext, Permission, TenantContext};
         use rustok_product_relations::{
             ProductRelationService, ProductRelationsPort, dto::RelationType,
         };
@@ -59,7 +59,7 @@ async fn product_relations_list_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_tenant(&auth, &tenant)?;
+        ensure_tenant(&auth, &tenant, Permission::PRODUCTS_READ)?;
 
         let product_id_str = filters
             .product_id
@@ -124,7 +124,7 @@ async fn product_relations_command_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_tenant(&auth, &tenant)?;
+        ensure_tenant(&auth, &tenant, Permission::PRODUCTS_UPDATE)?;
 
         let service = ProductRelationService::new(runtime.db_clone());
 
@@ -237,11 +237,18 @@ async fn product_relations_command_native(
 fn ensure_tenant(
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
+    required_permission: rustok_api::Permission,
 ) -> Result<(), ServerFnError> {
     if auth.tenant_id != tenant.id {
         return Err(ServerFnError::new(
             "Permission denied: tenant mismatch",
         ));
+    }
+    if !rustok_api::has_effective_permission(&auth.permissions, &required_permission) {
+        return Err(ServerFnError::new(format!(
+            "Permission denied: required permission {}",
+            required_permission
+        )));
     }
     Ok(())
 }
