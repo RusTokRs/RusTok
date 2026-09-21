@@ -75,14 +75,30 @@ FOR EACH ROW
 WHEN NEW.group_key IS NULL
 BEGIN
     UPDATE notifications
-    SET group_key = 'g1:' || NEW.target_owner || ':' || NEW.target_id
+    SET group_key = 'g1:' || NEW.target_owner || ':' || CASE
+        WHEN typeof(NEW.target_id) = 'blob' THEN
+            lower(hex(substr(NEW.target_id, 1, 4))) || '-' ||
+            lower(hex(substr(NEW.target_id, 5, 2))) || '-' ||
+            lower(hex(substr(NEW.target_id, 7, 2))) || '-' ||
+            lower(hex(substr(NEW.target_id, 9, 2))) || '-' ||
+            lower(hex(substr(NEW.target_id, 11, 6)))
+        ELSE NEW.target_id
+    END
     WHERE tenant_id = NEW.tenant_id
       AND id = NEW.id
       AND group_key IS NULL;
 END;
 
 UPDATE notifications
-SET group_key = 'g1:' || target_owner || ':' || target_id
+SET group_key = 'g1:' || target_owner || ':' || CASE
+    WHEN typeof(target_id) = 'blob' THEN
+        lower(hex(substr(target_id, 1, 4))) || '-' ||
+        lower(hex(substr(target_id, 5, 2))) || '-' ||
+        lower(hex(substr(target_id, 7, 2))) || '-' ||
+        lower(hex(substr(target_id, 9, 2))) || '-' ||
+        lower(hex(substr(target_id, 11, 6)))
+    ELSE target_id
+END
 WHERE group_key IS NULL;
 "#;
 
@@ -100,5 +116,13 @@ DROP TRIGGER IF EXISTS trg_notifications_assign_group_key;
 
 UPDATE notifications
 SET group_key = NULL
-WHERE group_key = 'g1:' || target_owner || ':' || target_id;
+WHERE group_key = 'g1:' || target_owner || ':' || CASE
+    WHEN typeof(target_id) = 'blob' THEN
+        lower(hex(substr(target_id, 1, 4))) || '-' ||
+        lower(hex(substr(target_id, 5, 2))) || '-' ||
+        lower(hex(substr(target_id, 7, 2))) || '-' ||
+        lower(hex(substr(target_id, 9, 2))) || '-' ||
+        lower(hex(substr(target_id, 11, 6)))
+    ELSE target_id
+END;
 "#;

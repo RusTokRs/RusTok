@@ -213,8 +213,8 @@ async fn tenant_policy_deferral_removes_candidate_from_bounded_head() {
         .query_one_raw(Statement::from_string(
             DbBackend::Sqlite,
             format!(
-                "SELECT status, attempt_count, next_attempt_at, lease_owner, lease_expires_at, last_error_code FROM notification_fanout_items WHERE id = '{}'",
-                deferred.item_id
+                "SELECT status, attempt_count, next_attempt_at, lease_owner, lease_expires_at, last_error_code FROM notification_fanout_items WHERE id = X'{}'",
+                deferred.item_id.simple()
             ),
         ))
         .await
@@ -314,9 +314,10 @@ async fn commit_policy_revision_change_rolls_back_notification_and_retries_candi
     let row = db
         .query_one_raw(Statement::from_string(
             DbBackend::Sqlite,
-            format!(
-                "SELECT status, attempt_count, notification_id, last_error_code, next_attempt_at FROM notification_fanout_items WHERE id = '{item_id}'"
-            ),
+                format!(
+                    "SELECT status, attempt_count, notification_id, last_error_code, next_attempt_at FROM notification_fanout_items WHERE id = X'{}'",
+                    item_id.simple()
+                ),
         ))
         .await
         .expect("guarded candidate projection should load")
@@ -448,10 +449,11 @@ async fn setup() -> DatabaseConnection {
         .expect("foreign keys should enable");
     db.execute_unprepared(
         r#"
-        CREATE TABLE tenants (id TEXT PRIMARY KEY NOT NULL);
+        CREATE TABLE tenants (id BLOB PRIMARY KEY NOT NULL);
         CREATE TABLE users (
-            id TEXT PRIMARY KEY NOT NULL,
-            tenant_id TEXT NOT NULL,
+            id BLOB PRIMARY KEY NOT NULL,
+            tenant_id BLOB NOT NULL,
+            UNIQUE (tenant_id, id),
             FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
         );
         "#,
@@ -469,14 +471,16 @@ async fn setup() -> DatabaseConnection {
 }
 
 async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
-    db.execute_unprepared(&format!("INSERT INTO tenants (id) VALUES ('{tenant_id}')"))
+    db.execute_unprepared(&format!("INSERT INTO tenants (id) VALUES (X'{}')", tenant_id.simple()))
         .await
         .expect("tenant fixture should persist");
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) {
     db.execute_unprepared(&format!(
-        "INSERT INTO users (id, tenant_id) VALUES ('{user_id}', '{tenant_id}')"
+        "INSERT INTO users (id, tenant_id) VALUES (X'{}', X'{}')",
+        user_id.simple(),
+        tenant_id.simple()
     ))
     .await
     .expect("user fixture should persist");

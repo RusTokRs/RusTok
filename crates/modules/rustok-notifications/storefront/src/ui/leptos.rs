@@ -283,7 +283,7 @@ fn NotificationInboxWorkspace(
             {
                 Ok(NotificationStorefrontOpenDecision::Allowed { route }) => {
                     if let Err(error) = navigate_to_route(route.as_str()) {
-                        set_interaction_error.set(Some(error));
+                        set_interaction_error.set(Some(error.to_string()));
                     }
                 }
                 Ok(NotificationStorefrontOpenDecision::Unavailable) => {
@@ -659,19 +659,38 @@ fn priority_label(priority: NotificationStorefrontPriority) -> &'static str {
     }
 }
 
-fn navigate_to_route(route: &str) -> Result<(), String> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NotificationNavigationError {
+    BrowserUnavailable,
+    RouteOpenFailed,
+}
+
+impl std::fmt::Display for NotificationNavigationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BrowserUnavailable => f.write_str("Browser navigation is unavailable."),
+            Self::RouteOpenFailed => {
+                f.write_str("The authorized notification route could not be opened.")
+            }
+        }
+    }
+}
+
+impl std::error::Error for NotificationNavigationError {}
+
+fn navigate_to_route(route: &str) -> Result<(), NotificationNavigationError> {
     #[cfg(target_arch = "wasm32")]
     {
         let window =
-            web_sys::window().ok_or_else(|| "Browser navigation is unavailable.".to_string())?;
+            web_sys::window().ok_or(NotificationNavigationError::BrowserUnavailable)?;
         window
             .location()
             .set_href(route)
-            .map_err(|_| "The authorized notification route could not be opened.".to_string())
+            .map_err(|_| NotificationNavigationError::RouteOpenFailed)
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
         let _ = route;
-        Err("Browser navigation is unavailable.".to_string())
+        Err(NotificationNavigationError::BrowserUnavailable)
     }
 }

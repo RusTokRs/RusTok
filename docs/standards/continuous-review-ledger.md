@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `86 / 218` components audited (**39%**)
+- **Progress:** `90 / 218` components audited (**41%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -129,10 +129,10 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [cli](../../crates/modules/rustok-modules/cli) | `modules` | 1 | 1,813 | 2026-09-21 03:45 | Verified module CLI inspect, template render, validate & verification commands, zero suppressions/unwraps, all 6 tests passed, clippy clean |
 | [x] | [rustok-navigation](../../crates/modules/rustok-navigation) | `modules` | 39 | 5,274 | 2026-09-21 04:35 | Verified menu service, channel bindings & translation target, replaced expect with typed error propagation in menu service, removed anyhow dependency, added INVARIANT comments for descriptors/cursors, zero suppressions/unwraps, all 13 tests passed, clippy clean |
 | [x] | [storefront](../../crates/modules/rustok-navigation/storefront) | `modules` | 8 | 494 | 2026-09-21 04:35 | Verified leptos storefront navigation slot & native server adapter, removed unused imports, zero suppressions/unwraps, all tests passed, clippy clean |
-| [ ] | [rustok-notifications](../../crates/modules/rustok-notifications) | `modules` | 75 | 21,825 | None |  |
-| [ ] | [rustok-notifications-api](../../crates/modules/rustok-notifications-api) | `modules` | 4 | 1,119 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-notifications/admin) | `modules` | 6 | 127 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-notifications/storefront) | `modules` | 16 | 3,139 | None |  |
+| [x] | [rustok-notifications](../../crates/modules/rustok-notifications) | `modules` | 75 | 21,825 | 2026-09-21 05:40 | Formatted SQLite binary UUID BLOBs in group-key trigger/backfill migration, fixed SQLite test fixtures to use BLOB primary keys and UUIDs, zero suppressions, all 23 test suites passed, clippy clean |
+| [x] | [rustok-notifications-api](../../crates/modules/rustok-notifications-api) | `modules` | 4 | 1,119 | 2026-09-21 05:40 | Verified API contracts, typed errors and audience page limits, zero suppressions, all 6 tests passed, clippy clean |
+| [x] | [admin](../../crates/modules/rustok-notifications/admin) | `modules` | 6 | 127 | 2026-09-21 05:40 | Verified admin routes and i18n copy, all tests passed, clippy clean |
+| [x] | [storefront](../../crates/modules/rustok-notifications/storefront) | `modules` | 16 | 3,139 | 2026-09-21 05:40 | Replaced string errors in navigate_to_route with typed NotificationNavigationError, fixed literal count placeholder in ftl, removed unused imports, all 30 tests passed, clippy clean |
 | [ ] | [rustok-order](../../crates/modules/rustok-order) | `modules` | 80 | 18,288 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-order/admin) | `modules` | 13 | 1,998 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-order/storefront) | `modules` | 11 | 930 | None |  |

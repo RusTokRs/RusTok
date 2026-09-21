@@ -156,7 +156,8 @@ async fn accepted_and_permanent_invalid_envelopes_leave_no_head_of_line_blocker(
     assert_eq!(replay.source_inbox_id, accepted_row.id);
 
     db.execute_unprepared(&format!(
-        "UPDATE sys_events SET payload = '{{\"permanent_invalid\":true}}' WHERE id = '{accepted_outbox_id}'"
+        "UPDATE sys_events SET payload = '{{\"permanent_invalid\":true}}' WHERE id = X'{}'",
+        accepted_outbox_id.simple()
     ))
     .await
     .expect("accepted outbox payload should mutate for conflict evidence");
@@ -228,14 +229,15 @@ async fn setup() -> DatabaseConnection {
         .expect("foreign keys should enable");
     db.execute_unprepared(
         r#"
-        CREATE TABLE tenants (id TEXT PRIMARY KEY NOT NULL);
+        CREATE TABLE tenants (id BLOB PRIMARY KEY NOT NULL);
         CREATE TABLE users (
-            id TEXT PRIMARY KEY NOT NULL,
-            tenant_id TEXT NOT NULL,
-            FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+            id BLOB PRIMARY KEY NOT NULL,
+            tenant_id BLOB NOT NULL,
+            FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+            UNIQUE (tenant_id, id)
         );
         CREATE TABLE sys_events (
-            id TEXT PRIMARY KEY NOT NULL,
+            id BLOB PRIMARY KEY NOT NULL,
             event_type TEXT NOT NULL,
             schema_version INTEGER NOT NULL,
             payload TEXT NOT NULL,
@@ -256,9 +258,12 @@ async fn setup() -> DatabaseConnection {
 }
 
 async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
-    db.execute_unprepared(&format!("INSERT INTO tenants (id) VALUES ('{tenant_id}')"))
-        .await
-        .expect("tenant fixture should persist");
+    db.execute_unprepared(&format!(
+        "INSERT INTO tenants (id) VALUES (X'{}')",
+        tenant_id.simple()
+    ))
+    .await
+    .expect("tenant fixture should persist");
 }
 
 async fn insert_outbox_event(
@@ -272,7 +277,8 @@ async fn insert_outbox_event(
     let minute = (sequence / 60) % 60;
     let second = sequence % 60;
     db.execute_unprepared(&format!(
-        "INSERT INTO sys_events (id, event_type, schema_version, payload, created_at) VALUES ('{outbox_event_id}', '{EVENT_TYPE}', {schema_version}, '{payload}', '2026-07-23T12:{minute:02}:{second:02}Z')"
+        "INSERT INTO sys_events (id, event_type, schema_version, payload, created_at) VALUES (X'{}', '{EVENT_TYPE}', {schema_version}, '{payload}', '2026-07-23T12:{minute:02}:{second:02}Z')",
+        outbox_event_id.simple()
     ))
     .await
     .expect("outbox fixture should persist");

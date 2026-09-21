@@ -124,6 +124,7 @@ async fn exact_recipient_passes_privacy_then_gets_fresh_route_without_oracle() {
     insert_tenant(&db, other_tenant_id).await;
     insert_user(&db, tenant_id, recipient_id).await;
     insert_user(&db, tenant_id, other_recipient_id).await;
+    insert_user(&db, tenant_id, actor_id).await;
 
     let target_id = Uuid::new_v4();
     let notification_id = seed_notification(
@@ -483,12 +484,13 @@ async fn setup() -> DatabaseConnection {
     db.execute_unprepared(
         r#"
         CREATE TABLE tenants (
-            id TEXT PRIMARY KEY NOT NULL
+            id BLOB PRIMARY KEY NOT NULL
         );
         CREATE TABLE users (
-            id TEXT PRIMARY KEY NOT NULL,
-            tenant_id TEXT NOT NULL,
-            FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+            id BLOB PRIMARY KEY NOT NULL,
+            tenant_id BLOB NOT NULL,
+            FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+            UNIQUE (tenant_id, id)
         );
         "#,
     )
@@ -505,14 +507,19 @@ async fn setup() -> DatabaseConnection {
 }
 
 async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
-    db.execute_unprepared(&format!("INSERT INTO tenants (id) VALUES ('{tenant_id}')"))
-        .await
-        .expect("tenant fixture should persist");
+    db.execute_unprepared(&format!(
+        "INSERT INTO tenants (id) VALUES (X'{}')",
+        tenant_id.simple()
+    ))
+    .await
+    .expect("tenant fixture should persist");
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) {
     db.execute_unprepared(&format!(
-        "INSERT INTO users (id, tenant_id) VALUES ('{user_id}', '{tenant_id}')"
+        "INSERT INTO users (id, tenant_id) VALUES (X'{}', X'{}')",
+        user_id.simple(),
+        tenant_id.simple()
     ))
     .await
     .expect("user fixture should persist");

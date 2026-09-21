@@ -114,10 +114,11 @@ async fn setup() -> DatabaseConnection {
         .expect("foreign keys should enable");
     db.execute_unprepared(
         r#"
-        CREATE TABLE tenants (id TEXT PRIMARY KEY NOT NULL);
+        CREATE TABLE tenants (id BLOB PRIMARY KEY NOT NULL);
         CREATE TABLE users (
-            id TEXT PRIMARY KEY NOT NULL,
-            tenant_id TEXT NOT NULL,
+            id BLOB PRIMARY KEY NOT NULL,
+            tenant_id BLOB NOT NULL,
+            UNIQUE (tenant_id, id),
             FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
         );
         "#,
@@ -135,7 +136,7 @@ async fn setup() -> DatabaseConnection {
 }
 
 async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
-    db.execute_unprepared(&format!("INSERT INTO tenants (id) VALUES ('{tenant_id}')"))
+    db.execute_unprepared(&format!("INSERT INTO tenants (id) VALUES (X'{}')", tenant_id.simple()))
         .await
         .expect("tenant fixture should persist");
 }
