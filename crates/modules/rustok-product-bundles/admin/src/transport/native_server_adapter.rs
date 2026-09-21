@@ -219,7 +219,7 @@ async fn bundle_command_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        ensure_tenant(&auth, &tenant)?;
+        ensure_tenant(&auth, &tenant, Permission::PRODUCTS_UPDATE)?;
 
         let service = BundleService::new(runtime.db_clone());
 
