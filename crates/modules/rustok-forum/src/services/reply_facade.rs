@@ -151,12 +151,16 @@ impl ReplyService {
         context: Option<PortContext>,
         input: CreateReplyCommandInput,
     ) -> ForumResult<ReplyResponse> {
-        self.create_audience
-            .require(tenant_id, topic_id, &security, context)
-            .await?;
         let response = self
             .inner
-            .create_command(tenant_id, security, topic_id, input)
+            .create_command_with_audience_authorization(
+                tenant_id,
+                security,
+                topic_id,
+                context,
+                input,
+                &self.create_audience,
+            )
             .await?;
         require_localized_reply_response(response)
     }
