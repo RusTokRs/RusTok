@@ -9,6 +9,7 @@ mod m20260730_000009_create_search_projection_inbox;
 mod m20260731_000010_add_forum_projection_ingest_sequence;
 mod m20260731_000011_add_forum_projection_ingest_sequence_lookup;
 mod m20260731_000012_create_forum_owner_revision_checkpoints;
+mod m20260921_000013_harden_search_settings_uniqueness;
 
 use sea_orm_migration::MigrationTrait;
 
@@ -25,5 +26,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260731_000010_add_forum_projection_ingest_sequence::Migration),
         Box::new(m20260731_000011_add_forum_projection_ingest_sequence_lookup::Migration),
         Box::new(m20260731_000012_create_forum_owner_revision_checkpoints::Migration),
+        Box::new(m20260921_000013_harden_search_settings_uniqueness::Migration),
     ]
 }
