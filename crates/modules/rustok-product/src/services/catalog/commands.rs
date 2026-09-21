@@ -365,13 +365,12 @@ impl CatalogService {
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
-        let product = entities::product::Entity::find_by_id(product_id)
-            .filter(entities::product::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or_else(|| {
-                warn!(product_id = %product_id, "Product not found for update");
-                CommerceError::ProductNotFound(product_id)
+        let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await
+            .map_err(|error| {
+                if matches!(error, CommerceError::ProductNotFound(_)) {
+                    warn!(product_id = %product_id, "Product not found for update");
+                }
+                error
             })?;
         let existing_product = product.clone();
         let mut product_active: entities::product::ActiveModel = product.into();
@@ -591,13 +590,13 @@ impl CatalogService {
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
-        let product = entities::product::Entity::find_by_id(product_id)
-            .filter(entities::product::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or_else(|| {
-                warn!(product_id = %product_id, "Product not found for publishing");
-                CommerceError::ProductNotFound(product_id)
+        let product = find_product_for_update_in_tx(&txn, tenant_id, product_id)
+            .await
+            .map_err(|error| {
+                if matches!(error, CommerceError::ProductNotFound(_)) {
+                    warn!(product_id = %product_id, "Product not found for publishing");
+                }
+                error
             })?;
 
         let mut product_active: entities::product::ActiveModel = product.into();
@@ -918,9 +917,14 @@ impl CatalogService {
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
+        let observed_variant = entities::product_variant::Entity::find_by_id(variant_id)
+            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
+            .one(&txn)
+            .await?
+            .ok_or(CommerceError::VariantNotFound(variant_id))?;
+        let product_id = observed_variant.product_id;
+        let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         let variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
-
-        let product_id = variant.product_id;
         let mut active: entities::product_variant::ActiveModel = variant.into();
         active.updated_at = Set(Utc::now().into());
 
@@ -1071,9 +1075,14 @@ impl CatalogService {
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
+        let observed_variant = entities::product_variant::Entity::find_by_id(variant_id)
+            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
+            .one(&txn)
+            .await?
+            .ok_or(CommerceError::VariantNotFound(variant_id))?;
+        let product_id = observed_variant.product_id;
+        let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         let variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
-
-        let product_id = variant.product_id;
 
         let count = entities::product_variant::Entity::find()
             .filter(entities::product_variant::Column::ProductId.eq(product_id))
