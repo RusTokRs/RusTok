@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use rustok_core::SecurityContext;
-use rustok_outbox::TransactionalEventBus;
-use sea_orm::DatabaseConnection;
+use rustok_outbox::{TransactionalEventBus, idempotency::{self, Admission, OwnerOperationScope}};
+use sea_orm::{DatabaseConnection, TransactionTrait};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -79,6 +79,7 @@ struct InProcessCommentsThreadProvider {
     service: CommentsService,
 }
 
+
 /// Builds the owner-managed in-process comments thread provider for consumers.
 pub fn in_process_comments_thread_port(
     db: DatabaseConnection,
@@ -105,14 +106,72 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
     ) -> Result<CommentRecord, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context)?;
-        self.service
-            .create_comment(
-                tenant_id,
-                SecurityContext::try_from_port_context(&context)?,
-                request,
-            )
+        let security = SecurityContext::try_from_port_context(&context)?;
+        let idempotency_key = context.idempotency_key.as_deref().unwrap_or_default();
+
+        let lease = match idempotency::admit(
+            &self.db,
+            OwnerOperationScope::Tenant(tenant_id),
+            "comments",
+            idempotency_key,
+            "create_comment",
+            &request,
+        )
+        .await?
+        {
+            Admission::Run(lease) => lease,
+            Admission::Replay(value) => {
+                return serde_json::from_value(value).map_err(|error| {
+                    PortError::invariant_violation(
+                        "comments.operation_receipt_corrupt",
+                        error.to_string(),
+                    )
+                });
+            }
+            Admission::ReplayError(error) => return Err(error),
+        };
+
+        let txn = self.db.begin().await?;
+        let result = self
+            .service
+            .create_comment_record_in_tx(&txn, tenant_id, security, request)
             .await
-            .map_err(comments_error_to_port_error)
+            .map_err(comments_error_to_port_error);
+
+        match result {
+            Ok(record) => {
+                if let Err(error) = idempotency::complete(&txn, lease, &record).await {
+                    let rollback = txn.rollback().await;
+                    tracing::error!(
+                        operation_id = %lease.operation_id,
+                        %error,
+                        ?rollback,
+                        "Failed to complete durable Comments create receipt"
+                    );
+                    return Err(error);
+                }
+                txn.commit().await.map_err(|error| {
+                    PortError::unavailable(
+                        "comments.operation_commit_failed",
+                        error.to_string(),
+                    )
+                })?;
+                Ok(record)
+            }
+            Err(error) => {
+                let rollback = txn.rollback().await;
+                if let Err(receipt_error) = idempotency::fail(&self.db, lease, &error).await {
+                    tracing::error!(
+                        operation_id = %lease.operation_id,
+                        %error,
+                        %receipt_error,
+                        ?rollback,
+                        "Failed to persist durable Comments create failure receipt"
+                    );
+                }
+                Err(error)
+            }
+        }
     }
 
     async fn get_comment(
