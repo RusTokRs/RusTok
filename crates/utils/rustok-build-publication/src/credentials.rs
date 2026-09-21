@@ -1,5 +1,5 @@
 use std::{
-    fs::{File, OpenOptions},
+    fs::{DirBuilder, File, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -18,6 +18,9 @@ use tokio::{
     time::timeout,
 };
 use uuid::Uuid;
+
+#[cfg(unix)]
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 
 const CREDENTIAL_REQUEST_CONTRACT: &str = "rustok.registry_credential.request";
 const CREDENTIAL_RESPONSE_CONTRACT: &str = "rustok.registry_credential.response";
@@ -209,7 +212,11 @@ impl RegistryCredentialLease {
             return Err(RegistryCredentialError::Rejected);
         }
         let directory = std::env::temp_dir().join(format!("rustok-cosign-auth-{}", Uuid::new_v4()));
-        std::fs::create_dir(&directory)
+        let mut directory_builder = DirBuilder::new();
+        #[cfg(unix)]
+        directory_builder.mode(0o700);
+        directory_builder
+            .create(&directory)
             .map_err(|error| RegistryCredentialError::Unavailable(error.to_string()))?;
         let result = (|| {
             let auth = STANDARD.encode(format!("{}:{}", self.username, self.password));
@@ -218,9 +225,11 @@ impl RegistryCredentialLease {
             let bytes = serde_json::to_vec(&serde_json::json!({ "auths": auths }))
                 .map_err(|error| RegistryCredentialError::Unavailable(error.to_string()))?;
             let config_path = directory.join("config.json");
-            let mut config = OpenOptions::new()
-                .write(true)
-                .create_new(true)
+            let mut config_options = OpenOptions::new();
+            config_options.write(true).create_new(true);
+            #[cfg(unix)]
+            config_options.mode(0o600);
+            let mut config = config_options
                 .open(&config_path)
                 .map_err(|error| RegistryCredentialError::Unavailable(error.to_string()))?;
             config
