@@ -491,6 +491,7 @@ impl SearchProjector {
                 published_at = EXCLUDED.published_at,
                 updated_at = EXCLUDED.updated_at,
                 indexed_at = NOW()
+            WHERE search_documents.updated_at <= EXCLUDED.updated_at
             "#
         );
 
@@ -632,6 +633,7 @@ impl SearchProjector {
                 published_at = EXCLUDED.published_at,
                 updated_at = EXCLUDED.updated_at,
                 indexed_at = NOW()
+            WHERE search_documents.updated_at <= EXCLUDED.updated_at
             "#
         );
 
