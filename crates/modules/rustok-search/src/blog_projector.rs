@@ -58,6 +58,40 @@ impl BlogSearchProjector {
         result
     }
 
+    pub(crate) async fn upsert_author(&self, tenant_id: Uuid, author_id: Uuid) -> Result<()> {
+        self.ensure_postgres()?;
+        let started_at = Instant::now();
+        let tx = self.begin_transaction().await?;
+        let result = async {
+            if self.blog_tables_available(&tx).await? {
+                let rows = tx
+                    .query_all_raw(Statement::from_sql_and_values(
+                        DbBackend::Postgres,
+                        "SELECT id FROM blog_posts WHERE tenant_id = $1 AND author_id = $2",
+                        vec![tenant_id.into(), author_id.into()],
+                    ))
+                    .await
+                    .map_err(Error::Database)?;
+
+                for row in rows {
+                    let post_id = row.try_get::<Uuid>("", "id").map_err(Error::Database)?;
+                    self.delete_post_in(&tx, tenant_id, post_id).await?;
+                    self.upsert_documents_in(&tx, tenant_id, Some(post_id))
+                        .await?;
+                }
+            }
+            self.commit_transaction(tx).await
+        }
+        .await;
+        record_projector_operation(
+            "rebuild_blog_author_projection",
+            tenant_id,
+            &result,
+            started_at.elapsed(),
+        );
+        result
+    }
+
     pub(crate) async fn delete_post(&self, tenant_id: Uuid, post_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
         let started_at = Instant::now();
