@@ -13,37 +13,42 @@ pub(crate) fn storefront_channel_visibility_sql(
     bound_values: &mut Vec<Value>,
     next_param: &mut usize,
 ) -> String {
-    let allowed_slugs = format!("{payload_column} #> '{PRODUCT_ALLOWED_CHANNEL_SLUGS_PATH}'");
-    let channel_match = normalized_trusted_channel_slug(channel)
-        .map(|slug| {
-            let placeholder = format!("${}", *next_param);
-            bound_values.push(slug.into());
-            *next_param += 1;
-            format!("({allowed_slugs}) ? {placeholder}")
-        })
+    let product_allowed_slugs = format!("{payload_column} #> '{PRODUCT_ALLOWED_CHANNEL_SLUGS_PATH}'");
+    let blog_allowed_slugs = format!("{payload_column} #> '{BLOG_ALLOWED_CHANNEL_SLUGS_PATH}'");
+    let channel_placeholder = normalized_trusted_channel_slug(channel).map(|slug| {
+        let placeholder = format!("${}", *next_param);
+        bound_values.push(slug.into());
+        *next_param += 1;
+        placeholder
+    });
+
+    let product_channel_match = channel_placeholder
+        .as_deref()
+        .map(|placeholder| format!("({product_allowed_slugs}) ? {placeholder}"))
+        .unwrap_or_else(|| "FALSE".to_string());
+    let blog_channel_match = channel_placeholder
+        .as_deref()
+        .map(|placeholder| format!("({blog_allowed_slugs}) ? {placeholder}"))
         .unwrap_or_else(|| "FALSE".to_string());
 
     format!(
-        "(
-            {entity_type_column} <> 'product'
-            OR CASE
-                WHEN jsonb_typeof({allowed_slugs}) IS DISTINCT FROM 'array' THEN FALSE
-                WHEN jsonb_array_length({allowed_slugs}) = 0 THEN TRUE
-                ELSE {channel_match}
-            END
-        )"
+        "(CASE\n            WHEN {entity_type_column} = 'product' THEN\n                CASE\n                    WHEN jsonb_typeof({product_allowed_slugs}) IS DISTINCT FROM 'array' THEN FALSE\n                    WHEN jsonb_array_length({product_allowed_slugs}) = 0 THEN TRUE\n                    ELSE {product_channel_match}\n                END\n            WHEN {entity_type_column} = 'blog_post' THEN\n                CASE\n                    WHEN jsonb_typeof({blog_allowed_slugs}) IS DISTINCT FROM 'array' THEN FALSE\n                    WHEN jsonb_array_length({blog_allowed_slugs}) = 0 THEN TRUE\n                    ELSE {blog_channel_match}\n                END\n            ELSE TRUE\n        END)"
     )
 }
 
 pub(crate) fn storefront_payload_visible_for_channel(
     payload: &JsonValue,
+    entity_type: &str,
     channel: &TrustedStorefrontChannel,
 ) -> bool {
-    let Some(allowed_slugs) = payload
-        .get("channel_visibility")
-        .and_then(|value| value.get("allowed_channel_slugs"))
-        .and_then(JsonValue::as_array)
-    else {
+    let Some(allowed_slugs) = match entity_type {
+        "product" => payload
+            .get("channel_visibility")
+            .and_then(|value| value.get("allowed_channel_slugs"))
+            .and_then(JsonValue::as_array),
+        "blog_post" => payload.get("channel_slugs").and_then(JsonValue::as_array),
+        _ => return true,
+    } else {
         return false;
     };
 
@@ -78,7 +83,7 @@ mod tests {
     use sea_orm::Value;
     use uuid::Uuid;
 
-    use super::{product_channel_visibility_sql, product_payload_visible_for_storefront};
+    use super::{storefront_channel_visibility_sql, storefront_payload_visible_for_channel};
     use crate::TrustedStorefrontChannel;
 
     fn channel(slug: Option<&str>) -> TrustedStorefrontChannel {
