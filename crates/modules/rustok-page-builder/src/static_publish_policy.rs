@@ -527,7 +527,9 @@ fn validate_attribute(
             );
             return;
         }
-        let kind = UrlKind::for_attribute(&name).expect("validated policy URL attribute kind");
+        let Some(kind) = UrlKind::for_attribute(&name) else {
+            return;
+        };
         if let Err(reason) = validate_url(&scalar, kind, policy) {
             reject(
                 diagnostics,
@@ -588,7 +590,9 @@ fn validate_style_rules(
             diagnostics,
         );
 
-        let object = raw.as_object().expect("parsed style rule object");
+        let Some(object) = raw.as_object() else {
+            continue;
+        };
         match &rule.scope {
             StyleRuleScope::Base => {
                 if object.contains_key("mediaText") {

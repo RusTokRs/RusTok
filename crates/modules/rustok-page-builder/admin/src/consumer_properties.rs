@@ -96,6 +96,7 @@ impl ConsumerPropertyEditorSchema {
         }
 
         for field in &self.fields {
+            // INVARIANT: validated above that `actual` keys match `expected` field IDs exactly.
             let value = values
                 .get(&field.id)
                 .expect("exact consumer property field set was validated");
