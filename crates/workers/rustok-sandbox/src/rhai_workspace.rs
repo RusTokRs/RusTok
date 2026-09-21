@@ -74,37 +74,7 @@ impl RhaiWorkspace {
         }
         validate_path(&self.entrypoint)?;
 
-        let mut paths = BTreeSet::new();
-        let mut total_bytes = 0usize;
-        let mut entrypoint_kind = None;
-        for file in &self.files {
-            validate_path(&file.path)?;
-            if !paths.insert(&file.path) {
-                return Err(RhaiWorkspaceError::DuplicatePath(file.path.clone()));
-            }
-            validate_file_kind(file)?;
-            let size = file.contents.len();
-            if size > MAX_RHAI_WORKSPACE_FILE_BYTES {
-                return Err(RhaiWorkspaceError::FileTooLarge {
-                    path: file.path.clone(),
-                    limit: MAX_RHAI_WORKSPACE_FILE_BYTES,
-                });
-            }
-            total_bytes = total_bytes
-                .checked_add(size)
-                .ok_or(RhaiWorkspaceError::TooLarge {
-                    limit: MAX_RHAI_WORKSPACE_BYTES,
-                })?;
-            if total_bytes > MAX_RHAI_WORKSPACE_BYTES {
-                return Err(RhaiWorkspaceError::TooLarge {
-                    limit: MAX_RHAI_WORKSPACE_BYTES,
-                });
-            }
-            if file.path == self.entrypoint {
-                entrypoint_kind = Some(file.kind);
-            }
-        }
-
+        let entrypoint_kind = validate_workspace_files(&self.files, &self.entrypoint)?;
         match entrypoint_kind {
             Some(RhaiWorkspaceFileKind::Source) => Ok(()),
             Some(_) => Err(RhaiWorkspaceError::EntrypointMustBeSource),
@@ -338,42 +308,60 @@ fn observe_rhai_source_capabilities(
             continue;
         };
         if name == "fn" {
-            let reserved = match tokens.get(index + 1) {
-                Some(RhaiToken::Identifier(helper)) if is_capability_helper(helper) => {
-                    Some(helper.clone())
-                }
-                _ => None,
-            };
-            if let Some(helper) = reserved {
-                return Err(RhaiWorkspaceCapabilityError::ReservedCapabilityHelper {
+            check_reserved_fn_helper(path, &tokens, index)?;
+        }
+        if matches!(tokens.get(index + 1), Some(RhaiToken::Symbol('('))) {
+            check_capability_call(path, name, &tokens, index, observed)?;
+        }
+    }
+    Ok(())
+}
+
+fn check_reserved_fn_helper(
+    path: &str,
+    tokens: &[RhaiToken],
+    index: usize,
+) -> Result<(), RhaiWorkspaceCapabilityError> {
+    let reserved = match tokens.get(index + 1) {
+        Some(RhaiToken::Identifier(helper)) if is_capability_helper(helper) => {
+            Some(helper.clone())
+        }
+        _ => None,
+    };
+    if let Some(helper) = reserved {
+        return Err(RhaiWorkspaceCapabilityError::ReservedCapabilityHelper {
+            path: path.to_string(),
+            helper,
+        });
+    }
+    Ok(())
+}
+
+fn check_capability_call(
+    path: &str,
+    name: &str,
+    tokens: &[RhaiToken],
+    index: usize,
+    observed: &mut BTreeSet<String>,
+) -> Result<(), RhaiWorkspaceCapabilityError> {
+    match name {
+        "http_get" | "http_post" | "http_request" => {
+            observed.insert("platform.http".to_string());
+        }
+        "capability_call" => {
+            let Some(RhaiToken::StringLiteral { value, escaped }) = tokens.get(index + 2) else {
+                return Err(RhaiWorkspaceCapabilityError::DynamicCapabilityCall {
                     path: path.to_string(),
-                    helper,
+                });
+            };
+            if *escaped || CapabilityName::new(value.clone()).is_err() {
+                return Err(RhaiWorkspaceCapabilityError::InvalidLiteralCapability {
+                    path: path.to_string(),
                 });
             }
+            observed.insert(value.clone());
         }
-        if !matches!(tokens.get(index + 1), Some(RhaiToken::Symbol('('))) {
-            continue;
-        }
-        match name.as_str() {
-            "http_get" | "http_post" | "http_request" => {
-                observed.insert("platform.http".to_string());
-            }
-            "capability_call" => {
-                let Some(RhaiToken::StringLiteral { value, escaped }) = tokens.get(index + 2)
-                else {
-                    return Err(RhaiWorkspaceCapabilityError::DynamicCapabilityCall {
-                        path: path.to_string(),
-                    });
-                };
-                if *escaped || CapabilityName::new(value.clone()).is_err() {
-                    return Err(RhaiWorkspaceCapabilityError::InvalidLiteralCapability {
-                        path: path.to_string(),
-                    });
-                }
-                observed.insert(value.clone());
-            }
-            _ => {}
-        }
+        _ => {}
     }
     Ok(())
 }
@@ -394,66 +382,80 @@ fn tokenize_rhai(source: &str) -> Vec<RhaiToken> {
         if character.is_whitespace() {
             index += 1;
         } else if character == '/' && characters.get(index + 1) == Some(&'/') {
-            index += 2;
-            while index < characters.len() && characters[index] != '\n' {
-                index += 1;
-            }
+            consume_line_comment(&characters, &mut index);
         } else if character == '/' && characters.get(index + 1) == Some(&'*') {
-            index += 2;
-            let mut depth = 1_u32;
-            while index < characters.len() && depth > 0 {
-                if characters[index] == '/' && characters.get(index + 1) == Some(&'*') {
-                    depth += 1;
-                    index += 2;
-                } else if characters[index] == '*' && characters.get(index + 1) == Some(&'/') {
-                    depth -= 1;
-                    index += 2;
-                } else {
-                    index += 1;
-                }
-            }
+            consume_block_comment(&characters, &mut index);
         } else if character == '"' {
-            index += 1;
-            let mut value = String::new();
-            let mut escaped = false;
-            while index < characters.len() {
-                match characters[index] {
-                    '"' => {
-                        index += 1;
-                        break;
-                    }
-                    '\\' => {
-                        escaped = true;
-                        index += 1;
-                        if index < characters.len() {
-                            value.push(characters[index]);
-                            index += 1;
-                        }
-                    }
-                    value_character => {
-                        value.push(value_character);
-                        index += 1;
-                    }
-                }
-            }
-            tokens.push(RhaiToken::StringLiteral { value, escaped });
+            tokens.push(consume_string_literal(&characters, &mut index));
         } else if character.is_ascii_alphabetic() || character == '_' {
-            let start = index;
-            index += 1;
-            while index < characters.len()
-                && (characters[index].is_ascii_alphanumeric() || characters[index] == '_')
-            {
-                index += 1;
-            }
-            tokens.push(RhaiToken::Identifier(
-                characters[start..index].iter().collect(),
-            ));
+            tokens.push(consume_identifier(&characters, &mut index));
         } else {
             tokens.push(RhaiToken::Symbol(character));
             index += 1;
         }
     }
     tokens
+}
+
+fn consume_line_comment(characters: &[char], index: &mut usize) {
+    *index += 2;
+    while *index < characters.len() && characters[*index] != '\n' {
+        *index += 1;
+    }
+}
+
+fn consume_block_comment(characters: &[char], index: &mut usize) {
+    *index += 2;
+    let mut depth = 1_u32;
+    while *index < characters.len() && depth > 0 {
+        if characters[*index] == '/' && characters.get(*index + 1) == Some(&'*') {
+            depth += 1;
+            *index += 2;
+        } else if characters[*index] == '*' && characters.get(*index + 1) == Some(&'/') {
+            depth -= 1;
+            *index += 2;
+        } else {
+            *index += 1;
+        }
+    }
+}
+
+fn consume_string_literal(characters: &[char], index: &mut usize) -> RhaiToken {
+    *index += 1;
+    let mut value = String::new();
+    let mut escaped = false;
+    while *index < characters.len() {
+        match characters[*index] {
+            '"' => {
+                *index += 1;
+                break;
+            }
+            '\\' => {
+                escaped = true;
+                *index += 1;
+                if *index < characters.len() {
+                    value.push(characters[*index]);
+                    *index += 1;
+                }
+            }
+            value_character => {
+                value.push(value_character);
+                *index += 1;
+            }
+        }
+    }
+    RhaiToken::StringLiteral { value, escaped }
+}
+
+fn consume_identifier(characters: &[char], index: &mut usize) -> RhaiToken {
+    let start = *index;
+    *index += 1;
+    while *index < characters.len()
+        && (characters[*index].is_ascii_alphanumeric() || characters[*index] == '_')
+    {
+        *index += 1;
+    }
+    RhaiToken::Identifier(characters[start..*index].iter().collect())
 }
 
 #[cfg(feature = "rhai")]
@@ -524,6 +526,13 @@ fn parse_workspace_import(
             message: "imports must terminate the quoted workspace path".to_string(),
         });
     };
+    validate_import_alias(source_path, tail)?;
+    validate_import_path(source_path, imported_path)?;
+    Ok(imported_path.to_string())
+}
+
+#[cfg(feature = "rhai")]
+fn validate_import_alias(source_path: &str, tail: &str) -> Result<(), RhaiWorkspaceError> {
     let Some(alias) = tail.trim().strip_prefix("as ") else {
         return Err(RhaiWorkspaceError::InvalidImport {
             source_path: source_path.to_string(),
@@ -547,14 +556,18 @@ fn parse_workspace_import(
             message: "imports must use an ASCII identifier alias".to_string(),
         });
     }
+    Ok(())
+}
+
+#[cfg(feature = "rhai")]
+fn validate_import_path(source_path: &str, imported_path: &str) -> Result<(), RhaiWorkspaceError> {
     if !imported_path.starts_with("src/") || !imported_path.ends_with(".rhai") {
         return Err(RhaiWorkspaceError::InvalidImport {
             source_path: source_path.to_string(),
             message: "workspace imports must use an exact src/*.rhai path".to_string(),
         });
     }
-    validate_path(imported_path)?;
-    Ok(imported_path.to_string())
+    validate_path(imported_path)
 }
 
 #[cfg(feature = "rhai")]
@@ -656,6 +669,43 @@ fn validate_file_kind(file: &RhaiWorkspaceFile) -> Result<(), RhaiWorkspaceError
         return Err(RhaiWorkspaceError::EmptyRhaiFile(file.path.clone()));
     }
     Ok(())
+}
+
+fn validate_workspace_files(
+    files: &[RhaiWorkspaceFile],
+    entrypoint: &str,
+) -> Result<Option<RhaiWorkspaceFileKind>, RhaiWorkspaceError> {
+    let mut paths = BTreeSet::new();
+    let mut total_bytes = 0usize;
+    let mut entrypoint_kind = None;
+    for file in files {
+        validate_path(&file.path)?;
+        if !paths.insert(&file.path) {
+            return Err(RhaiWorkspaceError::DuplicatePath(file.path.clone()));
+        }
+        validate_file_kind(file)?;
+        let size = file.contents.len();
+        if size > MAX_RHAI_WORKSPACE_FILE_BYTES {
+            return Err(RhaiWorkspaceError::FileTooLarge {
+                path: file.path.clone(),
+                limit: MAX_RHAI_WORKSPACE_FILE_BYTES,
+            });
+        }
+        total_bytes = total_bytes
+            .checked_add(size)
+            .ok_or(RhaiWorkspaceError::TooLarge {
+                limit: MAX_RHAI_WORKSPACE_BYTES,
+            })?;
+        if total_bytes > MAX_RHAI_WORKSPACE_BYTES {
+            return Err(RhaiWorkspaceError::TooLarge {
+                limit: MAX_RHAI_WORKSPACE_BYTES,
+            });
+        }
+        if file.path == entrypoint {
+            entrypoint_kind = Some(file.kind);
+        }
+    }
+    Ok(entrypoint_kind)
 }
 
 #[derive(Debug, Clone, Error, PartialEq, Eq)]

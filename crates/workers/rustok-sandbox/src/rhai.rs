@@ -262,25 +262,43 @@ fn invoke_capability(
 }
 
 fn register_http_functions(engine: &mut Engine, host: SandboxHost, context: RhaiCapabilityContext) {
+    register_http_get_functions(engine, host.clone(), context.clone());
+    register_http_post_functions(engine, host.clone(), context.clone());
+    engine.register_fn(
+        "http_request",
+        move |method: &str, url: &str, body: Dynamic, headers: Map| {
+            invoke_http(
+                &host,
+                &context,
+                &method.to_ascii_uppercase(),
+                url,
+                dynamic_to_json(body),
+                headers,
+            )
+        },
+    );
+}
+
+fn register_http_get_functions(engine: &mut Engine, host: SandboxHost, context: RhaiCapabilityContext) {
     let get_host = host.clone();
     let get_context = context.clone();
     engine.register_fn("http_get", move |url: &str| {
         invoke_http(&get_host, &get_context, "GET", url, Value::Null, Map::new())
     });
 
-    let get_headers_host = host.clone();
-    let get_headers_context = context.clone();
     engine.register_fn("http_get", move |url: &str, headers: Map| {
         invoke_http(
-            &get_headers_host,
-            &get_headers_context,
+            &host,
+            &context,
             "GET",
             url,
             Value::Null,
             headers,
         )
     });
+}
 
+fn register_http_post_functions(engine: &mut Engine, host: SandboxHost, context: RhaiCapabilityContext) {
     let post_host = host.clone();
     let post_context = context.clone();
     engine.register_fn("http_post", move |url: &str, body: Dynamic| {
@@ -294,29 +312,13 @@ fn register_http_functions(engine: &mut Engine, host: SandboxHost, context: Rhai
         )
     });
 
-    let post_headers_host = host.clone();
-    let post_headers_context = context.clone();
     engine.register_fn(
         "http_post",
         move |url: &str, body: Dynamic, headers: Map| {
             invoke_http(
-                &post_headers_host,
-                &post_headers_context,
-                "POST",
-                url,
-                dynamic_to_json(body),
-                headers,
-            )
-        },
-    );
-
-    engine.register_fn(
-        "http_request",
-        move |method: &str, url: &str, body: Dynamic, headers: Map| {
-            invoke_http(
                 &host,
                 &context,
-                &method.to_ascii_uppercase(),
+                "POST",
                 url,
                 dynamic_to_json(body),
                 headers,
@@ -333,14 +335,7 @@ fn invoke_http(
     body: Value,
     headers: Map,
 ) -> Map {
-    let headers = headers
-        .into_iter()
-        .filter_map(|(key, value)| {
-            value
-                .try_cast::<String>()
-                .map(|value| (key.to_string(), value))
-        })
-        .collect::<BTreeMap<_, _>>();
+    let headers = parse_http_headers(headers);
     let response = invoke_capability(
         host,
         context,
@@ -353,6 +348,21 @@ fn invoke_http(
             "body": body,
         }),
     );
+    format_http_response(response)
+}
+
+fn parse_http_headers(headers: Map) -> BTreeMap<String, String> {
+    headers
+        .into_iter()
+        .filter_map(|(key, value)| {
+            value
+                .try_cast::<String>()
+                .map(|value| (key.to_string(), value))
+        })
+        .collect()
+}
+
+fn format_http_response(response: Map) -> Map {
     if response
         .get("ok")
         .and_then(|value| value.clone().try_cast::<bool>())
@@ -372,6 +382,11 @@ fn invoke_http(
 }
 
 fn register_standard_functions(engine: &mut Engine) {
+    register_logging_functions(engine);
+    register_utility_functions(engine);
+}
+
+fn register_logging_functions(engine: &mut Engine) {
     engine.register_fn("log", |message: &str| {
         info!(target: "rustok_sandbox::rhai", "{}", message);
     });
@@ -390,6 +405,9 @@ fn register_standard_functions(engine: &mut Engine) {
     engine.register_fn("log_error", |source: &str, message: &str| {
         error!(target: "rustok_sandbox::rhai", source, "{}", message);
     });
+}
+
+fn register_utility_functions(engine: &mut Engine) {
     engine.register_fn("now", || chrono::Utc::now().to_rfc3339());
     engine.register_fn("now_unix", || chrono::Utc::now().timestamp());
     engine.register_fn(
@@ -401,20 +419,7 @@ fn register_standard_functions(engine: &mut Engine) {
             )))
         },
     );
-    engine.register_fn("format_money", |amount: i64| {
-        let digits = amount.abs().to_string();
-        let mut formatted = String::new();
-        for (index, character) in digits.chars().rev().enumerate() {
-            if index > 0 && index % 3 == 0 {
-                formatted.push(' ');
-            }
-            formatted.push(character);
-        }
-        if amount < 0 {
-            formatted.push('-');
-        }
-        formatted.chars().rev().collect::<String>()
-    });
+    engine.register_fn("format_money", format_money_amount);
     engine.register_fn("is_empty", |value: Dynamic| {
         value.is_unit()
             || value
@@ -431,6 +436,21 @@ fn register_standard_functions(engine: &mut Engine) {
             if value.is_unit() { default } else { value }
         },
     );
+}
+
+fn format_money_amount(amount: i64) -> String {
+    let digits = amount.abs().to_string();
+    let mut formatted = String::new();
+    for (index, character) in digits.chars().rev().enumerate() {
+        if index > 0 && index % 3 == 0 {
+            formatted.push(' ');
+        }
+        formatted.push(character);
+    }
+    if amount < 0 {
+        formatted.push('-');
+    }
+    formatted.chars().rev().collect::<String>()
 }
 
 fn validation_helpers_enabled(phase: crate::ExecutionPhase) -> bool {
@@ -492,57 +512,9 @@ impl RhaiExecutor {
         payload_digest: &str,
         payload: &[u8],
     ) -> SandboxResult<RhaiArtifactPreparation> {
-        if runtime_abi != RHAI_SANDBOX_RUNTIME_ABI {
-            return Err(SandboxError::InvalidRequest(
-                "Rhai artifact runtime ABI is not supported by this sandbox".to_string(),
-            ));
-        }
-        if !canonical_digest(payload_digest) {
-            return Err(SandboxError::InvalidRequest(
-                "Rhai artifact payload digest is invalid".to_string(),
-            ));
-        }
-        let received = format!("sha256:{}", hex::encode(Sha256::digest(payload)));
-        if received != payload_digest {
-            return Err(SandboxError::InvalidRequest(
-                "Rhai artifact payload digest does not match its bytes".to_string(),
-            ));
-        }
-
+        validate_payload_digest(runtime_abi, payload_digest, payload)?;
         let mut engine = Engine::new();
-        let source = match media_type {
-            RHAI_WORKSPACE_MEDIA_TYPE => {
-                let workspace: RhaiWorkspace =
-                    serde_json::from_slice(payload).map_err(|error| {
-                        SandboxError::InvalidRequest(format!("invalid Rhai workspace: {error}"))
-                    })?;
-                let workspace_digest = workspace
-                    .digest()
-                    .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
-                if workspace_digest != payload_digest {
-                    return Err(SandboxError::InvalidRequest(
-                        "Rhai workspace digest does not match the artifact payload digest"
-                            .to_string(),
-                    ));
-                }
-                workspace
-                    .configure_rhai_engine(&mut engine)
-                    .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
-                workspace
-                    .entrypoint_source()
-                    .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?
-                    .to_string()
-            }
-            RHAI_SOURCE_MEDIA_TYPE => std::str::from_utf8(payload)
-                .map_err(|error| SandboxError::Compilation(error.to_string()))?
-                .to_string(),
-            _ => {
-                return Err(SandboxError::InvalidRequest(
-                    "Rhai artifact media type is not supported by this sandbox".to_string(),
-                ));
-            }
-        };
-
+        let source = extract_payload_source(media_type, payload, payload_digest, &mut engine)?;
         engine
             .compile(&source)
             .map_err(|error| SandboxError::Compilation(error.to_string()))?;
@@ -711,6 +683,67 @@ fn canonical_digest(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
 }
 
+fn validate_payload_digest(
+    runtime_abi: &str,
+    payload_digest: &str,
+    payload: &[u8],
+) -> SandboxResult<()> {
+    if runtime_abi != RHAI_SANDBOX_RUNTIME_ABI {
+        return Err(SandboxError::InvalidRequest(
+            "Rhai artifact runtime ABI is not supported by this sandbox".to_string(),
+        ));
+    }
+    if !canonical_digest(payload_digest) {
+        return Err(SandboxError::InvalidRequest(
+            "Rhai artifact payload digest is invalid".to_string(),
+        ));
+    }
+    let received = format!("sha256:{}", hex::encode(Sha256::digest(payload)));
+    if received != payload_digest {
+        return Err(SandboxError::InvalidRequest(
+            "Rhai artifact payload digest does not match its bytes".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn extract_payload_source(
+    media_type: &str,
+    payload: &[u8],
+    payload_digest: &str,
+    engine: &mut Engine,
+) -> SandboxResult<String> {
+    match media_type {
+        RHAI_WORKSPACE_MEDIA_TYPE => {
+            let workspace: RhaiWorkspace = serde_json::from_slice(payload).map_err(|error| {
+                SandboxError::InvalidRequest(format!("invalid Rhai workspace: {error}"))
+            })?;
+            let workspace_digest = workspace
+                .digest()
+                .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
+            if workspace_digest != payload_digest {
+                return Err(SandboxError::InvalidRequest(
+                    "Rhai workspace digest does not match the artifact payload digest"
+                        .to_string(),
+                ));
+            }
+            workspace
+                .configure_rhai_engine(engine)
+                .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
+            workspace
+                .entrypoint_source()
+                .map_err(|error| SandboxError::InvalidRequest(error.to_string()))
+                .map(|source| source.to_string())
+        }
+        RHAI_SOURCE_MEDIA_TYPE => std::str::from_utf8(payload)
+            .map_err(|error| SandboxError::Compilation(error.to_string()))
+            .map(|source| source.to_string()),
+        _ => Err(SandboxError::InvalidRequest(
+            "Rhai artifact media type is not supported by this sandbox".to_string(),
+        )),
+    }
+}
+
 fn rhai_runtime_fingerprint(media_type: &str) -> String {
     format!(
         "sha256:{}",
@@ -749,38 +782,56 @@ impl SandboxExecutor for RhaiExecutor {
             .map_err(|error| SandboxError::Compilation(error.to_string()))?;
         let mut scope = Self::build_scope(request, &binding.input);
         Self::populate_serialized_scope(&mut scope, request)?;
-        let mut ast = engine
-            .compile_with_scope(&scope, source)
-            .map_err(|error| SandboxError::Compilation(error.to_string()))?;
-        ast.set_source(&request.payload.entrypoint);
-        let output = engine
-            .eval_ast_with_scope::<Dynamic>(&mut scope, &ast)
-            .map_err(|error| Self::map_error(*error, request))?;
-        let output = dynamic_to_json(output);
+        let output = evaluate_rhai_script(&engine, &mut scope, source, request)?;
         let rhai_scope = Self::collect_serialized_scope(&mut scope, request)?;
-        let output = serde_json::to_value(RhaiBindingOutput::new(output))
-            .map_err(|error| SandboxError::Internal(error.to_string()))?;
-        let output_bytes = serde_json::to_vec(&(&output, &rhai_scope))
-            .map_err(|error| SandboxError::Internal(error.to_string()))?
-            .len() as u64;
-        if output_bytes > request.policy.limits.max_output_bytes {
-            return Err(SandboxError::LimitExceeded {
-                resource: "output_bytes".to_string(),
-                limit: request.policy.limits.max_output_bytes,
-            });
-        }
-
-        Ok(SandboxOutcome {
-            execution_id: request.context.execution_id,
-            output,
-            rhai_scope,
-            metrics: ExecutionMetrics {
-                instructions_consumed: Some(operations.load(Ordering::Relaxed)),
-                output_bytes: Some(output_bytes),
-                ..Default::default()
-            },
-        })
+        build_rhai_outcome(output, rhai_scope, request, &operations)
     }
+}
+
+fn evaluate_rhai_script(
+    engine: &Engine,
+    scope: &mut Scope,
+    source: &str,
+    request: &SandboxRequest,
+) -> SandboxResult<Value> {
+    let mut ast = engine
+        .compile_with_scope(scope, source)
+        .map_err(|error| SandboxError::Compilation(error.to_string()))?;
+    ast.set_source(&request.payload.entrypoint);
+    let output = engine
+        .eval_ast_with_scope::<Dynamic>(scope, &ast)
+        .map_err(|error| RhaiExecutor::map_error(*error, request))?;
+    Ok(dynamic_to_json(output))
+}
+
+fn build_rhai_outcome(
+    output: Value,
+    rhai_scope: Option<crate::RhaiScopeOutput>,
+    request: &SandboxRequest,
+    operations: &AtomicU64,
+) -> SandboxResult<SandboxOutcome> {
+    let output = serde_json::to_value(RhaiBindingOutput::new(output))
+        .map_err(|error| SandboxError::Internal(error.to_string()))?;
+    let output_bytes = serde_json::to_vec(&(&output, &rhai_scope))
+        .map_err(|error| SandboxError::Internal(error.to_string()))?
+        .len() as u64;
+    if output_bytes > request.policy.limits.max_output_bytes {
+        return Err(SandboxError::LimitExceeded {
+            resource: "output_bytes".to_string(),
+            limit: request.policy.limits.max_output_bytes,
+        });
+    }
+
+    Ok(SandboxOutcome {
+        execution_id: request.context.execution_id,
+        output,
+        rhai_scope,
+        metrics: ExecutionMetrics {
+            instructions_consumed: Some(operations.load(Ordering::Relaxed)),
+            output_bytes: Some(output_bytes),
+            ..Default::default()
+        },
+    })
 }
 
 fn json_to_dynamic(value: &Value) -> Dynamic {

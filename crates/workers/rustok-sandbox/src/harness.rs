@@ -103,39 +103,9 @@ impl LocalSandboxScenario {
                 "local sandbox scenario grants or fixtures exceed their limits".to_string(),
             ));
         }
-        let mut grants = BTreeSet::new();
-        for grant in &self.policy.grants {
-            if !grants.insert(grant.name.as_str()) {
-                return Err(SandboxError::InvalidRequest(
-                    "local sandbox scenario grants contain a duplicate capability".to_string(),
-                ));
-            }
-        }
-        let mut fixtures = BTreeSet::new();
-        for fixture in &self.fixtures {
-            validate_operation(&fixture.operation)?;
-            if !grants.contains(fixture.capability.as_str()) {
-                return Err(SandboxError::InvalidRequest(
-                    "local sandbox fixture capability is not granted by the scenario".to_string(),
-                ));
-            }
-            if !fixtures.insert((fixture.capability.as_str(), fixture.operation.as_str())) {
-                return Err(SandboxError::InvalidRequest(
-                    "local sandbox scenario contains a duplicate fixture".to_string(),
-                ));
-            }
-        }
-        if let LocalSandboxExpectation::Error { code } = &self.expectation
-            && (code.is_empty()
-                || code.len() > 64
-                || !code
-                    .bytes()
-                    .all(|byte| byte.is_ascii_uppercase() || byte == b'_'))
-        {
-            return Err(SandboxError::InvalidRequest(
-                "local sandbox expected error code is invalid".to_string(),
-            ));
-        }
+        let grants = collect_scenario_grants(&self.policy.grants)?;
+        validate_scenario_fixtures(&grants, &self.fixtures)?;
+        validate_scenario_expectation(&self.expectation)?;
         let encoded =
             serde_json::to_vec(self).map_err(|error| SandboxError::Internal(error.to_string()))?;
         if encoded.len() > MAX_LOCAL_SCENARIO_BYTES {
@@ -356,6 +326,54 @@ fn validate_operation(operation: &str) -> SandboxResult<()> {
     if operation.is_empty() || operation.len() > 64 || operation.contains(char::is_control) {
         return Err(SandboxError::InvalidRequest(
             "fixture capability operation must be a bounded visible string".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn collect_scenario_grants(grants: &[CapabilityGrant]) -> SandboxResult<BTreeSet<&str>> {
+    let mut unique = BTreeSet::new();
+    for grant in grants {
+        if !unique.insert(grant.name.as_str()) {
+            return Err(SandboxError::InvalidRequest(
+                "local sandbox scenario grants contain a duplicate capability".to_string(),
+            ));
+        }
+    }
+    Ok(unique)
+}
+
+fn validate_scenario_fixtures(
+    grants: &BTreeSet<&str>,
+    fixtures: &[LocalCapabilityFixture],
+) -> SandboxResult<()> {
+    let mut unique = BTreeSet::new();
+    for fixture in fixtures {
+        validate_operation(&fixture.operation)?;
+        if !grants.contains(fixture.capability.as_str()) {
+            return Err(SandboxError::InvalidRequest(
+                "local sandbox fixture capability is not granted by the scenario".to_string(),
+            ));
+        }
+        if !unique.insert((fixture.capability.as_str(), fixture.operation.as_str())) {
+            return Err(SandboxError::InvalidRequest(
+                "local sandbox scenario contains a duplicate fixture".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_scenario_expectation(expectation: &LocalSandboxExpectation) -> SandboxResult<()> {
+    if let LocalSandboxExpectation::Error { code } = expectation
+        && (code.is_empty()
+            || code.len() > 64
+            || !code
+                .bytes()
+                .all(|byte| byte.is_ascii_uppercase() || byte == b'_'))
+    {
+        return Err(SandboxError::InvalidRequest(
+            "local sandbox expected error code is invalid".to_string(),
         ));
     }
     Ok(())

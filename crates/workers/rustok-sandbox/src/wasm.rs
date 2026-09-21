@@ -20,9 +20,9 @@ use wasmtime::component::{Component, HasSelf, Linker};
 use wasmtime::{Config, Engine, ResourceLimiter, Store, StoreLimits, StoreLimitsBuilder};
 
 use crate::{
-    CapabilityCall, CapabilityCallContext, CapabilityName, ExecutionMetrics, SandboxError,
-    SandboxExecutor, SandboxExecutorKind, SandboxHost, SandboxOutcome, SandboxRequest,
-    SandboxResult, SandboxSubject,
+    CapabilityCall, CapabilityCallContext, CapabilityName, ExecutionMetrics, SandboxCancellation,
+    SandboxError, SandboxExecutor, SandboxExecutorKind, SandboxHost, SandboxOutcome,
+    SandboxRequest, SandboxResult, SandboxSubject,
 };
 
 /// Immutable current Component Model ABI identity and wire encoding.
@@ -389,120 +389,173 @@ impl WasmComponentExecutor {
         host: SandboxHost,
     ) -> SandboxResult<SandboxOutcome> {
         let (engine, component) = self.load_component(request)?;
-        let mut linker = Linker::<WasmStoreState>::new(&engine);
-        ModuleRuntime::add_to_linker::<_, HasSelf<_>>(&mut linker, |state| state)
-            .map_err(|error| SandboxError::Internal(error.to_string()))?;
-        let limits = StoreLimitsBuilder::new()
-            .memory_size(
-                request
-                    .policy
-                    .limits
-                    .max_memory_bytes
-                    .try_into()
-                    .unwrap_or(usize::MAX),
-            )
-            .build();
         let cancellation = host.cancellation();
-        let mut store = Store::new(
+        let (linker, mut store) = init_wasm_store(&engine, request, host)?;
+        let (watchdog_flags, watchdog) = spawn_wasm_watchdog(
             &engine,
-            WasmStoreState {
-                limits: WasmStoreLimits::new(limits),
-                host,
-                execution_id: request.context.execution_id,
-                subject: request.subject.clone(),
-                context: CapabilityCallContext::from(&request.context),
-            },
+            cancellation,
+            request.policy.limits.wall_clock_ms,
         );
-        store.limiter(|state| &mut state.limits);
-        store
-            .set_fuel(request.policy.limits.instruction_budget)
-            .map_err(|error| SandboxError::Internal(error.to_string()))?;
-        store.set_epoch_deadline(1);
-
-        // The engine is private to this request, so incrementing its epoch
-        // cannot interrupt another tenant's execution.
-        let timed_out = Arc::new(AtomicBool::new(false));
-        let cancelled = Arc::new(AtomicBool::new(false));
-        let completed = Arc::new(AtomicBool::new(false));
-        let watchdog_engine = engine.clone();
-        let watchdog_completed = Arc::clone(&completed);
-        let watchdog_timed_out = Arc::clone(&timed_out);
-        let watchdog_cancelled = Arc::clone(&cancelled);
-        let timeout = request.policy.limits.wall_clock_ms;
-        let watchdog = thread::spawn(move || {
-            let started = std::time::Instant::now();
-            while !watchdog_completed.load(Ordering::Acquire) {
-                if cancellation.is_cancelled() {
-                    watchdog_cancelled.store(true, Ordering::Release);
-                    watchdog_engine.increment_epoch();
-                    break;
-                }
-                if started.elapsed() >= Duration::from_millis(timeout) {
-                    watchdog_timed_out.store(true, Ordering::Release);
-                    watchdog_engine.increment_epoch();
-                    break;
-                }
-                thread::sleep(Duration::from_millis(1));
-            }
-        });
-
-        let result = (|| {
-            let instance = ModuleRuntime::instantiate(&mut store, &component, &linker)
-                .map_err(|error| SandboxError::Trap(error.to_string()))?;
-            if request.payload.entrypoint != WASM_COMPONENT_ENTRYPOINT {
-                return Err(SandboxError::InvalidRequest(format!(
-                    "Wasm Component {WASM_COMPONENT_ABI_VERSION} entrypoint must be `{WASM_COMPONENT_ENTRYPOINT}`"
-                )));
-            }
-            let input = serde_json::to_string(&request.input)
-                .map_err(|error| SandboxError::Internal(error.to_string()))?;
-            let output = instance
-                .call_run(&mut store, &input)
-                .map_err(|error| SandboxError::Trap(error.to_string()))?
-                .map_err(SandboxError::Trap)?;
-            let output = serde_json::from_str(&output).unwrap_or(serde_json::Value::String(output));
-            let output_bytes = serde_json::to_vec(&output)
-                .map_err(|error| SandboxError::Internal(error.to_string()))?
-                .len() as u64;
-            if output_bytes > request.policy.limits.max_output_bytes {
-                return Err(SandboxError::LimitExceeded {
-                    resource: "output_bytes".to_string(),
-                    limit: request.policy.limits.max_output_bytes,
-                });
-            }
-            let fuel_remaining = store.get_fuel().unwrap_or(0);
-            let peak_memory_bytes = store.data().limits.peak_linear_memory_bytes();
-            Ok(SandboxOutcome {
-                execution_id: request.context.execution_id,
-                output,
-                rhai_scope: None,
-                metrics: ExecutionMetrics {
-                    instructions_consumed: Some(
-                        request
-                            .policy
-                            .limits
-                            .instruction_budget
-                            .saturating_sub(fuel_remaining),
-                    ),
-                    peak_memory_bytes: Some(peak_memory_bytes),
-                    output_bytes: Some(output_bytes),
-                    ..Default::default()
-                },
-            })
-        })();
-
-        completed.store(true, Ordering::Release);
+        let result = invoke_wasm_component(&component, &linker, &mut store, request);
+        watchdog_flags.completed.store(true, Ordering::Release);
         let _ = watchdog.join();
-        if cancelled.load(Ordering::Acquire) {
+        if watchdog_flags.cancelled.load(Ordering::Acquire) {
             return Err(SandboxError::Cancelled);
         }
-        if timed_out.load(Ordering::Acquire) {
+        if watchdog_flags.timed_out.load(Ordering::Acquire) {
             return Err(SandboxError::Timeout {
                 limit_ms: request.policy.limits.wall_clock_ms,
             });
         }
         result
     }
+}
+
+struct WasmWatchdogFlags {
+    timed_out: Arc<AtomicBool>,
+    cancelled: Arc<AtomicBool>,
+    completed: Arc<AtomicBool>,
+}
+
+fn spawn_wasm_watchdog(
+    engine: &Engine,
+    cancellation: SandboxCancellation,
+    timeout_ms: u64,
+) -> (WasmWatchdogFlags, thread::JoinHandle<()>) {
+    let timed_out = Arc::new(AtomicBool::new(false));
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let completed = Arc::new(AtomicBool::new(false));
+    let watchdog_engine = engine.clone();
+    let watchdog_completed = Arc::clone(&completed);
+    let watchdog_timed_out = Arc::clone(&timed_out);
+    let watchdog_cancelled = Arc::clone(&cancelled);
+    let handle = thread::spawn(move || {
+        let started = std::time::Instant::now();
+        while !watchdog_completed.load(Ordering::Acquire) {
+            if cancellation.is_cancelled() {
+                watchdog_cancelled.store(true, Ordering::Release);
+                watchdog_engine.increment_epoch();
+                break;
+            }
+            if started.elapsed() >= Duration::from_millis(timeout_ms) {
+                watchdog_timed_out.store(true, Ordering::Release);
+                watchdog_engine.increment_epoch();
+                break;
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
+    });
+    (
+        WasmWatchdogFlags {
+            timed_out,
+            cancelled,
+            completed,
+        },
+        handle,
+    )
+}
+
+fn init_wasm_store(
+    engine: &Engine,
+    request: &SandboxRequest,
+    host: SandboxHost,
+) -> SandboxResult<(Linker<WasmStoreState>, Store<WasmStoreState>)> {
+    let mut linker = Linker::<WasmStoreState>::new(engine);
+    ModuleRuntime::add_to_linker::<_, HasSelf<_>>(&mut linker, |state| state)
+        .map_err(|error| SandboxError::Internal(error.to_string()))?;
+    let limits = StoreLimitsBuilder::new()
+        .memory_size(
+            request
+                .policy
+                .limits
+                .max_memory_bytes
+                .try_into()
+                .unwrap_or(usize::MAX),
+        )
+        .build();
+    let mut store = Store::new(
+        engine,
+        WasmStoreState {
+            limits: WasmStoreLimits::new(limits),
+            host,
+            execution_id: request.context.execution_id,
+            subject: request.subject.clone(),
+            context: CapabilityCallContext::from(&request.context),
+        },
+    );
+    store.limiter(|state| &mut state.limits);
+    store
+        .set_fuel(request.policy.limits.instruction_budget)
+        .map_err(|error| SandboxError::Internal(error.to_string()))?;
+    store.set_epoch_deadline(1);
+    Ok((linker, store))
+}
+
+fn invoke_wasm_component(
+    component: &Component,
+    linker: &Linker<WasmStoreState>,
+    store: &mut Store<WasmStoreState>,
+    request: &SandboxRequest,
+) -> SandboxResult<SandboxOutcome> {
+    let instance = ModuleRuntime::instantiate(&mut *store, component, linker)
+        .map_err(|error| SandboxError::Trap(error.to_string()))?;
+    if request.payload.entrypoint != WASM_COMPONENT_ENTRYPOINT {
+        return Err(SandboxError::InvalidRequest(format!(
+            "Wasm Component {WASM_COMPONENT_ABI_VERSION} entrypoint must be `{WASM_COMPONENT_ENTRYPOINT}`"
+        )));
+    }
+    let output = call_wasm_component_instance(&instance, store, &request.input)?;
+    let output_bytes =
+        validate_wasm_output_limit(&output, request.policy.limits.max_output_bytes)?;
+    let fuel_remaining = store.get_fuel().unwrap_or(0);
+    let peak_memory_bytes = store.data().limits.peak_linear_memory_bytes();
+    Ok(SandboxOutcome {
+        execution_id: request.context.execution_id,
+        output,
+        rhai_scope: None,
+        metrics: ExecutionMetrics {
+            instructions_consumed: Some(
+                request
+                    .policy
+                    .limits
+                    .instruction_budget
+                    .saturating_sub(fuel_remaining),
+            ),
+            peak_memory_bytes: Some(peak_memory_bytes),
+            output_bytes: Some(output_bytes),
+            ..Default::default()
+        },
+    })
+}
+
+fn call_wasm_component_instance(
+    instance: &ModuleRuntime,
+    store: &mut Store<WasmStoreState>,
+    input: &serde_json::Value,
+) -> SandboxResult<serde_json::Value> {
+    let input_str = serde_json::to_string(input)
+        .map_err(|error| SandboxError::Internal(error.to_string()))?;
+    let output = instance
+        .call_run(&mut *store, &input_str)
+        .map_err(|error| SandboxError::Trap(error.to_string()))?
+        .map_err(SandboxError::Trap)?;
+    Ok(serde_json::from_str(&output).unwrap_or(serde_json::Value::String(output)))
+}
+
+fn validate_wasm_output_limit(
+    output: &serde_json::Value,
+    max_output_bytes: u64,
+) -> SandboxResult<u64> {
+    let output_bytes = serde_json::to_vec(output)
+        .map_err(|error| SandboxError::Internal(error.to_string()))?
+        .len() as u64;
+    if output_bytes > max_output_bytes {
+        return Err(SandboxError::LimitExceeded {
+            resource: "output_bytes".to_string(),
+            limit: max_output_bytes,
+        });
+    }
+    Ok(output_bytes)
 }
 
 /// Canonical host-runtime identity for a prepared Component cache entry.

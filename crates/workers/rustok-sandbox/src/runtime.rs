@@ -2,12 +2,12 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 
 use crate::{
     CapabilityBroker, CapabilityObserver, ExecutionRecord, ExecutionStatus, ExecutorRegistry,
-    SandboxAdmissionLimits, SandboxCancellation, SandboxHost, SandboxOutcome, SandboxRequest,
-    SandboxResult,
+    SandboxAdmissionLimits, SandboxCancellation, SandboxContext, SandboxError, SandboxExecutor,
+    SandboxHost, SandboxOutcome, SandboxRequest, SandboxResult,
 };
 
 #[async_trait]
@@ -81,14 +81,88 @@ impl SandboxRuntime {
         cancellation: SandboxCancellation,
     ) -> SandboxResult<SandboxOutcome> {
         let queue_timer = Instant::now();
+        let (executor, _permit, started_at) =
+            self.prepare_and_observe_execution(&request, &cancellation).await?;
+        let queue_time_ms = elapsed_millis(queue_timer);
+        let (result, duration_ms, calls) =
+            self.run_executor(executor, &request, cancellation).await;
+        let context = request.context.clone();
+
+        match result {
+            Ok(outcome) => {
+                self.handle_execution_success(
+                    outcome,
+                    &request,
+                    context,
+                    started_at,
+                    queue_time_ms,
+                    duration_ms,
+                    calls,
+                )
+                .await
+            }
+            Err(error) => {
+                self.handle_execution_failure(
+                    error,
+                    &request,
+                    context,
+                    started_at,
+                    queue_time_ms,
+                    duration_ms,
+                    calls,
+                )
+                .await
+            }
+        }
+    }
+
+    async fn prepare_and_observe_execution(
+        &self,
+        request: &SandboxRequest,
+        cancellation: &SandboxCancellation,
+    ) -> SandboxResult<(
+        Arc<dyn SandboxExecutor>,
+        crate::admission::AdmissionPermit,
+        DateTime<Utc>,
+    )> {
         request.validate()?;
         if cancellation.is_cancelled() {
             return Err(crate::SandboxError::Cancelled);
         }
         let executor = self.executors.get(request.payload.executor)?;
-        let _permit = self.admission.admit(&request)?;
+        let permit = self.admission.admit(request)?;
         let started_at = Utc::now();
-        let context = request.context.clone();
+        self.observe_started(request, &request.context, started_at).await;
+        Ok((executor, permit, started_at))
+    }
+
+    async fn run_executor(
+        &self,
+        executor: Arc<dyn SandboxExecutor>,
+        request: &SandboxRequest,
+        cancellation: SandboxCancellation,
+    ) -> (SandboxResult<SandboxOutcome>, u64, u32) {
+        let execution_timer = Instant::now();
+        let host = SandboxHost::new(
+            Arc::new(request.policy.clone()),
+            Arc::clone(&self.broker),
+            request.subject.clone(),
+            &request.context,
+            Arc::clone(&self.capability_observers),
+            cancellation,
+        );
+        let result = executor.execute(request, host.clone()).await;
+        let duration_ms = elapsed_millis(execution_timer);
+        let capability_calls = host.capability_calls();
+        (result, duration_ms, capability_calls)
+    }
+
+    async fn observe_started(
+        &self,
+        request: &SandboxRequest,
+        context: &SandboxContext,
+        started_at: DateTime<Utc>,
+    ) {
         self.observe_best_effort(ExecutionRecord {
             execution_id: context.execution_id,
             subject: request.subject.clone(),
@@ -101,61 +175,66 @@ impl SandboxRuntime {
             error_code: None,
         })
         .await;
+    }
 
-        let execution_timer = Instant::now();
-        let queue_time_ms = elapsed_millis(queue_timer);
-        let host = SandboxHost::new(
-            Arc::new(request.policy.clone()),
-            Arc::clone(&self.broker),
-            request.subject.clone(),
-            &request.context,
-            Arc::clone(&self.capability_observers),
-            cancellation,
-        );
-        let result = executor.execute(&request, host.clone()).await;
+    async fn handle_execution_success(
+        &self,
+        mut outcome: SandboxOutcome,
+        request: &SandboxRequest,
+        context: SandboxContext,
+        started_at: DateTime<Utc>,
+        queue_time_ms: u64,
+        duration_ms: u64,
+        capability_calls: u32,
+    ) -> SandboxResult<SandboxOutcome> {
+        outcome.execution_id = context.execution_id;
+        outcome.metrics.queue_time_ms = queue_time_ms;
+        outcome.metrics.duration_ms = duration_ms;
+        outcome.metrics.capability_calls = capability_calls;
+        self.observe_best_effort(ExecutionRecord {
+            execution_id: context.execution_id,
+            subject: request.subject.clone(),
+            context,
+            executor: request.payload.executor,
+            status: ExecutionStatus::Succeeded,
+            started_at,
+            finished_at: Some(Utc::now()),
+            metrics: Some(outcome.metrics.clone()),
+            error_code: None,
+        })
+        .await;
+        Ok(outcome)
+    }
 
-        match result {
-            Ok(mut outcome) => {
-                outcome.execution_id = context.execution_id;
-                outcome.metrics.queue_time_ms = queue_time_ms;
-                outcome.metrics.duration_ms = elapsed_millis(execution_timer);
-                outcome.metrics.capability_calls = host.capability_calls();
-                self.observe_best_effort(ExecutionRecord {
-                    execution_id: context.execution_id,
-                    subject: request.subject,
-                    context: context.clone(),
-                    executor: request.payload.executor,
-                    status: ExecutionStatus::Succeeded,
-                    started_at,
-                    finished_at: Some(Utc::now()),
-                    metrics: Some(outcome.metrics.clone()),
-                    error_code: None,
-                })
-                .await;
-                Ok(outcome)
-            }
-            Err(error) => {
-                let metrics = crate::ExecutionMetrics {
-                    queue_time_ms,
-                    duration_ms: elapsed_millis(execution_timer),
-                    capability_calls: host.capability_calls(),
-                    ..Default::default()
-                };
-                self.observe_best_effort(ExecutionRecord {
-                    execution_id: context.execution_id,
-                    subject: request.subject,
-                    context,
-                    executor: request.payload.executor,
-                    status: ExecutionStatus::Failed,
-                    started_at,
-                    finished_at: Some(Utc::now()),
-                    metrics: Some(metrics),
-                    error_code: Some(error.code().to_string()),
-                })
-                .await;
-                Err(error)
-            }
-        }
+    async fn handle_execution_failure(
+        &self,
+        error: SandboxError,
+        request: &SandboxRequest,
+        context: SandboxContext,
+        started_at: DateTime<Utc>,
+        queue_time_ms: u64,
+        duration_ms: u64,
+        capability_calls: u32,
+    ) -> SandboxResult<SandboxOutcome> {
+        let metrics = crate::ExecutionMetrics {
+            queue_time_ms,
+            duration_ms,
+            capability_calls,
+            ..Default::default()
+        };
+        self.observe_best_effort(ExecutionRecord {
+            execution_id: context.execution_id,
+            subject: request.subject.clone(),
+            context,
+            executor: request.payload.executor,
+            status: ExecutionStatus::Failed,
+            started_at,
+            finished_at: Some(Utc::now()),
+            metrics: Some(metrics),
+            error_code: Some(error.code().to_string()),
+        })
+        .await;
+        Err(error)
     }
 
     async fn observe_best_effort(&self, record: ExecutionRecord) {
