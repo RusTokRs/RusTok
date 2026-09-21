@@ -486,6 +486,37 @@ async fn find_refresh_session_for_update_in_tx(
         .await
     }
 
+async fn find_user_for_password_change_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+) -> std::result::Result<Option<users::Model>, AuthLifecycleError> {
+    let query = users::Entity::find_by_id(user_id)
+        .filter(users::Column::TenantId.eq(tenant_id));
+    match txn.get_database_backend() {
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => query
+            .lock_exclusive()
+            .one(txn)
+            .await
+            .map_err(AuthLifecycleError::from),
+        DatabaseBackend::Sqlite => {
+            let existing = query.one(txn).await.map_err(AuthLifecycleError::from)?;
+            if let Some(existing) = existing.as_ref() {
+                let statement = Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    "UPDATE users SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                    [tenant_id.into(), existing.id.into()],
+                );
+                txn.execute(statement)
+                    .await
+                    .map_err(AuthLifecycleError::from)?;
+            }
+            Ok(existing)
+        }
+        _ => query.one(txn).await.map_err(AuthLifecycleError::from),
+    }
+}
+
     async fn change_password_db(
         db: &DatabaseConnection,
         tenant_id: uuid::Uuid,
@@ -494,11 +525,8 @@ async fn find_refresh_session_for_update_in_tx(
         current_password: &str,
         new_password: &str,
     ) -> std::result::Result<(), AuthLifecycleError> {
-        let user = users::Entity::find_by_id(user_id)
-            .filter(users::Column::TenantId.eq(tenant_id))
-            .one(db)
-            .await
-            .map_err(AuthLifecycleError::from)?
+        let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
+        let user = find_user_for_password_change_in_tx(&txn, tenant_id, user_id).await?
             .ok_or(AuthLifecycleError::InvalidCredentials)?;
 
         if !verify_password(current_password, &user.password_hash)
@@ -511,12 +539,18 @@ async fn find_refresh_session_for_update_in_tx(
         user_active.password_hash =
             Set(hash_password(new_password).map_err(AuthLifecycleError::from)?);
         user_active
-            .update(db)
+            .update(&txn)
             .await
             .map_err(AuthLifecycleError::from)?;
 
-        let revoked_sessions =
-            Self::revoke_user_sessions_db(db, tenant_id, user_id, Some(current_session_id)).await?;
+        let revoked_sessions = Self::revoke_user_sessions_db_with_connection(
+            &txn,
+            tenant_id,
+            user_id,
+            Some(current_session_id),
+        )
+        .await?;
+        txn.commit().await.map_err(AuthLifecycleError::from)?;
         AUTH_CHANGE_PASSWORD_SESSIONS_REVOKED_TOTAL.fetch_add(revoked_sessions, Ordering::Relaxed);
 
         Ok(())
@@ -688,6 +722,30 @@ async fn find_refresh_session_for_update_in_tx(
             .map_err(AuthLifecycleError::from)?;
         Ok(infer_user_role_from_permissions(&permissions))
     }
+
+async fn revoke_user_sessions_db_with_connection<C>(
+    db: &C,
+    tenant_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+    except_session_id: Option<uuid::Uuid>,
+) -> std::result::Result<u64, AuthLifecycleError>
+where
+    C: sea_orm::ConnectionTrait,
+{
+    let mut query = sessions::Entity::update_many()
+        .col_expr(sessions::Column::RevokedAt, Expr::value(Utc::now()))
+        .filter(sessions::Column::TenantId.eq(tenant_id))
+        .filter(sessions::Column::UserId.eq(user_id))
+        .filter(sessions::Column::RevokedAt.is_null());
+    if let Some(session_id) = except_session_id {
+        query = query.filter(sessions::Column::Id.ne(session_id));
+    }
+    let result = query
+        .exec(db)
+        .await
+        .map_err(AuthLifecycleError::from)?;
+    Ok(result.rows_affected)
+}
 
     async fn revoke_user_sessions_db(
         db: &DatabaseConnection,
