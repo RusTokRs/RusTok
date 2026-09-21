@@ -325,32 +325,6 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(map_custom_field_error)?;
         }
-        let user_projection_changed =
-            user_row_update_requested || role_mutation_plan.is_some() || prepared.localized_values.is_some();
-        if user_projection_changed {
-            if let Err(error) = event_bus
-                .publish_in_tx(
-                    &tx,
-                    context.tenant_id,
-                    Some(context.actor_id),
-                    DomainEvent::UserUpdated { user_id: user.id },
-                )
-                .await
-            {
-                let rollback_error = tx.rollback().await.err();
-                tracing::error!(
-                    %error,
-                    ?rollback_error,
-                    tenant_id = %context.tenant_id,
-                    user_id = %user.id,
-                    "Durable UserUpdated publication failed; user update rolled back"
-                );
-                return Err(AuthAdminMutationError::Internal(
-                    "durable user update event is unavailable".to_string(),
-                ));
-            }
-        }
-
         tx.commit()
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
@@ -580,6 +554,32 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
                 );
                 return Err(AuthAdminMutationError::Internal(
                     "durable RBAC role mutation event is unavailable".to_string(),
+                ));
+            }
+        }
+
+        let user_projection_changed =
+            user_row_update_requested || role_mutation_plan.is_some() || prepared.localized_values.is_some();
+        if user_projection_changed {
+            if let Err(error) = event_bus
+                .publish_in_tx(
+                    &tx,
+                    context.tenant_id,
+                    Some(context.actor_id),
+                    DomainEvent::UserUpdated { user_id: user.id },
+                )
+                .await
+            {
+                let rollback_error = tx.rollback().await.err();
+                tracing::error!(
+                    %error,
+                    ?rollback_error,
+                    tenant_id = %context.tenant_id,
+                    user_id = %user.id,
+                    "Durable UserUpdated publication failed; user update rolled back"
+                );
+                return Err(AuthAdminMutationError::Internal(
+                    "durable user update event is unavailable".to_string(),
                 ));
             }
         }
