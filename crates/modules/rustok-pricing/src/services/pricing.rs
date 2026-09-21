@@ -1,8 +1,9 @@
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
+    TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
@@ -246,25 +247,19 @@ impl PricingService {
         price_list_id: Uuid,
         adjustment_percent: Option<Decimal>,
     ) -> CommerceResult<Option<PriceListRule>> {
-        let mut price_list = entities::price_list::Entity::find_by_id(price_list_id)
-            .filter(entities::price_list::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| CommerceError::Validation("price_list_id was not found".to_string()))?;
+        let txn = self.db.begin().await?;
+        let price_list = resolve_active_price_list_tx(&txn, tenant_id, price_list_id).await?;
 
         if let Some(percent) = adjustment_percent {
             validate_discount_percent(percent)?;
-            let mut active: entities::price_list::ActiveModel = price_list.into();
-            active.rule_kind = Set(Some("percentage_discount".to_string()));
-            active.adjustment_percent = Set(Some(percent));
-            price_list = active.update(&self.db).await?;
-        } else {
-            let mut active: entities::price_list::ActiveModel = price_list.into();
-            active.rule_kind = Set(None);
-            active.adjustment_percent = Set(None);
-            price_list = active.update(&self.db).await?;
         }
 
+        let mut active: entities::price_list::ActiveModel = price_list.into();
+        active.rule_kind = Set(adjustment_percent.map(|_| "percentage_discount".to_string()));
+        active.adjustment_percent = Set(adjustment_percent);
+        let price_list = active.update(&txn).await?;
+
+        txn.commit().await?;
         Ok(price_list_rule_from_model(&price_list))
     }
 
@@ -1740,19 +1735,27 @@ async fn resolve_active_price_list(
     Ok(price_list)
 }
 
-async fn resolve_active_price_list_tx<C>(
-    db: &C,
+async fn resolve_active_price_list_tx(
+    txn: &DatabaseTransaction,
     tenant_id: Uuid,
     price_list_id: Uuid,
-) -> CommerceResult<entities::price_list::Model>
-where
-    C: sea_orm::ConnectionTrait,
-{
-    let price_list = entities::price_list::Entity::find_by_id(price_list_id)
-        .filter(entities::price_list::Column::TenantId.eq(tenant_id))
-        .one(db)
-        .await?
-        .ok_or_else(|| CommerceError::Validation("price_list_id was not found".to_string()))?;
+) -> CommerceResult<entities::price_list::Model> {
+    let query = entities::price_list::Entity::find_by_id(price_list_id)
+        .filter(entities::price_list::Column::TenantId.eq(tenant_id));
+    let price_list = match txn.get_database_backend() {
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => query.lock_exclusive().one(txn).await?,
+        DatabaseBackend::Sqlite => {
+            let statement = Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE price_lists SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                [tenant_id.into(), price_list_id.into()],
+            );
+            txn.execute(statement).await?;
+            query.one(txn).await?
+        }
+        _ => query.one(txn).await?,
+    }
+    .ok_or_else(|| CommerceError::Validation("price_list_id was not found".to_string()))?;
 
     validate_active_price_list(&price_list)?;
     Ok(price_list)
