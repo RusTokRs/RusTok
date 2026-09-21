@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `173 / 218` components audited (**79%**)
+- **Progress:** `174 / 218` components audited (**80%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -196,7 +196,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [fly-ui](../../crates/ui/fly-ui) | `ui` | 20 | 5,225 | 2026-09-21 17:40 | Audited capability intersection/normalization, command-to-capability mapping, contribution assembly filters, tenant/permission/provider-health policy inputs, palette access, drag/drop legality, keyboard/resize behavior, state-machine mutation gates, save/publish diagnostics, and cleanup/history state. Browser-supplied drop candidates are rechecked for legality before command generation and `command_for_drop` is crate-private; no additional production security, tenant-scope, or concurrency finding remained. |
 | [x] | [leptos-auth](../../crates/ui/leptos-auth) | `ui` | 9 | 1,494 | 2026-09-21 18:10 | Audited SSR/browser auth state, LocalStorage compatibility mode, request-scoped SSR snapshots, first-party Leptos server functions, GraphQL/native auth transport, token refresh/logout/current-user flow, tenant metadata forwarding, protected/guest route guards, and auth error mapping. Client token/tenant values remain transport metadata; authoritative tenant/session identity is established by the auth backend/JWT rather than this UI crate. No additional production security or tenant-scope finding remained. |
 | [x] | [leptos-forms](../../crates/ui/leptos-forms) | `ui` | 5 | 363 | 2026-09-21 18:20 | Audited client-only form state, field registration, validation rules, submit/error state, Leptos rendering and lifecycle; no server/auth/tenant/network/HTML sink exists in this crate, and no additional production security or concurrency finding remained. |
-| [ ] | [leptos-shadcn-pagination](../../crates/ui/leptos-shadcn-pagination) | `ui` | 1 | 98 | None |  |
+| [x] | [leptos-shadcn-pagination](../../crates/ui/leptos-shadcn-pagination) | `ui` | 1 | 98 | 2026-09-21 18:45 | Audited the pagination primitives for navigation URL injection. Fixed a real reusable UI URL-sink by sanitizing PaginationLink/Previous/Next hrefs to allow only relative/hash/query or http(s) URLs and reject executable/opaque schemes, protocol-relative targets, and control characters. |
 | [ ] | [leptos-table](../../crates/ui/leptos-table) | `ui` | 1 | 48 | None |  |
 | [ ] | [leptos-ui](../../crates/ui/leptos-ui) | `ui` | 7 | 503 | None |  |
 | [ ] | [leptos-ui-routing](../../crates/ui/leptos-ui-routing) | `ui` | 1 | 233 | None |  |
