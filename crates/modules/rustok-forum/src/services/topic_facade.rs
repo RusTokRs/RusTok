@@ -120,12 +120,15 @@ impl TopicService {
         context: Option<PortContext>,
         input: CreateTopicCommandInput,
     ) -> ForumResult<TopicResponse> {
-        self.create_audience
-            .require(tenant_id, input.category_id, &security, context)
-            .await?;
         let response = self
             .inner
-            .create_command(tenant_id, security, input)
+            .create_with_audience_authorization(
+                tenant_id,
+                security,
+                context,
+                input,
+                &self.create_audience,
+            )
             .await?;
         require_localized_topic_response(response)
     }
