@@ -4,8 +4,9 @@ use serde_json::Value as JsonValue;
 use crate::TrustedStorefrontChannel;
 
 const PRODUCT_ALLOWED_CHANNEL_SLUGS_PATH: &str = "{channel_visibility,allowed_channel_slugs}";
+const BLOG_ALLOWED_CHANNEL_SLUGS_PATH: &str = "{channel_slugs}";
 
-pub(crate) fn product_channel_visibility_sql(
+pub(crate) fn storefront_channel_visibility_sql(
     entity_type_column: &str,
     payload_column: &str,
     channel: &TrustedStorefrontChannel,
@@ -34,7 +35,7 @@ pub(crate) fn product_channel_visibility_sql(
     )
 }
 
-pub(crate) fn product_payload_visible_for_storefront(
+pub(crate) fn storefront_payload_visible_for_channel(
     payload: &JsonValue,
     channel: &TrustedStorefrontChannel,
 ) -> bool {
