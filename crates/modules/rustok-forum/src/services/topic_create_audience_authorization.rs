@@ -1,5 +1,6 @@
 use rustok_api::{Action, PortContext, Resource};
 use rustok_core::SecurityContext;
+use sea_orm::DatabaseTransaction;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -55,7 +56,33 @@ impl ForumTopicCreateAudienceAuthorizationService {
         enforce_scope(security, Resource::ForumTopics, Action::Create)?;
         let policy =
             load_category_topic_create_audience_policy(&self.db, tenant_id, category_id).await?;
+        self.evaluate_policy(tenant_id, category_id, security, context, policy)
+            .await
+    }
 
+    pub(crate) async fn require_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        security: &SecurityContext,
+        context: Option<PortContext>,
+    ) -> ForumResult<ForumTopicCreateAudienceAuthorization> {
+        enforce_scope(security, Resource::ForumTopics, Action::Create)?;
+        let policy =
+            load_category_topic_create_audience_policy(txn, tenant_id, category_id).await?;
+        self.evaluate_policy(tenant_id, category_id, security, context, policy)
+            .await
+    }
+
+    async fn evaluate_policy(
+        &self,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        security: &SecurityContext,
+        context: Option<PortContext>,
+        policy: super::category_topic_create_audience::ForumCategoryTopicCreateAudiencePolicy,
+    ) -> ForumResult<ForumTopicCreateAudienceAuthorization> {
         let mut evaluated_layers = 0usize;
         let mut last_reason = ForumAudienceDecisionReason::Unrestricted;
         for layer in policy.effective_layers {
