@@ -402,6 +402,11 @@ pub enum DomainEvent {
         target_type: String,
         target_id: Option<Uuid>,
     },
+    /// A polymorphic target was durably deleted by its owning module.
+    TargetDeleted {
+        target_type: String,
+        target_id: Uuid,
+    },
     IndexUpdated {
         index_name: String,
         target_id: Uuid,
@@ -1154,6 +1159,7 @@ impl DomainEvent {
             Self::OrderCancelled { .. } => "order.cancelled",
 
             Self::ReindexRequested { .. } => "index.reindex_requested",
+            Self::TargetDeleted { .. } => "target.deleted",
             Self::IndexUpdated { .. } => "index.updated",
 
             Self::BuildRequested { .. } => "build.requested",
@@ -1384,8 +1390,9 @@ impl DomainEvent {
             Self::OrderCompleted { .. } => 1,
             Self::OrderCancelled { .. } => 1,
 
-            // Index events (v1)
+            // Index/lifecycle events (v1)
             Self::ReindexRequested { .. } => 1,
+            Self::TargetDeleted { .. } => 1,
             Self::IndexUpdated { .. } => 1,
 
             // Build events (v1)
@@ -1913,6 +1920,15 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_empty("target_type", target_type)?;
                 validators::validate_max_length("target_type", target_type, 64)?;
                 validators::validate_optional_uuid("target_id", target_id)?;
+                Ok(())
+            }
+            Self::TargetDeleted {
+                target_type,
+                target_id,
+            } => {
+                validators::validate_not_empty("target_type", target_type)?;
+                validators::validate_max_length("target_type", target_type, 64)?;
+                validators::validate_not_nil_uuid("target_id", target_id)?;
                 Ok(())
             }
             Self::IndexUpdated {
