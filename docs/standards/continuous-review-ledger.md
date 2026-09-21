@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `118 / 218` components audited (**54%**)
+- **Progress:** `119 / 218` components audited (**55%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -34,7 +34,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-mcp](../../apps/next-admin/packages/rustok-mcp) | `apps` | 1 | 1,041 | 2026-09-21 09:42 | Audited MCP control-plane UI and backend token/client management, tool authorization, delegated-user authority, tenant scoping, audit events, one-time token exposure, and scaffold workspace confinement; fixed concurrent token rotation/deactivation by locking the tenant-scoped client row inside the transaction. |
 | [x] | [rustok-product](../../apps/next-admin/packages/rustok-product) | `apps` | 1 | 340 | 2026-09-21 09:48 | Audited the read-only product admin GraphQL adapter: tenantId/token/tenantSlug fail-closed checks, product/variant/price/inventory projections, locale/category/attribute queries, and executor forwarding. No additional production finding. |
 | [x] | [search](../../apps/next-admin/packages/search) | `apps` | 1 | 2,913 | 2026-09-21 09:56 | Audited search control-plane UI plus Rust GraphQL reads/writes: tenant scope resolution, settings/dictionary/rebuild permissions, storefront/admin rate limits, search preview, analytics and projection diagnostics. No additional production security finding. |
-| [ ] | [translation](../../apps/next-admin/packages/translation) | `apps` | 4 | 5,421 | None |  |
+| [x] | [translation](../../apps/next-admin/packages/translation) | `apps` | 4 | 5,421 | 2026-09-21 10:14 | Audited translation admin dispatcher/types and Rust GraphQL/domain boundaries for policy, glossary, memory, workflow, interchange and machine operations; verified tenant-bound PortContext authorization, permission scopes, idempotency receipts, actor binding and revision CAS/transactional writes. No additional production finding. |
 | [ ] | [workflow](../../apps/next-admin/packages/workflow) | `apps` | 10 | 1,393 | None |  |
 | [ ] | [next-frontend](../../apps/next-frontend) | `apps` | 42 | 3,668 | None |  |
 | [ ] | [rustok-blog](../../apps/next-frontend/packages/rustok-blog) | `apps` | 5 | 368 | None |  |
