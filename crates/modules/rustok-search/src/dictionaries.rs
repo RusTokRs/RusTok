@@ -7,7 +7,9 @@ use rustok_core::{Error, Result};
 
 use crate::TrustedStorefrontChannel;
 use crate::engine::{SearchQuery, SearchResult, SearchResultItem};
-use crate::storefront_product_channel_visibility::product_payload_visible_for_storefront;
+use crate::storefront_product_channel_visibility::{
+    blog_payload_visible_for_storefront, product_payload_visible_for_storefront,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SearchSynonymRecord {
@@ -719,14 +721,19 @@ fn pinned_item_matches_query(
     if !query.statuses.is_empty() && !query.statuses.contains(&status) {
         return false;
     }
-    if entity_type == "product"
-        && let Some(channel) = storefront_channel
-    {
+    if let Some(channel) = storefront_channel {
         let payload = match row.try_get::<serde_json::Value>("", "payload") {
             Ok(value) => value,
             Err(_) => return false,
         };
-        if !product_payload_visible_for_storefront(&payload, channel) {
+
+        if entity_type == "product" && !product_payload_visible_for_storefront(&payload, channel) {
+            return false;
+        }
+        if entity_type == "blog_post"
+            && source_module == "blog"
+            && !blog_payload_visible_for_storefront(&payload, channel)
+        {
             return false;
         }
     }
