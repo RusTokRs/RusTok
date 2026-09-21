@@ -312,6 +312,12 @@ impl<'a> SeaOrmInstallerBootstrapPorts<'a> {
         plan: &InstallPlan,
         actor: &str,
     ) -> Result<InstallSeedOutcome, InstallExecutionError> {
+        if plan.environment.is_production() && plan.seed_profile == SeedProfile::Dev {
+            return Err(InstallExecutionError::new(
+                "development seed profile is not allowed for production installations",
+            ));
+        }
+
         let mut enabled_modules = plan.seed_profile.default_enabled_modules();
         enabled_modules.extend(plan.modules.enable.iter().cloned());
         let outcome = rustok_installer::execute_seed_profile(
