@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `93 / 218` components audited (**43%**)
+- **Progress:** `95 / 218` components audited (**44%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -136,8 +136,8 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-order](../../crates/modules/rustok-order) | `modules` | 80 | 18,288 | 2026-09-21 06:20 | Made tenant locale query backend-portable via sea-query, wired ensure_order_schema in tests, fixed order_tax_lines SeaORM entity default_value and test SQL fixtures, verified all 35 tests, clippy clean |
 | [x] | [admin](../../crates/modules/rustok-order/admin) | `modules` | 13 | 1,998 | 2026-09-21 06:20 | Made core and ui modules public in lib.rs, introduced typed OrderCommandError enum for command validation, verified all 12 tests, clippy clean |
 | [x] | [storefront](../../crates/modules/rustok-order/storefront) | `modules` | 11 | 930 | 2026-09-21 06:20 | Verified storefront contracts, error handling and locale resolution, zero suppressions/unwraps, all 5 tests passed, clippy clean |
-| [ ] | [rustok-outbox](../../crates/modules/rustok-outbox) | `modules` | 25 | 4,285 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-outbox/admin) | `modules` | 8 | 493 | None |  |
+| [x] | [rustok-outbox](../../crates/modules/rustok-outbox) | `modules` | 25 | 4,285 | 2026-09-21 06:28 | Verified transactional outbox bus, write-once deduplication, DLQ error routing, SQLite/Postgres relay dispatch, all 37 tests passed, clippy clean |
+| [x] | [admin](../../crates/modules/rustok-outbox/admin) | `modules` | 8 | 493 | 2026-09-21 06:28 | Made core module public in lib.rs, verified typed OutboxTransportError and tenant scope contracts, all tests passed, clippy clean |
 | [ ] | [rustok-page-builder](../../crates/modules/rustok-page-builder) | `modules` | 100 | 27,600 | None |  |
 | [ ] | [rustok-page-builder-storefront](../../crates/modules/rustok-page-builder-storefront) | `modules` | 3 | 1,192 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-page-builder/admin) | `modules` | 69 | 18,637 | None |  |
