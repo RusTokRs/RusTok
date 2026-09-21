@@ -196,6 +196,7 @@ impl EventHandler for SearchIngestionHandler {
             | DomainEvent::BlogPostUpdated { .. }
             | DomainEvent::BlogPostArchived { .. }
             | DomainEvent::BlogPostDeleted { .. }
+            | DomainEvent::UserDeleted { .. }
             | DomainEvent::LocaleEnabled { .. }
             | DomainEvent::LocaleDisabled { .. }
             | DomainEvent::TenantCreated { .. }
@@ -205,8 +206,7 @@ impl EventHandler for SearchIngestionHandler {
             | DomainEvent::ForumTopicStatusChanged { .. }
             | DomainEvent::ForumTopicPinned { .. }
             | DomainEvent::ForumReplyStatusChanged { .. }
-            | DomainEvent::ProfileUpdated { .. }
-            | DomainEvent::UserDeleted { .. } => self.forum_projector.is_some(),
+            | DomainEvent::ProfileUpdated { .. } => self.forum_projector.is_some(),
             DomainEvent::TagAttached { target_type, .. }
             | DomainEvent::TagDetached { target_type, .. } => target_type == "node",
             DomainEvent::TenantModuleToggled { module_slug, .. } => {
@@ -242,6 +242,12 @@ impl EventHandler for SearchIngestionHandler {
         );
 
         async {
+            if let DomainEvent::UserDeleted { user_id } = &envelope.event {
+                self.blog_projector
+                    .upsert_author(envelope.tenant_id, *user_id)
+                    .await?;
+            }
+
             if let Some(scope) = ForumProjectionScope::for_event(&envelope.event)
                 && let Some(inbox) = &self.forum_inbox
             {
@@ -402,6 +408,9 @@ mod tests {
         assert!(handler.handles(&DomainEvent::ProductUpdated {
             product_id: Uuid::new_v4(),
         }));
+        assert!(handler.handles(&DomainEvent::UserDeleted {
+            user_id: Uuid::new_v4(),
+        }));
         assert!(handler.handles(&DomainEvent::ReindexRequested {
             target_type: "search".to_string(),
             target_id: None,
@@ -442,9 +451,7 @@ mod tests {
             handle: "public-author".to_string(),
             locale: Some("en".to_string()),
         }));
-        assert!(!handler.handles(&DomainEvent::UserDeleted {
-            user_id: Uuid::new_v4(),
-        }));
+
     }
 }
 
