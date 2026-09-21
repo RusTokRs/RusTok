@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `183 / 218` components audited (**84%**)
+- **Progress:** `184 / 218` components audited (**84%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -206,7 +206,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-graphql-leptos](../../crates/ui/rustok-graphql-leptos) | `ui` | 1 | 206 | 2026-09-21 20:28 | Audited Leptos GraphQL query/mutation/lazy-query hooks for endpoint/token/tenant forwarding, locale propagation, request lifecycle, and client-side concurrency. Fixed a real stale-response race: parallel or refetched GraphQL requests now carry monotonic request generations, and older responses/errors are ignored instead of overwriting newer state. |
 | [x] | [rustok-ui-auth](../../crates/ui/rustok-ui-auth) | `ui` | 1 | 54 | 2026-09-21 20:48 | Audited shared client auth/session DTOs, expiry policy, error mapping, and serialization/debug boundaries. Fixed a real secret-leak risk by removing derived Debug from AuthSession and redacting both access and refresh tokens in its custom Debug implementation; backend Auth/RBAC remains authoritative. |
 | [x] | [rustok-ui-core](../../crates/ui/rustok-ui-core) | `ui` | 5 | 1,280 | 2026-09-21 21:10 | Audited shared UI DTOs and helpers for CSS/HTML safety, route/query construction, navigation paths, selection/filter state, money formatting, badge/status mapping, and busy-key semantics. CSS inputs are reduced to finite class palettes, query keys use typed/static intents, navigation paths are URL-encoded through the URL API, and no auth/tenant/network authority exists in this crate. No additional production security, tenant-scope, or concurrency finding remained. |
-| [ ] | [rustok-ui-forms](../../crates/ui/rustok-ui-forms) | `ui` | 1 | 75 | None |  |
+| [x] | [rustok-ui-forms](../../crates/ui/rustok-ui-forms) | `ui` | 1 | 75 | 2026-09-21 21:35 | Audited shared form submission state, field-error mapping, status transitions, serialization/debug surfaces, and validation issue conversion; no server/auth/tenant/network/secret boundary exists in this crate and no production security, tenant-scope, or concurrency finding remained. |
 | [ ] | [rustok-ui-i18n](../../crates/ui/rustok-ui-i18n) | `ui` | 26 | 3,489 | None |  |
 | [ ] | [rustok-ui-transport](../../crates/ui/rustok-ui-transport) | `ui` | 1 | 266 | None |  |
 | [ ] | [rustok-build](../../crates/utils/rustok-build) | `utils` | 12 | 2,033 | None |  |
