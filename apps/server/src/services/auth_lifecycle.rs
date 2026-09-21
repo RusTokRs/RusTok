@@ -360,6 +360,48 @@ impl AuthLifecycleService {
         Self::refresh_with_config_db(ctx.db(), config, tenant_id, refresh_token).await
     }
 
+async fn find_refresh_session_for_update_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: uuid::Uuid,
+    token_hash: &str,
+) -> std::result::Result<Option<sessions::Model>, AuthLifecycleError> {
+    let query = sessions::Entity::find()
+        .filter(sessions::Column::TenantId.eq(tenant_id))
+        .filter(sessions::Column::TokenHash.eq(token_hash));
+
+    let session = match txn.get_database_backend() {
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => query
+            .lock_exclusive()
+            .one(txn)
+            .await
+            .map_err(AuthLifecycleError::from)?,
+        DatabaseBackend::Sqlite => {
+            let existing = query
+                .one(txn)
+                .await
+                .map_err(AuthLifecycleError::from)?;
+            if let Some(existing) = existing.as_ref() {
+                let statement = Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND id = ?2 AND token_hash = ?3 AND revoked_at IS NULL",
+                    [
+                        tenant_id.into(),
+                        existing.id.into(),
+                        token_hash.to_string().into(),
+                    ],
+                );
+                txn.execute(statement)
+                    .await
+                    .map_err(AuthLifecycleError::from)?;
+            }
+            existing
+        }
+        _ => query.one(txn).await.map_err(AuthLifecycleError::from)?,
+    };
+
+    Ok(session)
+}
+
     async fn refresh_with_config_db(
         db: &DatabaseConnection,
         config: &AuthConfig,
@@ -367,10 +409,10 @@ impl AuthLifecycleService {
         refresh_token: &str,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
         let token_hash = hash_refresh_token(refresh_token);
+        let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
 
-        let session = sessions::Entity::find_by_token_hash(db, tenant_id, &token_hash)
-            .await
-            .map_err(AuthLifecycleError::from)?
+        let session = find_refresh_session_for_update_in_tx(&txn, tenant_id, &token_hash)
+            .await?
             .ok_or(AuthLifecycleError::InvalidRefreshToken)?;
 
         if !session.is_active() {
@@ -378,7 +420,7 @@ impl AuthLifecycleService {
         }
 
         let user = users::Entity::find_by_id(session.user_id)
-            .one(db)
+            .one(&txn)
             .await
             .map_err(AuthLifecycleError::from)?
             .ok_or(AuthLifecycleError::UserNotFound)?;
@@ -398,11 +440,11 @@ impl AuthLifecycleService {
         session_model.expires_at = Set(expires_at.into());
         session_model.last_used_at = Set(Some(now.into()));
         session_model
-            .update(db)
+            .update(&txn)
             .await
             .map_err(AuthLifecycleError::from)?;
 
-        let effective_role = Self::resolve_effective_role(db, tenant_id, user.id).await?;
+        let effective_role = Self::resolve_effective_role(&txn, tenant_id, user.id).await?;
         let access_token = encode_access_token(
             config,
             user.id,
@@ -411,6 +453,8 @@ impl AuthLifecycleService {
             session_id,
         )
         .map_err(AuthLifecycleError::from)?;
+
+        txn.commit().await.map_err(AuthLifecycleError::from)?;
 
         Ok((
             user,
