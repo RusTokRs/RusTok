@@ -1,10 +1,14 @@
 mod m20260914_000001_create_product_relations;
+mod m20260921_000002_enforce_product_foreign_keys;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
 
 pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![Box::new(m20260914_000001_create_product_relations::Migration)]
+    vec![
+        Box::new(m20260914_000001_create_product_relations::Migration),
+        Box::new(m20260921_000002_enforce_product_foreign_keys::Migration),
+    ]
 }
 
 pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
