@@ -95,12 +95,8 @@ impl TagService {
         input: UpdateTagInput,
     ) -> BlogResult<TagResponse> {
         enforce_scope(&security, Resource::Tags, Action::Update)?;
-        let term = self
-            .find_visible_term(tenant_id, tag_id, PLATFORM_FALLBACK_LOCALE)
-            .await?;
-        ensure_module_owned_term(&term)?;
-
         let locale = normalize_locale(&input.locale)?;
+
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         let term = update_module_term_in_tx(
             &txn,
@@ -136,11 +132,6 @@ impl TagService {
         security: SecurityContext,
     ) -> BlogResult<()> {
         enforce_scope(&security, Resource::Tags, Action::Delete)?;
-        let term = self
-            .find_visible_term(tenant_id, tag_id, PLATFORM_FALLBACK_LOCALE)
-            .await?;
-        ensure_module_owned_term(&term)?;
-
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         lock_module_term_in_tx(
             &txn,
