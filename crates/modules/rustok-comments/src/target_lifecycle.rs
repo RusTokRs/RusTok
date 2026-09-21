@@ -51,21 +51,14 @@ impl EventHandler for CommentTargetDeletionHandler {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
-    use rustok_core::{DomainEvent, EventEnvelope, MigrationSource, UserRole};
+        use rustok_core::{DomainEvent, EventEnvelope, MigrationSource, UserRole};
     use rustok_test_utils::setup_test_db;
-    use sea_orm::{
-        ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set,
-    };
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
     use sea_orm_migration::{MigrationTrait, SchemaManager};
     use uuid::Uuid;
 
     use super::CommentTargetDeletionHandler;
-    use crate::{
-        CommentsModule, CreateCommentInput, CommentsService,
-        migrations,
-    };
+    use crate::{CommentsModule, CreateCommentInput, CommentsService};
 
     async fn setup_comments_db() -> sea_orm::DatabaseConnection {
         let db = setup_test_db().await;
