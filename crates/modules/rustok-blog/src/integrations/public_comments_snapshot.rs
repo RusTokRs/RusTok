@@ -39,6 +39,7 @@ struct PublicCommentsSnapshotIdentity {
     post_id: Uuid,
     requested_locale: String,
     fallback_locale: Option<String>,
+    public_channel_slug: Option<String>,
     page: u64,
     per_page: u64,
 }
@@ -58,6 +59,7 @@ pub async fn list_public_comments_with_snapshot(
     post_id: Uuid,
     requested_locale: &str,
     fallback_locale: Option<&str>,
+    public_channel_slug: Option<&str>,
     page: u64,
     per_page: u64,
 ) -> BlogResult<PublicCommentsRead> {
@@ -68,9 +70,14 @@ pub async fn list_public_comments_with_snapshot(
         post_id,
         requested_locale: requested_locale.to_string(),
         fallback_locale: fallback_locale.map(str::to_string),
+        public_channel_slug: public_channel_slug.map(str::to_string),
         page,
         per_page,
     };
+
+    service
+        .ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
+        .await?;
 
     match service
         .list_for_post_with_locale_fallback(
@@ -101,6 +108,14 @@ pub async fn list_public_comments_with_snapshot(
             let Some(availability) = degraded_availability(&error) else {
                 return Err(error);
             };
+
+            // The live Comments owner may be unavailable, but cached data is only
+            // safe to serve after revalidating the current Blog publication/channel
+            // boundary. This prevents an old snapshot from surviving a post becoming
+            // draft, archived, or hidden from the current storefront channel.
+            service
+                .ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
+                .await?;
 
             if let Some(store) = snapshot_store {
                 let snapshot = load_snapshot_best_effort(store.as_ref(), &identity).await;
@@ -252,6 +267,7 @@ mod tests {
             post_id,
             requested_locale: "fr".to_string(),
             fallback_locale: Some("en".to_string()),
+            public_channel_slug: Some("web".to_string()),
             page,
             per_page: 20,
         }
@@ -282,6 +298,12 @@ mod tests {
         assert_ne!(
             snapshot_key(&identity(tenant_id, post_id, 1)),
             snapshot_key(&identity(Uuid::new_v4(), post_id, 1))
+        );
+        let mut different_channel = identity(tenant_id, post_id, 1);
+        different_channel.public_channel_slug = Some("mobile".to_string());
+        assert_ne!(
+            snapshot_key(&identity(tenant_id, post_id, 1)),
+            snapshot_key(&different_channel)
         );
     }
 

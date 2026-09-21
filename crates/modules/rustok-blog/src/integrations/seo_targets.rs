@@ -13,7 +13,7 @@ use url::Url;
 
 use crate::state_machine::BlogPostStatus;
 use crate::{
-    BlogError, PostListQuery, PostResponse, PostService, PostSortField, PostSortOrder, PostSummary,
+    PostListQuery, PostResponse, PostService, PostSortField, PostSortOrder, PostSummary,
 };
 
 const BULK_FETCH_SIZE: u32 = 48;
@@ -135,17 +135,7 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
             }
 
             for item in page.items {
-                if let Some(summary) = load_post_summary(
-                    &service,
-                    request.tenant_id,
-                    request.locale,
-                    request.default_locale,
-                    item,
-                )
-                .await?
-                {
-                    summaries.push(summary);
-                }
+                summaries.push(map_post_bulk_summary(item));
             }
 
             if page_number >= page.total_pages.max(1) {
@@ -190,16 +180,7 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
             }
 
             for item in page.items {
-                if let Some(candidate) = load_post_sitemap_candidate(
-                    &service,
-                    request.tenant_id,
-                    request.default_locale,
-                    item,
-                )
-                .await?
-                {
-                    candidates.push(candidate);
-                }
+                candidates.push(map_post_sitemap_candidate(item));
             }
 
             if page_number >= page.total_pages.max(1) {
@@ -212,71 +193,24 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
     }
 }
 
-async fn load_post_summary(
-    service: &PostService,
-    tenant_id: uuid::Uuid,
-    locale: &str,
-    default_locale: &str,
-    item: PostSummary,
-) -> AnyResult<Option<SeoBulkSummaryRecord>> {
-    let Some(post) = optional_post(
-        service
-            .get_post_with_locale_fallback(
-                tenant_id,
-                SecurityContext::system(),
-                item.id,
-                locale,
-                Some(default_locale),
-            )
-            .await,
-    )?
-    else {
-        return Ok(None);
-    };
-    let mapped = map_post_response(post);
-    Ok(Some(SeoBulkSummaryRecord {
-        target_kind: mapped.target_kind,
-        target_id: mapped.target_id,
-        effective_locale: mapped.effective_locale,
-        label: mapped.title,
-        route: mapped.canonical_route,
-    }))
+fn map_post_bulk_summary(item: PostSummary) -> SeoBulkSummaryRecord {
+    SeoBulkSummaryRecord {
+        target_kind: SeoTargetSlug::new(builtin_slug::BLOG_POST)
+            .expect("builtin SEO target slug must stay valid"),
+        target_id: item.id,
+        effective_locale: item.effective_locale,
+        label: item.title,
+        route: format!("/modules/blog?slug={}", item.slug),
+    }
 }
 
-async fn load_post_sitemap_candidate(
-    service: &PostService,
-    tenant_id: uuid::Uuid,
-    default_locale: &str,
-    item: PostSummary,
-) -> AnyResult<Option<SeoSitemapCandidateRecord>> {
-    let Some(post) = optional_post(
-        service
-            .get_post_with_locale_fallback(
-                tenant_id,
-                SecurityContext::system(),
-                item.id,
-                default_locale,
-                Some(default_locale),
-            )
-            .await,
-    )?
-    else {
-        return Ok(None);
-    };
-    let mapped = map_post_response(post);
-    Ok(Some(SeoSitemapCandidateRecord {
-        target_kind: mapped.target_kind,
-        target_id: mapped.target_id,
-        locale: mapped.effective_locale,
-        route: mapped.canonical_route,
-    }))
-}
-
-fn optional_post(result: crate::BlogResult<PostResponse>) -> AnyResult<Option<PostResponse>> {
-    match result {
-        Ok(post) => Ok(Some(post)),
-        Err(BlogError::PostNotFound(_)) => Ok(None),
-        Err(error) => Err(anyhow::Error::new(error)),
+fn map_post_sitemap_candidate(item: PostSummary) -> SeoSitemapCandidateRecord {
+    SeoSitemapCandidateRecord {
+        target_kind: SeoTargetSlug::new(builtin_slug::BLOG_POST)
+            .expect("builtin SEO target slug must stay valid"),
+        target_id: item.id,
+        locale: item.effective_locale,
+        route: format!("/modules/blog?slug={}", item.slug),
     }
 }
 

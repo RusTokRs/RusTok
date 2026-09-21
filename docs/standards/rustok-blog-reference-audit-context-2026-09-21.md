@@ -2,8 +2,7 @@
 
 Status: active engineering audit
 Repository: `RusTokRs/RusTok`
-Fresh `main` snapshot: `fce141df0746c836e9af2a06a72dd5d2bae04553`
-Snapshot commit time: `2026-09-21T06:17:16Z`
+Fresh `main` snapshot: `90ebb9ac6394be4ad580f77cd79c205074ba6efb`
 Review ledger at snapshot: `125 / 218` components audited
 
 ## Purpose
@@ -85,184 +84,21 @@ boundary. See finding #4102 below.
 Do not recreate the retired Blog Category Translation provider or its deleted
 PostgreSQL harness merely because historical slice-98 text mentions it.
 
-## Confirmed open findings
+## Source-fixed findings
 
-### #4102 — generic Taxonomy Translation bypasses module-owned term authorization
+All findings below have source fixes directly committed to `main`. Their GitHub issues may
+remain open until runtime validation/maintainer closure.
 
-Scope:
-- `crates/modules/rustok-taxonomy/src/translation_target.rs`
-- Taxonomy service exact-translation write path
-- Blog-owned module-scoped Taxonomy terms, including Blog tags/categories
-
-Confirmed behavior:
-- `TaxonomyTranslationTargetProvider` is registered for `taxonomy/term`.
-- `list_resources` is tenant-scoped but does not exclude module-owned terms.
-- `parse_identity` validates only the generic Taxonomy term identity shape.
-- `apply_patch` authorizes `Resource::Taxonomy` / `taxonomy:update`.
-- `apply_exact_translation_in_tx` performs tenant/revision checks but does not require
-  owner-module authorization for a module-scoped term.
-- Therefore a module-owned Blog term can be translated through generic Translation
-  without Blog Tags/Category authorization and without Blog-specific projection side
-  effects such as reindex publication.
-
-Why it matters:
-- breaks owner-boundary semantics;
-- creates a path around Blog resource permissions;
-- can leave Blog Search stale after a successful owner-data mutation.
-
-Expected direction:
-- add an explicit owner authorization/capability hook at the Taxonomy Translation
-  boundary;
-- keep owner-specific side effects with the owner;
-- do not hard-code Blog checks into Translation.
-
-### #4103 — Blog lifecycle existence probes still depend on fallback locale
-
-Scope:
-- `crates/modules/rustok-blog/src/services/tag.rs`
-- `crates/modules/rustok-blog/src/services/category.rs`
-- Taxonomy owner-read helpers
-
-Confirmed behavior:
-- Tag update/delete preflight probes use `PLATFORM_FALLBACK_LOCALE`.
-- Category existence validation similarly uses a localized owner reader with the
-  platform fallback locale.
-- A valid module-owned term/category that exists only in a non-English locale can
-  therefore appear missing during locale-neutral lifecycle commands.
-
-Expected direction:
-- identity/ownership checks must be locale-independent;
-- localized presentation may use request/default locale;
-- lifecycle authorization must use tenant + kind + module scope + term_id, not
-  translation presence in a particular locale.
-
-### #4099 — Blog is missing its hard Profiles module dependency
-
-Scope:
-- `crates/modules/rustok-blog/Cargo.toml`
-- `crates/modules/rustok-blog/rustok-module.toml`
-- `crates/modules/rustok-blog/src/module.rs`
-- Blog GraphQL author/profile loading
-- `crates/modules/rustok-modules/src/policy.rs`
-
-Confirmed behavior:
-- Blog directly depends on `rustok-profiles`.
-- Blog GraphQL uses ProfileService / ProfileSummaryLoader / ProfilesReader.
-- The module manifest and `BlogModule::dependencies()` omit `profiles`.
-- Module enable/disable policy relies on declared dependency topology.
-
-Expected direction:
-- declare `profiles >=0.1.0` in the Blog module dependency contract;
-- add `profiles` to `BlogModule::dependencies()`;
-- update the corresponding metadata contract test.
-
-### #4090 — hard-deleted Blog posts leave orphaned Comments threads
-
-Scope:
-- Blog post hard delete
-- `rustok-comments` polymorphic thread ownership
-
-Confirmed behavior:
-- Blog hard-deletes non-published posts and publishes `BlogPostDeleted`.
-- Comments threads are keyed by tenant + target type + target id without an FK to the
-  Blog post.
-- Comments has no target-deletion lifecycle cleanup path.
-- The orphaned thread/comment state remains after the Blog post disappears.
-
-Expected direction:
-- owner-side target lifecycle cleanup in Comments;
-- generic source lifecycle contract preferred;
-- cleanup must be tenant/source/kind/subject scoped and replay/idempotent.
-
-### #4094 — hard-deleted Blog posts leave orphaned Reactions subject state
-
-Scope:
-- Blog post deletion
-- Reactions subject/catalog/actor/aggregate state
-
-Confirmed behavior:
-- Reactions stores subject state independently of Blog posts.
-- Blog post hard-delete emits `BlogPostDeleted`.
-- Reactions currently has no corresponding source-subject cleanup lifecycle.
-
-Expected direction:
-- Reactions-owned cleanup driven by the authoritative source deletion lifecycle;
-- do not let Blog issue direct DELETE statements against Reactions tables.
-
-### #4095 — Blog Search author projection is stale after user name changes
-
-Scope:
-- Blog Search projection
-- user update lifecycle
-
-Confirmed behavior:
-- Blog search documents materialize `users.name` as `payload.author_name` and in
-  searchable text.
-- The canonical user update path does not emit `UserUpdated` for the relevant change.
-- Search ingestion has no independent `UserUpdated` -> Blog author reindex path.
-
-Expected direction:
-- publish `UserUpdated` transactionally;
-- perform targeted Blog author reindex;
-- rebuild full affected Blog search documents so the DB search vector is refreshed.
-
-### #4097 — deactivated Blog authors remain in public Search projection
-
-Scope:
-- Blog Search author materialization
-- account deactivation lifecycle
-
-Confirmed behavior:
-- account deactivation retains the users row;
-- Blog Search joins `users` and materializes the retained name;
-- the Blog projection path needs an independent handling of `UserDeleted` / deactivation
-  semantics to redact the public author presentation.
-
-Current related work:
-- draft PR #4098 proposes the source-level fix but is not merged.
-
-### #4091 — Blog channel visibility is not enforced by storefront Search filtering
-
-Scope:
-- Blog Search documents contain channel visibility facets;
-- storefront Search channel filtering is implemented by a helper scoped to product
-  documents.
-
-Expected direction:
-- enforce Blog channel visibility in the Search owner/query path;
-- keep server-side filtering authoritative.
-
-### #4089 — CommentsThreadPort durable idempotency is incomplete
-
-Scope:
-- `rustok-comments` write contract
-- Blog FBA Comments integration
-
-Confirmed behavior:
-- the contract requires durable idempotency for write operations;
-- Blog provides a stable `CreateCommentInput.command_id`;
-- Comments does not currently persist/deduplicate that write identity;
-- nonce/delegation replay protection is not equivalent to durable command idempotency.
-
-Expected direction:
-- durable owner-scoped idempotency receipt or equivalent owner storage;
-- identical command + payload replays the original result;
-- concurrent duplicates execute once;
-- same key with different payload conflicts.
-
-## Open draft fixes that are not in main
-
-PR #4087:
-- `fix(blog): avoid system reread in public SEO listing`
-- open draft;
-- not merged into current `main`.
-
-PR #4098:
-- `fix(search): redact deactivated Blog authors from public search`
-- open draft;
-- not merged into current `main`.
-
-Do not treat either PR as part of the current production code until merged.
+- #4102 — Taxonomy Translation owner boundary — fixed by `0ffa5a104fd6e21896fbd764849083701ffc9518`.
+- #4103 — Tag locale-independent lifecycle — fixed by `8ccbbba5f036c74849f8ac91015ffd161755236e`.
+  Category half was rechecked and is not currently reproduced as an identity defect.
+- #4099 — Profiles hard dependency — fixed by `288861490f48ea582020258e13847c68f5d17b03` and `bd6c62634300fc7bbae6e33dcd7b728bab47eea8`.
+- #4090 — Comments target cleanup — fixed by `d5793857266cecd289d7dcfcff49069d76e7f050`.
+- #4094 — Reactions subject cleanup — fixed by `ca60ad4bdb40e2728accc70fa9630ca1b311f95e` and corrective wiring `a940938094b2fee2f3b6064f7f2b43cc695ca3f2`.
+- #4095/#4097 — Blog author Search freshness/redaction — fixed by `c446dc32f25798b6bfc3a57c416406a9963cd731` and `794bfdc455ac03b7312bfa8c7f53f92f591412e9`.
+- #4091 — Blog channel visibility in storefront Search — fixed by `8ad2a7e9df45f231efa19fac1a66f4451d39d2a5`.
+- #4089 — durable Comments port idempotency — fixed by `bb95cb78a91caffc83f3c21ffc4123e3e7b2a759` and corrective error mapping `1d52ee7bc24d133361379f615430e94dfd7012aa`.
+- #4087 — Blog SEO public listing system reread — fixed by `90ebb9ac6394be4ad580f77cd79c205074ba6efb`.
 
 ## Current important source paths
 

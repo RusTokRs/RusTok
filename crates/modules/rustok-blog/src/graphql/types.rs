@@ -195,6 +195,7 @@ impl GqlPost {
             self.id,
             requested_locale.as_str(),
             Some(fallback_locale),
+            super::query::public_channel_slug(ctx).as_deref(),
             page.unwrap_or(1),
             per_page.unwrap_or(20),
         )

@@ -1,4 +1,8 @@
 use crate::error::Error;
+use rustok_core::events::EventTransport;
+use rustok_events::DomainEvent;
+use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+
 use chrono::{Duration, Utc};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
@@ -12,7 +16,7 @@ use crate::auth::{
 use crate::context::infer_user_role_from_permissions;
 use crate::models::{sessions, users};
 use crate::services::server_runtime_context::ServerRuntimeContext;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
 
 use super::rbac_service::RbacService;
 
@@ -242,27 +246,54 @@ impl AuthLifecycleService {
         user_id: uuid::Uuid,
         name: Option<String>,
     ) -> std::result::Result<users::Model, AuthLifecycleError> {
+        let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
         let user = users::Entity::find_by_id(user_id)
             .filter(users::Column::TenantId.eq(tenant_id))
-            .one(db)
+            .lock_exclusive()
+            .one(&tx)
             .await
             .map_err(AuthLifecycleError::from)?
             .ok_or(AuthLifecycleError::UserNotFound)?;
 
-        let mut user_active: users::ActiveModel = user.into();
-        if let Some(name) = name {
-            let normalized = if name.trim().is_empty() {
+        let next_name = name.map(|value| {
+            let normalized = value.trim().to_string();
+            if normalized.is_empty() {
                 None
             } else {
-                Some(name.trim().to_string())
-            };
-            user_active.name = Set(normalized);
+                Some(normalized)
+            }
+        });
+        let name_changed = next_name
+            .as_ref()
+            .is_some_and(|next| user.name != *next);
+
+        let mut user_active: users::ActiveModel = user.into();
+        if let Some(next_name) = next_name {
+            user_active.name = Set(next_name);
         }
 
-        user_active
-            .update(db)
+        let updated = user_active
+            .update(&tx)
             .await
-            .map_err(AuthLifecycleError::from)
+            .map_err(AuthLifecycleError::from)?;
+
+        if name_changed {
+            let event_bus = TransactionalEventBus::new(
+                Arc::new(OutboxTransport::new(db.clone())) as Arc<dyn EventTransport>
+            );
+            event_bus
+                .publish_in_tx(
+                    &tx,
+                    tenant_id,
+                    Some(user_id),
+                    DomainEvent::UserUpdated { user_id },
+                )
+                .await
+                .map_err(|error| AuthLifecycleError::Internal(error.into()))?;
+        }
+
+        tx.commit().await.map_err(AuthLifecycleError::from)?;
+        Ok(updated)
     }
 
     pub async fn register_runtime(
