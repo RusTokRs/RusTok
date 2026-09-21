@@ -24,116 +24,19 @@ impl ReplyService {
         topic_id: Uuid,
         input: CreateReplyCommandInput,
     ) -> ForumResult<ReplyResponse> {
-        let (input, quote_inputs) = input.into_parts();
-        enforce_scope(&security, Resource::ForumReplies, Action::Create)?;
-        let locale = normalize_locale(&input.locale)?;
-        let document = crate::richtext::normalize_discussion(input.content)?;
-        let stored_body = crate::richtext::serialize_discussion(document.clone())?;
-        let reply_id = Uuid::new_v4();
-        let quotes = super::relation_quote_input::normalize_quote_inputs(quote_inputs)?;
-        let prepared_relations = self
-            .relations
-            .prepare(
-                tenant_id,
-                ForumContentTarget::reply(reply_id),
-                &locale,
-                &document,
-                &security,
-                quotes,
-            )
-            .await?;
-
-        let txn = self.db.begin().await?;
-        let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
-        match topic.status {
-            TopicStatus::Closed => return Err(ForumError::TopicClosed),
-            TopicStatus::Archived => return Err(ForumError::TopicArchived),
-            TopicStatus::Open => {}
-        }
-        if topic.is_locked {
-            return Err(ForumError::TopicLocked);
-        }
-
-        let category =
-            CategoryService::find_category_for_update_in_tx(&txn, tenant_id, topic.category_id)
-                .await?;
-
-        if let Some(parent_reply_id) = input.parent_reply_id {
-            let parent =
-                reply::ReplyService::find_reply_in_tx(&txn, tenant_id, parent_reply_id).await?;
-            if parent.topic_id != topic_id {
-                return Err(ForumError::Validation(
-                    "Parent reply belongs to another topic".to_string(),
-                ));
-            }
-            if parent.status == ReplyStatus::Deleted {
-                return Err(ForumError::Validation(
-                    "Deleted reply cannot be used as a parent".to_string(),
-                ));
-            }
-        }
-
-        let position = allocate_reply_position_in_tx(&txn, tenant_id, topic_id).await?;
-        let status = if category.moderated {
-            ReplyStatus::Pending
-        } else {
-            ReplyStatus::Approved
-        };
-        let now = Utc::now();
-
-        forum_reply::ActiveModel {
-            id: Set(reply_id),
-            tenant_id: Set(tenant_id),
-            topic_id: Set(topic_id),
-            author_id: Set(security.user_id),
-            parent_reply_id: Set(input.parent_reply_id),
-            status: Set(status),
-            position: Set(position),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-        }
-        .insert(&txn)
-        .await?;
-
-        forum_reply_body::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            reply_id: Set(reply_id),
-            tenant_id: Set(tenant_id),
-            locale: Set(locale.clone()),
-            body: Set(stored_body),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-        }
-        .insert(&txn)
-        .await?;
-
-        self.relations
-            .persist_in_tx(&txn, prepared_relations)
-            .await?;
-
-        if status == ReplyStatus::Approved {
-            TopicService::adjust_reply_count_in_tx(&txn, tenant_id, topic_id, 1).await?;
-            CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 0, 1)
-                .await?;
-            UserStatsService::adjust_reply_count_in_tx(&txn, tenant_id, security.user_id, 1)
-                .await?;
-
-            self.event_bus
-                .publish_in_tx(
-                    &txn,
-                    tenant_id,
-                    security.user_id,
-                    DomainEvent::ForumTopicReplied {
-                        topic_id,
-                        reply_id,
-                        author_id: security.user_id,
-                    },
-                )
-                .await?;
-        }
-
-        txn.commit().await?;
-        self.inner.get(tenant_id, security, reply_id, &locale).await
+        let create_audience =
+            ForumReplyCreateAudienceAuthorizationService::without_facts_provider(
+                self.db.clone(),
+            );
+        self.create_command_with_audience_authorization(
+            tenant_id,
+            security,
+            topic_id,
+            None,
+            input,
+            &create_audience,
+        )
+        .await
     }
 
     pub(crate) async fn create_command_with_audience_authorization(
