@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `160 / 218` components audited (**73%**)
+- **Progress:** `161 / 218` components audited (**74%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -183,7 +183,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-social-graph-cli](../../crates/modules/rustok-social-graph-cli) | `modules` | 1 | 324 | 2026-09-21 12:52 | Audited the owner-local receipt-cleanup command, explicit tenant/retention/limit parsing, system-actor PortContext, idempotency scope, runtime DB boundary, and delegation to the backend maintenance port; no additional production security, tenant-scope, or concurrency finding remained. |
 | [x] | [rustok-tax](../../crates/modules/rustok-tax) | `modules` | 5 | 1,586 | 2026-09-21 13:00 | Audited the transport-neutral tax calculation port, policy admission, tenant/channel context handling, provider selection, currency/rate validation, taxable-target binding, result invariants, and decimal tax calculation; no additional production security, tenant-scope, or concurrency finding remained. |
 | [x] | [rustok-taxonomy](../../crates/modules/rustok-taxonomy) | `modules` | 51 | 13,035 | 2026-09-21 13:18 | Audited taxonomy term/category CRUD, module-owner mutations, hierarchy locks and DB guards, route-key uniqueness/reconciliation, translation target authorization, category presentation/media ownership, revision/CAS paths, and cross-tenant auxiliary reads; fixed tenant-scoped translation/alias batch reads in TaxonomyService. No additional production security, tenant-scope, or concurrency finding remained. |
-| [ ] | [rustok-tenant](../../crates/modules/rustok-tenant) | `modules` | 28 | 3,836 | None |  |
+| [x] | [rustok-tenant](../../crates/modules/rustok-tenant) | `modules` | 28 | 3,836 | 2026-09-21 13:34 | Audited tenant lifecycle, bootstrap idempotency, slug/domain uniqueness, host-owned tenant resolution, tenant cache keys/invalidation boundaries, locale-policy CAS/idempotency, module read projections, settings schema limits, and admin auth/tenant/permission checks; no additional production security, tenant-scope, or concurrency finding remained. `TenantReadPort` arbitrary selector semantics are intentional for the host-owned pre-context resolver. |
 | [ ] | [admin](../../crates/modules/rustok-tenant/admin) | `modules` | 8 | 726 | None |  |
 | [ ] | [rustok-translation](../../crates/modules/rustok-translation) | `modules` | 76 | 45,087 | None |  |
 | [ ] | [rustok-translation-targets](../../crates/modules/rustok-translation-targets) | `modules` | 3 | 1,729 | None |  |
