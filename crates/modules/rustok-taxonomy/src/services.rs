@@ -692,7 +692,7 @@ impl TaxonomyService {
             .filter(taxonomy_term::Column::Id.is_in(term_ids.to_vec()))
             .all(&self.db)
             .await?;
-        let translations_by_term = self.load_translations_map(term_ids).await?;
+        let translations_by_term = self.load_translations_map(tenant_id, term_ids).await?;
         let mut names = HashMap::new();
         for term in terms {
             let translations = translations_by_term
