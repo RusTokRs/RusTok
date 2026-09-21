@@ -118,7 +118,7 @@ mod tests {
         assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
         assert_eq!(
             module.dependencies(),
-            &["content", "comments", "taxonomy", "outbox", "channel"]
+            &["content", "comments", "taxonomy", "outbox", "channel", "profiles"]
         );
     }
 
