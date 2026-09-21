@@ -34,6 +34,10 @@ impl SeoService {
     async fn execute_next_bulk_job_only_with_bounded_io(
         &self,
     ) -> SeoResult<Option<SeoBulkJobRecord>> {
+        const JOB_LEASE_SECS: i64 = 30 * 60;
+        let now = Utc::now().fixed_offset();
+        let stale_before = now - chrono::Duration::seconds(JOB_LEASE_SECS);
+
         let running = seo_bulk_job::Entity::find()
             .filter(seo_bulk_job::Column::Status.eq(SeoBulkJobStatus::Running.as_str()))
             .filter(seo_bulk_job::Column::OperationKind.is_in([
@@ -46,7 +50,29 @@ impl SeoService {
             .await?;
 
         let running = if let Some(job) = running {
-            job
+            if job.updated_at > stale_before {
+                return Ok(None);
+            }
+
+            let claimed = seo_bulk_job::Entity::update_many()
+                .col_expr(
+                    seo_bulk_job::Column::UpdatedAt,
+                    sea_orm::sea_query::Expr::value(now),
+                )
+                .filter(seo_bulk_job::Column::Id.eq(job.id))
+                .filter(seo_bulk_job::Column::Status.eq(SeoBulkJobStatus::Running.as_str()))
+                .filter(seo_bulk_job::Column::UpdatedAt.lte(stale_before))
+                .exec(&self.db)
+                .await?;
+
+            if claimed.rows_affected != 1 {
+                return Ok(None);
+            }
+
+            seo_bulk_job::Entity::find_by_id(job.id)
+                .one(&self.db)
+                .await?
+                .ok_or(SeoError::NotFound)?
         } else {
             let Some(job) = seo_bulk_job::Entity::find()
                 .filter(seo_bulk_job::Column::Status.eq(SeoBulkJobStatus::Queued.as_str()))
@@ -57,13 +83,32 @@ impl SeoService {
                 return Ok(None);
             };
 
-            let now = Utc::now().fixed_offset();
-            let mut active: seo_bulk_job::ActiveModel = job.into();
-            active.status = Set(SeoBulkJobStatus::Running.as_str().to_string());
-            active.started_at = Set(Some(now));
-            active.updated_at = Set(now);
-            active.last_error = Set(None);
-            active.update(&self.db).await?
+            let claimed = seo_bulk_job::Entity::update_many()
+                .col_expr(
+                    seo_bulk_job::Column::Status,
+                    sea_orm::sea_query::Expr::value(SeoBulkJobStatus::Running.as_str()),
+                )
+                .col_expr(
+                    seo_bulk_job::Column::StartedAt,
+                    sea_orm::sea_query::Expr::value(Some(now)),
+                )
+                .col_expr(
+                    seo_bulk_job::Column::UpdatedAt,
+                    sea_orm::sea_query::Expr::value(now),
+                )
+                .filter(seo_bulk_job::Column::Id.eq(job.id))
+                .filter(seo_bulk_job::Column::Status.eq(SeoBulkJobStatus::Queued.as_str()))
+                .exec(&self.db)
+                .await?;
+
+            if claimed.rows_affected != 1 {
+                return Ok(None);
+            }
+
+            seo_bulk_job::Entity::find_by_id(job.id)
+                .one(&self.db)
+                .await?
+                .ok_or(SeoError::NotFound)?
         };
 
         let result = match SeoBulkJobOperationKind::parse(running.operation_kind.as_str()) {
