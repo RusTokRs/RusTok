@@ -1,5 +1,55 @@
 use super::*;
-use sea_orm::{DatabaseTransaction, FromQueryResult};
+use sea_orm::{DatabaseBackend, DatabaseTransaction, FromQueryResult};
+
+async fn find_product_for_update_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    product_id: Uuid,
+) -> CommerceResult<entities::product::Model> {
+    let query = entities::product::Entity::find_by_id(product_id)
+        .filter(entities::product::Column::TenantId.eq(tenant_id));
+    let product = match txn.get_database_backend() {
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => {
+            query.lock_exclusive().one(txn).await?
+        }
+        DatabaseBackend::Sqlite => {
+            let statement = sea_orm::Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE products SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                [tenant_id.into(), product_id.into()],
+            );
+            txn.execute(statement).await?;
+            query.one(txn).await?
+        }
+        _ => query.one(txn).await?,
+    };
+    product.ok_or(CommerceError::ProductNotFound(product_id))
+}
+
+async fn find_variant_for_update_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    variant_id: Uuid,
+) -> CommerceResult<entities::product_variant::Model> {
+    let query = entities::product_variant::Entity::find_by_id(variant_id)
+        .filter(entities::product_variant::Column::TenantId.eq(tenant_id));
+    let variant = match txn.get_database_backend() {
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => {
+            query.lock_exclusive().one(txn).await?
+        }
+        DatabaseBackend::Sqlite => {
+            let statement = sea_orm::Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE product_variants SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                [tenant_id.into(), variant_id.into()],
+            );
+            txn.execute(statement).await?;
+            query.one(txn).await?
+        }
+        _ => query.one(txn).await?,
+    };
+    variant.ok_or(CommerceError::VariantNotFound(variant_id))
+}
 
 impl CatalogService {
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id))]
@@ -580,11 +630,7 @@ impl CatalogService {
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
-        let product = entities::product::Entity::find_by_id(product_id)
-            .filter(entities::product::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(CommerceError::ProductNotFound(product_id))?;
+        let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
 
         let mut product_active: entities::product::ActiveModel = product.into();
         product_active.status = Set(entities::product::ProductStatus::Draft);
@@ -615,11 +661,7 @@ impl CatalogService {
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
-        let product = entities::product::Entity::find_by_id(product_id)
-            .filter(entities::product::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(CommerceError::ProductNotFound(product_id))?;
+        let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
 
         if product.status == entities::product::ProductStatus::Active {
             warn!(product_id = %product_id, "Cannot delete published product");
@@ -733,11 +775,7 @@ impl CatalogService {
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
-        let _product = entities::product::Entity::find_by_id(product_id)
-            .filter(entities::product::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(CommerceError::ProductNotFound(product_id))?;
+        let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
 
         let existing_locales = entities::product_translation::Entity::find()
             .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
@@ -880,11 +918,7 @@ impl CatalogService {
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
-        let variant = entities::product_variant::Entity::find_by_id(variant_id)
-            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(CommerceError::VariantNotFound(variant_id))?;
+        let variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
 
         let product_id = variant.product_id;
         let mut active: entities::product_variant::ActiveModel = variant.into();
@@ -1037,11 +1071,7 @@ impl CatalogService {
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
-        let variant = entities::product_variant::Entity::find_by_id(variant_id)
-            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(CommerceError::VariantNotFound(variant_id))?;
+        let variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
 
         let product_id = variant.product_id;
 
@@ -1098,11 +1128,7 @@ impl CatalogService {
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
-        let _product = entities::product::Entity::find_by_id(product_id)
-            .filter(entities::product::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(CommerceError::ProductNotFound(product_id))?;
+        let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
 
         let position = match input.position {
             Some(pos) => pos,
@@ -1186,11 +1212,7 @@ impl CatalogService {
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
-        let _product = entities::product::Entity::find_by_id(product_id)
-            .filter(entities::product::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(CommerceError::ProductNotFound(product_id))?;
+        let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
 
         let image = entities::product_image::Entity::find_by_id(image_id)
             .filter(entities::product_image::Column::ProductId.eq(product_id))
@@ -1281,11 +1303,7 @@ impl CatalogService {
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
-        let _product = entities::product::Entity::find_by_id(product_id)
-            .filter(entities::product::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(CommerceError::ProductNotFound(product_id))?;
+        let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
 
         let _image = entities::product_image::Entity::find_by_id(image_id)
             .filter(entities::product_image::Column::ProductId.eq(product_id))
@@ -1332,11 +1350,7 @@ impl CatalogService {
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
-        let _product = entities::product::Entity::find_by_id(product_id)
-            .filter(entities::product::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(CommerceError::ProductNotFound(product_id))?;
+        let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
 
         for (pos, image_id) in image_ids.into_iter().enumerate() {
             let image = entities::product_image::Entity::find_by_id(image_id)
@@ -1380,11 +1394,7 @@ impl CatalogService {
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
-        let _product = entities::product::Entity::find_by_id(product_id)
-            .filter(entities::product::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(CommerceError::ProductNotFound(product_id))?;
+        let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
 
         let existing_variants = entities::product_variant::Entity::find()
             .filter(entities::product_variant::Column::ProductId.eq(product_id))
