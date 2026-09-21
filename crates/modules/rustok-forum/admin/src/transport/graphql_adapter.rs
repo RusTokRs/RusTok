@@ -19,12 +19,14 @@ const UPDATE_CATEGORY_MUTATION: &str = "mutation ForumAdminUpdateCategory($id: U
 const MOVE_CATEGORY_MUTATION: &str = "mutation ForumAdminMoveCategory($categoryId: UUID!, $input: MoveForumCategoryInput!) { moveForumCategory(categoryId: $categoryId, input: $input) { moved { id } } }";
 const DELETE_CATEGORY_MUTATION: &str =
     "mutation ForumAdminDeleteCategory($id: UUID!) { deleteForumCategory(id: $id) }";
-const TOPICS_QUERY: &str = "query ForumAdminTopics($categoryId: UUID, $locale: String, $pagination: PaginationInput) { forumTopics(categoryId: $categoryId, locale: $locale, pagination: $pagination) { total items { id locale effective_locale: effectiveLocale category_id: categoryId author_id: authorId title slug status is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt } } }";
-const TOPIC_QUERY: &str = "query ForumAdminTopic($id: UUID!, $locale: String) { forumTopic(id: $id, locale: $locale) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales category_id: categoryId author_id: authorId title slug body { document html } body_plain_text: bodyPlainText status tags is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt updated_at: updatedAt } }";
+const TOPICS_QUERY: &str = "query ForumAdminTopics($categoryId: UUID, $locale: String, $pagination: PaginationInput) { forumTopics(categoryId: $categoryId, locale: $locale, pagination: $pagination) { total items { id locale effective_locale: effectiveLocale category_id: categoryId author_id: authorId title slug status is_deleted: isDeleted is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt } } }";
+const TOPIC_QUERY: &str = "query ForumAdminTopic($id: UUID!, $locale: String) { forumTopic(id: $id, locale: $locale) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales category_id: categoryId author_id: authorId title slug body { document html } body_plain_text: bodyPlainText status is_deleted: isDeleted tags is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt updated_at: updatedAt } }";
 const CREATE_TOPIC_MUTATION: &str = "mutation ForumAdminCreateTopic($input: CreateForumTopicInput!) { createForumTopic(input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales category_id: categoryId author_id: authorId title slug body { document html } body_plain_text: bodyPlainText status tags is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt updated_at: updatedAt } }";
 const UPDATE_TOPIC_MUTATION: &str = "mutation ForumAdminUpdateTopic($id: UUID!, $input: UpdateForumTopicInput!) { updateForumTopic(id: $id, input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales category_id: categoryId author_id: authorId title slug body { document html } body_plain_text: bodyPlainText status tags is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt updated_at: updatedAt } }";
 const DELETE_TOPIC_MUTATION: &str =
     "mutation ForumAdminDeleteTopic($id: UUID!) { deleteForumTopic(id: $id) }";
+const RESTORE_TOPIC_MUTATION: &str =
+    "mutation ForumAdminRestoreTopic($id: UUID!) { restoreForumTopic(id: $id) }";
 const REPLIES_QUERY: &str = "query ForumAdminReplies($topicId: UUID!, $locale: String, $pagination: PaginationInput) { forumReplies(topicId: $topicId, locale: $locale, pagination: $pagination) { total items { id locale effective_locale: effectiveLocale topic_id: topicId author_id: authorId content_preview: contentPlainText status parent_reply_id: parentReplyId created_at: createdAt } } }";
 const CREATE_REPLY_MUTATION: &str = "mutation ForumAdminCreateReply($topicId: UUID!, $input: CreateForumReplyInput!) { createForumReply(topicId: $topicId, input: $input) { id locale effective_locale: effectiveLocale topic_id: topicId author_id: authorId content_preview: contentPlainText status parent_reply_id: parentReplyId created_at: createdAt } }";
 
@@ -80,6 +82,12 @@ struct UpdateTopicResponse {
 struct DeleteTopicResponse {
     #[serde(rename = "deleteForumTopic")]
     delete_forum_topic: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct RestoreTopicResponse {
+    #[serde(rename = "restoreForumTopic")]
+    restore_forum_topic: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -473,6 +481,25 @@ pub async fn delete_topic(
         Ok(())
     } else {
         Err("Forum topic delete returned false".to_string())
+    }
+}
+
+pub async fn restore_topic(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<(), ApiError> {
+    let response: RestoreTopicResponse = request(
+        RESTORE_TOPIC_MUTATION,
+        IdVariables { id },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    if response.restore_forum_topic {
+        Ok(())
+    } else {
+        Err("Forum topic restore returned false".to_string())
     }
 }
 
