@@ -667,9 +667,20 @@ async fn validate_active_price_list_for_rule_update(
 ) -> Result<(), ServerFnError> {
     use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 
-    let row = db
-        .query_one_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Sqlite,
+    let backend = db.get_database_backend();
+    let (sql, values) = match backend {
+        DatabaseBackend::Postgres => (
+            "SELECT CASE
+                WHEN lower(status) != 'active' THEN 'inactive'
+                WHEN starts_at IS NOT NULL AND starts_at > CURRENT_TIMESTAMP THEN 'future'
+                WHEN ends_at IS NOT NULL AND ends_at < CURRENT_TIMESTAMP THEN 'expired'
+                ELSE 'active'
+             END AS lifecycle
+             FROM price_lists
+             WHERE id = $1 AND tenant_id = $2",
+            vec![price_list_id.into(), tenant_id.into()],
+        ),
+        DatabaseBackend::MySql | DatabaseBackend::Sqlite => (
             "SELECT CASE
                 WHEN lower(status) != 'active' THEN 'inactive'
                 WHEN starts_at IS NOT NULL AND starts_at > CURRENT_TIMESTAMP THEN 'future'
@@ -679,7 +690,16 @@ async fn validate_active_price_list_for_rule_update(
              FROM price_lists
              WHERE id = ? AND tenant_id = ?",
             vec![price_list_id.into(), tenant_id.into()],
-        ))
+        ),
+        _ => {
+            return Err(ServerFnError::new(
+                "Unsupported database backend for pricing price-list validation",
+            ));
+        }
+    };
+
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(backend, sql, values))
         .await
         .map_err(ServerFnError::new)?
         .ok_or_else(|| ServerFnError::new("price_list_id was not found"))?;
