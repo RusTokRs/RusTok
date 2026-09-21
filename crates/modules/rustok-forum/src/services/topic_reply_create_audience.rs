@@ -386,7 +386,7 @@ where
         .ok_or(ForumError::TopicNotFound(topic_id))
 }
 
-async fn lock_topic_reply_create_audience_in_tx(
+pub(crate) async fn lock_topic_reply_create_audience_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     topic_id: Uuid,
