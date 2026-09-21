@@ -14,7 +14,7 @@ use rustok_core::SecurityContext;
 
 use rustok_api::{Action, Resource};
 
-use crate::entities::{forum_reply, forum_reply_vote, forum_topic_vote};
+use crate::entities::{forum_reply_vote, forum_topic_vote};
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
 use crate::services::topic_vote_lock::{
@@ -218,13 +218,6 @@ impl VoteService {
         Ok(summaries)
     }
 
-    async fn find_reply(&self, tenant_id: Uuid, reply_id: Uuid) -> ForumResult<forum_reply::Model> {
-        forum_reply::Entity::find_by_id(reply_id)
-            .filter(forum_reply::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or(ForumError::ReplyNotFound(reply_id))
-    }
 
     async fn upsert_topic_vote_in_tx(
         &self,

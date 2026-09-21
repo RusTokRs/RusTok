@@ -451,6 +451,7 @@ Execution evidence remains pending.
 
 ## Verification
 
+- Contract tests cover every public use case.
 - `cargo test -p rustok-pages`
 - `cargo xtask module validate pages`
 

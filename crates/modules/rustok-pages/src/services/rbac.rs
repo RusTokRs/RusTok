@@ -38,10 +38,11 @@ pub(crate) fn enforce_owned_scope(
 /// permission snapshots can reduce an administrator to `None`, and a static
 /// role check must never restore access removed by that snapshot.
 pub(crate) fn can_read_non_public_pages(security: &SecurityContext) -> bool {
-    matches!(
-        security.get_scope(Resource::Pages, Action::Read),
-        PermissionScope::All
-    )
+    !matches!(security.role, rustok_core::UserRole::Customer)
+        && matches!(
+            security.get_scope(Resource::Pages, Action::Read),
+            PermissionScope::All
+        )
 }
 
 #[cfg(test)]
@@ -65,5 +66,12 @@ mod tests {
             [Permission::PAGES_READ],
         );
         assert!(can_read_non_public_pages(&tenant_wide));
+
+        let customer = SecurityContext::from_permissions(
+            UserRole::Customer,
+            Some(uuid::Uuid::new_v4()),
+            [Permission::PAGES_READ],
+        );
+        assert!(!can_read_non_public_pages(&customer));
     }
 }

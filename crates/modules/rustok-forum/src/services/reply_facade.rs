@@ -151,17 +151,25 @@ impl ReplyService {
         context: Option<PortContext>,
         input: CreateReplyCommandInput,
     ) -> ForumResult<ReplyResponse> {
-        let response = self
-            .inner
-            .create_command_with_audience_authorization(
-                tenant_id,
-                security,
-                topic_id,
-                context,
-                input,
-                &self.create_audience,
-            )
-            .await?;
+        let response = match context {
+            Some(context) => {
+                self.inner
+                    .create_command_with_audience_authorization(
+                        tenant_id,
+                        security,
+                        topic_id,
+                        Some(context),
+                        input,
+                        &self.create_audience,
+                    )
+                    .await?
+            }
+            None => {
+                self.inner
+                    .create_command(tenant_id, security, topic_id, input)
+                    .await?
+            }
+        };
         require_localized_reply_response(response)
     }
 
@@ -349,6 +357,14 @@ impl ReplyService {
         reply_id: Uuid,
     ) -> ForumResult<forum_reply::Model> {
         reply_owner::ReplyService::find_reply_in_tx(txn, tenant_id, reply_id).await
+    }
+
+    pub(crate) async fn find_reply_for_update_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+    ) -> ForumResult<forum_reply::Model> {
+        reply_owner::ReplyService::find_reply_for_update_in_tx(txn, tenant_id, reply_id).await
     }
 
     pub(crate) async fn set_status_in_tx(

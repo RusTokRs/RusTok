@@ -104,7 +104,7 @@ impl DirectTaskHandler for OrderAnalyticsHandler {
             serde_json::from_value(request.task_input_json.clone()).map_err(AiError::Json)?;
         let execution_policy = order_ai_execution_policy(ORDER_ANALYTICS_TASK_SLUG)
             .ok_or_else(|| {
-                AiError::Execution(format!(
+                AiError::Runtime(format!(
                     "order analytics execution policy not registered for task `{ORDER_ANALYTICS_TASK_SLUG}`"
                 ))
             })?;
@@ -181,7 +181,7 @@ impl DirectTaskHandler for OrderOpsAssistantHandler {
             serde_json::from_value(request.task_input_json.clone()).map_err(AiError::Json)?;
         let execution_policy = order_ai_execution_policy(ORDER_OPS_ASSISTANT_TASK_SLUG)
             .ok_or_else(|| {
-                AiError::Execution(format!(
+                AiError::Runtime(format!(
                     "order operations execution policy not registered for task `{ORDER_OPS_ASSISTANT_TASK_SLUG}`"
                 ))
             })?;

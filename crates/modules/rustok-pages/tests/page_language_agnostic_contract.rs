@@ -19,15 +19,38 @@ async fn setup() -> (DatabaseConnection, PageService, Uuid) {
         .up(&schema)
         .await
         .expect("outbox migration should apply");
+    db.execute_raw(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE IF NOT EXISTS tenant_modules (\
+            id TEXT PRIMARY KEY NOT NULL, \
+            tenant_id TEXT NOT NULL, \
+            module_slug TEXT NOT NULL, \
+            enabled INTEGER NOT NULL, \
+            settings TEXT NOT NULL, \
+            created_at TEXT NOT NULL, \
+            updated_at TEXT NOT NULL\
+        )"
+        .to_string(),
+    ))
+    .await
+    .expect("tenant_modules schema");
     for migration in PagesModule.migrations() {
         migration
             .up(&schema)
             .await
             .expect("Pages migration should apply");
     }
+    let tenant_id = Uuid::new_v4();
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings, created_at, updated_at) VALUES (?, ?, 'pages', 1, '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        vec![Uuid::new_v4().into(), tenant_id.into()],
+    ))
+    .await
+    .expect("tenant_modules seed");
     let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     let service = PageService::new(db.clone(), event_bus);
-    (db, service, Uuid::new_v4())
+    (db, service, tenant_id)
 }
 
 fn translation(locale: &str, title: &str, slug: Option<&str>) -> PageTranslationInput {
@@ -79,8 +102,13 @@ async fn unicode_slug_and_seo_storage_are_language_agnostic() {
         .await
         .expect("unicode page should be published");
 
+    let published_ru = service
+        .get_with_locale_fallback(tenant_id, SecurityContext::system(), page.id, "ru", None)
+        .await
+        .expect("published page in ru");
     assert_eq!(
-        page.translation
+        published_ru
+            .translation
             .as_ref()
             .and_then(|item| item.slug.as_deref()),
         Some("дом")

@@ -183,6 +183,14 @@ impl ReplyService {
         reply::ReplyService::find_reply_in_tx(txn, tenant_id, reply_id).await
     }
 
+    pub(crate) async fn find_reply_for_update_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+    ) -> ForumResult<forum_reply::Model> {
+        reply::ReplyService::find_reply_for_update_in_tx(txn, tenant_id, reply_id).await
+    }
+
     pub(crate) async fn set_status_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,

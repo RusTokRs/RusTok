@@ -22,7 +22,6 @@ use crate::state_machine::{ReplyStatus, TopicStatus};
 
 use self::route_tombstone_visibility::ForumTopicRouteTombstoneVisibilityService;
 use super::category::CategoryService;
-use super::category_audience::lock_category_tree_in_tx;
 use super::topic_create_audience_authorization::ForumTopicCreateAudienceAuthorizationService;
 use super::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,

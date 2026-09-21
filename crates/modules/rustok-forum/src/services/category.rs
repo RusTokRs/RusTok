@@ -71,8 +71,8 @@ impl CategoryService {
         reply_delta: i32,
     ) -> ForumResult<()> {
         let now = Utc::now();
-        let topic_count = clamped_counter_expr(forum_category::Column::TopicCount, topic_delta)?;
-        let reply_count = clamped_counter_expr(forum_category::Column::ReplyCount, reply_delta)?;
+        let topic_count = Self::clamped_counter_expr(forum_category::Column::TopicCount, topic_delta)?;
+        let reply_count = Self::clamped_counter_expr(forum_category::Column::ReplyCount, reply_delta)?;
 
         let updated = forum_category::Entity::update_many()
             .filter(forum_category::Column::TenantId.eq(tenant_id))

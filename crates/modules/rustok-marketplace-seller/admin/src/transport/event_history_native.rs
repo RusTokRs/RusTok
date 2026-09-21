@@ -1,6 +1,8 @@
 use leptos::prelude::*;
 use std::fmt::{Display, Formatter};
 
+#[cfg(feature = "ssr")]
+use crate::model::MarketplaceSellerAdminEvent;
 use crate::model::MarketplaceSellerAdminEventHistory;
 
 #[derive(Debug, Clone)]

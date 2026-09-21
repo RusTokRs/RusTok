@@ -1,5 +1,8 @@
+use super::category_audience::lock_category_tree_in_tx;
+use super::topic_create_audience_authorization::ForumTopicCreateAudienceAuthorizationService;
 use super::topic_tag_lock::{lock_active_topic_tag_write_in_tx, lock_topic_tag_scopes_in_tx};
 use crate::dto::{CreateTopicCommandInput, UpdateTopicCommandInput};
+use rustok_api::PortContext;
 
 pub const MAX_FORUM_TOPIC_TAGS: usize = 100;
 
@@ -9,6 +12,28 @@ impl TopicService {
         tenant_id: Uuid,
         security: SecurityContext,
         input: CreateTopicCommandInput,
+    ) -> ForumResult<TopicResponse> {
+        let create_audience =
+            ForumTopicCreateAudienceAuthorizationService::without_facts_provider(
+                self.db.clone(),
+            );
+        self.create_with_audience_authorization(
+            tenant_id,
+            security,
+            None,
+            input,
+            &create_audience,
+        )
+        .await
+    }
+
+    pub(crate) async fn create_with_audience_authorization(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        context: Option<PortContext>,
+        input: CreateTopicCommandInput,
+        create_audience: &ForumTopicCreateAudienceAuthorizationService,
     ) -> ForumResult<TopicResponse> {
         let (input, quote_inputs) = input.into_parts();
         enforce_scope(&security, Resource::ForumTopics, Action::Create)?;
@@ -37,6 +62,19 @@ impl TopicService {
             .await?;
 
         let txn = self.db.begin().await?;
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        create_audience
+            .require_in_tx(&txn, tenant_id, input.category_id, &security, context)
+            .await
+            .and_then(|authorization| {
+                if authorization.allowed {
+                    Ok(())
+                } else {
+                    Err(ForumError::forbidden(
+                        "Forum topic creation is unavailable for the current audience",
+                    ))
+                }
+            })?;
         CategoryService::ensure_exists_in_tx(&txn, tenant_id, input.category_id).await?;
 
         let now = Utc::now();

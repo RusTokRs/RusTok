@@ -23,8 +23,9 @@ use flex::{
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::Set,
-    ColumnTrait, Condition, DatabaseBackend, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Select, Statement, TransactionTrait,
+    ColumnTrait, Condition, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Select,
+    Statement, TransactionTrait,
     sea_query::{Expr, Query, SelectStatement},
 };
 use serde_json::Value;
@@ -244,6 +245,7 @@ impl TopicService {
         }
 
         let now = Utc::now();
+        use sea_orm::sea_query::ExprTrait;
         let reply_count = if delta > 0 {
             Expr::col(forum_topic::Column::ReplyCount).add(delta).into()
         } else {

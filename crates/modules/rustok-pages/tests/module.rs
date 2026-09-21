@@ -7,7 +7,7 @@ fn module_metadata() {
     let module = PagesModule;
     assert_eq!(module.slug(), "pages");
     assert_eq!(module.name(), "Pages");
-    assert_eq!(module.description(), "Static pages, blocks and menus");
+    assert_eq!(module.description(), "Pages, visual documents and published artifacts");
     assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
 }
 
