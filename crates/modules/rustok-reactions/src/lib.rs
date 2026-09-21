@@ -14,7 +14,8 @@ use rustok_core::{
 };
 use rustok_reactions_api::{
     ensure_reaction_subject_factory_registry, ensure_reaction_subject_registry,
-    reaction_subject_registry_from_extensions,};
+    reaction_subject_registry_from_extensions, ReactionSubjectRegistry,
+};
 use sea_orm_migration::MigrationTrait;
 
 pub use reconciliation::{
@@ -93,7 +94,6 @@ mod tests {
 
     use super::ReactionsModule;
 
-    #[test]
     #[test]
     fn module_registers_target_deletion_listener() {
         let module = ReactionsModule;
