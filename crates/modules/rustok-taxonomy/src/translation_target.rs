@@ -444,6 +444,9 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
             ));
         }
         let tenant_id = parse_tenant_id(&context)?;
+        let term_id = parse_identity(&request.identity)?;
+        let term = self.load_term(tenant_id, term_id).await?;
+        self.authorize_term(&context, tenant_id, &term, Action::Read)?;
         self.load_snapshot(tenant_id, &request).await
     }
 
@@ -458,6 +461,9 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
             .validate()
             .map_err(|error| contract_validation_error(error.to_string()))?;
         let tenant_id = parse_tenant_id(&context)?;
+        let term_id = parse_identity(&request.identity)?;
+        let term = self.load_term(tenant_id, term_id).await?;
+        self.authorize_term(&context, tenant_id, &term, Action::Update)?;
         let snapshot = self
             .load_snapshot(tenant_id, &read_request_from_patch(&request))
             .await?;
@@ -476,6 +482,8 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
             .map_err(|error| contract_validation_error(error.to_string()))?;
         let tenant_id = parse_tenant_id(&context)?;
         let term_id = parse_identity(&request.identity)?;
+        let term = self.load_term(tenant_id, term_id).await?;
+        self.authorize_term(&context, tenant_id, &term, Action::Update)?;
         let idempotency_key = context.idempotency_key.as_deref().unwrap_or_default();
         let lease = match idempotency::admit(
             self.service.database(),
@@ -567,6 +575,25 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
             )
             .await
             .map_err(taxonomy_error_to_port_error)?;
+
+            if term.scope_type == crate::TaxonomyScopeType::Module {
+                let owner = self.owner_registry.get(term.scope_value.trim()).ok_or_else(|| {
+                    PortError::forbidden(
+                        "taxonomy.translation_owner_permission_denied",
+                        "module-owned Taxonomy terms require owner authorization",
+                    )
+                })?;
+                owner
+                    .on_translation_applied_in_tx(
+                        &transaction,
+                        &context,
+                        tenant_id,
+                        term.kind,
+                        term.id,
+                    )
+                    .await?;
+            }
+
             idempotency::complete(&transaction, lease, &receipt).await?;
             transaction
                 .commit()
