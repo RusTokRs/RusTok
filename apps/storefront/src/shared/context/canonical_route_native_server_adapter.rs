@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 
+use crate::shared::api::configured_tenant_slug;
 use super::canonical_route::ResolvedCanonicalRoute;
 
 #[server(prefix = "/api/fn", endpoint = "storefront/resolve-canonical-route")]
@@ -13,6 +14,17 @@ pub(crate) async fn resolve_canonical_route(
         use leptos::prelude::expect_context;
         use rustok_content::CanonicalUrlService;
         use rustok_tenant::TenantService;
+
+        let configured = configured_tenant_slug().ok_or_else(|| {
+            ServerFnError::new(
+                "storefront canonical-route server function requires a configured host tenant",
+            )
+        })?;
+        if tenant_slug.trim() != configured {
+            return Err(ServerFnError::new(
+                "storefront canonical-route tenant does not match the configured host tenant",
+            ));
+        }
 
         let runtime = expect_context::<rustok_api::HostRuntimeContext>();
         let tenant = TenantService::new(runtime.db_clone())
