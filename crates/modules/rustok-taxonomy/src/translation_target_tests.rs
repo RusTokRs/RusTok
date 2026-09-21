@@ -1,6 +1,7 @@
-use std::{sync::Arc, time::Duration};
+use std::{sync::{Arc, atomic::{AtomicUsize, Ordering}}, time::Duration};
 
-use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
+use async_trait::async_trait;
+use rustok_api::{PortActor, PortContext, PortError, PortErrorKind, TenantLocale};
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::SysEventsMigration;
 use rustok_test_utils::db::setup_test_db;
@@ -9,14 +10,52 @@ use rustok_translation_targets::{
     TranslationFieldPatch, TranslationPatchRequest, TranslationTargetChangesRequest,
     TranslationTargetProgressRequest, TranslationTargetProvider,
 };
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, DatabaseTransaction, TransactionTrait};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
 use crate::{
-    CreateTaxonomyTermInput, TaxonomyModule, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
-    TaxonomyTranslationTargetProvider,
+    CreateTaxonomyTermInput, ModuleTermCreateInput, TaxonomyModule,
+    TaxonomyModuleTermTranslationOwner, TaxonomyModuleTermTranslationOwnerRegistry,
+    TaxonomyScopeType, TaxonomyService, TaxonomyTermKind, TaxonomyTranslationTargetProvider,
 };
+
+#[derive(Clone)]
+struct TestModuleTranslationOwner {
+    authorize_calls: Arc<AtomicUsize>,
+    apply_calls: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl TaxonomyModuleTermTranslationOwner for TestModuleTranslationOwner {
+    fn module_slug(&self) -> &str {
+        "blog"
+    }
+
+    fn authorize(
+        &self,
+        _context: &PortContext,
+        _tenant_id: uuid::Uuid,
+        _kind: TaxonomyTermKind,
+        _term_id: uuid::Uuid,
+        _action: rustok_api::Action,
+    ) -> Result<(), PortError> {
+        self.authorize_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+
+    async fn on_translation_applied_in_tx(
+        &self,
+        _transaction: &DatabaseTransaction,
+        _context: &PortContext,
+        _tenant_id: uuid::Uuid,
+        _kind: TaxonomyTermKind,
+        _term_id: uuid::Uuid,
+    ) -> Result<(), PortError> {
+        self.apply_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+}
 
 async fn setup() -> (DatabaseConnection, Arc<TaxonomyService>) {
     let database = setup_test_db().await;
@@ -335,4 +374,132 @@ async fn translation_target_applies_replays_and_tracks_an_exact_term_locale() {
         .await
         .expect_err("unprivileged user should not read the Taxonomy target");
     assert_eq!(unauthorized.kind, PortErrorKind::Forbidden);
+}
+
+
+#[tokio::test]
+async fn module_owned_translation_requires_owner_and_runs_owner_side_effect_hook() {
+    let (database, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+
+    let transaction = database.begin().await.expect("transaction should start");
+    let term_id = service
+        .create_module_term_in_tx(
+            &transaction,
+            tenant_id,
+            TaxonomyTermKind::Tag,
+            "blog",
+            ModuleTermCreateInput {
+                locale: "en".to_string(),
+                name: "Systems".to_string(),
+                slug: Some("systems".to_string()),
+            },
+        )
+        .await
+        .expect("module term should be created");
+    transaction.commit().await.expect("transaction should commit");
+
+    let identity = rustok_translation_targets::TranslationResourceIdentity {
+        owner_slug: rustok_translation_targets::OwnerSlug::new("taxonomy").unwrap(),
+        resource_kind: rustok_translation_targets::ResourceKind::new("term").unwrap(),
+        resource_id: rustok_translation_targets::ResourceId::new(term_id.to_string()).unwrap(),
+        subresource_id: None,
+    };
+
+    let provider = TaxonomyTranslationTargetProvider::new(service.clone());
+    let list = provider
+        .list_resources(
+            read_context(tenant_id),
+            ListTranslationResourcesRequest {
+                source_locale: TenantLocale::new("en").unwrap(),
+                target_locale: TenantLocale::new("fr").unwrap(),
+                cursor: None,
+                limit: 10,
+            },
+        )
+        .await
+        .expect("translation discovery should succeed");
+    assert!(list.resources.is_empty());
+
+    let denied = provider
+        .read_resource(
+            read_context(tenant_id),
+            ReadTranslationResourceRequest {
+                identity: identity.clone(),
+                source_locale: TenantLocale::new("en").unwrap(),
+                target_locale: TenantLocale::new("fr").unwrap(),
+            },
+        )
+        .await
+        .expect_err("module-owned term must not bypass its owner");
+    assert_eq!(denied.kind, PortErrorKind::Forbidden);
+
+    let authorize_calls = Arc::new(AtomicUsize::new(0));
+    let apply_calls = Arc::new(AtomicUsize::new(0));
+    let mut owners = TaxonomyModuleTermTranslationOwnerRegistry::default();
+    owners
+        .register(TestModuleTranslationOwner {
+            authorize_calls: authorize_calls.clone(),
+            apply_calls: apply_calls.clone(),
+        })
+        .expect("test owner should register");
+    let provider = TaxonomyTranslationTargetProvider::with_owner_registry(service, owners);
+
+    let list = provider
+        .list_resources(
+            read_context(tenant_id),
+            ListTranslationResourcesRequest {
+                source_locale: TenantLocale::new("en").unwrap(),
+                target_locale: TenantLocale::new("fr").unwrap(),
+                cursor: None,
+                limit: 10,
+            },
+        )
+        .await
+        .expect("registered owner should authorize discovery");
+    assert_eq!(list.resources.len(), 1);
+    assert!(authorize_calls.load(Ordering::SeqCst) >= 1);
+
+    let snapshot = provider
+        .read_resource(
+            read_context(tenant_id),
+            ReadTranslationResourceRequest {
+                identity,
+                source_locale: TenantLocale::new("en").unwrap(),
+                target_locale: TenantLocale::new("fr").unwrap(),
+            },
+        )
+        .await
+        .expect("registered owner should authorize reads");
+
+    let patch = TranslationPatchRequest {
+        identity: snapshot.summary.identity.clone(),
+        source_locale: snapshot.source_locale.clone(),
+        target_locale: snapshot.target_locale.clone(),
+        expected_resource_revision: snapshot.summary.resource_revision.clone(),
+        expected_source_revision: snapshot.source_revision.clone(),
+        expected_target_revision: None,
+        fields: vec![
+            field_patch(&snapshot, "name", "Systemes"),
+            field_patch(&snapshot, "slug", "systemes"),
+        ],
+        proposal_id: "module-owner-proposal".to_string(),
+        approval_receipt_id: "module-owner-approval".to_string(),
+    };
+    provider
+        .apply_patch(
+            PortContext::new(
+                tenant_id.to_string(),
+                PortActor::system(),
+                "en",
+                "module-owner-apply",
+            )
+            .with_idempotency_key("module-owner-apply-1")
+            .with_deadline(Duration::from_secs(5)),
+            patch,
+        )
+        .await
+        .expect("registered owner should authorize apply");
+
+    assert_eq!(apply_calls.load(Ordering::SeqCst), 1);
 }
