@@ -27,7 +27,7 @@ impl BlogSearchProjector {
         let result = async {
             self.delete_tenant_documents_in(&tx, tenant_id).await?;
             if self.blog_tables_available(&tx).await? {
-                self.upsert_documents_in(&tx, tenant_id, None).await?;
+                self.upsert_documents_in(&tx, tenant_id, None, None).await?;
             }
             self.commit_transaction(tx).await
         }
@@ -48,13 +48,35 @@ impl BlogSearchProjector {
         let result = async {
             self.delete_post_in(&tx, tenant_id, post_id).await?;
             if self.blog_tables_available(&tx).await? {
-                self.upsert_documents_in(&tx, tenant_id, Some(post_id))
+                self.upsert_documents_in(&tx, tenant_id, Some(post_id), None)
                     .await?;
             }
             self.commit_transaction(tx).await
         }
         .await;
         record_projector_operation("upsert_blog_post", tenant_id, &result, started_at.elapsed());
+        result
+    }
+
+    pub(crate) async fn upsert_author_posts(&self, tenant_id: Uuid, author_id: Uuid) -> Result<()> {
+        self.ensure_postgres()?;
+        let started_at = Instant::now();
+        let tx = self.begin_transaction().await?;
+        let result = async {
+            self.delete_author_posts_in(&tx, tenant_id, author_id).await?;
+            if self.blog_tables_available(&tx).await? {
+                self.upsert_documents_in(&tx, tenant_id, None, Some(author_id))
+                    .await?;
+            }
+            self.commit_transaction(tx).await
+        }
+        .await;
+        record_projector_operation(
+            "upsert_blog_author_posts",
+            tenant_id,
+            &result,
+            started_at.elapsed(),
+        );
         result
     }
 
@@ -147,6 +169,30 @@ impl BlogSearchProjector {
         .await
     }
 
+    async fn delete_author_posts_in<C>(
+        &self,
+        conn: &C,
+        tenant_id: Uuid,
+        author_id: Uuid,
+    ) -> Result<()>
+    where
+        C: ConnectionTrait,
+    {
+        self.delete_documents_in(
+            conn,
+            "DELETE FROM search_documents sd
+             USING blog_posts p
+             WHERE sd.tenant_id = $1
+               AND sd.source_module = 'blog'
+               AND sd.entity_type = 'blog_post'
+               AND p.tenant_id = $1
+               AND p.id = sd.document_id
+               AND p.author_id = $2",
+            vec![tenant_id.into(), author_id.into()],
+        )
+        .await
+    }
+
     async fn delete_documents_in<C>(
         &self,
         conn: &C,
@@ -166,15 +212,25 @@ impl BlogSearchProjector {
         conn: &C,
         tenant_id: Uuid,
         post_id: Option<Uuid>,
+        author_id: Option<Uuid>,
     ) -> Result<()>
     where
         C: ConnectionTrait,
     {
+        if post_id.is_some() && author_id.is_some() {
+            return Err(Error::Validation(
+                "Blog Search projector cannot combine post_id and author_id filters".to_string(),
+            ));
+        }
         let mut values = vec![tenant_id.into()];
         let mut where_clause = String::from("WHERE p.tenant_id = $1");
         if let Some(post_id) = post_id {
             where_clause.push_str(" AND p.id = $2");
             values.push(post_id.into());
+        }
+        if let Some(author_id) = author_id {
+            where_clause.push_str(" AND p.author_id = $2");
+            values.push(author_id.into());
         }
         let fallback_locale = PLATFORM_FALLBACK_LOCALE;
 
@@ -334,7 +390,7 @@ impl BlogSearchProjector {
 
         let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, values);
         conn.execute_raw(stmt).await.map_err(Error::Database)?;
-        self.refresh_article_bodies_in(conn, tenant_id, post_id)
+        self.refresh_article_bodies_in(conn, tenant_id, post_id, author_id)
             .await?;
         Ok(())
     }
@@ -344,15 +400,25 @@ impl BlogSearchProjector {
         conn: &C,
         tenant_id: Uuid,
         post_id: Option<Uuid>,
+        author_id: Option<Uuid>,
     ) -> Result<()>
     where
         C: ConnectionTrait,
     {
+        if post_id.is_some() && author_id.is_some() {
+            return Err(Error::Validation(
+                "Blog Search projector cannot combine post_id and author_id filters".to_string(),
+            ));
+        }
         let mut values = vec![tenant_id.into()];
         let mut where_clause = String::from("WHERE p.tenant_id = $1");
         if let Some(post_id) = post_id {
             where_clause.push_str(" AND p.id = $2");
             values.push(post_id.into());
+        }
+        if let Some(author_id) = author_id {
+            where_clause.push_str(" AND p.author_id = $2");
+            values.push(author_id.into());
         }
 
         let sql = format!(
