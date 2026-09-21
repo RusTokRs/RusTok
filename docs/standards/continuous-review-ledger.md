@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `188 / 218` components audited (**86%**)
+- **Progress:** `189 / 218` components audited (**87%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -211,7 +211,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-ui-transport](../../crates/ui/rustok-ui-transport) | `ui` | 1 | 266 | 2026-09-21 22:30 | Audited native/GraphQL transport selection and fallback semantics. Found a reusable side-effect retry hazard: generic fallback could execute a secondary transport after a primary mutation response was lost. Added explicit `UiTransportRetrySafety` and made fallback conditional on `SafeToRetry`; `AtMostOnce` operations never fallback even when enabled, with regression coverage. |
 | [x] | [rustok-build](../../crates/utils/rustok-build) | `utils` | 12 | 2,033 | 2026-09-21 23:10 | Audited platform build persistence, immutable execution-plan hashing, global build-event scope, command construction, manifest snapshot materialization, history bounds, status lifecycle, and queued worker execution. Fixed a real concurrency race: queued builds are now atomically claimed with a status CAS before execution, both worker entry points use the claim path, and only the winning claimant emits BuildStarted, preventing duplicate execution of the same build under concurrent workers. |
 | [x] | [rustok-build-publication](../../crates/utils/rustok-build-publication) | `utils` | 4 | 862 | 2026-09-21 23:35 | Audited registry credential brokering, fixed executable identity, bounded subprocess I/O/timeouts, OCI target/artifact validation, Cosign KMS references, signed attestation normalization, digest-pinned publication, and private temporary credential/predicate cleanup. Fixed a real secret-exposure risk by creating registry credential directories as `0700` and Docker config files as `0600` on Unix. |
-| [ ] | [rustok-build-source](../../crates/utils/rustok-build-source) | `utils` | 2 | 1,570 | None |  |
+| [x] | [rustok-build-source](../../crates/utils/rustok-build-source) | `utils` | 2 | 1,570 | 2026-09-22 00:05 | Audited fixed-root CAS source identity, digest verification, strict USTAR parsing/materialization, deterministic source archive creation, path/symlink/type rejection, bounded archive/extraction/entry limits, atomic no-replace CAS publication, and partial-destination cleanup. The crate explicitly operates on trusted control-plane source media rather than Git/HTTP/arbitrary filesystem references; no additional production integrity, tenant-scope, or concurrency finding remained. |
 | [ ] | [rustok-cli](../../crates/utils/rustok-cli) | `utils` | 3 | 1,302 | None |  |
 | [ ] | [rustok-cli-core](../../crates/utils/rustok-cli-core) | `utils` | 1 | 118 | None |  |
 | [ ] | [rustok-cli-platform](../../crates/utils/rustok-cli-platform) | `utils` | 3 | 466 | None |  |
