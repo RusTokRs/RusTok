@@ -424,6 +424,10 @@ impl CommentService {
                 return Err(BlogError::post_not_found(post_id));
             };
 
+            if !channel.is_active {
+                return Err(BlogError::post_not_found(post_id));
+            }
+
             let enabled = channel_service
                 .is_module_enabled_for_tenant(tenant_id, channel.id, "blog")
                 .await

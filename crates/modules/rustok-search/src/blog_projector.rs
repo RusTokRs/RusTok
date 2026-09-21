@@ -363,7 +363,7 @@ impl BlogSearchProjector {
             LEFT JOIN taxonomy_term_translations bct_fallback
                 ON bct_fallback.term_id = p.category_id
                AND bct_fallback.tenant_id = p.tenant_id
-               AND bct_fallback.locale = 'en'
+               AND bct_fallback.locale = '{fallback_locale}'
                AND bct_term.id IS NOT NULL
             LEFT JOIN users u
                 ON u.id = p.author_id
@@ -381,6 +381,8 @@ impl BlogSearchProjector {
                       ON term.id = relation.tag_id
                      AND term.tenant_id = p.tenant_id
                      AND term.kind = 'tag'
+                     AND term.scope_type = 'module'
+                     AND term.scope_value = 'blog'
                     LEFT JOIN taxonomy_term_translations localized
                       ON localized.term_id = term.id
                      AND localized.tenant_id = p.tenant_id

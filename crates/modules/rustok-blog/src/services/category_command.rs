@@ -94,7 +94,14 @@ impl CategoryCommandService {
         parent_by_id.insert(category_id, input.parent_id);
         let desired_depths = validate_and_compute_depths(&parent_by_id)?;
 
-        let source_parent_id = placement_by_id[&category_id].0;
+        let source_parent_id = placement_by_id
+            .get(&category_id)
+            .ok_or_else(|| {
+                BlogError::invariant(format!(
+                    "Blog category {category_id} has no canonical Taxonomy hierarchy placement during move"
+                ))
+            })?
+            .0;
         let target_index = usize::try_from(input.position)
             .map_err(|_| BlogError::validation("Category position cannot be negative"))?;
         let mut updated = Vec::new();

@@ -186,7 +186,7 @@ impl GqlPost {
         let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
         let request_tenant = ctx.data::<TenantContext>()?;
         let requested_locale = comment_locale(locale.as_deref(), &self.effective_locale);
-        let fallback_locale = post_comment_fallback_locale(request_tenant, self);
+        let fallback_locale = post_comment_fallback_locale(request_tenant, self)?;
         let service = runtime.comment_service(db.clone(), event_bus.clone());
         let read = list_public_comments_with_snapshot(
             &service,
@@ -258,12 +258,16 @@ fn comment_locale(requested: Option<&str>, effective_locale: &str) -> String {
         .unwrap_or_else(|| effective_locale.to_string())
 }
 
-fn post_comment_fallback_locale<'a>(tenant: &'a TenantContext, post: &'a GqlPost) -> &'a str {
-    if tenant.id == post.tenant_id {
-        tenant.default_locale.as_str()
-    } else {
-        post.effective_locale.as_str()
+fn post_comment_fallback_locale<'a>(
+    tenant: &'a TenantContext,
+    post: &'a GqlPost,
+) -> Result<&'a str, async_graphql::FieldError> {
+    if tenant.id != post.tenant_id {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Blog comments must use the current tenant",
+        ));
     }
+    Ok(tenant.default_locale.as_str())
 }
 
 fn require_comment_moderator(ctx: &Context<'_>) -> Result<AuthContext> {
@@ -526,6 +530,27 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
+    fn update_post_input_conversion_preserves_canonical_content() {
+        let canonical = RichTextDocument::single_paragraph("canonical update");
+        let input = UpdatePostInput {
+            locale: Some("en".to_string()),
+            title: Some("Title".to_string()),
+            content: Some(canonical.clone()),
+            excerpt: MaybeUndefined::Undefined,
+            slug: None,
+            tags: None,
+            category_id: MaybeUndefined::Undefined,
+            featured_image_url: MaybeUndefined::Undefined,
+            seo_title: MaybeUndefined::Undefined,
+            seo_description: MaybeUndefined::Undefined,
+            channel_slugs: None,
+            version: 1,
+        };
+        let domain: DomainUpdatePostInput = input.into();
+        assert_eq!(domain.content, Some(canonical));
+    }
+
+    #[test]
     fn update_post_input_conversion_preserves_patch_and_revision_semantics() {
         let canonical = RichTextDocument::single_paragraph("canonical update");
         let input = UpdatePostInput {
@@ -550,5 +575,52 @@ mod tests {
         assert_eq!(domain.seo_description, Patch::Clear);
         assert!(domain.metadata.is_none());
         assert_eq!(domain.version, 7);
+    }
+
+    #[test]
+    fn post_comment_fallback_locale_fails_closed_on_tenant_mismatch() {
+        use crate::graphql::types::{GqlContentStatus, GqlPost, post_comment_fallback_locale};
+        use rustok_api::TenantContext;
+
+        let tenant = TenantContext {
+            id: Uuid::new_v4(),
+            name: "Tenant A".to_string(),
+            slug: "tenant-a".to_string(),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let mut post = GqlPost {
+            tenant_id: Uuid::new_v4(),
+            id: Uuid::new_v4(),
+            requested_locale: "en".to_string(),
+            effective_locale: "en".to_string(),
+            available_locales: vec!["en".to_string()],
+            title: "Post".to_string(),
+            slug: Some("post".to_string()),
+            excerpt: None,
+            content: rustok_api::RichTextDocument::default().into(),
+            content_plain_text: String::new(),
+            status: GqlContentStatus::Published,
+            author_id: None,
+            author_profile: None,
+            created_at: String::new(),
+            updated_at: String::new(),
+            published_at: None,
+            tags: Vec::new(),
+            featured_image_url: None,
+            seo_title: None,
+            seo_description: None,
+            channel_slugs: Vec::new(),
+            version: 1,
+        };
+        assert!(post_comment_fallback_locale(&tenant, &post).is_err());
+
+        post.tenant_id = tenant.id;
+        assert_eq!(
+            post_comment_fallback_locale(&tenant, &post).unwrap(),
+            "en"
+        );
     }
 }

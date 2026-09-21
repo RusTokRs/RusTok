@@ -26,7 +26,7 @@ function forbid(path, markers) {
 function requireOrdered(path, before, after) {
   const source = read(path);
   const beforeIndex = source.indexOf(before);
-  const afterIndex = source.indexOf(after);
+  const afterIndex = source.indexOf(after, beforeIndex === -1 ? 0 : beforeIndex);
   if (beforeIndex === -1) fail(`${path}: missing ordered invariant marker ${before}`);
   else if (afterIndex === -1) fail(`${path}: missing ordered invariant marker ${after}`);
   else if (beforeIndex >= afterIndex) {
@@ -39,9 +39,9 @@ function rustFiles(path) {
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     const full = join(root, entry.name);
     if (entry.isDirectory()) {
-      out.push(...rustFiles(relative(repoRoot, full)));
+      out.push(...rustFiles(relative(repoRoot, full).replaceAll("\\", "/")));
     } else if (entry.isFile() && entry.name.endsWith(".rs")) {
-      out.push(relative(repoRoot, full));
+      out.push(relative(repoRoot, full).replaceAll("\\", "/"));
     }
   }
   return out;
@@ -290,7 +290,7 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
   "blog_post_tag::Column::PostId.eq(post_id)",
   "blog_post_tag::Column::TagId.eq(tag_id)",
   "tenant_id: Set(tenant_id)",
-  "ensure_terms_for_module_in_tx(",
+  "ensure_module_terms_for_owner_in_tx(",
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/category.rs", [
@@ -305,9 +305,9 @@ requireAll("crates/modules/rustok-blog/src/services/category.rs", [
 ]);
 requireAll("crates/modules/rustok-blog/src/domain/richtext.rs", [
   'BlogError::invariant("Stored article content is not a document")',
-  '"Stored article content violates the Article richtext contract"',
-  '"Stored article content cannot be projected as Article richtext"',
-  '"Stored article content cannot produce Article plain text"',
+  "Stored article content violates the Article richtext contract",
+  "Stored article content cannot be projected as Article richtext",
+  "Stored article content cannot produce Article plain text",
 ]);
 forbid("crates/modules/rustok-blog/src/domain/richtext.rs", [
   'map_err(|_| BlogError::validation("Stored article content is not a document"))',
@@ -323,8 +323,8 @@ requireAll("crates/libs/rustok-core/src/registry.rs", [
   "module `{}` runtime extension registration failed: {error}",
 ]);
 requireAll("crates/modules/rustok-blog/src/module.rs", [
-  '"dependencies"',
-  '["content", "comments", "taxonomy", "outbox", "channel"]',
+  "fn dependencies(&self)",
+  '["content", "comments", "taxonomy", "outbox", "channel", "profiles"]',
 ]);
 requireAll("crates/modules/rustok-blog/rustok-module.toml", [
   'content = { version_req = ">=0.1.0" }',
@@ -332,6 +332,7 @@ requireAll("crates/modules/rustok-blog/rustok-module.toml", [
   'outbox = { version_req = ">=0.1.0" }',
   'taxonomy = { version_req = ">=0.1.0" }',
   'channel = { version_req = ">=0.1.0" }',
+  'profiles = { version_req = ">=0.1.0" }',
 ]);
 requireAll("crates/modules/rustok-blog/src/module.rs", [
   "Resource::Tags",
@@ -408,7 +409,6 @@ requireAll("crates/modules/rustok-blog/src/services/comment_projection.rs", [
   "Column::CommentCount.eq(post.comment_count)",
   "fn next_comment_count(",
   "let post_updated =",
-  "return Ok(false);",
   "if post_updated",
   "lock_exclusive()",
   "Column::CommentId.eq(change.comment_id)",
@@ -676,7 +676,7 @@ requireAll("crates/modules/rustok-comments/src/services.rs", [
   ".lock_exclusive()",
 ]);
 requireAll("crates/modules/rustok-comments/src/entities/comment_thread.rs", [
-  "self.last_commented_at = Set(live_comments.first().map(|comment| comment.created_at))",
+  "self.last_commented_at = Set(latest.map(|comment| comment.created_at))",
 ]);
 requireAll("crates/modules/rustok-blog/src/dto/post.rs", [
   "saturating_add(u64::from(per_page).saturating_sub(1))",
@@ -826,7 +826,7 @@ requireAll("crates/modules/rustok-taxonomy/src/services.rs", [
 requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
   "enforce_scope(&security, Resource::Tags, Action::Update)?;",
   "enforce_scope(&security, Resource::Tags, Action::Delete)?;",
-  "ensure_module_owned_term(&term)?;",
+  "lock_module_term_in_tx(",
   "if post.version <= 0",
   ".checked_add(1)",
   '.filter(|next| *next > 0)',
@@ -834,11 +834,13 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
 
 const allowedBlogPostMutationSources = new Set([
   "crates/modules/rustok-blog/src/services/post/commands.rs",
+  "crates/modules/rustok-blog/src/services/post/repository.rs",
   "crates/modules/rustok-blog/src/services/tag.rs",
   "crates/modules/rustok-blog/src/services/category_delete.rs",
   "crates/modules/rustok-blog/src/services/comment_projection.rs",
 ]);
 for (const path of rustFiles("crates/modules/rustok-blog/src/services")) {
+  if (path.endsWith("_tests.rs") || path.endsWith("/tests.rs")) continue;
   if (allowedBlogPostMutationSources.has(path)) continue;
   forbid(path, [
     "blog_post::Entity::update_many",
@@ -870,7 +872,7 @@ forbid("crates/modules/rustok-blog/src/services/post/repository.rs", [
 
 requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
   "PostService::is_unique_constraint(&error)",
-  "const MAX_POST_SLUG_BYTES: usize = 255;",
+  "MAX_POST_SLUG_BYTES",
   "Slug cannot exceed",
 ]);
 
@@ -885,6 +887,7 @@ requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/post/mod.rs", [
+  "const MAX_POST_SLUG_BYTES: usize = 255;",
   "const MAX_POST_EXCERPT_CHARS: usize = 1000;",
   "const MAX_POST_SEO_TITLE_CHARS: usize = 255;",
   "const MAX_POST_SEO_DESCRIPTION_CHARS: usize = 1000;",

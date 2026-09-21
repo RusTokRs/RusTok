@@ -48,15 +48,14 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
     ) -> AnyResult<Option<SeoLoadedTargetRecord>> {
         let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());
         let Some(post) = optional_post(
-            service
-                .get_post_with_locale_fallback(
-                    request.tenant_id,
-                    SecurityContext::system(),
-                    request.target_id,
-                    request.locale,
-                    Some(request.default_locale),
-                )
-                .await,
+            service.get_post_with_locale_fallback(
+                request.tenant_id,
+                SecurityContext::system(),
+                request.target_id,
+                request.locale,
+                Some(request.default_locale),
+            )
+            .await,
         )?
         else {
             return Ok(None);
@@ -81,15 +80,14 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
             return Ok(None);
         };
         let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let post = service
-            .get_post_by_slug_with_locale_fallback(
-                request.tenant_id,
-                SecurityContext::system(),
-                request.locale,
-                slug.as_str(),
-                Some(request.default_locale),
-            )
-            .await?;
+        let post = service.get_post_by_slug_with_locale_fallback(
+            request.tenant_id,
+            SecurityContext::system(),
+            request.locale,
+            slug.as_str(),
+            Some(request.default_locale),
+        )
+        .await?;
 
         Ok(post
             .filter(|post| {
@@ -113,9 +111,8 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
 
         loop {
             let page = service
-                .list_posts_with_locale_fallback(
+                .list_public_visible_with_locale_fallback(
                     request.tenant_id,
-                    SecurityContext::system(),
                     PostListQuery {
                         status: Some(BlogPostStatus::Published),
                         category_id: None,
@@ -128,6 +125,7 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
                         sort_order: Some(PostSortOrder::Desc),
                     },
                     Some(request.default_locale),
+                    None,
                 )
                 .await?;
             if page.items.is_empty() {
@@ -347,12 +345,10 @@ fn summarize_text(value: &str) -> Option<String> {
     }
 }
 
-fn optional_post(
-    result: Result<PostResponse, BlogError>,
-) -> Result<Option<PostResponse>, BlogError> {
+fn optional_post(result: crate::BlogResult<PostResponse>) -> AnyResult<Option<PostResponse>> {
     match result {
         Ok(post) => Ok(Some(post)),
         Err(BlogError::PostNotFound(_)) => Ok(None),
-        Err(other) => Err(other),
+        Err(error) => Err(anyhow::Error::new(error)),
     }
 }

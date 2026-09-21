@@ -14,8 +14,9 @@ impl PostService {
         if post.version > 0 {
             return Ok(());
         }
+        const ERR_INVALID_VERSION: &str = "invalid persisted version";
         Err(BlogError::invariant(format!(
-            "Blog post {} has invalid persisted version {}",
+            "Blog post {} has {ERR_INVALID_VERSION} {}",
             post.id, post.version
         )))
     }

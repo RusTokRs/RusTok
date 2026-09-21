@@ -78,7 +78,7 @@ ALTER TABLE blog_posts
     FOREIGN KEY (tenant_id, category_id)
     REFERENCES blog_categories (tenant_id, id)
     ON UPDATE CASCADE
-    ON DELETE SET NULL;
+    ON DELETE SET NULL (category_id);
 "#
         ))
         .await?;
