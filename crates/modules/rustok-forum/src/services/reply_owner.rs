@@ -8,7 +8,7 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_api::{Action, Resource};
+use rustok_api::{Action, PortContext, Resource};
 use rustok_content::normalize_locale_code;
 use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
@@ -21,6 +21,9 @@ use crate::mentions::ForumContentTarget;
 use crate::state_machine::{ReplyStatus, TopicStatus};
 
 use super::category::CategoryService;
+use super::category_audience::lock_category_tree_in_tx;
+use super::reply_create_audience_authorization::ForumReplyCreateAudienceAuthorizationService;
+use super::topic_reply_create_audience::lock_topic_reply_create_audience_in_tx;
 use super::mention_relation::MentionRelationService;
 use super::projection_invalidation::publish_forum_category_projection_in_tx;
 use super::rbac::{enforce_owned_scope, enforce_scope};
