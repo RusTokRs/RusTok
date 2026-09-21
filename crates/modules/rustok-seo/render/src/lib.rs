@@ -225,7 +225,7 @@ pub fn render_head_html(context: &SeoPageContext) -> String {
             })
     });
     for block in &structured_data_blocks {
-        if let Ok(payload) = serde_json::to_string(&block.payload.0) {
+        if let Some(payload) = serialize_structured_data_for_html(&block.payload.0) {
             head.push_str(&format!(
                 r#"<script type="application/ld+json">{payload}</script>"#
             ));
@@ -233,6 +233,17 @@ pub fn render_head_html(context: &SeoPageContext) -> String {
     }
 
     head
+}
+
+fn serialize_structured_data_for_html(value: &serde_json::Value) -> Option<String> {
+    serde_json::to_string(value)
+        .ok()
+        .map(|payload| {
+            payload
+                .replace('<', "\\u003c")
+                .replace('>', "\\u003e")
+                .replace('&', "\\u0026")
+        })
 }
 
 pub fn robots_directives(robots: &SeoRobots) -> Vec<String> {
@@ -355,6 +366,33 @@ mod tests {
     };
 
     use super::{render_head_html, robots_directives};
+
+    #[test]
+    fn escapes_json_ld_script_breakout_sequences() {
+        let context = SeoPageContext {
+            document: SeoDocument {
+                structured_data_blocks: vec![SeoStructuredDataBlock {
+                    id: Some("unsafe".to_string()),
+                    schema_kind: SeoSchemaBlockKind::Article,
+                    schema_type: Some("Article".to_string()),
+                    kind: Some("Article".to_string()),
+                    source: SeoFieldSource::Explicit,
+                    payload: serde_json::json!({
+                        "@type": "Article",
+                        "headline": "</script><script>alert(1)</script>&"
+                    })
+                    .into(),
+                }],
+                ..SeoDocument::default()
+            },
+            ..SeoPageContext::default()
+        };
+
+        let head = render_head_html(&context);
+
+        assert!(!head.contains("</script><script>"));
+        assert!(head.contains(r#"\\u003c/script>\\u003cscript>alert(1)\\u003c/script>\\u0026"#));
+    }
 
     #[test]
     fn renders_typed_robots_directives() {
