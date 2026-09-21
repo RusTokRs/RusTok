@@ -13,6 +13,7 @@ use crate::extractors::{
     rbac::{RequireMcpManage, RequireMcpRead},
     tenant::CurrentTenant,
 };
+use crate::services::mcp_management_authority::McpManagementAuthorityService;
 use crate::services::mcp_management::{
     ApplyMcpScaffoldDraftInput, CreateMcpClientInput, McpAuditFilters, McpClientDetails,
     McpManagementService, RotateMcpTokenInput, StageMcpScaffoldDraftInput, UpdateMcpPolicyInput,
@@ -667,6 +668,17 @@ async fn create_client(
     RequireMcpManage(user): RequireMcpManage,
     Json(input): Json<CreateMcpClientRequest>,
 ) -> Result<Json<CreateMcpClientResponse>> {
+    McpManagementAuthorityService::validate_create_client(
+        ctx.db(),
+        tenant.id,
+        &user.permissions,
+        parse_actor_type(&input.actor_type)?,
+        input.delegated_user_id,
+        &input.granted_permissions,
+    )
+    .await
+    .map_err(|error| crate::error::Error::Forbidden(error.to_string()))?;
+
     let result = McpManagementService::create_client(
         ctx.db(),
         tenant.id,
@@ -703,6 +715,15 @@ async fn rotate_token(
     Path(client_id): Path<Uuid>,
     Json(input): Json<RotateMcpTokenRequest>,
 ) -> Result<Json<RotateMcpTokenResponse>> {
+    McpManagementAuthorityService::validate_token_rotation(
+        ctx.db(),
+        tenant.id,
+        &user.permissions,
+        client_id,
+    )
+    .await
+    .map_err(|error| crate::error::Error::Forbidden(error.to_string()))?;
+
     let result = McpManagementService::rotate_token(
         ctx.db(),
         tenant.id,
@@ -731,6 +752,16 @@ async fn update_policy(
     Path(client_id): Path<Uuid>,
     Json(input): Json<UpdateMcpPolicyRequest>,
 ) -> Result<Json<McpPolicyResponse>> {
+    McpManagementAuthorityService::validate_policy_update(
+        ctx.db(),
+        tenant.id,
+        &user.permissions,
+        client_id,
+        &input.granted_permissions,
+    )
+    .await
+    .map_err(|error| crate::error::Error::Forbidden(error.to_string()))?;
+
     let policy = McpManagementService::update_policy(
         ctx.db(),
         tenant.id,
