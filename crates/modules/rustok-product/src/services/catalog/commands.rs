@@ -584,10 +584,6 @@ impl CatalogService {
     ) -> CommerceResult<ProductResponse> {
         debug!(product_id = %product_id, "Publishing product");
 
-        ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
-            .validate_product_publish_requirements(tenant_id, product_id)
-            .await?;
-
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
         let product = find_product_for_update_in_tx(&txn, tenant_id, product_id)
@@ -598,6 +594,10 @@ impl CatalogService {
                 }
                 error
             })?;
+
+        ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
+            .validate_product_publish_requirements_in(&txn, tenant_id, product_id)
+            .await?;
 
         let mut product_active: entities::product::ActiveModel = product.into();
         product_active.status = Set(entities::product::ProductStatus::Active);
