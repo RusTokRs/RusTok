@@ -177,14 +177,53 @@ impl PaymentProviderOperationJournal {
         ensure_transition(&model.status, PROVIDER_OPERATION_SUCCEEDED)?;
 
         let now = Utc::now();
-        let mut active: provider_operation::ActiveModel = model.into();
-        active.status = Set(PROVIDER_OPERATION_SUCCEEDED.to_string());
-        active.provider_reference = Set(normalize_optional(provider_reference));
-        active.provider_result = Set(Some(provider_result));
-        active.error_message = Set(None);
-        active.updated_at = Set(now.into());
-        active.provider_completed_at = Set(Some(now.into()));
-        active.update(&self.db).await.map_err(Into::into)
+        let update = provider_operation::Entity::update_many()
+            .col_expr(
+                provider_operation::Column::Status,
+                Expr::value(PROVIDER_OPERATION_SUCCEEDED),
+            )
+            .col_expr(
+                provider_operation::Column::ProviderReference,
+                Expr::value(normalize_optional(provider_reference)),
+            )
+            .col_expr(
+                provider_operation::Column::ProviderResult,
+                Expr::value(Some(provider_result)),
+            )
+            .col_expr(
+                provider_operation::Column::ErrorMessage,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(
+                provider_operation::Column::UpdatedAt,
+                Expr::value(now),
+            )
+            .col_expr(
+                provider_operation::Column::ProviderCompletedAt,
+                Expr::value(Some(now)),
+            )
+            .filter(provider_operation::Column::Id.eq(id))
+            .filter(provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING))
+            .exec(&self.db)
+            .await?;
+
+        if update.rows_affected == 0 {
+            let current = self.get(id).await?;
+            if matches!(
+                current.status.as_str(),
+                PROVIDER_OPERATION_SUCCEEDED
+                    | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+                    | PROVIDER_OPERATION_COMMITTED
+            ) {
+                return Ok(current);
+            }
+            return Err(PaymentError::InvalidTransition {
+                from: current.status,
+                to: PROVIDER_OPERATION_SUCCEEDED.to_string(),
+            });
+        }
+
+        self.get(id).await
     }
 
     pub async fn mark_provider_error(
@@ -196,11 +235,37 @@ impl PaymentProviderOperationJournal {
         ensure_transition(&model.status, PROVIDER_OPERATION_ERROR)?;
 
         let now = Utc::now();
-        let mut active: provider_operation::ActiveModel = model.into();
-        active.status = Set(PROVIDER_OPERATION_ERROR.to_string());
-        active.error_message = Set(Some(normalize_error(error_message.into())));
-        active.updated_at = Set(now.into());
-        active.update(&self.db).await.map_err(Into::into)
+        let error_message = normalize_error(error_message.into());
+        let update = provider_operation::Entity::update_many()
+            .col_expr(
+                provider_operation::Column::Status,
+                Expr::value(PROVIDER_OPERATION_ERROR),
+            )
+            .col_expr(
+                provider_operation::Column::ErrorMessage,
+                Expr::value(Some(error_message)),
+            )
+            .col_expr(
+                provider_operation::Column::UpdatedAt,
+                Expr::value(now),
+            )
+            .filter(provider_operation::Column::Id.eq(id))
+            .filter(provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING))
+            .exec(&self.db)
+            .await?;
+
+        if update.rows_affected == 0 {
+            let current = self.get(id).await?;
+            if current.status == PROVIDER_OPERATION_ERROR {
+                return Ok(current);
+            }
+            return Err(PaymentError::InvalidTransition {
+                from: current.status,
+                to: PROVIDER_OPERATION_ERROR.to_string(),
+            });
+        }
+
+        self.get(id).await
     }
 
     /// Record an operation whose external outcome cannot be safely retried.
@@ -218,11 +283,42 @@ impl PaymentProviderOperationJournal {
         }
         ensure_transition(&model.status, PROVIDER_OPERATION_RECONCILIATION_REQUIRED)?;
 
-        let mut active: provider_operation::ActiveModel = model.into();
-        active.status = Set(PROVIDER_OPERATION_RECONCILIATION_REQUIRED.to_string());
-        active.error_message = Set(Some(normalize_error(error_message.into())));
-        active.updated_at = Set(Utc::now().into());
-        active.update(&self.db).await.map_err(Into::into)
+        let error_message = normalize_error(error_message.into());
+        let update = provider_operation::Entity::update_many()
+            .col_expr(
+                provider_operation::Column::Status,
+                Expr::value(PROVIDER_OPERATION_RECONCILIATION_REQUIRED),
+            )
+            .col_expr(
+                provider_operation::Column::ErrorMessage,
+                Expr::value(Some(error_message)),
+            )
+            .col_expr(
+                provider_operation::Column::UpdatedAt,
+                Expr::current_timestamp(),
+            )
+            .filter(provider_operation::Column::Id.eq(id))
+            .filter(
+                provider_operation::Column::Status.is_in([
+                    PROVIDER_OPERATION_EXECUTING,
+                    PROVIDER_OPERATION_SUCCEEDED,
+                ]),
+            )
+            .exec(&self.db)
+            .await?;
+
+        if update.rows_affected == 0 {
+            let current = self.get(id).await?;
+            if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
+                return Ok(current);
+            }
+            return Err(PaymentError::InvalidTransition {
+                from: current.status,
+                to: PROVIDER_OPERATION_RECONCILIATION_REQUIRED.to_string(),
+            });
+        }
+
+        self.get(id).await
     }
 
     pub async fn mark_committed(&self, id: Uuid) -> PaymentResult<provider_operation::Model> {
@@ -234,15 +330,53 @@ impl PaymentProviderOperationJournal {
 
         let provider_completion_missing = model.provider_completed_at.is_none();
         let now = Utc::now();
-        let mut active: provider_operation::ActiveModel = model.into();
-        active.status = Set(PROVIDER_OPERATION_COMMITTED.to_string());
-        active.error_message = Set(None);
-        active.updated_at = Set(now.into());
-        if provider_completion_missing {
-            active.provider_completed_at = Set(Some(now.into()));
+        let update = provider_operation::Entity::update_many()
+            .col_expr(
+                provider_operation::Column::Status,
+                Expr::value(PROVIDER_OPERATION_COMMITTED),
+            )
+            .col_expr(
+                provider_operation::Column::ErrorMessage,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(
+                provider_operation::Column::UpdatedAt,
+                Expr::value(now),
+            )
+            .col_expr(
+                provider_operation::Column::ProviderCompletedAt,
+                if provider_completion_missing {
+                    Expr::value(Some(now))
+                } else {
+                    Expr::col(provider_operation::Column::ProviderCompletedAt)
+                },
+            )
+            .col_expr(
+                provider_operation::Column::CommittedAt,
+                Expr::value(Some(now)),
+            )
+            .filter(provider_operation::Column::Id.eq(id))
+            .filter(
+                provider_operation::Column::Status.is_in([
+                    PROVIDER_OPERATION_SUCCEEDED,
+                    PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+                ]),
+            )
+            .exec(&self.db)
+            .await?;
+
+        if update.rows_affected == 0 {
+            let current = self.get(id).await?;
+            if current.status == PROVIDER_OPERATION_COMMITTED {
+                return Ok(current);
+            }
+            return Err(PaymentError::InvalidTransition {
+                from: current.status,
+                to: PROVIDER_OPERATION_COMMITTED.to_string(),
+            });
         }
-        active.committed_at = Set(Some(now.into()));
-        active.update(&self.db).await.map_err(Into::into)
+
+        self.get(id).await
     }
 }
 
