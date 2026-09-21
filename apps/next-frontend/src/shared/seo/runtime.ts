@@ -357,10 +357,11 @@ async function fetchSeoTextDocument(
   locale = defaultLocale,
 ): Promise<string> {
   const apiBaseUrl = resolveApiBaseUrl();
-  const requestUrl =
-    pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")
-      ? pathOrUrl
-      : new URL(pathOrUrl, apiBaseUrl).toString();
+  const requestUrl = new URL(pathOrUrl, apiBaseUrl);
+  const allowedOrigin = new URL(apiBaseUrl).origin;
+  if (requestUrl.origin !== allowedOrigin) {
+    throw new Error("SEO runtime rejected a cross-origin document URL");
+  }
 
   const headers: Record<string, string> = {
     Accept: "text/plain, application/xml;q=0.9, */*;q=0.8",
@@ -372,10 +373,11 @@ async function fetchSeoTextDocument(
     headers["X-Tenant-Slug"] = tenantSlug;
   }
 
-  const response = await fetch(requestUrl, {
+  const response = await fetch(requestUrl.toString(), {
     method: "GET",
     headers,
     cache: "no-store",
+    redirect: "error",
   });
 
   if (!response.ok) {
