@@ -6,6 +6,29 @@ use super::*;
 use crate::services::write_transaction::record_product_operation_result;
 use rustok_api::TenantLocale;
 
+async fn lock_product_for_update_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    product_id: Uuid,
+) -> CommerceResult<crate::entities::product::Model> {
+    let query = crate::entities::product::Entity::find_by_id(product_id)
+        .filter(crate::entities::product::Column::TenantId.eq(tenant_id));
+    let product = match txn.get_database_backend() {
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => query.lock_exclusive().one(txn).await?,
+        DatabaseBackend::Sqlite => {
+            let statement = Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE products SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                [tenant_id.into(), product_id.into()],
+            );
+            txn.execute(statement).await?;
+            query.one(txn).await?
+        }
+        _ => query.one(txn).await?,
+    };
+    product.ok_or(CommerceError::ProductNotFound(product_id))
+}
+
 impl ProductCatalogSchemaService {
     pub async fn load_product_attribute_values(
         &self,
@@ -117,10 +140,21 @@ impl ProductCatalogSchemaService {
         tenant_id: Uuid,
         product_id: Uuid,
     ) -> CommerceResult<()> {
+        self.validate_product_publish_requirements_in(&self.db, tenant_id, product_id)
+            .await
+    }
+
+    pub(crate) async fn validate_product_publish_requirements_in<C>(
+        &self,
+        conn: &C,
+        tenant_id: Uuid,
+        product_id: Uuid,
+    ) -> CommerceResult<()>
+    where
+        C: ConnectionTrait,
+    {
         validate_uuid("product_id", product_id)?;
-        let Some(form) = self
-            .load_effective_form_for_product(tenant_id, product_id)
-            .await?
+        let Some(form) = Self::load_effective_form_for_product_in(conn, tenant_id, product_id).await?
         else {
             return Ok(());
         };
@@ -138,7 +172,7 @@ impl ProductCatalogSchemaService {
         let product_placeholder = format!("${}", values.len() + 1);
         values.push(product_id.into());
         let rows = ProductPublishRequirementRow::find_by_statement(Statement::from_sql_and_values(
-            self.db.get_database_backend(),
+            conn.get_database_backend(),
             format!(
                 r#"
                 SELECT
@@ -176,7 +210,7 @@ impl ProductCatalogSchemaService {
             ),
             values,
         ))
-        .all(&self.db)
+        .all(conn)
         .await?;
 
         let present_rows = rows
@@ -334,7 +368,7 @@ impl ProductCatalogSchemaService {
         }
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
-        ensure_product(&txn, tenant_id, product_id).await?;
+        lock_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         for patch in &patches {
             let definition = definitions
                 .get(&patch.attribute_id)
@@ -418,7 +452,7 @@ impl ProductCatalogSchemaService {
         };
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
-        ensure_product(&txn, tenant_id, product_id).await?;
+        lock_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         if !target_attribute_ids.is_empty() {
             let (placeholders, mut values) = uuid_filter_values(tenant_id, &target_attribute_ids);
             let product_placeholder = format!("${}", values.len() + 1);
