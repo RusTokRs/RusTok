@@ -70,6 +70,25 @@ pub async fn fetch_pages(
     .await
 }
 
+fn configured_fallback_tenant_slug(requested: Option<&str>) -> Result<String, ServerFnError> {
+    let configured = configured_tenant_slug().ok_or_else(|| {
+        ServerFnError::new(
+            "Pages storefront server function requires a configured tenant fallback",
+        )
+    })?;
+    let requested = requested
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if let Some(requested) = requested
+        && requested != configured
+    {
+        return Err(ServerFnError::new(format!(
+            "Pages storefront tenant fallback does not match the configured host tenant: {requested}"
+        )));
+    }
+    Ok(configured)
+}
+
 fn configured_tenant_slug() -> Option<String> {
     [
         "RUSTOK_TENANT_SLUG",
