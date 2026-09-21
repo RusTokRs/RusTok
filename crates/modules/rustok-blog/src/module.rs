@@ -32,7 +32,7 @@ impl RusToKModule for BlogModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["content", "comments", "taxonomy", "outbox", "channel"]
+        &["content", "comments", "taxonomy", "outbox", "channel", "profiles"]
     }
 
     fn permissions(&self) -> Vec<Permission> {
