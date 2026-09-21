@@ -138,7 +138,12 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
             Admission::ReplayError(error) => return Err(error),
         };
 
-        let txn = self.db.begin().await?;
+        let txn = self.db.begin().await.map_err(|error| {
+            PortError::unavailable(
+                "comments.operation_begin_failed",
+                error.to_string(),
+            )
+        })?;
         let result = self
             .service
             .create_comment_record_in_tx(&txn, tenant_id, security, request)
