@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `106 / 218` components audited (**49%**)
+- **Progress:** `107 / 218` components audited (**49%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -149,7 +149,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 47 | 18,461 | 2026-09-21 07:38 | Audited price-list CRUD/translation CAS, active-list resolution, canonical price upserts, rule/scope writes, read/write ports, channel/tenant binding, and money-integrity constraints; fixed rule/scope TOCTOU, duplicate canonical price races via variant serialization, and MySQL channel cross-tenant integrity gaps. |
 | [x] | [rustok-pricing-persistence](../../crates/modules/rustok-pricing-persistence) | `modules` | 5 | 190 | 2026-09-21 07:41 | Audited pricing entities and transaction-aware bootstrap persistence; verified decimal/legacy columns, tenant/list/variant linkage, translation uniqueness, cascade FKs, and thin persistence boundaries. No additional production finding. |
 | [x] | [admin](../../crates/modules/rustok-pricing/admin) | `modules` | 13 | 7,537 | 2026-09-21 07:47 | Audited admin server functions, GraphQL transport, permission gates, tenant context, price-list rule/scope writes, channel selection, request validation, and error safety; fixed a hardcoded SQLite backend in active price-list validation. |
-| [ ] | [storefront](../../crates/modules/rustok-pricing/storefront) | `modules` | 10 | 2,465 | None |  |
+| [x] | [storefront](../../crates/modules/rustok-pricing/storefront) | `modules` | 10 | 2,465 | 2026-09-21 07:51 | Audited public pricing server function, GraphQL transport, tenant/channel/price-list resolution, published-product visibility, client query sanitization, and error safety; no additional production tenant-isolation or correctness finding. |
 | [ ] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 168 | 62,712 | None |  |
 | [ ] | [rustok-product-bundles](../../crates/modules/rustok-product-bundles) | `modules` | 22 | 3,848 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-product-bundles/admin) | `modules` | 9 | 2,291 | None |  |
