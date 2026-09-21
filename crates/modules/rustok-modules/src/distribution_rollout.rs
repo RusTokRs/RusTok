@@ -2556,15 +2556,17 @@ async fn complete_request_operation(
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     complete_operation(
         transaction,
-        idempotency_key,
-        receipt.rollout_id,
-        receipt.rollout_revision,
-        receipt.rollout_state_revision,
-        receipt.status,
-        None,
-        None,
-        None,
-        None,
+        CompleteRolloutOperationParams {
+            idempotency_key,
+            rollout_id: receipt.rollout_id,
+            rollout_revision: receipt.rollout_revision,
+            rollout_state_revision: receipt.rollout_state_revision,
+            rollout_status: receipt.status,
+            node_id: None,
+            role: None,
+            observation_revision: None,
+            assignment_phase: None,
+        },
     )
     .await
 }
@@ -2576,31 +2578,36 @@ async fn complete_report_operation(
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     complete_operation(
         transaction,
-        idempotency_key,
-        receipt.rollout_id,
-        receipt.rollout_revision,
-        receipt.rollout_state_revision,
-        receipt.rollout_status,
-        Some(&receipt.node_id),
-        Some(receipt.role),
-        Some(receipt.observation_revision),
-        Some(receipt.phase),
+        CompleteRolloutOperationParams {
+            idempotency_key,
+            rollout_id: receipt.rollout_id,
+            rollout_revision: receipt.rollout_revision,
+            rollout_state_revision: receipt.rollout_state_revision,
+            rollout_status: receipt.rollout_status,
+            node_id: Some(&receipt.node_id),
+            role: Some(receipt.role),
+            observation_revision: Some(receipt.observation_revision),
+            assignment_phase: Some(receipt.phase),
+        },
     )
     .await
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn complete_operation(
-    transaction: &DatabaseTransaction,
+struct CompleteRolloutOperationParams<'a> {
     idempotency_key: Uuid,
     rollout_id: Uuid,
     rollout_revision: u64,
     rollout_state_revision: u64,
     rollout_status: ModuleStaticDistributionRolloutStatus,
-    node_id: Option<&str>,
+    node_id: Option<&'a str>,
     role: Option<ModuleStaticDistributionRole>,
     observation_revision: Option<u64>,
     assignment_phase: Option<ModuleReconciliationPhase>,
+}
+
+async fn complete_operation(
+    transaction: &DatabaseTransaction,
+    params: CompleteRolloutOperationParams<'_>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
@@ -2624,17 +2631,18 @@ async fn complete_operation(
                 placeholder(backend, 9),
             ),
             vec![
-                uuid_value(rollout_id, backend),
-                revision_value(rollout_revision)?,
-                revision_value(rollout_state_revision)?,
-                rollout_status.as_str().into(),
-                node_id.map(str::to_owned).into(),
-                role.map(|value| role_name(value).to_string()).into(),
-                optional_revision_value(observation_revision)?,
-                assignment_phase
+                uuid_value(params.rollout_id, backend),
+                revision_value(params.rollout_revision)?,
+                revision_value(params.rollout_state_revision)?,
+                params.rollout_status.as_str().into(),
+                params.node_id.map(str::to_owned).into(),
+                params.role.map(|value| role_name(value).to_string()).into(),
+                optional_revision_value(params.observation_revision)?,
+                params
+                    .assignment_phase
                     .map(|phase| phase.as_str().to_string())
                     .into(),
-                uuid_value(idempotency_key, backend),
+                uuid_value(params.idempotency_key, backend),
             ],
         ))
         .await

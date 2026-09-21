@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `81 / 218` components audited (**37%**)
+- **Progress:** `84 / 218` components audited (**39%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -124,9 +124,9 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [cli](../../crates/modules/rustok-media/cli) | `modules` | 1 | 175 | 2026-09-20 21:24 | Verified media CLI reconciliation commands & runtime checks, zero suppressions/unwraps, all 3 tests passed, clippy clean |
 | [x] | [rustok-moderation](../../crates/modules/rustok-moderation) | `modules` | 36 | 9,113 | 2026-09-20 22:15 | Verified moderation service, transactional outbox & leases, zero suppressions/unwraps, fixed SQLite migration contract UUID blob literal formatting, all 24 tests passed, clippy clean |
 | [x] | [rustok-moderation-api](../../crates/modules/rustok-moderation-api) | `modules` | 3 | 766 | 2026-09-20 22:15 | Verified moderation boundary ports, typed capabilities, scope claims, zero suppressions/unwraps, all 4 tests passed, clippy clean |
-| [ ] | [rustok-modules](../../crates/modules/rustok-modules) | `modules` | 175 | 129,930 | None |  |
-| [ ] | [rustok-modules-translation](../../crates/modules/rustok-modules-translation) | `modules` | 1 | 822 | None |  |
-| [ ] | [cli](../../crates/modules/rustok-modules/cli) | `modules` | 1 | 1,813 | None |  |
+| [x] | [rustok-modules](../../crates/modules/rustok-modules) | `modules` | 175 | 129,930 | 2026-09-21 03:45 | Verified module registry, WASM sandboxing, tenant lifecycle, distribution rollout & OCI transport, eliminated 2 allow(too_many_arguments) via typed param structs, zero suppressions/unwraps, all 308 tests passed, clippy clean |
+| [x] | [rustok-modules-translation](../../crates/modules/rustok-modules-translation) | `modules` | 1 | 822 | 2026-09-21 03:45 | Verified translation descriptor mappings, revision coordination & plan application, zero suppressions/unwraps, all 9 tests passed, clippy clean |
+| [x] | [cli](../../crates/modules/rustok-modules/cli) | `modules` | 1 | 1,813 | 2026-09-21 03:45 | Verified module CLI inspect, template render, validate & verification commands, zero suppressions/unwraps, all 6 tests passed, clippy clean |
 | [ ] | [rustok-navigation](../../crates/modules/rustok-navigation) | `modules` | 39 | 5,274 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-navigation/storefront) | `modules` | 8 | 494 | None |  |
 | [ ] | [rustok-notifications](../../crates/modules/rustok-notifications) | `modules` | 75 | 21,825 | None |  |

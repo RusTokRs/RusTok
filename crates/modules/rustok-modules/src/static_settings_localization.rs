@@ -392,14 +392,16 @@ impl StaticSettingsLocalizationService {
                     })?;
                 persist_exact_row(
                     &transaction,
-                    command.tenant_id,
-                    registry.module_slug(),
-                    &command.field_id,
-                    &locale,
-                    &command.value,
-                    command.expected_target_revision,
-                    next_target_revision,
-                    next_owner_revision,
+                    PersistExactSettingRowParams {
+                        tenant_id: command.tenant_id,
+                        module_slug: registry.module_slug(),
+                        field_id: &command.field_id,
+                        locale: &locale,
+                        value: &command.value,
+                        expected_target_revision: command.expected_target_revision,
+                        next_target_revision,
+                        next_owner_revision,
+                    },
                 )
                 .await?;
                 let advanced_owner_revision = StaticTenantLifecycleStore::advance(
@@ -527,20 +529,23 @@ async fn load_exact_row<C: ConnectionTrait>(
         .transpose()
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn persist_exact_row<C: ConnectionTrait>(
-    connection: &C,
+struct PersistExactSettingRowParams<'a> {
     tenant_id: Uuid,
-    module_slug: &str,
-    field_id: &str,
-    locale: &str,
-    value: &str,
+    module_slug: &'a str,
+    field_id: &'a str,
+    locale: &'a str,
+    value: &'a str,
     expected_target_revision: u64,
     next_target_revision: u64,
     next_owner_revision: u64,
+}
+
+async fn persist_exact_row<C: ConnectionTrait>(
+    connection: &C,
+    params: PersistExactSettingRowParams<'_>,
 ) -> Result<(), StaticSettingsLocalizationError> {
     let backend = connection.get_database_backend();
-    if expected_target_revision == 0 {
+    if params.expected_target_revision == 0 {
         connection
             .execute_raw(Statement::from_sql_and_values(
                 backend,
@@ -557,13 +562,13 @@ async fn persist_exact_row<C: ConnectionTrait>(
                     }
                 },
                 vec![
-                    tenant_id.into(),
-                    module_slug.into(),
-                    field_id.into(),
-                    locale.into(),
-                    value.into(),
-                    revision_value(next_target_revision)?,
-                    revision_value(next_owner_revision)?,
+                    params.tenant_id.into(),
+                    params.module_slug.into(),
+                    params.field_id.into(),
+                    params.locale.into(),
+                    params.value.into(),
+                    revision_value(params.next_target_revision)?,
+                    revision_value(params.next_owner_revision)?,
                 ],
             ))
             .await
@@ -587,14 +592,14 @@ async fn persist_exact_row<C: ConnectionTrait>(
                 }
             },
             vec![
-                value.into(),
-                revision_value(next_target_revision)?,
-                revision_value(next_owner_revision)?,
-                tenant_id.into(),
-                module_slug.into(),
-                field_id.into(),
-                locale.into(),
-                revision_value(expected_target_revision)?,
+                params.value.into(),
+                revision_value(params.next_target_revision)?,
+                revision_value(params.next_owner_revision)?,
+                params.tenant_id.into(),
+                params.module_slug.into(),
+                params.field_id.into(),
+                params.locale.into(),
+                revision_value(params.expected_target_revision)?,
             ],
         ))
         .await
