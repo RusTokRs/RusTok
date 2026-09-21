@@ -151,33 +151,46 @@ impl CommentsService {
         record_entrypoint("create_comment");
         let started = Instant::now();
         let result = async {
-            let locale = input.locale.clone();
-            let target_type = input.target_type.clone();
-            let target_id = input.target_id;
-            let author_id = self.enforce_create_scope(&security)?;
             let txn = self.db.begin().await?;
-            let comment_id = self
-                .create_comment_in_tx(&txn, tenant_id, security.clone(), input)
+            let record = self
+                .create_comment_record_in_tx(&txn, tenant_id, security, input)
                 .await?;
-            self.publish_comment_created_in_tx(
-                &txn,
-                CommentEventContext {
-                    tenant_id,
-                    actor_id: security.user_id,
-                    comment_id,
-                    target_type,
-                    target_id,
-                    author_id,
-                },
-            )
-            .await?;
             txn.commit().await?;
-            self.get_comment(tenant_id, security, comment_id, &locale, None)
-                .await
+            Ok(record)
         }
         .await;
         record_operation_result("comments.create_comment", started, &result);
         result
+    }
+
+    pub(crate) async fn create_comment_record_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        input: CreateCommentInput,
+    ) -> CommentsResult<CommentRecord> {
+        let locale = input.locale.clone();
+        let target_type = input.target_type.clone();
+        let target_id = input.target_id;
+        let author_id = self.enforce_create_scope(&security)?;
+        let comment_id = self
+            .create_comment_in_tx(txn, tenant_id, security.clone(), input)
+            .await?;
+        self.publish_comment_created_in_tx(
+            txn,
+            CommentEventContext {
+                tenant_id,
+                actor_id: security.user_id,
+                comment_id,
+                target_type,
+                target_id,
+                author_id,
+            },
+        )
+        .await?;
+        self.get_comment_record_in_tx(txn, tenant_id, comment_id, &locale, None)
+            .await
     }
 
     pub async fn create_comment_in_tx(
@@ -918,6 +931,30 @@ impl CommentsService {
             }),
             None => Ok(1),
         }
+    }
+
+    async fn get_comment_record_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        comment_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> CommentsResult<CommentRecord> {
+        let comment = self.find_comment_in_tx(txn, tenant_id, comment_id, false).await?;
+        let thread = comment_thread::Entity::find_by_id(comment.thread_id)
+            .filter(comment_thread::Column::TenantId.eq(tenant_id))
+            .one(txn)
+            .await?
+            .ok_or_else(|| CommentsError::CommentThreadNotFound {
+                target_type: "unknown".to_string(),
+                target_id: Uuid::nil(),
+            })?;
+        let bodies = comment_body::Entity::find()
+            .filter(comment_body::Column::CommentId.eq(comment.id))
+            .all(txn)
+            .await?;
+        self.build_comment_record(comment, thread, bodies, locale, fallback_locale)
     }
 
     async fn find_comment(
