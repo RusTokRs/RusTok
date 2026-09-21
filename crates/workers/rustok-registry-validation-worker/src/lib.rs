@@ -6,7 +6,8 @@ use async_trait::async_trait;
 use object_store::ObjectStoreExt;
 use rustok_build_publication::{
     CosignArtifactSigner, RegistryCredentialBroker, RegistryCredentialError,
-    SignedOciArtifactPublicationError, publish_signed_oci_artifact,
+    SignedOciArtifactPublicationError, SignedOciArtifactPublicationReceipt,
+    publish_signed_oci_artifact,
 };
 use sha2::{Digest, Sha256};
 
@@ -15,9 +16,10 @@ use rustok_modules::{
     ModuleAlloyPublicationEvidenceCommand, ModuleAlloyPublicationEvidenceProducer,
     ModuleGovernanceAutomatedCheck, ModulePlatformPublicationEvidenceCommand,
     ModulePlatformPublicationEvidenceProducer, ModulePublicationArtifactOrigin,
-    ModulePublicationArtifactRegistryProvider, ModuleValidationJobResultCommand,
-    ModuleValidationJobResultOutcome, ModuleValidationJobRetryCommand,
-    OciArtifactPublicationBundle, OciArtifactPublicationTarget, OciArtifactReference,
+    ModulePublicationArtifactRegistryProvider, ModulePublishBundleValidation,
+    ModuleValidationJobResultCommand, ModuleValidationJobResultOutcome,
+    ModuleValidationJobRetryCommand, OciArtifactPublicationBundle,
+    OciArtifactPublicationTarget, OciArtifactReference,
     OciDistributionArtifactRegistry, OciRhaiWorkspacePublicationProvenance,
     SeaOrmModuleGovernanceService, validate_module_publish_artifact,
 };
@@ -71,49 +73,44 @@ fn failed_validation_checks(
     origin: ModulePublicationArtifactOrigin,
     artifact_contract_passed: bool,
 ) -> Vec<ModuleGovernanceAutomatedCheck> {
-    let artifact_status = if artifact_contract_passed {
-        "passed"
+    let (artifact_status, artifact_detail) = if artifact_contract_passed {
+        ("passed", "Artifact contract validation passed.")
     } else {
-        "failed"
-    };
-    let artifact_detail = if artifact_contract_passed {
-        "Artifact contract validation passed."
-    } else {
-        "Artifact contract validation failed."
+        ("failed", "Artifact contract validation failed.")
     };
     let mut checks = vec![automated_check(
         "artifact_contract",
         artifact_status,
         artifact_detail,
     )];
+    push_origin_failed_checks(&mut checks, origin, artifact_contract_passed);
+    checks
+}
+
+fn push_origin_failed_checks(
+    checks: &mut Vec<ModuleGovernanceAutomatedCheck>,
+    origin: ModulePublicationArtifactOrigin,
+    artifact_contract_passed: bool,
+) {
+    let (status, detail_platform, detail_alloy) = if artifact_contract_passed {
+        (
+            "failed",
+            "Platform publication evidence verification failed.",
+            "Canonical Rhai workspace OCI publication or signature failed.",
+        )
+    } else {
+        (
+            "not_run",
+            "Not run because artifact contract validation failed.",
+            "Not run because artifact contract validation failed.",
+        )
+    };
     match origin {
-        ModulePublicationArtifactOrigin::PlatformBuilt => checks.push(automated_check(
-            "platform_publication_evidence",
-            if artifact_contract_passed {
-                "failed"
-            } else {
-                "not_run"
-            },
-            if artifact_contract_passed {
-                "Platform publication evidence verification failed."
-            } else {
-                "Not run because artifact contract validation failed."
-            },
-        )),
+        ModulePublicationArtifactOrigin::PlatformBuilt => {
+            checks.push(automated_check("platform_publication_evidence", status, detail_platform));
+        }
         ModulePublicationArtifactOrigin::AlloyAuthored => {
-            checks.push(automated_check(
-                "alloy_oci_publication",
-                if artifact_contract_passed {
-                    "failed"
-                } else {
-                    "not_run"
-                },
-                if artifact_contract_passed {
-                    "Canonical Rhai workspace OCI publication or signature failed."
-                } else {
-                    "Not run because artifact contract validation failed."
-                },
-            ));
+            checks.push(automated_check("alloy_oci_publication", status, detail_alloy));
             checks.push(automated_check(
                 "platform_admission",
                 "not_run",
@@ -122,7 +119,6 @@ fn failed_validation_checks(
         }
         ModulePublicationArtifactOrigin::ExternalPrebuilt => {}
     }
-    checks
 }
 
 /// Deployment-owned policy revisions and identities used only when a claimed
@@ -301,20 +297,9 @@ impl RegistryValidationWorker {
     /// Claims and processes one durable queue item. The caller may poll again
     /// after `Ok(None)`; broker delivery is deliberately not required.
     pub async fn process_next(&self) -> Result<Option<String>, String> {
-        let Some(claim) = self
-            .service
-            .claim_next_validation_job(self.actor_principal.clone())
-            .await
-            .map_err(|error| error.to_string())?
-        else {
+        let Some(work_item) = self.claim_work_item().await? else {
             return Ok(None);
         };
-        if !claim.should_run {
-            return Ok(None);
-        }
-        let work_item = claim
-            .work_item
-            .ok_or_else(|| "claimed validation job is missing immutable work item".to_string())?;
         let validation_job_id = work_item.validation_job_id.clone();
         let artifact = match self.load_artifact_with_retry(&work_item).await? {
             ArtifactLoadOutcome::Loaded(artifact) => artifact,
@@ -327,69 +312,16 @@ impl RegistryValidationWorker {
             &work_item.artifact_content_type,
             &artifact,
         );
-        let mut warnings = work_item.existing_warnings.clone();
-        warnings.extend(validation.warnings);
-        dedupe(&mut warnings);
         let artifact_contract_passed = validation.errors.is_empty();
-        let supply_chain_evidence = if artifact_contract_passed {
-            match work_item.artifact_origin {
-                ModulePublicationArtifactOrigin::PlatformBuilt => {
-                    let command = self.publication_policy.command(
-                        work_item.request_id.clone(),
-                        self.actor_principal.clone(),
-                    )?;
-                    self.publication_evidence
-                        .produce(command)
-                        .await
-                        .map(|_| ())
-                        .map_err(|error| {
-                            tracing::warn!(
-                                request_id = %work_item.request_id,
-                                error = %error,
-                                "Platform publication evidence verification failed"
-                            );
-                            "Platform publication evidence did not satisfy the isolated supply-chain verification policy.".to_string()
-                        })
-                }
-                ModulePublicationArtifactOrigin::AlloyAuthored => self
-                    .publish_alloy_workspace(&work_item, artifact)
-                    .await
-                    .map_err(|error| {
-                        tracing::warn!(
-                            request_id = %work_item.request_id,
-                            error = %error,
-                            "Alloy OCI publication or platform admission failed"
-                        );
-                        "Alloy OCI publication did not satisfy the isolated supply-chain verification policy.".to_string()
-                    }),
-                ModulePublicationArtifactOrigin::ExternalPrebuilt => Ok(()),
-            }
-        } else {
-            Ok(())
-        };
-        let supply_chain_evidence_passed = supply_chain_evidence.is_ok();
-        let (outcome, errors, automated_checks) = if artifact_contract_passed
-            && supply_chain_evidence_passed
-        {
-            warnings.push("Automated artifact validation passed; follow-up validation stages are still required before publication.".to_string());
-            dedupe(&mut warnings);
-            (
-                ModuleValidationJobResultOutcome::Passed,
-                Vec::new(),
-                successful_validation_checks(work_item.artifact_origin),
-            )
-        } else {
-            let mut errors = validation.errors;
-            if let Err(error) = supply_chain_evidence {
-                errors.push(error);
-            }
-            dedupe(&mut errors);
-            (
-                ModuleValidationJobResultOutcome::Failed,
-                errors,
-                failed_validation_checks(work_item.artifact_origin, artifact_contract_passed),
-            )
-        };
+        let supply_chain_evidence = self
+            .verify_supply_chain_evidence(&work_item, artifact, artifact_contract_passed)
+            .await;
+        let (outcome, errors, automated_checks, warnings) = self.build_validation_result(
+            &work_item,
+            validation,
+            artifact_contract_passed,
+            supply_chain_evidence,
+        );
         self.service
             .apply_validation_job_result(ModuleValidationJobResultCommand {
                 validation_job_id: validation_job_id.clone(),
@@ -405,6 +337,140 @@ impl RegistryValidationWorker {
         Ok(Some(validation_job_id))
     }
 
+    async fn claim_work_item(
+        &self,
+    ) -> Result<Option<rustok_modules::ModuleValidationJobWorkItem>, String> {
+        let claim = self
+            .service
+            .claim_next_validation_job(self.actor_principal.clone())
+            .await
+            .map_err(|error| error.to_string())?;
+        match claim {
+            Some(claim) if claim.should_run => claim
+                .work_item
+                .ok_or_else(|| "claimed validation job is missing immutable work item".to_string())
+                .map(Some),
+            _ => Ok(None),
+        }
+    }
+
+    async fn verify_platform_evidence(
+        &self,
+        work_item: &rustok_modules::ModuleValidationJobWorkItem,
+    ) -> Result<(), String> {
+        let command = self.publication_policy.command(
+            work_item.request_id.clone(),
+            self.actor_principal.clone(),
+        )?;
+        self.publication_evidence
+            .produce(command)
+            .await
+            .map(|_| ())
+            .map_err(|error| {
+                tracing::warn!(
+                    request_id = %work_item.request_id,
+                    error = %error,
+                    "Platform publication evidence verification failed"
+                );
+                "Platform publication evidence did not satisfy the isolated supply-chain verification policy.".to_string()
+            })
+    }
+
+    async fn verify_supply_chain_evidence(
+        &self,
+        work_item: &rustok_modules::ModuleValidationJobWorkItem,
+        artifact: Vec<u8>,
+        artifact_contract_passed: bool,
+    ) -> Result<(), String> {
+        if !artifact_contract_passed {
+            return Ok(());
+        }
+        match work_item.artifact_origin {
+            ModulePublicationArtifactOrigin::PlatformBuilt => {
+                self.verify_platform_evidence(work_item).await
+            }
+            ModulePublicationArtifactOrigin::AlloyAuthored => self
+                .publish_alloy_workspace(work_item, artifact)
+                .await
+                .map_err(|error| {
+                    tracing::warn!(
+                        request_id = %work_item.request_id,
+                        error = %error,
+                        "Alloy OCI publication or platform admission failed"
+                    );
+                    "Alloy OCI publication did not satisfy the isolated supply-chain verification policy.".to_string()
+                }),
+            ModulePublicationArtifactOrigin::ExternalPrebuilt => Ok(()),
+        }
+    }
+
+    fn build_validation_result(
+        &self,
+        work_item: &rustok_modules::ModuleValidationJobWorkItem,
+        validation: ModulePublishBundleValidation,
+        artifact_contract_passed: bool,
+        supply_chain_evidence: Result<(), String>,
+    ) -> (
+        ModuleValidationJobResultOutcome,
+        Vec<String>,
+        Vec<ModuleGovernanceAutomatedCheck>,
+        Vec<String>,
+    ) {
+        let mut warnings = work_item.existing_warnings.clone();
+        warnings.extend(validation.warnings);
+        dedupe(&mut warnings);
+        let supply_chain_evidence_passed = supply_chain_evidence.is_ok();
+        if artifact_contract_passed && supply_chain_evidence_passed {
+            warnings.push("Automated artifact validation passed; follow-up validation stages are still required before publication.".to_string());
+            dedupe(&mut warnings);
+            (
+                ModuleValidationJobResultOutcome::Passed,
+                Vec::new(),
+                successful_validation_checks(work_item.artifact_origin),
+                warnings,
+            )
+        } else {
+            let mut errors = validation.errors;
+            if let Err(error) = supply_chain_evidence {
+                errors.push(error);
+            }
+            dedupe(&mut errors);
+            (
+                ModuleValidationJobResultOutcome::Failed,
+                errors,
+                failed_validation_checks(work_item.artifact_origin, artifact_contract_passed),
+                warnings,
+            )
+        }
+    }
+
+    async fn publish_signed_alloy_bundle(
+        &self,
+        bundle: OciArtifactPublicationBundle,
+        limits: ArtifactAdmissionLimits,
+    ) -> Result<SignedOciArtifactPublicationReceipt, String> {
+        let receipt = publish_signed_oci_artifact(
+            self.alloy_publication.credentials.as_ref(),
+            self.alloy_publication.signer.as_ref(),
+            &self.alloy_publication.target,
+            bundle,
+            limits,
+            ALLOY_OCI_PUBLICATION_TIMEOUT,
+            OCI_CREDENTIAL_LEASE_SAFETY_MARGIN,
+        )
+        .await
+        .map_err(map_alloy_oci_error)?;
+        if receipt.artifact.registry != self.alloy_publication.target.registry
+            || receipt.artifact.repository != self.alloy_publication.target.repository
+        {
+            return Err(
+                "OCI publisher returned a reference outside the configured Alloy target"
+                    .to_string(),
+            );
+        }
+        Ok(receipt)
+    }
+
     async fn publish_alloy_workspace(
         &self,
         work_item: &rustok_modules::ModuleValidationJobWorkItem,
@@ -418,66 +484,15 @@ impl RegistryValidationWorker {
             .load_alloy_publication_source(&work_item.request_id)
             .await
             .map_err(|error| format!("owner source reload failed: {error}"))?;
-        if source.request_id != work_item.request_id
-            || source.request_revision != work_item.expected_request_revision
-            || source.slug != work_item.slug
-            || source.version != work_item.version
-            || source.descriptor != *receipted_descriptor
-            || source.source_digest != format!("sha256:{}", work_item.artifact_checksum_sha256)
-        {
-            return Err(
-                "owner source no longer matches the claimed Alloy validation receipt".to_string(),
-            );
-        }
+        validate_alloy_source(work_item, receipted_descriptor, &source)?;
         let publication_limits = ArtifactAdmissionLimits {
             max_descriptor_bytes: ArtifactAdmissionLimits::default().max_descriptor_bytes,
             max_payload_bytes: MODULE_PUBLISH_ALLOY_WORKSPACE_MAX_BYTES as u64,
         };
-        let bundle = OciArtifactPublicationBundle::from_verified_rhai_workspace(
-            source.descriptor.clone(),
-            artifact,
-            &source.license,
-            OciRhaiWorkspacePublicationProvenance {
-                request_id: source.request_id.clone(),
-                alloy_tenant_id: source.alloy_tenant_id,
-                alloy_script_id: source.alloy_script_id,
-                source_revision: source.source_revision,
-                source_digest: source.source_digest.clone(),
-                review_digest: source.review_digest.clone(),
-                descriptor_digest: source.descriptor_digest.clone(),
-            },
-            publication_limits,
-        )
-        .map_err(|error| format!("canonical Alloy OCI bundle construction failed: {error}"))?;
-        let receipt = publish_signed_oci_artifact(
-            self.alloy_publication.credentials.as_ref(),
-            self.alloy_publication.signer.as_ref(),
-            &self.alloy_publication.target,
-            bundle,
-            publication_limits,
-            ALLOY_OCI_PUBLICATION_TIMEOUT,
-            OCI_CREDENTIAL_LEASE_SAFETY_MARGIN,
-        )
-        .await
-        .map_err(|error| match error {
-            SignedOciArtifactPublicationError::Rejected => {
-                "canonical Alloy OCI publication was rejected".to_string()
-            }
-            SignedOciArtifactPublicationError::TimedOut => {
-                "canonical Alloy OCI publication timed out".to_string()
-            }
-            SignedOciArtifactPublicationError::Unavailable(error) => {
-                format!("canonical Alloy OCI publication infrastructure is unavailable: {error}")
-            }
-        })?;
-        if receipt.artifact.registry != self.alloy_publication.target.registry
-            || receipt.artifact.repository != self.alloy_publication.target.repository
-        {
-            return Err(
-                "OCI publisher returned a reference outside the configured Alloy target"
-                    .to_string(),
-            );
-        }
+        let bundle = build_alloy_bundle(&source, artifact, publication_limits)?;
+        let receipt = self
+            .publish_signed_alloy_bundle(bundle, publication_limits)
+            .await?;
         let command = self.publication_policy.alloy_command(
             work_item.request_id.clone(),
             receipt.artifact,
@@ -520,28 +535,35 @@ impl RegistryValidationWorker {
                         );
                         tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
                     } else {
-                        self.service
-                            .apply_validation_job_result(ModuleValidationJobResultCommand {
-                                validation_job_id: work_item.validation_job_id.clone(),
-                                expected_request_revision: work_item.expected_request_revision,
-                                actor_principal: self.actor_principal.clone(),
-                                outcome: ModuleValidationJobResultOutcome::Failed,
-                                warnings: work_item.existing_warnings.clone(),
-                                errors: vec!["Validation job exhausted artifact-load retries before artifact checks.".to_string()],
-                                automated_checks: vec![automated_check(
-                                    "artifact_load",
-                                    "failed",
-                                    "Artifact could not be loaded after the retry budget was exhausted.",
-                                )],
-                            })
-                            .await
-                            .map_err(|owner_error| owner_error.to_string())?;
-                        return Ok(ArtifactLoadOutcome::Terminalized);
+                        return self.terminalize_exhausted_load(work_item).await;
                     }
                 }
             }
         }
         unreachable!("retry delay schedule always has a terminal attempt")
+    }
+
+    async fn terminalize_exhausted_load(
+        &self,
+        work_item: &rustok_modules::ModuleValidationJobWorkItem,
+    ) -> Result<ArtifactLoadOutcome, String> {
+        self.service
+            .apply_validation_job_result(ModuleValidationJobResultCommand {
+                validation_job_id: work_item.validation_job_id.clone(),
+                expected_request_revision: work_item.expected_request_revision,
+                actor_principal: self.actor_principal.clone(),
+                outcome: ModuleValidationJobResultOutcome::Failed,
+                warnings: work_item.existing_warnings.clone(),
+                errors: vec!["Validation job exhausted artifact-load retries before artifact checks.".to_string()],
+                automated_checks: vec![automated_check(
+                    "artifact_load",
+                    "failed",
+                    "Artifact could not be loaded after the retry budget was exhausted.",
+                )],
+            })
+            .await
+            .map_err(|owner_error| owner_error.to_string())?;
+        Ok(ArtifactLoadOutcome::Terminalized)
     }
 
     async fn load_artifact(
@@ -579,4 +601,60 @@ fn dedupe(values: &mut Vec<String>) {
     values.retain(|value| !value.trim().is_empty());
     values.sort();
     values.dedup();
+}
+
+fn validate_alloy_source(
+    work_item: &rustok_modules::ModuleValidationJobWorkItem,
+    receipted_descriptor: &rustok_modules::ModuleArtifactDescriptor,
+    source: &rustok_modules::ModuleAlloyPublicationSource,
+) -> Result<(), String> {
+    if source.request_id != work_item.request_id
+        || source.request_revision != work_item.expected_request_revision
+        || source.slug != work_item.slug
+        || source.version != work_item.version
+        || source.descriptor != *receipted_descriptor
+        || source.source_digest != format!("sha256:{}", work_item.artifact_checksum_sha256)
+    {
+        return Err(
+            "owner source no longer matches the claimed Alloy validation receipt".to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn build_alloy_bundle(
+    source: &rustok_modules::ModuleAlloyPublicationSource,
+    artifact: Vec<u8>,
+    publication_limits: ArtifactAdmissionLimits,
+) -> Result<OciArtifactPublicationBundle, String> {
+    OciArtifactPublicationBundle::from_verified_rhai_workspace(
+        source.descriptor.clone(),
+        artifact,
+        &source.license,
+        OciRhaiWorkspacePublicationProvenance {
+            request_id: source.request_id.clone(),
+            alloy_tenant_id: source.alloy_tenant_id,
+            alloy_script_id: source.alloy_script_id,
+            source_revision: source.source_revision,
+            source_digest: source.source_digest.clone(),
+            review_digest: source.review_digest.clone(),
+            descriptor_digest: source.descriptor_digest.clone(),
+        },
+        publication_limits,
+    )
+    .map_err(|error| format!("canonical Alloy OCI bundle construction failed: {error}"))
+}
+
+fn map_alloy_oci_error(error: SignedOciArtifactPublicationError) -> String {
+    match error {
+        SignedOciArtifactPublicationError::Rejected => {
+            "canonical Alloy OCI publication was rejected".to_string()
+        }
+        SignedOciArtifactPublicationError::TimedOut => {
+            "canonical Alloy OCI publication timed out".to_string()
+        }
+        SignedOciArtifactPublicationError::Unavailable(err) => {
+            format!("canonical Alloy OCI publication infrastructure is unavailable: {err}")
+        }
+    }
 }
