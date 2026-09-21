@@ -402,6 +402,10 @@ pub enum DomainEvent {
         target_type: String,
         target_id: Option<Uuid>,
     },
+    TargetDeleted {
+        target_type: String,
+        target_id: Uuid,
+    },
     IndexUpdated {
         index_name: String,
         target_id: Uuid,
@@ -1154,6 +1158,7 @@ impl DomainEvent {
             Self::OrderCancelled { .. } => "order.cancelled",
 
             Self::ReindexRequested { .. } => "index.reindex_requested",
+            Self::TargetDeleted { .. } => "target.deleted",
             Self::IndexUpdated { .. } => "index.updated",
 
             Self::BuildRequested { .. } => "build.requested",
@@ -1386,6 +1391,7 @@ impl DomainEvent {
 
             // Index events (v1)
             Self::ReindexRequested { .. } => 1,
+            Self::TargetDeleted { .. } => 1,
             Self::IndexUpdated { .. } => 1,
 
             // Build events (v1)
@@ -1915,6 +1921,15 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_empty("target_type", target_type)?;
                 validators::validate_max_length("target_type", target_type, 64)?;
                 validators::validate_optional_uuid("target_id", target_id)?;
+                Ok(())
+            }
+            Self::TargetDeleted {
+                target_type,
+                target_id,
+            } => {
+                validators::validate_not_empty("target_type", target_type)?;
+                validators::validate_max_length("target_type", target_type, 64)?;
+                validators::validate_not_nil_uuid("target_id", target_id)?;
                 Ok(())
             }
             Self::IndexUpdated {
@@ -3562,6 +3577,32 @@ fn validate_policy_revision(value: &str) -> Result<(), EventValidationError> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn target_deleted_event_is_registered_and_validates() {
+        let envelope = EventEnvelope::new(
+            Uuid::new_v4(),
+            None,
+            DomainEvent::TargetDeleted {
+                target_type: "blog_post".to_string(),
+                target_id: Uuid::new_v4(),
+            },
+        );
+        assert_eq!(envelope.event_type, "target.deleted");
+        assert_eq!(envelope.schema_version, 1);
+        assert!(envelope.validate_registered_schema().is_ok());
+    }
+
+    #[test]
+    fn target_deleted_event_rejects_nil_target_id() {
+        let event = DomainEvent::TargetDeleted {
+            target_type: "blog_post".to_string(),
+            target_id: Uuid::nil(),
+        };
+        assert!(event.validate().is_err());
+    }
+
     use super::*;
 
     #[test]

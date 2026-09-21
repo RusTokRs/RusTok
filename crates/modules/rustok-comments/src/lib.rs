@@ -15,6 +15,8 @@ pub mod remote;
 mod richtext;
 #[cfg(feature = "server")]
 pub mod services;
+#[cfg(feature = "server")]
+mod target_lifecycle;
 #[cfg(feature = "tcp-transport")]
 pub mod tcp_auth;
 #[cfg(feature = "tcp-transport")]
@@ -39,7 +41,9 @@ use async_trait::async_trait;
 #[cfg(feature = "server")]
 use rustok_api::{Action, Permission, Resource};
 #[cfg(feature = "server")]
-use rustok_core::{MigrationSource, RusToKModule};
+use rustok_core::{
+    MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry, RusToKModule,
+};
 #[cfg(feature = "server")]
 use sea_orm_migration::MigrationTrait;
 
@@ -120,6 +124,16 @@ impl RusToKModule for CommentsModule {
 
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
+    }
+
+    fn register_event_listeners(
+        &self,
+        registry: &mut ModuleEventListenerRegistry,
+        ctx: &ModuleEventListenerContext<'_>,
+    ) {
+        registry.register(target_lifecycle::CommentTargetDeletionHandler::new(
+            ctx.db.clone(),
+        ));
     }
 
     fn permissions(&self) -> Vec<Permission> {

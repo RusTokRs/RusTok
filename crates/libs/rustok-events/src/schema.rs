@@ -260,6 +260,10 @@ const REINDEX_REQUESTED_FIELDS: &[FieldSchema] = &[
     field!("target_type", "string"),
     field!("target_id", "uuid", optional),
 ];
+const TARGET_DELETED_FIELDS: &[FieldSchema] = &[
+    field!("target_type", "string"),
+    field!("target_id", "uuid"),
+];
 const INDEX_UPDATED_FIELDS: &[FieldSchema] =
     &[field!("index_name", "string"), field!("target_id", "uuid")];
 const BUILD_REQUESTED_FIELDS: &[FieldSchema] =
@@ -948,6 +952,12 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "Index rebuild requested.",
         fields: REINDEX_REQUESTED_FIELDS,
+    },
+    EventSchema {
+        event_type: "target.deleted",
+        version: 1,
+        description: "A polymorphic target was deleted by its owning module.",
+        fields: TARGET_DELETED_FIELDS,
     },
     EventSchema {
         event_type: "index.updated",
