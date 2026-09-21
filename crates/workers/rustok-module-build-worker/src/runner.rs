@@ -889,7 +889,10 @@ fn load_isolation_attestation(
     if metadata.len() > MAX_ISOLATION_ATTESTATION_BYTES {
         return Err("module build isolation attestation exceeds its size limit".to_string());
     }
-    let bytes = std::fs::read(path)
+    let mut file = std::fs::File::open(path)
+        .map_err(|error| format!("module build isolation attestation cannot be read: {error}"))?;
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut file, &mut bytes)
         .map_err(|error| format!("module build isolation attestation cannot be read: {error}"))?;
     let attestation: OciJobIsolationAttestation = serde_json::from_slice(&bytes)
         .map_err(|error| format!("module build isolation attestation is invalid JSON: {error}"))?;

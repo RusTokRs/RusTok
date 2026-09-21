@@ -212,9 +212,12 @@ impl RegistryCredentialLease {
             return Err(RegistryCredentialError::Rejected);
         }
         let directory = std::env::temp_dir().join(format!("rustok-cosign-auth-{}", Uuid::new_v4()));
+        #[cfg(unix)]
         let mut directory_builder = DirBuilder::new();
         #[cfg(unix)]
         directory_builder.mode(0o700);
+        #[cfg(not(unix))]
+        let directory_builder = DirBuilder::new();
         directory_builder
             .create(&directory)
             .map_err(|error| RegistryCredentialError::Unavailable(error.to_string()))?;
