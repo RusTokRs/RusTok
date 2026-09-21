@@ -1,10 +1,11 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, Order, QueryFilter,
-    QueryOrder, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, Order, QueryFilter, QueryOrder, QuerySelect, Set, Statement, TransactionTrait,
 };
 use uuid::Uuid;
+use rustok_product::entities::product;
 
 use crate::dto::{
     CreateProductRelationInput, ProductRelationDto, RelationType, ReorderProductRelationsInput,
@@ -17,6 +18,48 @@ use crate::ports::ProductRelationsPort;
 #[derive(Clone)]
 pub struct ProductRelationService {
     db: DatabaseConnection,
+}
+
+async fn lock_product_for_update(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    product_id: Uuid,
+) -> ProductRelationResult<product::Model> {
+    let query = product::Entity::find_by_id(product_id)
+        .filter(product::Column::TenantId.eq(tenant_id));
+    let model = match txn.get_database_backend() {
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => query.lock_exclusive().one(txn).await?,
+        DatabaseBackend::Sqlite => {
+            let statement = Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE products SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                [tenant_id.into(), product_id.into()],
+            );
+            txn.execute(statement).await?;
+            query.one(txn).await?
+        }
+        _ => query.one(txn).await?,
+    };
+    model.ok_or(ProductRelationError::ProductNotFound(product_id))
+}
+
+async fn lock_products_in_order(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    first_product_id: Uuid,
+    second_product_id: Uuid,
+) -> ProductRelationResult<()> {
+    if first_product_id == second_product_id {
+        return Err(ProductRelationError::SelfRelationNotAllowed(first_product_id));
+    }
+    let (left, right) = if first_product_id < second_product_id {
+        (first_product_id, second_product_id)
+    } else {
+        (second_product_id, first_product_id)
+    };
+    lock_product_for_update(txn, tenant_id, left).await?;
+    lock_product_for_update(txn, tenant_id, right).await?;
+    Ok(())
 }
 
 impl ProductRelationService {
@@ -119,13 +162,21 @@ impl ProductRelationsPort for ProductRelationService {
         }
 
         let rel_type_str = input.relation_type.as_str().to_owned();
+        let txn = self.db.begin().await?;
+        lock_products_in_order(
+            &txn,
+            tenant_id,
+            input.product_id,
+            input.related_product_id,
+        )
+        .await?;
 
         let exists = ProductRelation::find()
             .filter(Column::TenantId.eq(tenant_id))
             .filter(Column::ProductId.eq(input.product_id))
             .filter(Column::RelatedProductId.eq(input.related_product_id))
             .filter(Column::RelationType.eq(&rel_type_str))
-            .one(&self.db)
+            .one(&txn)
             .await?;
 
         if exists.is_some() {
@@ -146,7 +197,7 @@ impl ProductRelationsPort for ProductRelationService {
                     .select_only()
                     .column_as(Column::Position.max(), "max_pos")
                     .into_tuple()
-                    .one(&self.db)
+                    .one(&txn)
                     .await?
                     .flatten();
 
@@ -169,7 +220,8 @@ impl ProductRelationsPort for ProductRelationService {
             updated_at: Set(now.into()),
         };
 
-        let model = active.insert(&self.db).await?;
+        let model = active.insert(&txn).await?;
+        txn.commit().await?;
         Ok(model.into())
     }
 
@@ -180,13 +232,15 @@ impl ProductRelationsPort for ProductRelationService {
         relation_id: Uuid,
         input: UpdateProductRelationInput,
     ) -> ProductRelationResult<ProductRelationDto> {
-        let model = ProductRelation::find_by_id(relation_id)
+        let txn = self.db.begin().await?;
+        let relation = ProductRelation::find_by_id(relation_id)
             .filter(Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(&txn)
             .await?
             .ok_or(ProductRelationError::RelationNotFound(relation_id))?;
+        lock_product_for_update(&txn, tenant_id, relation.product_id).await?;
 
-        let mut active: ActiveModel = model.into();
+        let mut active: ActiveModel = relation.into();
         let now = Utc::now();
 
         if let Some(pos) = input.position {
@@ -197,7 +251,8 @@ impl ProductRelationsPort for ProductRelationService {
         }
         active.updated_at = Set(now.into());
 
-        let updated = active.update(&self.db).await?;
+        let updated = active.update(&txn).await?;
+        txn.commit().await?;
         Ok(updated.into())
     }
 
@@ -207,15 +262,18 @@ impl ProductRelationsPort for ProductRelationService {
         _actor_id: Option<Uuid>,
         relation_id: Uuid,
     ) -> ProductRelationResult<()> {
+        let txn = self.db.begin().await?;
         let model = ProductRelation::find_by_id(relation_id)
             .filter(Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(&txn)
             .await?
             .ok_or(ProductRelationError::RelationNotFound(relation_id))?;
+        lock_product_for_update(&txn, tenant_id, model.product_id).await?;
 
         ProductRelation::delete_by_id(model.id)
-            .exec(&self.db)
+            .exec(&txn)
             .await?;
+        txn.commit().await?;
         Ok(())
     }
 
@@ -228,6 +286,7 @@ impl ProductRelationsPort for ProductRelationService {
         let rel_type_str = input.relation_type.as_str();
 
         let txn = self.db.begin().await?;
+        lock_product_for_update(&txn, tenant_id, input.product_id).await?;
 
         for (idx, relation_id) in input.ordered_relation_ids.iter().enumerate() {
             let model = ProductRelation::find_by_id(*relation_id)
