@@ -6,6 +6,7 @@ use sea_orm::{
     TransactionTrait,
 };
 use uuid::Uuid;
+use sha2::{Digest, Sha256};
 
 use crate::dto::{
     CreateWorkflowInput, CreateWorkflowStepInput, UpdateWorkflowInput, UpdateWorkflowStepInput,
@@ -37,6 +38,9 @@ impl WorkflowService {
         actor_id: Option<Uuid>,
         input: CreateWorkflowInput,
     ) -> WorkflowResult<Uuid> {
+        let (webhook_slug, webhook_secret) =
+            normalize_webhook_configuration(input.webhook_slug, input.webhook_secret)?;
+
         let now = Utc::now().fixed_offset();
         let id = Uuid::new_v4();
 
@@ -52,8 +56,8 @@ impl WorkflowService {
             updated_at: Set(now),
             failure_count: Set(0),
             auto_disabled_at: Set(None),
-            webhook_slug: Set(input.webhook_slug),
-            webhook_secret: Set(None),
+            webhook_slug: Set(webhook_slug),
+            webhook_secret: Set(webhook_secret),
         };
         model.insert(&self.db).await?;
 
@@ -122,6 +126,18 @@ impl WorkflowService {
         let transaction = self.db.begin().await?;
         let existing = lock_workflow_for_update(&transaction, tenant_id, id).await?;
 
+        let next_webhook_slug = input
+            .webhook_slug
+            .clone()
+            .or_else(|| existing.webhook_slug.clone());
+        let next_webhook_secret = match input.webhook_secret.clone() {
+            Some(secret) if secret.is_empty() => None,
+            Some(secret) => Some(secret),
+            None => existing.webhook_secret.clone(),
+        };
+        let (next_webhook_slug, next_webhook_secret) =
+            normalize_webhook_configuration(next_webhook_slug, next_webhook_secret)?;
+
         // Save version snapshot before applying the update while the workflow row is locked.
         self.save_version_internal_on(&transaction, id, actor_id, &existing)
             .await?;
@@ -139,10 +155,8 @@ impl WorkflowService {
         if let Some(trigger_config) = input.trigger_config {
             model.trigger_config = Set(trigger_config);
         }
-        if let Some(slug) = input.webhook_slug {
-            let slug_val = if slug.is_empty() { None } else { Some(slug) };
-            model.webhook_slug = Set(slug_val);
-        }
+        model.webhook_slug = Set(next_webhook_slug);
+        model.webhook_secret = Set(next_webhook_secret);
         model.updated_at = Set(Utc::now().fixed_offset());
         model.update(&transaction).await?;
         transaction.commit().await?;
@@ -403,7 +417,8 @@ impl WorkflowService {
         &self,
         tenant_id: Uuid,
         webhook_slug: &str,
-        payload: serde_json::Value,
+        body: &[u8],
+        signature: Option<&str>,
     ) -> WorkflowResult<Vec<Uuid>> {
         let matching = WorkflowEntity::find()
             .filter(workflow::Column::TenantId.eq(tenant_id))
@@ -416,6 +431,18 @@ impl WorkflowService {
             return Ok(vec![]);
         }
 
+        let signature = signature.ok_or(WorkflowError::WebhookSignatureMissing)?;
+        for workflow in &matching {
+            let Some(secret) = workflow.webhook_secret.as_deref() else {
+                return Err(WorkflowError::WebhookSecretNotConfigured);
+            };
+            if !verify_webhook_signature(secret, body, signature) {
+                return Err(WorkflowError::WebhookSignatureInvalid);
+            }
+        }
+
+        let payload: serde_json::Value = serde_json::from_slice(body)
+            .unwrap_or_else(|_| serde_json::Value::String(String::from_utf8_lossy(body).into_owned()));
         let engine = std::sync::Arc::new(crate::services::WorkflowEngine::new(self.db.clone()));
         let initial_context = serde_json::json!({
             "webhook": { "slug": webhook_slug, "payload": payload }
@@ -430,7 +457,6 @@ impl WorkflowService {
             let engine = engine.clone();
 
             let execution_id = engine.execute(wf_id, tenant_id, None, steps, ctx).await?;
-
             execution_ids.push(execution_id);
         }
 
@@ -721,6 +747,96 @@ impl WorkflowService {
             .await?;
 
         Ok(())
+    }
+}
+
+fn normalize_webhook_configuration(
+    webhook_slug: Option<String>,
+    webhook_secret: Option<String>,
+) -> WorkflowResult<(Option<String>, Option<String>)> {
+    let webhook_slug = webhook_slug.filter(|value| !value.is_empty());
+    let webhook_secret = webhook_secret.filter(|value| !value.is_empty());
+
+    match (webhook_slug, webhook_secret) {
+        (None, None) => Ok((None, None)),
+        (Some(slug), Some(secret)) => {
+            if secret.len() < 32 || secret.len() > 128 {
+                return Err(WorkflowError::InvalidTriggerConfig(
+                    "webhook_secret must contain 32..=128 bytes".to_string(),
+                ));
+            }
+            Ok((Some(slug), Some(secret)))
+        }
+        (Some(_), None) => Err(WorkflowError::InvalidTriggerConfig(
+            "webhook_secret is required when webhook_slug is configured".to_string(),
+        )),
+        (None, Some(_)) => Err(WorkflowError::InvalidTriggerConfig(
+            "webhook_secret requires webhook_slug".to_string(),
+        )),
+    }
+}
+
+fn verify_webhook_signature(secret: &str, body: &[u8], signature: &str) -> bool {
+    let supplied = signature.strip_prefix("sha256=").unwrap_or(signature);
+    let Ok(supplied) = decode_hex_signature(supplied) else {
+        return false;
+    };
+
+    let mut key_block = [0_u8; 64];
+    let secret_bytes = secret.as_bytes();
+    if secret_bytes.len() > key_block.len() {
+        let digest = Sha256::digest(secret_bytes);
+        key_block[..digest.len()].copy_from_slice(&digest);
+    } else {
+        key_block[..secret_bytes.len()].copy_from_slice(secret_bytes);
+    }
+
+    let mut inner = Sha256::new();
+    let ipad = [0x36_u8; 64];
+    for (index, byte) in key_block.iter().enumerate() {
+        inner.update([*byte ^ ipad[index]]);
+    }
+    inner.update(body);
+    let inner_digest = inner.finalize();
+
+    let mut outer = Sha256::new();
+    let opad = [0x5c_u8; 64];
+    for (index, byte) in key_block.iter().enumerate() {
+        outer.update([*byte ^ opad[index]]);
+    }
+    outer.update(inner_digest);
+    let expected = outer.finalize();
+
+    if supplied.len() != expected.len() {
+        return false;
+    }
+    let mut difference = 0_u8;
+    for (actual, expected) in supplied.iter().zip(expected.iter()) {
+        difference |= actual ^ expected;
+    }
+    difference == 0
+}
+
+fn decode_hex_signature(value: &str) -> Result<Vec<u8>, ()> {
+    if value.len() != 64 {
+        return Err(());
+    }
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(32);
+    for chunk in bytes.chunks_exact(2) {
+        let high = hex_nibble(chunk[0]).ok_or(())?;
+        let low = hex_nibble(chunk[1]).ok_or(())?;
+        decoded.push((high << 4) | low);
+    }
+    Ok(decoded)
+}
+
+fn hex_nibble(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
     }
 }
 
