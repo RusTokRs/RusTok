@@ -155,6 +155,79 @@ async fn owner_topic_delete_redacts_thread_and_preserves_revisions() {
     assert!(matches!(repeated, ForumError::TopicDeleted));
 }
 
+
+#[tokio::test]
+async fn owner_topic_restore_rehydrates_closed_locked_solution_thread() {
+    let db = setup_db().await;
+    let tenant_id = Uuid::new_v4();
+    let author_id = Uuid::new_v4();
+    let moderator_id = Uuid::new_v4();
+    let category_id = Uuid::new_v4();
+    let topic_id = Uuid::new_v4();
+
+    seed_category(&db, tenant_id, category_id, false).await;
+    seed_topic(&db, tenant_id, category_id, topic_id, author_id, false).await;
+
+    let owner = SecurityContext::new(UserRole::Manager, Some(author_id));
+    let moderator = SecurityContext::new(UserRole::Admin, Some(moderator_id));
+    let reply_service = ReplyService::new(db.clone(), event_bus(db.clone()));
+    let moderation_service = ModerationService::new(db.clone(), event_bus(db.clone()));
+    let topic_service = TopicService::new(db.clone(), event_bus(db.clone()));
+
+    let reply = reply_service
+        .create(
+            tenant_id,
+            owner.clone(),
+            topic_id,
+            reply_input("accepted answer"),
+        )
+        .await
+        .expect("reply should be created");
+    assert_eq!(reply.status, "approved");
+
+    moderation_service
+        .mark_solution(tenant_id, topic_id, reply.id, moderator.clone())
+        .await
+        .expect("reply should become solution");
+    moderation_service
+        .close_topic(tenant_id, topic_id, moderator.clone())
+        .await
+        .expect("topic should be closed before deletion");
+    moderation_service
+        .lock_topic(tenant_id, topic_id, moderator.clone())
+        .await
+        .expect("topic should be locked before deletion");
+
+    topic_service
+        .delete(tenant_id, topic_id, owner)
+        .await
+        .expect("topic should be soft-deleted");
+
+    assert!(topic_deleted(&db, topic_id).await);
+    assert_eq!(topic_status(&db, topic_id).await, "archived");
+    assert!(topic_locked(&db, topic_id).await);
+    assert_eq!(reply_status(&db, reply.id).await, "deleted");
+    assert_eq!(solution_count(&db, topic_id).await, 0);
+    assert_eq!(category_topic_count(&db, category_id).await, 0);
+    assert_eq!(category_reply_count(&db, category_id).await, 0);
+
+    topic_service
+        .restore(tenant_id, topic_id, moderator)
+        .await
+        .expect("topic should restore from delete snapshot");
+
+    assert!(!topic_deleted(&db, topic_id).await);
+    assert_eq!(topic_status(&db, topic_id).await, "closed");
+    assert!(topic_locked(&db, topic_id).await);
+    assert_eq!(reply_status(&db, reply.id).await, "approved");
+    assert_eq!(topic_reply_count(&db, topic_id).await, 1);
+    assert_eq!(category_topic_count(&db, category_id).await, 1);
+    assert_eq!(category_reply_count(&db, category_id).await, 1);
+    assert_eq!(solution_count(&db, topic_id).await, 1);
+    assert_eq!(topic_snapshot_count(&db, topic_id).await, 0);
+    assert_eq!(reply_snapshot_count(&db, topic_id).await, 0);
+}
+
 fn reply_input(content: &str) -> CreateReplyInput {
     CreateReplyInput {
         locale: "en".to_string(),
@@ -334,6 +407,52 @@ async fn reply_status(db: &DatabaseConnection, reply_id: Uuid) -> String {
         format!(
             "SELECT status AS value FROM forum_replies WHERE id = {}",
             sql_uuid(reply_id)
+        ),
+    )
+    .await
+}
+
+
+async fn topic_locked(db: &DatabaseConnection, topic_id: Uuid) -> bool {
+    scalar_i64(
+        db,
+        format!(
+            "SELECT is_locked AS value FROM forum_topics WHERE id = {}",
+            sql_uuid(topic_id)
+        ),
+    )
+    .await
+    == 1
+}
+
+async fn solution_count(db: &DatabaseConnection, topic_id: Uuid) -> i64 {
+    scalar_i64(
+        db,
+        format!(
+            "SELECT COUNT(*) AS value FROM forum_solutions WHERE topic_id = {}",
+            sql_uuid(topic_id)
+        ),
+    )
+    .await
+}
+
+async fn topic_snapshot_count(db: &DatabaseConnection, topic_id: Uuid) -> i64 {
+    scalar_i64(
+        db,
+        format!(
+            "SELECT COUNT(*) AS value FROM forum_topic_delete_snapshots WHERE topic_id = {}",
+            sql_uuid(topic_id)
+        ),
+    )
+    .await
+}
+
+async fn reply_snapshot_count(db: &DatabaseConnection, topic_id: Uuid) -> i64 {
+    scalar_i64(
+        db,
+        format!(
+            "SELECT COUNT(*) AS value FROM forum_topic_reply_delete_snapshots WHERE topic_id = {}",
+            sql_uuid(topic_id)
         ),
     )
     .await
