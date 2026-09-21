@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `159 / 218` components audited (**73%**)
+- **Progress:** `160 / 218` components audited (**73%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -182,7 +182,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-social-graph](../../crates/modules/rustok-social-graph) | `modules` | 36 | 8,796 | 2026-09-21 12:45 | Audited relation storage/FKs and uniqueness, GraphQL auth and tenant binding, command-port actor ownership and CAS/idempotency, privacy read/index scopes, monotonic index revisions, DLQ receipt claims, and maintenance replay/cleanup authorization; no additional production security, tenant-scope, or concurrency finding remained. |
 | [x] | [rustok-social-graph-cli](../../crates/modules/rustok-social-graph-cli) | `modules` | 1 | 324 | 2026-09-21 12:52 | Audited the owner-local receipt-cleanup command, explicit tenant/retention/limit parsing, system-actor PortContext, idempotency scope, runtime DB boundary, and delegation to the backend maintenance port; no additional production security, tenant-scope, or concurrency finding remained. |
 | [x] | [rustok-tax](../../crates/modules/rustok-tax) | `modules` | 5 | 1,586 | 2026-09-21 13:00 | Audited the transport-neutral tax calculation port, policy admission, tenant/channel context handling, provider selection, currency/rate validation, taxable-target binding, result invariants, and decimal tax calculation; no additional production security, tenant-scope, or concurrency finding remained. |
-| [ ] | [rustok-taxonomy](../../crates/modules/rustok-taxonomy) | `modules` | 51 | 13,035 | None |  |
+| [x] | [rustok-taxonomy](../../crates/modules/rustok-taxonomy) | `modules` | 51 | 13,035 | 2026-09-21 13:18 | Audited taxonomy term/category CRUD, module-owner mutations, hierarchy locks and DB guards, route-key uniqueness/reconciliation, translation target authorization, category presentation/media ownership, revision/CAS paths, and cross-tenant auxiliary reads; fixed tenant-scoped translation/alias batch reads in TaxonomyService. No additional production security, tenant-scope, or concurrency finding remained. |
 | [ ] | [rustok-tenant](../../crates/modules/rustok-tenant) | `modules` | 28 | 3,836 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-tenant/admin) | `modules` | 8 | 726 | None |  |
 | [ ] | [rustok-translation](../../crates/modules/rustok-translation) | `modules` | 76 | 45,087 | None |  |
