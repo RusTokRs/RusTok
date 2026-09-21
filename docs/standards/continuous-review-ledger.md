@@ -14,7 +14,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ## Current Cycle Status
 - **Active Round:** Round 1
 - **Cycle Started:** `2026-09-18T18:10:03Z`
-- **Progress:** `125 / 218` components audited (**57%**)
+- **Progress:** `126 / 218` components audited (**58%**)
 - **Total Workspace Codebase:** `1,854,597` LOC across `218` modules/apps
 
 ---
@@ -41,7 +41,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-comments](../../apps/next-frontend/packages/rustok-comments) | `apps` | 2 | 111 | 2026-09-21 11:28 | Audited comment composer/index: presentation-only, no direct API/token/tenant access; submission delegates to the parent callback, whose blog mutation path is tenant/auth/permission-bound. No additional production finding. |
 | [x] | [rustok-product](../../apps/next-frontend/packages/rustok-product) | `apps` | 1 | 70 | 2026-09-21 11:31 | Audited storefront product catalog option query: read-only GraphQL transport, locale validation, tenant slug forwarding and optional auth token; no direct mutation or secret access. |
 | [x] | [search](../../apps/next-frontend/packages/search) | `apps` | 1 | 681 | 2026-09-21 11:37 | Audited storefront search UI transport, suggestions, presets, catalog filters and tenant/token forwarding; no direct API or mutation boundary, with server-side search remaining authoritative for tenant/channel filtering. |
-| [ ] | [server](../../apps/server) | `apps` | 477 | 177,052 | None |  |
+| [x] | [server](../../apps/server) | `apps` | 477 | 177,052 | 2026-09-21 09:34 | Audited server auth/session lifecycle, OAuth/PKCE and refresh rotation, tenant resolution/request trust, GraphQL/WS auth, registry/artifact governance, MCP runtime/management, channel/flex/user/admin surfaces, installer and health/metrics. Fixed concurrent refresh-token rotation, made password change atomic with session revocation, and enforced delegated MCP permission authority at HTTP mutation boundaries. |
 | [ ] | [storefront](../../apps/storefront) | `apps` | 34 | 5,059 | None |  |
 | [x] | [rustok-api](../../crates/libs/rustok-api) | `libs` | 35 | 6,627 | 2026-09-18 19:46 | Audited richtext.rs: eliminated unwrap panic on empty strings, documented schema invariants |
 | [x] | [rustok-core](../../crates/libs/rustok-core) | `libs` | 64 | 16,913 | 2026-09-19 05:57 | Eliminated Tier 0 unwraps/panics with documented invariants, converted DatabaseHealthCheck to typed std::error::Error trait, fixed bulkhead doc print |
