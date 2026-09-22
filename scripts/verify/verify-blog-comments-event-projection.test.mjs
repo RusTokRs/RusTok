@@ -413,10 +413,17 @@ assert!(!handler.handles(&forum_created));
     },
     event_projection: {
       provider: 'comments',
+      events: ['comment.created', 'comment.updated', 'comment.status_changed', 'comment.deleted'],
       handler: 'BlogCommentProjectionHandler',
       delivery_ledger: 'blog_comment_projection_deliveries',
       status: 'implemented_static_only',
       runtime_status: 'pending',
+      snapshot_invalidation: {
+        source: 'blog_comment_projection_deliveries',
+        cursor: 'latest processed lifecycle event_id for the tenant/post',
+        keying: 'public snapshot identity includes projection_event_id',
+        redis_enumeration: false,
+      },
       source_harness: {
         path: handlerPath,
         status: 'executable_no_run',
