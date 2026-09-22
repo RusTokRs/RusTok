@@ -432,6 +432,32 @@ jobs:
       - name: Validate server library docs snapshot
         run: make docs-check-server-libs
 
+  temporary-event-contract-digest:
+    name: Temporary Event Contract Digest
+    if: github.ref == 'refs/heads/agent/blog-comment-snapshot-invalidation-final-20260922'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+      - name: Generate canonical event contract digest
+        run: |
+          set -euo pipefail
+          cargo run --locked -p rustok-events --example event_contract_digests -- --write
+          mkdir -p /tmp/event-contract-digest
+          cp crates/libs/rustok-events/contracts/event-contract-digests.json /tmp/event-contract-digest/generated.json
+      - name: Archive generated digest
+        uses: actions/upload-artifact@d6d9d7f6f3d8d4f7a9fdbb3e98f8d4f6c4b56f47
+        with:
+          name: tmp-event-contract-digest
+          path: /tmp/event-contract-digest/generated.json
+          if-no-files-found: error
+          retention-days: 1
+
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
