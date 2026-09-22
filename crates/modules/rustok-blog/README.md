@@ -111,6 +111,9 @@ copy must use the canonical Taxonomy owner contract.
   `CommentsThreadPort`; Blog does not call `CommentsService` directly.
 - Depends on `rustok-taxonomy` for the shared tag dictionary and canonical Blog
   Category copy/hierarchy projection while keeping `blog_post_tags` Blog-owned.
+  Global Taxonomy tags may be reused by Blog reads and attachments, but Blog tag
+  mutation commands are restricted to `module:blog` terms; shared vocabulary remains
+  Taxonomy-owned.
 - Depends on `rustok-core` for module contracts, permissions, and
   `SecurityContext`.
 - Depends on `rustok-api` for shared auth/tenant/request GraphQL+HTTP adapter

@@ -33,7 +33,7 @@
     "taxonomy_joins_are_tenant_constrained": true,
     "tag_aggregation_is_distinct_and_deterministic": true,
     "stale_metadata_tags_are_ignored_by_search_harness": true,
-    "tag_mutation_semantics_changed": false,
+    "tag_mutation_semantics_changed": true,
     "tag_mutation_atomic_reindex_implemented": false,
     "production_behavior_changed": true,
     "database_schema_changed": false,

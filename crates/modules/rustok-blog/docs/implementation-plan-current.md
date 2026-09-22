@@ -161,11 +161,13 @@ previous cursor. Their latest retained source states remain:
 - `comment_form_fallback = planned`; the active storefront has an authenticated create-comment surface, while `hide_comment_form` remains a planned degraded mode and has not been runtime-verified.
 - `tag_list_pagination = source_ready_maintainer_execution_pending`;
 - `tag_canonical_projection = source_complete_maintainer_execution_pending`;
-- `tag_mutation_atomic_reindex = source_ready_maintainer_execution_pending`;
+- `tag_mutation_atomic_reindex = source_complete_maintainer_execution_pending`;
 - `post_category_name_projection = source_complete_canonical_taxonomy_read`.
 
 For tags, Taxonomy remains the shared dictionary owner and Blog retains
-`blog_post_tags` attachment ownership. For Comments, the execution-owned
+`blog_post_tags` attachment ownership. Global Taxonomy tags may be attached and
+read by Blog, but shared global terms are mutated only by the Taxonomy owner;
+Blog tag mutations apply only to `module:blog` terms. For Comments, the execution-owned
 transport/restart/relay evidence remains separate from Category Taxonomy work.
 
 ## Remaining execution-owned results
