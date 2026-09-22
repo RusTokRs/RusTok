@@ -138,7 +138,7 @@ if (evidence) {
     }
   }
   if (
-    evidence.fallback_smoke?.status !== 'planned' ||
+    evidence.fallback_smoke?.status !== 'source_verified_no_compile' ||
     evidence.fallback_smoke?.runtime_evidence !== 'pending'
   ) failures.push(`${evidencePath}: fallback status drift`);
 }
@@ -183,7 +183,7 @@ if (fallbackEvidence) {
     readDegradation.operation !== 'list_public_comments_for_target' ||
     readDegradation.propagated_error_policy !== 'all_other_blog_errors' ||
     readDegradation.cached_thread_snapshot !== 'source_verified_no_compile' ||
-    readDegradation.comment_form_fallback !== 'planned' ||
+    readDegradation.comment_form_fallback !== 'source_verified_hide_when_provider_unavailable' ||
     readDegradation.runtime_evidence !== 'pending'
   ) failures.push(`${fallbackEvidencePath}: storefront read degradation status drift`);
   if (!sameSet(readDegradation.transports ?? [], ['graphql', 'native_ssr'])) {
@@ -229,7 +229,7 @@ if (fallbackEvidence) {
     'page', 'per_page', 'projection_revision',
   ])) failures.push(`${fallbackEvidencePath}: cache identity drift`);
   if (
-    fallbackEvidence.fallback_smoke?.status !== 'planned' ||
+    fallbackEvidence.fallback_smoke?.status !== 'source_verified_no_compile' ||
     fallbackEvidence.fallback_smoke?.runtime_evidence !== 'pending'
   ) failures.push(`${fallbackEvidencePath}: degraded-mode status drift`);
 }
@@ -256,21 +256,19 @@ if (
 if (
   consumerRegistry?.contract_tests?.status !== 'source_verified_no_compile' ||
   consumerRegistry?.contract_tests?.runtime_status !== 'pending' ||
-  consumerRegistry?.contract_tests?.fallback_smoke?.status !== 'planned'
+  consumerRegistry?.contract_tests?.fallback_smoke?.status !== 'source_verified_no_compile'
 ) failures.push(`${consumerRegistryPath}: contract-test status drift`);
 
 for (const marker of [
-  'comments_thread_port: Arc<dyn CommentsThreadPort>',
-  'let comments_thread_port = in_process_comments_thread_port(db.clone(), event_bus);',
-  'Self::with_comments_thread_port(db, comments_thread_port)',
+  'comments_thread_port: Option<Arc<dyn CommentsThreadPort>>',
+  'pub fn from_optional_comments_thread_port(',
+  'require_comments_thread_port(',
   'pub fn with_comments_thread_port(',
   'comments_thread_port: Arc<dyn CommentsThreadPort>,',
-  'Self {\n            db,\n            comments_thread_port,\n        }',
   'mod port_injection_tests',
   'fn comment_service_accepts_an_injected_comments_thread_port()',
   ') -> CommentService =',
   'CommentService::with_comments_thread_port;',
-  '.comments_thread_port',
   '.create_comment(',
   '.get_comment(',
   '.list_comments_for_target(',
@@ -293,6 +291,8 @@ for (const marker of [
   'content_text: record.body_text',
   'Self::ensure_blog_target(&existing)?',
 ]) requireMarker(service, marker, servicePath);
+if (service.includes('in_process_comments_thread_port')) failures.push(servicePath + ': Blog must not construct an in-process Comments provider');
+if (service.includes('CommentService::new(')) failures.push(servicePath + ': Blog must not use an implicit CommentsService fallback constructor');
 
 for (const marker of [
   'pub trait PublicCommentsSnapshotStore: Send + Sync',

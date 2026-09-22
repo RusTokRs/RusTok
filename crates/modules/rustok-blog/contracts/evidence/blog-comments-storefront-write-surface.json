@@ -5,8 +5,8 @@
   "owner": "rustok-blog-storefront",
   "status": "source_verified_present",
   "actualization": "active_storefront_write_surface_source_verified",
-  "legacy_degraded_mode": "hide_comment_form",
-  "legacy_registry_semantics": "legacy_fallback_vocabulary_now_maps_to_active_write_surface",
+  "legacy_degraded_mode": "hide_comment_form_on_unavailable_or_timeout",
+  "legacy_registry_semantics": "explicit_provider_absence_policy",
   "runner": "scripts/verify/verify-blog-comments-storefront-write-surface.mjs",
   "self_test": "scripts/verify/verify-blog-comments-storefront-write-surface.test.mjs",
   "source_inventory": {
@@ -36,9 +36,9 @@
     "disabled_channel_fails_closed": true
   },
   "planning_effect": {
-    "comment_form_fallback": "planned",
+    "comment_form_fallback": "source_verified",
     "cached_thread_snapshot": "source_ready_maintainer_execution_pending",
-    "fallback_smoke_status": "planned_runtime_execution_only",
+    "fallback_smoke_status": "source_verified_no_compile",
     "new_storefront_write_surface_authorized": false
   },
   "execution": []

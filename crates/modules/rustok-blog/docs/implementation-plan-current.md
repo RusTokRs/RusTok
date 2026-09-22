@@ -158,7 +158,7 @@ previous cursor. Their latest retained source states remain:
 - `remote_comments_transport = source_implemented_maintainer_execution_pending`;
 - `canonical_outbox_relay_postgres_evidence_source_ready_maintainer_execution_pending`;
 - `cached_public_comments_snapshot = source_implemented_maintainer_execution_pending`;
-- `comment_form_fallback = planned`; the active storefront has an authenticated create-comment surface, while `hide_comment_form` remains a planned degraded mode and has not been runtime-verified.
+- `comment_form_policy = source_verified_hide_on_provider_absence`; the active storefront writes only when Comments is available, while unavailable/timeout states preserve explicit read availability and may render the cached approved snapshot.
 - `tag_list_pagination = source_complete_maintainer_execution_pending`;
 - `tag_canonical_projection = source_complete_maintainer_execution_pending`;
 - `tag_mutation_atomic_reindex = source_complete_maintainer_execution_pending`;
@@ -176,26 +176,18 @@ transport/restart/relay evidence remains separate from Category Taxonomy work.
 
 ## Accepted Comments and Reactions capability cutover
 
-The current static `blog -> comments` lifecycle edge is an over-constraint, not
-canonical target architecture. Blog posts, categories, tags, and publication serving
-remain valid without Comments. The cutover must:
+The static `blog -> comments` lifecycle edge has been removed. The canonical
+source now requires:
 
-1. remove Comments from the static dependency closure in every synchronized
-   declaration and server feature path;
-2. keep `CommentsThreadPort` and lifecycle-event projections as conditional owner
-   boundaries rather than converting them into Blog-owned storage;
-3. introduce a typed Blog-owned comment-surface policy whose disabled, read-only, and
-   open modes preserve Comments-owned data;
-4. prove Blog serving with Comments absent and fail only comment operations when an
-   enabled/required capability is unavailable;
-5. model Reactions the same way: Blog owns post-surface intent, Reactions owns reaction
-   state, and neither module toggles the other's lifecycle;
-6. retain explicit unavailable state and never manufacture empty comments or zero
-   reaction counts when a provider is unavailable.
-
-The canonical matrices and provider-disable rules are in
-[`docs/architecture/settings.md`](../../../../docs/architecture/settings.md). This
-cutover is source/runtime work and is not claimed complete by the documentation change.
+1. Blog serving remains functional with Comments absent; only comment operations
+   require the optional capability;
+2. `CommentsThreadPort` and lifecycle projections remain the only cross-owner
+   boundary, with no local or embedded provider fallback in Blog;
+3. provider absence maps to `COMMENTS_PROVIDER_UNAVAILABLE` for writes and to
+   explicit `UNAVAILABLE`/`TIMEOUT` read states for public comments;
+4. the active storefront hides the comment write surface when the provider is
+   unavailable or timed out and may preserve a valid approved snapshot for reads;
+5. Reactions remains an independent optional capability owned by its own provider.
 
 ## Remaining execution-owned results
 

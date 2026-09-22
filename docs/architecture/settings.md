@@ -72,13 +72,13 @@ Reviewed from `main@e1fae26ac8737cf4af4cfbdad2d396105e710df8`.
 | Dynamic artifact settings | settings instance, stable data owner, admitted schema digest, recovery/purge contracts | `rustok-modules` artifact control plane | Stronger owner model; production recovery/fence evidence remains incomplete |
 | SEO settings | Manifest schema plus typed `SeoModuleSettings` runtime normalization | SEO semantics, but reads `tenant_modules` directly | **Gap:** persistence boundary bypass |
 | Forum engagement selection | `forum.useReactions` in `tenant_modules.settings` | Forum semantics | **Gap:** direct Forum/Reactions `tenant_modules` reads and non-canonical key |
-| Blog manifest settings | `postsPerPage`, `showAuthor` | Declared by Blog | **Gap:** persisted/editor-visible but no runtime consumer found |
+| Blog manifest settings | none | Blog currently declares no module-owned static settings | No decorative settings are persisted without a runtime owner |
 | Blog reaction selection | Blog registers a producer factory; optional Blog+Reactions composition exists | Blog owns subject/presentation intent; Reactions owns state | **Gap:** no typed tenant Blog reaction-surface setting/runtime consumer; composition availability alone is not intent |
 | Email generic settings | `platform_settings.email` | Generic server path while Email runtime reads bootstrap config | **Gap:** saved value is not authoritative; historical secret material may exist |
 | Nested manifest schema vocabulary | Owner validator supports `properties`/`items`; current SEO manifest uses `shape`/`additional_properties` | Host manifest adapter | **Gap:** unknown TOML schema keywords are ignored, so the generic editor/validator does not enforce the declared nested shape |
-| Cross-module capability graph | `blog -> comments` and `commerce -> fulfillment` are current static dependency edges | Module composition | **Gap:** both consumers have valid provider-free behavior, so feature/data-specific requirements are modeled as unconditional module dependencies |
+| Cross-module capability graph | `blog -> comments` removed; `commerce -> fulfillment` remains tracked separately | Module composition | Blog comment access is an optional capability and is no longer an unconditional module dependency |
 | Digital/physical fulfillment requirement | Product accepts `product_type = "Digital"`; Product/Cart/Commerce shipping paths normalize a missing profile to `default` | Product owns product kind; Cart/Order own snapshots; Fulfillment owns shipping execution | **Gap:** no canonical typed fulfillment requirement, so digital lines can be forced through synthetic shipping identity/grouping |
-| Blog dependency declarations | Root `modules.toml` lists `content/comments/outbox/taxonomy`; package/runtime also list `channel/profiles` | Composition manifest, package manifest, runtime metadata | **Gap:** the three declared views diverge, and `cargo xtask module validate blog` currently stops earlier because it does not discover the `RusToKModule` impl moved to `src/module.rs` |
+| Blog dependency declarations | Root `modules.toml` and package/runtime metadata now agree on `content`, `taxonomy`, `outbox`, `channel`, and `profiles` | Composition manifest, package manifest, runtime metadata | Synchronized; Comments is an optional runtime capability rather than a static dependency |
 
 ### Current static settings data flow
 
@@ -275,7 +275,7 @@ alone is not evidence of such a requirement.
 | Example | Correct ownership |
 | --- | --- |
 | Blog posts/categories without comments | Valid Blog core behavior; no Comments requirement |
-| Blog comments visible/closed/hidden | Blog owns surface policy; Comments owns threads/comments/moderation; the current static `blog -> comments` edge is a cutover gap |
+| Blog comments visible/closed/hidden | Blog owns surface policy; Comments owns threads/comments/moderation; provider availability is resolved through the optional capability boundary |
 | Blog reactions | Blog owns whether its post surface requests Reactions; Reactions owns catalogs/actor state/counts |
 | Forum engagement provider | Forum owns the selection and transition/reconciliation; Reactions owns reaction state |
 | Reactions enabled for unrelated consumers | Does not force Blog or Forum to use Reactions |

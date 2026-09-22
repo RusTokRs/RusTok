@@ -19,13 +19,8 @@
         "set_comment_status",
         "delete_comment"
       ],
-      "required_profiles": [
-        "in_process",
-        "remote_adapter_placeholder"
-      ],
-      "fallback_profiles": [
-        "embedded_native"
-      ],
+      "required_profiles": [],
+      "fallback_profiles": [],
       "degraded_modes": [
         "hide_comment_form",
         "show_cached_thread_snapshot"
@@ -336,15 +331,21 @@
       }
     ],
     "fallback_smoke": {
-      "status": "planned",
-      "profiles": [
-        "embedded_native"
-      ],
+      "status": "source_verified_no_compile",
+      "profiles": [],
       "degraded_modes": [
         "hide_comment_form",
         "show_cached_thread_snapshot"
       ],
       "runtime_evidence": "pending"
     }
+  },
+  "fallback_cutover": {
+    "status": "source_verified_no_compile",
+    "core_serving_without_provider": true,
+    "provider_absence_error_code": "COMMENTS_PROVIDER_UNAVAILABLE",
+    "write_surface_policy": "hide_comment_form_when_comments_unavailable",
+    "read_surface_policy": "preserve_explicit_unavailable_or_timeout_state",
+    "local_provider_fallback": false
   }
 }

@@ -14,8 +14,12 @@
     "injection_constructor": "CommentService::with_comments_thread_port"
   },
   "profiles": {
-    "source_verified": ["in_process"],
-    "pending": ["remote_adapter_placeholder"]
+    "source_verified": [
+      "in_process"
+    ],
+    "pending": [
+      "remote_adapter_placeholder"
+    ]
   },
   "adapter_injection": {
     "status": "executable_no_run",
@@ -31,44 +35,83 @@
   "cases": [
     {
       "operation": "create_comment",
-      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile"],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "write_idempotency_required",
+        "typed_richtext_input",
+        "server_selected_comment_profile"
+      ],
       "runtime_evidence": "pending"
     },
     {
       "operation": "get_comment",
-      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "server_richtext_view_projection", "server_plain_text_projection"],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "server_richtext_view_projection",
+        "server_plain_text_projection"
+      ],
       "runtime_evidence": "pending"
     },
     {
       "operation": "list_comments_for_target",
-      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "server_plain_text_preview"],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "server_plain_text_preview"
+      ],
       "runtime_evidence": "pending"
     },
     {
       "operation": "list_public_comments_for_target",
-      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "approved_only_projection", "server_plain_text_preview"],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "approved_only_projection",
+        "server_plain_text_preview"
+      ],
       "runtime_evidence": "pending"
     },
     {
       "operation": "update_comment",
-      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile"],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "write_idempotency_required",
+        "typed_richtext_input",
+        "server_selected_comment_profile"
+      ],
       "runtime_evidence": "pending"
     },
     {
       "operation": "set_comment_status",
-      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "server_richtext_view_projection", "server_plain_text_projection"],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "write_idempotency_required",
+        "server_richtext_view_projection",
+        "server_plain_text_projection"
+      ],
       "runtime_evidence": "pending"
     },
     {
       "operation": "delete_comment",
-      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "write_idempotency_required"
+      ],
       "runtime_evidence": "pending"
     }
   ],
   "fallback_smoke": {
-    "status": "planned",
-    "profiles": ["embedded_native"],
-    "degraded_modes": ["hide_comment_form", "show_cached_thread_snapshot"],
+    "status": "source_verified_no_compile",
+    "profiles": [],
+    "degraded_modes": [
+      "hide_comment_form",
+      "show_cached_thread_snapshot"
+    ],
     "runtime_evidence": "pending"
   }
 }

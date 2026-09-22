@@ -13,10 +13,8 @@
     "provider_registry": "crates/modules/rustok-comments/contracts/comments-fba-registry.json"
   },
   "fallback_smoke": {
-    "status": "planned",
-    "profiles": [
-      "embedded_native"
-    ],
+    "status": "source_verified_no_compile",
+    "profiles": [],
     "degraded_modes": [
       "hide_comment_form",
       "show_cached_thread_snapshot"
