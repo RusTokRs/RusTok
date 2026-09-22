@@ -207,6 +207,11 @@ pub fn ForumAdmin() -> impl IntoView {
         "forum.error.restoreTopic",
         "Failed to restore topic",
     );
+    let restore_reply_error = t(
+        ui_locale.as_deref(),
+        "forum.error.restoreReply",
+        "Failed to restore reply",
+    );
     let locale_switch_load_error = t(
         ui_locale.as_deref(),
         "forum.error.localeSwitchLoad",
@@ -1025,6 +1030,30 @@ pub fn ForumAdmin() -> impl IntoView {
         }
     });
 
+    let restore_reply = Callback::new({
+        let restore_reply_error = restore_reply_error.clone();
+        move |reply_id: String| {
+            let token_value = token.get_untracked();
+            let tenant_value = tenant.get_untracked();
+            set_error.set(None);
+            set_busy_key.set(Some(forum_admin_busy_key(
+                ForumAdminBusySurface::Reply,
+                ForumAdminBusyAction::Moderate,
+                Some(reply_id.as_str()),
+            )));
+            spawn_local(async move {
+                match transport::restore_reply(token_value, tenant_value, reply_id).await {
+                    Ok(()) => set_refresh_nonce.update(|value| *value += 1),
+                    Err(err) => set_error.set(Some(forum_admin_transport_error_message(
+                        restore_topic_error.as_str(),
+                        err,
+                    ))),
+                }
+                set_busy_key.set(None);
+            });
+        }
+    });
+
     let topic_count = move || result_item_count(topics.get());
     let category_count = move || result_item_count(categories.get());
     let reply_preview_count = move || result_item_count(replies.get());
@@ -1177,6 +1206,7 @@ pub fn ForumAdmin() -> impl IntoView {
                         on_edit=open_topic
                         on_delete=delete_topic
                         on_restore=restore_topic
+                        on_restore_reply=restore_reply
                         on_submit=submit_topic
                         on_submit_reply=submit_reply
                         on_reset=reset_topic
@@ -1270,7 +1300,6 @@ fn CategoriesPage(
     on_locale_switch: Callback<String>,
     on_edit: Callback<String>,
     on_delete: Callback<String>,
-    on_restore: Callback<String>,
     on_submit: impl Fn(SubmitEvent) + 'static,
     on_reset: Callback<()>,
 ) -> impl IntoView {
@@ -1691,6 +1720,8 @@ fn TopicsPage(
     on_locale_switch: Callback<String>,
     on_edit: Callback<String>,
     on_delete: Callback<String>,
+    on_restore: Callback<String>,
+    on_restore_reply: Callback<String>,
     on_submit: impl Fn(SubmitEvent) + 'static,
     on_submit_reply: Callback<SubmitEvent>,
     on_reset: Callback<()>,
@@ -2170,7 +2201,7 @@ fn TopicsPage(
                         </form>
                     })}
                     <Suspense fallback=move || view! { <div class="mt-6 h-40 animate-pulse rounded-[1.5rem] bg-muted"></div> }>
-                        {move || replies.get().map(|result| render_reply_stack(result, replies_locale.clone()))}
+                        {move || replies.get().map(|result| render_reply_stack(result, busy_key.get(), on_restore_reply, replies_locale.clone()))}
                     </Suspense>
                 </section>
 
@@ -2200,7 +2231,6 @@ fn render_category_grid(
     busy_key: Option<String>,
     on_edit: Callback<String>,
     on_delete: Callback<String>,
-    on_restore: Callback<String>,
     locale: Option<String>,
 ) -> AnyView {
     let no_categories_label = t(
@@ -2364,6 +2394,7 @@ fn render_topic_feed(
     busy_key: Option<String>,
     on_edit: Callback<String>,
     on_delete: Callback<String>,
+    on_restore: Callback<String>,
     locale: Option<String>,
 ) -> AnyView {
     let no_topics_label = t(locale.as_deref(), "forum.render.noTopics", "No topics yet.");
@@ -2466,6 +2497,8 @@ fn render_topic_feed(
 
 fn render_reply_stack(
     result: Result<Vec<ReplyListItem>, String>,
+    busy_key: Option<String>,
+    on_restore: Callback<String>,
     locale: Option<String>,
 ) -> AnyView {
     let empty_label = t(
@@ -2480,6 +2513,9 @@ fn render_reply_stack(
                 {items.into_iter().map(|item| {
                     let vm = reply_card_view_model(&item);
                     let content_lang = forum_admin_content_lang(vm.effective_locale.as_str());
+                    let item_id = item.id.clone();
+                    let restore_busy_key = forum_admin_busy_key(ForumAdminBusySurface::Reply, ForumAdminBusyAction::Moderate, Some(item.id.as_str()));
+                    let is_busy = busy_key.as_deref() == Some(restore_busy_key.as_str());
                     view! {
                         <article class="rounded-[1.35rem] border border-border bg-background p-4">
                             <div class="flex items-center justify-between gap-3">
@@ -2492,6 +2528,18 @@ fn render_reply_stack(
                                 dir="auto"
                                 class="mt-3 text-sm leading-6 text-muted-foreground"
                             >{vm.content_preview.clone()}</p>
+                            {item.is_deleted.then(|| view! {
+                                <div class="mt-4 flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        class=forum_admin_action_button_class(ForumAdminActionButtonKind::Action)
+                                        on:click={ let item_id = item_id.clone(); move |_| on_restore.run(item_id.clone()) }
+                                        disabled=is_busy
+                                    >
+                                        {t(locale.as_deref(), "forum.render.restore", "Restore")}
+                                    </button>
+                                </div>
+                            })}
                         </article>
                     }
                 }).collect_view()}

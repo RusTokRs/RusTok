@@ -21,6 +21,7 @@ forum-error-categoryRequired = Category name and slug are required.
 forum-error-deleteCategory = Failed to delete category
 forum-error-deleteTopic = Failed to delete topic
 forum-error-restoreTopic = Failed to restore topic
+forum-error-restoreReply = Failed to restore reply
 forum-error-loadCategory = Failed to load category
 forum-error-loadTopic = Failed to load topic
 forum-error-localeSwitchDirty = Save or reset unsaved changes before switching content locale.

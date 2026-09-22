@@ -21,6 +21,7 @@ forum-error-categoryRequired = Для категории обязательны 
 forum-error-deleteCategory = Не удалось удалить категорию
 forum-error-deleteTopic = Не удалось удалить тему
 forum-error-restoreTopic = Не удалось восстановить тему
+forum-error-restoreReply = Не удалось восстановить ответ
 forum-error-loadCategory = Не удалось загрузить категорию
 forum-error-loadTopic = Не удалось загрузить тему
 forum-error-localeSwitchDirty = Сохраните или сбросьте несохранённые изменения перед переключением локали контента.
