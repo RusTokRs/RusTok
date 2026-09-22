@@ -71,9 +71,9 @@ Reviewed from `main@e1fae26ac8737cf4af4cfbdad2d396105e710df8`.
 | Static localized setting values | `module_static_localized_settings`, source-locale and change tables | `rustok-modules`, exposed to Translation by a neutral provider | Infrastructure live; no production module manifest currently opts in |
 | Dynamic artifact settings | settings instance, stable data owner, admitted schema digest, recovery/purge contracts | `rustok-modules` artifact control plane | Stronger owner model; production recovery/fence evidence remains incomplete |
 | SEO settings | Manifest schema plus typed `SeoModuleSettings` runtime normalization | SEO semantics, but reads `tenant_modules` directly | **Gap:** persistence boundary bypass |
-| Forum engagement selection | `forum.useReactions` in `tenant_modules.settings` | Forum semantics | **Gap:** direct Forum/Reactions `tenant_modules` reads and non-canonical key |
-| Blog manifest settings | none | Blog currently declares no module-owned static settings | No decorative settings are persisted without a runtime owner |
-| Blog reaction selection | Blog registers a producer factory; optional Blog+Reactions composition exists | Blog owns subject/presentation intent; Reactions owns state | **Gap:** no typed tenant Blog reaction-surface setting/runtime consumer; composition availability alone is not intent |
+| Forum engagement selection | `forum.use_reactions` in `tenant_modules.settings` | Forum semantics | Runtime consumer is live through the canonical tenant-module runtime API; Reactions availability remains a separate effective-capability decision |
+| Blog manifest settings | `use_reactions` in `tenant_modules.settings` | Blog owns reaction-surface intent; `rustok-modules` owns static lifecycle/persistence | Live runtime consumer; setting is canonical tenant intent and does not imply Reactions availability |
+| Blog reaction selection | `use_reactions` plus Blog reaction-subject provider | Blog owns subject/presentation intent; Reactions owns state | Runtime intent gate is live; provider/effective availability remains separate from stored intent |
 | Email generic settings | `platform_settings.email` | Generic server path while Email runtime reads bootstrap config | **Gap:** saved value is not authoritative; historical secret material may exist |
 | Nested manifest schema vocabulary | Owner validator supports `properties`/`items`; current SEO manifest uses `shape`/`additional_properties` | Host manifest adapter | **Gap:** unknown TOML schema keywords are ignored, so the generic editor/validator does not enforce the declared nested shape |
 | Cross-module capability graph | `blog -> comments` removed; `commerce -> fulfillment` remains tracked separately | Module composition | Blog comment access is an optional capability and is no longer an unconditional module dependency |
@@ -426,8 +426,8 @@ Owners must document:
 | P0 | Platform settings event is published after save on a best-effort path | Owner transaction plus transactional outbox |
 | P0 | Unknown manifest schema keywords are ignored; live SEO metadata uses unsupported nested-shape names | One canonical schema vocabulary, `deny_unknown_fields`, manifest migration, and negative tests |
 | P1 | `platform_settings.schema_version` is decorative | Replace with exact owner schema identity/revision or delete the field |
-| P1 | Forum and SEO read `tenant_modules` directly | Owner settings read/effective-integration ports |
-| P1 | Blog settings have no runtime consumer | Implement owner behavior or remove the settings atomically |
+| P1 | SEO reads `tenant_modules` directly | Move SEO to the canonical owner settings read/effective-integration boundary |
+| P1 | Static settings still lack complete owner-port/effective-integration coverage | Finish owner-specific read/effective-capability ports and activation evidence for remaining modules |
 | P1 | Disabled module settings cannot be repaired in Admin | Dormant edit and/or atomic enable-with-settings |
 | P1 | Static rows do not persist exact schema digest/state | Add digest and `not_applicable/ready/migration_required` semantics |
 | P1 | Module keys include camelCase internal names | Zero-legacy `snake_case` cutover with data transformation |
