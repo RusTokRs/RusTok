@@ -432,9 +432,9 @@ fn validate_category_name(name: &str) -> BlogResult<()> {
     if name.trim().is_empty() {
         return Err(BlogError::validation("Category name cannot be empty"));
     }
-    if name.chars().count() > 255 {
+    if name.chars().count() > 120 {
         return Err(BlogError::validation(
-            "Category name cannot exceed 255 characters",
+            "Category name cannot exceed 120 characters",
         ));
     }
     Ok(())
