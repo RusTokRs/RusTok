@@ -192,7 +192,7 @@ pub enum RichTextProfileIdError {
 
 /// Read-only richtext projection. `html` is derived by the server and must
 /// never be accepted as write input.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, ToSchema)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema, ToSchema)]
 #[cfg_attr(feature = "server", derive(async_graphql::SimpleObject))]
 #[serde(deny_unknown_fields)]
 pub struct RichTextView {

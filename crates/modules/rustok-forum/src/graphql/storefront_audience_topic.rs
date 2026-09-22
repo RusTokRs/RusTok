@@ -134,6 +134,7 @@ fn map_topic_response(topic: TopicResponse) -> GqlForumTopic {
         body_plain_text: topic.body_plain_text,
         metadata: topic.metadata,
         status: topic.status,
+        is_deleted: topic.is_deleted,
         tags: topic.tags,
         channel_slugs: topic.channel_slugs,
         vote_score: topic.vote_score,

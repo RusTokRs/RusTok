@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::plan::{DatabaseEngine, InstallEnvironment, InstallPlan};
+use crate::plan::{DatabaseEngine, InstallEnvironment, InstallPlan, SeedProfile};
 use crate::secrets::SecretMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

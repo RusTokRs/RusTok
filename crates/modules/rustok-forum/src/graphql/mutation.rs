@@ -189,7 +189,7 @@ impl ForumContentMutation {
 
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        TopicService::new(db, event_bus)
+        TopicService::new(db.clone(), event_bus.clone())
             .restore(
                 tenant_id,
                 id,
@@ -1066,6 +1066,7 @@ fn map_topic(
         body_plain_text: topic.body_plain_text,
         metadata: topic.metadata,
         status: topic.status,
+        is_deleted: topic.is_deleted,
         tags: topic.tags,
         channel_slugs: topic.channel_slugs,
         vote_score: topic.vote_score,

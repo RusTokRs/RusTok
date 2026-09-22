@@ -100,6 +100,7 @@ mod tests {
         let _ = module;
     }
 
+    #[test]
     fn module_initializes_registries_and_declares_owner_schema() {
         let module = ReactionsModule;
         assert_eq!(module.slug(), "reactions");

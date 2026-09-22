@@ -25,7 +25,7 @@ use sea_orm::{
     ActiveModelTrait,
     ActiveValue::Set,
     ColumnTrait, Condition, ConnectionTrait, DatabaseBackend, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Select,
+    DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Select,
     Statement, TransactionTrait,
     sea_query::{Expr, Query, SelectStatement},
 };
@@ -487,7 +487,7 @@ impl TopicService {
         };
         let row = self
             .db
-            .query_one(statement)
+            .query_one_raw(statement)
             .await?
             .ok_or(ForumError::TopicNotFound(topic_id))?;
         let is_deleted: i64 = row.try_get("", "is_deleted")?;
@@ -511,8 +511,7 @@ impl TopicService {
                 _ => "?".to_string(),
             })
             .collect::<Vec<_>>()
-            .join(
-);
+            .join(", ");
         let tenant_placeholder = match backend {
             DatabaseBackend::Postgres => "$1",
             DatabaseBackend::Sqlite => "?1",
@@ -530,7 +529,7 @@ impl TopicService {
         values.extend(topic_ids.iter().copied().map(Into::into));
 
         let statement = Statement::from_sql_and_values(backend, sql, values);
-        let rows = self.db.query_all(statement).await?;
+        let rows = self.db.query_all_raw(statement).await?;
         let mut ids = HashSet::with_capacity(rows.len());
         for row in rows {
             ids.insert(row.try_get("", "id")?);

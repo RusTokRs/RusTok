@@ -281,6 +281,7 @@ fn map_reply_response(reply: ReplyResponse) -> GqlForumReply {
         content: reply.content,
         content_plain_text: reply.content_plain_text,
         status: reply.status,
+        is_deleted: reply.is_deleted,
         vote_score: reply.vote_score,
         current_user_vote: reply.current_user_vote,
         is_solution: reply.is_solution,

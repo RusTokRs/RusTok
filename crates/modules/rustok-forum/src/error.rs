@@ -49,6 +49,9 @@ pub enum ForumError {
     #[error("Topic is deleted")]
     TopicDeleted,
 
+    #[error("Topic cannot be restored")]
+    TopicRestoreUnavailable(Uuid),
+
     #[error("Reply is deleted")]
     ReplyDeleted,
 

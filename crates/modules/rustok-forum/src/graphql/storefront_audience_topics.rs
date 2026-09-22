@@ -176,6 +176,7 @@ fn map_topic_list_item(topic: TopicListItem) -> GqlForumTopicListItem {
         slug: topic.slug,
         metadata: topic.metadata,
         status: topic.status,
+        is_deleted: topic.is_deleted,
         channel_slugs: topic.channel_slugs,
         vote_score: topic.vote_score,
         current_user_vote: topic.current_user_vote,

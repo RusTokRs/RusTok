@@ -3603,8 +3603,6 @@ mod tests {
         assert!(event.validate().is_err());
     }
 
-    use super::*;
-
     #[test]
     fn test_node_created_valid() {
         let event = DomainEvent::NodeCreated {

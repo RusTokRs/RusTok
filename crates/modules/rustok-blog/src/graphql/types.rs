@@ -600,7 +600,7 @@ mod tests {
             title: "Post".to_string(),
             slug: Some("post".to_string()),
             excerpt: None,
-            content: rustok_api::RichTextDocument::default().into(),
+            content: rustok_api::RichTextView::default(),
             content_plain_text: String::new(),
             status: GqlContentStatus::Published,
             author_id: None,
