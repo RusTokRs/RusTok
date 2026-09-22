@@ -71,7 +71,7 @@ struct CommentProjectionChange
 fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionChange>
 DomainEvent::CommentCreated
 delta: 1
-DomainEvent::CommentDeleted
+DomainEvent::CommentUpdated\nDomainEvent::CommentStatusChanged\nDomainEvent::CommentDeleted
 delta: -1
 fn projection_applied_delta(previous_delta: Option<i32>, current_delta: i32) -> i32
 fn next_comment_count(comment_count: i32, delta: i32)
@@ -271,14 +271,14 @@ assert!(!handler.handles(&forum_created));
   write(root, modulePath, `${registrationSource}\n${hostHarnessSource}`);
 
   const sourceHarnessCases = [
-    'shared_created_deleted_classifier',
+    'shared_created_updated_status_deleted_classifier',
     'non_blog_target_rejection',
     'projection_delta_tracks_comment_state_not_delivery_order',
     'counter_transition_is_non_negative_and_does_not_touch_business_revision',
   ];
 
   const evidence = {
-    schema_version: 5,
+    schema_version: 6,
     module: 'blog',
     surface: 'comments_event_projection',
     status: statusDrift ? 'runtime_verified' : 'source_verified_no_compile',
@@ -286,7 +286,7 @@ assert!(!handler.handles(&forum_created));
     runtime_status: 'pending',
     owner: 'rustok-blog',
     provider: 'rustok-comments',
-    events: ['comment.created', 'comment.deleted'],
+    events: ['comment.created', 'comment.updated', 'comment.status_changed', 'comment.deleted'],
     production_contract: {
       handler: handlerPath,
       service_export: serviceExportPath,
@@ -395,7 +395,7 @@ assert!(!handler.handles(&forum_created));
   write(root, evidencePath, JSON.stringify(evidence, null, 2));
 
   write(root, registryPath, JSON.stringify({
-    schema_version: 14,
+    schema_version: 15,
     evidence: { comments_event_projection: evidencePath },
     verification_chain: {
       source_gates: {
@@ -435,7 +435,7 @@ assert!(!handler.handles(&forum_created));
   }, null, 2));
 
   write(root, planPath(), [
-    'Blog FBA registry schema v14 and Comments projection evidence schema v5',
+    'Blog FBA registry schema v15 and Comments projection evidence schema v6',
     'derived Comments counters that preserve Blog business',
     'source-level',
     'runtime/remote evidence is still pending',
