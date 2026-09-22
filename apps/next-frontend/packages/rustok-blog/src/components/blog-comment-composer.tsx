@@ -24,7 +24,7 @@ export function BlogCommentComposer({
   const [auth, setAuth] = useState<AuthSession | null>(null);
   useEffect(() => setAuth(getClientAuth()), []);
 
-  async function submit(content: RichTextDocument) {
+  async function submit(content: RichTextDocument, commandId: string) {
     if (!auth?.token) throw new Error(t('signInRequired'));
     await createBlogComment(
       storefrontGraphql,
@@ -33,7 +33,8 @@ export function BlogCommentComposer({
       auth.token,
       postId,
       contentLocale,
-      content
+      content,
+      commandId
     );
   }
 

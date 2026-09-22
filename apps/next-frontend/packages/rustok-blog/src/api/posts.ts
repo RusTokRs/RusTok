@@ -159,8 +159,8 @@ export async function createBlogComment(
   postId: string,
   locale: string,
   content: RichTextDocument,
+  commandId: string,
 ): Promise<BlogCommentDetail> {
-  const commandId = crypto.randomUUID();
   const response = await graphql<{ createBlogComment: BlogCommentDetail }, {
     tenantId: string;
     postId: string;

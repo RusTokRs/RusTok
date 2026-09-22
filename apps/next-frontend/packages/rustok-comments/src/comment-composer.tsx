@@ -17,12 +17,13 @@ export function CommentComposer({
 }: {
   contentLocale: string;
   canSubmit: boolean;
-  onSubmit: (document: RichTextDocument) => Promise<void>;
+  onSubmit: (document: RichTextDocument, commandId: string) => Promise<void>;
 }) {
   const t = useTranslations('Comments.composer');
   const richText = useTranslations('richText');
   const [document, setDocument] = useState<RichTextDocument>(emptyRichTextDocument());
   const [pending, setPending] = useState(false);
+  const [commandId, setCommandId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const messages = useMemo(
@@ -56,12 +57,15 @@ export function CommentComposer({
       setSuccess(false);
       return;
     }
+    const submissionCommandId = commandId ?? crypto.randomUUID();
+    setCommandId(submissionCommandId);
     setPending(true);
     setError(null);
     setSuccess(false);
     try {
-      await onSubmit(document);
+      await onSubmit(document, submissionCommandId);
       setDocument(emptyRichTextDocument());
+      setCommandId(null);
       setSuccess(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t('submitError'));
@@ -88,7 +92,15 @@ export function CommentComposer({
             messages={messages}
             contentLocale={contentLocale}
             disabled={pending}
-            onChange={setDocument}
+            onChange={(nextDocument) => {
+              setDocument(nextDocument);
+              if (!pending && commandId) {
+                setCommandId(null);
+              }
+              if (error) {
+                setError(null);
+              }
+            }}
             onError={(_code, message) => setError(message)}
             className="h-72 w-full border-0"
           />
