@@ -21,6 +21,7 @@ use crate::entities::{
 use crate::error::{ForumError, ForumResult};
 use crate::mentions::ForumContentTarget;
 use crate::state_machine::{ReplyStatus, TopicStatus};
+use crate::services::engagement_mode::ForumSettingsProviders;
 
 use super::category::CategoryService;
 use super::category_lifecycle::{ensure_category_restore_target_is_active_in_tx, lock_category_tree_in_tx};
@@ -68,6 +69,11 @@ impl ReplyService {
             db,
             event_bus,
         }
+    }
+
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.inner = self.inner.with_settings_providers(settings);
+        self
     }
 
     #[instrument(skip(self, security))]
