@@ -216,9 +216,11 @@ workflow, browser, or CI execution is recorded.
    **Done when:** executed evidence proves exact marker parsing, unrelated storage
    error propagation, and one canonical thread for the expected first-thread race.
 
-3. **Implement and execute the Blog reply-count event projection.** Consume
-   `comment.created` and `comment.deleted` idempotently, publish the Blog-owned
-   update event in the projection transaction, and prove retry/degraded behavior.
+3. **Implement and execute the full Blog comment lifecycle projection.** Consume
+   `comment.created`, `comment.updated`, `comment.status_changed`, and
+   `comment.deleted` idempotently; update `comment_count` only for active/deleted
+   transitions, advance the processed lifecycle cursor for every event, and
+   prove retry/degraded behavior plus public snapshot invalidation.
 
 4. **Execute CommentsThreadPort runtime and remote-profile evidence.** The
    `in_process` source profile, seven operations, owner policy calls, typed error
