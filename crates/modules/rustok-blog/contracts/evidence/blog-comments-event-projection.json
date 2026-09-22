@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "module": "blog",
   "surface": "comments_event_projection",
   "status": "source_verified_no_compile",
@@ -9,6 +9,8 @@
   "provider": "rustok-comments",
   "events": [
     "comment.created",
+    "comment.updated",
+    "comment.status_changed",
     "comment.deleted"
   ],
   "production_contract": {
@@ -26,7 +28,7 @@
     "module": "services::comment_projection::tests",
     "command": "cargo test -p rustok-blog --lib services::comment_projection::tests",
     "cases": [
-      "shared_created_deleted_classifier",
+      "shared_created_updated_status_deleted_classifier",
       "non_blog_target_rejection",
       "projection_delta_tracks_comment_state_not_delivery_order",
       "counter_transition_is_non_negative_and_does_not_touch_business_revision"
@@ -78,7 +80,8 @@
       "duplicate_delivery_updates_counter_and_outbox_once",
       "delete_before_create_stays_non_negative_and_replays_in_order",
       "missing_post_replay_commits_only_after_source_appears",
-      "outbox_failure_rolls_back_counter_and_delivery_before_retry"
+      "outbox_failure_rolls_back_counter_and_delivery_before_retry",
+      "update_and_status_events_advance_projection_cursor_without_count_change"
     ]
   },
   "restart_harness": {
@@ -109,16 +112,8 @@
   },
   "cases": [
     {
-      "name": "shared_event_classifier",
-      "expected": "project and EventHandler::handles use the same pure classifier for Comments lifecycle events"
-    },
-    {
       "name": "blog_post_target_filter",
       "expected": "only Comments lifecycle events whose target_type is blog_post are projected"
-    },
-    {
-      "name": "created_deleted_delta",
-      "expected": "comment.created increments by one and comment.deleted decrements by one"
     },
     {
       "name": "envelope_idempotency",
@@ -183,6 +178,26 @@
     {
       "name": "tenant_scoped_row_lock",
       "expected": "the projection locks the tenant-scoped Blog post before reading the per-comment delivery state, serializing competing events for one post without using Blog business version as the projection token"
+    },
+    {
+      "name": "updated_event_advances_projection_cursor",
+      "expected": "a processed comment.updated event advances the Blog lifecycle delivery cursor without changing comment_count"
+    },
+    {
+      "name": "status_changed_event_advances_projection_cursor",
+      "expected": "a processed comment.status_changed event advances the Blog lifecycle delivery cursor and changes count only when active/deleted state changes"
+    },
+    {
+      "name": "public_snapshot_cursor_invalidation",
+      "expected": "the latest processed lifecycle event id is part of the public snapshot identity so prior snapshot keys become unreachable after lifecycle processing"
+    },
+    {
+      "name": "update_and_status_lifecycle_delivery",
+      "expected": "comment.updated and comment.status_changed deliveries advance the durable tenant/post cursor without changing comment_count for an already active comment"
+    },
+    {
+      "name": "public_snapshot_cursor_invalidation",
+      "expected": "the processed tenant/post lifecycle cursor is part of the snapshot identity and therefore invalidates earlier snapshot keys without cache enumeration"
     }
   ],
   "runtime_promotion_requirements": [
