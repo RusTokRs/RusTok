@@ -90,7 +90,7 @@ pub fn ForumStorefrontComposition() -> impl IntoView {
             reply_locale.clone(),
         ),
         |(reactions_enabled, forum_reactions_enabled, reply_id, locale)| async move {
-            if !reactions_enabled || !forum_reactions_enabled.unwrap_or(false) {
+            if !reactions_enabled || !forum_reactions_enabled.and_then(Result::ok).unwrap_or(false) {
                 return Ok(None);
             }
             let Some(reply_id) = reply_id else {
