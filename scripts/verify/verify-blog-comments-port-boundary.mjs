@@ -229,7 +229,7 @@ if (fallbackEvidence) {
     'page', 'per_page', 'projection_revision',
   ])) failures.push(`${fallbackEvidencePath}: cache identity drift`);
   if (
-    fallbackEvidence.fallback_smoke?.status !== 'planned' ||
+    fallbackEvidence.fallback_smoke?.status !== 'source_verified_no_compile' ||
     fallbackEvidence.fallback_smoke?.runtime_evidence !== 'pending'
   ) failures.push(`${fallbackEvidencePath}: degraded-mode status drift`);
 }
