@@ -1,9 +1,12 @@
-use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;
 
-use rustok_api::{tenant_module_settings, tenant_module_settings_in_tx};
+use rustok_api::{
+    PortError, PortErrorKind, SharedStaticModuleSettingsReader,
+    SharedStaticModuleSettingsTransactionReader,
+};
+use sea_orm::DatabaseTransaction;
 
 use crate::error::{ForumError, ForumResult};
 
@@ -18,6 +21,44 @@ struct ForumSettings {
     use_reactions: bool,
 }
 
+#[derive(Clone, Default)]
+pub struct ForumSettingsProviders {
+    static_reader: Option<SharedStaticModuleSettingsReader>,
+    transactional_reader: Option<SharedStaticModuleSettingsTransactionReader>,
+}
+
+impl ForumSettingsProviders {
+    pub fn with_static_readers(
+        mut self,
+        static_reader: SharedStaticModuleSettingsReader,
+        transactional_reader: SharedStaticModuleSettingsTransactionReader,
+    ) -> Self {
+        self.static_reader = Some(static_reader);
+        self.transactional_reader = Some(transactional_reader);
+        self
+    }
+
+    fn require_static_reader(&self) -> ForumResult<&SharedStaticModuleSettingsReader> {
+        self.static_reader.as_ref().ok_or_else(|| {
+            ForumError::capability_unavailable(
+                "static_module_settings",
+                "FORUM_STATIC_SETTINGS_CAPABILITY_UNAVAILABLE",
+            )
+        })
+    }
+
+    fn require_transactional_reader(
+        &self,
+    ) -> ForumResult<&SharedStaticModuleSettingsTransactionReader> {
+        self.transactional_reader.as_ref().ok_or_else(|| {
+            ForumError::capability_unavailable(
+                "static_module_settings",
+                "FORUM_STATIC_SETTINGS_TRANSACTION_CAPABILITY_UNAVAILABLE",
+            )
+        })
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ForumEngagementMode {
     InternalVotes,
@@ -26,53 +67,73 @@ pub enum ForumEngagementMode {
 
 impl ForumEngagementMode {
     pub async fn resolve(
-        db: &DatabaseConnection,
+        providers: &ForumSettingsProviders,
         tenant_id: Uuid,
     ) -> ForumResult<Self> {
-        let forum_settings = tenant_module_settings(db, tenant_id, FORUM_MODULE_SLUG)
-            .await?
-            .as_ref()
-            .map(parse_forum_settings)
-            .transpose()?
-            .flatten()
-            .unwrap_or_default();
+        let reader = providers.require_static_reader()?;
+
+        let forum_snapshot = reader
+            .settings(tenant_id, FORUM_MODULE_SLUG)
+            .await
+            .map_err(map_port_error)?;
+
+        let forum_settings = if forum_snapshot.as_ref().is_some_and(|snapshot| snapshot.enabled) {
+            forum_snapshot
+                .as_ref()
+                .map(|snapshot| parse_forum_settings(&snapshot.settings))
+                .transpose()?
+                .flatten()
+                .unwrap_or_default()
+        } else {
+            ForumSettings::default()
+        };
 
         if !forum_settings.use_reactions {
             return Ok(Self::InternalVotes);
         }
 
-        let reactions_enabled =
-            tenant_module_settings(db, tenant_id, FORUM_REACTIONS_MODULE_SLUG)
-                .await?
-                .is_some();
+        let reactions_enabled = reader
+            .settings(tenant_id, FORUM_REACTIONS_MODULE_SLUG)
+            .await
+            .map_err(map_port_error)?
+            .is_some_and(|snapshot| snapshot.enabled);
 
         Self::from_parts(true, reactions_enabled)
     }
 
     pub async fn resolve_in_tx(
+        providers: &ForumSettingsProviders,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
     ) -> ForumResult<Self> {
-        let forum_settings = tenant_module_settings_in_tx(txn, tenant_id, FORUM_MODULE_SLUG)
-            .await?
-            .as_ref()
-            .map(parse_forum_settings)
-            .transpose()?
-            .flatten()
-            .unwrap_or_default();
+        let reader = providers.require_transactional_reader()?;
 
-        let reactions_enabled =
-            tenant_module_settings_in_tx(txn, tenant_id, FORUM_REACTIONS_MODULE_SLUG)
-                .await?
-                .is_some();
+        let forum_snapshot = reader
+            .settings_in_tx(txn, tenant_id, FORUM_MODULE_SLUG)
+            .await
+            .map_err(map_port_error)?;
+
+        let forum_settings = if forum_snapshot.as_ref().is_some_and(|snapshot| snapshot.enabled) {
+            forum_snapshot
+                .as_ref()
+                .map(|snapshot| parse_forum_settings(&snapshot.settings))
+                .transpose()?
+                .flatten()
+                .unwrap_or_default()
+        } else {
+            ForumSettings::default()
+        };
+
+        let reactions_enabled = reader
+            .settings_in_tx(txn, tenant_id, FORUM_REACTIONS_MODULE_SLUG)
+            .await
+            .map_err(map_port_error)?
+            .is_some_and(|snapshot| snapshot.enabled);
 
         Self::from_parts(forum_settings.use_reactions, reactions_enabled)
     }
 
-    fn from_parts(
-        use_reactions: bool,
-        reactions_enabled: bool,
-    ) -> ForumResult<Self> {
+    fn from_parts(use_reactions: bool, reactions_enabled: bool) -> ForumResult<Self> {
         if !use_reactions {
             return Ok(Self::InternalVotes);
         }
@@ -111,30 +172,77 @@ fn parse_forum_settings(value: &Value) -> ForumResult<Option<ForumSettings>> {
         })
 }
 
+fn map_port_error(error: PortError) -> ForumError {
+    match error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => ForumError::capability_failure(
+            "static_module_settings",
+            error.code,
+            "Static module settings are temporarily unavailable",
+            true,
+        ),
+        PortErrorKind::InvariantViolation => {
+            ForumError::Internal("Static module settings violated an owner invariant".to_string())
+        }
+        PortErrorKind::Validation
+        | PortErrorKind::NotFound
+        | PortErrorKind::Conflict
+        | PortErrorKind::Forbidden => ForumError::Validation(
+            "Static module settings request was rejected by its owner".to_string(),
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use sea_orm::{ConnectionTrait, Database};
+    use std::sync::Arc;
 
-    use super::{ForumEngagementMode, FORUM_USE_REACTIONS_SETTING};
+    use async_trait::async_trait;
+    use rustok_api::{
+        PortError, SharedStaticModuleSettingsReader,
+        SharedStaticModuleSettingsTransactionReader, StaticModuleSettingsReader,
+        StaticModuleSettingsSnapshot, StaticModuleSettingsTransactionReader,
+    };
+    use sea_orm::DatabaseTransaction;
+    use uuid::Uuid;
+
+    use super::{ForumEngagementMode, ForumSettingsProviders, FORUM_USE_REACTIONS_SETTING};
+
+    struct EmptySettingsReader;
+
+    #[async_trait]
+    impl StaticModuleSettingsReader for EmptySettingsReader {
+        async fn settings(
+            &self,
+            _tenant_id: Uuid,
+            _module_slug: &str,
+        ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+            Ok(None)
+        }
+    }
+
+    #[async_trait]
+    impl StaticModuleSettingsTransactionReader for EmptySettingsReader {
+        async fn settings_in_tx(
+            &self,
+            _txn: &DatabaseTransaction,
+            _tenant_id: Uuid,
+            _module_slug: &str,
+        ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+            Ok(None)
+        }
+    }
+
+    fn providers() -> ForumSettingsProviders {
+        let reader = Arc::new(EmptySettingsReader);
+        ForumSettingsProviders::default().with_static_readers(
+            SharedStaticModuleSettingsReader(reader.clone()),
+            SharedStaticModuleSettingsTransactionReader(reader),
+        )
+    }
 
     #[tokio::test]
     async fn forum_defaults_to_internal_votes_without_an_override() {
-        let db = Database::connect("sqlite::memory:").await.expect("db");
-        db.execute_unprepared(
-            "CREATE TABLE tenant_modules (
-                id TEXT NOT NULL PRIMARY KEY,
-                tenant_id TEXT NOT NULL,
-                module_slug TEXT NOT NULL,
-                enabled BOOLEAN NOT NULL,
-                settings TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )",
-        )
-        .await
-        .expect("schema");
-
-        let mode = ForumEngagementMode::resolve(&db, uuid::Uuid::new_v4())
+        let mode = ForumEngagementMode::resolve(&providers(), Uuid::new_v4())
             .await
             .expect("mode");
 

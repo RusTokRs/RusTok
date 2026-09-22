@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{tenant_module_settings, HostRuntimeContext, PortContext};
+use rustok_api::{HostRuntimeContext, PortContext, SharedStaticModuleSettingsReader};
 use rustok_reactions_api::{
     ReactionCatalog, ReactionKey, ReactionProviderError, ReactionProviderResult,
     ReactionSelectionPolicy, ReactionSourceSlug, ReactionSubjectAuthorization, ReactionSubjectKind,
@@ -37,18 +37,28 @@ impl ReactionSubjectProviderFactory for BlogReactionSubjectProviderFactory {
         &self,
         host: &HostRuntimeContext,
     ) -> ReactionProviderResult<Arc<dyn ReactionSubjectProvider>> {
-        Ok(Arc::new(BlogReactionSubjectProvider::new(host.db_clone())))
+        Ok(Arc::new(BlogReactionSubjectProvider::new(
+            host.db_clone(),
+            host.shared_get::<SharedStaticModuleSettingsReader>(),
+        )))
     }
 }
 
 #[derive(Clone)]
 struct BlogReactionSubjectProvider {
     db: DatabaseConnection,
+    settings_reader: Option<SharedStaticModuleSettingsReader>,
 }
 
 impl BlogReactionSubjectProvider {
-    fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+    fn new(
+        db: DatabaseConnection,
+        settings_reader: Option<SharedStaticModuleSettingsReader>,
+    ) -> Self {
+        Self {
+            db,
+            settings_reader,
+        }
     }
 
     async fn authorize_post(
@@ -57,11 +67,20 @@ impl BlogReactionSubjectProvider {
         request: &ReactionSubjectRequest,
     ) -> ReactionProviderResult<ReactionSubjectAuthorization> {
         let subject = &request.subject;
-        let settings = tenant_module_settings(&self.db, subject.tenant_id(), "blog")
+        let Some(settings_reader) = self.settings_reader.as_ref() else {
+            return Err(ReactionProviderError::CapabilityUnavailable { retryable: false });
+        };
+        let Some(snapshot) = settings_reader
+            .settings(subject.tenant_id(), "blog")
             .await
-            .map_err(|_| ReactionProviderError::Internal { retryable: true })?;
-        let settings = settings.ok_or(ReactionProviderError::Unavailable)?;
-        let settings = serde_json::from_value::<BlogReactionSettings>(settings)
+            .map_err(|_| ReactionProviderError::CapabilityUnavailable { retryable: true })?
+        else {
+            return Ok(ReactionSubjectAuthorization::Unavailable);
+        };
+        if !snapshot.enabled {
+            return Ok(ReactionSubjectAuthorization::Unavailable);
+        }
+        let settings = serde_json::from_value::<BlogReactionSettings>(snapshot.settings)
             .map_err(|_| ReactionProviderError::Internal { retryable: false })?;
         if !settings.use_reactions {
             return Ok(ReactionSubjectAuthorization::Unavailable);
@@ -168,8 +187,12 @@ fn blog_post_reaction_kind() -> ReactionSubjectKind {
         .expect("Blog post reaction kind constant must remain valid")
 }
 
-fn owner_read_error(_error: crate::BlogError) -> ReactionProviderError {
-    ReactionProviderError::Internal { retryable: true }
+fn owner_read_error(error: crate::BlogError) -> ReactionProviderError {
+    // Database failures may recover on retry; persisted-state invariants must
+    // fail closed instead of being reported as transient provider outages.
+    ReactionProviderError::Internal {
+        retryable: matches!(error, crate::BlogError::Database(_)),
+    }
 }
 
 #[cfg(test)]
@@ -191,8 +214,6 @@ mod tests {
 
     #[test]
     fn blog_post_deletion_binding_matches_the_owner_target() {
-        let binding = BlogReactionSubjectProvider::new;
-        let _ = binding;
         let source = blog_reaction_source();
         let kind = blog_post_reaction_kind();
         assert_eq!(source.as_str(), BLOG_REACTION_SOURCE);

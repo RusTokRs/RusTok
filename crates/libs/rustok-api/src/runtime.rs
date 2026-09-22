@@ -8,6 +8,41 @@ use sea_orm::DatabaseConnection;
 use sea_orm::{ConnectionTrait, DatabaseTransaction, DbErr, Statement};
 use uuid::Uuid;
 
+use crate::module_lifecycle::StaticModuleSettingsSnapshot;
+use crate::ports::PortError;
+use async_trait::async_trait;
+
+/// Transaction-aware owner port for static/native tenant-module settings.
+///
+/// This runtime-only seam accepts the caller-owned SeaORM transaction so a
+/// settings decision remains atomic with the domain mutation that consumes it.
+#[async_trait]
+pub trait StaticModuleSettingsTransactionReader: Send + Sync {
+    async fn settings_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError>;
+}
+
+/// Shared transaction-aware static settings reader published by the host.
+#[derive(Clone)]
+pub struct SharedStaticModuleSettingsTransactionReader(
+    pub std::sync::Arc<dyn StaticModuleSettingsTransactionReader>,
+);
+
+impl SharedStaticModuleSettingsTransactionReader {
+    pub async fn settings_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+        self.0.settings_in_tx(txn, tenant_id, module_slug).await
+    }
+}
+
 /// Returns whether an optional module is enabled for the tenant snapshot that
 /// owns the current request.
 ///

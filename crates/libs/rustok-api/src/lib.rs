@@ -72,7 +72,10 @@ pub use locale::{
     push_locale_candidate,
 };
 pub use module_composition::{ModuleCompositionSnapshotView, StaticInstalledModuleView};
-pub use module_lifecycle::{ModuleOperationRecoveryPlanView, StaticTenantModuleView};
+pub use module_lifecycle::{
+    ModuleOperationRecoveryPlanView, SharedStaticModuleSettingsReader,
+    StaticModuleSettingsReader, StaticModuleSettingsSnapshot, StaticTenantModuleView,
+};
 pub use module_marketplace::{
     MarketplaceModule, MarketplaceModuleVersion, MarketplaceRegistryFreshness,
     MarketplaceRegistryStatus, ModuleSettingField, RegistryAutomatedCheckLifecycle,

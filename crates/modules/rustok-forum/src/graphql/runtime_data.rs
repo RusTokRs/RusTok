@@ -1,4 +1,7 @@
-use rustok_api::graphql::GraphqlRuntimeInputs;
+use rustok_api::{
+    graphql::GraphqlRuntimeInputs, SharedStaticModuleSettingsReader,
+    SharedStaticModuleSettingsTransactionReader,
+};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
@@ -6,7 +9,7 @@ use crate::{
     ForumCategoryAudienceReadService, ForumReplyAudienceReadService,
     ForumStorefrontReadStateService, ForumTopicAudienceReadService,
     ForumVisibilityScopedReadStateService, ModerationService, ReplyService,
-    SharedForumAudienceFactsPort, TopicService,
+    SharedForumAudienceFactsPort, TopicService, VoteService, ForumSettingsProviders,
 };
 
 /// Manifest-attached Forum GraphQL runtime capabilities.
@@ -18,13 +21,25 @@ use crate::{
 #[derive(Clone, Default)]
 pub struct ForumGraphqlRuntimeData {
     audience_facts: Option<SharedForumAudienceFactsPort>,
+    settings_providers: ForumSettingsProviders,
 }
 
 pub fn attach_schema_data(
     inputs: &GraphqlRuntimeInputs,
 ) -> Result<ForumGraphqlRuntimeData, String> {
+    let settings_providers = match (
+        inputs.shared_get::<SharedStaticModuleSettingsReader>(),
+        inputs.shared_get::<SharedStaticModuleSettingsTransactionReader>(),
+    ) {
+        (Some(reader), Some(transactional_reader)) => {
+            ForumSettingsProviders::default().with_static_readers(reader, transactional_reader)
+        }
+        _ => ForumSettingsProviders::default(),
+    };
+
     Ok(ForumGraphqlRuntimeData {
         audience_facts: inputs.shared_get::<SharedForumAudienceFactsPort>(),
+        settings_providers,
     })
 }
 
@@ -44,10 +59,15 @@ impl ForumGraphqlRuntimeData {
         db: DatabaseConnection,
         event_bus: TransactionalEventBus,
     ) -> TopicService {
-        match self.audience_facts.clone() {
+        let service = match self.audience_facts.clone() {
             Some(facts) => TopicService::with_audience_facts(db, event_bus, facts),
             None => TopicService::new(db, event_bus),
-        }
+        };
+        service.with_settings_providers(self.settings_providers.clone())
+    }
+
+    pub(crate) fn vote_service(&self, db: DatabaseConnection) -> VoteService {
+        VoteService::new(db).with_settings_providers(self.settings_providers.clone())
     }
 
     pub(crate) fn reply_service(
@@ -55,10 +75,11 @@ impl ForumGraphqlRuntimeData {
         db: DatabaseConnection,
         event_bus: TransactionalEventBus,
     ) -> ReplyService {
-        match self.audience_facts.clone() {
+        let service = match self.audience_facts.clone() {
             Some(facts) => ReplyService::with_audience_facts(db, event_bus, facts),
             None => ReplyService::new(db, event_bus),
-        }
+        };
+        service.with_settings_providers(self.settings_providers.clone())
     }
 
     pub(crate) fn reply_audience_read_service(

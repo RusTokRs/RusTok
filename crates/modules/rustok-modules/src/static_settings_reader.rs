@@ -1,10 +1,10 @@
 use async_trait::async_trait;
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement};
 use uuid::Uuid;
 
 use rustok_api::{
     PortError, SharedStaticModuleSettingsReader, StaticModuleSettingsReader,
-    StaticModuleSettingsSnapshot,
+    StaticModuleSettingsTransactionReader, StaticModuleSettingsSnapshot,
 };
 
 /// Database-backed owner implementation for static/native tenant-module settings.
@@ -54,6 +54,78 @@ impl StaticModuleSettingsReader for DatabaseStaticModuleSettingsReader {
 
         let row = self
             .db
+            .query_one_raw(Statement::from_sql_and_values(
+                backend,
+                query,
+                vec![tenant_id.into(), module_slug.into()],
+            ))
+            .await
+            .map_err(|_| {
+                PortError::unavailable(
+                    "modules.static_settings_unavailable",
+                    "Static module settings are temporarily unavailable",
+                )
+            })?;
+
+        let Some(row) = row else {
+            return Ok(None);
+        };
+
+        let enabled: bool = row.try_get("", "enabled").map_err(|_| {
+            PortError::invariant_violation(
+                "modules.static_settings_corrupt",
+                "Static module lifecycle state is invalid",
+            )
+        })?;
+        let encoded: String = row.try_get("", "settings_json").map_err(|_| {
+            PortError::invariant_violation(
+                "modules.static_settings_corrupt",
+                "Static module settings state is invalid",
+            )
+        })?;
+        let settings = serde_json::from_str(&encoded).map_err(|_| {
+            PortError::invariant_violation(
+                "modules.static_settings_corrupt",
+                "Static module settings JSON is invalid",
+            )
+        })?;
+
+        Ok(Some(StaticModuleSettingsSnapshot { enabled, settings }))
+    }
+}
+
+
+#[async_trait]
+impl StaticModuleSettingsTransactionReader for DatabaseStaticModuleSettingsReader {
+    async fn settings_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+        let backend = txn.get_database_backend();
+        let query = match backend {
+            sea_orm::DbBackend::Sqlite => {
+                "SELECT enabled, CAST(settings AS TEXT) AS settings_json \
+                 FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
+            }
+            sea_orm::DbBackend::Postgres => {
+                "SELECT enabled, settings::text AS settings_json \
+                 FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1 FOR SHARE"
+            }
+            sea_orm::DbBackend::MySql => {
+                "SELECT enabled, CAST(settings AS CHAR) AS settings_json \
+                 FROM tenant_modules WHERE tenant_id = ? AND module_slug = ? LIMIT 1 FOR SHARE"
+            }
+            _ => {
+                return Err(PortError::unavailable(
+                    "modules.static_settings_unavailable",
+                    "Static module settings are unavailable for this database backend",
+                ))
+            }
+        };
+
+        let row = txn
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 query,
@@ -157,6 +229,44 @@ mod tests {
                 .expect("missing read")
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn transactional_reader_returns_disabled_state_and_exact_tenant_scope() {
+        use sea_orm::TransactionTrait;
+
+        let db = db().await;
+        let tenant_id = Uuid::new_v4();
+        let foreign_tenant_id = Uuid::new_v4();
+
+        db.execute_unprepared(&format!(
+            r#"INSERT INTO tenant_modules (tenant_id, module_slug, enabled, settings) VALUES
+            ('{tenant_id}', 'forum', 0, '{{"use_reactions":true}}'),
+            ('{foreign_tenant_id}', 'forum', 1, '{{"use_reactions":false}}')"#
+        ))
+        .await
+        .expect("rows");
+
+        let reader = DatabaseStaticModuleSettingsReader::new(db.clone());
+        let txn = db.begin().await.expect("transaction");
+
+        let snapshot = reader
+            .settings_in_tx(&txn, tenant_id, "forum")
+            .await
+            .expect("transaction settings read")
+            .expect("exact disabled row");
+        assert!(!snapshot.enabled);
+        assert_eq!(snapshot.settings["use_reactions"], true);
+
+        let foreign = reader
+            .settings_in_tx(&txn, foreign_tenant_id, "forum")
+            .await
+            .expect("foreign transaction settings read")
+            .expect("foreign exact row");
+        assert!(foreign.enabled);
+        assert_eq!(foreign.settings["use_reactions"], false);
+
+        txn.rollback().await.expect("rollback");
     }
 
     #[tokio::test]

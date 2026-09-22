@@ -213,15 +213,15 @@ async fn allocate_projection_revision_in_tx(
         ))
         .await?
         .ok_or_else(|| {
-            ForumError::Validation(
+            ForumError::Internal(rustok_core::Error::Internal(
                 "Forum projection revision allocation returned no row".to_string(),
-            )
+            ))
         })?;
     let revision: i64 = row.try_get("", "revision")?;
     if revision <= 0 {
-        return Err(ForumError::Validation(
+        return Err(ForumError::Internal(rustok_core::Error::Internal(
             "Forum projection revision must be positive".to_string(),
-        ));
+        )));
     }
     Ok(revision)
 }

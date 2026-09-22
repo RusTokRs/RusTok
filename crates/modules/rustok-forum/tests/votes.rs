@@ -1,5 +1,11 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use rustok_api::{
+    PortError, SharedStaticModuleSettingsReader,
+    SharedStaticModuleSettingsTransactionReader, StaticModuleSettingsReader,
+    StaticModuleSettingsSnapshot, StaticModuleSettingsTransactionReader,
+};
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumError,
@@ -13,6 +19,45 @@ use sea_orm::{
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
+
+struct TestForumSettingsReader;
+
+#[async_trait]
+impl StaticModuleSettingsReader for TestForumSettingsReader {
+    async fn settings(
+        &self,
+        _tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+        Ok(Some(StaticModuleSettingsSnapshot {
+            enabled: module_slug == "forum",
+            settings: serde_json::json!({ "use_reactions": false }),
+        }))
+    }
+}
+
+#[async_trait]
+impl StaticModuleSettingsTransactionReader for TestForumSettingsReader {
+    async fn settings_in_tx(
+        &self,
+        _txn: &sea_orm::DatabaseTransaction,
+        _tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+        Ok(Some(StaticModuleSettingsSnapshot {
+            enabled: module_slug == "forum",
+            settings: serde_json::json!({ "use_reactions": false }),
+        }))
+    }
+}
+
+fn test_settings_providers() -> rustok_forum::ForumSettingsProviders {
+    let reader = Arc::new(TestForumSettingsReader);
+    rustok_forum::ForumSettingsProviders::default().with_static_readers(
+        SharedStaticModuleSettingsReader(reader.clone()),
+        SharedStaticModuleSettingsTransactionReader(reader),
+    )
+}
 
 async fn setup_forum_test_db() -> DatabaseConnection {
     let db_url = format!(
@@ -110,7 +155,7 @@ async fn topic_and_reply_votes_round_trip_through_read_paths() {
     let category_service = CategoryService::new(db.clone());
     let topic_service = TopicService::new(db.clone(), event_bus.clone());
     let reply_service = ReplyService::new(db.clone(), event_bus.clone());
-    let vote_service = VoteService::new(db);
+    let vote_service = VoteService::new(db).with_settings_providers(test_settings_providers());
 
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
     let author = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
@@ -256,7 +301,7 @@ async fn internal_votes_switch_by_forum_setting_independently_of_reactions_modul
     let category_service = CategoryService::new(db.clone());
     let topic_service = TopicService::new(db.clone(), event_bus.clone());
     let reply_service = ReplyService::new(db.clone(), event_bus.clone());
-    let vote_service = VoteService::new(db.clone());
+    let vote_service = VoteService::new(db.clone()).with_settings_providers(test_settings_providers());
 
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
     let author = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
@@ -423,7 +468,7 @@ async fn vote_validation_rejects_invalid_values_and_pending_replies() {
     let category_service = CategoryService::new(db.clone());
     let topic_service = TopicService::new(db.clone(), event_bus.clone());
     let reply_service = ReplyService::new(db.clone(), event_bus.clone());
-    let vote_service = VoteService::new(db);
+    let vote_service = VoteService::new(db).with_settings_providers(test_settings_providers());
 
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
     let author = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));

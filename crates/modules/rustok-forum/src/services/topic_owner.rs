@@ -18,6 +18,7 @@ use crate::dto::TopicResponse;
 use crate::entities::{forum_reply, forum_solution, forum_topic};
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::{ReplyStatus, TopicStatus};
+use crate::services::engagement_mode::ForumSettingsProviders;
 
 use self::route_tombstone_visibility::ForumTopicRouteTombstoneVisibilityService;
 use super::category::CategoryService;
@@ -53,6 +54,11 @@ impl TopicService {
             db,
             event_bus,
         }
+    }
+
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.inner = self.inner.with_settings_providers(settings);
+        self
     }
 
     #[instrument(skip(self, security, input))]
