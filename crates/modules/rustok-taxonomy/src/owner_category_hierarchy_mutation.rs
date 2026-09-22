@@ -78,7 +78,7 @@ pub async fn reorder_module_category_siblings_in_tx(
         .map(|row| row.term_id)
         .collect::<HashSet<_>>();
     let ordered_ids = ordered_term_ids.iter().copied().collect::<HashSet<_>>();
-    if sibling_ids != ordered_ids {
+    if !sibling_ids.is_subset(&ordered_ids) {
         return Err(TaxonomyError::conflict(
             "Module Category sibling order does not cover the complete canonical sibling set",
         ));

@@ -59,16 +59,15 @@ fn legacy_category_storage_retires_only_after_taxonomy_identity_cutover() {
         "historical backfill must still copy donor translations before the later retirement migration"
     );
 
-    assert!(ENTITIES.contains("pub(crate) mod blog_category_translation;"));
     for forbidden in [
-        "pub mod blog_category_translation;",
+        "blog_category_translation",
         "pub mod translation_change;",
         "BlogCategoryTranslation",
         "BlogTranslationChange",
     ] {
         assert!(
             !ENTITIES.contains(forbidden),
-            "retired donor storage must not remain on the public Blog entity surface: {forbidden}"
+            "retired donor storage must not remain on the Blog entity surface: {forbidden}"
         );
     }
 }

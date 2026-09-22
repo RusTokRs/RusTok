@@ -66,8 +66,7 @@ const eventTypes = [
   "forum.solution.unmarked",
   "forum.topic.vote_changed",
   "forum.reply.vote_changed",
-  "forum.category.subscription_changed",
-  "forum.topic.subscription_changed",
+  "forum.subscription.changed",
   "forum.topic.tags_changed",
 ];
 
