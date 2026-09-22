@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "module": "blog",
   "surface": "comments_event_projection",
   "status": "source_verified_no_compile",
@@ -9,6 +9,8 @@
   "provider": "rustok-comments",
   "events": [
     "comment.created",
+    "comment.updated",
+    "comment.status_changed",
     "comment.deleted"
   ],
   "production_contract": {
@@ -26,9 +28,10 @@
     "module": "services::comment_projection::tests",
     "command": "cargo test -p rustok-blog --lib services::comment_projection::tests",
     "cases": [
-      "shared_created_deleted_classifier",
+      "shared_created_updated_status_deleted_classifier",
       "non_blog_target_rejection",
       "projection_delta_tracks_comment_state_not_delivery_order",
+      "snapshot_cursor_advances_with_every_processed_lifecycle_event",
       "counter_transition_is_non_negative_and_does_not_touch_business_revision"
     ]
   },
@@ -109,16 +112,8 @@
   },
   "cases": [
     {
-      "name": "shared_event_classifier",
-      "expected": "project and EventHandler::handles use the same pure classifier for Comments lifecycle events"
-    },
-    {
       "name": "blog_post_target_filter",
       "expected": "only Comments lifecycle events whose target_type is blog_post are projected"
-    },
-    {
-      "name": "created_deleted_delta",
-      "expected": "comment.created increments by one and comment.deleted decrements by one"
     },
     {
       "name": "envelope_idempotency",
@@ -183,6 +178,18 @@
     {
       "name": "tenant_scoped_row_lock",
       "expected": "the projection locks the tenant-scoped Blog post before reading the per-comment delivery state, serializing competing events for one post without using Blog business version as the projection token"
+    },
+    {
+      "name": "updated_event_advances_projection_cursor",
+      "expected": "a processed comment.updated event advances the Blog lifecycle delivery cursor without changing comment_count"
+    },
+    {
+      "name": "status_changed_event_advances_projection_cursor",
+      "expected": "a processed comment.status_changed event advances the Blog lifecycle delivery cursor and changes count only when active/deleted state changes"
+    },
+    {
+      "name": "public_snapshot_cursor_invalidation",
+      "expected": "the latest processed lifecycle event id is part of the public snapshot identity so prior snapshot keys become unreachable after lifecycle processing"
     }
   ],
   "runtime_promotion_requirements": [
