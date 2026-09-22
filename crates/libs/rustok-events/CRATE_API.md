@@ -38,6 +38,10 @@
 - Consumes: N/A.
 - Established root events use `DomainEvent`/`EventEnvelope`.
 - Bounded event families use sealed `EventContract` implementations and `ContractEventEnvelope`.
+- Root Comments lifecycle events are owner-defined `comment.created`,
+  `comment.updated`, `comment.status_changed`, and `comment.deleted`. Their
+  payloads contain stable comment/target/author identity; the status-change
+  event additionally carries bounded old/new status values.
 - `BlogCommentsDelegationScheduleAuditEvent` defines v1
   `blog.comments_delegation_schedule.replacement_succeeded`. It carries the
   exact successful-audit request identity, fixed state key, audit timestamp,

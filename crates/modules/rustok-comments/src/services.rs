@@ -336,13 +336,34 @@ impl CommentsService {
                 .await?
                 .ok_or(CommentsError::CommentNotFound(comment_id))?;
             self.enforce_owned_scope(&security, Action::Update, existing.author_id)?;
+            let thread = comment_thread::Entity::find_by_id(existing.thread_id)
+                .filter(comment_thread::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+                .ok_or_else(|| CommentsError::CommentThreadNotFound {
+                    target_type: "unknown".to_string(),
+                    target_id: Uuid::nil(),
+                })?;
 
             self.upsert_body_in_tx(txn, comment_id, &locale, body)
                 .await?;
 
-            let mut active: comment::ActiveModel = existing.into();
+            let mut active: comment::ActiveModel = existing.clone().into();
             active.updated_at = Set(Utc::now().into());
             active.update(txn).await?;
+
+            self.publish_comment_updated_in_tx(
+                txn,
+                CommentEventContext {
+                    tenant_id,
+                    actor_id: security.user_id,
+                    comment_id,
+                    target_type: thread.target_type,
+                    target_id: thread.target_id,
+                    author_id: existing.author_id,
+                },
+            )
+            .await?;
         } else {
             let existing = self.find_comment_in_tx(txn, tenant_id, comment_id, false).await?;
             self.enforce_owned_scope(&security, Action::Update, existing.author_id)?;
@@ -463,6 +484,60 @@ impl CommentsService {
                     target_type: event.target_type,
                     target_id: event.target_id,
                     author_id: event.author_id,
+                },
+            )
+            .await
+            .map_err(|error| CommentsError::EventPublication(error.to_string()))
+    }
+
+    async fn publish_comment_updated_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        event: CommentEventContext,
+    ) -> CommentsResult<()> {
+        let Some(event_bus) = &self.event_bus else {
+            return Ok(());
+        };
+
+        event_bus
+            .publish_in_tx(
+                txn,
+                event.tenant_id,
+                event.actor_id,
+                DomainEvent::CommentUpdated {
+                    comment_id: event.comment_id,
+                    target_type: event.target_type,
+                    target_id: event.target_id,
+                    author_id: event.author_id,
+                },
+            )
+            .await
+            .map_err(|error| CommentsError::EventPublication(error.to_string()))
+    }
+
+    async fn publish_comment_status_changed_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        event: CommentEventContext,
+        old_status: &str,
+        new_status: &str,
+    ) -> CommentsResult<()> {
+        let Some(event_bus) = &self.event_bus else {
+            return Ok(());
+        };
+
+        event_bus
+            .publish_in_tx(
+                txn,
+                event.tenant_id,
+                event.actor_id,
+                DomainEvent::CommentStatusChanged {
+                    comment_id: event.comment_id,
+                    target_type: event.target_type,
+                    target_id: event.target_id,
+                    author_id: event.author_id,
+                    old_status: old_status.to_string(),
+                    new_status: new_status.to_string(),
                 },
             )
             .await
@@ -846,10 +921,36 @@ impl CommentsService {
             .await?
             .ok_or(CommentsError::CommentNotFound(comment_id))?;
         if existing.status != status {
+            let old_status = comment_status_wire(existing.status);
+            let new_status = comment_status_wire(status);
+            let thread = comment_thread::Entity::find_by_id(existing.thread_id)
+                .filter(comment_thread::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+                .ok_or_else(|| CommentsError::CommentThreadNotFound {
+                    target_type: "unknown".to_string(),
+                    target_id: Uuid::nil(),
+                })?;
+
             let mut active: comment::ActiveModel = existing.clone().into();
             active.status = Set(status);
             active.updated_at = Set(Utc::now().into());
             active.update(txn).await?;
+
+            self.publish_comment_status_changed_in_tx(
+                txn,
+                CommentEventContext {
+                    tenant_id,
+                    actor_id: security.user_id,
+                    comment_id,
+                    target_type: thread.target_type,
+                    target_id: thread.target_id,
+                    author_id: existing.author_id,
+                },
+                old_status,
+                new_status,
+            )
+            .await?;
         }
 
         self.get_comment_record_in_tx(
@@ -1367,6 +1468,15 @@ mod richtext_validation_tests {
 fn normalize_locale(locale: &str) -> CommentsResult<String> {
     normalize_locale_code(locale)
         .ok_or_else(|| CommentsError::Validation("Invalid locale".to_string()))
+}
+
+fn comment_status_wire(status: crate::dto::CommentStatus) -> &'static str {
+    match status {
+        crate::dto::CommentStatus::Pending => "pending",
+        crate::dto::CommentStatus::Approved => "approved",
+        crate::dto::CommentStatus::Spam => "spam",
+        crate::dto::CommentStatus::Trash => "trash",
+    }
 }
 
 fn record_entrypoint(entry_point: &str) {

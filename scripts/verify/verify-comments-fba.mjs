@@ -46,7 +46,7 @@ const runtimeSmoke = json(registry.evidence.runtime_order_smoke);
 const threadWriteEvidence = json(registry.evidence.thread_write_invariants);
 const packageJson = json(packageJsonPath);
 
-if (registry.schema_version !== 4) fail('registry schema_version drift');
+if (registry.schema_version !== 5) fail('registry schema_version drift');
 if (registry.module !== 'comments' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 if (registry.contract_version !== 'comments.thread.v1') fail('contract_version drift');
 const port = registry.ports?.[0];
@@ -155,7 +155,12 @@ const services = read('crates/modules/rustok-comments/src/services.rs');
 hasAll(services, [
   'event_bus: Option<TransactionalEventBus>',
   'pub fn with_event_bus',
+  'DomainEvent::CommentUpdated',
+  'DomainEvent::CommentStatusChanged',
+  'comment_status_wire',
   'publish_comment_created_in_tx',
+  'publish_comment_updated_in_tx',
+  'publish_comment_status_changed_in_tx',
   'publish_comment_deleted_in_tx',
   'DomainEvent::CommentCreated',
   'DomainEvent::CommentDeleted',
@@ -167,7 +172,7 @@ hasAll(services, [
 ], 'comments owner service');
 hasNone(services, ['Err(_) => comment_thread::Entity::find()'], 'comments owner service');
 const lifecycleEvents = registry.events ?? [];
-if (lifecycleEvents.map(event => event.type).sort().join('|') !== 'comment.created|comment.deleted') fail('comments lifecycle event registry drift');
+if (lifecycleEvents.map(event => event.type).sort().join('|') !== 'comment.created|comment.deleted|comment.status_changed|comment.updated') fail('comments lifecycle event registry drift');
 for (const event of lifecycleEvents) {
   if (event.owner !== 'comments' || event.publication !== 'rustok_outbox::TransactionalEventBus::publish_in_tx' || event.consumer !== 'blog' || event.projection_status !== 'implemented_static_only') fail(`lifecycle event metadata drift for ${event.type}`);
 }

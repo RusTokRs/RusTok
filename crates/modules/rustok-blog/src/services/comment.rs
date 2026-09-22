@@ -20,7 +20,9 @@ use crate::dto::{
     CommentListItem, CommentResponse, CreateCommentInput, ListCommentsFilter, ModerateCommentInput,
     UpdateCommentInput,
 };
-use crate::entities::{blog_post, blog_post_channel_visibility};
+use crate::entities::{
+    blog_comment_projection_delivery, blog_post, blog_post_channel_visibility,
+};
 use crate::error::{BlogError, BlogResult};
 use crate::services::{is_post_visible_for_channel, post::storage_to_status, rbac::enforce_scope};
 
@@ -383,6 +385,21 @@ impl CommentService {
             return Err(BlogError::post_not_found(post_id));
         }
         Ok(())
+    }
+
+    pub(crate) async fn public_comments_projection_cursor(
+        &self,
+        tenant_id: Uuid,
+        post_id: Uuid,
+    ) -> BlogResult<Option<Uuid>> {
+        blog_comment_projection_delivery::Entity::find()
+            .filter(blog_comment_projection_delivery::Column::TenantId.eq(tenant_id))
+            .filter(blog_comment_projection_delivery::Column::PostId.eq(post_id))
+            .order_by_desc(blog_comment_projection_delivery::Column::EventId)
+            .one(&self.db)
+            .await
+            .map(|delivery| delivery.map(|row| row.event_id))
+            .map_err(BlogError::from)
     }
 
     pub(crate) async fn ensure_public_post_visible(

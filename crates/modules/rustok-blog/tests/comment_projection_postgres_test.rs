@@ -209,6 +209,62 @@ async fn concurrent_created_events_converge_without_lost_updates() -> TestResult
 }
 
 #[tokio::test]
+async fn update_and_status_events_advance_projection_cursor_without_count_change() -> TestResult<()> {
+    let Some(test_db) = PostgresBlogProjectionTestDb::setup("lifecycle_cursor").await? else {
+        return Ok(());
+    };
+
+    let tenant_id = Uuid::new_v4();
+    let post_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let comment_id = Uuid::new_v4();
+    insert_post(&test_db.db, tenant_id, post_id, actor_id, 0, 1).await?;
+
+    let handler = BlogCommentProjectionHandler::new(test_db.db.clone());
+    let created = comment_created_envelope(tenant_id, actor_id, comment_id, post_id);
+    handler.handle(&created).await?;
+
+    let updated = EventEnvelope::new(
+        tenant_id,
+        Some(actor_id),
+        DomainEvent::CommentUpdated {
+            comment_id,
+            target_type: "blog_post".to_string(),
+            target_id: post_id,
+            author_id: actor_id,
+        },
+    );
+    handler.handle(&updated).await?;
+
+    let status_changed = EventEnvelope::new(
+        tenant_id,
+        Some(actor_id),
+        DomainEvent::CommentStatusChanged {
+            comment_id,
+            target_type: "blog_post".to_string(),
+            target_id: post_id,
+            author_id: actor_id,
+            old_status: "pending".to_string(),
+            new_status: "approved".to_string(),
+        },
+    );
+    handler.handle(&status_changed).await?;
+
+    assert_eq!(
+        load_post_state(&test_db.db, tenant_id, post_id).await?,
+        (1, 1)
+    );
+    assert_eq!(count_all_deliveries(&test_db.db).await?, 3);
+    assert_eq!(count_outbox_events(&test_db.db).await?, 1);
+    assert_eq!(
+        latest_delivery_event_id(&test_db.db, tenant_id, post_id).await?,
+        status_changed.id
+    );
+
+    test_db.cleanup().await
+}
+
+#[tokio::test]
 async fn delete_before_create_stays_non_negative_and_replays_in_order() -> TestResult<()> {
     let Some(test_db) = PostgresBlogProjectionTestDb::setup("out_of_order").await? else {
         return Ok(());
@@ -493,6 +549,28 @@ async fn count_all_deliveries(db: &DatabaseConnection) -> Result<i64, sea_orm::D
         .await?
         .expect("delivery total query should return one row");
     row.try_get("", "count")
+}
+
+async fn latest_delivery_event_id(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    post_id: Uuid,
+) -> Result<Uuid, sea_orm::DbErr> {
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            r#"
+            SELECT event_id
+            FROM blog_comment_projection_deliveries
+            WHERE tenant_id = $1 AND post_id = $2
+            ORDER BY event_id DESC
+            LIMIT 1
+            "#,
+            vec![tenant_id.into(), post_id.into()],
+        ))
+        .await?
+        .expect("latest delivery query should return one row");
+    row.try_get("", "event_id")
 }
 
 async fn count_outbox_events(db: &DatabaseConnection) -> Result<i64, sea_orm::DbErr> {

@@ -193,11 +193,25 @@ fn sample_events() -> Vec<DomainEvent> {
             target_id: id(58),
             author_id: id(59),
         },
-        DomainEvent::CommentDeleted {
+        DomainEvent::CommentUpdated {
             comment_id: id(60),
             target_type: "blog_post".to_string(),
             target_id: id(61),
             author_id: id(62),
+        },
+        DomainEvent::CommentStatusChanged {
+            comment_id: id(63),
+            target_type: "blog_post".to_string(),
+            target_id: id(64),
+            author_id: id(65),
+            old_status: "pending".to_string(),
+            new_status: "approved".to_string(),
+        },
+        DomainEvent::CommentDeleted {
+            comment_id: id(66),
+            target_type: "blog_post".to_string(),
+            target_id: id(67),
+            author_id: id(68),
         },
         DomainEvent::ForumTopicCreated {
             topic_id: id(63),
