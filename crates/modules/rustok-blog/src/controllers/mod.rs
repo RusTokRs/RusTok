@@ -42,11 +42,10 @@ impl BlogHttpRuntime {
     }
 
     fn comment_service(&self) -> CommentService {
-        if let Some(comments_thread_port) = self.comments_thread_port.clone() {
-            CommentService::with_comments_thread_port(self.db_clone(), comments_thread_port)
-        } else {
-            CommentService::new(self.db_clone(), self.event_bus())
-        }
+        CommentService::from_optional_comments_thread_port(
+            self.db_clone(),
+            self.comments_thread_port.clone(),
+        )
     }
 }
 
