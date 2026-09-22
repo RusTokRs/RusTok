@@ -62,10 +62,17 @@ impl TagService {
             )
             .await?;
         let term = TaxonomyOwnerReader::load_terms_by_ids_in_tx(
-            &txn, tenant_id, TaxonomyTermKind::Tag, &[tag_id],
-            PLATFORM_FALLBACK_LOCALE, None,
-        ).await?.into_iter().next()
-            .ok_or_else(|| BlogError::invariant("Created Blog tag is missing from Taxonomy"))?;
+            &txn,
+            tenant_id,
+            TaxonomyTermKind::Tag,
+            &[tag_id],
+            PLATFORM_FALLBACK_LOCALE,
+            None,
+        )
+        .await?
+        .into_iter()
+        .next()
+        .ok_or_else(|| BlogError::invariant("Created Blog tag is missing from Taxonomy"))?;
         initialize_tag_usage_in_tx(&txn, tenant_id, tag_id, &term.canonical_key).await?;
         publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
         txn.commit().await.map_err(BlogError::from)?;
@@ -182,9 +189,16 @@ impl TagService {
             txn.commit().await.map_err(BlogError::from)?;
             return Ok((Vec::new(), 0));
         }
+        let last_page = total
+            .saturating_add(per_page.saturating_sub(1))
+            / per_page;
+        if page > last_page {
+            txn.commit().await.map_err(BlogError::from)?;
+            return Ok((Vec::new(), total));
+        }
 
         let usage_rows = paginator
-            .fetch_page(page.saturating_sub(1))
+            .fetch_page(page - 1)
             .await
             .map_err(BlogError::from)?;
         let term_ids = usage_rows.iter().map(|row| row.tag_id).collect::<Vec<_>>();
@@ -408,7 +422,10 @@ pub(crate) async fn sync_post_tags_in_tx(
         .filter(blog_post_tag::Column::PostId.eq(post_id))
         .all(txn)
         .await?;
-    let previous_tag_ids = previous_relations.into_iter().map(|relation| relation.tag_id).collect::<Vec<_>>();
+    let previous_tag_ids = previous_relations
+        .into_iter()
+        .map(|relation| relation.tag_id)
+        .collect::<Vec<_>>();
 
     blog_post_tag::Entity::delete_many()
         .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
@@ -456,13 +473,21 @@ async fn increment_tag_usage_in_tx(
     tenant_id: Uuid,
     tag_ids: &[Uuid],
 ) -> BlogResult<()> {
-    if tag_ids.is_empty() { return Ok(()); }
+    if tag_ids.is_empty() {
+        return Ok(());
+    }
     let mut unique_ids = tag_ids.to_vec();
     unique_ids.sort_unstable();
     unique_ids.dedup();
     let terms = TaxonomyOwnerReader::load_terms_by_ids_in_tx(
-        txn, tenant_id, TaxonomyTermKind::Tag, &unique_ids, PLATFORM_FALLBACK_LOCALE, None,
-    ).await?;
+        txn,
+        tenant_id,
+        TaxonomyTermKind::Tag,
+        &unique_ids,
+        PLATFORM_FALLBACK_LOCALE,
+        None,
+    )
+    .await?;
     if terms.len() != unique_ids.len() {
         return Err(BlogError::invariant(
             "Blog tag usage increment references a missing or wrong-kind Taxonomy term",
@@ -478,32 +503,53 @@ async fn increment_tag_usage_in_tx(
             )));
         }
         blog_tag_usage::Entity::insert(blog_tag_usage::ActiveModel {
-            tenant_id: Set(tenant_id), tag_id: Set(term.id),
-            canonical_key: Set(term.canonical_key.clone()), use_count: Set(1),
-        }).on_conflict(
+            tenant_id: Set(tenant_id),
+            tag_id: Set(term.id),
+            canonical_key: Set(term.canonical_key.clone()),
+            use_count: Set(1),
+        })
+        .on_conflict(
             OnConflict::columns([
-                blog_tag_usage::Column::TenantId, blog_tag_usage::Column::TagId,
-            ]).values([
-                (blog_tag_usage::Column::UseCount,
-                    Expr::col(blog_tag_usage::Column::UseCount).add(1)),
-                (blog_tag_usage::Column::CanonicalKey,
-                    Expr::value(term.canonical_key)),
-            ]).to_owned(),
-        ).exec(txn).await.map_err(BlogError::from)?;
+                blog_tag_usage::Column::TenantId,
+                blog_tag_usage::Column::TagId,
+            ])
+            .values([
+                (
+                    blog_tag_usage::Column::UseCount,
+                    Expr::col(blog_tag_usage::Column::UseCount).add(1),
+                ),
+                (
+                    blog_tag_usage::Column::CanonicalKey,
+                    Expr::value(term.canonical_key),
+                ),
+            ])
+            .to_owned(),
+        )
+        .exec(txn)
+        .await
+        .map_err(BlogError::from)?;
     }
     Ok(())
 }
 
 async fn decrement_tag_usage_in_tx(
-    txn: &DatabaseTransaction, tenant_id: Uuid, tag_ids: &[Uuid],
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    tag_ids: &[Uuid],
 ) -> BlogResult<()> {
     if tag_ids.is_empty() { return Ok(()); }
     let mut unique_ids = tag_ids.to_vec();
     unique_ids.sort_unstable();
     unique_ids.dedup();
     let terms = TaxonomyOwnerReader::load_terms_by_ids_in_tx(
-        txn, tenant_id, TaxonomyTermKind::Tag, &unique_ids, PLATFORM_FALLBACK_LOCALE, None,
-    ).await?;
+        txn,
+        tenant_id,
+        TaxonomyTermKind::Tag,
+        &unique_ids,
+        PLATFORM_FALLBACK_LOCALE,
+        None,
+    )
+    .await?;
     if terms.len() != unique_ids.len() {
         return Err(BlogError::invariant(
             "Blog tag usage decrement references a missing or wrong-kind Taxonomy term",
@@ -519,12 +565,15 @@ async fn decrement_tag_usage_in_tx(
             )));
         }
         let updated = blog_tag_usage::Entity::update_many()
-            .col_expr(blog_tag_usage::Column::UseCount,
-                Expr::col(blog_tag_usage::Column::UseCount).sub(1))
+            .col_expr(
+                blog_tag_usage::Column::UseCount,
+                Expr::col(blog_tag_usage::Column::UseCount).sub(1),
+            )
             .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
             .filter(blog_tag_usage::Column::TagId.eq(term.id))
             .filter(blog_tag_usage::Column::UseCount.gt(0))
-            .exec(txn).await?;
+            .exec(txn)
+            .await?;
         if updated.rows_affected != 1 {
             return Err(BlogError::invariant(format!(
                 "Blog tag usage projection underflow for Taxonomy term {}",
@@ -536,30 +585,45 @@ async fn decrement_tag_usage_in_tx(
                 .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
                 .filter(blog_tag_usage::Column::TagId.eq(term.id))
                 .filter(blog_tag_usage::Column::UseCount.eq(0))
-                .exec(txn).await?;
+                .exec(txn)
+                .await?;
         }
     }
     Ok(())
 }
 
 pub(crate) async fn remove_post_tag_usage_in_tx(
-    txn: &DatabaseTransaction, tenant_id: Uuid, post_id: Uuid,
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    post_id: Uuid,
 ) -> BlogResult<()> {
     let relations = blog_post_tag::Entity::find()
         .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
         .filter(blog_post_tag::Column::PostId.eq(post_id))
-        .all(txn).await?;
-    let tag_ids = relations.into_iter().map(|relation| relation.tag_id).collect::<Vec<_>>();
+        .all(txn)
+        .await?;
+    let tag_ids = relations
+        .into_iter()
+        .map(|relation| relation.tag_id)
+        .collect::<Vec<_>>();
     decrement_tag_usage_in_tx(txn, tenant_id, &tag_ids).await
 }
 
 pub(crate) async fn initialize_tag_usage_in_tx(
-    txn: &DatabaseTransaction, tenant_id: Uuid, tag_id: Uuid, canonical_key: &str,
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    tag_id: Uuid,
+    canonical_key: &str,
 ) -> BlogResult<()> {
     blog_tag_usage::Entity::insert(blog_tag_usage::ActiveModel {
-        tenant_id: Set(tenant_id), tag_id: Set(tag_id),
-        canonical_key: Set(canonical_key.to_string()), use_count: Set(0),
-    }).exec(txn).await.map_err(BlogError::from)?;
+        tenant_id: Set(tenant_id),
+        tag_id: Set(tag_id),
+        canonical_key: Set(canonical_key.to_string()),
+        use_count: Set(0),
+    })
+    .exec(txn)
+    .await
+    .map_err(BlogError::from)?;
     Ok(())
 }
 
