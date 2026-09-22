@@ -140,7 +140,8 @@ and post `blog_posts:*` permissions do not grant Blog Category access.
 - currently uses `rustok-comments` as the comment runtime contract and declares a
   static lifecycle edge; the accepted target retains the port but makes the capability
   conditional so Blog core serving remains provider-free;
-- uses `rustok-profiles` for author presentation;
+- uses `rustok-profiles` only as optional author presentation enrichment; Blog
+  publication reads remain valid without the Profiles module;
 - uses `rustok-channel` for module-level and publication-level public
   visibility;
 - uses `rustok-telemetry` for read/write observability;

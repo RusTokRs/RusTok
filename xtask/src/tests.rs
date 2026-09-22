@@ -31,6 +31,7 @@ use super::{
     MODULE_AUTH_TOKEN_ENV, REGISTRY_MUTATION_SCHEMA_VERSION, REGISTRY_YANK_REASON_CODES,
     REMOTE_RUNNER_TOKEN_ENV,
 };
+use super::validate_module_dependency_contract;
 use std::{
     collections::HashMap,
     env,

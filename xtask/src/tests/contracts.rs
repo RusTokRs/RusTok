@@ -370,6 +370,83 @@ fn validate_module_entry_type_contract_accepts_non_runtime_module_without_entry_
 }
 
 #[test]
+fn runtime_contracts_accept_canonical_module_rs_implementation() {
+    let base = env::temp_dir().join(format!(
+        "xtask-runtime-module-source-{}",
+        std::process::id()
+    ));
+    let src_dir = base.join("src");
+    std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+    std::fs::write(
+        src_dir.join("lib.rs"),
+        "mod module;\npub use module::DemoModule;\n",
+    )
+    .expect("temporary lib.rs should be writable");
+    std::fs::write(
+        src_dir.join("module.rs"),
+        r#"
+            pub struct DemoModule;
+            impl RusToKModule for DemoModule {
+                fn slug(&self) -> &'static str { "demo" }
+                fn name(&self) -> &'static str { "Demo" }
+                fn description(&self) -> &'static str { "A sufficiently long demo module description" }
+                fn dependencies(&self) -> &[&'static str] { &["content"] }
+                fn permissions(&self) -> Vec<Permission> { vec![] }
+            }
+        "#,
+    )
+    .expect("temporary module.rs should be writable");
+
+    let manifest: ModulePackageManifest = toml::from_str(
+        r#"
+            [module]
+            slug = "demo"
+            name = "Demo"
+            version = "0.1.0"
+            description = "A sufficiently long demo module description"
+            ownership = "first_party"
+            trust_level = "verified"
+            ui_classification = "no_ui"
+
+            [crate]
+            entry_type = "DemoModule"
+
+            [dependencies]
+            content = {}
+        "#,
+    )
+    .expect("module manifest should parse");
+    let spec = ModuleSpec {
+        crate_name: "rustok-demo".to_string(),
+        source: "path".to_string(),
+        path: Some("crates/modules/rustok-demo".to_string()),
+        required: false,
+        version: None,
+        git: None,
+        rev: None,
+        depends_on: Some(vec!["content".to_string()]),
+        features: None,
+        runtime: "module".to_string(),
+    };
+
+    validate_module_entry_type_contract("demo", &manifest, &base)
+        .expect("entry type should resolve from module.rs");
+    validate_module_runtime_metadata_contract("demo", &manifest, &base)
+        .expect("runtime metadata should resolve from module.rs");
+    validate_module_dependency_contract("demo", &spec, &manifest, &base)
+        .expect("runtime dependencies should resolve from module.rs");
+    validate_module_kind_contract("demo", &spec, &base)
+        .expect("optional runtime kind should resolve from module.rs");
+    validate_module_permission_contract("demo", &base)
+        .expect("permissions should resolve from module.rs");
+
+    let _ = std::fs::remove_file(src_dir.join("module.rs"));
+    let _ = std::fs::remove_file(src_dir.join("lib.rs"));
+    let _ = std::fs::remove_dir(&src_dir);
+    let _ = std::fs::remove_dir(&base);
+}
+
+#[test]
 fn validate_module_runtime_metadata_contract_rejects_description_drift() {
     let base = env::temp_dir().join(format!("xtask-runtime-meta-{}", std::process::id()));
     let src_dir = base.join("src");

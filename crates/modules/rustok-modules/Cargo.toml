@@ -28,7 +28,7 @@ ed25519-dalek.workspace = true
 futures-util = "0.3"
 tokio.workspace = true
 rustok-core.workspace = true
-rustok-api.workspace = true
+rustok-api = { workspace = true, features = ["runtime"] }
 rustok-build-source.workspace = true
 rustok-runtime.workspace = true
 rustok-sandbox.workspace = true

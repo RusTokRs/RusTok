@@ -32,7 +32,7 @@ impl RusToKModule for BlogModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["content", "taxonomy", "outbox", "channel", "profiles"]
+        &["content", "taxonomy", "outbox", "channel"]
     }
 
     fn permissions(&self) -> Vec<Permission> {
@@ -129,7 +129,7 @@ mod tests {
         assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
         assert_eq!(
             module.dependencies(),
-            &["content", "taxonomy", "outbox", "channel", "profiles"]
+            &["content", "taxonomy", "outbox", "channel"]
         );
     }
 

@@ -73,9 +73,11 @@ Blog may serve posts, categories, and tags with Comments absent. Blog owns wheth
 post surface hides comments, exposes retained comments read-only, or permits new
 writes; Comments owns threads, bodies, moderation, and retention. Disabling a Blog
 comment surface never disables Comments for another consumer and never deletes
-Comments-owned data. The current static `blog -> comments` edge is an accepted cutover
-gap governed by
-[`docs/architecture/settings.md`](../../../docs/architecture/settings.md).
+Comments-owned data. The former static `blog -> comments` edge is removed; the
+remaining gap is the typed tenant Blog comment-surface policy governed by
+[`docs/architecture/settings.md`](../../../docs/architecture/settings.md). Blog still
+compile-links the Comments implementation crate, so reduced-build package decoupling
+remains distinct from tenant lifecycle independence.
 
 ## Entry points
 

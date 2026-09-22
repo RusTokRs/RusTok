@@ -59,8 +59,11 @@ Tenant-selected integrations use a consumer-owned typed setting and effective
 capability binding. Entity- or operation-specific requirements use typed domain facts
 and snapshots. For example, Blog must serve publications without Comments, and a
 digital Commerce flow must not require Fulfillment merely because physical order
-lines do. The current `blog -> comments` and `commerce -> fulfillment` manifest edges
-are cutover gaps, not patterns to copy.
+lines do. The former `blog -> comments` lifecycle edge has been removed; the current
+`commerce -> fulfillment` manifest edge remains a cutover gap, not a pattern to copy.
+Removing a lifecycle edge does not by itself remove Rust package linkage: optional
+provider contracts should ultimately live behind stable owner API/port boundaries so
+provider implementation crates can also be omitted from reduced builds.
 
 The current manifest validator checks that declared static dependencies agree across
 the three representations; that mechanical synchronization does not prove the edge is
@@ -136,7 +139,11 @@ Practical rule for the current platform scope:
 
 ### `[crate].entry_type`
 
-If a crate implements `RusToKModule`, `rustok-module.toml` must contain `[crate].entry_type` matching the actual runtime entry type from `src/lib.rs`.
+If a crate implements `RusToKModule`, `rustok-module.toml` must contain
+`[crate].entry_type` matching the actual runtime entry type. Enrolled canonical native
+modules place the implementation in `src/module.rs` and deliberately re-export the
+entry type from the thin `src/lib.rs` facade; historical modules may still implement it
+in `src/lib.rs` until their bounded layout cutover.
 
 Practical rule:
 
@@ -151,8 +158,10 @@ to `apps/server` is not a substitute for that mechanism.
 
 ### Synchronization of Runtime Metadata
 
-If a crate implements `RusToKModule`, the values of `module.slug`, `module.name` and `module.description`
-in `rustok-module.toml` must match `slug()`, `name()` and `description()` in `src/lib.rs`.
+If a crate implements `RusToKModule`, the values of `module.slug`, `module.name` and
+`module.description` in `rustok-module.toml` must match `slug()`, `name()` and
+`description()` in its canonical runtime implementation source (`src/module.rs` for
+the enrolled layout, otherwise `src/lib.rs`).
 
 ### `provides.graphql` and `provides.http`
 
@@ -252,7 +261,7 @@ Additional sections are allowed, but this minimum must be preserved.
 - `module.version` in `rustok-module.toml` matches the version from `Cargo.toml`;
 - `module.ui_classification` exists, uses a supported value and is consistent with actual UI surfaces;
 - If a crate implements `RusToKModule`, `[crate].entry_type` exists and matches the runtime entry type;
-- If a crate implements `RusToKModule`, `module.slug`, `module.name` and `module.description` match the runtime metadata in `src/lib.rs`;
+- If a crate implements `RusToKModule`, `module.slug`, `module.name` and `module.description` match its canonical runtime implementation source;
 - If a module is marked as `required = true` in `modules.toml`, the runtime type explicitly returns `ModuleKind::Core`; an optional module does not declare `ModuleKind::Core`;
 - If a crate implements `RusToKModule`, its `permissions()` contains no duplicates, uses only existing `Permission::*` constants or valid `Resource::*/Action::*` pairs from `rustok-core`, and covers the minimum runtime RBAC surface where this minimum is already fixed by platform contracts;
 - For modules whose event-driven behavior has already been moved to a module-owned runtime path (`index`, `search`, `workflow`), `src/lib.rs` publishes listeners through `register_event_listeners(...)`, rather than falling back to hidden host-owned wiring;

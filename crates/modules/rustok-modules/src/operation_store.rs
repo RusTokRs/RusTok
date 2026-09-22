@@ -454,7 +454,7 @@ impl StaticTenantLifecycleStore {
         db.query_one_raw(Statement::from_sql_and_values(
             backend,
             sql,
-            vec![tenant_id.into(), module_slug.into()],
+            vec![uuid_query_value(backend, tenant_id), module_slug.into()],
         ))
         .await
         .map_err(static_lifecycle_database_error)?
@@ -918,7 +918,10 @@ impl TenantModuleStateStore {
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 select,
-                vec![request.tenant_id.into(), request.module_slug.clone().into()],
+                vec![
+                    uuid_query_value(backend, request.tenant_id),
+                    request.module_slug.clone().into(),
+                ],
             ))
             .await
             .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?
@@ -951,7 +954,7 @@ impl TenantModuleStateStore {
             "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings) VALUES ({1}, {2}, {3}, {4}, '{}')",
             vec![
                 id.into(),
-                request.tenant_id.into(),
+                uuid_query_value(backend, request.tenant_id),
                 request.module_slug.into(),
                 request.enabled.into(),
             ],
@@ -984,7 +987,10 @@ impl TenantModuleStateStore {
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 select,
-                vec![request.tenant_id.into(), request.module_slug.clone().into()],
+                vec![
+                    uuid_query_value(backend, request.tenant_id),
+                    request.module_slug.clone().into(),
+                ],
             ))
             .await
             .map_err(database_error)?;
@@ -1000,7 +1006,11 @@ impl TenantModuleStateStore {
             execute(
                 db,
                 "UPDATE tenant_modules SET enabled = {1}, settings = {2}, updated_at = CURRENT_TIMESTAMP WHERE id = {3}",
-                vec![enabled.into(), json_value(request.settings), id.into()],
+                vec![
+                    enabled.into(),
+                    json_value(request.settings),
+                    id.into(),
+                ],
             )
             .await?;
             return Ok(TenantModuleSettingsRecord {
@@ -1023,7 +1033,7 @@ impl TenantModuleStateStore {
             "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings) VALUES ({1}, {2}, {3}, {4}, {5})",
             vec![
                 id.into(),
-                request.tenant_id.into(),
+                uuid_query_value(backend, request.tenant_id),
                 request.module_slug.into(),
                 enabled.into(),
                 json_value(request.settings),
@@ -1041,6 +1051,14 @@ impl TenantModuleStateStore {
 
 fn json_value(value: serde_json::Value) -> sea_orm::Value {
     sea_orm::Value::Json(Some(Box::new(value)))
+}
+
+fn uuid_query_value(backend: DbBackend, value: Uuid) -> sea_orm::Value {
+    if backend == DbBackend::Sqlite {
+        value.to_string().into()
+    } else {
+        value.into()
+    }
 }
 
 async fn execute<C: ConnectionTrait>(
@@ -1071,6 +1089,7 @@ fn render_parameters(sql_template: &str, backend: DbBackend) -> String {
 
 #[cfg(test)]
 mod tests {
+    use rustok_api::StaticModuleSettingsReader;
     use sea_orm::{Database, Statement};
     use serde_json::json;
 
@@ -1151,5 +1170,62 @@ mod tests {
         assert_eq!(updated.module_slug, "modules");
         assert!(updated.enabled);
         assert_eq!(updated.settings, json!({ "value": 3 }));
+    }
+
+    #[tokio::test]
+    async fn disable_and_reenable_preserve_settings_for_the_runtime_reader() {
+        let database = database().await;
+        let tenant_id = Uuid::new_v4();
+        TenantModuleStateStore::persist_settings(
+            &database,
+            TenantModuleSettingsRequest {
+                tenant_id,
+                module_slug: "blog".to_string(),
+                settings: json!({ "use_reactions": true }),
+                is_core: false,
+                is_effectively_enabled: true,
+            },
+        )
+        .await
+        .expect("enabled Blog settings");
+
+        TenantModuleStateStore::persist(
+            &database,
+            TenantModuleStateRequest {
+                tenant_id,
+                module_slug: "blog".to_string(),
+                enabled: false,
+            },
+        )
+        .await
+        .expect("disable Blog");
+
+        let reader = crate::DatabaseStaticModuleSettingsReader::new(database.clone());
+        let disabled = reader
+            .settings(tenant_id, "blog")
+            .await
+            .expect("disabled settings read")
+            .expect("disabled settings row");
+        assert!(!disabled.enabled);
+        assert_eq!(disabled.settings, json!({ "use_reactions": true }));
+
+        TenantModuleStateStore::persist(
+            &database,
+            TenantModuleStateRequest {
+                tenant_id,
+                module_slug: "blog".to_string(),
+                enabled: true,
+            },
+        )
+        .await
+        .expect("re-enable Blog");
+
+        let reenabled = reader
+            .settings(tenant_id, "blog")
+            .await
+            .expect("re-enabled settings read")
+            .expect("re-enabled settings row");
+        assert!(reenabled.enabled);
+        assert_eq!(reenabled.settings, json!({ "use_reactions": true }));
     }
 }

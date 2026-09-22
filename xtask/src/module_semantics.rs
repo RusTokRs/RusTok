@@ -80,29 +80,22 @@ pub(crate) fn validate_module_kind_contract(
     spec: &ModuleSpec,
     module_root: &Path,
 ) -> Result<()> {
-    let lib_path = module_root.join("src").join("lib.rs");
-    if !lib_path.exists() {
+    let Some(source) = load_runtime_module_source(module_root)? else {
         return Ok(());
-    }
+    };
 
-    let content = fs::read_to_string(&lib_path)
-        .with_context(|| format!("Failed to read {}", lib_path.display()))?;
-    if !content.contains("impl RusToKModule for") {
-        return Ok(());
-    }
-
-    let runtime_kind = extract_runtime_module_kind(&content);
+    let runtime_kind = extract_runtime_module_kind(&source.content);
     if spec.required {
         if runtime_kind != Some("Core") {
             anyhow::bail!(
                 "Module '{slug}' is required in modules.toml and must declare fn kind(&self) -> ModuleKind {{ ModuleKind::Core }} in {}",
-                lib_path.display()
+                source.path.display()
             );
         }
     } else if runtime_kind == Some("Core") {
         anyhow::bail!(
             "Module '{slug}' is optional in modules.toml and must not declare ModuleKind::Core in {}",
-            lib_path.display()
+            source.path.display()
         );
     }
 

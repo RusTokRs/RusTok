@@ -5,14 +5,6 @@ pub(crate) fn validate_module_entry_type_contract(
     manifest: &ModulePackageManifest,
     module_root: &Path,
 ) -> Result<()> {
-    let lib_path = module_root.join("src").join("lib.rs");
-    if !lib_path.exists() {
-        return Ok(());
-    }
-
-    let content = fs::read_to_string(&lib_path)
-        .with_context(|| format!("Failed to read {}", lib_path.display()))?;
-    let has_runtime_module_impl = content.contains("impl RusToKModule for");
     let entry_type = manifest
         .crate_contract
         .entry_type
@@ -20,20 +12,22 @@ pub(crate) fn validate_module_entry_type_contract(
         .map(str::trim)
         .filter(|value| !value.is_empty());
 
-    if !has_runtime_module_impl {
+    let Some(source) = load_runtime_module_source(module_root)? else {
         if entry_type.is_some() {
             anyhow::bail!(
-                "Module '{slug}' declares crate.entry_type in rustok-module.toml, but {} does not implement RusToKModule",
-                lib_path.display()
+                "Module '{slug}' declares crate.entry_type in rustok-module.toml, but neither {} nor {} implements RusToKModule",
+                module_root.join("src").join("module.rs").display(),
+                module_root.join("src").join("lib.rs").display()
             );
         }
         return Ok(());
-    }
+    };
+    let content = &source.content;
 
     let Some(entry_type) = entry_type else {
         anyhow::bail!(
             "Module '{slug}' must declare [crate].entry_type in rustok-module.toml because {} implements RusToKModule",
-            lib_path.display()
+            source.path.display()
         );
     };
 
@@ -47,7 +41,7 @@ pub(crate) fn validate_module_entry_type_contract(
         anyhow::bail!(
             "Module '{slug}' declares crate.entry_type='{}', but {} is missing runtime struct '{}'",
             entry_type,
-            lib_path.display(),
+            source.path.display(),
             entry_type
         );
     }
@@ -56,7 +50,7 @@ pub(crate) fn validate_module_entry_type_contract(
         anyhow::bail!(
             "Module '{slug}' declares crate.entry_type='{}', but {} is missing 'impl RusToKModule for {}'",
             entry_type,
-            lib_path.display(),
+            source.path.display(),
             entry_type
         );
     }
@@ -69,34 +63,28 @@ pub(crate) fn validate_module_runtime_metadata_contract(
     manifest: &ModulePackageManifest,
     module_root: &Path,
 ) -> Result<()> {
-    let lib_path = module_root.join("src").join("lib.rs");
-    if !lib_path.exists() {
+    let Some(source) = load_runtime_module_source(module_root)? else {
         return Ok(());
-    }
+    };
+    let content = &source.content;
 
-    let content = fs::read_to_string(&lib_path)
-        .with_context(|| format!("Failed to read {}", lib_path.display()))?;
-    if !content.contains("impl RusToKModule for") {
-        return Ok(());
-    }
-
-    let runtime_slug = extract_runtime_string_method(&content, "slug").with_context(|| {
+    let runtime_slug = extract_runtime_string_method(content, "slug").with_context(|| {
         format!(
             "Module '{slug}' must expose fn slug(&self) -> &'static str in {}",
-            lib_path.display()
+            source.path.display()
         )
     })?;
-    let runtime_name = extract_runtime_string_method(&content, "name").with_context(|| {
+    let runtime_name = extract_runtime_string_method(content, "name").with_context(|| {
         format!(
             "Module '{slug}' must expose fn name(&self) -> &'static str in {}",
-            lib_path.display()
+            source.path.display()
         )
     })?;
     let runtime_description =
-        extract_runtime_string_method(&content, "description").with_context(|| {
+        extract_runtime_string_method(content, "description").with_context(|| {
             format!(
                 "Module '{slug}' must expose fn description(&self) -> &'static str in {}",
-                lib_path.display()
+                source.path.display()
             )
         })?;
 

@@ -1,18 +1,11 @@
 use super::*;
 
 pub(crate) fn validate_module_permission_contract(slug: &str, module_root: &Path) -> Result<()> {
-    let lib_path = module_root.join("src").join("lib.rs");
-    if !lib_path.exists() {
+    let Some(source) = load_runtime_module_source(module_root)? else {
         return Ok(());
-    }
+    };
 
-    let content = fs::read_to_string(&lib_path)
-        .with_context(|| format!("Failed to read {}", lib_path.display()))?;
-    if !content.contains("impl RusToKModule for") {
-        return Ok(());
-    }
-
-    let Some(permission_body) = extract_runtime_method_body(&content, "permissions") else {
+    let Some(permission_body) = extract_runtime_method_body(&source.content, "permissions") else {
         return Ok(());
     };
 
@@ -29,14 +22,14 @@ pub(crate) fn validate_module_permission_contract(slug: &str, module_root: &Path
             anyhow::bail!(
                 "Module '{slug}' declares unknown Permission::{} in {}",
                 permission,
-                lib_path.display()
+                source.path.display()
             );
         };
         if !seen.insert(canonical.clone()) {
             anyhow::bail!(
                 "Module '{slug}' declares duplicate permission '{}' in {}",
                 canonical,
-                lib_path.display()
+                source.path.display()
             );
         }
     }
@@ -46,14 +39,14 @@ pub(crate) fn validate_module_permission_contract(slug: &str, module_root: &Path
             anyhow::bail!(
                 "Module '{slug}' declares unknown Resource::{} in Permission::new(...) at {}",
                 resource,
-                lib_path.display()
+                source.path.display()
             );
         }
         if !permission_contract.actions.contains(&action) {
             anyhow::bail!(
                 "Module '{slug}' declares unknown Action::{} in Permission::new(...) at {}",
                 action,
-                lib_path.display()
+                source.path.display()
             );
         }
 
@@ -66,7 +59,7 @@ pub(crate) fn validate_module_permission_contract(slug: &str, module_root: &Path
             anyhow::bail!(
                 "Module '{slug}' declares duplicate permission '{}' in {}",
                 canonical,
-                lib_path.display()
+                source.path.display()
             );
         }
     }
@@ -76,7 +69,7 @@ pub(crate) fn validate_module_permission_contract(slug: &str, module_root: &Path
             anyhow::bail!(
                 "Module '{slug}' must declare minimum runtime permission '{}' in {}",
                 expected,
-                lib_path.display()
+                source.path.display()
             );
         }
     }

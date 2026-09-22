@@ -117,6 +117,11 @@ copy must use the canonical Taxonomy owner contract.
   requests reactions; the Reactions owner controls reaction capabilities and state,
   and effective availability must be resolved through an owner contract rather than
   by reading another module's lifecycle row.
+- Profiles is optional presentation enrichment. When its request-scoped loader is not
+  composed, Blog returns posts with `author_profile = null` and never queries
+  Profiles-owned tables directly. The current Blog package still compile-links
+  `rustok-profiles`; removing that build-time implementation coupling is separate from
+  the completed lifecycle cutover.
 - Depends on `rustok-taxonomy` for the shared tag dictionary and canonical Blog
   Category copy/hierarchy projection while keeping `blog_post_tags` Blog-owned.
   Global Taxonomy tags may be reused by Blog reads and attachments, but Blog tag

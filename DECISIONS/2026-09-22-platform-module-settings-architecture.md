@@ -198,11 +198,12 @@ Every static dependency must carry owner-reviewed evidence that no provider-free
 mode exists, that the provider is required by the whole consumer rather than one
 feature or data subtype, and that disable/retention behavior is defined. Mechanical
 agreement among manifests and runtime metadata is necessary but not semantic proof.
-This decision proves the two over-constraints below; it does not certify any other
-existing static edge without the same review.
+This decision classified the two over-constraints below; it does not certify any other
+existing static edge without the same review. The Blog edge has since been removed;
+the Commerce edge remains open implementation work.
 
-Blog publications, categories, and tags are valid without Comments. The current static
-`blog -> comments` lifecycle edge is therefore an over-constraint to remove. Blog owns
+Blog publications, categories, and tags are valid without Comments. The former static
+`blog -> comments` lifecycle edge has been removed. Blog owns
 its comments-surface policy; Comments owns threads, bodies, and moderation. An enabled
 or required Blog comments mode may require Comments for comment operations, while Blog
 itself remains available when that capability is disabled or unavailable according to
@@ -384,9 +385,9 @@ Implementation performs a zero-legacy cutover:
 5. Add schema digest/state and materialize normalized static settings atomically.
 6. Replace direct cross-module `tenant_modules` reads with owner ports/effective
    decisions.
-7. Remove over-constrained static edges such as `blog -> comments` and
-   `commerce -> fulfillment`; introduce typed capability bindings/requirements and
-   migrate callers, UI, tests, and composition atomically.
+7. Add the missing Blog-owned comment-surface policy over the optional Comments port.
+   Remove the remaining `commerce -> fulfillment` edge after introducing typed
+   capability requirements; migrate callers, UI, tests, and composition atomically.
 8. Install real predecessor/candidate compatibility guards and maintenance migration.
 9. Move secrets to handles and scrub/rotate historical material.
 10. Add Fluent presentation metadata and opt-in localized value metadata.

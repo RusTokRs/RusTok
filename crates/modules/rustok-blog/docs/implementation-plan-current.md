@@ -187,7 +187,10 @@ source now requires:
    explicit `UNAVAILABLE`/`TIMEOUT` read states for public comments;
 4. the active storefront hides the comment write surface when the provider is
    unavailable or timed out and may preserve a valid approved snapshot for reads;
-5. Reactions remains an independent optional capability owned by its own provider.
+5. Reactions remains an independent optional capability owned by its own provider;
+6. Profiles is optional presentation enrichment: provider absence yields no author
+   profile and never blocks Blog publication reads or triggers direct Profiles storage
+   access.
 
 ## Remaining execution-owned results
 

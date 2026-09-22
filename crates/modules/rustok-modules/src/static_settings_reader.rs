@@ -57,7 +57,7 @@ impl StaticModuleSettingsReader for DatabaseStaticModuleSettingsReader {
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 query,
-                vec![tenant_id.into(), module_slug.into()],
+                vec![tenant_id_query_value(backend, tenant_id), module_slug.into()],
             ))
             .await
             .map_err(|_| {
@@ -83,12 +83,18 @@ impl StaticModuleSettingsReader for DatabaseStaticModuleSettingsReader {
                 "Static module settings state is invalid",
             )
         })?;
-        let settings = serde_json::from_str(&encoded).map_err(|_| {
+        let settings: serde_json::Value = serde_json::from_str(&encoded).map_err(|_| {
             PortError::invariant_violation(
                 "modules.static_settings_corrupt",
                 "Static module settings JSON is invalid",
             )
         })?;
+        if !settings.is_object() {
+            return Err(PortError::invariant_violation(
+                "modules.static_settings_corrupt",
+                "Static module settings must be a JSON object",
+            ));
+        }
 
         Ok(Some(StaticModuleSettingsSnapshot { enabled, settings }))
     }
@@ -129,7 +135,7 @@ impl StaticModuleSettingsTransactionReader for DatabaseStaticModuleSettingsReade
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 query,
-                vec![tenant_id.into(), module_slug.into()],
+                vec![tenant_id_query_value(backend, tenant_id), module_slug.into()],
             ))
             .await
             .map_err(|_| {
@@ -155,14 +161,28 @@ impl StaticModuleSettingsTransactionReader for DatabaseStaticModuleSettingsReade
                 "Static module settings state is invalid",
             )
         })?;
-        let settings = serde_json::from_str(&encoded).map_err(|_| {
+        let settings: serde_json::Value = serde_json::from_str(&encoded).map_err(|_| {
             PortError::invariant_violation(
                 "modules.static_settings_corrupt",
                 "Static module settings JSON is invalid",
             )
         })?;
+        if !settings.is_object() {
+            return Err(PortError::invariant_violation(
+                "modules.static_settings_corrupt",
+                "Static module settings must be a JSON object",
+            ));
+        }
 
         Ok(Some(StaticModuleSettingsSnapshot { enabled, settings }))
+    }
+}
+
+fn tenant_id_query_value(backend: sea_orm::DbBackend, tenant_id: Uuid) -> sea_orm::Value {
+    if backend == sea_orm::DbBackend::Sqlite {
+        tenant_id.to_string().into()
+    } else {
+        tenant_id.into()
     }
 }
 

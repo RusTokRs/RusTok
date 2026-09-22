@@ -1,15 +1,12 @@
-use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result, dataloader::DataLoader};
+use async_graphql::{Context, ErrorExtensions, Object, Result, dataloader::DataLoader};
 use rustok_api::{
     AuthContext, RequestContext, TenantContext,
-    graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
+    graphql::{require_module_enabled, resolve_graphql_locale},
 };
 use rustok_channel::ChannelService;
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
-use rustok_profiles::{
-    ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey, ProfilesReader,
-    graphql::GqlProfileSummary,
-};
+use rustok_profiles::{ProfileSummaryLoader, ProfileSummaryLoaderKey, graphql::GqlProfileSummary};
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
 use std::collections::{HashMap, HashSet};
@@ -76,7 +73,6 @@ impl BlogQuery {
 
         let author_profiles = load_author_profiles_map(
             ctx,
-            db,
             tenant_id,
             [Some(post.author_id)],
             locale.as_str(),
@@ -124,7 +120,6 @@ impl BlogQuery {
         }) {
             let author_profiles = load_author_profiles_map(
                 ctx,
-                db,
                 tenant_id,
                 [Some(post.author_id)],
                 locale.as_str(),
@@ -208,7 +203,6 @@ impl BlogQuery {
 
         let author_profiles = load_author_profiles_map(
             ctx,
-            db,
             tenant_id,
             result.items.iter().map(|item| Some(item.author_id)),
             locale.as_str(),
@@ -325,7 +319,6 @@ async fn list_public_visible_posts(
         .map_err(crate::error::public::to_graphql_error)?;
     let author_profiles = load_author_profiles_map(
         ctx,
-        db,
         tenant_id,
         result.items.iter().map(|item| Some(item.author_id)),
         locale.as_str(),
@@ -372,7 +365,6 @@ fn map_post_list_item(
 
 async fn load_author_profiles_map<I>(
     ctx: &Context<'_>,
-    db: &DatabaseConnection,
     tenant_id: Uuid,
     author_ids: I,
     requested_locale: &str,
@@ -392,38 +384,28 @@ where
         return Ok(HashMap::new());
     }
 
-    if let Some(loader) = ctx.data_opt::<DataLoader<ProfileSummaryLoader>>() {
-        let keys = user_ids
-            .iter()
-            .map(|user_id| ProfileSummaryLoaderKey {
-                tenant_id,
-                user_id: *user_id,
-                requested_locale: Some(requested_locale.to_string()),
-                tenant_default_locale: Some(tenant_default_locale.to_string()),
-            })
-            .collect::<Vec<_>>();
-        let profiles = loader.load_many(keys).await?;
-        return Ok(profiles
-            .into_iter()
-            .map(|(key, summary)| (key.user_id, summary.into()))
-            .collect());
-    }
+    let Some(loader) = ctx.data_opt::<DataLoader<ProfileSummaryLoader>>() else {
+        tracing::warn!(
+            tenant_id = %tenant_id,
+            author_count = user_ids.len(),
+            "Blog author profile enrichment is unavailable; returning posts without profile presentation"
+        );
+        return Ok(HashMap::new());
+    };
 
-    let profiles = ProfileService::new(db.clone())
-        .find_profile_summaries(
+    let keys = user_ids
+        .into_iter()
+        .map(|user_id| ProfileSummaryLoaderKey {
             tenant_id,
-            &user_ids,
-            Some(requested_locale),
-            Some(tenant_default_locale),
-        )
-        .await
-        .map_err(|_| {
-            <FieldError as GraphQLError>::internal_error("Unable to load Blog author profiles")
-        })?;
-
+            user_id,
+            requested_locale: Some(requested_locale.to_string()),
+            tenant_default_locale: Some(tenant_default_locale.to_string()),
+        })
+        .collect::<Vec<_>>();
+    let profiles = loader.load_many(keys).await?;
     Ok(profiles
         .into_iter()
-        .map(|(user_id, summary)| (user_id, summary.into()))
+        .map(|(key, summary)| (key.user_id, summary.into()))
         .collect())
 }
 

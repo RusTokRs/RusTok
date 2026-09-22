@@ -58,7 +58,7 @@ they can differ. `saved = active` is not a safe default assumption.
 
 ## Current implementation inventory
 
-Reviewed from `main@e1fae26ac8737cf4af4cfbdad2d396105e710df8`.
+Reviewed through `main@5c283707cef13da9a99c665e3cf1b3c2ebddba78`.
 
 | Surface | Current source/persistence | Current owner boundary | Status |
 | --- | --- | --- | --- |
@@ -74,11 +74,12 @@ Reviewed from `main@e1fae26ac8737cf4af4cfbdad2d396105e710df8`.
 | Forum engagement selection | `forum.use_reactions` in `tenant_modules.settings` | Forum semantics | Runtime consumer is live through the canonical tenant-module runtime API; Reactions availability remains a separate effective-capability decision |
 | Blog manifest settings | `use_reactions` in `tenant_modules.settings` | Blog owns reaction-surface intent; `rustok-modules` owns static lifecycle/persistence | Live runtime consumer; setting is canonical tenant intent and does not imply Reactions availability |
 | Blog reaction selection | `use_reactions` plus Blog reaction-subject provider | Blog owns subject/presentation intent; Reactions owns state | Runtime intent gate is live; provider/effective availability remains separate from stored intent |
+| Blog comment selection | Optional `CommentsThreadPort`; no tenant comment-surface setting | Blog owns surface intent; Comments owns comment state | **Gap:** static dependency is removed, but tenant `disabled/read_only/open` policy is not implemented |
 | Email generic settings | `platform_settings.email` | Generic server path while Email runtime reads bootstrap config | **Gap:** saved value is not authoritative; historical secret material may exist |
 | Nested manifest schema vocabulary | Owner validator supports `properties`/`items`; current SEO manifest uses `shape`/`additional_properties` | Host manifest adapter | **Gap:** unknown TOML schema keywords are ignored, so the generic editor/validator does not enforce the declared nested shape |
-| Cross-module capability graph | `blog -> comments` removed; `commerce -> fulfillment` remains tracked separately | Module composition | Blog comment access is an optional capability and is no longer an unconditional module dependency |
+| Cross-module capability graph | `blog -> comments` lifecycle edge removed; `commerce -> fulfillment` remains tracked separately | Module composition | Blog comment access is optional at lifecycle/runtime composition; Blog still links the Comments implementation crate at build time |
 | Digital/physical fulfillment requirement | Product accepts `product_type = "Digital"`; Product/Cart/Commerce shipping paths normalize a missing profile to `default` | Product owns product kind; Cart/Order own snapshots; Fulfillment owns shipping execution | **Gap:** no canonical typed fulfillment requirement, so digital lines can be forced through synthetic shipping identity/grouping |
-| Blog dependency declarations | Root `modules.toml` and package/runtime metadata now agree on `content`, `taxonomy`, `outbox`, `channel`, and `profiles` | Composition manifest, package manifest, runtime metadata | Synchronized; Comments is an optional runtime capability rather than a static dependency |
+| Blog dependency declarations | Root `modules.toml` and package/runtime metadata agree on `content`, `taxonomy`, `outbox`, and `channel` | Composition manifest, package manifest, runtime metadata | Comments and Profiles are optional lifecycle capabilities; their implementation crates remain compile-linked by Blog and require a later API/port packaging cutover for reduced-build independence |
 
 ### Current static settings data flow
 
@@ -244,9 +245,10 @@ Every static edge needs an owner-reviewed proof, not just synchronized manifest 
 | Disable semantics are safe | Required-binding, in-flight-operation, retained-data, and historical-read cases |
 | All declarations express the same reviewed edge | `modules.toml`, package manifest, runtime metadata, server feature closure, and validator evidence |
 
-This review proves that `blog -> comments` and `commerce -> fulfillment` are
-over-constrained. It does not silently certify every other current static edge as
-ideal; unreviewed edges remain executable truth pending the same evidence.
+This review classified `blog -> comments` and `commerce -> fulfillment` as
+over-constrained. The Blog edge is removed; the Commerce edge remains open. This does
+not silently certify every other current static edge as ideal; unreviewed edges remain
+executable truth pending the same evidence.
 
 ### Tenant integrations and contextual capabilities
 
@@ -284,8 +286,9 @@ alone is not evidence of such a requirement.
 | Mixed cart | Digital lines bypass delivery; physical lines form fulfillment groups without forcing a shipping identity onto digital lines |
 
 Blog must remain enableable and able to serve publications when Comments is absent.
-Likewise, Commerce must support a digital-only flow without Fulfillment. The current
-static edges are executable truth to remove, not examples to preserve.
+That dependency cutover is complete, while the tenant Blog comment-surface policy is
+still open. Commerce must support a digital-only flow without Fulfillment; its current
+static edge remains executable truth to remove, not an example to preserve.
 
 #### Blog comment capability matrix
 
@@ -427,12 +430,12 @@ Owners must document:
 | P0 | Unknown manifest schema keywords are ignored; live SEO metadata uses unsupported nested-shape names | One canonical schema vocabulary, `deny_unknown_fields`, manifest migration, and negative tests |
 | P1 | `platform_settings.schema_version` is decorative | Replace with exact owner schema identity/revision or delete the field |
 | P1 | Static settings still lack complete owner-port/effective-integration coverage | Finish owner-specific read/effective-capability ports and activation evidence for remaining modules |
-| P1 | Static settings still lack complete owner-port/effective-integration coverage | Finish owner-specific read/effective-capability ports and activation evidence for remaining modules |
 | P1 | Disabled module settings cannot be repaired in Admin | Dormant edit and/or atomic enable-with-settings |
 | P1 | Static rows do not persist exact schema digest/state | Add digest and `not_applicable/ready/migration_required` semantics |
 | P1 | Module keys include camelCase internal names | Zero-legacy `snake_case` cutover with data transformation |
-| P1 | Blog/Comments and Commerce/Fulfillment use unconditional edges for feature/data-specific capabilities | Remove the hard edges; add typed tenant bindings and operation-scoped capability requirements |
-| P1 | Blog dependency views diverge and the publish-readiness validator does not recognize its canonical source layout | Fix validator discovery, then atomically synchronize the minimal unconditional graph across all three declarations |
+| P1 | Blog has no tenant comment-surface policy after removing the Comments edge | Add Blog-owned `comments_mode = disabled/read_only/open`; preserve Comments data and derive effective availability separately |
+| P1 | Blog's optional Comments and Profiles capabilities still compile-link provider implementation crates | Move stable owner contracts/presentation DTOs behind API/port boundaries, then prove a reduced Blog build omits provider implementation crates |
+| P1 | Commerce/Fulfillment still uses an unconditional edge for data-specific capability | Add typed per-line fulfillment requirement, remove synthetic digital shipping state, then remove the static edge |
 | P2 | Settings UI labels/options are derived from keys/raw English descriptions | Fluent presentation metadata and bundle verification |
 | P2 | No real module opts into localized settings values | Select a justified pilot; prove exact locale, sensitivity, CAS, and Translation flow |
 | P2 | Activation/restart state is inconsistent across settings surfaces | Standard desired/effective/active projection and activation modes |
@@ -451,12 +454,15 @@ Owners must document:
    owner policy/outbox facts atomically.
 5. Replace the placeholder static rollout guard with durable real N/N+1 schema
    compatibility and maintenance migration.
-6. Replace over-constrained static edges with tenant capability bindings or typed
-   operation-scoped requirements; keep provider-free consumer paths executable.
-7. Move `platform_settings` categories and direct module readers to semantic owners.
-8. Cut secrets to handles, scrub persisted bytes, and rotate affected credentials.
-9. Add Fluent UI metadata and one justified localized-value pilot.
-10. Add source/runtime/database/browser guardrails and delete raw/direct/fallback paths.
+6. Complete the Blog comment policy over its lifecycle-optional Comments capability,
+   then cut optional Comments/Profiles contracts away from provider implementation
+   crates and verify reduced builds.
+7. Replace `commerce -> fulfillment` with typed operation-scoped requirements and keep
+   digital-only Commerce executable.
+8. Move `platform_settings` categories and direct module readers to semantic owners.
+9. Cut secrets to handles, scrub persisted bytes, and rotate affected credentials.
+10. Add Fluent UI metadata and one justified localized-value pilot.
+11. Add source/runtime/database/browser guardrails and delete raw/direct/fallback paths.
 
 ## Verification matrix
 

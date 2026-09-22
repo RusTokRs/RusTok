@@ -1,18 +1,46 @@
 use super::*;
 
+pub(crate) struct RuntimeModuleSource {
+    pub(crate) path: PathBuf,
+    pub(crate) content: String,
+}
+
+pub(crate) fn load_runtime_module_source(
+    module_root: &Path,
+) -> Result<Option<RuntimeModuleSource>> {
+    let src_root = module_root.join("src");
+    let mut matches = Vec::new();
+
+    for file_name in ["module.rs", "lib.rs"] {
+        let path = src_root.join(file_name);
+        if !path.exists() {
+            continue;
+        }
+        let content = fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read {}", path.display()))?;
+        if extract_runtime_module_entry_type(&content).is_some() {
+            matches.push(RuntimeModuleSource { path, content });
+        }
+    }
+
+    match matches.len() {
+        0 => Ok(None),
+        1 => Ok(matches.pop()),
+        _ => anyhow::bail!(
+            "Module runtime contract is ambiguous: both {} and {} implement RusToKModule",
+            src_root.join("module.rs").display(),
+            src_root.join("lib.rs").display()
+        ),
+    }
+}
+
 pub(crate) fn extract_runtime_module_dependencies(
     module_root: &Path,
 ) -> Result<Option<HashSet<String>>> {
-    let lib_path = module_root.join("src").join("lib.rs");
-    if !lib_path.exists() {
+    let Some(source) = load_runtime_module_source(module_root)? else {
         return Ok(None);
-    }
-
-    let content = fs::read_to_string(&lib_path)
-        .with_context(|| format!("Failed to read {}", lib_path.display()))?;
-    if !content.contains("impl RusToKModule for") {
-        return Ok(None);
-    }
+    };
+    let content = source.content;
 
     let marker = "fn dependencies(&self)";
     let Some(marker_index) = content.find(marker) else {
@@ -31,7 +59,7 @@ pub(crate) fn extract_runtime_module_dependencies(
     let Some(array_end_offset) = array_tail.find(']') else {
         anyhow::bail!(
             "Failed to parse RusToKModule::dependencies() in {}",
-            lib_path.display()
+            source.path.display()
         );
     };
     let array_body = &array_tail[..array_end_offset];
@@ -44,14 +72,8 @@ pub(crate) fn extract_runtime_module_dependencies(
 }
 
 pub(crate) fn infer_runtime_module_entry_type(module_root: &Path) -> Result<Option<String>> {
-    let lib_path = module_root.join("src").join("lib.rs");
-    if !lib_path.exists() {
-        return Ok(None);
-    }
-
-    let content = fs::read_to_string(&lib_path)
-        .with_context(|| format!("Failed to read {}", lib_path.display()))?;
-    Ok(extract_runtime_module_entry_type(&content))
+    Ok(load_runtime_module_source(module_root)?
+        .and_then(|source| extract_runtime_module_entry_type(&source.content)))
 }
 
 pub(crate) fn extract_runtime_module_entry_type(content: &str) -> Option<String> {

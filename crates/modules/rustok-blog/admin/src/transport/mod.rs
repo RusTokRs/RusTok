@@ -207,17 +207,33 @@ pub async fn moderate_comment(
     token: Option<String>,
     tenant_slug: Option<String>,
     comment_id: String,
+    command_id: String,
     status: BlogModerationStatus,
     locale: Option<String>,
 ) -> Result<bool, ApiError> {
     let native_comment_id = comment_id.clone();
+    let native_command_id = command_id.clone();
     let native_locale = locale.clone();
     execute_selected_transport(
         "blog/admin/moderate-comment",
         selected_transport_path(),
-        move || native_server_adapter::moderate_comment(native_comment_id, status, native_locale),
         move || {
-            moderation_adapter::moderate_comment(token, tenant_slug, comment_id, status, locale)
+            native_server_adapter::moderate_comment(
+                native_comment_id,
+                native_command_id,
+                status,
+                native_locale,
+            )
+        },
+        move || {
+            moderation_adapter::moderate_comment(
+                token,
+                tenant_slug,
+                comment_id,
+                command_id,
+                status,
+                locale,
+            )
         },
     )
     .await

@@ -86,9 +86,6 @@ async fn create_blog_comment_native(
                 ));
             }
         }
-        let event_bus = runtime_ctx
-            .shared_get::<TransactionalEventBus>()
-            .ok_or_else(public_internal_error)?;
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .ok();
@@ -508,7 +505,6 @@ mod tests {
     fn storefront_native_runtime_exposes_comments_port_selection() {
         let selector: fn(
             &rustok_api::HostRuntimeContext,
-            rustok_outbox::TransactionalEventBus,
         ) -> rustok_blog::CommentService = comment_service;
         let mapper: fn(rustok_blog::PublicCommentsAvailability) -> BlogCommentsAvailability =
             map_comments_availability;

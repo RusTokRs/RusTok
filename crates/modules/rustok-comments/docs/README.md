@@ -55,10 +55,10 @@
 - runtime transport adapters and host wiring remain in `apps/server`, while module-owned admin moderation UI goes through its own `admin/src/transport/` facade; domain logic and moderation contract belong to the module;
 - future integrations for page-like surfaces must be formalized as an explicit opt-in contract.
 
-The current static Blog dependency is not the target integration model. Blog core
-remains valid without Comments; a typed Blog-owned surface policy requests Comments
-only for comment operations. Comments enablement and retained data remain independent
-of that consumer policy. Provider absence fails the comment surface closed while Blog
+The static Blog dependency has been removed. Blog core remains valid without Comments;
+the remaining cutover is a typed Blog-owned surface policy that requests Comments only
+for comment operations. Comments enablement and retained data remain independent of
+that consumer policy. Provider absence fails the comment surface closed while Blog
 publication serving stays available. See the canonical state matrix in
 [`docs/architecture/settings.md`](../../../../docs/architecture/settings.md).
 

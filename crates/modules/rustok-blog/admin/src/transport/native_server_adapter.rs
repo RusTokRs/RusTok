@@ -74,10 +74,11 @@ pub(super) async fn fetch_moderation_comments(
 
 pub(super) async fn moderate_comment(
     comment_id: String,
+    command_id: String,
     status: BlogModerationStatus,
     locale: Option<String>,
 ) -> Result<bool, ServerFnError> {
-    blog_admin_moderate_comment_native(comment_id, status, locale).await
+    blog_admin_moderate_comment_native(comment_id, command_id, status, locale).await
 }
 
 #[cfg(feature = "ssr")]
@@ -579,6 +580,7 @@ async fn blog_admin_moderation_comments_native(
 #[server(prefix = "/api/fn", endpoint = "blog/admin/moderate-comment")]
 async fn blog_admin_moderate_comment_native(
     comment_id: String,
+    command_id: String,
     status: BlogModerationStatus,
     locale: Option<String>,
 ) -> Result<bool, ServerFnError> {
@@ -589,6 +591,7 @@ async fn blog_admin_moderate_comment_native(
         let context = native_context().await?;
         require_manage_permission(&context.auth)?;
         let comment_id = parse_uuid(&comment_id, "comment_id")?;
+        let command_id = parse_uuid(&command_id, "command_id")?;
         let status = match status {
             BlogModerationStatus::Approved => ModerateCommentStatus::Approved,
             BlogModerationStatus::Spam => ModerateCommentStatus::Spam,
@@ -599,7 +602,11 @@ async fn blog_admin_moderate_comment_native(
                 context.tenant.id,
                 comment_id,
                 security_context(&context.auth),
-                ModerateCommentInput { status, locale },
+                ModerateCommentInput {
+                    command_id,
+                    status,
+                    locale,
+                },
                 Some(context.tenant.default_locale.as_str()),
             )
             .await
@@ -608,7 +615,7 @@ async fn blog_admin_moderate_comment_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (comment_id, status, locale);
+        let _ = (comment_id, command_id, status, locale);
         Err(ServerFnError::new(
             "blog/admin/moderate-comment requires the `ssr` feature",
         ))
