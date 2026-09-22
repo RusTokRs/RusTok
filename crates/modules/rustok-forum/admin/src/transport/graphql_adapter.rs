@@ -27,8 +27,10 @@ const DELETE_TOPIC_MUTATION: &str =
     "mutation ForumAdminDeleteTopic($id: UUID!) { deleteForumTopic(id: $id) }";
 const RESTORE_TOPIC_MUTATION: &str =
     "mutation ForumAdminRestoreTopic($id: UUID!) { restoreForumTopic(id: $id) }";
-const REPLIES_QUERY: &str = "query ForumAdminReplies($topicId: UUID!, $locale: String, $pagination: PaginationInput) { forumReplies(topicId: $topicId, locale: $locale, pagination: $pagination) { total items { id locale effective_locale: effectiveLocale topic_id: topicId author_id: authorId content_preview: contentPlainText status parent_reply_id: parentReplyId created_at: createdAt } } }";
-const CREATE_REPLY_MUTATION: &str = "mutation ForumAdminCreateReply($topicId: UUID!, $input: CreateForumReplyInput!) { createForumReply(topicId: $topicId, input: $input) { id locale effective_locale: effectiveLocale topic_id: topicId author_id: authorId content_preview: contentPlainText status parent_reply_id: parentReplyId created_at: createdAt } }";
+const RESTORE_REPLY_MUTATION: &str =
+    "mutation ForumAdminRestoreReply($id: UUID!) { restoreForumReply(id: $id) }";
+const REPLIES_QUERY: &str = "query ForumAdminReplies($topicId: UUID!, $locale: String, $pagination: PaginationInput) { forumReplies(topicId: $topicId, locale: $locale, pagination: $pagination) { total items { id locale effective_locale: effectiveLocale topic_id: topicId author_id: authorId content_preview: contentPlainText status is_deleted: isDeleted parent_reply_id: parentReplyId created_at: createdAt } } }";
+const CREATE_REPLY_MUTATION: &str = "mutation ForumAdminCreateReply($topicId: UUID!, $input: CreateForumReplyInput!) { createForumReply(topicId: $topicId, input: $input) { id locale effective_locale: effectiveLocale topic_id: topicId author_id: authorId content_preview: contentPlainText status is_deleted: isDeleted parent_reply_id: parentReplyId created_at: createdAt } }";
 
 #[derive(Debug, Deserialize)]
 struct CategoryResponse {
@@ -88,6 +90,12 @@ struct DeleteTopicResponse {
 struct RestoreTopicResponse {
     #[serde(rename = "restoreForumTopic")]
     restore_forum_topic: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct RestoreReplyResponse {
+    #[serde(rename = "restoreForumReply")]
+    restore_forum_reply: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -500,6 +508,25 @@ pub async fn restore_topic(
         Ok(())
     } else {
         Err("Forum topic restore returned false".to_string())
+    }
+}
+
+pub async fn restore_reply(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<(), ApiError> {
+    let response: RestoreReplyResponse = request(
+        RESTORE_REPLY_MUTATION,
+        IdVariables { id },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    if response.restore_forum_reply {
+        Ok(())
+    } else {
+        Err("Forum reply restore returned false".to_string())
     }
 }
 
