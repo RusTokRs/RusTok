@@ -154,6 +154,10 @@ localized storage or a second `blog/category` provider.
 
 The fresh Taxonomy boundary audit found and closed one contract mismatch: Blog previously advertised and locally accepted Category names up to 255 characters, while the canonical Taxonomy Category owner rejects names above 120 characters. Blog DTO/OpenAPI metadata and service validation now enforce the canonical 120-character bound before opening the owner mutation path.
 
+## Reference-v1 category route normalization boundary
+
+The fresh Taxonomy boundary audit found a second concrete contract mismatch: Blog had its own ASCII-only slug normalizer, while canonical Taxonomy uses the shared routable route-key normalizer with transliteration. Blog could therefore reject localized Category names such as Cyrillic names without an explicit ASCII slug even though the canonical owner could represent them. Blog now delegates route normalization to Taxonomy and keeps a focused regression test for localized route generation.
+
 ## Other retained Blog source tracks
 
 The Category migration does not reopen unrelated source-complete tracks from the
