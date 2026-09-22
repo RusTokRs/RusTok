@@ -112,6 +112,14 @@ impl BlogCommentProjectionHandler {
             .order_by_desc(blog_comment_projection_delivery::Column::EventId)
             .one(&txn)
             .await?;
+        if latest
+            .as_ref()
+            .is_some_and(|delivery| delivery.event_id >= envelope.id)
+        {
+            txn.commit().await?;
+            return Ok(());
+        }
+
         // Event id ordering remains a per-comment lifecycle invariant. The snapshot cursor
         // must instead advance on every successfully committed event for the post, even when
         // different comments are processed out of order. The post row lock above serializes
@@ -132,14 +140,6 @@ impl BlogCommentProjectionHandler {
                     change.post_id
                 ))
             })?;
-
-        if latest
-            .as_ref()
-            .is_some_and(|delivery| delivery.event_id >= envelope.id)
-        {
-            txn.commit().await?;
-            return Ok(());
-        }
 
         let applied_delta = projection_applied_delta(
             latest.as_ref().map(|delivery| delivery.delta),

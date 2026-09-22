@@ -164,7 +164,7 @@ fn snapshot_identity(
     public_channel_slug: Option<&str>,
     page: u64,
     per_page: u64,
-    projection_revision: Option<Uuid>,
+    projection_revision: i64,
 ) -> PublicCommentsSnapshotIdentity {
     PublicCommentsSnapshotIdentity {
         tenant_id,
@@ -375,7 +375,7 @@ mod tests {
         let post_id = Uuid::new_v4();
         let identity = identity(tenant_id, post_id, 1);
         let mut changed = identity.clone();
-        changed.projection_revision = Some(Uuid::from_u128(100));
+        changed.projection_revision = 100;
         assert_ne!(snapshot_key(&identity), snapshot_key(&changed));
     }
 
@@ -391,7 +391,7 @@ mod tests {
             total: 1,
         };
         let mut stale = valid.clone();
-        stale.identity.projection_revision = Some(Uuid::from_u128(100));
+        stale.identity.projection_revision = 100;
         assert!(!snapshot_matches(&stale, &identity));
     }
 
