@@ -408,8 +408,8 @@ async fn transfer_category_counters_in_tx(
             "Forum topic move published reply count must not be negative".to_string(),
         ));
     }
-    if source.topic_count < 0
-        || source.reply_count < 0
+    if source.topic_count <= 0
+        || source.reply_count < published_reply_count
         || target.topic_count < 0
         || target.reply_count < 0
     {
