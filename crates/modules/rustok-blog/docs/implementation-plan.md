@@ -59,6 +59,15 @@ across GraphQL and native SSR. Public comment reads carry typed `AVAILABLE`,
 availability across both transports, while the article remains renderable for the
 two degraded states. The active DTO/UI path has no legacy body or format field.
 The typed storefront comments availability is source-locked. Cached public-comment snapshots are source-implemented with a monotonic per-post projection revision that survives cross-comment out-of-order delivery. The remote transport remains pending.
+
+The static Blog-to-Comments lifecycle edge has been removed. Comments is now
+an optional capability provider at runtime: Blog never constructs a local or embedded
+Comments fallback. Missing capability maps to the typed `COMMENTS_PROVIDER_UNAVAILABLE`
+write error, public reads preserve explicit `UNAVAILABLE`/`TIMEOUT` state, and the
+storefront hides its comment write surface while retaining the article. Root,
+package, server, and distribution dependency declarations are synchronized; decorative
+Blog settings `postsPerPage` and `showAuthor` are no longer declared.
+
 The Leptos article SSR path renders an inert localized comment marker and loads
 an isolated authenticated comment island instead of hydrating the storefront.
 Its CSP-nonced bootstrap imports the shared Tiptap frame only for an active
