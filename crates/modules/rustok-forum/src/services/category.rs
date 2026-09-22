@@ -99,8 +99,16 @@ impl CategoryService {
             .await?;
 
         if updated.rows_affected != 1 {
+            let exists = forum_category::Entity::find_by_id(category_id)
+                .filter(forum_category::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+                .is_some();
+            if !exists {
+                return Err(ForumError::CategoryNotFound(category_id));
+            }
             return Err(ForumError::Validation(
-                "Forum category counters are inconsistent".to_string(),
+                "Forum category counters do not permit the requested delta".to_string(),
             ));
         }
 
