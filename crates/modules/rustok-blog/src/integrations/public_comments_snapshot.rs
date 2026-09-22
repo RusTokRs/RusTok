@@ -9,7 +9,7 @@ use rustok_core::error::ErrorKind;
 
 use crate::{BlogError, BlogResult, CommentListItem, CommentService, ListCommentsFilter};
 
-const SNAPSHOT_SCHEMA_VERSION: u16 = 1;
+const SNAPSHOT_SCHEMA_VERSION: u16 = 2;
 pub const MAX_PUBLIC_COMMENTS_SNAPSHOT_BYTES: usize = 256 * 1024;
 
 #[async_trait]
@@ -42,6 +42,7 @@ struct PublicCommentsSnapshotIdentity {
     public_channel_slug: Option<String>,
     page: u64,
     per_page: u64,
+    projection_event_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,16 +66,6 @@ pub async fn list_public_comments_with_snapshot(
 ) -> BlogResult<PublicCommentsRead> {
     let page = page.max(1);
     let per_page = per_page.clamp(1, 100);
-    let identity = PublicCommentsSnapshotIdentity {
-        tenant_id,
-        post_id,
-        requested_locale: requested_locale.to_string(),
-        fallback_locale: fallback_locale.map(str::to_string),
-        public_channel_slug: public_channel_slug.map(str::to_string),
-        page,
-        per_page,
-    };
-
     service
         .ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
         .await?;
@@ -95,6 +86,19 @@ pub async fn list_public_comments_with_snapshot(
     {
         Ok((items, total)) => {
             if let Some(store) = snapshot_store {
+                let projection_event_id = service
+                    .public_comments_projection_cursor(tenant_id, post_id)
+                    .await?;
+                let identity = snapshot_identity(
+                    tenant_id,
+                    post_id,
+                    requested_locale,
+                    fallback_locale,
+                    public_channel_slug,
+                    page,
+                    per_page,
+                    projection_event_id,
+                );
                 store_snapshot_best_effort(store.as_ref(), &identity, &items, total).await;
             }
             Ok(PublicCommentsRead {
@@ -118,6 +122,19 @@ pub async fn list_public_comments_with_snapshot(
                 .await?;
 
             if let Some(store) = snapshot_store {
+                let projection_event_id = service
+                    .public_comments_projection_cursor(tenant_id, post_id)
+                    .await?;
+                let identity = snapshot_identity(
+                    tenant_id,
+                    post_id,
+                    requested_locale,
+                    fallback_locale,
+                    public_channel_slug,
+                    page,
+                    per_page,
+                    projection_event_id,
+                );
                 let snapshot = load_snapshot_best_effort(store.as_ref(), &identity).await;
                 if let Some(snapshot) = snapshot {
                     return Ok(PublicCommentsRead {
@@ -136,6 +153,28 @@ pub async fn list_public_comments_with_snapshot(
                 total: 0,
             })
         }
+    }
+}
+
+fn snapshot_identity(
+    tenant_id: Uuid,
+    post_id: Uuid,
+    requested_locale: &str,
+    fallback_locale: Option<&str>,
+    public_channel_slug: Option<&str>,
+    page: u64,
+    per_page: u64,
+    projection_event_id: Option<Uuid>,
+) -> PublicCommentsSnapshotIdentity {
+    PublicCommentsSnapshotIdentity {
+        tenant_id,
+        post_id,
+        requested_locale: requested_locale.to_string(),
+        fallback_locale: fallback_locale.map(str::to_string),
+        public_channel_slug: public_channel_slug.map(str::to_string),
+        page,
+        per_page,
+        projection_event_id,
     }
 }
 
@@ -237,7 +276,7 @@ fn snapshot_key(identity: &PublicCommentsSnapshotIdentity) -> Option<String> {
             return None;
         }
     };
-    let digest = sha256_digest(&[b"blog-public-comments-snapshot-v1\0", encoded.as_slice()]);
+    let digest = sha256_digest(&[b"blog-public-comments-snapshot-v2\0", encoded.as_slice()]);
     let mut hex = String::with_capacity(digest.len() * 2);
     for byte in digest {
         let _ = write!(&mut hex, "{byte:02x}");
@@ -270,6 +309,7 @@ mod tests {
             public_channel_slug: Some("web".to_string()),
             page,
             per_page: 20,
+            projection_event_id: Some(Uuid::from_u128(99)),
         }
     }
 
@@ -327,6 +367,32 @@ mod tests {
         let mut pending = valid;
         pending.items[0].status = "pending".to_string();
         assert!(!snapshot_matches(&pending, &identity));
+    }
+
+    #[test]
+    fn snapshot_key_changes_when_projection_cursor_changes() {
+        let tenant_id = Uuid::new_v4();
+        let post_id = Uuid::new_v4();
+        let identity = identity(tenant_id, post_id, 1);
+        let mut changed = identity.clone();
+        changed.projection_event_id = Some(Uuid::from_u128(100));
+        assert_ne!(snapshot_key(&identity), snapshot_key(&changed));
+    }
+
+    #[test]
+    fn snapshot_validation_rejects_stale_projection_cursor() {
+        let tenant_id = Uuid::new_v4();
+        let post_id = Uuid::new_v4();
+        let identity = identity(tenant_id, post_id, 1);
+        let valid = PublicCommentsSnapshotEnvelope {
+            schema_version: SNAPSHOT_SCHEMA_VERSION,
+            identity: identity.clone(),
+            items: vec![approved_item(post_id)],
+            total: 1,
+        };
+        let mut stale = valid.clone();
+        stale.identity.projection_event_id = Some(Uuid::from_u128(100));
+        assert!(!snapshot_matches(&stale, &identity));
     }
 
     #[test]
