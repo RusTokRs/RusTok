@@ -1,6 +1,9 @@
 name: Event contract digest admission
 
 on:
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       mode:
@@ -27,6 +30,26 @@ env:
   COMMITTED_ARTIFACT: crates/libs/rustok-events/contracts/event-contract-digests.json
 
 jobs:
+  temporary-canonical-output:
+    name: Temporary canonical event digest
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+      - name: Generate canonical digest
+        run: |
+          set -euo pipefail
+          cargo run --locked -p rustok-events --example event_contract_digests -- --write
+          cat crates/libs/rustok-events/contracts/event-contract-digests.json
+
   digest-admission:
     name: Generate canonical event contract digest patch
     runs-on: ubuntu-latest
