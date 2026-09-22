@@ -55,6 +55,9 @@ pub enum ForumError {
     #[error("Reply is deleted")]
     ReplyDeleted,
 
+    #[error("Forum reactions are enabled; internal voting is disabled")]
+    ReactionsEnabled,
+
     #[error("Reply cannot be restored")]
     ReplyRestoreUnavailable(Uuid),
 
@@ -238,6 +241,7 @@ impl ForumError {
             Self::TopicDeleted => "FORUM_TOPIC_DELETED",
             Self::TopicRestoreUnavailable(_) => "FORUM_TOPIC_RESTORE_UNAVAILABLE",
             Self::ReplyDeleted => "FORUM_REPLY_DELETED",
+            Self::ReactionsEnabled => "FORUM_REACTIONS_ENABLED",
             Self::ReplyRestoreUnavailable(_) => "FORUM_REPLY_RESTORE_UNAVAILABLE",
             Self::Validation(_) => "FORUM_VALIDATION_FAILED",
             Self::Forbidden(_) => "FORUM_FORBIDDEN",
