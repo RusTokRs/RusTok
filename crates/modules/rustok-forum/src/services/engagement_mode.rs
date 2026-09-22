@@ -108,6 +108,10 @@ impl ForumEngagementMode {
     pub fn uses_reactions(self) -> bool {
         matches!(self, Self::Reactions)
     }
+
+    pub fn is_internal_voting(self) -> bool {
+        matches!(self, Self::InternalVotes)
+    }
 }
 
 fn forum_use_reactions(settings: Option<&Value>) -> bool {
