@@ -29,7 +29,7 @@ use crate::notification_recipient::{
     ForumNotificationRecipientContextResolver, SharedForumNotificationRecipientContextPort,
 };
 use crate::services::{ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService};
-use crate::state_machine::{ReplyStatus, TopicStatus};
+use crate::state_machine::ReplyStatus;
 use crate::subscription::ForumSubscriptionLevel;
 
 const FORUM_SOURCE: &str = "forum";
