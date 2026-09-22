@@ -479,26 +479,27 @@ fn normalize_category_slug(input: Option<&str>, fallback_name: &str) -> BlogResu
 }
 
 fn normalize_non_empty_slug(slug: &str) -> BlogResult<String> {
-    let normalized = normalize_slug_like(slug);
-    if normalized.is_empty() {
-        return Err(BlogError::validation(
-            "Slug must contain at least one ASCII letter or digit",
-        ));
-    }
-    Ok(normalized)
+    rustok_taxonomy::normalize_term_route_key(slug).ok_or_else(|| {
+        BlogError::validation(
+            "Slug must contain at least one routable letter or digit",
+        )
+    })
 }
 
-fn normalize_slug_like(value: &str) -> String {
-    let mut normalized = String::with_capacity(value.len());
-    let mut previous_dash = false;
-    for ch in value.chars().flat_map(|ch| ch.to_lowercase()) {
-        if ch.is_ascii_alphanumeric() {
-            normalized.push(ch);
-            previous_dash = false;
-        } else if !previous_dash {
-            normalized.push('-');
-            previous_dash = true;
-        }
+#[cfg(test)]
+mod slug_tests {
+    use super::normalize_non_empty_slug;
+
+    #[test]
+    fn localized_category_names_can_produce_canonical_unicode_routes() {
+        assert_eq!(
+            normalize_non_empty_slug("Новости магазина").unwrap(),
+            "novosti-magazina"
+        );
     }
-    normalized.trim_matches('-').to_string()
+
+    #[test]
+    fn blank_or_non_routable_slugs_are_rejected() {
+        assert!(normalize_non_empty_slug("   ").is_err());
+    }
 }
