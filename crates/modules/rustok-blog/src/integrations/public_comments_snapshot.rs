@@ -70,6 +70,16 @@ pub async fn list_public_comments_with_snapshot(
         .ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
         .await?;
 
+    let stable_cursor_before = if snapshot_store.is_some() {
+        Some(
+            service
+                .public_comments_projection_cursor(tenant_id, post_id)
+                .await?,
+        )
+    } else {
+        None
+    };
+
     match service
         .list_for_post_with_locale_fallback(
             tenant_id,
@@ -85,21 +95,35 @@ pub async fn list_public_comments_with_snapshot(
         .await
     {
         Ok((items, total)) => {
-            if let Some(store) = snapshot_store {
-                let projection_revision = service
+            if let (Some(store), Some(projection_revision_before)) =
+                (snapshot_store, stable_cursor_before)
+            {
+                let projection_revision_after = service
                     .public_comments_projection_cursor(tenant_id, post_id)
                     .await?;
-                let identity = snapshot_identity(
-                    tenant_id,
-                    post_id,
-                    requested_locale,
-                    fallback_locale,
-                    public_channel_slug,
-                    page,
-                    per_page,
-                    projection_revision,
-                );
-                store_snapshot_best_effort(store.as_ref(), &identity, &items, total).await;
+                if let Some(projection_revision) =
+                    stable_projection_revision(projection_revision_before, projection_revision_after)
+                {
+                    let identity = snapshot_identity(
+                        tenant_id,
+                        post_id,
+                        requested_locale,
+                        fallback_locale,
+                        public_channel_slug,
+                        page,
+                        per_page,
+                        projection_revision,
+                    );
+                    store_snapshot_best_effort(store.as_ref(), &identity, &items, total).await;
+                } else {
+                    tracing::debug!(
+                        tenant_id = %tenant_id,
+                        post_id = %post_id,
+                        before = projection_revision_before,
+                        after = projection_revision_after,
+                        "Blog public comments projection changed during live read; skipping snapshot cache write"
+                    );
+                }
             }
             Ok(PublicCommentsRead {
                 availability: PublicCommentsAvailability::Available,
@@ -154,6 +178,10 @@ pub async fn list_public_comments_with_snapshot(
             })
         }
     }
+}
+
+fn stable_projection_revision(before: i64, after: i64) -> Option<i64> {
+    (before == after).then_some(after)
 }
 
 fn snapshot_identity(
@@ -325,6 +353,12 @@ mod tests {
             parent_comment_id: None,
             created_at: "2026-08-09T00:00:00Z".to_string(),
         }
+    }
+
+    #[test]
+    fn stable_projection_revision_rejects_cursor_changes() {
+        assert_eq!(stable_projection_revision(10, 10), Some(10));
+        assert_eq!(stable_projection_revision(10, 11), None);
     }
 
     #[test]
