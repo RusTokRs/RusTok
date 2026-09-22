@@ -49,6 +49,20 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus, Uuid) {
     )
     .await
     .expect("users table fixture should apply");
+
+    db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS tenant_modules (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            module_slug TEXT NOT NULL,
+            enabled BOOLEAN NOT NULL DEFAULT 1,
+            settings TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );",
+    )
+    .await
+    .expect("tenant modules table fixture should apply");
     let module = ForumModule;
     for migration in module.migrations() {
         migration
@@ -232,6 +246,134 @@ async fn topic_and_reply_votes_round_trip_through_read_paths() {
     assert_eq!(reply_after_clear.vote_score, 0);
     assert_eq!(reply_after_clear.current_user_vote, None);
 }
+
+#[tokio::test]
+async fn internal_votes_switch_by_forum_setting_independently_of_reactions_module() {
+    let (db, event_bus, tenant_id) = setup().await;
+    let category_service = CategoryService::new(db.clone());
+    let topic_service = TopicService::new(db.clone(), event_bus.clone());
+    let reply_service = ReplyService::new(db.clone(), event_bus.clone());
+    let vote_service = VoteService::new(db.clone());
+
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let author = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+    let voter = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+
+    let category = create_category(&category_service, tenant_id, admin, false).await;
+    let topic = topic_service
+        .create(
+            tenant_id,
+            author.clone(),
+            CreateTopicInput {
+                locale: "en".to_string(),
+                category_id: category.id,
+                title: "Switch engagement mode".to_string(),
+                slug: Some("switch-engagement-mode".to_string()),
+                body: rustok_api::RichTextDocument::single_paragraph("Body"),
+                metadata: serde_json::json!({}),
+                tags: vec![],
+                channel_slugs: None,
+            },
+        )
+        .await
+        .expect("topic should be created");
+    let reply = reply_service
+        .create(
+            tenant_id,
+            author,
+            topic.id,
+            CreateReplyInput {
+                locale: "en".to_string(),
+                content: rustok_api::RichTextDocument::single_paragraph("Reply"),
+                parent_reply_id: None,
+            },
+        )
+        .await
+        .expect("reply should be created");
+
+    // The shared Reactions module may be enabled for other modules; Forum still
+    // uses internal voting until its own setting explicitly selects Reactions.
+    db.execute_unprepared(&format!(
+        "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings)
+         VALUES ('{}', '{}', 'reactions', 1, '{{}}'),
+                ('{}', '{}', 'forum', 1, '{{"useReactions": false}}');",
+        Uuid::new_v4(),
+        tenant_id,
+        Uuid::new_v4(),
+        tenant_id
+    ))
+    .await
+    .expect("module settings should be created");
+
+    vote_service
+        .set_topic_vote(tenant_id, topic.id, voter.clone(), 1)
+        .await
+        .expect("topic vote should be available while Forum uses internal voting");
+    vote_service
+        .set_reply_vote(tenant_id, reply.id, voter.clone(), 1)
+        .await
+        .expect("reply vote should be available while Forum uses internal voting");
+
+    db.execute_unprepared(&format!(
+        "UPDATE tenant_modules
+         SET settings = '{{"useReactions": true}}'
+         WHERE tenant_id = '{}' AND module_slug = 'forum';",
+        tenant_id
+    ))
+    .await
+    .expect("forum reactions setting should be enabled");
+
+    let topic_vote_when_reactions_selected = vote_service
+        .set_topic_vote(tenant_id, topic.id, voter.clone(), -1)
+        .await
+        .expect_err("internal topic voting must be disabled by the Forum setting");
+    assert!(matches!(
+        topic_vote_when_reactions_selected,
+        ForumError::InternalVotingDisabled
+    ));
+
+    let reply_vote_when_reactions_selected = vote_service
+        .set_reply_vote(tenant_id, reply.id, voter.clone(), -1)
+        .await
+        .expect_err("internal reply voting must be disabled by the Forum setting");
+    assert!(matches!(
+        reply_vote_when_reactions_selected,
+        ForumError::InternalVotingDisabled
+    ));
+
+    let topic_summary = vote_service
+        .topic_vote_summary(tenant_id, topic.id, Some(voter.user_id.expect("voter id")))
+        .await
+        .expect("topic summary should load");
+    assert_eq!(topic_summary.score, 0);
+    assert_eq!(topic_summary.current_user_vote, None);
+
+    let reply_summary = vote_service
+        .reply_vote_summary(tenant_id, reply.id, None)
+        .await
+        .expect("reply summary should load");
+    assert_eq!(reply_summary.score, 0);
+    assert_eq!(reply_summary.current_user_vote, None);
+
+    db.execute_unprepared(&format!(
+        "UPDATE tenant_modules
+         SET settings = '{{"useReactions": false}}'
+         WHERE tenant_id = '{}' AND module_slug = 'forum';",
+        tenant_id
+    ))
+    .await
+    .expect("forum reactions setting should be disabled");
+
+    vote_service
+        .set_topic_vote(tenant_id, topic.id, voter.clone(), -1)
+        .await
+        .expect("topic internal voting should resume when Forum selects voting");
+    vote_service
+        .set_reply_vote(tenant_id, reply.id, voter, -1)
+        .await
+        .expect("reply internal voting should resume when Forum selects voting");
+}
+
 
 #[tokio::test]
 async fn vote_validation_rejects_invalid_values_and_pending_replies() {

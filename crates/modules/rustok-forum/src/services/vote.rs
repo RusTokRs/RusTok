@@ -16,6 +16,7 @@ use rustok_api::{Action, Resource};
 
 use crate::entities::{forum_reply_vote, forum_topic_vote};
 use crate::error::{ForumError, ForumResult};
+use crate::services::engagement_mode::ForumEngagementMode;
 use crate::services::projection_invalidation::publish_forum_topic_projection_direct_in_tx;
 use crate::services::rbac::enforce_scope;
 use crate::services::topic_vote_lock::{
@@ -51,6 +52,9 @@ impl VoteService {
         validate_vote_value(value)?;
 
         let txn = self.db.begin().await?;
+        ForumEngagementMode::resolve_in_tx(&txn, tenant_id)
+            .await?
+            .require_internal_voting()?;
         lock_active_topic_vote_write_in_tx(&txn, tenant_id, topic_id).await?;
         lock_topic_vote_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         self.upsert_topic_vote_in_tx(&txn, tenant_id, topic_id, user_id, value)
@@ -77,6 +81,9 @@ impl VoteService {
         let user_id = require_authenticated_user(&security)?;
 
         let txn = self.db.begin().await?;
+        ForumEngagementMode::resolve_in_tx(&txn, tenant_id)
+            .await?
+            .require_internal_voting()?;
         lock_active_topic_vote_write_in_tx(&txn, tenant_id, topic_id).await?;
         lock_topic_vote_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         forum_topic_vote::Entity::delete_many()
@@ -109,6 +116,9 @@ impl VoteService {
         validate_vote_value(value)?;
 
         let txn = self.db.begin().await?;
+        ForumEngagementMode::resolve_in_tx(&txn, tenant_id)
+            .await?
+            .require_internal_voting()?;
         let reply = crate::services::ReplyService::find_reply_for_update_in_tx(
             &txn, tenant_id, reply_id,
         )
@@ -135,6 +145,9 @@ impl VoteService {
         enforce_scope(&security, Resource::ForumReplies, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
         let txn = self.db.begin().await?;
+        ForumEngagementMode::resolve_in_tx(&txn, tenant_id)
+            .await?
+            .require_internal_voting()?;
         crate::services::ReplyService::find_reply_for_update_in_tx(&txn, tenant_id, reply_id)
             .await?;
         forum_reply_vote::Entity::delete_many()
@@ -167,6 +180,13 @@ impl VoteService {
         user_id: Option<Uuid>,
     ) -> ForumResult<HashMap<Uuid, VoteSummary>> {
         if topic_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        if !ForumEngagementMode::resolve(&self.db, tenant_id)
+            .await?
+            .is_internal_voting()
+        {
             return Ok(HashMap::new());
         }
 
@@ -210,6 +230,13 @@ impl VoteService {
         user_id: Option<Uuid>,
     ) -> ForumResult<HashMap<Uuid, VoteSummary>> {
         if reply_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        if !ForumEngagementMode::resolve(&self.db, tenant_id)
+            .await?
+            .is_internal_voting()
+        {
             return Ok(HashMap::new());
         }
 

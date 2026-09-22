@@ -67,7 +67,7 @@ for (const fragment of [
   "mod reaction_subject;",
   "register_reaction_subject_provider_factory",
   "ForumReactionSubjectProviderFactory",
-  '&["content", "taxonomy"]',
+  '&["content", "taxonomy", "tenant"]',
 ]) {
   if (!forumLib.includes(fragment)) fail(`Forum module registration is missing ${fragment}`);
 }
