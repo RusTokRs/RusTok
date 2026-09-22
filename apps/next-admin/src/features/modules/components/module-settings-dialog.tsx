@@ -14,6 +14,7 @@ import {
   DialogTitle
 } from '@/shared/ui/shadcn/dialog';
 import { Textarea } from '@/shared/ui/shadcn/textarea';
+import { Switch } from '@/shared/ui/shadcn/switch';
 import { updateModuleSettings, type GqlOpts } from '@/shared/api/modules';
 
 interface ModuleSettingsDialogProps {
@@ -40,6 +41,7 @@ export function ModuleSettingsDialog({
   apiOpts = {}
 }: ModuleSettingsDialogProps) {
   const [settingsText, setSettingsText] = useState(initialSettings);
+  const [useReactions, setUseReactions] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [jsonError, setJsonError] = useState<string | null>(null);
 
@@ -48,16 +50,19 @@ export function ModuleSettingsDialog({
       // Format with 2 spaces for readable editing
       const parsed = JSON.parse(initialSettings || '{}');
       setSettingsText(JSON.stringify(parsed, null, 2));
+      setUseReactions(moduleSlug === 'forum' && parsed?.useReactions === true);
       setJsonError(null);
     } catch {
       setSettingsText(initialSettings || '{}');
+      setUseReactions(false);
     }
-  }, [initialSettings, open]);
+  }, [initialSettings, moduleSlug, open]);
 
   const handleFormatJson = () => {
     try {
       const parsed = JSON.parse(settingsText);
       setSettingsText(JSON.stringify(parsed, null, 2));
+      setUseReactions(moduleSlug === 'forum' && parsed?.useReactions === true);
       setJsonError(null);
       toast.success('JSON formatted');
     } catch (err) {
@@ -124,6 +129,37 @@ export function ModuleSettingsDialog({
         </DialogHeader>
 
         <div className='space-y-3 py-2'>
+          {moduleSlug === 'forum' && (
+            <div className='flex items-center justify-between rounded-lg border bg-muted/20 p-3'>
+              <div className='space-y-1 pr-4'>
+                <label className='text-sm font-medium'>
+                  Use Reactions instead of internal voting
+                </label>
+                <p className='text-muted-foreground text-xs'>
+                  Forum-specific setting. The shared Reactions module can stay enabled for other modules.
+                </p>
+              </div>
+              <Switch
+                checked={useReactions}
+                disabled={isSaving}
+                onCheckedChange={(checked) => {
+                  try {
+                    const parsed = JSON.parse(settingsText || '{}');
+                    const next = {
+                      ...(parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}),
+                      useReactions: checked
+                    };
+                    setSettingsText(JSON.stringify(next, null, 2));
+                    setUseReactions(checked);
+                    setJsonError(null);
+                  } catch {
+                    setJsonError('Invalid JSON structure');
+                  }
+                }}
+              />
+            </div>
+          )}
+
           <div className='flex items-center justify-between'>
             <label className='text-muted-foreground text-xs font-medium'>
               Configuration JSON
@@ -142,7 +178,16 @@ export function ModuleSettingsDialog({
           <Textarea
             value={settingsText}
             onChange={(e) => {
-              setSettingsText(e.target.value);
+              const value = e.target.value;
+              setSettingsText(value);
+              if (moduleSlug === 'forum') {
+                try {
+                  const parsed = JSON.parse(value);
+                  setUseReactions(parsed?.useReactions === true);
+                } catch {
+                  // Keep the last valid switch state until the JSON is fixed.
+                }
+              }
               setJsonError(null);
             }}
             rows={10}
