@@ -68,7 +68,8 @@
         "fallback_locale",
         "public_channel_slug",
         "page",
-        "per_page"
+        "per_page",
+        "projection_revision"
       ],
       "key_encoding": "sha256_of_schema_bound_identity",
       "envelope_schema_version": 3,

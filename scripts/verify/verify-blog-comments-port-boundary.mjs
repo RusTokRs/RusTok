@@ -215,7 +215,7 @@ if (fallbackEvidence) {
     cacheContract.write_policy !== 'successful_public_read_best_effort' ||
     cacheContract.read_policy !== 'external_service_or_timeout_only' ||
     cacheContract.key_encoding !== 'sha256_of_schema_bound_identity' ||
-    cacheContract.envelope_schema_version !== 1 ||
+    cacheContract.envelope_schema_version !== 3 ||
     cacheContract.visibility_validation !== 'exact_identity_same_post_approved_only' ||
     cacheContract.maximum_payload_bytes !== 262144 ||
     cacheContract.host_cache_prefix !== 'blog-public-comments-snapshot-v1' ||
@@ -225,7 +225,8 @@ if (fallbackEvidence) {
     cacheContract.cache_failures !== 'best_effort_do_not_change_owner_response'
   ) failures.push(`${fallbackEvidencePath}: cache contract drift`);
   if (!sameSet(cacheContract.key_identity ?? [], [
-    'tenant_id', 'post_id', 'requested_locale', 'fallback_locale', 'page', 'per_page',
+    'tenant_id', 'post_id', 'requested_locale', 'fallback_locale', 'public_channel_slug',
+    'page', 'per_page', 'projection_revision',
   ])) failures.push(`${fallbackEvidencePath}: cache identity drift`);
   if (
     fallbackEvidence.fallback_smoke?.status !== 'planned' ||
