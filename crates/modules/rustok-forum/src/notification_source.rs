@@ -207,12 +207,10 @@ impl ForumNotificationSourceProvider {
         tenant_id: Uuid,
         topic_id: Uuid,
     ) -> NotificationProviderResult<Option<forum_topic::Model>> {
-        if self.recipient_context_port.is_some() {
-            let topic = self.load_active_topic(tenant_id, topic_id).await?;
-            Ok(topic.filter(|topic| topic.status == TopicStatus::Open))
-        } else {
-            self.load_public_topic(tenant_id, topic_id).await
-        }
+        // Event descriptions are not recipient-specific. Keep the descriptor
+        // on the same public visibility contract regardless of which richer
+        // recipient capabilities the host happens to publish.
+        self.load_public_topic(tenant_id, topic_id).await
     }
 
     async fn load_topic_for_subscription_audience(
