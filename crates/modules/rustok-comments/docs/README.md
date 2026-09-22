@@ -36,9 +36,11 @@
 - shared rich-text/body-format and locale fallback contract are aligned with `rustok-content`;
 - thread status contract is no longer decorative: `closed` actually blocks new
   create-path, and terminal comment statuses (`spam`, `trash`) require moderation scope;
-- runtime-composed public-port create/delete publish `comment.created` and
-  `comment.deleted` through the owner transaction outbox; Blog projection and
-  live delivery evidence remain pending;
+- runtime-composed public-port lifecycle writes publish `comment.created`, `comment.updated`,
+  `comment.status_changed`, and `comment.deleted` through the owner transaction
+  outbox; update events are emitted only for real body mutations and status-change
+  events only for actual status transitions. Blog projection and live delivery
+  evidence remain pending;
 - the module now publishes `rustok-comments-admin` as a module-owned Leptos moderation UI;
 - for operator-facing read/write path, service-level methods `list_threads`,
   `get_thread_detail`, `set_thread_status` and `set_comment_status` have been added;
