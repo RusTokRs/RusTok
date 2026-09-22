@@ -35,6 +35,22 @@ fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionCha
             post_id: *target_id,
             delta: 1,
         }),
+        DomainEvent::CommentUpdated {
+            comment_id,
+            target_type,
+            target_id,
+            ..
+        }
+        | DomainEvent::CommentStatusChanged {
+            comment_id,
+            target_type,
+            target_id,
+            ..
+        } if target_type == BLOG_POST_TARGET_TYPE => Some(CommentProjectionChange {
+            comment_id: *comment_id,
+            post_id: *target_id,
+            delta: 1,
+        }),
         DomainEvent::CommentDeleted {
             comment_id,
             target_type,
@@ -143,8 +159,8 @@ impl BlogCommentProjectionHandler {
                 tenant_id: Set(envelope.tenant_id),
                 comment_id: Set(change.comment_id),
                 post_id: Set(change.post_id),
-                // Keep the source event state (+1 created / -1 deleted). For an out-of-order
-                // first delete this remains -1 even when the counter delta is necessarily zero.
+                // Keep the source lifecycle state (+1 active / -1 deleted). Update and status-change
+                // events therefore advance the durable lifecycle cursor without changing count.
                 delta: Set(change.delta),
                 processed_at: Set(Utc::now().into()),
             },
@@ -206,6 +222,20 @@ mod tests {
 
     #[test]
     fn classifies_blog_comment_lifecycle_events() {
+        let updated = DomainEvent::CommentUpdated {
+            comment_id: id(4),
+            target_type: BLOG_POST_TARGET_TYPE.to_string(),
+            target_id: id(5),
+            author_id: id(6),
+        };
+        let status_changed = DomainEvent::CommentStatusChanged {
+            comment_id: id(7),
+            target_type: BLOG_POST_TARGET_TYPE.to_string(),
+            target_id: id(8),
+            author_id: id(9),
+            old_status: "pending".to_string(),
+            new_status: "approved".to_string(),
+        };
         let created = DomainEvent::CommentCreated {
             comment_id: id(1),
             target_type: BLOG_POST_TARGET_TYPE.to_string(),
@@ -213,10 +243,10 @@ mod tests {
             author_id: id(3),
         };
         let deleted = DomainEvent::CommentDeleted {
-            comment_id: id(4),
+            comment_id: id(10),
             target_type: BLOG_POST_TARGET_TYPE.to_string(),
-            target_id: id(5),
-            author_id: id(6),
+            target_id: id(11),
+            author_id: id(12),
         };
 
         assert_eq!(
@@ -224,6 +254,22 @@ mod tests {
             Some(CommentProjectionChange {
                 comment_id: id(1),
                 post_id: id(2),
+                delta: 1,
+            })
+        );
+        assert_eq!(
+            comment_projection_change(&updated),
+            Some(CommentProjectionChange {
+                comment_id: id(4),
+                post_id: id(5),
+                delta: 1,
+            })
+        );
+        assert_eq!(
+            comment_projection_change(&status_changed),
+            Some(CommentProjectionChange {
+                comment_id: id(7),
+                post_id: id(8),
                 delta: 1,
             })
         );
@@ -258,6 +304,7 @@ mod tests {
     fn projection_delta_tracks_comment_state_not_delivery_order() {
         assert_eq!(projection_applied_delta(None, 1), 1);
         assert_eq!(projection_applied_delta(None, -1), 0);
+        assert_eq!(projection_applied_delta(Some(1), 1), 0);
         assert_eq!(projection_applied_delta(Some(1), -1), -1);
         assert_eq!(projection_applied_delta(Some(-1), 1), 1);
     }
