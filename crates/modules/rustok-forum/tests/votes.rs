@@ -248,7 +248,7 @@ async fn topic_and_reply_votes_round_trip_through_read_paths() {
 }
 
 #[tokio::test]
-async fn internal_votes_switch_off_when_reactions_module_is_enabled_and_resume_when_disabled() {
+async fn internal_votes_switch_by_forum_setting_independently_of_reactions_module() {
     let (db, event_bus, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
     let topic_service = TopicService::new(db.clone(), event_bus.clone());
@@ -291,79 +291,89 @@ async fn internal_votes_switch_off_when_reactions_module_is_enabled_and_resume_w
         .await
         .expect("reply should be created");
 
-    // No reactions override means the Forum falls back to its internal voting mode.
-    vote_service
-        .set_topic_vote(tenant_id, topic.id, voter.clone(), 1)
-        .await
-        .expect("topic vote should be available when reactions are disabled");
-    vote_service
-        .set_reply_vote(tenant_id, reply.id, voter.clone(), 1)
-        .await
-        .expect("reply vote should be available when reactions are disabled");
-
+    // The shared Reactions module may be enabled for other modules; Forum still
+    // uses internal voting until its own setting explicitly selects Reactions.
     db.execute_unprepared(&format!(
-        "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled)
-         VALUES ('{}', '{}', 'reactions', 1);",
+        "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings)
+         VALUES ('{}', '{}', 'reactions', 1, '{{}}'),
+                ('{}', '{}', 'forum', 1, '{{"useReactions": false}}');",
+        Uuid::new_v4(),
+        tenant_id,
         Uuid::new_v4(),
         tenant_id
     ))
     .await
-    .expect("reactions module override should be enabled");
+    .expect("module settings should be created");
 
-    let topic_vote_when_reactions_enabled = vote_service
-        .set_topic_vote(tenant_id, topic.id, voter.clone(), -1)
+    vote_service
+        .set_topic_vote(tenant_id, topic.id, voter.clone(), 1)
         .await
-        .expect_err("internal topic voting must be disabled when reactions are enabled");
-    assert!(matches!(
-        topic_vote_when_reactions_enabled,
-        ForumError::ReactionsEnabled
-    ));
-
-    let reply_vote_when_reactions_enabled = vote_service
-        .set_reply_vote(tenant_id, reply.id, voter.clone(), -1)
+        .expect("topic vote should be available while Forum uses internal voting");
+    vote_service
+        .set_reply_vote(tenant_id, reply.id, voter.clone(), 1)
         .await
-        .expect_err("internal reply voting must be disabled when reactions are enabled");
-    assert!(matches!(
-        reply_vote_when_reactions_enabled,
-        ForumError::ReactionsEnabled
-    ));
-
-    let topic_clear_when_reactions_enabled = vote_service
-        .clear_topic_vote(tenant_id, topic.id, voter.clone())
-        .await
-        .expect_err("clearing internal topic votes must be disabled in reactions mode");
-    assert!(matches!(
-        topic_clear_when_reactions_enabled,
-        ForumError::ReactionsEnabled
-    ));
-
-    let reply_clear_when_reactions_enabled = vote_service
-        .clear_reply_vote(tenant_id, reply.id, voter.clone())
-        .await
-        .expect_err("clearing internal reply votes must be disabled in reactions mode");
-    assert!(matches!(
-        reply_clear_when_reactions_enabled,
-        ForumError::ReactionsEnabled
-    ));
+        .expect("reply vote should be available while Forum uses internal voting");
 
     db.execute_unprepared(&format!(
         "UPDATE tenant_modules
-         SET enabled = 0
-         WHERE tenant_id = '{}' AND module_slug = 'reactions';",
+         SET settings = '{{"useReactions": true}}'
+         WHERE tenant_id = '{}' AND module_slug = 'forum';",
         tenant_id
     ))
     .await
-    .expect("reactions module override should be disabled");
+    .expect("forum reactions setting should be enabled");
+
+    let topic_vote_when_reactions_selected = vote_service
+        .set_topic_vote(tenant_id, topic.id, voter.clone(), -1)
+        .await
+        .expect_err("internal topic voting must be disabled by the Forum setting");
+    assert!(matches!(
+        topic_vote_when_reactions_selected,
+        ForumError::InternalVotingDisabled
+    ));
+
+    let reply_vote_when_reactions_selected = vote_service
+        .set_reply_vote(tenant_id, reply.id, voter.clone(), -1)
+        .await
+        .expect_err("internal reply voting must be disabled by the Forum setting");
+    assert!(matches!(
+        reply_vote_when_reactions_selected,
+        ForumError::InternalVotingDisabled
+    ));
+
+    let topic_summary = vote_service
+        .topic_vote_summary(tenant_id, topic.id, Some(voter.user_id.expect("voter id")))
+        .await
+        .expect("topic summary should load");
+    assert_eq!(topic_summary.score, 0);
+    assert_eq!(topic_summary.current_user_vote, None);
+
+    let reply_summary = vote_service
+        .reply_vote_summary(tenant_id, reply.id, None)
+        .await
+        .expect("reply summary should load");
+    assert_eq!(reply_summary.score, 0);
+    assert_eq!(reply_summary.current_user_vote, None);
+
+    db.execute_unprepared(&format!(
+        "UPDATE tenant_modules
+         SET settings = '{{"useReactions": false}}'
+         WHERE tenant_id = '{}' AND module_slug = 'forum';",
+        tenant_id
+    ))
+    .await
+    .expect("forum reactions setting should be disabled");
 
     vote_service
-        .clear_topic_vote(tenant_id, topic.id, voter.clone())
+        .set_topic_vote(tenant_id, topic.id, voter.clone(), -1)
         .await
-        .expect("topic internal voting should resume when reactions are disabled");
+        .expect("topic internal voting should resume when Forum selects voting");
     vote_service
-        .clear_reply_vote(tenant_id, reply.id, voter)
+        .set_reply_vote(tenant_id, reply.id, voter, -1)
         .await
-        .expect("reply internal voting should resume when reactions are disabled");
+        .expect("reply internal voting should resume when Forum selects voting");
 }
+
 
 #[tokio::test]
 async fn vote_validation_rejects_invalid_values_and_pending_replies() {
