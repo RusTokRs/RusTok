@@ -146,6 +146,9 @@ impl ReplyService {
         }
 
         let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, reply.topic_id).await?;
+        if topic.status == TopicStatus::Archived {
+            return Err(ForumError::ReplyRestoreUnavailable(reply_id));
+        }
         ensure_category_restore_target_is_active_in_tx(&txn, tenant_id, topic.category_id).await?;
         let snapshot = load_reply_delete_snapshot_in_tx(&txn, tenant_id, reply_id)
             .await?
