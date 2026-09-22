@@ -15,13 +15,14 @@ use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::entities::{
-    forum_category, forum_category_lifecycle, forum_domain_event, forum_reply, forum_solution,
+    forum_category, forum_domain_event, forum_reply, forum_solution,
     forum_topic, forum_topic_move_operation,
 };
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::{ReplyStatus, TopicStatus};
 
 use super::category_audience::load_category_audience_policy;
+use super::category_lifecycle::ensure_category_tree_target_is_active_in_tx;
 use super::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
 };
@@ -354,18 +355,7 @@ async fn ensure_category_active_in_tx(
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> ForumResult<()> {
-    if forum_category_lifecycle::Entity::find()
-        .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_lifecycle::Column::CategoryId.eq(category_id))
-        .one(txn)
-        .await?
-        .is_some()
-    {
-        return Err(ForumError::Validation(
-            "Forum topic move requires active source and target categories".to_string(),
-        ));
-    }
-    Ok(())
+    ensure_category_tree_target_is_active_in_tx(txn, tenant_id, category_id).await
 }
 
 async fn validate_solution_in_tx(
@@ -412,6 +402,21 @@ async fn transfer_category_counters_in_tx(
         .one(txn)
         .await?
         .ok_or(ForumError::CategoryNotFound(target_category_id))?;
+
+    if published_reply_count < 0 {
+        return Err(ForumError::Validation(
+            "Forum topic move published reply count must not be negative".to_string(),
+        ));
+    }
+    if source.topic_count <= 0
+        || source.reply_count < published_reply_count
+        || target.topic_count < 0
+        || target.reply_count < 0
+    {
+        return Err(ForumError::Validation(
+            "Forum topic move category counters are inconsistent".to_string(),
+        ));
+    }
 
     let source_topic_count = source.topic_count.checked_sub(1).ok_or_else(|| {
         ForumError::Validation("Forum source category topic counter is inconsistent".to_string())

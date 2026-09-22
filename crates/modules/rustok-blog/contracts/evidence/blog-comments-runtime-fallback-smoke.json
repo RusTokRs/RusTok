@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "module": "blog",
   "role": "consumer",
   "provider": "comments",
@@ -66,6 +66,7 @@
         "post_id",
         "requested_locale",
         "fallback_locale",
+        "public_channel_slug",
         "page",
         "per_page"
       ],

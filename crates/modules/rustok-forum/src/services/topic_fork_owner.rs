@@ -20,7 +20,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::entities::{
-    forum_audience_mention, forum_category, forum_category_lifecycle, forum_domain_event,
+    forum_audience_mention, forum_category, forum_domain_event,
     forum_quote, forum_relation_revision, forum_reply, forum_reply_body, forum_reply_revision,
     forum_solution, forum_topic, forum_topic_channel_access, forum_topic_tag,
     forum_topic_translation, forum_user_mention,
@@ -746,6 +746,11 @@ async fn load_fork_snapshot_in_tx(
     let branch_ids = replies.iter().map(|reply| reply.id).collect::<HashSet<_>>();
     if !branch_ids.contains(&root_reply_id) {
         return Err(ForumError::ReplyNotFound(root_reply_id));
+    }
+    if replies.iter().any(|reply| reply.status == ReplyStatus::Deleted) {
+        return Err(ForumError::Validation(
+            "Forum topic fork cannot copy a deleted reply branch".to_string(),
+        ));
     }
     let positions = replies
         .iter()

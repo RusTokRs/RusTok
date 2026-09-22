@@ -557,8 +557,26 @@ fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView
                                 status: post.status,
                             },
                         );
+                        let published_meta = post.published_at.as_deref().map(|published_at| {
+                            core::label_value_pair(
+                                &t(
+                                    locale.as_deref(),
+                                    "blog.list.publishedLabel",
+                                    "published",
+                                ),
+                                published_at,
+                            )
+                        });
                         view! {
                             <article class="rounded-2xl border border-border bg-background p-5">
+                                {post.featured_image_url.as_deref().map(|url| view! {
+                                    <img
+                                        src=url.to_string()
+                                        alt=post.title.clone()
+                                        loading="lazy"
+                                        class="mb-4 aspect-video w-full rounded-lg object-cover"
+                                    />
+                                })}
                                 <BlogStatusBadge
                                     status=post_card_view.status
                                     unknown_label=unknown_status_label.clone()
@@ -567,7 +585,28 @@ fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView
                                 <p class="mt-2 text-sm text-muted-foreground">
                                     {post_card_view.excerpt}
                                 </p>
-                                <a class="mt-3 inline-flex text-sm text-primary hover:underline" href=post_card_view.href>
+                                {if post.tags.is_empty() {
+                                    ().into_any()
+                                } else {
+                                    view! {
+                                        <div class="mt-3 flex flex-wrap gap-1.5">
+                                            {post.tags
+                                                .iter()
+                                                .cloned()
+                                                .map(|tag| view! {
+                                                    <span class="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                                                        {tag}
+                                                    </span>
+                                                })
+                                                .collect_view()}
+                                        </div>
+                                    }
+                                    .into_any()
+                                }}
+                                {published_meta.map(|meta| view! {
+                                    <div class="mt-3 text-xs text-muted-foreground">{meta}</div>
+                                })}
+                                <a class="mt-4 inline-flex text-sm text-primary hover:underline" href=post_card_view.href>
                                     {post_card_view.open_label}
                                 </a>
                                 <p class="mt-3 text-xs text-muted-foreground">

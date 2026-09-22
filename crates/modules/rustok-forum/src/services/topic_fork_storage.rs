@@ -219,18 +219,12 @@ async fn ensure_category_active_in_tx(
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> ForumResult<()> {
-    if forum_category_lifecycle::Entity::find()
-        .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_lifecycle::Column::CategoryId.eq(category_id))
-        .one(txn)
-        .await?
-        .is_some()
-    {
-        return Err(ForumError::Validation(
-            "Forum topic fork requires an active source category".to_string(),
-        ));
-    }
-    Ok(())
+    super::super::category_lifecycle::ensure_category_tree_target_is_active_in_tx(
+        txn,
+        tenant_id,
+        category_id,
+    )
+    .await
 }
 
 async fn load_valid_source_solution_in_tx(
@@ -552,7 +546,7 @@ async fn increment_category_counters_in_tx(
         .one(txn)
         .await?
         .ok_or(ForumError::CategoryNotFound(category_id))?;
-    if category.topic_count < 0 || category.reply_count < 0 {
+    if category.topic_count <= 0 || category.reply_count < 0 {
         return Err(ForumError::Validation(
             "Forum topic fork category counters are inconsistent".to_string(),
         ));

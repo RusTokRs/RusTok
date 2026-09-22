@@ -15,7 +15,9 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::ReplyResponse;
-use crate::entities::{forum_reply, forum_reply_body, forum_solution};
+use crate::entities::{
+    forum_reply, forum_reply_body, forum_solution, forum_topic_merge_operation,
+};
 use crate::error::{ForumError, ForumResult};
 use crate::mentions::ForumContentTarget;
 use crate::state_machine::{ReplyStatus, TopicStatus};
@@ -146,6 +148,16 @@ impl ReplyService {
         }
 
         let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, reply.topic_id).await?;
+        if topic.status == TopicStatus::Archived
+            && forum_topic_merge_operation::Entity::find()
+                .filter(forum_topic_merge_operation::Column::TenantId.eq(tenant_id))
+                .filter(forum_topic_merge_operation::Column::SourceTopicId.eq(topic.id))
+                .one(&txn)
+                .await?
+                .is_some()
+        {
+            return Err(ForumError::ReplyRestoreUnavailable(reply_id));
+        }
         ensure_category_restore_target_is_active_in_tx(&txn, tenant_id, topic.category_id).await?;
         let snapshot = load_reply_delete_snapshot_in_tx(&txn, tenant_id, reply_id)
             .await?
@@ -260,6 +272,10 @@ impl ReplyService {
         tenant_id: Uuid,
         reply_id: Uuid,
     ) -> ForumResult<ReplyRemovalOutcome> {
+        // Keep reply deletion behind the same category-tree lifecycle boundary as
+        // topic delete/restore and category archive/restore. This prevents a reply
+        // counter mutation from racing a concurrent category lifecycle decision.
+        lock_category_tree_in_tx(txn, tenant_id).await?;
         claim_reply_delete_in_tx(txn, tenant_id, reply_id).await?;
         let reply = reply::ReplyService::find_reply_in_tx(txn, tenant_id, reply_id).await?;
         if reply.status == ReplyStatus::Deleted {

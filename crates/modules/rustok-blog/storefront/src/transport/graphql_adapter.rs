@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{ApiError, configured_tenant_slug};
 
-const STOREFRONT_BLOG_QUERY: &str = "query StorefrontBlog($postSlug: String!, $filter: PostsFilter, $locale: String, $commentsPage: Int!, $commentsPerPage: Int!) { selectedPost: postBySlug(slug: $postSlug, locale: $locale) { id effectiveLocale title slug excerpt content { document html } contentPlainText status publishedAt tags featuredImageUrl publicComments(locale: $locale, page: $commentsPage, perPage: $commentsPerPage) { availability cachedSnapshot total items { id effectiveLocale authorId contentPreview parentCommentId createdAt } } } posts(filter: $filter) { total items { id title effectiveLocale slug excerpt status publishedAt } } }";
+const STOREFRONT_BLOG_QUERY: &str = "query StorefrontBlog($postSlug: String!, $filter: PostsFilter, $locale: String, $commentsPage: Int!, $commentsPerPage: Int!) { selectedPost: postBySlug(slug: $postSlug, locale: $locale) { id effectiveLocale title slug excerpt content { document html } contentPlainText status publishedAt tags featuredImageUrl publicComments(locale: $locale, page: $commentsPage, perPage: $commentsPerPage) { availability cachedSnapshot total items { id effectiveLocale authorId contentPreview parentCommentId createdAt } } } posts(filter: $filter) { total items { id title effectiveLocale slug excerpt status publishedAt tags featuredImageUrl } } }";
 const CREATE_BLOG_COMMENT_MUTATION: &str = "mutation CreateBlogComment($postId: UUID!, $input: CreateBlogCommentInput!) { createBlogComment(postId: $postId, input: $input) { id requestedLocale effectiveLocale postId authorId content { document html } contentPlainText status parentCommentId createdAt updatedAt } }";
 
 #[derive(Debug, Deserialize)]

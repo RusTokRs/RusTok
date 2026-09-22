@@ -34,12 +34,12 @@ async fn load_categories_in_tx(
     Ok(categories)
 }
 
-/// Verify that a category and all of its ancestors are currently active.
+/// Verify that a category and every ancestor are active.
 ///
-/// Topic/reply restore operations use the same category-tree lock as category
-/// lifecycle mutations, so this check and the subsequent restore form one
-/// serialized decision.
-pub(super) async fn ensure_category_restore_target_is_active_in_tx(
+/// Structural topic commands and restore use the same category-tree lifecycle invariant:
+/// a child of an archived ancestor is not an active placement target even when its own
+/// lifecycle row is absent.
+pub(super) async fn ensure_category_tree_target_is_active_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
@@ -60,7 +60,7 @@ pub(super) async fn ensure_category_restore_target_is_active_in_tx(
 
     if !parent_by_id.contains_key(&category_id) || lifecycle_by_category.contains_key(&category_id) {
         return Err(ForumError::Validation(
-            "Forum content cannot be restored into an archived category".to_string(),
+            "Forum content cannot be placed in an archived category".to_string(),
         ));
     }
 
@@ -85,6 +85,15 @@ async fn load_category_parents_in_tx(
         parent_by_id.entry(*id).or_insert(None);
     }
     Ok(parent_by_id)
+}
+
+/// Verify that a deleted topic/reply can be restored into its category tree.
+pub(super) async fn ensure_category_restore_target_is_active_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    category_id: Uuid,
+) -> ForumResult<()> {
+    ensure_category_tree_target_is_active_in_tx(txn, tenant_id, category_id).await
 }
 
 fn collect_subtree_ids(

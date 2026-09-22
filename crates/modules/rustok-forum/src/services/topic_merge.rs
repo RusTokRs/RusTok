@@ -16,12 +16,13 @@ use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::entities::{
-    forum_category, forum_category_lifecycle, forum_domain_event, forum_reply, forum_solution,
+    forum_category, forum_domain_event, forum_reply, forum_solution,
     forum_topic, forum_topic_merge_operation, forum_topic_merge_solution_resolution,
 };
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::{ReplyStatus, TopicStatus};
 
+use super::category_lifecycle::ensure_category_tree_target_is_active_in_tx;
 use super::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
 };
@@ -761,18 +762,7 @@ async fn ensure_category_active_in_tx(
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> ForumResult<()> {
-    if forum_category_lifecycle::Entity::find()
-        .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_lifecycle::Column::CategoryId.eq(category_id))
-        .one(txn)
-        .await?
-        .is_some()
-    {
-        return Err(ForumError::Validation(
-            "Forum topic merge requires active source and target categories".to_string(),
-        ));
-    }
-    Ok(())
+    ensure_category_tree_target_is_active_in_tx(txn, tenant_id, category_id).await
 }
 
 async fn transfer_cross_category_reply_counters_in_tx(
