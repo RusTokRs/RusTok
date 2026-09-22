@@ -274,24 +274,29 @@ impl TopicService {
 
         let now = Utc::now();
         use sea_orm::sea_query::ExprTrait;
-        let reply_count = if delta > 0 {
-            Expr::col(forum_topic::Column::ReplyCount).add(delta).into()
+        let mut query = forum_topic::Entity::update_many()
+            .filter(forum_topic::Column::TenantId.eq(tenant_id))
+            .filter(forum_topic::Column::Id.eq(topic_id))
+            .filter(forum_topic::Column::ReplyCount.gte(0));
+
+        if delta > 0 {
+            query = query.col_expr(
+                forum_topic::Column::ReplyCount,
+                Expr::col(forum_topic::Column::ReplyCount).add(delta),
+            );
         } else {
             let decrement = delta.checked_abs().ok_or_else(|| {
                 ForumError::Validation("Forum reply counter delta overflow".to_string())
             })?;
-            Expr::case(
-                Expr::col(forum_topic::Column::ReplyCount).gt(decrement),
-                Expr::col(forum_topic::Column::ReplyCount).sub(decrement),
-            )
-            .finally(0)
-            .into()
-        };
+            query = query
+                .filter(forum_topic::Column::ReplyCount.gte(decrement))
+                .col_expr(
+                    forum_topic::Column::ReplyCount,
+                    Expr::col(forum_topic::Column::ReplyCount).sub(decrement),
+                );
+        }
 
-        let updated = forum_topic::Entity::update_many()
-            .filter(forum_topic::Column::TenantId.eq(tenant_id))
-            .filter(forum_topic::Column::Id.eq(topic_id))
-            .col_expr(forum_topic::Column::ReplyCount, reply_count)
+        let updated = query
             .col_expr(forum_topic::Column::UpdatedAt, Expr::val(now))
             .exec(txn)
             .await?;
