@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use rustok_api::graphql::GraphqlRuntimeInputs;
 use rustok_comments::CommentsThreadPort;
-use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
 use crate::{CommentService, PublicCommentsSnapshotStore};
@@ -10,8 +9,8 @@ use crate::{CommentService, PublicCommentsSnapshotStore};
 /// Manifest-attached Blog GraphQL runtime capabilities.
 ///
 /// A host may publish transport-neutral Comments and public snapshot capabilities
-/// through `HostRuntimeContext`. Their absence selects the canonical in-process
-/// Comments adapter and empty degraded snapshot behavior.
+/// through `HostRuntimeContext`. Their absence is represented as an unavailable
+/// Comments capability; Blog never constructs a local provider fallback.
 #[derive(Clone, Default)]
 pub struct BlogGraphqlRuntimeData {
     comments_thread_port: Option<Arc<dyn CommentsThreadPort>>,
@@ -29,14 +28,11 @@ impl BlogGraphqlRuntimeData {
     pub(crate) fn comment_service(
         &self,
         db: DatabaseConnection,
-        event_bus: TransactionalEventBus,
     ) -> CommentService {
-        match self.comments_thread_port.clone() {
-            Some(comments_thread_port) => {
-                CommentService::with_comments_thread_port(db, comments_thread_port)
-            }
-            None => CommentService::new(db, event_bus),
-        }
+        CommentService::from_optional_comments_thread_port(
+            db,
+            self.comments_thread_port.clone(),
+        )
     }
 
     pub(crate) fn public_comments_snapshot_store(
@@ -57,7 +53,6 @@ mod tests {
         let selector: fn(
             &BlogGraphqlRuntimeData,
             DatabaseConnection,
-            TransactionalEventBus,
         ) -> CommentService = BlogGraphqlRuntimeData::comment_service;
         let snapshot_selector: fn(
             &BlogGraphqlRuntimeData,
