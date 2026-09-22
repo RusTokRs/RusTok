@@ -459,6 +459,20 @@ pub enum DomainEvent {
         target_id: Uuid,
         author_id: Uuid,
     },
+    CommentUpdated {
+        comment_id: Uuid,
+        target_type: String,
+        target_id: Uuid,
+        author_id: Uuid,
+    },
+    CommentStatusChanged {
+        comment_id: Uuid,
+        target_type: String,
+        target_id: Uuid,
+        author_id: Uuid,
+        old_status: String,
+        new_status: String,
+    },
     CommentDeleted {
         comment_id: Uuid,
         target_type: String,
@@ -1172,6 +1186,8 @@ impl DomainEvent {
             Self::BlogPostDeleted { .. } => "blog.post.deleted",
 
             Self::CommentCreated { .. } => "comment.created",
+            Self::CommentUpdated { .. } => "comment.updated",
+            Self::CommentStatusChanged { .. } => "comment.status_changed",
             Self::CommentDeleted { .. } => "comment.deleted",
 
             Self::ForumTopicCreated { .. } => "forum.topic.created",
@@ -1407,6 +1423,8 @@ impl DomainEvent {
             Self::BlogPostDeleted { .. } => 1,
 
             Self::CommentCreated { .. } => 1,
+            Self::CommentUpdated { .. } => 1,
+            Self::CommentStatusChanged { .. } => 1,
             Self::CommentDeleted { .. } => 1,
 
             // Forum events (v1)
@@ -2021,6 +2039,12 @@ impl ValidateEvent for DomainEvent {
                 target_id,
                 author_id,
             }
+            | Self::CommentUpdated {
+                comment_id,
+                target_type,
+                target_id,
+                author_id,
+            }
             | Self::CommentDeleted {
                 comment_id,
                 target_type,
@@ -2032,6 +2056,31 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_max_length("target_type", target_type, 64)?;
                 validators::validate_not_nil_uuid("target_id", target_id)?;
                 validators::validate_not_nil_uuid("author_id", author_id)?;
+                Ok(())
+            }
+            Self::CommentStatusChanged {
+                comment_id,
+                target_type,
+                target_id,
+                author_id,
+                old_status,
+                new_status,
+            } => {
+                validators::validate_not_nil_uuid("comment_id", comment_id)?;
+                validators::validate_not_empty("target_type", target_type)?;
+                validators::validate_max_length("target_type", target_type, 64)?;
+                validators::validate_not_nil_uuid("target_id", target_id)?;
+                validators::validate_not_nil_uuid("author_id", author_id)?;
+                validators::validate_not_empty("old_status", old_status)?;
+                validators::validate_max_length("old_status", old_status, 32)?;
+                validators::validate_not_empty("new_status", new_status)?;
+                validators::validate_max_length("new_status", new_status, 32)?;
+                if old_status == new_status {
+                    return Err(EventValidationError::InvalidValue(
+                        "status_transition",
+                        "old_status and new_status must differ".to_string(),
+                    ));
+                }
                 Ok(())
             }
 
