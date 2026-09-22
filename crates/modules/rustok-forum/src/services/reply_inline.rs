@@ -139,8 +139,15 @@ impl ReplyService {
             )
             .await?;
 
-        let topic_id = existing.topic_id;
+        let initial_topic_id = existing.topic_id;
         let txn = self.db.begin().await?;
+        let _locked_topic =
+            super::topic_facade::TopicService::find_topic_for_update_in_tx(
+                &txn,
+                tenant_id,
+                initial_topic_id,
+            )
+            .await?;
         super::relation_quote_input::lock_source_and_assert_latest_in_tx(
             &txn,
             tenant_id,
@@ -149,6 +156,17 @@ impl ReplyService {
             quote_expectation,
         )
         .await?;
+        let existing = self.find_reply_in_tx(&txn, tenant_id, reply_id).await?;
+        if existing.topic_id != initial_topic_id {
+            return Err(ForumError::TopicUpdateConflict(initial_topic_id));
+        }
+        enforce_owned_scope(
+            &security,
+            Resource::ForumReplies,
+            Action::Update,
+            existing.author_id,
+        )?;
+        let topic_id = existing.topic_id;
         if let Some(stored_body) = stored_body {
             self.upsert_body_in_tx(&txn, tenant_id, reply_id, &locale, stored_body)
                 .await?;
