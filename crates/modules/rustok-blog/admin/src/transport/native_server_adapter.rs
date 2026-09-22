@@ -130,14 +130,10 @@ async fn native_context() -> Result<NativeContext, ServerFnError> {
 
 #[cfg(feature = "ssr")]
 fn comment_service(context: &NativeContext) -> rustok_blog::CommentService {
-    if let Some(comments_thread_port) = context.comments_thread_port.clone() {
-        rustok_blog::CommentService::with_comments_thread_port(
-            context.db.clone(),
-            comments_thread_port,
-        )
-    } else {
-        rustok_blog::CommentService::new(context.db.clone(), context.event_bus.clone())
-    }
+    rustok_blog::CommentService::from_optional_comments_thread_port(
+        context.db.clone(),
+        context.comments_thread_port.clone(),
+    )
 }
 
 #[cfg(feature = "ssr")]

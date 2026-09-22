@@ -117,7 +117,7 @@ async fn create_blog_comment_native(
             .as_ref()
             .and_then(|context| context.channel_slug.as_deref());
 
-        let comment = comment_service(&runtime_ctx, event_bus)
+        let comment = comment_service(&runtime_ctx)
             .create_public_comment(
                 tenant.id,
                 rustok_core::security_context_from_access_token(
@@ -256,7 +256,7 @@ async fn storefront_blog_native(
             });
 
         let selected_post = if let Some(post) = selected_post {
-            let comments = comment_service(&runtime_ctx, event_bus.clone());
+            let comments = comment_service(&runtime_ctx);
             let snapshot_store = runtime_ctx.shared_get::<Arc<dyn PublicCommentsSnapshotStore>>();
             let public_comments = list_public_comments_with_snapshot(
                 &comments,
@@ -326,18 +326,11 @@ async fn storefront_blog_native(
 #[cfg(feature = "ssr")]
 fn comment_service(
     runtime_ctx: &rustok_api::HostRuntimeContext,
-    event_bus: rustok_outbox::TransactionalEventBus,
 ) -> rustok_blog::CommentService {
-    if let Some(comments_thread_port) =
-        runtime_ctx.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>()
-    {
-        rustok_blog::CommentService::with_comments_thread_port(
-            runtime_ctx.db_clone(),
-            comments_thread_port,
-        )
-    } else {
-        rustok_blog::CommentService::new(runtime_ctx.db_clone(), event_bus)
-    }
+    rustok_blog::CommentService::from_optional_comments_thread_port(
+        runtime_ctx.db_clone(),
+        runtime_ctx.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>(),
+    )
 }
 
 #[cfg(feature = "ssr")]

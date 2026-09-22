@@ -185,6 +185,8 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
     let selected_post_content = core::selected_post_content_view(excerpt, content_plain_text);
     let selected_post_header =
         core::selected_post_header_view(post.title, selected_post_meta, selected_post_status);
+    let comment_form_available =
+        matches!(&public_comments.availability, BlogCommentsAvailability::Available);
     let comment_post_id = post_id.clone();
     let comment_locale = effective_locale.clone();
     let submit_comment = Action::new_local(move |content: &rustok_api::RichTextDocument| {
@@ -203,11 +205,16 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
     });
     let comment_composer_copy = comment_composer_copy(locale.as_deref());
     #[cfg(target_arch = "wasm32")]
-    let comment_composer = view! {
-        <CommentComposer content_locale=effective_locale.clone() submit_action=submit_comment copy=comment_composer_copy />
-    }.into_any();
+    let comment_composer = if comment_form_available {
+        view! {
+            <CommentComposer content_locale=effective_locale.clone() submit_action=submit_comment copy=comment_composer_copy />
+        }
+        .into_any()
+    } else {
+        ().into_any()
+    };
     #[cfg(not(target_arch = "wasm32"))]
-    let comment_composer = {
+    let comment_composer = if comment_form_available {
         let _ = (submit_comment, comment_composer_copy);
         view! {
             <section
@@ -224,6 +231,9 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
                 </p>
             </section>
         }.into_any()
+    } else {
+        let _ = (submit_comment, comment_composer_copy);
+        ().into_any()
     };
 
     view! {

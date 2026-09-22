@@ -1,4 +1,0 @@
-enum MobileSurfaceKind {
-  admin,
-  storefront,
-}

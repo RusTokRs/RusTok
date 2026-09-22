@@ -67,6 +67,9 @@ pub enum BlogError {
     #[error("Content error: {0}")]
     Content(#[from] rustok_content::ContentError),
 
+    #[error("Comments capability is unavailable")]
+    CommentsUnavailable,
+
     #[error("Comments error: {0}")]
     Comments(#[from] rustok_comments::CommentsError),
 
@@ -166,6 +169,12 @@ impl From<BlogError> for RichError {
             BlogError::Forbidden(msg) => RichError::new(ErrorKind::Forbidden, msg)
                 .with_user_message("You do not have permission to perform this action"),
             BlogError::Content(content_err) => content_err.into(),
+            BlogError::CommentsUnavailable => RichError::new(
+                ErrorKind::ExternalService,
+                "Comments capability is unavailable",
+            )
+            .with_user_message("Comments are temporarily unavailable")
+            .with_error_code("COMMENTS_PROVIDER_UNAVAILABLE"),
             BlogError::Comments(err) => match err {
                 rustok_comments::CommentsError::Database(db_err) => {
                     RichError::new(ErrorKind::Database, "Database operation failed")
