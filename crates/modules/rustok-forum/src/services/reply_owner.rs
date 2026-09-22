@@ -15,7 +15,9 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::ReplyResponse;
-use crate::entities::{forum_reply, forum_reply_body, forum_solution, forum_topic_merge_operation};
+use crate::entities::{
+    forum_reply, forum_reply_body, forum_solution, forum_topic_merge_operation,
+};
 use crate::error::{ForumError, ForumResult};
 use crate::mentions::ForumContentTarget;
 use crate::state_machine::{ReplyStatus, TopicStatus};
