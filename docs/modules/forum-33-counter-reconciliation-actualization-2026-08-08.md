@@ -22,9 +22,11 @@ forumCounterReconciliationReport(
 
 It checks:
 
-1. `forum_topics.reply_count` against `approved` replies;
-2. `forum_categories.topic_count` against current topic rows;
-3. `forum_categories.reply_count` against `approved` replies across category topics.
+1. `forum_topics.reply_count` against non-deleted `approved` replies for every topic; a soft-deleted topic therefore reconciles to zero;
+2. `forum_categories.topic_count` against non-deleted topic rows;
+3. `forum_categories.reply_count` against non-deleted `approved` replies across non-deleted category topics.
+
+This matches the Forum owner lifecycle: category archive/restore does not rewrite counters, topic delete removes the topic and its public replies from category aggregates while preserving the topic tombstone with `reply_count = 0`, and topic/reply restore rebuilds the active aggregate values atomically.
 
 Topic/category traversal remains independent, bounded to default 100 / hard 500 rows per shape, keyset-based with strict `id > cursor`, and page-local snapshot consistent. `clean` is page-local; whole-tenant clean requires exhausting both cursor chains with every page clean.
 

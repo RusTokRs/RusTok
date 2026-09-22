@@ -353,6 +353,9 @@ LEFT JOIN forum_replies r
     ON r.tenant_id = t.tenant_id
    AND r.topic_id = t.id
    AND r.status = 'approved'
+   AND r.deleted_at IS NULL
+   AND r.status = 'approved'
+   AND r.deleted_at IS NULL
 WHERE t.tenant_id = ?1
 GROUP BY t.id, t.reply_count
 ORDER BY t.id
@@ -369,6 +372,9 @@ LEFT JOIN forum_replies r
     ON r.tenant_id = t.tenant_id
    AND r.topic_id = t.id
    AND r.status = 'approved'
+   AND r.deleted_at IS NULL
+   AND r.status = 'approved'
+   AND r.deleted_at IS NULL
 WHERE t.tenant_id = ?1
   AND t.id > ?2
 GROUP BY t.id, t.reply_count
@@ -386,6 +392,9 @@ LEFT JOIN forum_replies r
     ON r.tenant_id = t.tenant_id
    AND r.topic_id = t.id
    AND r.status = 'approved'
+   AND r.deleted_at IS NULL
+   AND r.status = 'approved'
+   AND r.deleted_at IS NULL
 WHERE t.tenant_id = $1
 GROUP BY t.id, t.reply_count
 ORDER BY t.id
@@ -402,6 +411,9 @@ LEFT JOIN forum_replies r
     ON r.tenant_id = t.tenant_id
    AND r.topic_id = t.id
    AND r.status = 'approved'
+   AND r.deleted_at IS NULL
+   AND r.status = 'approved'
+   AND r.deleted_at IS NULL
 WHERE t.tenant_id = $1
   AND t.id > $2
 GROUP BY t.id, t.reply_count
@@ -415,15 +427,18 @@ SELECT
     CAST(c.topic_count AS INTEGER) AS stored_topic_count,
     CAST(c.reply_count AS INTEGER) AS stored_reply_count,
     CAST(COUNT(DISTINCT t.id) AS INTEGER) AS expected_topic_count,
-    CAST(COALESCE(SUM(CASE WHEN r.status = 'approved' THEN 1 ELSE 0 END), 0) AS INTEGER)
+    CAST(COUNT(r.id) AS INTEGER)
         AS expected_reply_count
 FROM forum_categories c
 LEFT JOIN forum_topics t
     ON t.tenant_id = c.tenant_id
    AND t.category_id = c.id
+   AND t.deleted_at IS NULL
 LEFT JOIN forum_replies r
     ON r.tenant_id = t.tenant_id
    AND r.topic_id = t.id
+   AND r.status = 'approved'
+   AND r.deleted_at IS NULL
 WHERE c.tenant_id = ?1
 GROUP BY c.id, c.topic_count, c.reply_count
 ORDER BY c.id
@@ -436,15 +451,18 @@ SELECT
     CAST(c.topic_count AS INTEGER) AS stored_topic_count,
     CAST(c.reply_count AS INTEGER) AS stored_reply_count,
     CAST(COUNT(DISTINCT t.id) AS INTEGER) AS expected_topic_count,
-    CAST(COALESCE(SUM(CASE WHEN r.status = 'approved' THEN 1 ELSE 0 END), 0) AS INTEGER)
+    CAST(COUNT(r.id) AS INTEGER)
         AS expected_reply_count
 FROM forum_categories c
 LEFT JOIN forum_topics t
     ON t.tenant_id = c.tenant_id
    AND t.category_id = c.id
+   AND t.deleted_at IS NULL
 LEFT JOIN forum_replies r
     ON r.tenant_id = t.tenant_id
    AND r.topic_id = t.id
+   AND r.status = 'approved'
+   AND r.deleted_at IS NULL
 WHERE c.tenant_id = ?1
   AND c.id > ?2
 GROUP BY c.id, c.topic_count, c.reply_count
@@ -458,15 +476,18 @@ SELECT
     c.topic_count::BIGINT AS stored_topic_count,
     c.reply_count::BIGINT AS stored_reply_count,
     COUNT(DISTINCT t.id)::BIGINT AS expected_topic_count,
-    COALESCE(SUM(CASE WHEN r.status = 'approved' THEN 1 ELSE 0 END), 0)::BIGINT
+    COUNT(r.id)::BIGINT
         AS expected_reply_count
 FROM forum_categories c
 LEFT JOIN forum_topics t
     ON t.tenant_id = c.tenant_id
    AND t.category_id = c.id
+   AND t.deleted_at IS NULL
 LEFT JOIN forum_replies r
     ON r.tenant_id = t.tenant_id
    AND r.topic_id = t.id
+   AND r.status = 'approved'
+   AND r.deleted_at IS NULL
 WHERE c.tenant_id = $1
 GROUP BY c.id, c.topic_count, c.reply_count
 ORDER BY c.id
@@ -479,15 +500,18 @@ SELECT
     c.topic_count::BIGINT AS stored_topic_count,
     c.reply_count::BIGINT AS stored_reply_count,
     COUNT(DISTINCT t.id)::BIGINT AS expected_topic_count,
-    COALESCE(SUM(CASE WHEN r.status = 'approved' THEN 1 ELSE 0 END), 0)::BIGINT
+    COUNT(r.id)::BIGINT
         AS expected_reply_count
 FROM forum_categories c
 LEFT JOIN forum_topics t
     ON t.tenant_id = c.tenant_id
    AND t.category_id = c.id
+   AND t.deleted_at IS NULL
 LEFT JOIN forum_replies r
     ON r.tenant_id = t.tenant_id
    AND r.topic_id = t.id
+   AND r.status = 'approved'
+   AND r.deleted_at IS NULL
 WHERE c.tenant_id = $1
   AND c.id > $2
 GROUP BY c.id, c.topic_count, c.reply_count
@@ -555,5 +579,27 @@ mod tests {
         assert!(TOPIC_COUNTER_AFTER_POSTGRES.contains("t.id > $2"));
         assert!(CATEGORY_COUNTER_AFTER_SQLITE.contains("c.id > ?2"));
         assert!(CATEGORY_COUNTER_AFTER_POSTGRES.contains("c.id > $2"));
+    }
+
+    #[test]
+    fn counter_sql_matches_lifecycle_visibility_rules() {
+        for sql in [
+            TOPIC_COUNTER_SQLITE,
+            TOPIC_COUNTER_AFTER_SQLITE,
+            TOPIC_COUNTER_POSTGRES,
+            TOPIC_COUNTER_AFTER_POSTGRES,
+        ] {
+            assert!(sql.contains("r.deleted_at IS NULL"));
+        }
+
+        for sql in [
+            CATEGORY_COUNTER_SQLITE,
+            CATEGORY_COUNTER_AFTER_SQLITE,
+            CATEGORY_COUNTER_POSTGRES,
+            CATEGORY_COUNTER_AFTER_POSTGRES,
+        ] {
+            assert!(sql.contains("t.deleted_at IS NULL"));
+            assert!(sql.contains("r.deleted_at IS NULL"));
+        }
     }
 }

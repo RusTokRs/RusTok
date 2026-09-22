@@ -77,13 +77,19 @@ async fn load_category_parents_in_tx(
         .filter(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TermId.is_in(category_ids.iter().copied()))
         .all(txn)
         .await?;
-    let mut parent_by_id = hierarchy_rows
+    let parent_by_id = hierarchy_rows
         .into_iter()
         .map(|row| (row.term_id, row.parent_term_id))
         .collect::<HashMap<_, _>>();
-    for id in category_ids {
-        parent_by_id.entry(*id).or_insert(None);
+
+    for category_id in category_ids {
+        if !parent_by_id.contains_key(category_id) {
+            return Err(ForumError::Validation(format!(
+                "Forum category {category_id} is missing its canonical Taxonomy hierarchy row"
+            )));
+        }
     }
+
     Ok(parent_by_id)
 }
 

@@ -177,10 +177,31 @@ async fn counter_reconciliation_detects_clean_state_and_all_drifts_sqlite() {
     .await;
     seed_reply(&db, tenant_id, top2, Uuid::new_v4(), author_id, "hidden", 2).await;
 
-    // Cat2 has Top3. Top3 has 0 replies.
-    // For Cat2: expected topic_count = 1, expected reply_count = 0.
-    seed_category(&db, tenant_id, cat2, 1, 0).await;
+    // Cat2 has Top3, already soft-deleted with a deleted reply.
+    // Its persisted counters are zero because deleted topics do not contribute to category counts,
+    // while the topic itself must still reconcile to reply_count = 0.
+    seed_category(&db, tenant_id, cat2, 0, 0).await;
     seed_topic(&db, tenant_id, cat2, top3, author_id, 0).await;
+    let deleted_reply_id = Uuid::new_v4();
+    seed_reply(
+        &db,
+        tenant_id,
+        top3,
+        deleted_reply_id,
+        author_id,
+        "deleted",
+        1,
+    )
+    .await;
+    db.execute_unprepared(&format!(
+        "UPDATE forum_replies SET deleted_at = CURRENT_TIMESTAMP WHERE id = {}; \
+         UPDATE forum_topics SET status = 'archived', is_locked = 1, deleted_at = CURRENT_TIMESTAMP \
+         WHERE id = {}",
+        sql_uuid(deleted_reply_id),
+        sql_uuid(top3),
+    ))
+    .await
+    .expect("deleted topic fixture should succeed");
 
     let service = ForumCounterReconciliationService::new(db.clone());
     let admin = SecurityContext::system();

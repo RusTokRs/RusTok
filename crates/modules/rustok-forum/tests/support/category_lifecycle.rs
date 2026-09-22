@@ -136,8 +136,21 @@ pub async fn exercise_category_subtree_lifecycle(db: &DatabaseConnection) -> Tes
     assert_eq!(existing_count, 1, "archive mutated an existing topic");
 
     service
-        .restore_subtree(tenant_id, root_id, security)
+        .restore_subtree(tenant_id, root_id, security.clone())
         .await?;
+
+    db.execute_raw(Statement::from_sql_and_values(
+        db.get_database_backend(),
+        "DELETE FROM taxonomy_category_hierarchy WHERE tenant_id = ? AND term_id = ?",
+        [tenant_id.into(), grandchild_id.into()],
+    ))
+    .await?;
+
+    assert_validation_contains(
+        service.archive_subtree(tenant_id, root_id, security).await,
+        "missing its canonical Taxonomy hierarchy row",
+    )?;
+
     Ok(())
 }
 
