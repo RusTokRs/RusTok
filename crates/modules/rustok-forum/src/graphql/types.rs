@@ -94,6 +94,7 @@ pub struct GqlForumReply {
     pub content: RichTextView,
     pub content_plain_text: String,
     pub status: String,
+    pub is_deleted: bool,
     pub vote_score: i32,
     pub current_user_vote: Option<i32>,
     pub is_solution: bool,
