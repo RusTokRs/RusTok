@@ -323,6 +323,8 @@ pub struct ReplyListItem {
     pub author_id: Option<String>,
     pub content_preview: String,
     pub status: String,
+    #[serde(default)]
+    pub is_deleted: bool,
     pub parent_reply_id: Option<String>,
     pub created_at: String,
 }
