@@ -22,6 +22,7 @@ use crate::entities::{
     forum_reply, forum_reply_body, forum_solution, forum_topic, forum_topic_translation,
 };
 use crate::error::{ForumError, ForumResult};
+use crate::services::engagement_mode::ForumSettingsProviders;
 use crate::services::rbac::enforce_scope;
 use crate::services::subscription::SubscriptionService;
 use crate::services::vote::VoteService;
@@ -31,11 +32,20 @@ const REPLY_CURSOR_VERSION: &str = "r1";
 
 pub struct ForumReadModelService {
     db: DatabaseConnection,
+    settings: ForumSettingsProviders,
 }
 
 impl ForumReadModelService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            settings: ForumSettingsProviders::default(),
+        }
+    }
+
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.settings = settings;
+        self
     }
 
     pub async fn list_topics(
@@ -316,6 +326,7 @@ impl ForumReadModelService {
         let ids = topics.iter().map(|item| item.id).collect::<Vec<_>>();
         let translations = topic_translations_by_id(&self.db, tenant_id, &ids).await?;
         let votes = VoteService::new(self.db.clone())
+            .with_settings_providers(self.settings.clone())
             .topic_vote_summaries(tenant_id, &ids, user_id)
             .await?;
         let subscriptions = SubscriptionService::new(self.db.clone())
