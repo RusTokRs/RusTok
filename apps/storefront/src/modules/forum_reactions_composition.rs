@@ -70,7 +70,7 @@ pub fn ForumStorefrontComposition() -> impl IntoView {
             )
         },
         |(reactions_enabled, forum_reactions_enabled, topic_id, locale)| async move {
-            if !reactions_enabled || !forum_reactions_enabled.unwrap_or(false) {
+            if !reactions_enabled || !forum_reactions_enabled.and_then(Result::ok).unwrap_or(false) {
                 return Ok(None);
             }
             let Some(topic_id) = topic_id else {
