@@ -16,7 +16,7 @@ use rustok_api::{Action, Resource};
 
 use crate::entities::{forum_reply_vote, forum_topic_vote};
 use crate::error::{ForumError, ForumResult};
-use crate::services::engagement_mode::ForumEngagementMode;
+use crate::services::engagement_mode::{ForumEngagementMode, ForumSettingsProviders};
 use crate::services::projection_invalidation::publish_forum_topic_projection_direct_in_tx;
 use crate::services::rbac::enforce_scope;
 use crate::services::topic_vote_lock::{
@@ -32,11 +32,20 @@ pub struct VoteSummary {
 
 pub struct VoteService {
     db: DatabaseConnection,
+    settings: ForumSettingsProviders,
 }
 
 impl VoteService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            settings: ForumSettingsProviders::default(),
+        }
+    }
+
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.settings = settings;
+        self
     }
 
     #[instrument(skip(self, security))]
@@ -52,7 +61,7 @@ impl VoteService {
         validate_vote_value(value)?;
 
         let txn = self.db.begin().await?;
-        ForumEngagementMode::resolve_in_tx(&txn, tenant_id)
+        ForumEngagementMode::resolve_in_tx(&self.settings, &txn, tenant_id)
             .await?
             .require_internal_voting()?;
         lock_active_topic_vote_write_in_tx(&txn, tenant_id, topic_id).await?;
@@ -81,7 +90,7 @@ impl VoteService {
         let user_id = require_authenticated_user(&security)?;
 
         let txn = self.db.begin().await?;
-        ForumEngagementMode::resolve_in_tx(&txn, tenant_id)
+        ForumEngagementMode::resolve_in_tx(&self.settings, &txn, tenant_id)
             .await?
             .require_internal_voting()?;
         lock_active_topic_vote_write_in_tx(&txn, tenant_id, topic_id).await?;
@@ -116,7 +125,7 @@ impl VoteService {
         validate_vote_value(value)?;
 
         let txn = self.db.begin().await?;
-        ForumEngagementMode::resolve_in_tx(&txn, tenant_id)
+        ForumEngagementMode::resolve_in_tx(&self.settings, &txn, tenant_id)
             .await?
             .require_internal_voting()?;
         let reply = crate::services::ReplyService::find_reply_for_update_in_tx(
@@ -145,7 +154,7 @@ impl VoteService {
         enforce_scope(&security, Resource::ForumReplies, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
         let txn = self.db.begin().await?;
-        ForumEngagementMode::resolve_in_tx(&txn, tenant_id)
+        ForumEngagementMode::resolve_in_tx(&self.settings, &txn, tenant_id)
             .await?
             .require_internal_voting()?;
         crate::services::ReplyService::find_reply_for_update_in_tx(&txn, tenant_id, reply_id)
@@ -183,11 +192,11 @@ impl VoteService {
             return Ok(HashMap::new());
         }
 
-        if !ForumEngagementMode::resolve(&self.db, tenant_id)
-            .await?
-            .is_internal_voting()
-        {
-            return Ok(HashMap::new());
+        match ForumEngagementMode::resolve(&self.settings, tenant_id).await {
+            Ok(mode) if mode.is_internal_voting() => {}
+            Ok(_) => return Ok(HashMap::new()),
+            Err(ForumError::CapabilityUnavailable { .. }) => return Ok(HashMap::new()),
+            Err(error) => return Err(error),
         }
 
         let votes = forum_topic_vote::Entity::find()
