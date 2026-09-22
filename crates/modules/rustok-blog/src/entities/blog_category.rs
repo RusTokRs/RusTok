@@ -8,7 +8,6 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub tenant_id: Uuid,
-    pub post_count: i32,
     pub settings: Json,
     pub revision: i64,
     pub created_at: DateTimeWithTimeZone,
