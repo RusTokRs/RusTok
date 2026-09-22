@@ -424,8 +424,12 @@ fn map_forum_error(error: ForumError) -> ReactionProviderError {
         }
         ForumError::Validation(_) => ReactionProviderError::InvalidRequest,
         ForumError::RelationRevisionConflict => ReactionProviderError::Conflict,
-        ForumError::Database(_) | ForumError::Internal(_) => {
-            ReactionProviderError::Internal { retryable: true }
+        ForumError::Database(_) => ReactionProviderError::Internal { retryable: true },
+        ForumError::Internal(error) => ReactionProviderError::Internal {
+            // Only explicitly external dependency failures are expected to
+            // recover on retry. Persisted-state/internal invariants must fail
+            // closed instead of being reported as transient outages.
+            retryable: matches!(error, rustok_core::Error::External(_)),
         }
         ForumError::Content(_) => ReactionProviderError::Internal { retryable: false },
         _ => ReactionProviderError::Unavailable,
