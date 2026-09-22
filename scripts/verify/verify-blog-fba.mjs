@@ -261,8 +261,8 @@ hasAll(projectionSource, [
   'fn next_comment_count(comment_count: i32, delta: i32)',
   'fn classifies_blog_comment_lifecycle_events()',
   'fn ignores_non_blog_targets_and_unrelated_events()',
-  'fn counter_transition_is_non_negative_and_saturating()',
-  'blog_comment_projection_delivery::Entity::find_by_id',
+  'fn counter_transition_is_non_negative_and_does_not_touch_business_revision()',
+  'blog_comment_projection_delivery::Entity::find',
   'DomainEvent::BlogPostUpdated',
   '.publish_in_tx(',
 ], 'blog comment projection');
