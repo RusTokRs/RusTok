@@ -54,6 +54,7 @@ use crate::services::category::CategoryService;
 use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 use crate::services::subscription::SubscriptionService;
 use crate::services::user_stats::UserStatsService;
+use crate::services::engagement_mode::ForumSettingsProviders;
 use crate::services::vote::{VoteService, VoteSummary};
 use crate::state_machine::{ReplyStatus, TopicStatus};
 
@@ -65,11 +66,21 @@ impl_field_definition_source!(topic_field_definitions_storage::Model);
 pub struct TopicService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    settings: ForumSettingsProviders,
 }
 
 impl TopicService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
+        Self {
+            db,
+            event_bus,
+            settings: ForumSettingsProviders::default(),
+        }
+    }
+
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.settings = settings;
+        self
     }
 
     #[instrument(skip(self))]
@@ -113,7 +124,7 @@ impl TopicService {
             .load_topic_tags(tenant_id, topic.id, &locale, fallback_locale.as_deref())
             .await?;
         let solution_reply_id = self.load_solution_reply_id(tenant_id, topic_id).await?;
-        let vote_summary = VoteService::new(self.db.clone())
+        let vote_summary = VoteService::new(self.db.clone()).with_settings_providers(self.settings.clone())
             .topic_vote_summary(tenant_id, topic_id, security.user_id)
             .await?;
         let is_subscribed = SubscriptionService::new(self.db.clone())
@@ -686,7 +697,7 @@ impl TopicService {
             .load_deleted_topic_ids(tenant_id, &topic_ids)
             .await?;
         let schema = load_topic_custom_fields_schema(&self.db, tenant_id).await?;
-        let vote_summaries = VoteService::new(self.db.clone())
+        let vote_summaries = VoteService::new(self.db.clone()).with_settings_providers(self.settings.clone())
             .topic_vote_summaries(tenant_id, &topic_ids, viewer_user_id)
             .await?;
         let subscription_flags = SubscriptionService::new(self.db.clone())
