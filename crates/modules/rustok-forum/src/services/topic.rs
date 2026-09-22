@@ -301,7 +301,14 @@ impl TopicService {
             .exec(txn)
             .await?;
         if updated.rows_affected != 1 {
-            return Err(ForumError::TopicNotFound(topic_id));
+            if Self::find_topic_in_tx(txn, tenant_id, topic_id).await?.reply_count < 0 {
+                return Err(ForumError::Validation(
+                    "Forum topic reply counter is inconsistent".to_string(),
+                ));
+            }
+            return Err(ForumError::Validation(
+                "Forum topic reply counter does not permit the requested delta".to_string(),
+            ));
         }
 
         let last_reply_at = if delta > 0 {
