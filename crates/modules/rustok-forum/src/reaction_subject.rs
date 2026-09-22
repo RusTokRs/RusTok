@@ -25,7 +25,9 @@ use crate::error::ForumError;
 use crate::notification_recipient::{
     ForumNotificationRecipientContextResolver, SharedForumNotificationRecipientContextPort,
 };
-use crate::services::{ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService};
+use crate::services::{
+    ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService, RevisionService,
+};
 use crate::state_machine::{ReplyStatus, TopicStatus};
 
 pub const FORUM_REACTION_SOURCE: &str = "forum";
@@ -156,9 +158,10 @@ impl ForumReactionSubjectProvider {
             return Ok(ReactionSubjectAuthorization::Unavailable);
         }
 
-        let current_revision = self
+        let current_revision = RevisionService::new(self.db.clone())
             .current_topic_revision(subject.tenant_id(), topic.id)
-            .await?;
+            .await
+            .map_err(map_forum_error)?;
         self.allow_exact_revision(request, current_revision)
     }
 
@@ -217,9 +220,10 @@ impl ForumReactionSubjectProvider {
             return Ok(ReactionSubjectAuthorization::Unavailable);
         }
 
-        let current_revision = self
+        let current_revision = RevisionService::new(self.db.clone())
             .current_reply_revision(subject.tenant_id(), reply.id)
-            .await?;
+            .await
+            .map_err(map_forum_error)?;
         self.allow_exact_revision(request, current_revision)
     }
 
@@ -335,41 +339,6 @@ impl ForumReactionSubjectProvider {
             .map_err(database_error)
     }
 
-    async fn current_topic_revision(
-        &self,
-        tenant_id: Uuid,
-        topic_id: Uuid,
-    ) -> ReactionProviderResult<u64> {
-        let latest = forum_topic_revision::Entity::find()
-            .select_only()
-            .column(forum_topic_revision::Column::Id)
-            .filter(forum_topic_revision::Column::TenantId.eq(tenant_id))
-            .filter(forum_topic_revision::Column::TopicId.eq(topic_id))
-            .order_by_desc(forum_topic_revision::Column::Id)
-            .into_tuple::<i64>()
-            .one(&self.db)
-            .await
-            .map_err(database_error)?;
-        current_revision_after(latest)
-    }
-
-    async fn current_reply_revision(
-        &self,
-        tenant_id: Uuid,
-        reply_id: Uuid,
-    ) -> ReactionProviderResult<u64> {
-        let latest = forum_reply_revision::Entity::find()
-            .select_only()
-            .column(forum_reply_revision::Column::Id)
-            .filter(forum_reply_revision::Column::TenantId.eq(tenant_id))
-            .filter(forum_reply_revision::Column::ReplyId.eq(reply_id))
-            .order_by_desc(forum_reply_revision::Column::Id)
-            .into_tuple::<i64>()
-            .one(&self.db)
-            .await
-            .map_err(database_error)?;
-        current_revision_after(latest)
-    }
 }
 
 #[async_trait]
@@ -480,6 +449,9 @@ fn map_forum_error(error: ForumError) -> ReactionProviderError {
             ReactionProviderError::CapabilityUnavailable { retryable }
         }
         ForumError::Validation(_) => ReactionProviderError::InvalidRequest,
+        ForumError::RelationRevisionUnavailable => {
+            ReactionProviderError::Internal { retryable: false }
+        }
         ForumError::RelationRevisionConflict => ReactionProviderError::Conflict,
         ForumError::Database(_) => ReactionProviderError::Internal { retryable: true },
         ForumError::Internal(error) => ReactionProviderError::Internal {
@@ -513,12 +485,10 @@ mod tests {
     }
 
     #[test]
-    fn current_revision_is_positive_and_advances_after_captured_history() {
-        assert_eq!(current_revision_after(None).expect("initial revision"), 1);
-        assert_eq!(
-            current_revision_after(Some(41)).expect("advanced revision"),
-            42
-        );
-        assert!(current_revision_after(Some(-1)).is_err());
+    fn unavailable_owner_revision_is_not_reported_as_transient() {
+        assert!(matches!(
+            map_forum_error(ForumError::RelationRevisionUnavailable),
+            ReactionProviderError::Internal { retryable: false }
+        ));
     }
 }
