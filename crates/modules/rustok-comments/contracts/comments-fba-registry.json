@@ -50,9 +50,7 @@
         "hide_comment_form",
         "show_cached_thread_snapshot"
       ],
-      "fallback_profiles": [
-        "embedded_native"
-      ]
+      "fallback_profiles": []
     }
   ],
   "evidence": {
