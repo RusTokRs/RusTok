@@ -296,7 +296,7 @@ async fn internal_votes_switch_by_forum_setting_independently_of_reactions_modul
     db.execute_unprepared(&format!(
         "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings)
          VALUES ('{}', '{}', 'reactions', 1, '{{}}'),
-                ('{}', '{}', 'forum', 1, '{{"useReactions": false}}');",
+                ('{}', '{}', 'forum', 1, '{{\"useReactions\": false}}');",
         Uuid::new_v4(),
         tenant_id,
         Uuid::new_v4(),
@@ -316,7 +316,7 @@ async fn internal_votes_switch_by_forum_setting_independently_of_reactions_modul
 
     db.execute_unprepared(&format!(
         "UPDATE tenant_modules
-         SET settings = '{{"useReactions": true}}'
+         SET settings = '{{\"useReactions\": true}}'
          WHERE tenant_id = '{}' AND module_slug = 'forum';",
         tenant_id
     ))
@@ -357,7 +357,7 @@ async fn internal_votes_switch_by_forum_setting_independently_of_reactions_modul
 
     db.execute_unprepared(&format!(
         "UPDATE tenant_modules
-         SET settings = '{{"useReactions": false}}'
+         SET settings = '{{\"useReactions\": false}}'
          WHERE tenant_id = '{}' AND module_slug = 'forum';",
         tenant_id
     ))
