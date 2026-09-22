@@ -9,7 +9,7 @@ use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use crate::{
-    ForumReadModelService, ForumTopicReadOperation, ForumTopicReadState,
+    ForumTopicReadOperation, ForumTopicReadState,
     ForumTopicReadStateService, ForumTopicReadTransport, ForumVisibilityScopedReadStateService,
     MarkForumTopicReadInput, MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult,
     TopicUnreadCursorPage, TopicUnreadCursorQuery, topic_read_audience_port_context,
@@ -56,7 +56,8 @@ pub async fn list_unread_topics(
     query.fallback_locale = query
         .fallback_locale
         .or(Some(tenant.default_locale.clone()));
-    let page = ForumReadModelService::new(runtime.db_clone())
+    let page = runtime
+        .read_model_service()
         .list_topics_with_unread(tenant.id, forum_security(&auth), query)
         .await
         .map_err(crate::controllers::map_forum_error)?;
