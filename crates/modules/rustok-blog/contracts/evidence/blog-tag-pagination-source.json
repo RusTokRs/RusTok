@@ -35,11 +35,13 @@
     "fba_promoted": false
   },
   "source_harness": {
-    "path": "crates/modules/rustok-blog/src/services/tag.rs",
-    "module": "services::tag::pagination_tests",
+    "paths": [
+      "crates/modules/rustok-blog/src/services/tag.rs",
+      "crates/modules/rustok-blog/tests/taxonomy_tags.rs"
+    ],
     "tests": [
-      "tag_page_size_is_bounded_by_owner_service",
-      "tag_page_offset_saturates_without_arithmetic_overflow"
+      "services::tag::pagination_tests::tag_page_size_is_bounded_by_owner_service",
+      "tag_list_is_bounded_by_database_pagination_and_preserves_zero_use_module_terms"
     ],
     "status": "executable_no_run",
     "runtime_status": "not_run"
