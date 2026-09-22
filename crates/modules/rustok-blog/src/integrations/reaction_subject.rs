@@ -16,6 +16,7 @@ use crate::services::{is_post_visible_for_channel, load_post_subject_snapshot};
 pub const BLOG_REACTION_SOURCE: &str = "blog";
 pub const BLOG_POST_REACTION_KIND: &str = "post";
 pub const BLOG_REACTION_V1_KEY: &str = "like";
+#[cfg(test)]
 pub const BLOG_USE_REACTIONS_SETTING: &str = "use_reactions";
 
 #[derive(Debug, Deserialize, Default)]

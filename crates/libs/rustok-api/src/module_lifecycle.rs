@@ -1,18 +1,17 @@
-use std::sync::Arc;
-
-use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-use serde_json::Value;
-use crate::ports::PortError;
-
 //! Browser-safe projections for static module lifecycle state and recovery.
 //!
 //! The module owner deliberately omits internal override and trace evidence
 //! from this contract. GraphQL and native adapters expose this same bounded
 //! recovery surface to operator clients.
 
+use std::sync::Arc;
+
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use uuid::Uuid;
+
+use crate::ports::PortError;
 
 /// Current explicit static-module lifecycle state in one tenant.
 ///

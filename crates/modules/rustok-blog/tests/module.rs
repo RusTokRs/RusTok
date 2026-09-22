@@ -10,7 +10,7 @@ fn module_metadata() {
 
     assert_eq!(module.slug(), "blog");
     assert_eq!(module.name(), "Blog");
-    assert_eq!(module.description(), "Posts, Comments, Categories, Tags");
+    assert_eq!(module.description(), "Posts, Categories, Tags, and optional Comments integration");
     assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
 }
 

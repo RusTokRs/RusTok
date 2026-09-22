@@ -9,6 +9,7 @@ use crate::error::{ForumError, ForumResult};
 
 pub const FORUM_MODULE_SLUG: &str = "forum";
 pub const FORUM_REACTIONS_MODULE_SLUG: &str = "reactions";
+#[cfg(test)]
 pub const FORUM_USE_REACTIONS_SETTING: &str = "use_reactions";
 
 #[derive(Debug, Deserialize, Default)]
