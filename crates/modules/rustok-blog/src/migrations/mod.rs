@@ -20,6 +20,7 @@ mod m20260919_000024_enforce_blog_post_channel_visibility_tenant_integrity;
 mod m20260919_000025_fix_blog_post_category_tenant_delete_action;
 mod m20260922_000026_add_blog_comment_projection_revision;
 mod m20260922_000027_create_blog_tag_usage_projection;
+mod m20260922_000028_remove_blog_category_post_count;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -48,6 +49,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260919_000025_fix_blog_post_category_tenant_delete_action::Migration),
         Box::new(m20260922_000026_add_blog_comment_projection_revision::Migration),
         Box::new(m20260922_000027_create_blog_tag_usage_projection::Migration),
+        Box::new(m20260922_000028_remove_blog_category_post_count::Migration),
     ]
 }
 
@@ -56,6 +58,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260922_000026_add_blog_comment_projection_revision",
             vec!["m20260716_000001_create_blog_comment_projection_deliveries"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260922_000028_remove_blog_category_post_count",
+            vec!["m20260916_000022_clean_blog_category_canonical_taxonomy"],
         ),
         MigrationDependencyDescriptor::new(
             "m20260922_000027_create_blog_tag_usage_projection",

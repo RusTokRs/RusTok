@@ -68,7 +68,6 @@ impl CategoryService {
         blog_category::ActiveModel {
             id: Set(id),
             tenant_id: Set(tenant_id),
-            post_count: Set(0),
             settings: Set(input.settings),
             revision: Set(1),
             created_at: Set(now.into()),
