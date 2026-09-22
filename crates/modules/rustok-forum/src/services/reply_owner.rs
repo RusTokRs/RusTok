@@ -263,6 +263,10 @@ impl ReplyService {
         tenant_id: Uuid,
         reply_id: Uuid,
     ) -> ForumResult<ReplyRemovalOutcome> {
+        // Keep reply deletion behind the same category-tree lifecycle boundary as
+        // topic delete/restore and category archive/restore. This prevents a reply
+        // counter mutation from racing a concurrent category lifecycle decision.
+        lock_category_tree_in_tx(txn, tenant_id).await?;
         claim_reply_delete_in_tx(txn, tenant_id, reply_id).await?;
         let reply = reply::ReplyService::find_reply_in_tx(txn, tenant_id, reply_id).await?;
         if reply.status == ReplyStatus::Deleted {
