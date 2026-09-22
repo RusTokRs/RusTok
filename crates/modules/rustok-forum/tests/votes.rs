@@ -341,6 +341,24 @@ async fn internal_votes_switch_by_forum_setting_independently_of_reactions_modul
         ForumError::InternalVotingDisabled
     ));
 
+    let topic_clear_when_reactions_selected = vote_service
+        .clear_topic_vote(tenant_id, topic.id, voter.clone())
+        .await
+        .expect_err("clearing internal topic voting must be disabled by the Forum setting");
+    assert!(matches!(
+        topic_clear_when_reactions_selected,
+        ForumError::InternalVotingDisabled
+    ));
+
+    let reply_clear_when_reactions_selected = vote_service
+        .clear_reply_vote(tenant_id, reply.id, voter.clone())
+        .await
+        .expect_err("clearing internal reply voting must be disabled by the Forum setting");
+    assert!(matches!(
+        reply_clear_when_reactions_selected,
+        ForumError::InternalVotingDisabled
+    ));
+
     let topic_summary = vote_service
         .topic_vote_summary(tenant_id, topic.id, None)
         .await
