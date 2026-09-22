@@ -172,64 +172,6 @@ impl ForumContentMutation {
         Ok(true)
     }
 
-    async fn restore_forum_topic(
-        &self,
-        ctx: &Context<'_>,
-        tenant_id: Option<Uuid>,
-        id: Uuid,
-    ) -> Result<bool> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = ctx.data::<AuthContext>()?;
-
-        let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        TopicService::new(db.clone(), event_bus.clone())
-            .restore(
-                tenant_id,
-                id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
-            )
-            .await?;
-
-        Ok(true)
-    }
-
-    async fn restore_forum_topic(
-        &self,
-        ctx: &Context<'_>,
-        tenant_id: Option<Uuid>,
-        id: Uuid,
-    ) -> Result<bool> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = require_forum_permission(
-            ctx,
-            &[Permission::FORUM_TOPICS_MANAGE],
-            "Permission denied: forum_topics:manage required",
-        )?;
-
-        let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        TopicService::new(db, event_bus)
-            .restore(
-                tenant_id,
-                id,
-                rustok_core::SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                ),
-            )
-            .await?;
-
-        Ok(true)
-    }
-
     async fn restore_forum_reply(
         &self,
         ctx: &Context<'_>,
@@ -512,6 +454,7 @@ impl ForumContentMutation {
             author_profile,
             content: reply.content,
             content_plain_text: reply.content_plain_text,
+            is_deleted: reply.status == "deleted",
             status: reply.status,
             vote_score: reply.vote_score,
             current_user_vote: reply.current_user_vote,
@@ -692,6 +635,7 @@ impl ForumContentMutation {
             author_profile,
             content: reply.content,
             content_plain_text: reply.content_plain_text,
+            is_deleted: reply.status == "deleted",
             status: reply.status,
             vote_score: reply.vote_score,
             current_user_vote: reply.current_user_vote,
@@ -762,6 +706,7 @@ impl ForumContentMutation {
             author_profile,
             content: reply.content,
             content_plain_text: reply.content_plain_text,
+            is_deleted: reply.status == "deleted",
             status: reply.status,
             vote_score: reply.vote_score,
             current_user_vote: reply.current_user_vote,
