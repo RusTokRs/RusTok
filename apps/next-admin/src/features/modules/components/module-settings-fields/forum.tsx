@@ -20,11 +20,11 @@ export function ForumModuleSettingsFields({
   onSettingsTextChange,
   disabled = false
 }: ForumModuleSettingsFieldsProps) {
-  const useReactions = useMemo(() => {
+  const use_reactions = useMemo(() => {
     try {
       const parsed = JSON.parse(settingsText || '{}');
       return Boolean(
-        parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.useReactions === true
+        parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.use_reactions === true
       );
     } catch {
       return false;
@@ -38,7 +38,7 @@ export function ForumModuleSettingsFields({
         return;
       }
       onSettingsTextChange(
-        JSON.stringify({ ...parsed, useReactions: checked }, null, 2)
+        JSON.stringify({ ...parsed, use_reactions: checked }, null, 2)
       );
     } catch {
       // The generic JSON editor remains the authority while the document is invalid.
@@ -55,7 +55,7 @@ export function ForumModuleSettingsFields({
           Forum-specific setting. The shared Reactions module can stay enabled for other modules.
         </p>
       </div>
-      <Switch checked={useReactions} disabled={disabled} onCheckedChange={handleChange} />
+      <Switch checked={use_reactions} disabled={disabled} onCheckedChange={handleChange} />
     </div>
   );
 }
