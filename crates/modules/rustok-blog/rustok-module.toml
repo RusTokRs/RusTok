@@ -20,6 +20,9 @@ taxonomy = { version_req = ">=0.1.0" }
 channel = { version_req = ">=0.1.0" }
 profiles = { version_req = ">=0.1.0" }
 
+[settings]
+use_reactions = { type = "boolean", default = false, description = "Use the shared Reactions module for Blog post reactions." }
+
 [crate]
 entry_type = "BlogModule"
 
