@@ -6,7 +6,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateCategoryInput {
     pub locale: String,
-    #[schema(max_length = 255)]
+    #[schema(max_length = 120)]
     pub name: String,
     #[schema(max_length = 255)]
     pub slug: Option<String>,
@@ -21,7 +21,7 @@ pub struct CreateCategoryInput {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
 pub struct UpdateCategoryInput {
     pub locale: String,
-    #[schema(max_length = 255)]
+    #[schema(max_length = 120)]
     pub name: Option<String>,
     #[schema(max_length = 255)]
     pub slug: Option<String>,
