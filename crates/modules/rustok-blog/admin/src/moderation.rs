@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
+use uuid::Uuid;
 use leptos_ui_routing::use_route_query_value;
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
@@ -64,11 +65,21 @@ pub(crate) fn BlogModerationPanel() -> impl IntoView {
             let token = token.get_untracked();
             let tenant = tenant.get_untracked();
             let locale = action_locale.clone();
+            let command_id = Uuid::new_v4().to_string();
             set_action_error.set(None);
             set_busy_comment_id.set(Some(comment_id.clone()));
 
             spawn_local(async move {
-                match transport::moderate_comment(token, tenant, comment_id, status, locale).await {
+                match transport::moderate_comment(
+                    token,
+                    tenant,
+                    comment_id,
+                    command_id,
+                    status,
+                    locale,
+                )
+                .await
+                {
                     Ok(true) => set_refresh_nonce.update(|value| *value += 1),
                     Ok(false) => {
                         set_action_error.set(Some("Comment moderation returned false".to_string()))

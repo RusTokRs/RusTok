@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::model::{BlogModerationCommentList, BlogModerationStatus};
 
 const BLOG_MODERATION_COMMENTS_QUERY: &str = "query BlogModerationComments($postId: UUID!, $locale: String, $page: Int!, $perPage: Int!) { post(id: $postId, locale: $locale) { moderationComments(locale: $locale, page: $page, perPage: $perPage) { total items { id effectiveLocale authorId contentPreview status parentCommentId createdAt } } } }";
-const MODERATE_BLOG_COMMENT_MUTATION: &str = "mutation ModerateBlogComment($id: UUID!, $status: BlogCommentModerationStatus!, $locale: String) { moderateComment(id: $id, status: $status, locale: $locale) }";
+const MODERATE_BLOG_COMMENT_MUTATION: &str = "mutation ModerateBlogComment($id: UUID!, $commandId: UUID!, $status: BlogCommentModerationStatus!, $locale: String) { moderateComment(id: $id, commandId: $commandId, status: $status, locale: $locale) }";
 
 #[derive(Debug, Deserialize)]
 struct ModerationCommentsResponse {
@@ -36,6 +36,8 @@ struct ModerationCommentsVariables {
 #[derive(Debug, Serialize)]
 struct ModerateCommentVariables {
     id: String,
+    #[serde(rename = "commandId")]
+    command_id: String,
     status: String,
     locale: Option<String>,
 }
@@ -92,6 +94,7 @@ pub async fn moderate_comment(
     token: Option<String>,
     tenant_slug: Option<String>,
     comment_id: String,
+    command_id: String,
     status: BlogModerationStatus,
     locale: Option<String>,
 ) -> Result<bool, GraphqlHttpError> {
@@ -99,6 +102,7 @@ pub async fn moderate_comment(
         MODERATE_BLOG_COMMENT_MUTATION,
         ModerateCommentVariables {
             id: comment_id,
+            command_id,
             status: status.graphql_value().to_string(),
             locale,
         },
