@@ -124,6 +124,16 @@ identity, and bounded technical outcome codes only. Source/target text,
 proposal values, operator reasons, claims, roles, and owner receipts remain in
 their owning records.
 
+## Comments Lifecycle Events
+
+`rustok-comments` is the canonical owner for comment lifecycle events. It publishes
+`comment.created`, `comment.updated`, `comment.status_changed`, and
+`comment.deleted` through the transactional outbox. `rustok-blog` consumes these
+events as an idempotent projection: only active/deleted transitions change
+`comment_count`, while every processed lifecycle event advances the Blog
+public-comment snapshot cursor. The cursor is part of the snapshot identity, so
+cache invalidation is revision-based rather than a key-enumeration path.
+
 ## Commerce Events
 
 For the commerce family, the same principle applies:
