@@ -242,11 +242,9 @@ impl VoteService {
             return Ok(HashMap::new());
         }
 
-        if !ForumEngagementMode::resolve(&self.db, tenant_id)
-            .await?
-            .is_internal_voting()
-        {
-            return Ok(HashMap::new());
+        match ForumEngagementMode::resolve(&self.settings, tenant_id).await? {
+            mode if mode.is_internal_voting() => {}
+            _ => return Ok(HashMap::new()),
         }
 
         let votes = forum_reply_vote::Entity::find()
