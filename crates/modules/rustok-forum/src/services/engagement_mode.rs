@@ -30,13 +30,19 @@ impl ForumEngagementMode {
             .one(db)
             .await?;
 
-        Self::from_forum_settings(
-            forum_module
-                .as_ref()
-                .map(|module| &module.settings),
-        )
-        .await
-        .map_err(Into::into)
+        if !forum_use_reactions(forum_module.as_ref().map(|module| &module.settings)) {
+            return Ok(Self::InternalVotes);
+        }
+
+        let reactions_enabled = tenant_module::Entity::find()
+            .filter(tenant_module::Column::TenantId.eq(tenant_id))
+            .filter(tenant_module::Column::ModuleSlug.eq(FORUM_REACTIONS_MODULE_SLUG))
+            .filter(tenant_module::Column::Enabled.eq(true))
+            .one(db)
+            .await?
+            .is_some();
+
+        Self::from_parts(true, reactions_enabled)
     }
 
     pub async fn resolve_in_tx(
@@ -49,7 +55,8 @@ impl ForumEngagementMode {
 
         let reaction_query = tenant_module::Entity::find()
             .filter(tenant_module::Column::TenantId.eq(tenant_id))
-            .filter(tenant_module::Column::ModuleSlug.eq(FORUM_REACTIONS_MODULE_SLUG));
+            .filter(tenant_module::Column::ModuleSlug.eq(FORUM_REACTIONS_MODULE_SLUG))
+            .filter(tenant_module::Column::Enabled.eq(true));
 
         let (forum_module, reactions_module) = match txn.get_database_backend() {
             DbBackend::Sqlite => (
@@ -68,48 +75,15 @@ impl ForumEngagementMode {
         };
 
         Self::from_parts(
-            forum_module
-                .as_ref()
-                .map(|module| &module.settings),
-            reactions_module.is_some_and(|module| module.enabled),
+            forum_use_reactions(forum_module.as_ref().map(|module| &module.settings)),
+            reactions_module.is_some(),
         )
     }
 
-    fn from_forum_settings(
-        settings: Option<&Value>,
-    ) -> Result<Self, ForumConfigurationError> {
-        let use_reactions = settings
-            .and_then(Value::as_object)
-            .and_then(|object| object.get(FORUM_USE_REACTIONS_SETTING))
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-
-        if !use_reactions {
-            return Ok(Self::InternalVotes);
-        }
-
-        let reactions_enabled = settings
-            .as_ref()
-            .and_then(|_| None)
-            .unwrap_or(false);
-
-        if reactions_enabled {
-            Ok(Self::Reactions)
-        } else {
-            Err(ForumConfigurationError::ReactionsModuleDisabled)
-        }
-    }
-
     fn from_parts(
-        forum_settings: Option<&Value>,
+        use_reactions: bool,
         reactions_enabled: bool,
     ) -> ForumResult<Self> {
-        let use_reactions = forum_settings
-            .and_then(Value::as_object)
-            .and_then(|object| object.get(FORUM_USE_REACTIONS_SETTING))
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-
         if !use_reactions {
             return Ok(Self::InternalVotes);
         }
@@ -138,25 +112,17 @@ impl ForumEngagementMode {
     }
 }
 
-#[derive(Debug)]
-enum ForumConfigurationError {
-    ReactionsModuleDisabled,
-}
-
-impl From<ForumConfigurationError> for ForumError {
-    fn from(value: ForumConfigurationError) -> Self {
-        match value {
-            ForumConfigurationError::ReactionsModuleDisabled => ForumError::capability_unavailable(
-                "reactions",
-                "FORUM_REACTIONS_CAPABILITY_UNAVAILABLE",
-            ),
-        }
-    }
+fn forum_use_reactions(settings: Option<&Value>) -> bool {
+    settings
+        .and_then(Value::as_object)
+        .and_then(|object| object.get(FORUM_USE_REACTIONS_SETTING))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
 mod tests {
-    use sea_orm::Database;
+    use sea_orm::{ConnectionTrait, Database};
 
     use super::{ForumEngagementMode, FORUM_USE_REACTIONS_SETTING};
 
@@ -175,12 +141,9 @@ mod tests {
         .await
         .expect("schema");
 
-        let mode = ForumEngagementMode::resolve(
-            &db,
-            uuid::Uuid::new_v4(),
-        )
-        .await
-        .expect("mode");
+        let mode = ForumEngagementMode::resolve(&db, uuid::Uuid::new_v4())
+            .await
+            .expect("mode");
 
         assert_eq!(mode, ForumEngagementMode::InternalVotes);
     }
