@@ -68,6 +68,16 @@ requireContains(
 );
 requireContains(
   composition,
+  "forum_reactions_enabled_for_tenant",
+  "Forum topic reaction composition must honor the Forum-specific Reactions setting",
+);
+requireContains(
+  composition,
+  "useReactions",
+  "Forum topic reaction composition must read the Forum useReactions setting",
+);
+requireContains(
+  composition,
   'route.route_segment.as_deref() != Some(FORUM_ROUTE_SEGMENT)',
   "Topic reaction composition must run only on the Forum module route, never the shared home slot",
 );
