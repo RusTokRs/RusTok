@@ -195,10 +195,14 @@ pub fn build_shared_runtime_extensions_with_host_providers(
 
     // Static/native tenant settings are owned by rustok-modules. Consumers receive
     // only the owner port through the neutral runtime extension registry.
+    let static_settings_reader = std::sync::Arc::new(
+        rustok_modules::DatabaseStaticModuleSettingsReader::new(db.clone()),
+    );
     extensions.insert(rustok_api::SharedStaticModuleSettingsReader(
-        std::sync::Arc::new(rustok_modules::DatabaseStaticModuleSettingsReader::new(
-            db.clone(),
-        )),
+        static_settings_reader.clone(),
+    ));
+    extensions.insert(rustok_api::SharedStaticModuleSettingsTransactionReader(
+        static_settings_reader,
     ));
 
 
