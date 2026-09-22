@@ -20,7 +20,10 @@ use once_cell::sync::Lazy;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
-use rustok_api::normalize_locale_tag;
+use rustok_api::{
+    PortError, PortErrorKind, SharedStaticModuleSettingsReader, StaticModuleSettingsReader,
+    normalize_locale_tag,
+};
 use rustok_content::normalize_locale_code;
 use rustok_core::ModuleRuntimeExtensions;
 #[cfg(test)]
@@ -31,8 +34,6 @@ use rustok_seo_targets::{
     SeoTargetCapabilityKind, SeoTargetRegistry, SeoTargetRegistryEntry, SeoTargetSlug,
     seo_target_registry_from_extensions,
 };
-use rustok_tenant::entities::tenant_module;
-
 use crate::dto::{SeoAlternateLink, SeoModuleSettings, SeoOpenGraph};
 use crate::entities::{self as seo_meta, meta_translation, seo_redirect};
 use crate::{SeoError, SeoResult};
@@ -88,6 +89,7 @@ pub(crate) struct SeoService {
     event_bus: TransactionalEventBus,
     registry: Arc<SeoTargetRegistry>,
     media_asset_read_port: Option<Arc<dyn MediaAssetReadPort>>,
+    static_settings_reader: Option<SharedStaticModuleSettingsReader>,
 }
 
 #[derive(Clone)]
@@ -137,6 +139,7 @@ impl SeoService {
             event_bus,
             registry,
             media_asset_read_port: None,
+            static_settings_reader: None,
         }
     }
 
@@ -152,7 +155,14 @@ impl SeoService {
     ) -> SeoResult<Self> {
         let registry = seo_target_registry_from_extensions(extensions)
             .ok_or_else(|| SeoError::configuration("SEO target registry is not initialized"))?;
-        let service = Self::new(db, event_bus, registry);
+        let settings_reader = extensions
+            .get::<SharedStaticModuleSettingsReader>()
+            .cloned()
+            .ok_or_else(|| {
+                SeoError::configuration("SEO static settings reader is not initialized")
+            })?;
+        let service = Self::new(db, event_bus, registry)
+            .with_static_settings_reader(settings_reader);
         if let Some(provider) = extensions.get::<SeoMediaAssetReadProvider>() {
             Ok(service.with_media_asset_read_port(provider.port()))
         } else {
@@ -177,24 +187,32 @@ impl SeoService {
     }
 
     pub async fn is_enabled(&self, tenant_id: Uuid) -> SeoResult<bool> {
-        tenant_module::Entity::is_enabled(&self.db, tenant_id, MODULE_SLUG)
-            .await
-            .map_err(SeoError::from)
+        let snapshot = self.static_settings_snapshot(tenant_id).await?;
+        Ok(snapshot.map(|snapshot| snapshot.enabled).unwrap_or(false))
     }
 
     pub async fn load_settings(&self, tenant_id: Uuid) -> SeoResult<SeoModuleSettings> {
-        let Some(module) = tenant_module::Entity::find()
-            .filter(tenant_module::Column::TenantId.eq(tenant_id))
-            .filter(tenant_module::Column::ModuleSlug.eq(MODULE_SLUG))
-            .one(&self.db)
-            .await?
-        else {
+        let Some(snapshot) = self.static_settings_snapshot(tenant_id).await? else {
             return Ok(SeoModuleSettings::default());
         };
 
         Ok(Self::normalize_settings(parse_persisted_settings(
-            module.settings,
+            snapshot.settings,
         )?))
+    }
+
+    async fn static_settings_snapshot(
+        &self,
+        tenant_id: Uuid,
+    ) -> SeoResult<Option<rustok_api::StaticModuleSettingsSnapshot>> {
+        let reader = self
+            .static_settings_reader
+            .as_ref()
+            .ok_or_else(|| SeoError::configuration("SEO static settings reader is unavailable"))?;
+        reader
+            .settings(tenant_id, MODULE_SLUG)
+            .await
+            .map_err(map_settings_port_error)
     }
 
     pub fn normalize_settings(mut settings: SeoModuleSettings) -> SeoModuleSettings {
@@ -232,6 +250,25 @@ impl SeoService {
         match capability {
             Some(capability) => self.registry.entries_with_capability(capability),
             None => self.registry.entries(),
+        }
+    }
+}
+
+fn map_settings_port_error(error: PortError) -> SeoError {
+    match error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => {
+            SeoError::Database(sea_orm::DbErr::Custom(
+                "static module settings reader unavailable".to_string(),
+            ))
+        }
+        PortErrorKind::InvariantViolation => {
+            SeoError::configuration("static module settings state is invalid")
+        }
+        PortErrorKind::Validation
+        | PortErrorKind::NotFound
+        | PortErrorKind::Conflict
+        | PortErrorKind::Forbidden => {
+            SeoError::configuration("static module settings read was rejected")
         }
     }
 }
