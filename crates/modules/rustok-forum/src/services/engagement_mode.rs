@@ -154,4 +154,20 @@ mod tests {
     fn forum_setting_name_is_stable() {
         assert_eq!(FORUM_USE_REACTIONS_SETTING, "useReactions");
     }
+
+    #[test]
+    fn forum_setting_selects_reactions_only_when_owner_module_is_enabled() {
+        assert_eq!(
+            ForumEngagementMode::from_parts(false, true).expect("internal voting"),
+            ForumEngagementMode::InternalVotes
+        );
+        assert_eq!(
+            ForumEngagementMode::from_parts(true, true).expect("reactions"),
+            ForumEngagementMode::Reactions
+        );
+        assert!(
+            ForumEngagementMode::from_parts(true, false).is_err(),
+            "selecting reactions without the shared module must fail closed"
+        );
+    }
 }
