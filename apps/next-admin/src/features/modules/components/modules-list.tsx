@@ -1103,15 +1103,15 @@ export function ModulesList({
           }}
           apiOpts={apiOpts}
           settingsFields={
-            settingsDialog.slug === 'forum' ? (
-              <ForumModuleSettingsFields
-                settingsText={settingsDialog.settings}
-                onSettingsTextChange={(settings) =>
-                  setSettingsDialog((prev) => ({ ...prev, settings }))
-                }
-                disabled={false}
-              />
-            ) : undefined
+            settingsDialog.slug === 'forum'
+              ? ({ settingsText, onSettingsTextChange, disabled }) => (
+                  <ForumModuleSettingsFields
+                    settingsText={settingsText}
+                    onSettingsTextChange={onSettingsTextChange}
+                    disabled={disabled}
+                  />
+                )
+              : undefined
           }
         />
       )}
