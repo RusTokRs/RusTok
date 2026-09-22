@@ -17,7 +17,13 @@ struct ForumSettings {
     use_reactions: bool,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Partiaimpl ForumEngagementMode {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ForumEngagementMode {
+    InternalVotes,
+    Reactions,
+}
+
+impl ForumEngagementMode {
     pub async fn resolve(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -99,66 +105,11 @@ struct ForumSettings {
 fn parse_forum_settings(value: &Value) -> ForumResult<Option<ForumSettings>> {
     serde_json::from_value::<ForumSettings>(value.clone())
         .map(Some)
-        .map_err(|error| ForumError::Validation(format!(
-            "Forum module settings are invalid: {error}"
-        )))
+        .map_err(|error| {
+            ForumError::Validation(format!("Forum module settings are invalid: {error}"))
+        })
 }
 
-alue::as_bool)
-            .unwrap_or(false),
-        _ => false,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{ForumEngagementMode, FORUM_USE_REACTIONS_SETTING};
-    
-    #[tokio::test]
-    async fn forum_defaults_to_internal_votes_without_an_override() {
-        use sea_orm::{ConnectionTrait, Database};
-        let db = Database::connect("sqlite::memory:").await.expect("db");
-        db.execute_unprepared(
-            "CREATE TABLE tenant_modules (
-                id TEXT NOT NULL PRIMARY KEY,
-                tenant_id TEXT NOT NULL,
-                module_slug TEXT NOT NULL,
-                enabled BOOLEAN NOT NULL,
-                settings TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )",
-        )
-        .await
-        .expect("schema");
-
-        let mode = ForumEngagementMode::resolve(&db, uuid::Uuid::new_v4())
-            .await
-            .expect("mode");
-        assert_eq!(mode, ForumEngagementMode::InternalVotes);
-    }
-
-    #[test]
-    fn forum_setting_uses_canonical_key() {
-        assert_eq!(FORUM_USE_REACTIONS_SETTING, "use_reactions");
-    }
-
-    #[test]
-    fn forum_setting_selects_reactions_only_when_shared_module_is_enabled() {
-        assert_eq!(
-            ForumEngagementMode::from_parts(false, true).expect("internal voting"),
-            ForumEngagementMode::InternalVotes
-        );
-        assert_eq!(
-            ForumEngagementMode::from_parts(true, true).expect("reactions"),
-            ForumEngagementMode::Reactions
-        );
-        assert!(
-            ForumEngagementMode::from_parts(true, false).is_err(),
-            "selecting reactions without the shared module must fail closed"
-        );
-    }
-}
 #[cfg(test)]
 mod tests {
     use sea_orm::{ConnectionTrait, Database};
@@ -190,12 +141,12 @@ mod tests {
     }
 
     #[test]
-    fn forum_setting_name_is_stable() {
+    fn forum_setting_name_is_canonical() {
         assert_eq!(FORUM_USE_REACTIONS_SETTING, "use_reactions");
     }
 
     #[test]
-    fn forum_setting_selects_reactions_only_when_owner_module_is_enabled() {
+    fn forum_setting_selects_reactions_only_when_shared_module_is_enabled() {
         assert_eq!(
             ForumEngagementMode::from_parts(false, true).expect("internal voting"),
             ForumEngagementMode::InternalVotes
