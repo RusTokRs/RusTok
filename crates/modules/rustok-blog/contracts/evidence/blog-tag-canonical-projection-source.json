@@ -36,7 +36,7 @@
     "tag_mutation_semantics_changed": true,
     "tag_mutation_atomic_reindex_implemented": false,
     "production_behavior_changed": true,
-    "database_schema_changed": false,
+    "database_schema_changed": true,
     "ffa_promoted": false,
     "fba_promoted": false,
     "search_allowed_taxonomy_scopes": [
@@ -44,7 +44,10 @@
       "module:blog"
     ],
     "blog_global_terms_are_readable": true,
-    "blog_global_terms_are_not_mutable": true
+    "blog_global_terms_are_not_mutable": true,
+    "tag_usage_projection_table": "blog_tag_usage",
+    "tag_list_database_pagination": true,
+    "tag_usage_projection_is_derived_state": true
   },
   "rollout_requirements": [
     "execute Blog tag read evidence against real owner tables",
