@@ -183,6 +183,14 @@ pub async fn restore_topic(
     graphql_adapter::restore_topic(token, tenant_slug, id).await
 }
 
+pub async fn restore_reply(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<(), ApiError> {
+    graphql_adapter::restore_reply(token, tenant_slug, id).await
+}
+
 pub async fn fetch_replies(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -365,6 +373,7 @@ mod tests {
             "update_topic",
             "delete_topic",
             "restore_topic",
+            "restore_reply",
             "fetch_replies",
         ] {
             let source = function_source(operation);
