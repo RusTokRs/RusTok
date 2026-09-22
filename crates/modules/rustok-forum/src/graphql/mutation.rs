@@ -515,7 +515,10 @@ impl ForumContentMutation {
         let tenant = ctx.data::<rustok_api::TenantContext>()?;
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
-        VoteService::new(db.clone())
+        ctx.data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default()
+            .vote_service(db.clone())
             .set_topic_vote(
                 tenant_id,
                 topic_id,
@@ -569,7 +572,10 @@ impl ForumContentMutation {
         let tenant = ctx.data::<rustok_api::TenantContext>()?;
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
-        VoteService::new(db.clone())
+        ctx.data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default()
+            .vote_service(db.clone())
             .clear_topic_vote(
                 tenant_id,
                 topic_id,
@@ -623,7 +629,10 @@ impl ForumContentMutation {
         let tenant = ctx.data::<rustok_api::TenantContext>()?;
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
-        VoteService::new(db.clone())
+        ctx.data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default()
+            .vote_service(db.clone())
             .set_reply_vote(
                 tenant_id,
                 reply_id,
@@ -695,7 +704,10 @@ impl ForumContentMutation {
         let tenant = ctx.data::<rustok_api::TenantContext>()?;
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
-        VoteService::new(db.clone())
+        ctx.data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default()
+            .vote_service(db.clone())
             .clear_reply_vote(
                 tenant_id,
                 reply_id,
