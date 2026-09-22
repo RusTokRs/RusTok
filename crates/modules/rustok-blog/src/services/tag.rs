@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
+    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
     sea_query::{Expr, OnConflict},
 };
 use tracing::instrument;
@@ -323,65 +323,60 @@ async fn bump_posts_for_tag_relation_removal_in_tx(
     tenant_id: Uuid,
     tag_id: Uuid,
 ) -> BlogResult<()> {
-    let relations = blog_post_tag::Entity::find()
+    let valid_post_ids = blog_post::Entity::find()
+        .select_only()
+        .column(blog_post::Column::Id)
+        .filter(blog_post::Column::TenantId.eq(tenant_id))
+        .filter(blog_post::Column::Version.gt(0))
+        .filter(blog_post::Column::Version.ne(i64::MAX));
+
+    let relation_filter = blog_post_tag::Entity::find()
+        .select_only()
+        .column(blog_post_tag::Column::PostId)
+        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
+        .filter(blog_post_tag::Column::TagId.eq(tag_id));
+
+    let relation_count = blog_post_tag::Entity::find()
         .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
         .filter(blog_post_tag::Column::TagId.eq(tag_id))
-        .order_by_asc(blog_post_tag::Column::PostId)
-        .all(txn)
+        .count(txn)
         .await?;
 
+    let valid_relation_count = blog_post_tag::Entity::find()
+        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
+        .filter(blog_post_tag::Column::TagId.eq(tag_id))
+        .filter(blog_post_tag::Column::PostId.in_subquery(valid_post_ids.clone()))
+        .count(txn)
+        .await?;
+
+    if relation_count != valid_relation_count {
+        return Err(BlogError::invariant(format!(
+            "Blog tag {tag_id} has {relation_count} post relation(s), but only {valid_relation_count} reference posts with a valid persisted version",
+        )));
+    }
+
     let now = Utc::now();
-    for relation in relations {
-        let post = blog_post::Entity::find_by_id(relation.post_id)
-            .filter(blog_post::Column::TenantId.eq(tenant_id))
-            .one(txn)
-            .await?
-            .ok_or_else(|| {
-                BlogError::invariant(format!(
-                    "Blog post-tag relation {} references missing post {}",
-                    relation.tag_id, relation.post_id
-                ))
-            })?;
+    let updated = blog_post::Entity::update_many()
+        .col_expr(
+            blog_post::Column::Version,
+            Expr::col(blog_post::Column::Version).add(1),
+        )
+        .col_expr(
+            blog_post::Column::UpdatedAt,
+            Expr::value(now),
+        )
+        .filter(blog_post::Column::TenantId.eq(tenant_id))
+        .filter(blog_post::Column::Id.in_subquery(relation_filter))
+        .filter(blog_post::Column::Version.gt(0))
+        .filter(blog_post::Column::Version.ne(i64::MAX))
+        .exec(txn)
+        .await?;
 
-        if post.version <= 0 {
-            return Err(BlogError::invariant(format!(
-                "Blog post {} has invalid persisted version {}",
-                post.id, post.version
-            )));
-        }
-
-        let next_version = post
-            .version
-            .checked_add(1)
-            .filter(|next| *next > 0)
-            .ok_or_else(|| {
-                BlogError::invariant(format!(
-                    "Blog post version {} is invalid or exhausted",
-                    post.version
-                ))
-            })?;
-
-        let updated = blog_post::Entity::update_many()
-            .col_expr(
-                blog_post::Column::Version,
-                Expr::value(next_version),
-            )
-            .col_expr(
-                blog_post::Column::UpdatedAt,
-                Expr::value(now),
-            )
-            .filter(blog_post::Column::Id.eq(post.id))
-            .filter(blog_post::Column::TenantId.eq(tenant_id))
-            .filter(blog_post::Column::Version.eq(post.version))
-            .exec(txn)
-            .await?;
-
-        if updated.rows_affected != 1 {
-            return Err(BlogError::conflict(format!(
-                "Blog post {} changed before Tag relation invalidation could commit",
-                post.id
-            )));
-        }
+    if updated.rows_affected as u64 != valid_relation_count {
+        return Err(BlogError::conflict(format!(
+            "Blog tag {tag_id} invalidated {} post(s), expected {valid_relation_count}",
+            updated.rows_affected
+        )));
     }
 
     Ok(())
