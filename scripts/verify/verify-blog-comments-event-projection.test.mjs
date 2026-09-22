@@ -155,6 +155,9 @@ async fn duplicate_delivery_updates_counter_and_outbox_once()
 handler.handle(&envelope).await?;
 ${dispatcherSource}
 ${concurrencySource}
+async fn update_and_status_events_advance_projection_cursor_without_count_change()
+DomainEvent::CommentUpdated
+DomainEvent::CommentStatusChanged
 async fn delete_before_create_stays_non_negative_and_replays_in_order()
 DomainEvent::CommentDeleted
 let comment_id = Uuid::new_v4();
@@ -265,6 +268,8 @@ let handlers = registry.into_handlers();
 assert_eq!(handlers.len(), 1);
 assert_eq!(handler.name(), "blog_comment_projection");
 assert!(handler.handles(&blog_created));
+assert!(handler.handles(&blog_updated));
+assert!(handler.handles(&blog_status_changed));
 assert!(handler.handles(&blog_deleted));
 assert!(!handler.handles(&forum_created));
 }`;
