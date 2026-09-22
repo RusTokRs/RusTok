@@ -124,13 +124,17 @@ impl ForumEngagementMode {
             ForumSettings::default()
         };
 
+        if !forum_settings.use_reactions {
+            return Ok(Self::InternalVotes);
+        }
+
         let reactions_enabled = reader
             .settings_in_tx(txn, tenant_id, FORUM_REACTIONS_MODULE_SLUG)
             .await
             .map_err(map_port_error)?
             .is_some_and(|snapshot| snapshot.enabled);
 
-        Self::from_parts(forum_settings.use_reactions, reactions_enabled)
+        Self::from_parts(true, reactions_enabled)
     }
 
     fn from_parts(use_reactions: bool, reactions_enabled: bool) -> ForumResult<Self> {
