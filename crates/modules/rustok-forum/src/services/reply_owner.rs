@@ -25,7 +25,9 @@ use super::category_audience::lock_category_tree_in_tx;
 use super::reply_create_audience_authorization::ForumReplyCreateAudienceAuthorizationService;
 use super::topic_reply_create_audience::lock_topic_reply_create_audience_in_tx;
 use super::mention_relation::MentionRelationService;
-use super::projection_invalidation::publish_forum_category_projection_in_tx;
+use super::projection_invalidation::{
+    publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
+};
 use super::rbac::{enforce_owned_scope, enforce_scope};
 use super::reply;
 use super::topic_owner::TopicService;
@@ -42,6 +44,7 @@ pub(crate) struct ReplyRemovalOutcome {
     pub(crate) category_id: Uuid,
     pub(crate) old_status: ReplyStatus,
     pub(crate) was_public: bool,
+    pub(crate) solution_removed: bool,
 }
 
 /// Public owner service for reply commands.
@@ -104,6 +107,16 @@ impl ReplyService {
                 tenant_id,
                 security.user_id,
                 outcome.category_id,
+            )
+            .await?;
+        }
+        if outcome.was_public || outcome.solution_removed {
+            publish_forum_topic_projection_in_tx(
+                &self.event_bus,
+                &txn,
+                tenant_id,
+                security.user_id,
+                outcome.topic_id,
             )
             .await?;
         }
@@ -215,6 +228,16 @@ impl ReplyService {
             )
             .await?;
         }
+        if snapshot.previous_status == ReplyStatus::Approved || snapshot.solution_marked_at.is_some() {
+            publish_forum_topic_projection_in_tx(
+                &self.event_bus,
+                &txn,
+                tenant_id,
+                security.user_id,
+                topic.id,
+            )
+            .await?;
+        }
 
         clear_reply_delete_snapshot_in_tx(&txn, tenant_id, reply_id).await?;
 
@@ -228,8 +251,8 @@ impl ReplyService {
     /// This is the single state path for soft-delete/tombstone capture,
     /// accepted-solution cleanup and public/author/solution accounting. It does
     /// not perform authorization or publish events; the caller must publish the
-    /// established `ForumReplyStatusChanged` and category projection in this
-    /// same transaction using the returned facts.
+    /// established `ForumReplyStatusChanged`, category projection, and topic
+    /// projection in this same transaction using the returned facts.
     pub(crate) async fn remove_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
@@ -278,6 +301,7 @@ impl ReplyService {
             category_id: topic.category_id,
             old_status: reply.status,
             was_public,
+            solution_removed,
         })
     }
 
