@@ -121,7 +121,10 @@ impl CommentService {
         // target before reporting success. If terminal deletion won the race, compensate
         // the already-created comment using a fresh idempotent delete command; the
         // terminal TargetDeleted event remains the durable cross-owner cleanup backstop.
-        if self.ensure_post_exists(tenant_id, post_id).await.is_err() {
+        if matches!(
+            self.ensure_post_exists(tenant_id, post_id).await,
+            Err(BlogError::PostNotFound(_))
+        ) {
             let compensation_command_id = Uuid::new_v4();
             self.require_comments_thread_port()?
                 .delete_comment(
