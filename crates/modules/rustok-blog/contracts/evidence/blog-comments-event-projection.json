@@ -31,7 +31,6 @@
       "shared_created_updated_status_deleted_classifier",
       "non_blog_target_rejection",
       "projection_delta_tracks_comment_state_not_delivery_order",
-      "snapshot_cursor_advances_with_every_processed_lifecycle_event",
       "counter_transition_is_non_negative_and_does_not_touch_business_revision"
     ]
   },
