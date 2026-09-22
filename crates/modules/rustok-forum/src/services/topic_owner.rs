@@ -21,6 +21,7 @@ use crate::state_machine::{ReplyStatus, TopicStatus};
 
 use self::route_tombstone_visibility::ForumTopicRouteTombstoneVisibilityService;
 use super::category::CategoryService;
+use super::category_lifecycle::{ensure_category_restore_target_is_active_in_tx, lock_category_tree_in_tx};
 use super::topic_create_audience_authorization::ForumTopicCreateAudienceAuthorizationService;
 use super::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
@@ -109,6 +110,7 @@ impl TopicService {
 
         let txn = self.db.begin().await?;
         lock_topic_delete_tenant_in_tx(&txn, tenant_id).await?;
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
         ForumTopicRouteTombstoneVisibilityService::lock_category_scope_in_tx(&txn, tenant_id)
             .await?;
         claim_topic_delete_in_tx(&txn, tenant_id, topic_id).await?;
@@ -240,6 +242,7 @@ impl TopicService {
 
         let txn = self.db.begin().await?;
         lock_topic_delete_tenant_in_tx(&txn, tenant_id).await?;
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
         ForumTopicRouteTombstoneVisibilityService::lock_category_scope_in_tx(&txn, tenant_id)
             .await?;
         ForumTopicRouteTombstoneVisibilityService::lock_topic_audience_scope_in_tx(
@@ -248,6 +251,7 @@ impl TopicService {
         .await?;
 
         let topic = topic::TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
+        ensure_category_restore_target_is_active_in_tx(&txn, tenant_id, topic.category_id).await?;
         if !topic_is_deleted_in_tx(&txn, tenant_id, topic_id).await? {
             return Err(ForumError::TopicRestoreUnavailable(topic_id));
         }
@@ -390,6 +394,12 @@ impl TopicService {
         )
         .await?;
 
+        ForumTopicRouteTombstoneVisibilityService::clear_delete_snapshot_in_tx(
+            &txn,
+            tenant_id,
+            topic_id,
+        )
+        .await?;
         clear_topic_delete_snapshots_in_tx(&txn, tenant_id, topic_id).await?;
 
         txn.commit().await?;

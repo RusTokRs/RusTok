@@ -305,40 +305,51 @@ impl CommentsService {
         record_entrypoint("update_comment");
         let started = Instant::now();
         let result = async {
-            let locale = normalize_locale(&input.locale)?;
-            let Some(body) = input.body else {
-                let existing = self.find_comment(tenant_id, comment_id, false).await?;
-                self.enforce_owned_scope(&security, Action::Update, existing.author_id)?;
-                return self
-                    .get_comment(tenant_id, security, comment_id, &locale, None)
-                    .await;
-            };
-            let body = serialize_comment_body(body)?;
-
             let txn = self.db.begin().await?;
-            let existing = comment::Entity::find_by_id(comment_id)
-                .filter(comment::Column::TenantId.eq(tenant_id))
-                .filter(comment::Column::DeletedAt.is_null())
-                .lock_exclusive()
-                .one(&txn)
-                .await?
-                .ok_or(CommentsError::CommentNotFound(comment_id))?;
-            self.enforce_owned_scope(&security, Action::Update, existing.author_id)?;
-
-            self.upsert_body_in_tx(&txn, comment_id, &locale, body)
+            let record = self
+                .update_comment_in_tx(&txn, tenant_id, security, comment_id, input)
                 .await?;
-
-            let mut active: comment::ActiveModel = existing.into();
-            active.updated_at = Set(Utc::now().into());
-            active.update(&txn).await?;
             txn.commit().await?;
-
-            self.get_comment(tenant_id, security, comment_id, &locale, None)
-                .await
+            Ok(record)
         }
         .await;
         record_operation_result("comments.update_comment", started, &result);
         result
+    }
+
+    pub(crate) async fn update_comment_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        comment_id: Uuid,
+        input: UpdateCommentInput,
+    ) -> CommentsResult<CommentRecord> {
+        let locale = normalize_locale(&input.locale)?;
+        if let Some(body) = input.body {
+            let body = serialize_comment_body(body)?;
+            let existing = comment::Entity::find_by_id(comment_id)
+                .filter(comment::Column::TenantId.eq(tenant_id))
+                .filter(comment::Column::DeletedAt.is_null())
+                .lock_exclusive()
+                .one(txn)
+                .await?
+                .ok_or(CommentsError::CommentNotFound(comment_id))?;
+            self.enforce_owned_scope(&security, Action::Update, existing.author_id)?;
+
+            self.upsert_body_in_tx(txn, comment_id, &locale, body)
+                .await?;
+
+            let mut active: comment::ActiveModel = existing.into();
+            active.updated_at = Set(Utc::now().into());
+            active.update(txn).await?;
+        } else {
+            let existing = self.find_comment_in_tx(txn, tenant_id, comment_id, false).await?;
+            self.enforce_owned_scope(&security, Action::Update, existing.author_id)?;
+        }
+
+        self.get_comment_record_in_tx(txn, tenant_id, comment_id, &locale, None)
+            .await
     }
 
     #[instrument(skip(self, security))]
@@ -352,40 +363,50 @@ impl CommentsService {
         let started = Instant::now();
         let result = async {
             let txn = self.db.begin().await?;
-            let existing = self
-                .find_comment_in_tx(&txn, tenant_id, comment_id, false)
+            self.delete_comment_record_in_tx(&txn, tenant_id, security, comment_id)
                 .await?;
-            let thread = comment_thread::Entity::find_by_id(existing.thread_id)
-                .filter(comment_thread::Column::TenantId.eq(tenant_id))
-                .one(&txn)
-                .await?
-                .ok_or_else(|| CommentsError::CommentThreadNotFound {
-                    target_type: "unknown".to_string(),
-                    target_id: Uuid::nil(),
-                })?;
-            let target_type = thread.target_type;
-            let target_id = thread.target_id;
-            let author_id = existing.author_id;
-            self.delete_comment_in_tx(&txn, tenant_id, security.clone(), comment_id)
-                .await?;
-            self.publish_comment_deleted_in_tx(
-                &txn,
-                CommentEventContext {
-                    tenant_id,
-                    actor_id: security.user_id,
-                    comment_id,
-                    target_type,
-                    target_id,
-                    author_id,
-                },
-            )
-            .await?;
             txn.commit().await?;
             Ok(())
         }
         .await;
         record_operation_result("comments.delete_comment", started, &result);
         result
+    }
+
+    pub(crate) async fn delete_comment_record_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        comment_id: Uuid,
+    ) -> CommentsResult<()> {
+        let existing = self.find_comment_in_tx(txn, tenant_id, comment_id, false).await?;
+        let thread = comment_thread::Entity::find_by_id(existing.thread_id)
+            .filter(comment_thread::Column::TenantId.eq(tenant_id))
+            .one(txn)
+            .await?
+            .ok_or_else(|| CommentsError::CommentThreadNotFound {
+                target_type: "unknown".to_string(),
+                target_id: Uuid::nil(),
+            })?;
+        let target_type = thread.target_type;
+        let target_id = thread.target_id;
+        let author_id = existing.author_id;
+
+        self.delete_comment_in_tx(txn, tenant_id, security.clone(), comment_id)
+            .await?;
+        self.publish_comment_deleted_in_tx(
+            txn,
+            CommentEventContext {
+                tenant_id,
+                actor_id: security.user_id,
+                comment_id,
+                target_type,
+                target_id,
+                author_id,
+            },
+        )
+        .await
     }
 
     pub async fn delete_comment_in_tx(
@@ -783,38 +804,62 @@ impl CommentsService {
         record_entrypoint("set_comment_status");
         let started = Instant::now();
         let result = async {
-            self.enforce_moderation_scope(&security)?;
-            let locale = normalize_locale(locale)?;
-            let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
-
             let txn = self.db.begin().await?;
-            let existing = comment::Entity::find_by_id(comment_id)
-                .filter(comment::Column::TenantId.eq(tenant_id))
-                .filter(comment::Column::DeletedAt.is_null())
-                .lock_exclusive()
-                .one(&txn)
-                .await?
-                .ok_or(CommentsError::CommentNotFound(comment_id))?;
-            if existing.status != status {
-                let mut active: comment::ActiveModel = existing.clone().into();
-                active.status = Set(status);
-                active.updated_at = Set(Utc::now().into());
-                active.update(&txn).await?;
-            }
+            let record = self
+                .set_comment_status_in_tx(
+                    &txn,
+                    tenant_id,
+                    security,
+                    comment_id,
+                    status,
+                    locale,
+                    fallback_locale,
+                )
+                .await?;
             txn.commit().await?;
-
-            self.get_comment(
-                tenant_id,
-                security,
-                comment_id,
-                &locale,
-                fallback_locale.as_deref(),
-            )
-            .await
+            Ok(record)
         }
         .await;
         record_operation_result("comments.set_comment_status", started, &result);
         result
+    }
+
+    pub(crate) async fn set_comment_status_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        comment_id: Uuid,
+        status: crate::dto::CommentStatus,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> CommentsResult<CommentRecord> {
+        self.enforce_moderation_scope(&security)?;
+        let locale = normalize_locale(locale)?;
+        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+
+        let existing = comment::Entity::find_by_id(comment_id)
+            .filter(comment::Column::TenantId.eq(tenant_id))
+            .filter(comment::Column::DeletedAt.is_null())
+            .lock_exclusive()
+            .one(txn)
+            .await?
+            .ok_or(CommentsError::CommentNotFound(comment_id))?;
+        if existing.status != status {
+            let mut active: comment::ActiveModel = existing.clone().into();
+            active.status = Set(status);
+            active.updated_at = Set(Utc::now().into());
+            active.update(txn).await?;
+        }
+
+        self.get_comment_record_in_tx(
+            txn,
+            tenant_id,
+            comment_id,
+            &locale,
+            fallback_locale.as_deref(),
+        )
+        .await
     }
 
     #[instrument(skip(self, security), fields(tenant_id = %tenant_id, thread_id = %thread_id, status = ?status))]

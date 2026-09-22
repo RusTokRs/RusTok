@@ -106,15 +106,7 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context)?;
         let security = SecurityContext::try_from_port_context(&context)?;
-        let idempotency_key = context
-            .idempotency_key
-            .as_deref()
-            .ok_or_else(|| {
-                PortError::validation(
-                    "port.idempotency_key_required",
-                    "write port calls require a non-empty idempotency key",
-                )
-            })?;
+        let idempotency_key = required_idempotency_key(&context)?;
 
         let lease = match idempotency::admit(
             &self.db,
@@ -138,12 +130,17 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
             Admission::ReplayError(error) => return Err(error),
         };
 
-        let txn = self.db.begin().await.map_err(|error| {
-            PortError::unavailable(
-                "comments.operation_begin_failed",
-                error.to_string(),
-            )
-        })?;
+        let txn = match self.db.begin().await {
+            Ok(txn) => txn,
+            Err(error) => {
+                let port_error = PortError::unavailable(
+                    "comments.operation_begin_failed",
+                    error.to_string(),
+                );
+                persist_idempotency_failure(&self.db, lease, &port_error).await;
+                return Err(port_error);
+            }
+        };
         let result = self.service
             .create_comment_record_in_tx(&txn, tenant_id, security, request)
             .await
@@ -153,6 +150,7 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
             Ok(record) => {
                 if let Err(error) = idempotency::complete(&txn, lease, &record).await {
                     let rollback = txn.rollback().await;
+                    persist_idempotency_failure(&self.db, lease, &error).await;
                     tracing::error!(
                         operation_id = %lease.operation_id,
                         %error,
@@ -161,27 +159,22 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
                     );
                     return Err(error);
                 }
-                txn.commit().await.map_err(|error| {
+                let commit_result = txn.commit().await.map_err(|error| {
                     PortError::unavailable(
                         "comments.operation_commit_failed",
                         error.to_string(),
                     )
-                })?;
+                });
+                if let Err(commit_error) = commit_result {
+                    persist_idempotency_failure(&self.db, lease, &commit_error).await;
+                    return Err(commit_error);
+                }
                 Ok(record)
             }
             Err(error) => {
                 let rollback = txn.rollback().await;
-                if let Err(receipt_error) =
-                    idempotency::fail(&self.db, lease, &error).await
-                {
-                    tracing::error!(
-                        operation_id = %lease.operation_id,
-                        %error,
-                        %receipt_error,
-                        ?rollback,
-                        "Failed to persist durable Comments create failure receipt"
-                    );
-                }
+                persist_idempotency_failure(&self.db, lease, &error).await;
+                let _ = rollback;
                 Err(error)
             }
         }
@@ -260,15 +253,79 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
     ) -> Result<CommentRecord, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context)?;
-        self.service
-            .update_comment(
-                tenant_id,
-                SecurityContext::try_from_port_context(&context)?,
-                comment_id,
-                request,
-            )
+        let security = SecurityContext::try_from_port_context(&context)?;
+        let idempotency_key = required_idempotency_key(&context)?;
+        let receipt_request = (comment_id, &request);
+
+        let lease = match idempotency::admit(
+            &self.db,
+            OwnerOperationScope::Tenant(tenant_id),
+            "comments",
+            idempotency_key,
+            "update_comment",
+            &receipt_request,
+        )
+        .await?
+        {
+            Admission::Run(lease) => lease,
+            Admission::Replay(value) => serde_json::from_value(value).map_err(|error| {
+                PortError::invariant_violation(
+                    "comments.operation_receipt_corrupt",
+                    error.to_string(),
+                )
+            })?,
+            Admission::ReplayError(error) => return Err(error),
+        };
+
+        let txn = match self.db.begin().await {
+            Ok(txn) => txn,
+            Err(error) => {
+                let port_error = PortError::unavailable(
+                    "comments.operation_begin_failed",
+                    error.to_string(),
+                );
+                persist_idempotency_failure(&self.db, lease, &port_error).await;
+                return Err(port_error);
+            }
+        };
+        let result = self
+            .service
+            .update_comment_in_tx(&txn, tenant_id, security, comment_id, request)
             .await
-            .map_err(comments_error_to_port_error)
+            .map_err(comments_error_to_port_error);
+
+        match result {
+            Ok(record) => {
+                if let Err(error) = idempotency::complete(&txn, lease, &record).await {
+                    let rollback = txn.rollback().await;
+                    persist_idempotency_failure(&self.db, lease, &error).await;
+                    tracing::error!(
+                        operation_id = %lease.operation_id,
+                        %error,
+                        ?rollback,
+                        "Failed to complete durable Comments update receipt"
+                    );
+                    return Err(error);
+                }
+                let commit_result = txn.commit().await.map_err(|error| {
+                    PortError::unavailable(
+                        "comments.operation_commit_failed",
+                        error.to_string(),
+                    )
+                });
+                if let Err(commit_error) = commit_result {
+                    persist_idempotency_failure(&self.db, lease, &commit_error).await;
+                    return Err(commit_error);
+                }
+                Ok(record)
+            }
+            Err(error) => {
+                let rollback = txn.rollback().await;
+                persist_idempotency_failure(&self.db, lease, &error).await;
+                let _ = rollback;
+                Err(error)
+            }
+        }
     }
 
     async fn delete_comment(
@@ -278,14 +335,82 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
     ) -> Result<(), PortError> {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context)?;
-        self.service
-            .delete_comment(
-                tenant_id,
-                SecurityContext::try_from_port_context(&context)?,
-                comment_id,
-            )
+        let security = SecurityContext::try_from_port_context(&context)?;
+        let idempotency_key = required_idempotency_key(&context)?;
+
+        let receipt_request = (comment_id,);
+        let lease = match idempotency::admit(
+            &self.db,
+            OwnerOperationScope::Tenant(tenant_id),
+            "comments",
+            idempotency_key,
+            "delete_comment",
+            &receipt_request,
+        )
+        .await?
+        {
+            Admission::Run(lease) => lease,
+            Admission::Replay(value) => {
+                serde_json::from_value::<()>(value).map_err(|error| {
+                    PortError::invariant_violation(
+                        "comments.operation_receipt_corrupt",
+                        error.to_string(),
+                    )
+                })?;
+                return Ok(());
+            }
+            Admission::ReplayError(error) => return Err(error),
+        };
+
+        let txn = match self.db.begin().await {
+            Ok(txn) => txn,
+            Err(error) => {
+                let port_error = PortError::unavailable(
+                    "comments.operation_begin_failed",
+                    error.to_string(),
+                );
+                persist_idempotency_failure(&self.db, lease, &port_error).await;
+                return Err(port_error);
+            }
+        };
+        let result = self
+            .service
+            .delete_comment_record_in_tx(&txn, tenant_id, security, comment_id)
             .await
-            .map_err(comments_error_to_port_error)
+            .map_err(comments_error_to_port_error);
+
+        match result {
+            Ok(()) => {
+                if let Err(error) = idempotency::complete(&txn, lease, &()).await {
+                    let rollback = txn.rollback().await;
+                    persist_idempotency_failure(&self.db, lease, &error).await;
+                    tracing::error!(
+                        operation_id = %lease.operation_id,
+                        %error,
+                        ?rollback,
+                        "Failed to complete durable Comments delete receipt"
+                    );
+                    return Err(error);
+                }
+                let commit_result = txn.commit().await.map_err(|error| {
+                    PortError::unavailable(
+                        "comments.operation_commit_failed",
+                        error.to_string(),
+                    )
+                });
+                if let Err(commit_error) = commit_result {
+                    persist_idempotency_failure(&self.db, lease, &commit_error).await;
+                    return Err(commit_error);
+                }
+                Ok(())
+            }
+            Err(error) => {
+                let rollback = txn.rollback().await;
+                persist_idempotency_failure(&self.db, lease, &error).await;
+                let _ = rollback;
+                Err(error)
+            }
+        }
     }
 
     async fn set_comment_status(
@@ -296,17 +421,111 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
     ) -> Result<CommentRecord, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context)?;
-        self.service
-            .set_comment_status(
+        let security = SecurityContext::try_from_port_context(&context)?;
+        let idempotency_key = required_idempotency_key(&context)?;
+        let receipt_request = (comment_id, &request, &context.locale);
+
+        let lease = match idempotency::admit(
+            &self.db,
+            OwnerOperationScope::Tenant(tenant_id),
+            "comments",
+            idempotency_key,
+            "set_comment_status",
+            &receipt_request,
+        )
+        .await?
+        {
+            Admission::Run(lease) => lease,
+            Admission::Replay(value) => serde_json::from_value(value).map_err(|error| {
+                PortError::invariant_violation(
+                    "comments.operation_receipt_corrupt",
+                    error.to_string(),
+                )
+            })?,
+            Admission::ReplayError(error) => return Err(error),
+        };
+
+        let txn = match self.db.begin().await {
+            Ok(txn) => txn,
+            Err(error) => {
+                let port_error = PortError::unavailable(
+                    "comments.operation_begin_failed",
+                    error.to_string(),
+                );
+                persist_idempotency_failure(&self.db, lease, &port_error).await;
+                return Err(port_error);
+            }
+        };
+        let result = self
+            .service
+            .set_comment_status_in_tx(
+                &txn,
                 tenant_id,
-                SecurityContext::try_from_port_context(&context)?,
+                security,
                 comment_id,
                 request.status,
                 &context.locale,
                 request.fallback_locale.as_deref(),
             )
             .await
-            .map_err(comments_error_to_port_error)
+            .map_err(comments_error_to_port_error);
+
+        match result {
+            Ok(record) => {
+                if let Err(error) = idempotency::complete(&txn, lease, &record).await {
+                    let rollback = txn.rollback().await;
+                    persist_idempotency_failure(&self.db, lease, &error).await;
+                    tracing::error!(
+                        operation_id = %lease.operation_id,
+                        %error,
+                        ?rollback,
+                        "Failed to complete durable Comments status receipt"
+                    );
+                    return Err(error);
+                }
+                let commit_result = txn.commit().await.map_err(|error| {
+                    PortError::unavailable(
+                        "comments.operation_commit_failed",
+                        error.to_string(),
+                    )
+                });
+                if let Err(commit_error) = commit_result {
+                    persist_idempotency_failure(&self.db, lease, &commit_error).await;
+                    return Err(commit_error);
+                }
+                Ok(record)
+            }
+            Err(error) => {
+                let rollback = txn.rollback().await;
+                persist_idempotency_failure(&self.db, lease, &error).await;
+                let _ = rollback;
+                Err(error)
+            }
+        }
+    }
+}
+
+fn required_idempotency_key(context: &PortContext) -> Result<&str, PortError> {
+    context.idempotency_key.as_deref().ok_or_else(|| {
+        PortError::validation(
+            "port.idempotency_key_required",
+            "write port calls require a non-empty idempotency key",
+        )
+    })
+}
+
+async fn persist_idempotency_failure(
+    database: &DatabaseConnection,
+    lease: idempotency::Lease,
+    error: &PortError,
+) {
+    if let Err(receipt_error) = idempotency::fail(database, lease, error).await {
+        tracing::error!(
+            operation_id = %lease.operation_id,
+            %error,
+            %receipt_error,
+            "Failed to persist durable Comments failure receipt"
+        );
     }
 }
 

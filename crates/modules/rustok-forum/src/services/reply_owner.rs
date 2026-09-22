@@ -21,7 +21,7 @@ use crate::mentions::ForumContentTarget;
 use crate::state_machine::{ReplyStatus, TopicStatus};
 
 use super::category::CategoryService;
-use super::category_audience::lock_category_tree_in_tx;
+use super::category_lifecycle::{ensure_category_restore_target_is_active_in_tx, lock_category_tree_in_tx};
 use super::reply_create_audience_authorization::ForumReplyCreateAudienceAuthorizationService;
 use super::topic_reply_create_audience::lock_topic_reply_create_audience_in_tx;
 use super::mention_relation::MentionRelationService;
@@ -139,12 +139,14 @@ impl ReplyService {
         enforce_scope(&security, Resource::ForumReplies, Action::Manage)?;
 
         let txn = self.db.begin().await?;
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
         let reply = reply::ReplyService::find_reply_in_tx(&txn, tenant_id, reply_id).await?;
         if reply.status != ReplyStatus::Deleted {
             return Err(ForumError::ReplyRestoreUnavailable(reply_id));
         }
 
         let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, reply.topic_id).await?;
+        ensure_category_restore_target_is_active_in_tx(&txn, tenant_id, topic.category_id).await?;
         let snapshot = load_reply_delete_snapshot_in_tx(&txn, tenant_id, reply_id)
             .await?
             .ok_or(ForumError::ReplyRestoreUnavailable(reply_id))?;
@@ -265,7 +267,10 @@ impl ReplyService {
         }
         reply.status.validate_transition(&ReplyStatus::Deleted)?;
 
-        let topic = TopicService::find_topic_in_tx(txn, tenant_id, reply.topic_id).await?;
+        // Serialize reply deletion with topic deletion/restore. The topic row is the
+        // lifecycle boundary for the thread; without this lock a concurrent topic
+        // snapshot could observe a reply in the middle of its own delete mutation.
+        let topic = TopicService::find_topic_for_update_in_tx(txn, tenant_id, reply.topic_id).await?;
         let solution = forum_solution::Entity::find()
             .filter(forum_solution::Column::TenantId.eq(tenant_id))
             .filter(forum_solution::Column::TopicId.eq(reply.topic_id))

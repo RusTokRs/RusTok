@@ -232,6 +232,10 @@ impl ForumTopicForkService {
         }
 
         let preliminary_source = find_topic_in_tx(&txn, tenant_id, source_topic_id).await?;
+        // Keep the category-tree lock ahead of topic-row locks. Topic delete/restore uses the same
+        // order; taking the source topic first could deadlock against a concurrent lifecycle
+        // mutation that already holds the category tree and waits for this topic row.
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
         lock_fork_counter_scopes_in_tx(
             &txn,
             tenant_id,
@@ -258,7 +262,6 @@ impl ForumTopicForkService {
         ensure_category_active_in_tx(&txn, tenant_id, source.category_id).await?;
         ensure_target_topic_absent_in_tx(&txn, prepared.target_topic_id).await?;
 
-        lock_category_tree_in_tx(&txn, tenant_id).await?;
         let topic_pair = [source_topic_id, prepared.target_topic_id];
         lock_topic_audience_scopes_in_tx(&txn, tenant_id, &topic_pair).await?;
         lock_topic_reply_create_scopes_in_tx(&txn, tenant_id, &topic_pair).await?;

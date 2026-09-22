@@ -61,7 +61,9 @@ type PostsQueryResponse = {
       title: string;
       slug: string | null;
       excerpt: string | null;
+      featuredImageUrl: string | null;
       authorId: string | null;
+      tags: string[];
       publishedAt: string | null;
     }>;
     total: number;
@@ -71,7 +73,7 @@ type PostsQueryResponse = {
 const PUBLISHED_POSTS_QUERY = `
   query PublishedPosts($tenantId: UUID!, $filter: PostsFilter) {
     posts(tenantId: $tenantId, filter: $filter) {
-      items { id title slug excerpt authorId publishedAt }
+      items { id title slug excerpt featuredImageUrl authorId tags publishedAt }
       total
     }
   }
@@ -122,7 +124,7 @@ export async function fetchPublishedPosts(
   }
 
   return {
-    items: response.data.posts.items.map((item) => ({ ...item, featuredImageUrl: null, tags: [] })),
+    items: response.data.posts.items,
     total: response.data.posts.total,
   };
 }
@@ -158,16 +160,27 @@ export async function createBlogComment(
   locale: string,
   content: RichTextDocument,
 ): Promise<BlogCommentDetail> {
+  const commandId = crypto.randomUUID();
   const response = await graphql<{ createBlogComment: BlogCommentDetail }, {
     tenantId: string;
     postId: string;
-    input: { locale: string; content: RichTextDocument; parentCommentId: null };
+    input: {
+      commandId: string;
+      locale: string;
+      content: RichTextDocument;
+      parentCommentId: null;
+    };
   }>({
     query: CREATE_BLOG_COMMENT_MUTATION,
     variables: {
       tenantId,
       postId,
-      input: { locale, content, parentCommentId: null },
+      input: {
+        commandId,
+        locale,
+        content,
+        parentCommentId: null,
+      },
     },
     token,
     tenant: tenantSlug,

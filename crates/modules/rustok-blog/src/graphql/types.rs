@@ -308,6 +308,8 @@ pub struct GqlPostListItem {
     pub author_profile: Option<GqlProfileSummary>,
     pub created_at: String,
     pub published_at: Option<String>,
+    pub tags: Vec<String>,
+    pub featured_image_url: Option<String>,
     pub channel_slugs: Vec<String>,
 }
 
@@ -469,6 +471,8 @@ impl From<PostSummary> for GqlPostListItem {
             author_profile: None,
             created_at: item.created_at.to_rfc3339(),
             published_at: item.published_at.map(|value| value.to_rfc3339()),
+            tags: item.tags,
+            featured_image_url: item.featured_image_url,
             channel_slugs: item.channel_slugs,
         }
     }
