@@ -42,8 +42,8 @@
     ],
     "propagated_error_policy": "all_other_blog_errors",
     "cached_thread_snapshot": "source_verified_no_compile",
-    "comment_form_fallback": "planned",
-    "comment_form_fallback_interpretation": "active_storefront_write_surface_degraded_mode_planned",
+    "comment_form_fallback": "source_verified_hide_when_provider_unavailable",
+    "comment_form_fallback_interpretation": "The active storefront write surface is rendered only when Comments is available; unavailable and timeout states preserve the article and explicit read availability.",
     "degraded_payload": {
       "cache_hit": {
         "cached_snapshot": true,
@@ -95,16 +95,14 @@
     "inventory": "crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json",
     "active_comment_form": true,
     "active_create_comment_transport": true,
-    "legacy_degraded_mode": "hide_comment_form",
-    "legacy_registry_semantics": "fallback_vocabulary_for_active_storefront_write_surface",
-    "comment_form_fallback": "planned"
+    "legacy_degraded_mode": "hide_comment_form_on_unavailable_or_timeout",
+    "legacy_registry_semantics": "explicit_provider_absence_policy",
+    "comment_form_fallback": "source_verified"
   },
   "fallback_smoke": {
-    "status": "planned",
+    "status": "source_verified_no_compile",
     "status_scope": "cached_read_runtime_execution_only",
-    "profiles": [
-      "embedded_native"
-    ],
+    "profiles": [],
     "degraded_modes": [
       "hide_comment_form",
       "show_cached_thread_snapshot"
@@ -112,32 +110,33 @@
     "cases": [
       {
         "operation": "create_comment",
-        "profile": "embedded_native",
         "source_markers": [
           "ensure_post_exists",
           "DomainCreateCommentInput",
           "comments_thread_port",
-          "comments_write_port_context"
+          "comments_write_port_context",
+          "require_comments_thread_port"
         ],
         "typed_error_markers": [
           "PortErrorKind::Forbidden",
           "PortErrorKind::Validation",
           "PortErrorKind::Unavailable",
           "ErrorKind::ExternalService",
-          "with_error_code(error.code)"
+          "with_error_code(error.code)",
+          "COMMENTS_PROVIDER_UNAVAILABLE"
         ],
         "degraded_mode": "hide_comment_form",
-        "mode_status": "planned_runtime_execution_only",
+        "mode_status": "source_verified_no_compile",
         "expected_consumer_behavior": "the active storefront has an authenticated create-comment surface; hide_comment_form remains a planned degraded mode for provider unavailability and has not been runtime-verified"
       },
       {
         "operation": "list_comments_for_target",
-        "profile": "embedded_native",
         "source_markers": [
           "list_comments_for_target",
           "TARGET_TYPE_BLOG_POST",
           "post_id",
-          "comments_read_port_context"
+          "comments_read_port_context",
+          "require_comments_thread_port"
         ],
         "typed_error_markers": [
           "PortErrorKind::NotFound",
@@ -148,7 +147,7 @@
           "with_error_code(error.code)"
         ],
         "degraded_mode": "show_cached_thread_snapshot",
-        "mode_status": "source_ready_maintainer_execution_pending",
+        "mode_status": "source_verified_no_compile",
         "expected_consumer_behavior": "cached public snapshot source is retained for unavailable/timeout reads across GraphQL and native SSR; runtime fallback execution remains pending"
       }
     ],
