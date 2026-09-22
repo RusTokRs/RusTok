@@ -35,6 +35,10 @@ Primary entry points:
 - `BlogQuery` / `BlogMutation`
 - `controllers::axum_router`
 
+## Category owner contract
+
+Blog Category localized names are bounded by the canonical Taxonomy Category owner contract: a name is at most 120 characters. The Blog DTO/OpenAPI schema and service validation use the same bound, so invalid names fail as Blog input validation before any Taxonomy mutation is attempted.
+
 ## Post owner contract
 
 ### Create
