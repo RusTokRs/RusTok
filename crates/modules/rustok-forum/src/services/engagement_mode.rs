@@ -1,6 +1,6 @@
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, DatabaseTransaction, DbBackend, EntityTrait, QueryFilter,
-    QuerySelect,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, EntityTrait,
+    QueryFilter, QuerySelect,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -115,11 +115,20 @@ impl ForumEngagementMode {
 }
 
 fn forum_use_reactions(settings: Option<&Value>) -> bool {
-    settings
-        .and_then(Value::as_object)
-        .and_then(|object| object.get(FORUM_USE_REACTIONS_SETTING))
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
+    match settings {
+        Some(Value::Object(object)) => object
+            .get(FORUM_USE_REACTIONS_SETTING)
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        Some(Value::String(raw)) => serde_json::from_str::<Value>(raw)
+            .ok()
+            .as_ref()
+            .and_then(Value::as_object)
+            .and_then(|object| object.get(FORUM_USE_REACTIONS_SETTING))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        _ => false,
+    }
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@ use rustok_forum::{
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -322,6 +322,14 @@ async fn internal_votes_switch_by_forum_setting_independently_of_reactions_modul
     ))
     .await
     .expect("forum reactions setting should be enabled");
+
+    let all_modules = rustok_tenant::entities::tenant_module::Entity::find()
+        .all(&db)
+        .await
+        .expect("all modules");
+    eprintln!("ALL MODULES: {all_modules:?}");
+    let mode = rustok_forum::services::ForumEngagementMode::resolve(&db, tenant_id).await;
+    eprintln!("RESOLVED MODE: {mode:?}");
 
     let topic_vote_when_reactions_selected = vote_service
         .set_topic_vote(tenant_id, topic.id, voter.clone(), -1)
