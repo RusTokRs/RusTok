@@ -1,55 +1,43 @@
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, EntityTrait,
-    QueryFilter, QuerySelect,
-};
+use sea_orm::{DatabaseConnection, DatabaseTransaction};
+use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;
 
-use rustok_tenant::entities::tenant_module;
+use rustok_api::{tenant_module_settings, tenant_module_settings_in_tx};
 
 use crate::error::{ForumError, ForumResult};
 
 pub const FORUM_MODULE_SLUG: &str = "forum";
 pub const FORUM_REACTIONS_MODULE_SLUG: &str = "reactions";
-pub const FORUM_USE_REACTIONS_SETTING: &str = "useReactions";
+pub const FORUM_USE_REACTIONS_SETTING: &str = "use_reactions";
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ForumEngagementMode {
-    InternalVotes,
-    Reactions,
+#[derive(Debug, Deserialize, Default)]
+struct ForumSettings {
+    #[serde(default)]
+    use_reactions: bool,
 }
 
-impl ForumEngagementMode {
+#[derive(Clone, Copy, Debug, Eq, Partiaimpl ForumEngagementMode {
     pub async fn resolve(
         db: &DatabaseConnection,
         tenant_id: Uuid,
     ) -> ForumResult<Self> {
-        let forum_module = match tenant_module::Entity::find()
-            .filter(tenant_module::Column::TenantId.eq(tenant_id))
-            .filter(tenant_module::Column::ModuleSlug.eq(FORUM_MODULE_SLUG))
-            .one(db)
-            .await
-        {
-            Ok(module) => module,
-            Err(err) if is_missing_tenant_modules_error(&err) => return Ok(Self::InternalVotes),
-            Err(err) => return Err(ForumError::Database(err)),
-        };
+        let forum_settings = tenant_module_settings(db, tenant_id, FORUM_MODULE_SLUG)
+            .await?
+            .as_ref()
+            .map(parse_forum_settings)
+            .transpose()?
+            .flatten()
+            .unwrap_or_default();
 
-        if !forum_use_reactions(forum_module.as_ref().map(|module| &module.settings)) {
+        if !forum_settings.use_reactions {
             return Ok(Self::InternalVotes);
         }
 
-        let reactions_enabled = match tenant_module::Entity::find()
-            .filter(tenant_module::Column::TenantId.eq(tenant_id))
-            .filter(tenant_module::Column::ModuleSlug.eq(FORUM_REACTIONS_MODULE_SLUG))
-            .filter(tenant_module::Column::Enabled.eq(true))
-            .one(db)
-            .await
-        {
-            Ok(module) => module.is_some(),
-            Err(err) if is_missing_tenant_modules_error(&err) => false,
-            Err(err) => return Err(ForumError::Database(err)),
-        };
+        let reactions_enabled =
+            tenant_module_settings(db, tenant_id, FORUM_REACTIONS_MODULE_SLUG)
+                .await?
+                .is_some();
 
         Self::from_parts(true, reactions_enabled)
     }
@@ -58,53 +46,20 @@ impl ForumEngagementMode {
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
     ) -> ForumResult<Self> {
-        let forum_query = tenant_module::Entity::find()
-            .filter(tenant_module::Column::TenantId.eq(tenant_id))
-            .filter(tenant_module::Column::ModuleSlug.eq(FORUM_MODULE_SLUG));
+        let forum_settings = tenant_module_settings_in_tx(txn, tenant_id, FORUM_MODULE_SLUG)
+            .await?
+            .as_ref()
+            .map(parse_forum_settings)
+            .transpose()?
+            .flatten()
+            .unwrap_or_default();
 
-        let reaction_query = tenant_module::Entity::find()
-            .filter(tenant_module::Column::TenantId.eq(tenant_id))
-            .filter(tenant_module::Column::ModuleSlug.eq(FORUM_REACTIONS_MODULE_SLUG))
-            .filter(tenant_module::Column::Enabled.eq(true));
+        let reactions_enabled =
+            tenant_module_settings_in_tx(txn, tenant_id, FORUM_REACTIONS_MODULE_SLUG)
+                .await?
+                .is_some();
 
-        let (forum_module, reactions_module) = match txn.get_database_backend() {
-            DbBackend::Sqlite => {
-                let forum_module = match forum_query.one(txn).await {
-                    Ok(m) => m,
-                    Err(err) if is_missing_tenant_modules_error(&err) => return Ok(Self::InternalVotes),
-                    Err(err) => return Err(ForumError::Database(err)),
-                };
-                let reactions_module = match reaction_query.one(txn).await {
-                    Ok(m) => m,
-                    Err(err) if is_missing_tenant_modules_error(&err) => None,
-                    Err(err) => return Err(ForumError::Database(err)),
-                };
-                (forum_module, reactions_module)
-            }
-            DbBackend::Postgres | DbBackend::MySql => {
-                let forum_module = match forum_query.lock_shared().one(txn).await {
-                    Ok(m) => m,
-                    Err(err) if is_missing_tenant_modules_error(&err) => return Ok(Self::InternalVotes),
-                    Err(err) => return Err(ForumError::Database(err)),
-                };
-                let reactions_module = match reaction_query.lock_shared().one(txn).await {
-                    Ok(m) => m,
-                    Err(err) if is_missing_tenant_modules_error(&err) => None,
-                    Err(err) => return Err(ForumError::Database(err)),
-                };
-                (forum_module, reactions_module)
-            }
-            backend => {
-                return Err(ForumError::Database(sea_orm::DbErr::Custom(format!(
-                    "forum engagement mode locking is unsupported for {backend:?}"
-                ))));
-            }
-        };
-
-        Self::from_parts(
-            forum_use_reactions(forum_module.as_ref().map(|module| &module.settings)),
-            reactions_module.is_some(),
-        )
+        Self::from_parts(forum_settings.use_reactions, reactions_enabled)
     }
 
     fn from_parts(
@@ -141,33 +96,69 @@ impl ForumEngagementMode {
     }
 }
 
-fn forum_use_reactions(settings: Option<&Value>) -> bool {
-    match settings {
-        Some(Value::Object(object)) => object
-            .get(FORUM_USE_REACTIONS_SETTING)
-            .and_then(Value::as_bool)
-            .unwrap_or(false),
-        Some(Value::String(raw)) => serde_json::from_str::<Value>(raw)
-            .ok()
-            .as_ref()
-            .and_then(Value::as_object)
-            .and_then(|object| object.get(FORUM_USE_REACTIONS_SETTING))
-            .and_then(Value::as_bool)
+fn parse_forum_settings(value: &Value) -> ForumResult<Option<ForumSettings>> {
+    serde_json::from_value::<ForumSettings>(value.clone())
+        .map(Some)
+        .map_err(|error| ForumError::Validation(format!(
+            "Forum module settings are invalid: {error}"
+        )))
+}
+
+alue::as_bool)
             .unwrap_or(false),
         _ => false,
     }
 }
 
-fn is_missing_tenant_modules_error(err: &sea_orm::DbErr) -> bool {
-    let msg = err.to_string().to_ascii_lowercase();
-    msg.contains("no such table: tenant_modules")
-        || msg.contains("relation \"tenant_modules\" does not exist")
-        || msg.contains("relation 'tenant_modules' does not exist")
-        || msg.contains("table 'tenant_modules' doesn't exist")
-        || msg.contains("no such column: tenant_modules.created_at")
-        || msg.contains("no such column: tenant_modules.updated_at")
-}
+#[cfg(test)]
+mod tests {
+    use super::{ForumEngagementMode, FORUM_USE_REACTIONS_SETTING};
+    
+    #[tokio::test]
+    async fn forum_defaults_to_internal_votes_without_an_override() {
+        use sea_orm::{ConnectionTrait, Database};
+        let db = Database::connect("sqlite::memory:").await.expect("db");
+        db.execute_unprepared(
+            "CREATE TABLE tenant_modules (
+                id TEXT NOT NULL PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                module_slug TEXT NOT NULL,
+                enabled BOOLEAN NOT NULL,
+                settings TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )",
+        )
+        .await
+        .expect("schema");
 
+        let mode = ForumEngagementMode::resolve(&db, uuid::Uuid::new_v4())
+            .await
+            .expect("mode");
+        assert_eq!(mode, ForumEngagementMode::InternalVotes);
+    }
+
+    #[test]
+    fn forum_setting_uses_canonical_key() {
+        assert_eq!(FORUM_USE_REACTIONS_SETTING, "use_reactions");
+    }
+
+    #[test]
+    fn forum_setting_selects_reactions_only_when_shared_module_is_enabled() {
+        assert_eq!(
+            ForumEngagementMode::from_parts(false, true).expect("internal voting"),
+            ForumEngagementMode::InternalVotes
+        );
+        assert_eq!(
+            ForumEngagementMode::from_parts(true, true).expect("reactions"),
+            ForumEngagementMode::Reactions
+        );
+        assert!(
+            ForumEngagementMode::from_parts(true, false).is_err(),
+            "selecting reactions without the shared module must fail closed"
+        );
+    }
+}
 #[cfg(test)]
 mod tests {
     use sea_orm::{ConnectionTrait, Database};
@@ -200,7 +191,7 @@ mod tests {
 
     #[test]
     fn forum_setting_name_is_stable() {
-        assert_eq!(FORUM_USE_REACTIONS_SETTING, "useReactions");
+        assert_eq!(FORUM_USE_REACTIONS_SETTING, "use_reactions");
     }
 
     #[test]
