@@ -84,6 +84,8 @@ for (const marker of [
   'struct CommentProjectionChange',
   'fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionChange>',
   'DomainEvent::CommentCreated',
+  'DomainEvent::CommentUpdated',
+  'DomainEvent::CommentStatusChanged',
   'delta: 1',
   'DomainEvent::CommentDeleted',
   'delta: -1',
@@ -116,6 +118,7 @@ for (const marker of [
   'fn ignores_non_blog_targets_and_unrelated_events()',
   'fn projection_delta_tracks_comment_state_not_delivery_order()',
   'fn counter_transition_is_non_negative_and_does_not_touch_business_revision()',
+  'projection_event_id',
 ]) {
   requireMarker(handler, marker, handlerPath);
 }
@@ -389,7 +392,7 @@ for (const marker of [
 requireNoMarker(moduleSource, 'handler.handle(&', `${modulePath}: host registration harness`);
 
 if (evidence) {
-  if (evidence.schema_version !== 5) failures.push(`${evidencePath}: schema_version drift`);
+  if (evidence.schema_version !== 6) failures.push(`${evidencePath}: schema_version drift`);
   if (
     evidence.module !== 'blog' ||
     evidence.surface !== 'comments_event_projection' ||
@@ -427,7 +430,7 @@ if (evidence) {
   if (
     [...(sourceHarness.cases ?? [])].sort().join('|') !==
     [
-      'shared_created_deleted_classifier',
+      'shared_created_updated_status_deleted_classifier',
       'non_blog_target_rejection',
       'projection_delta_tracks_comment_state_not_delivery_order',
       'counter_transition_is_non_negative_and_does_not_touch_business_revision',
@@ -592,7 +595,7 @@ if (registry) {
 }
 
 for (const marker of [
-  'Blog FBA registry schema v14 and Comments projection evidence schema v5',
+  'Blog FBA registry schema v15 and Comments projection evidence schema v6',
   'derived Comments counters that preserve Blog business',
   'source-level',
   'runtime/remote evidence is still pending',
