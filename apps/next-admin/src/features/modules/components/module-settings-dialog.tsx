@@ -62,6 +62,7 @@ export function ModuleSettingsDialog({
     try {
       const parsed = JSON.parse(settingsText);
       setSettingsText(JSON.stringify(parsed, null, 2));
+      setUseReactions(moduleSlug === 'forum' && parsed?.useReactions === true);
       setJsonError(null);
       toast.success('JSON formatted');
     } catch (err) {
@@ -177,7 +178,16 @@ export function ModuleSettingsDialog({
           <Textarea
             value={settingsText}
             onChange={(e) => {
-              setSettingsText(e.target.value);
+              const value = e.target.value;
+              setSettingsText(value);
+              if (moduleSlug === 'forum') {
+                try {
+                  const parsed = JSON.parse(value);
+                  setUseReactions(parsed?.useReactions === true);
+                } catch {
+                  // Keep the last valid switch state until the JSON is fixed.
+                }
+              }
               setJsonError(null);
             }}
             rows={10}
