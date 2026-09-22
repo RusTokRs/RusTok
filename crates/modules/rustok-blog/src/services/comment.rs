@@ -9,10 +9,8 @@ use rustok_comments::{
     CommentStatus as DomainCommentStatus, CommentsThreadPort,
     CreateCommentInput as DomainCreateCommentInput, ListCommentsFilter as DomainListCommentsFilter,
     SetCommentStatusRequest, UpdateCommentInput as DomainUpdateCommentInput,
-    in_process_comments_thread_port,
 };
 use rustok_core::{SecurityActorKind, SecurityContext};
-use rustok_outbox::TransactionalEventBus;
 use std::sync::Arc;
 
 use crate::BlogPostStatus;
@@ -31,23 +29,31 @@ const PUBLIC_COMMENTS_PORT_ACTOR: &str = "rustok-blog.public-comments";
 
 pub struct CommentService {
     db: DatabaseConnection,
-    comments_thread_port: Arc<dyn CommentsThreadPort>,
+    comments_thread_port: Option<Arc<dyn CommentsThreadPort>>,
 }
 
 impl CommentService {
-    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        let comments_thread_port = in_process_comments_thread_port(db.clone(), event_bus);
-        Self::with_comments_thread_port(db, comments_thread_port)
+    pub fn from_optional_comments_thread_port(
+        db: DatabaseConnection,
+        comments_thread_port: Option<Arc<dyn CommentsThreadPort>>,
+    ) -> Self {
+        Self {
+            db,
+            comments_thread_port,
+        }
     }
 
     pub fn with_comments_thread_port(
         db: DatabaseConnection,
         comments_thread_port: Arc<dyn CommentsThreadPort>,
     ) -> Self {
-        Self {
-            db,
-            comments_thread_port,
-        }
+        Self::from_optional_comments_thread_port(db, Some(comments_thread_port))
+    }
+
+    fn require_comments_thread_port(&self) -> BlogResult<&dyn CommentsThreadPort> {
+        self.require_comments_thread_port()?
+            .as_deref()
+            .ok_or(BlogError::CommentsUnavailable)
     }
 
     /// Creates a comment only when the owning Blog post is publicly visible in
@@ -88,7 +94,7 @@ impl CommentService {
         let locale = input.locale.clone();
         let command_id = input.command_id;
         let record = self
-            .comments_thread_port
+            .require_comments_thread_port()?
             .create_comment(
                 comments_write_port_context(
                     tenant_id,
@@ -141,7 +147,7 @@ impl CommentService {
     ) -> BlogResult<CommentResponse> {
         enforce_scope(&security, Resource::Comments, Action::Read)?;
         let record = self
-            .comments_thread_port
+            .require_comments_thread_port()?
             .get_comment(
                 comments_read_port_context(
                     tenant_id,
@@ -167,7 +173,7 @@ impl CommentService {
     ) -> BlogResult<CommentResponse> {
         enforce_scope(&security, Resource::Comments, Action::Update)?;
         let existing = self
-            .comments_thread_port
+            .require_comments_thread_port()?
             .get_comment(
                 comments_read_port_context(
                     tenant_id,
@@ -189,7 +195,7 @@ impl CommentService {
         };
 
         let record = self
-            .comments_thread_port
+            .require_comments_thread_port()?
             .update_comment(
                 comments_write_port_context(
                     tenant_id,
@@ -226,7 +232,7 @@ impl CommentService {
             .unwrap_or(PLATFORM_FALLBACK_LOCALE);
 
         let existing = self
-            .comments_thread_port
+            .require_comments_thread_port()?
             .get_comment(
                 comments_read_port_context(
                     tenant_id,
@@ -242,7 +248,7 @@ impl CommentService {
         Self::ensure_blog_target(&existing)?;
 
         let record = self
-            .comments_thread_port
+            .require_comments_thread_port()?
             .set_comment_status(
                 comments_write_port_context(
                     tenant_id,
@@ -273,7 +279,7 @@ impl CommentService {
     ) -> BlogResult<()> {
         enforce_scope(&security, Resource::Comments, Action::Delete)?;
         let existing = self
-            .comments_thread_port
+            .require_comments_thread_port()?
             .get_comment(
                 comments_read_port_context(
                     tenant_id,
@@ -288,7 +294,7 @@ impl CommentService {
             .map_err(comments_port_error_to_blog_error)?;
         Self::ensure_blog_target(&existing)?;
 
-        self.comments_thread_port
+        self.require_comments_thread_port()?
             .delete_comment(
                 comments_write_port_context(
                     tenant_id,
@@ -343,7 +349,7 @@ impl CommentService {
         };
 
         let result = if security.is_public_read() {
-            self.comments_thread_port
+            self.require_comments_thread_port()?
                 .list_public_comments_for_target(
                     comments_public_read_port_context(tenant_id, locale.as_str(), post_id),
                     TARGET_TYPE_BLOG_POST.to_string(),
@@ -353,7 +359,7 @@ impl CommentService {
                 )
                 .await
         } else {
-            self.comments_thread_port
+            self.require_comments_thread_port()?
                 .list_comments_for_target(
                     comments_read_port_context(tenant_id, &security, locale.as_str(), post_id)?,
                     TARGET_TYPE_BLOG_POST.to_string(),
