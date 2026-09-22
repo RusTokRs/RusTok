@@ -90,7 +90,12 @@ impl TagService {
         enforce_scope(&security, Resource::Tags, Action::Read)?;
         let locale = normalize_locale(locale)?;
         let term = self.find_visible_term(tenant_id, tag_id, &locale).await?;
-        let use_count = self.load_tag_usage_count(tenant_id, tag_id).await?;
+        let require_usage_projection =
+            term.scope_type == TaxonomyScopeType::Module
+                && term.scope_value.as_deref() == Some(BLOG_SCOPE_VALUE);
+        let use_count = self
+            .load_tag_usage_count(tenant_id, tag_id, require_usage_projection)
+            .await?;
 
         Ok(to_tag_owner_response(tenant_id, term, use_count))
     }
@@ -124,7 +129,9 @@ impl TagService {
         publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
         txn.commit().await.map_err(BlogError::from)?;
 
-        let use_count = self.load_tag_usage_count(tenant_id, tag_id).await?;
+        let use_count = self
+            .load_tag_usage_count(tenant_id, tag_id, true)
+            .await?;
 
         Ok(to_tag_mutation_response(term, use_count))
     }
@@ -315,16 +322,25 @@ impl TagService {
             .ok_or_else(|| BlogError::tag_not_found(tag_id))
     }
 
-    async fn load_tag_usage_count(&self, tenant_id: Uuid, tag_id: Uuid) -> BlogResult<i32> {
-        Ok(
-            blog_tag_usage::Entity::find()
-                .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
-                .filter(blog_tag_usage::Column::TagId.eq(tag_id))
-                .one(&self.db)
-                .await?
-                .map(|usage| usage.use_count)
-                .unwrap_or_default(),
-        )
+    async fn load_tag_usage_count(
+        &self,
+        tenant_id: Uuid,
+        tag_id: Uuid,
+        require_usage_projection: bool,
+    ) -> BlogResult<i32> {
+        let usage = blog_tag_usage::Entity::find()
+            .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
+            .filter(blog_tag_usage::Column::TagId.eq(tag_id))
+            .one(&self.db)
+            .await?;
+
+        match usage {
+            Some(usage) => Ok(usage.use_count),
+            None if require_usage_projection => Err(BlogError::invariant(format!(
+                "Blog tag {tag_id} is missing its usage projection",
+            ))),
+            None => Ok(0),
+        }
     }
 }
 
