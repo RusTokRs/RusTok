@@ -155,6 +155,9 @@ const services = read('crates/modules/rustok-comments/src/services.rs');
 hasAll(services, [
   'event_bus: Option<TransactionalEventBus>',
   'pub fn with_event_bus',
+  'DomainEvent::CommentUpdated',
+  'DomainEvent::CommentStatusChanged',
+  'comment_status_wire',
   'publish_comment_created_in_tx',
   'publish_comment_updated_in_tx',
   'publish_comment_status_changed_in_tx',
