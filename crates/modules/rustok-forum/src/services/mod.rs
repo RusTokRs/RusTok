@@ -198,7 +198,7 @@ pub use counter_reconciliation::{
     ForumCounterReconciliationReport, ForumCounterReconciliationService,
     MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
 };
-pub use engagement_mode::{FORUM_REACTIONS_MODULE_SLUG, ForumEngagementMode};
+pub use engagement_mode::{FORUM_REACTIONS_MODULE_SLUG, ForumEngagementMode, ForumSettingsProviders};
 pub use event::ForumEventService;
 pub use import_write::{
     ForumImportWriteResult, ForumImportWriteService, MAX_FORUM_IMPORT_APPLY_RECORDS_PER_BATCH,
