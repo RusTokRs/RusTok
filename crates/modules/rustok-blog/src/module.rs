@@ -239,6 +239,8 @@ mod tests {
         };
 
         assert!(handler.handles(&blog_created));
+        assert!(handler.handles(&blog_updated));
+        assert!(handler.handles(&blog_status_changed));
         assert!(handler.handles(&blog_deleted));
         assert!(!handler.handles(&forum_created));
     }
