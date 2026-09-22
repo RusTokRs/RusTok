@@ -20,17 +20,28 @@ use crate::entities::{forum_reply, forum_reply_body, forum_solution};
 use crate::error::{ForumError, ForumResult};
 use crate::richtext::project_stored_discussion;
 use crate::services::rbac::{enforce_owned_scope, enforce_scope};
+use crate::services::engagement_mode::ForumSettingsProviders;
 use crate::services::vote::{VoteService, VoteSummary};
 use crate::state_machine::ReplyStatus;
 
 pub struct ReplyService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    settings: ForumSettingsProviders,
 }
 
 impl ReplyService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
+        Self {
+            db,
+            event_bus,
+            settings: ForumSettingsProviders::default(),
+        }
+    }
+
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.settings = settings;
+        self
     }
 
     #[instrument(skip(self))]
@@ -62,7 +73,7 @@ impl ReplyService {
         let solution_reply_id = self
             .load_solution_reply_id_for_topic(tenant_id, reply.topic_id)
             .await?;
-        let vote_summary = VoteService::new(self.db.clone())
+        let vote_summary = VoteService::new(self.db.clone()).with_settings_providers(self.settings.clone())
             .reply_vote_summary(tenant_id, reply_id, security.user_id)
             .await?;
         to_reply_response(
@@ -100,7 +111,7 @@ impl ReplyService {
             .await?;
         let reply_ids: Vec<Uuid> = replies.iter().map(|reply| reply.id).collect();
         let bodies_map = self.load_bodies_map(tenant_id, &reply_ids).await?;
-        let vote_summaries = VoteService::new(self.db.clone())
+        let vote_summaries = VoteService::new(self.db.clone()).with_settings_providers(self.settings.clone())
             .reply_vote_summaries(tenant_id, &reply_ids, security.user_id)
             .await?;
 
@@ -168,7 +179,7 @@ impl ReplyService {
             .await?;
         let reply_ids: Vec<Uuid> = replies.iter().map(|reply| reply.id).collect();
         let bodies_map = self.load_bodies_map(tenant_id, &reply_ids).await?;
-        let vote_summaries = VoteService::new(self.db.clone())
+        let vote_summaries = VoteService::new(self.db.clone()).with_settings_providers(self.settings.clone())
             .reply_vote_summaries(tenant_id, &reply_ids, security.user_id)
             .await?;
 
