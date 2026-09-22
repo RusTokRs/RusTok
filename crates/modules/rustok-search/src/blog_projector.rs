@@ -381,8 +381,13 @@ impl BlogSearchProjector {
                       ON term.id = relation.tag_id
                      AND term.tenant_id = p.tenant_id
                      AND term.kind = 'tag'
-                     AND term.scope_type = 'module'
-                     AND term.scope_value = 'blog'
+                     AND (
+                         term.scope_type = 'global'
+                         OR (
+                             term.scope_type = 'module'
+                             AND term.scope_value = 'blog'
+                         )
+                     )
                     LEFT JOIN taxonomy_term_translations localized
                       ON localized.term_id = term.id
                      AND localized.tenant_id = p.tenant_id

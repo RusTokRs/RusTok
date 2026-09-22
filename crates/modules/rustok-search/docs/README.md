@@ -32,6 +32,7 @@ or host-specific UI wiring.
 
 - Search projector operations are tenant-scoped: ingestion always takes `tenant_id` from `EventEnvelope`, and `PgSearchEngine` requires `SearchQuery.tenant_id`.
 - Re-delivery of events must not corrupt the read model: the projector performs a scoped delete + rebuild/upsert in a transaction, and materialized rows are written via stable `document_key`.
+- Blog tag projection resolves only canonical Taxonomy attachments from `blog_post_tags`, accepting `global` and `module:blog` term scopes; legacy `blog_posts.metadata.tags` is never a search source.
 - `search_documents.document_key` is the primary key; content/product materialization uses `ON CONFLICT (document_key) DO UPDATE`, so a repeated upsert updates the existing row rather than creating a duplicate.
 - Product catalog search reads normalized high-load projections built by `rustok-index`: `index_product_categories` for primary/additional/materialized virtual category assignments and `index_product_attribute_values` for effective attribute facet/search/sort rows.
 - GraphQL search input supports optional `channelId`, `categoryIds`, `attributeFilters`, `sortAttributeCode` and `sortDesc`. If `channelId` is not set, the PostgreSQL engine reads only global rows (`channel_id IS NULL`); if set, it reads only rows for that channel without a fallback chain.
