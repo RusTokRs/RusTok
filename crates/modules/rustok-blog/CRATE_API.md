@@ -187,6 +187,8 @@ Blog consumes Comments through `CommentsThreadPort` and typed `PortContext` /
 `CreateCommentInput.command_id` is the stable logical command identity and must
 be reused by callers across retries so provider idempotency remains stable.
 
+Comment reads and mutations that start from a Comments record revalidate the canonical Blog post in the same Blog service boundary. A stale Comments thread left briefly by asynchronous target-deletion processing is therefore not treated as a valid Blog surface.
+
 Current Blog FBA status is `boundary_ready`, not `transport_verified`.
 Remote transport and runtime fallback/live evidence remain separate promotion
 requirements.
