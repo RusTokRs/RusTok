@@ -217,6 +217,61 @@ async fn post_tag_sync_reuses_existing_global_taxonomy_term() {
 }
 
 #[tokio::test]
+async fn shared_global_tags_are_readable_but_not_mutable_through_blog() {
+    let (db, _event_bus, _events, tenant_id) = setup().await;
+    let taxonomy_service = TaxonomyService::new(db.clone());
+    let global_tag_id = taxonomy_service
+        .create_term(
+            tenant_id,
+            admin(),
+            CreateTaxonomyTermInput {
+                kind: TaxonomyTermKind::Tag,
+                scope_type: TaxonomyScopeType::Global,
+                scope_value: None,
+                locale: "en".to_string(),
+                name: "shared".to_string(),
+                slug: None,
+                canonical_key: None,
+                description: None,
+                aliases: vec![],
+            },
+        )
+        .await
+        .expect("global tag should be created");
+
+    let service = TagService::new(db.clone());
+    let update_error = service
+        .update_tag(
+            tenant_id,
+            global_tag_id,
+            admin(),
+            UpdateTagInput {
+                locale: "en".to_string(),
+                name: Some("renamed".to_string()),
+                slug: None,
+            },
+        )
+        .await
+        .expect_err("Blog must not mutate shared Taxonomy tags");
+    assert!(matches!(update_error, BlogError::Forbidden(_)));
+
+    let delete_error = service
+        .delete_tag(tenant_id, global_tag_id, admin())
+        .await
+        .expect_err("Blog must not delete shared Taxonomy tags");
+    assert!(matches!(delete_error, BlogError::Forbidden(_)));
+
+    let global_term = taxonomy_term::Entity::find_by_id(global_tag_id)
+        .one(&db)
+        .await
+        .expect("global tag should remain queryable")
+        .expect("global tag should not be deleted");
+    assert_eq!(global_term.scope_type, TaxonomyScopeType::Global);
+    assert_eq!(global_term.scope_value, "");
+    assert_eq!(global_term.canonical_key, "shared");
+}
+
+#[tokio::test]
 async fn post_read_does_not_resurrect_metadata_tags_after_relations_are_removed() {
     let (db, event_bus, _events, tenant_id) = setup().await;
     let post_service = PostService::new(db.clone(), event_bus);

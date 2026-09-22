@@ -96,6 +96,7 @@ impl TagService {
     ) -> BlogResult<TagResponse> {
         enforce_scope(&security, Resource::Tags, Action::Update)?;
         let locale = normalize_locale(&input.locale)?;
+        self.ensure_blog_owned_tag(tenant_id, tag_id, &locale).await?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         let term = update_module_term_in_tx(
             &txn,
@@ -131,6 +132,8 @@ impl TagService {
         security: SecurityContext,
     ) -> BlogResult<()> {
         enforce_scope(&security, Resource::Tags, Action::Delete)?;
+        self.ensure_blog_owned_tag(tenant_id, tag_id, PLATFORM_FALLBACK_LOCALE)
+            .await?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         lock_module_term_in_tx(
             &txn,
@@ -207,6 +210,23 @@ impl TagService {
             .collect();
 
         Ok((items, total))
+    }
+
+    async fn ensure_blog_owned_tag(
+        &self,
+        tenant_id: Uuid,
+        tag_id: Uuid,
+        locale: &str,
+    ) -> BlogResult<()> {
+        let term = self.find_visible_term(tenant_id, tag_id, locale).await?;
+        if term.scope_type != TaxonomyScopeType::Module
+            || term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
+        {
+            return Err(BlogError::forbidden(
+                "Shared Taxonomy tags must be managed by the Taxonomy owner",
+            ));
+        }
+        Ok(())
     }
 
     async fn find_visible_term(

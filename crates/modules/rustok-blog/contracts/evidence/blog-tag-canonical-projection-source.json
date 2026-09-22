@@ -38,7 +38,13 @@
     "production_behavior_changed": true,
     "database_schema_changed": false,
     "ffa_promoted": false,
-    "fba_promoted": false
+    "fba_promoted": false,
+    "search_allowed_taxonomy_scopes": [
+      "global",
+      "module:blog"
+    ],
+    "blog_global_terms_are_readable": true,
+    "blog_global_terms_are_not_mutable": true
   },
   "rollout_requirements": [
     "execute Blog tag read evidence against real owner tables",
@@ -48,11 +54,11 @@
     "retain evidence that stale metadata tags do not reappear after relation removal"
   ],
   "next_source_gap": {
-    "status": "tag_mutation_atomic_reindex_next",
+    "status": "maintainer_execution_pending",
     "required": [
-      "Taxonomy-owned update/delete term in supplied transaction",
-      "Blog update/delete tag mutation and Blog-scope ReindexRequested in one transaction",
-      "remove manual pre-delete blog_post_tags cleanup and rely on the declared FK cascade"
+      "execute Blog tag read/mutation scope evidence",
+      "execute Search Blog projection PostgreSQL evidence",
+      "audit deployed metadata-only tag rows"
     ]
   },
   "execution": [],

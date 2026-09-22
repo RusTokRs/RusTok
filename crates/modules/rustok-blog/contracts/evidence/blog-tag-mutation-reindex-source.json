@@ -38,7 +38,9 @@
     "search_projection_source_changed": false,
     "production_behavior_changed": true,
     "ffa_promoted": false,
-    "fba_promoted": false
+    "fba_promoted": false,
+    "blog_global_terms_are_readable": true,
+    "blog_global_terms_are_not_mutable": true
   },
   "source_harness": {
     "path": "crates/modules/rustok-blog/tests/taxonomy_tags.rs",
@@ -47,7 +49,8 @@
     "cases": [
       "tag_update_commits_dictionary_change_and_blog_reindex_together",
       "tag_update_rolls_back_when_blog_reindex_outbox_write_fails",
-      "tag_delete_relies_on_taxonomy_fk_cascade_and_retains_reindex"
+      "tag_delete_relies_on_taxonomy_fk_cascade_and_retains_reindex",
+      "shared_global_tags_are_readable_but_not_mutable_through_blog"
     ]
   },
   "execution_requirements": [
@@ -55,7 +58,8 @@
     "confirm one durable Blog-scope ReindexRequested commits with a successful tag update",
     "confirm forced canonical outbox failure rolls back the Taxonomy translation and term revisions",
     "confirm tag delete removes blog_post_tags only through the declared taxonomy_terms FK cascade",
-    "execute Search Blog projection evidence after update/delete and confirm renamed/deleted tags are reflected"
+    "execute Search Blog projection evidence after update/delete and confirm renamed/deleted tags are reflected",
+    "confirm Blog rejects update/delete of global shared Taxonomy tags while Taxonomy remains unchanged"
   ],
   "planning_result": {
     "tag_mutation_source_complete": true,
