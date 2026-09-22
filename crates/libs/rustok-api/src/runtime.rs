@@ -208,7 +208,7 @@ impl HostRuntimeContext {
 #[cfg(all(test, feature = "runtime"))]
 mod tests {
     use super::*;
-    use sea_orm::Database;
+    use sea_orm::{Database, TransactionTrait};
 
     async fn runtime_module_db() -> DatabaseConnection {
         let db = Database::connect("sqlite::memory:")
