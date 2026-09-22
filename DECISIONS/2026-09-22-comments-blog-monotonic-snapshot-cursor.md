@@ -51,3 +51,8 @@ without cache-key enumeration.
   Existing delivery rows start at revision 0; the first newly committed lifecycle
   delivery advances the cursor to 1, while snapshot schema v3 prevents reuse of
   v2 cache entries.
+- The live snapshot writer reads the projection revision before and after the
+  Comments live-read. It writes a cache entry only when both revisions match.
+  A revision change during the read is treated as a consistency boundary: the
+  live response remains valid, but no snapshot is stored under a cursor that may
+  describe newer projection state than the returned data.
