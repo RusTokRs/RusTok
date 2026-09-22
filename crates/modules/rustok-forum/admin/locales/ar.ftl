@@ -21,6 +21,7 @@ forum-error-categoryRequired = اسم التصنيف والمعرّف النصي
 forum-error-deleteCategory = تعذر حذف التصنيف
 forum-error-deleteTopic = تعذر حذف الموضوع
 forum-error-restoreTopic = تعذر استعادة الموضوع
+forum-error-restoreReply = تعذر استعادة الرد
 forum-error-loadCategory = تعذر تحميل التصنيف
 forum-error-loadTopic = تعذر تحميل الموضوع
 forum-error-localeSwitchDirty = احفظ التغييرات غير المحفوظة أو أعد تعيينها قبل تبديل لغة المحتوى.
