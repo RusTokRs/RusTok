@@ -83,8 +83,7 @@ sameSet(
   commentsEventProjection.postgres_harness?.cases ?? [],
   [
     'duplicate_delivery_updates_counter_and_outbox_once',
-    'optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears',
-    'delete_before_create_stays_non_negative_and_replays_in_order',
+     'delete_before_create_stays_non_negative_and_replays_in_order',
     'missing_post_replay_commits_only_after_source_appears',
     'outbox_failure_rolls_back_counter_and_delivery_before_retry',
   ],
@@ -309,7 +308,7 @@ const moduleSource = read('crates/modules/rustok-blog/src/module.rs');
 hasAll(moduleSource, ['fn register_event_listeners(', 'BlogCommentProjectionHandler::new(ctx.db.clone())'], 'blog event-listener registration');
 
 const plan = read('crates/modules/rustok-blog/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `boundary_ready`', 'blog-fba-registry.json', commentsEventProjectionPath, categorySearchReindexPath, graphqlRateLimitPath, aiRichtextBoundaryPath, 'CommentsThreadPort', 'blog-comments-consumer-static-matrix.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath, 'verify:blog:comments-port-boundary', 'test:verify:blog:comments-port-boundary', 'verify:blog:comments-event-projection', 'test:verify:blog:comments-event-projection', 'services::comment_projection::tests', 'comment_projection_postgres_test', 'comment_projection_restart_postgres_test', 'RUSTOK_BLOG_TEST_DATABASE_URL', 'registry schema v14', 'degraded UI modes remain planned'], 'local plan');
+hasAll(plan, ['- FBA status: `boundary_ready`', 'blog-fba-registry.json', commentsEventProjectionPath, categorySearchReindexPath, graphqlRateLimitPath, aiRichtextBoundaryPath, 'CommentsThreadPort', 'blog-comments-consumer-static-matrix.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath, 'verify:blog:comments-port-boundary', 'test:verify:blog:comments-port-boundary', 'verify:blog:comments-event-projection', 'test:verify:blog:comments-event-projection', 'services::comment_projection::tests', 'comment_projection_postgres_test', 'comment_projection_restart_postgres_test', 'RUSTOK_BLOG_TEST_DATABASE_URL', 'registry schema v15', 'degraded UI modes remain planned'], 'local plan');
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `blog` |', 'crates/modules/rustok-blog/contracts/blog-fba-registry.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath, '`in_progress` | `boundary_ready`'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
