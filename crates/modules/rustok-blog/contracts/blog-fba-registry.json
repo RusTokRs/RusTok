@@ -1,5 +1,5 @@
 {
-  "schema_version": 14,
+  "schema_version": 15,
   "module": "blog",
   "role": "consumer",
   "status": "boundary_ready",
@@ -185,6 +185,8 @@
     "provider": "comments",
     "events": [
       "comment.created",
+      "comment.updated",
+      "comment.status_changed",
       "comment.deleted"
     ],
     "handler": "BlogCommentProjectionHandler",
@@ -226,6 +228,13 @@
       "runtime_status": "not_run",
       "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
       "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test"
+    },
+    "snapshot_invalidation": {
+      "owner": "rustok-blog",
+      "source": "blog_comment_projection_deliveries",
+      "cursor": "latest processed lifecycle event_id for the tenant/post",
+      "keying": "public snapshot identity includes projection_event_id",
+      "redis_enumeration": false
     }
   },
   "contract_tests": {
