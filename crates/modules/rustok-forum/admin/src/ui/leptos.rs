@@ -1031,7 +1031,7 @@ pub fn ForumAdmin() -> impl IntoView {
     });
 
     let restore_reply = Callback::new({
-        let restore_reply_error = restore_topic_error.clone();
+        let restore_reply_error = restore_reply_error.clone();
         move |topic_id: String| {
             let token_value = token.get_untracked();
             let tenant_value = tenant.get_untracked();
