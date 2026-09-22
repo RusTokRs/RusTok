@@ -110,7 +110,7 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
         | ForumError::TopicRestoreUnavailable(_)
         | ForumError::ReplyDeleted
         | ForumError::ReplyRestoreUnavailable(_)
-        | ForumError::ReactionsEnabled => HttpError::new(
+        | ForumError::InternalVotingDisabled => HttpError::new(
             StatusCode::CONFLICT,
             code,
             "The forum resource state does not allow this operation",
