@@ -354,8 +354,6 @@ LEFT JOIN forum_replies r
    AND r.topic_id = t.id
    AND r.status = 'approved'
    AND r.deleted_at IS NULL
-   AND r.status = 'approved'
-   AND r.deleted_at IS NULL
 WHERE t.tenant_id = ?1
 GROUP BY t.id, t.reply_count
 ORDER BY t.id
@@ -371,8 +369,6 @@ FROM forum_topics t
 LEFT JOIN forum_replies r
     ON r.tenant_id = t.tenant_id
    AND r.topic_id = t.id
-   AND r.status = 'approved'
-   AND r.deleted_at IS NULL
    AND r.status = 'approved'
    AND r.deleted_at IS NULL
 WHERE t.tenant_id = ?1
@@ -393,8 +389,6 @@ LEFT JOIN forum_replies r
    AND r.topic_id = t.id
    AND r.status = 'approved'
    AND r.deleted_at IS NULL
-   AND r.status = 'approved'
-   AND r.deleted_at IS NULL
 WHERE t.tenant_id = $1
 GROUP BY t.id, t.reply_count
 ORDER BY t.id
@@ -410,8 +404,6 @@ FROM forum_topics t
 LEFT JOIN forum_replies r
     ON r.tenant_id = t.tenant_id
    AND r.topic_id = t.id
-   AND r.status = 'approved'
-   AND r.deleted_at IS NULL
    AND r.status = 'approved'
    AND r.deleted_at IS NULL
 WHERE t.tenant_id = $1
