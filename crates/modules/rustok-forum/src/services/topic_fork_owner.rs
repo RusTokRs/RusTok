@@ -747,6 +747,11 @@ async fn load_fork_snapshot_in_tx(
     if !branch_ids.contains(&root_reply_id) {
         return Err(ForumError::ReplyNotFound(root_reply_id));
     }
+    if replies.iter().any(|reply| reply.status == ReplyStatus::Deleted) {
+        return Err(ForumError::Validation(
+            "Forum topic fork cannot copy a deleted reply branch".to_string(),
+        ));
+    }
     let positions = replies
         .iter()
         .map(|reply| (reply.id, reply.position))
