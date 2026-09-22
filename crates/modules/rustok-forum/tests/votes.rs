@@ -49,6 +49,20 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus, Uuid) {
     )
     .await
     .expect("users table fixture should apply");
+
+    db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS tenant_modules (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            module_slug TEXT NOT NULL,
+            enabled BOOLEAN NOT NULL DEFAULT 1,
+            settings TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );",
+    )
+    .await
+    .expect("tenant modules table fixture should apply");
     let module = ForumModule;
     for migration in module.migrations() {
         migration
@@ -231,6 +245,124 @@ async fn topic_and_reply_votes_round_trip_through_read_paths() {
         .expect("reply should load after clear");
     assert_eq!(reply_after_clear.vote_score, 0);
     assert_eq!(reply_after_clear.current_user_vote, None);
+}
+
+#[tokio::test]
+async fn internal_votes_switch_off_when_reactions_module_is_enabled_and_resume_when_disabled() {
+    let (db, event_bus, tenant_id) = setup().await;
+    let category_service = CategoryService::new(db.clone());
+    let topic_service = TopicService::new(db.clone(), event_bus.clone());
+    let reply_service = ReplyService::new(db.clone(), event_bus.clone());
+    let vote_service = VoteService::new(db.clone());
+
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let author = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+    let voter = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+
+    let category = create_category(&category_service, tenant_id, admin, false).await;
+    let topic = topic_service
+        .create(
+            tenant_id,
+            author.clone(),
+            CreateTopicInput {
+                locale: "en".to_string(),
+                category_id: category.id,
+                title: "Switch engagement mode".to_string(),
+                slug: Some("switch-engagement-mode".to_string()),
+                body: rustok_api::RichTextDocument::single_paragraph("Body"),
+                metadata: serde_json::json!({}),
+                tags: vec![],
+                channel_slugs: None,
+            },
+        )
+        .await
+        .expect("topic should be created");
+    let reply = reply_service
+        .create(
+            tenant_id,
+            author,
+            topic.id,
+            CreateReplyInput {
+                locale: "en".to_string(),
+                content: rustok_api::RichTextDocument::single_paragraph("Reply"),
+                parent_reply_id: None,
+            },
+        )
+        .await
+        .expect("reply should be created");
+
+    // No reactions override means the Forum falls back to its internal voting mode.
+    vote_service
+        .set_topic_vote(tenant_id, topic.id, voter.clone(), 1)
+        .await
+        .expect("topic vote should be available when reactions are disabled");
+    vote_service
+        .set_reply_vote(tenant_id, reply.id, voter.clone(), 1)
+        .await
+        .expect("reply vote should be available when reactions are disabled");
+
+    db.execute_unprepared(&format!(
+        "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled)
+         VALUES ('{}', '{}', 'reactions', 1);",
+        Uuid::new_v4(),
+        tenant_id
+    ))
+    .await
+    .expect("reactions module override should be enabled");
+
+    let topic_vote_when_reactions_enabled = vote_service
+        .set_topic_vote(tenant_id, topic.id, voter.clone(), -1)
+        .await
+        .expect_err("internal topic voting must be disabled when reactions are enabled");
+    assert!(matches!(
+        topic_vote_when_reactions_enabled,
+        ForumError::ReactionsEnabled
+    ));
+
+    let reply_vote_when_reactions_enabled = vote_service
+        .set_reply_vote(tenant_id, reply.id, voter.clone(), -1)
+        .await
+        .expect_err("internal reply voting must be disabled when reactions are enabled");
+    assert!(matches!(
+        reply_vote_when_reactions_enabled,
+        ForumError::ReactionsEnabled
+    ));
+
+    let topic_clear_when_reactions_enabled = vote_service
+        .clear_topic_vote(tenant_id, topic.id, voter.clone())
+        .await
+        .expect_err("clearing internal topic votes must be disabled in reactions mode");
+    assert!(matches!(
+        topic_clear_when_reactions_enabled,
+        ForumError::ReactionsEnabled
+    ));
+
+    let reply_clear_when_reactions_enabled = vote_service
+        .clear_reply_vote(tenant_id, reply.id, voter.clone())
+        .await
+        .expect_err("clearing internal reply votes must be disabled in reactions mode");
+    assert!(matches!(
+        reply_clear_when_reactions_enabled,
+        ForumError::ReactionsEnabled
+    ));
+
+    db.execute_unprepared(&format!(
+        "UPDATE tenant_modules
+         SET enabled = 0
+         WHERE tenant_id = '{}' AND module_slug = 'reactions';",
+        tenant_id
+    ))
+    .await
+    .expect("reactions module override should be disabled");
+
+    vote_service
+        .clear_topic_vote(tenant_id, topic.id, voter.clone())
+        .await
+        .expect("topic internal voting should resume when reactions are disabled");
+    vote_service
+        .clear_reply_vote(tenant_id, reply.id, voter)
+        .await
+        .expect("reply internal voting should resume when reactions are disabled");
 }
 
 #[tokio::test]
