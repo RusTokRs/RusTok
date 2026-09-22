@@ -351,6 +351,7 @@ impl ModerationService {
         }
 
         let txn = self.db.begin().await?;
+        TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         let reply =
             ReplyService::find_reply_for_update_in_tx(&txn, tenant_id, reply_id).await?;
@@ -432,13 +433,14 @@ impl ModerationService {
         }
 
         let txn = self.db.begin().await?;
+        TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
-        let solution_author_id = if let Some(solution) = forum_solution::Entity::find()
+        let solution = forum_solution::Entity::find()
             .filter(forum_solution::Column::TenantId.eq(tenant_id))
             .filter(forum_solution::Column::TopicId.eq(topic_id))
             .one(&txn)
-            .await?
-        {
+            .await?;
+        let solution_author_id = if let Some(solution) = solution.as_ref() {
             ReplyService::find_reply_in_tx(&txn, tenant_id, solution.reply_id)
                 .await?
                 .author_id
@@ -450,8 +452,10 @@ impl ModerationService {
             .filter(forum_solution::Column::TopicId.eq(topic_id))
             .exec(&txn)
             .await?;
-        UserStatsService::adjust_solution_count_in_tx(&txn, tenant_id, solution_author_id, -1)
-            .await?;
+        if solution.is_some() {
+            UserStatsService::adjust_solution_count_in_tx(&txn, tenant_id, solution_author_id, -1)
+                .await?;
+        }
         publish_forum_topic_projection_in_tx(
             &self.event_bus,
             &txn,
@@ -473,6 +477,7 @@ impl ModerationService {
         target: ReplyStatus,
     ) -> ForumResult<()> {
         let txn = self.db.begin().await?;
+        TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         let reply = ReplyService::find_reply_in_tx(&txn, tenant_id, reply_id).await?;
         if reply.topic_id != topic_id {

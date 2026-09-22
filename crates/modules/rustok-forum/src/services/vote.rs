@@ -16,6 +16,7 @@ use rustok_api::{Action, Resource};
 
 use crate::entities::{forum_reply_vote, forum_topic_vote};
 use crate::error::{ForumError, ForumResult};
+use crate::services::projection_invalidation::publish_forum_topic_projection_direct_in_tx;
 use crate::services::rbac::enforce_scope;
 use crate::services::topic_vote_lock::{
     lock_active_topic_vote_write_in_tx, lock_topic_vote_scopes_in_tx,
@@ -54,6 +55,13 @@ impl VoteService {
         lock_topic_vote_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         self.upsert_topic_vote_in_tx(&txn, tenant_id, topic_id, user_id, value)
             .await?;
+        publish_forum_topic_projection_direct_in_tx(
+            &txn,
+            tenant_id,
+            Some(user_id),
+            topic_id,
+        )
+        .await?;
         txn.commit().await?;
         Ok(())
     }
@@ -77,6 +85,13 @@ impl VoteService {
             .filter(forum_topic_vote::Column::UserId.eq(user_id))
             .exec(&txn)
             .await?;
+        publish_forum_topic_projection_direct_in_tx(
+            &txn,
+            tenant_id,
+            Some(user_id),
+            topic_id,
+        )
+        .await?;
         txn.commit().await?;
         Ok(())
     }

@@ -11,6 +11,7 @@ use crate::audience::SharedForumAudienceFactsPort;
 use crate::error::ForumResult;
 use crate::services::TopicService;
 use crate::services::moderation_audience_authorization::ForumModerationAudienceAuthorizationService;
+use crate::services::projection_invalidation::publish_forum_topic_projection_in_tx;
 use crate::state_machine::TopicStatus;
 
 pub struct ModerationService {
@@ -201,6 +202,14 @@ impl ModerationService {
                 },
             )
             .await?;
+        publish_forum_topic_projection_in_tx(
+            &self.event_bus,
+            &txn,
+            tenant_id,
+            security.user_id,
+            topic_id,
+        )
+        .await?;
         txn.commit().await?;
         Ok(())
     }
@@ -249,6 +258,14 @@ impl ModerationService {
                 },
             )
             .await?;
+        publish_forum_topic_projection_in_tx(
+            &self.event_bus,
+            &txn,
+            tenant_id,
+            security.user_id,
+            topic_id,
+        )
+        .await?;
         txn.commit().await?;
         Ok(())
     }
