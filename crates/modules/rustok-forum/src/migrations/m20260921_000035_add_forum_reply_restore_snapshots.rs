@@ -213,14 +213,8 @@ async fn down_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                   OR NEW.parent_reply_id IS NOT OLD.parent_reply_id
                   OR NEW.position IS NOT OLD.position
                   OR NEW.created_at IS NOT OLD.created_at
-                  OR NEW.status IS NOT COALESCE(
-                        (SELECT previous_status FROM forum_topic_reply_delete_snapshots WHERE tenant_id = OLD.tenant_id AND topic_id = OLD.topic_id AND reply_id = OLD.id),
-                        NULL
-                    )
-                  OR NOT EXISTS (
-                        SELECT 1 FROM forum_topic_reply_delete_snapshots
-                        WHERE tenant_id = OLD.tenant_id AND topic_id = OLD.topic_id AND reply_id = OLD.id
-                    )
+                  OR NEW.status IS NOT (SELECT previous_status FROM forum_topic_reply_delete_snapshots WHERE tenant_id = OLD.tenant_id AND topic_id = OLD.topic_id AND reply_id = OLD.id)
+                  OR NOT EXISTS (SELECT 1 FROM forum_topic_reply_delete_snapshots WHERE tenant_id = OLD.tenant_id AND topic_id = OLD.topic_id AND reply_id = OLD.id)
                 THEN RAISE(ABORT, 'deleted forum reply is immutable')
             END;
         END"#,
