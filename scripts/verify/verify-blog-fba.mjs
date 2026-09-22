@@ -147,7 +147,7 @@ hasAll(manifest, [
   'provider_contracts = ["comments.thread.v1"]',
   'context = "rustok_api::ports::PortContext"',
   'error = "rustok_api::ports::PortError"',
-  'fallback_profiles = ["embedded_native"]',
+  'fallback_profiles = []',
   'degraded_modes = ["hide_comment_form", "show_cached_thread_snapshot"]',
 ], 'manifest');
 
@@ -164,13 +164,13 @@ if (registry.contract_tests.runtime_status !== 'pending') fail('contract test ru
 if (registry.evidence.runtime_fallback_smoke !== runtimeSmokePath) fail('runtime smoke evidence path drift');
 if (registry.evidence.consumer_runtime_order_smoke !== consumerRuntimeOrderSmokePath) fail('consumer runtime-order smoke evidence path drift');
 if (registry.evidence.consumer_runtime_order_smoke_runner !== consumerRuntimeOrderSmoke.runner) fail('consumer runtime-order smoke runner drift');
-if (registry.contract_tests.fallback_smoke.status !== 'planned') fail('fallback smoke status drift');
+if (registry.contract_tests.fallback_smoke.status !== 'source_verified_no_compile') fail('fallback smoke status drift');
 if (runtimeSmoke.schema_version !== 2 || runtimeSmoke.generated_from !== registryPath || runtimeSmoke.status !== 'source_verified_no_compile') {
   fail('runtime smoke header/status drift');
 }
 if (runtimeSmoke.runner !== 'scripts/verify/verify-blog-comments-port-boundary.mjs') fail('runtime smoke runner drift');
 if (runtimeSmoke.compile_policy !== 'not_run_by_request' || runtimeSmoke.runtime_status !== 'not_run') fail('runtime smoke execution policy drift');
-if (runtimeSmoke.fallback_smoke?.status !== 'planned' || runtimeSmoke.fallback_smoke?.runtime_evidence !== 'pending') fail('runtime smoke degraded-mode status drift');
+if (runtimeSmoke.fallback_smoke?.status !== 'source_verified_no_compile' || runtimeSmoke.fallback_smoke?.runtime_evidence !== 'pending') fail('runtime smoke degraded-mode status drift');
 sameSet(runtimeSmoke.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles, 'runtime smoke profiles');
 sameSet(runtimeSmoke.fallback_smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes, 'runtime smoke degraded modes');
 const service = read(runtimeSmoke.source_contract.consumer_service);
@@ -186,7 +186,7 @@ if (consumerRuntimeOrderSmoke.provider !== 'comments' || consumerRuntimeOrderSmo
 if (consumerRuntimeOrderSmoke.source_contract.consumer_service !== runtimeSmoke.source_contract.consumer_service) fail('consumer runtime-order service source drift');
 if (consumerRuntimeOrderSmoke.source_contract.consumer_error_mapping !== runtimeSmoke.source_contract.consumer_error_mapping) fail('consumer runtime-order error source drift');
 if (consumerRuntimeOrderSmoke.source_contract.provider_registry !== providerPath) fail('consumer runtime-order provider registry drift');
-if (consumerRuntimeOrderSmoke.fallback_smoke?.status !== 'planned') fail('consumer runtime-order fallback status drift');
+if (consumerRuntimeOrderSmoke.fallback_smoke?.status !== 'source_verified_no_compile') fail('consumer runtime-order fallback status drift');
 sameSet(consumerRuntimeOrderSmoke.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles, 'consumer runtime-order smoke profiles');
 sameSet(consumerRuntimeOrderSmoke.fallback_smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes, 'consumer runtime-order smoke degraded modes');
 for (const entry of consumerRuntimeOrderSmoke.runtime_order ?? []) {
@@ -204,7 +204,9 @@ for (const smokeCase of runtimeSmoke.fallback_smoke.cases ?? []) {
   hasAll(service, smokeCase.source_markers ?? [], `runtime service smoke ${smokeCase.operation}`);
   hasAll(errorMapping, smokeCase.typed_error_markers ?? [], `runtime error smoke ${smokeCase.operation}:error`);
 }
-hasAll(service, ['in_process_comments_thread_port', 'CommentsThreadPort', 'comments_read_port_context', 'comments_write_port_context', 'comments_port_error_to_blog_error'], 'comments port consumer boundary');
+hasAll(service, ['CommentsThreadPort', 'comments_read_port_context', 'comments_write_port_context', 'comments_port_error_to_blog_error', 'require_comments_thread_port'], 'comments port consumer boundary');
+if (service.includes('in_process_comments_thread_port')) fail('Blog must not construct an in-process Comments provider');
+if (service.includes('CommentService::new(')) fail('Blog must not use an implicit CommentsService fallback constructor');
 if (/\.comments\s*\.get_comment\s*\(/.test(service)) {
   fail('blog comment reads must not bypass CommentsThreadPort through CommentsService');
 }
