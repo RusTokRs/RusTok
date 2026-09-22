@@ -186,8 +186,12 @@ fn blog_post_reaction_kind() -> ReactionSubjectKind {
         .expect("Blog post reaction kind constant must remain valid")
 }
 
-fn owner_read_error(_error: crate::BlogError) -> ReactionProviderError {
-    ReactionProviderError::Internal { retryable: true }
+fn owner_read_error(error: crate::BlogError) -> ReactionProviderError {
+    // Database failures may recover on retry; persisted-state invariants must
+    // fail closed instead of being reported as transient provider outages.
+    ReactionProviderError::Internal {
+        retryable: matches!(error, crate::BlogError::Database(_)),
+    }
 }
 
 #[cfg(test)]
