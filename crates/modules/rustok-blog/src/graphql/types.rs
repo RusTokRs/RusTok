@@ -6,7 +6,6 @@ use rustok_api::{
     graphql::GraphQLError, has_any_effective_permission,
 };
 use rustok_core::SecurityContext;
-use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::graphql::GqlProfileSummary;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -182,12 +181,11 @@ impl GqlPost {
         per_page: Option<u64>,
     ) -> Result<GqlPublicCommentList> {
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
         let request_tenant = ctx.data::<TenantContext>()?;
         let requested_locale = comment_locale(locale.as_deref(), &self.effective_locale);
         let fallback_locale = post_comment_fallback_locale(request_tenant, self)?;
-        let service = runtime.comment_service(db.clone(), event_bus.clone());
+        let service = runtime.comment_service(db.clone());
         let read = list_public_comments_with_snapshot(
             &service,
             runtime.public_comments_snapshot_store(),
@@ -221,12 +219,11 @@ impl GqlPost {
     ) -> Result<GqlModerationCommentList> {
         let auth = require_comment_moderator(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
         let request_tenant = ctx.data::<TenantContext>()?;
         ensure_comment_tenant_binding(request_tenant, &auth, self.tenant_id)?;
         let requested_locale = comment_locale(locale.as_deref(), &self.effective_locale);
-        let service = runtime.comment_service(db.clone(), event_bus.clone());
+        let service = runtime.comment_service(db.clone());
 
         let (items, total) = service
             .list_for_post_with_locale_fallback(

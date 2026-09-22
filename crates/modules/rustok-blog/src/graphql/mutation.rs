@@ -271,7 +271,6 @@ impl BlogMutation {
     ) -> Result<GqlBlogComment> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
         let auth = require_blog_permission(
             ctx,
@@ -291,7 +290,7 @@ impl BlogMutation {
             .and_then(|request| request.channel_slug.as_deref());
 
         let comment = runtime
-            .comment_service(db.clone(), event_bus.clone())
+            .comment_service(db.clone())
             .create_public_comment(
                 tenant_id,
                 rustok_core::security_context_from_access_token(
@@ -320,7 +319,6 @@ impl BlogMutation {
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
         let auth = require_blog_permission(
             ctx,
@@ -337,7 +335,7 @@ impl BlogMutation {
             .unwrap_or_else(|| tenant.default_locale.clone());
 
         runtime
-            .comment_service(db.clone(), event_bus.clone())
+            .comment_service(db.clone())
             .moderate_comment(
                 tenant_id,
                 id,

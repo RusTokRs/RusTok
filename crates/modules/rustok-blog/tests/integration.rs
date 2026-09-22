@@ -15,7 +15,7 @@ use rustok_blog::dto::{
 use rustok_blog::state_machine::{BlogPost, BlogPostStatus, CommentStatus, ToBlogPostStatus};
 use rustok_blog::{BlogError, BlogModule};
 use rustok_blog::{CategoryService, CommentService, PostService, TagService};
-use rustok_comments::{CommentsError, CommentsModule};
+use rustok_comments::{CommentsError, CommentsModule, in_process_comments_thread_port};
 use rustok_core::{
     DomainEvent, EventTransport, MemoryTransport, MigrationSource, ReliabilityLevel,
     SecurityContext, UserRole,
@@ -784,7 +784,10 @@ async fn test_create_comment_succeeds_with_required_translation() -> TestResult<
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
 
     let post_service = PostService::new(db.clone(), event_bus.clone());
-    let comment_service = CommentService::new(db.clone(), event_bus);
+    let comment_service = CommentService::with_comments_thread_port(
+        db.clone(),
+        in_process_comments_thread_port(db.clone(), event_bus),
+    );
 
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -860,7 +863,10 @@ async fn test_public_comment_create_rejects_draft_and_hidden_channel() -> TestRe
     let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
     let post_service = PostService::new(db.clone(), event_bus.clone());
-    let comment_service = CommentService::new(db.clone(), event_bus);
+    let comment_service = CommentService::with_comments_thread_port(
+        db.clone(),
+        in_process_comments_thread_port(db.clone(), event_bus),
+    );
     let tenant_id = Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;
     seed_channel(&db, tenant_id, "web").await;
@@ -929,7 +935,10 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
 
     let post_service = PostService::new(db.clone(), event_bus.clone());
-    let comment_service = CommentService::new(db.clone(), event_bus.clone());
+    let comment_service = CommentService::with_comments_thread_port(
+        db.clone(),
+        in_process_comments_thread_port(db.clone(), event_bus.clone()),
+    );
 
     let tenant_id = Uuid::new_v4();
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -1123,7 +1132,10 @@ async fn test_moderate_comment_with_blog_manage_permission() -> TestResult<()> {
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
 
     let post_service = PostService::new(db.clone(), event_bus.clone());
-    let comment_service = CommentService::new(db.clone(), event_bus);
+    let comment_service = CommentService::with_comments_thread_port(
+        db.clone(),
+        in_process_comments_thread_port(db.clone(), event_bus),
+    );
 
     let tenant_id = Uuid::new_v4();
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
