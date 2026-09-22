@@ -164,6 +164,7 @@ previous cursor. Their latest retained source states remain:
 - `tag_mutation_atomic_reindex = source_complete_maintainer_execution_pending`;
 - `post_category_name_projection = source_complete_canonical_taxonomy_read`.
 - `comment_target_lifecycle_guard = source_complete`; comment reads and mutations that begin from a Comments record revalidate canonical Blog post existence, so asynchronously stale Comments threads cannot remain operable after terminal post deletion.
+- `comment_create_target_race_compensation = source_complete`; comment creation revalidates the canonical Blog post after the external Comments write and compensates a comment created after terminal post deletion, while preserving the durable `TargetDeleted` cleanup backstop.
 
 For tags, Taxonomy remains the shared dictionary owner and Blog retains
 `blog_post_tags` attachment ownership. Global Taxonomy tags may be attached and
