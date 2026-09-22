@@ -115,6 +115,36 @@ impl CommentService {
             )
             .await
             .map_err(comments_port_error_to_blog_error)?;
+
+        // Blog and Comments are separate owner boundaries, so the pre-create target
+        // check cannot be atomic with the external port call. Revalidate the canonical
+        // target before reporting success. If terminal deletion won the race, compensate
+        // the already-created comment using a fresh idempotent delete command; the
+        // terminal TargetDeleted event remains the durable cross-owner cleanup backstop.
+        if self.ensure_post_exists(tenant_id, post_id).await.is_err() {
+            let compensation_command_id = Uuid::new_v4();
+            self.require_comments_thread_port()?
+                .delete_comment(
+                    comments_write_port_context(
+                        tenant_id,
+                        &security,
+                        PLATFORM_FALLBACK_LOCALE,
+                        "delete-after-target-loss",
+                        record.id,
+                        compensation_command_id,
+                    )?,
+                    record.id,
+                )
+                .await
+                .map_err(|error| {
+                    BlogError::invariant(format!(
+                        "Blog post {post_id} disappeared after comment creation and the compensating comment delete failed: {}",
+                        error.message
+                    ))
+                })?;
+            return Err(BlogError::post_not_found(post_id));
+        }
+
         Self::map_comment_record(record)
     }
 
