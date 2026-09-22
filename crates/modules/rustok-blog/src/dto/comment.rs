@@ -144,6 +144,7 @@ mod tests {
     #[test]
     fn moderate_comment_input_serde_snake_case_status() {
         let payload = ModerateCommentInput {
+            command_id: Uuid::new_v4(),
             status: ModerateCommentStatus::Approved,
             locale: Some("en".to_string()),
         };

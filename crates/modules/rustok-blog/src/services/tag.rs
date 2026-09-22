@@ -323,18 +323,22 @@ async fn bump_posts_for_tag_relation_removal_in_tx(
     tenant_id: Uuid,
     tag_id: Uuid,
 ) -> BlogResult<()> {
+    use sea_orm::{ExprTrait, QueryTrait};
+
     let valid_post_ids = blog_post::Entity::find()
         .select_only()
         .column(blog_post::Column::Id)
         .filter(blog_post::Column::TenantId.eq(tenant_id))
         .filter(blog_post::Column::Version.gt(0))
-        .filter(blog_post::Column::Version.ne(i64::MAX));
+        .filter(blog_post::Column::Version.ne(i32::MAX))
+        .into_query();
 
     let relation_filter = blog_post_tag::Entity::find()
         .select_only()
         .column(blog_post_tag::Column::PostId)
         .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
-        .filter(blog_post_tag::Column::TagId.eq(tag_id));
+        .filter(blog_post_tag::Column::TagId.eq(tag_id))
+        .into_query();
 
     let relation_count = blog_post_tag::Entity::find()
         .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
@@ -345,7 +349,7 @@ async fn bump_posts_for_tag_relation_removal_in_tx(
     let valid_relation_count = blog_post_tag::Entity::find()
         .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
         .filter(blog_post_tag::Column::TagId.eq(tag_id))
-        .filter(blog_post_tag::Column::PostId.in_subquery(valid_post_ids.clone()))
+        .filter(blog_post_tag::Column::PostId.in_subquery(valid_post_ids))
         .count(txn)
         .await?;
 
@@ -368,7 +372,7 @@ async fn bump_posts_for_tag_relation_removal_in_tx(
         .filter(blog_post::Column::TenantId.eq(tenant_id))
         .filter(blog_post::Column::Id.in_subquery(relation_filter))
         .filter(blog_post::Column::Version.gt(0))
-        .filter(blog_post::Column::Version.ne(i64::MAX))
+        .filter(blog_post::Column::Version.ne(i32::MAX))
         .exec(txn)
         .await?;
 
@@ -468,6 +472,8 @@ async fn increment_tag_usage_in_tx(
     tenant_id: Uuid,
     tag_ids: &[Uuid],
 ) -> BlogResult<()> {
+    use sea_orm::ExprTrait;
+
     if tag_ids.is_empty() {
         return Ok(());
     }
@@ -532,6 +538,8 @@ async fn decrement_tag_usage_in_tx(
     tenant_id: Uuid,
     tag_ids: &[Uuid],
 ) -> BlogResult<()> {
+    use sea_orm::ExprTrait;
+
     if tag_ids.is_empty() { return Ok(()); }
     let mut unique_ids = tag_ids.to_vec();
     unique_ids.sort_unstable();
@@ -699,6 +707,7 @@ pub(crate) async fn resolve_tag_id_for_posts(
             tag,
         )
         .await
+        .map_err(BlogError::from)
 }
 
 fn bounded_tag_page_size(value: u64) -> u64 {

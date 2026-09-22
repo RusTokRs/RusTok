@@ -32,12 +32,15 @@ fn category_service(
     db: &DatabaseConnection,
 ) -> (
     CategoryService,
+    CategoryCommandService,
     tokio::sync::broadcast::Receiver<rustok_events::EventEnvelope>,
 ) {
-    let transport = MemoryTransport::new();
+    let transport = Arc::new(MemoryTransport::new());
     let receiver = transport.subscribe();
-    let service = CategoryService::new(db.clone(), TransactionalEventBus::new(Arc::new(transport)));
-    (service, receiver)
+    let event_bus = TransactionalEventBus::new(transport);
+    let service = CategoryService::new(db.clone(), event_bus.clone());
+    let command = CategoryCommandService::new(db.clone(), event_bus);
+    (service, command, receiver)
 }
 
 fn admin() -> SecurityContext {
@@ -84,7 +87,7 @@ async fn taxonomy_placement(
 #[tokio::test]
 async fn create_at_index_keeps_taxonomy_sibling_positions_dense() {
     let db = setup().await;
-    let (service, _events) = category_service(&db);
+    let (service, _command, _events) = category_service(&db);
     let tenant_id = Uuid::new_v4();
 
     let first = create_category(&service, tenant_id, "First", None, 0).await;
@@ -99,8 +102,7 @@ async fn create_at_index_keeps_taxonomy_sibling_positions_dense() {
 #[tokio::test]
 async fn move_reparent_syncs_taxonomy_parent_and_both_sibling_sets() {
     let db = setup().await;
-    let (service, _events) = category_service(&db);
-    let command = CategoryCommandService::new(db.clone());
+    let (service, command, _events) = category_service(&db);
     let tenant_id = Uuid::new_v4();
 
     let root_a = create_category(&service, tenant_id, "Root A", None, 0).await;

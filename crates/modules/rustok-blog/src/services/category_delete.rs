@@ -8,7 +8,8 @@ use rustok_taxonomy::{
     TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult,
 };
 use sea_orm::{
-    ColumnTrait, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
+    ColumnTrait, DatabaseTransaction, EntityTrait, ExprTrait, PaginatorTrait, QueryFilter,
+    QuerySelect,
 };
 use uuid::Uuid;
 
@@ -142,7 +143,7 @@ async fn detach_category_from_posts_in_tx(
         .filter(blog_post::Column::TenantId.eq(tenant_id))
         .filter(blog_post::Column::CategoryId.eq(category_id))
         .filter(blog_post::Column::Version.gt(0))
-        .filter(blog_post::Column::Version.ne(i64::MAX))
+        .filter(blog_post::Column::Version.ne(i32::MAX))
         .exec(txn)
         .await?;
 

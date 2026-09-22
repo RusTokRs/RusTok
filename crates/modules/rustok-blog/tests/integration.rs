@@ -1006,6 +1006,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
             parent.id,
             admin.clone(),
             UpdateCommentInput {
+                command_id: Uuid::new_v4(),
                 locale: "en".to_string(),
                 content: Some(richtext("Parent updated")),
             },
@@ -1019,6 +1020,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
             parent.id,
             outsider.clone(),
             UpdateCommentInput {
+                command_id: Uuid::new_v4(),
                 locale: "en".to_string(),
                 content: Some(richtext("Should fail")),
             },
@@ -1038,6 +1040,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
             Uuid::new_v4(),
             admin.clone(),
             UpdateCommentInput {
+                command_id: Uuid::new_v4(),
                 locale: "en".to_string(),
                 content: Some(richtext("missing")),
             },
@@ -1052,11 +1055,11 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
     ));
 
     comment_service
-        .delete_comment(tenant_id, child.id, admin.clone())
+        .delete_comment(tenant_id, child.id, admin.clone(), Uuid::new_v4())
         .await?;
 
     let not_found_delete = comment_service
-        .delete_comment(tenant_id, Uuid::new_v4(), admin)
+        .delete_comment(tenant_id, Uuid::new_v4(), admin, Uuid::new_v4())
         .await
         .expect_err("must return not found on delete");
     assert!(matches!(
@@ -1174,6 +1177,7 @@ async fn test_moderate_comment_with_blog_manage_permission() -> TestResult<()> {
             comment.id,
             blog_moderator,
             ModerateCommentInput {
+                command_id: Uuid::new_v4(),
                 status: ModerateCommentStatus::Approved,
                 locale: Some("en".to_string()),
             },
@@ -1193,6 +1197,7 @@ async fn test_moderate_comment_with_blog_manage_permission() -> TestResult<()> {
             comment.id,
             without_manage,
             ModerateCommentInput {
+                command_id: Uuid::new_v4(),
                 status: ModerateCommentStatus::Spam,
                 locale: Some("en".to_string()),
             },

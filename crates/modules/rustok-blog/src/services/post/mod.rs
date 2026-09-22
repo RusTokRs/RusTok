@@ -37,7 +37,9 @@ use crate::services::category::CategoryService;
 use crate::services::rbac::{
     can_read_non_public_posts, enforce_create_author, enforce_owned_scope, enforce_scope,
 };
-use crate::services::tag::{load_post_tags_map, resolve_tag_id_for_posts, sync_post_tags_in_tx};
+use crate::services::tag::{
+    load_post_tags_map, remove_post_tag_usage_in_tx, resolve_tag_id_for_posts, sync_post_tags_in_tx,
+};
 use crate::state_machine::BlogPostStatus;
 
 pub struct PostService {

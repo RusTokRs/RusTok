@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use rustok_blog::{
-    BlogModule, CreatePostInput, ListTagsFilter, PostService, TagService, UpdateTagInput,
+    BlogError, BlogModule, CreatePostInput, ListTagsFilter, PostService, TagService, UpdateTagInput,
 };
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_events::{DomainEvent, EventEnvelope};
@@ -185,6 +185,7 @@ async fn tag_list_is_bounded_by_database_pagination_and_preserves_zero_use_modul
     assert_eq!(page_two[0].use_count, 0);
 }
 
+#[tokio::test]
 async fn post_tag_sync_reuses_existing_global_taxonomy_term() {
     let (db, event_bus, _events, tenant_id) = setup().await;
     let post_service = PostService::new(db.clone(), event_bus);

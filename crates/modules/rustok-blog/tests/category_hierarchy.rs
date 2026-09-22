@@ -59,12 +59,13 @@ fn services(
     CategoryCommandService,
     tokio::sync::broadcast::Receiver<rustok_events::EventEnvelope>,
 ) {
-    let transport = MemoryTransport::new();
+    let transport = Arc::new(MemoryTransport::new());
     let receiver = transport.subscribe();
+    let event_bus = TransactionalEventBus::new(transport);
     (
-        CategoryService::new(db.clone(), TransactionalEventBus::new(Arc::new(transport)))
+        CategoryService::new(db.clone(), event_bus.clone())
             .with_category_delete_cleanup(Arc::new(NoopCategoryDeleteCleanup)),
-        CategoryCommandService::new(db.clone()),
+        CategoryCommandService::new(db.clone(), event_bus),
         receiver,
     )
 }
