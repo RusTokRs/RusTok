@@ -14,7 +14,6 @@ import {
   DialogTitle
 } from '@/shared/ui/shadcn/dialog';
 import { Textarea } from '@/shared/ui/shadcn/textarea';
-import { Switch } from '@/shared/ui/shadcn/switch';
 import { updateModuleSettings, type GqlOpts } from '@/shared/api/modules';
 
 interface ModuleSettingsFieldsContext {
