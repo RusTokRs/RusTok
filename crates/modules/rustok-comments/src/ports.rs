@@ -107,7 +107,6 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         let tenant_id = parse_tenant_id(&context)?;
         let security = SecurityContext::try_from_port_context(&context)?;
         let idempotency_key = required_idempotency_key(&context)?;
-        let receipt_request = (comment_id, &request);
 
         let lease = match idempotency::admit(
             &self.db,
@@ -160,12 +159,16 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
                     );
                     return Err(error);
                 }
-                txn.commit().await.map_err(|error| {
+                let commit_result = txn.commit().await.map_err(|error| {
                     PortError::unavailable(
                         "comments.operation_commit_failed",
                         error.to_string(),
                     )
-                })?;
+                });
+                if let Err(commit_error) = commit_result {
+                    persist_idempotency_failure(&self.db, lease, &commit_error).await;
+                    return Err(commit_error);
+                }
                 Ok(record)
             }
             Err(error) => {
@@ -252,6 +255,7 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         let tenant_id = parse_tenant_id(&context)?;
         let security = SecurityContext::try_from_port_context(&context)?;
         let idempotency_key = required_idempotency_key(&context)?;
+        let receipt_request = (comment_id, &request);
 
         let lease = match idempotency::admit(
             &self.db,
