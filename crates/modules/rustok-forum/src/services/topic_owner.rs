@@ -379,6 +379,8 @@ impl TopicService {
         )
         .await?;
 
+        clear_topic_delete_snapshots_in_tx(&txn, tenant_id, topic_id).await?;
+
         txn.commit().await?;
         Ok(())
     }
