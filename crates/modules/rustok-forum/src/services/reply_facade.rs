@@ -14,6 +14,7 @@ use crate::entities::forum_reply;
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::ReplyStatus;
 
+use super::engagement_mode::ForumSettingsProviders;
 use super::rbac::enforce_scope;
 use super::reply_create_audience_authorization::ForumReplyCreateAudienceAuthorizationService;
 use super::reply_owner;
@@ -43,6 +44,11 @@ impl ReplyService {
         facts_port: SharedForumAudienceFactsPort,
     ) -> Self {
         Self::with_optional_audience_facts(db, event_bus, Some(facts_port))
+    }
+
+    pub(crate) fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.inner = self.inner.with_settings_providers(settings);
+        self
     }
 
     fn with_optional_audience_facts(
