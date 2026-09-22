@@ -193,6 +193,15 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     })?;
     let db = runtime_ctx.db_clone();
 
+    // Static/native tenant settings are owned by rustok-modules. Consumers receive
+    // only the owner port through the neutral runtime extension registry.
+    extensions.insert(rustok_modules::SharedStaticModuleSettingsReader(
+        std::sync::Arc::new(rustok_modules::DatabaseStaticModuleSettingsReader::new(
+            db.clone(),
+        )),
+    ));
+
+
     #[cfg(all(feature = "mod-seo", feature = "mod-media"))]
     if let Some(storage) = runtime_ctx.shared_get::<rustok_storage::StorageRuntime>() {
         let provider: Arc<dyn rustok_media::MediaAssetReadPort> =
