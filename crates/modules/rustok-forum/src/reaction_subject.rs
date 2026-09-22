@@ -85,17 +85,20 @@ impl ForumReactionSubjectProvider {
         }
     }
 
-    async fn ensure_reactions_enabled(
+    async fn reactions_enabled(
         &self,
         tenant_id: Uuid,
-    ) -> ReactionProviderResult<()> {
+    ) -> ReactionProviderResult<bool> {
         let Some(settings_reader) = self.settings_reader.as_ref() else {
             return Err(ReactionProviderError::CapabilityUnavailable {
                 retryable: false,
             });
         };
         let Some(snapshot) = settings_reader
-            .settings(tenant_id, crate::services::engagement_mode::FORUM_MODULE_SLUG)
+            .settings(
+                tenant_id,
+                crate::services::engagement_mode::FORUM_MODULE_SLUG,
+            )
             .await
             .map_err(|error| match error.kind {
                 PortErrorKind::Timeout | PortErrorKind::Unavailable => {
@@ -107,17 +110,14 @@ impl ForumReactionSubjectProvider {
                 _ => ReactionProviderError::InvalidRequest,
             })?
         else {
-            return Ok(());
+            return Ok(false);
         };
         if !snapshot.enabled {
-            return Ok(());
+            return Ok(false);
         }
         let settings = serde_json::from_value::<ForumReactionSettings>(snapshot.settings)
             .map_err(|_| ReactionProviderError::Internal { retryable: false })?;
-        if !settings.use_reactions {
-            return Err(ReactionProviderError::Unavailable);
-        }
-        Ok(())
+        Ok(settings.use_reactions)
     }
 
     async fn authorize_topic(
@@ -127,7 +127,9 @@ impl ForumReactionSubjectProvider {
         actor_id: Option<Uuid>,
     ) -> ReactionProviderResult<ReactionSubjectAuthorization> {
         let subject = &request.subject;
-        self.ensure_reactions_enabled(subject.tenant_id()).await?;
+        if !self.reactions_enabled(subject.tenant_id()).await? {
+            return Ok(ReactionSubjectAuthorization::Unavailable);
+        }
         let viewer = self
             .resolve_viewer(context, subject.tenant_id(), actor_id)
             .await?;
@@ -167,7 +169,9 @@ impl ForumReactionSubjectProvider {
         actor_id: Option<Uuid>,
     ) -> ReactionProviderResult<ReactionSubjectAuthorization> {
         let subject = &request.subject;
-        self.ensure_reactions_enabled(subject.tenant_id()).await?;
+        if !self.reactions_enabled(subject.tenant_id()).await? {
+            return Ok(ReactionSubjectAuthorization::Unavailable);
+        }
         let Some(initial_reply) = self
             .load_active_reply(subject.tenant_id(), subject.subject_id())
             .await?
