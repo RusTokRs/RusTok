@@ -268,7 +268,27 @@ impl TopicService {
             if reply.status != ReplyStatus::Deleted {
                 return Err(ForumError::TopicRestoreUnavailable(topic_id));
             }
+        }
 
+        if let Some(solution_reply_id) = snapshot.solution_reply_id {
+            let solution_snapshot = reply_snapshots
+                .iter()
+                .find(|reply| reply.reply_id == solution_reply_id)
+                .ok_or(ForumError::TopicRestoreUnavailable(topic_id))?;
+            if solution_snapshot.previous_status != ReplyStatus::Approved {
+                return Err(ForumError::TopicRestoreUnavailable(topic_id));
+            }
+            let _marked_at = snapshot
+                .solution_marked_at
+                .as_deref()
+                .ok_or(ForumError::TopicRestoreUnavailable(topic_id))?
+                .parse::<chrono::DateTime<chrono::FixedOffset>>()
+                .map_err(|_| ForumError::TopicRestoreUnavailable(topic_id))?;
+        }
+
+        unarchive_topic_for_restore_in_tx(&txn, tenant_id, topic_id, &snapshot).await?;
+
+        for reply_snapshot in &reply_snapshots {
             restore_reply_from_delete_snapshot_in_tx(&txn, tenant_id, topic_id, reply_snapshot)
                 .await?;
 
@@ -284,13 +304,6 @@ impl TopicService {
         }
 
         if let Some(solution_reply_id) = snapshot.solution_reply_id {
-            let solution_snapshot = reply_snapshots
-                .iter()
-                .find(|reply| reply.reply_id == solution_reply_id)
-                .ok_or(ForumError::TopicRestoreUnavailable(topic_id))?;
-            if solution_snapshot.previous_status != ReplyStatus::Approved {
-                return Err(ForumError::TopicRestoreUnavailable(topic_id));
-            }
             let marked_at = snapshot
                 .solution_marked_at
                 .as_deref()
@@ -325,11 +338,10 @@ impl TopicService {
             ));
         }
 
-        restore_topic_from_delete_snapshot_in_tx(
+        finalize_topic_restore_in_tx(
             &txn,
             tenant_id,
             topic_id,
-            &snapshot,
             public_reply_count as i32,
         )
         .await?;
@@ -842,11 +854,58 @@ async fn count_approved_replies_in_tx(
     Ok(row.try_get("", "reply_count")?)
 }
 
-async fn restore_topic_from_delete_snapshot_in_tx(
+async fn unarchive_topic_for_restore_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     topic_id: Uuid,
     snapshot: &TopicDeleteSnapshot,
+) -> ForumResult<()> {
+    let statement = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE forum_topics
+            SET status = $3, is_locked = $4, deleted_at = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NOT NULL
+            "#,
+            vec![
+                tenant_id.into(),
+                topic_id.into(),
+                snapshot.previous_status.to_string().into(),
+                snapshot.previous_is_locked.into(),
+            ],
+        ),
+        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            r#"
+            UPDATE forum_topics
+            SET status = ?, is_locked = ?, deleted_at = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE tenant_id = ? AND id = ? AND deleted_at IS NOT NULL
+            "#,
+            vec![
+                snapshot.previous_status.to_string().into(),
+                snapshot.previous_is_locked.into(),
+                tenant_id.into(),
+                topic_id.into(),
+            ],
+        ),
+        backend => {
+            return Err(ForumError::Validation(format!(
+                "Forum topic restore does not support database backend {backend:?}"
+            )))
+        }
+    };
+    let result = txn.execute_raw(statement).await?;
+    if result.rows_affected() != 1 {
+        return Err(ForumError::TopicRestoreUnavailable(topic_id));
+    }
+    Ok(())
+}
+
+async fn finalize_topic_restore_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    topic_id: Uuid,
     reply_count: i32,
 ) -> ForumResult<()> {
     let statement = match txn.get_database_backend() {
@@ -854,7 +913,7 @@ async fn restore_topic_from_delete_snapshot_in_tx(
             DatabaseBackend::Postgres,
             r#"
             UPDATE forum_topics
-            SET status = $3, is_locked = $4, reply_count = $5,
+            SET reply_count = $3,
                 last_reply_at = (
                     SELECT MAX(created_at)
                     FROM forum_replies
@@ -863,15 +922,12 @@ async fn restore_topic_from_delete_snapshot_in_tx(
                       AND status = 'approved'
                       AND deleted_at IS NULL
                 ),
-                deleted_at = NULL,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NOT NULL
+            WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
             "#,
             vec![
                 tenant_id.into(),
                 topic_id.into(),
-                snapshot.previous_status.to_string().into(),
-                snapshot.previous_is_locked.into(),
                 reply_count.into(),
             ],
         ),
@@ -879,7 +935,7 @@ async fn restore_topic_from_delete_snapshot_in_tx(
             DatabaseBackend::Sqlite,
             r#"
             UPDATE forum_topics
-            SET status = ?, is_locked = ?, reply_count = ?,
+            SET reply_count = ?,
                 last_reply_at = (
                     SELECT MAX(created_at)
                     FROM forum_replies
@@ -888,13 +944,10 @@ async fn restore_topic_from_delete_snapshot_in_tx(
                       AND status = 'approved'
                       AND deleted_at IS NULL
                 ),
-                deleted_at = NULL,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE tenant_id = ? AND id = ? AND deleted_at IS NOT NULL
+            WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL
             "#,
             vec![
-                snapshot.previous_status.to_string().into(),
-                snapshot.previous_is_locked.into(),
                 reply_count.into(),
                 tenant_id.into(),
                 topic_id.into(),
