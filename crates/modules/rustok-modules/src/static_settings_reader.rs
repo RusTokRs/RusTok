@@ -1,10 +1,10 @@
 use async_trait::async_trait;
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement};
 use uuid::Uuid;
 
 use rustok_api::{
     PortError, SharedStaticModuleSettingsReader, StaticModuleSettingsReader,
-    StaticModuleSettingsSnapshot,
+    StaticModuleSettingsTransactionReader, StaticModuleSettingsSnapshot,
 };
 
 /// Database-backed owner implementation for static/native tenant-module settings.
@@ -54,6 +54,78 @@ impl StaticModuleSettingsReader for DatabaseStaticModuleSettingsReader {
 
         let row = self
             .db
+            .query_one_raw(Statement::from_sql_and_values(
+                backend,
+                query,
+                vec![tenant_id.into(), module_slug.into()],
+            ))
+            .await
+            .map_err(|_| {
+                PortError::unavailable(
+                    "modules.static_settings_unavailable",
+                    "Static module settings are temporarily unavailable",
+                )
+            })?;
+
+        let Some(row) = row else {
+            return Ok(None);
+        };
+
+        let enabled: bool = row.try_get("", "enabled").map_err(|_| {
+            PortError::invariant_violation(
+                "modules.static_settings_corrupt",
+                "Static module lifecycle state is invalid",
+            )
+        })?;
+        let encoded: String = row.try_get("", "settings_json").map_err(|_| {
+            PortError::invariant_violation(
+                "modules.static_settings_corrupt",
+                "Static module settings state is invalid",
+            )
+        })?;
+        let settings = serde_json::from_str(&encoded).map_err(|_| {
+            PortError::invariant_violation(
+                "modules.static_settings_corrupt",
+                "Static module settings JSON is invalid",
+            )
+        })?;
+
+        Ok(Some(StaticModuleSettingsSnapshot { enabled, settings }))
+    }
+}
+
+
+#[async_trait]
+impl StaticModuleSettingsTransactionReader for DatabaseStaticModuleSettingsReader {
+    async fn settings_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+        let backend = txn.get_database_backend();
+        let query = match backend {
+            sea_orm::DbBackend::Sqlite => {
+                "SELECT enabled, CAST(settings AS TEXT) AS settings_json \
+                 FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
+            }
+            sea_orm::DbBackend::Postgres => {
+                "SELECT enabled, settings::text AS settings_json \
+                 FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1 FOR SHARE"
+            }
+            sea_orm::DbBackend::MySql => {
+                "SELECT enabled, CAST(settings AS CHAR) AS settings_json \
+                 FROM tenant_modules WHERE tenant_id = ? AND module_slug = ? LIMIT 1 FOR SHARE"
+            }
+            _ => {
+                return Err(PortError::unavailable(
+                    "modules.static_settings_unavailable",
+                    "Static module settings are unavailable for this database backend",
+                ))
+            }
+        };
+
+        let row = txn
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 query,
