@@ -156,7 +156,7 @@ impl ReplyService {
             quote_expectation,
         )
         .await?;
-        let existing = self.find_reply_in_tx(&txn, tenant_id, reply_id).await?;
+        let existing = Self::find_reply_in_tx(&txn, tenant_id, reply_id).await?;
         if existing.topic_id != initial_topic_id {
             return Err(ForumError::TopicUpdateConflict(initial_topic_id));
         }

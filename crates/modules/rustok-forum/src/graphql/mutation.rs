@@ -18,7 +18,7 @@ use crate::topic_create_transport::{
     ForumTopicCreateTransport, topic_create_audience_port_context,
 };
 use crate::{
-    CategoryResponse, CategoryService, ReplyService, SubscriptionService, TopicService, VoteService,
+    CategoryResponse, CategoryService, SubscriptionService,
 };
 
 use super::{ForumGraphqlRuntimeData, require_forum_permission, resolve_tenant_scope, types::*};

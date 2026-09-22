@@ -55,7 +55,6 @@ async fn create_blog_comment_native(
     {
         use leptos::prelude::use_context;
         use rustok_api::{Action, HostRuntimeContext, Permission, Resource};
-        use rustok_outbox::TransactionalEventBus;
 
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
             .await

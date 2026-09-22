@@ -14,8 +14,7 @@ use rustok_reactions_api::{
     ReactionSubjectProviderFactory, ReactionSubjectRequest,
 };
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, Statement,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, Statement,
 };
 use uuid::Uuid;
 
@@ -99,7 +98,7 @@ impl ForumReactionSubjectProvider {
         let Some(snapshot) = settings_reader
             .settings(
                 tenant_id,
-                crate::services::engagement_mode::FORUM_MODULE_SLUG,
+                crate::services::FORUM_MODULE_SLUG,
             )
             .await
             .map_err(|error| match error.kind {
@@ -447,7 +446,7 @@ fn map_forum_error(error: ForumError) -> ReactionProviderError {
             // recover on retry. Persisted-state/internal invariants must fail
             // closed instead of being reported as transient outages.
             retryable: matches!(error, rustok_core::Error::External(_)),
-        }
+        },
         ForumError::Content(_) => ReactionProviderError::Internal { retryable: false },
         _ => ReactionProviderError::Unavailable,
     }

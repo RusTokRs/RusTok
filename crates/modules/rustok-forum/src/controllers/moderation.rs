@@ -43,7 +43,6 @@ pub async fn mark_topic_solution(
     )
     .map_err(crate::controllers::map_forum_error)?;
 
-    let event_bus = runtime.event_bus();
     runtime
         .moderation_service()
         .mark_solution_with_audience_context(
@@ -96,7 +95,6 @@ pub async fn clear_topic_solution(
     )
     .map_err(crate::controllers::map_forum_error)?;
 
-    let event_bus = runtime.event_bus();
     runtime
         .moderation_service()
         .clear_solution_with_audience_context(

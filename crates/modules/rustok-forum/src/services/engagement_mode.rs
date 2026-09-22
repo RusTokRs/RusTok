@@ -185,7 +185,9 @@ fn map_port_error(error: PortError) -> ForumError {
             true,
         ),
         PortErrorKind::InvariantViolation => {
-            ForumError::Internal("Static module settings violated an owner invariant".to_string())
+            ForumError::Internal(rustok_core::Error::Internal(
+                "Static module settings violated an owner invariant".to_string(),
+            ))
         }
         PortErrorKind::Validation
         | PortErrorKind::NotFound

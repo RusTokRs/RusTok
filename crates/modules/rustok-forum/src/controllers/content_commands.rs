@@ -92,7 +92,8 @@ pub async fn update_topic(
         Permission::FORUM_TOPICS_UPDATE,
         "Permission denied: forum_topics:update required",
     )?;
-    let topic = TopicService::new(runtime.db_clone(), runtime.event_bus())
+    let topic = runtime
+        .topic_service()
         .update_command(tenant.id, topic_id, forum_security(&auth), input)
         .await
         .map_err(command_error)?;

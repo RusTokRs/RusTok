@@ -201,12 +201,10 @@ impl CategoryService {
                     .clone()
                     .ok_or_else(|| BlogError::validation("Category name is required"))?;
                 validate_category_name(&name)?;
-                let slug = requested_slug
-                    .as_deref()
-                    .map(normalize_non_empty_slug)
-                    .transpose()?
-                    .unwrap_or_else(|| normalize_slug_like(&name));
-                let slug = normalize_non_empty_slug(&slug)?;
+                let slug = match requested_slug.as_deref() {
+                    Some(slug) => normalize_non_empty_slug(slug)?,
+                    None => normalize_non_empty_slug(&name)?,
+                };
                 validate_optional_description(requested_description.as_deref())?;
                 (name, slug, requested_description.clone())
             }

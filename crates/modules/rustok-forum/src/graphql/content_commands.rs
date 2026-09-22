@@ -15,8 +15,8 @@ use crate::topic_create_transport::{
 };
 use crate::{
     CreateReplyCommandInput, CreateTopicCommandInput, ForumQuoteReferenceInput,
-    ForumQuoteTargetKindInput, ReplyResponse, ReplyService, TopicResponse, TopicService,
-    UpdateReplyCommandInput, UpdateTopicCommandInput,
+    ForumQuoteTargetKindInput, ReplyResponse, TopicResponse, UpdateReplyCommandInput,
+    UpdateTopicCommandInput,
 };
 
 use super::{

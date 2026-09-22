@@ -339,6 +339,7 @@ mod tests {
             db,
             event_bus,
             audience_facts: None,
+            settings_providers: crate::services::ForumSettingsProviders::default(),
         };
         let app = Router::new()
             .route(
