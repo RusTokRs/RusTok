@@ -942,7 +942,7 @@ mod tests {
         .await;
 
         let tenant = tenant_context(tenant_id);
-        let runtime_extensions = test_runtime_extensions();
+        let runtime_extensions = test_runtime_extensions(db.clone());
         let expected = SeoApplicationServices::from_runtime_extensions(
             db.clone(),
             event_bus(),
@@ -1027,7 +1027,7 @@ mod tests {
         let schema = Schema::build(SeoQuery, EmptyMutation, EmptySubscription)
             .data(db)
             .data(event_bus())
-            .data(test_runtime_extensions())
+            .data(test_runtime_extensions(db.clone()))
             .data(tenant_context(tenant_id))
             .finish();
 
@@ -1198,7 +1198,7 @@ mod tests {
             .await
             .expect("restricted forum topic should be created");
 
-        let runtime_extensions = test_runtime_extensions();
+        let runtime_extensions = test_runtime_extensions(db.clone());
         let schema = Schema::build(SeoQuery, EmptyMutation, EmptySubscription)
             .data(db.clone())
             .data(event_bus.clone())
