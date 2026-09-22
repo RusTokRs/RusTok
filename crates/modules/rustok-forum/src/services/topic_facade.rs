@@ -14,6 +14,7 @@ use crate::entities::forum_topic;
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::TopicStatus;
 
+use super::engagement_mode::ForumSettingsProviders;
 use super::rbac::enforce_scope;
 use super::topic_canonical_resolution::{
     ForumTopicCanonicalResolution, ForumTopicCanonicalResolutionService,
@@ -44,6 +45,11 @@ impl TopicService {
         facts_port: SharedForumAudienceFactsPort,
     ) -> Self {
         Self::with_optional_audience_facts(db, event_bus, Some(facts_port))
+    }
+
+    pub(crate) fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.inner = self.inner.with_settings_providers(settings);
+        self
     }
 
     fn with_optional_audience_facts(
