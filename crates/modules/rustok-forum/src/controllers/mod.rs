@@ -1,12 +1,15 @@
 use anyhow::Context;
 use axum::routing::get;
 use axum::{Router, http::StatusCode};
-use rustok_api::HostRuntimeContext;
+use rustok_api::{
+    HostRuntimeContext, SharedStaticModuleSettingsReader,
+    SharedStaticModuleSettingsTransactionReader,
+};
 use rustok_outbox::TransactionalEventBus;
 use rustok_web::HttpError;
 use sea_orm::DatabaseConnection;
 
-use crate::SharedForumAudienceFactsPort;
+use crate::{ForumSettingsProviders, SharedForumAudienceFactsPort};
 
 pub mod categories;
 pub mod category_commands;
@@ -29,6 +32,7 @@ pub struct ForumHttpRuntime {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     audience_facts: Option<SharedForumAudienceFactsPort>,
+    settings_providers: ForumSettingsProviders,
 }
 
 impl ForumHttpRuntime {
@@ -40,22 +44,34 @@ impl ForumHttpRuntime {
         self.event_bus.clone()
     }
 
+    fn read_model_service(&self) -> crate::ForumReadModelService {
+        crate::ForumReadModelService::new(self.db_clone())
+            .with_settings_providers(self.settings_providers.clone())
+    }
+
     fn topic_service(&self) -> crate::TopicService {
-        match self.audience_facts.clone() {
+        let service = match self.audience_facts.clone() {
             Some(facts) => {
                 crate::TopicService::with_audience_facts(self.db_clone(), self.event_bus(), facts)
             }
             None => crate::TopicService::new(self.db_clone(), self.event_bus()),
-        }
+        };
+        service.with_settings_providers(self.settings_providers.clone())
     }
 
     fn reply_service(&self) -> crate::ReplyService {
-        match self.audience_facts.clone() {
+        let service = match self.audience_facts.clone() {
             Some(facts) => {
                 crate::ReplyService::with_audience_facts(self.db_clone(), self.event_bus(), facts)
             }
             None => crate::ReplyService::new(self.db_clone(), self.event_bus()),
-        }
+        };
+        service.with_settings_providers(self.settings_providers.clone())
+    }
+
+    fn vote_service(&self) -> crate::VoteService {
+        crate::VoteService::new(self.db_clone())
+            .with_settings_providers(self.settings_providers.clone())
     }
 
     fn moderation_service(&self) -> crate::ModerationService {
@@ -75,10 +91,21 @@ impl ForumHttpRuntime {
         let event_bus = runtime
             .shared_get::<TransactionalEventBus>()
             .context("forum HTTP routes require TransactionalEventBus in HostRuntimeContext")?;
+        let settings_providers = match (
+            runtime.shared_get::<SharedStaticModuleSettingsReader>(),
+            runtime.shared_get::<SharedStaticModuleSettingsTransactionReader>(),
+        ) {
+            (Some(reader), Some(transactional_reader)) => {
+                ForumSettingsProviders::default().with_static_readers(reader, transactional_reader)
+            }
+            _ => ForumSettingsProviders::default(),
+        };
+
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,
             audience_facts: runtime.shared_get::<SharedForumAudienceFactsPort>(),
+            settings_providers,
         })
     }
 }

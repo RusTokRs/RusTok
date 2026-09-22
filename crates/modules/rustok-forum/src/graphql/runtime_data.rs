@@ -6,7 +6,7 @@ use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
 use crate::{
-    ForumCategoryAudienceReadService, ForumReplyAudienceReadService,
+    ForumCategoryAudienceReadService, ForumReadModelService, ForumReplyAudienceReadService,
     ForumStorefrontReadStateService, ForumTopicAudienceReadService,
     ForumVisibilityScopedReadStateService, ModerationService, ReplyService,
     SharedForumAudienceFactsPort, TopicService, VoteService, ForumSettingsProviders,
@@ -44,6 +44,10 @@ pub fn attach_schema_data(
 }
 
 impl ForumGraphqlRuntimeData {
+    pub(crate) fn read_model_service(&self, db: DatabaseConnection) -> ForumReadModelService {
+        ForumReadModelService::new(db).with_settings_providers(self.settings_providers.clone())
+    }
+
     pub(crate) fn category_audience_read_service(
         &self,
         db: DatabaseConnection,

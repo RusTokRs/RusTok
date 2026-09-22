@@ -13,7 +13,10 @@ use rustok_notifications_api::{
     NotificationTargetRef, NotificationTargetRoute, NotificationTemplateData,
     NotificationTemplateKey, NotificationTypeKey, ResolveNotificationAudienceRequest,
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect, Statement,
+};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -26,7 +29,7 @@ use crate::notification_recipient::{
     ForumNotificationRecipientContextResolver, SharedForumNotificationRecipientContextPort,
 };
 use crate::services::{ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService};
-use crate::state_machine::{ReplyStatus, TopicStatus};
+use crate::state_machine::ReplyStatus;
 use crate::subscription::ForumSubscriptionLevel;
 
 const FORUM_SOURCE: &str = "forum";
@@ -204,12 +207,10 @@ impl ForumNotificationSourceProvider {
         tenant_id: Uuid,
         topic_id: Uuid,
     ) -> NotificationProviderResult<Option<forum_topic::Model>> {
-        if self.recipient_context_port.is_some() {
-            let topic = self.load_active_topic(tenant_id, topic_id).await?;
-            Ok(topic.filter(|topic| topic.status == TopicStatus::Open))
-        } else {
-            self.load_public_topic(tenant_id, topic_id).await
-        }
+        // Event descriptions are not recipient-specific. Keep the descriptor
+        // on the same public visibility contract regardless of which richer
+        // recipient capabilities the host happens to publish.
+        self.load_public_topic(tenant_id, topic_id).await
     }
 
     async fn load_topic_for_subscription_audience(
@@ -394,23 +395,31 @@ impl ForumNotificationSourceProvider {
         tenant_id: Uuid,
         id: Uuid,
     ) -> NotificationProviderResult<bool> {
-        match table {
-            "forum_topics" => forum_topic::Entity::find()
-                .filter(forum_topic::Column::TenantId.eq(tenant_id))
-                .filter(forum_topic::Column::Id.eq(id))
-                .one(&self.db)
-                .await
-                .map(|row| row.is_some())
-                .map_err(retryable_database_error),
-            "forum_replies" => forum_reply::Entity::find()
-                .filter(forum_reply::Column::TenantId.eq(tenant_id))
-                .filter(forum_reply::Column::Id.eq(id))
-                .one(&self.db)
-                .await
-                .map(|row| row.is_some())
-                .map_err(retryable_database_error),
-            _ => Err(NotificationProviderError::InvalidEvent),
-        }
+        let statement = match self.db.get_database_backend() {
+            DatabaseBackend::Postgres => Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                format!(
+                    "SELECT 1 AS active FROM {table} \
+                     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL"
+                ),
+                vec![tenant_id.into(), id.into()],
+            ),
+            DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                format!(
+                    "SELECT 1 AS active FROM {table} \
+                     WHERE tenant_id = ?1 AND id = ?2 AND deleted_at IS NULL"
+                ),
+                vec![tenant_id.into(), id.into()],
+            ),
+            _ => return Err(NotificationProviderError::InvalidEvent),
+        };
+
+        self.db
+            .query_one_raw(statement)
+            .await
+            .map(|row| row.is_some())
+            .map_err(retryable_database_error)
     }
 
     fn parse_user_mention(
@@ -810,14 +819,45 @@ fn retryable_database_error(_error: sea_orm::DbErr) -> NotificationProviderError
 fn forum_owner_error(error: ForumError) -> NotificationProviderError {
     match error {
         ForumError::CapabilityUnavailable { .. } => {
-            NotificationProviderError::CapabilityUnavailable { retryable: true }
+            NotificationProviderError::CapabilityUnavailable { retryable: false }
         }
         ForumError::CapabilityFailure { retryable, .. } => {
-            NotificationProviderError::Internal { retryable }
+            NotificationProviderError::CapabilityUnavailable { retryable }
         }
         error => NotificationProviderError::Internal {
             retryable: error.is_retryable(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn owner_capability_errors_preserve_retryability() {
+        assert_eq!(
+            forum_owner_error(ForumError::capability_unavailable("facts", "MISSING")),
+            NotificationProviderError::CapabilityUnavailable { retryable: false }
+        );
+        assert_eq!(
+            forum_owner_error(ForumError::capability_failure(
+                "facts",
+                "TIMEOUT",
+                "temporary",
+                true,
+            )),
+            NotificationProviderError::CapabilityUnavailable { retryable: true }
+        );
+        assert_eq!(
+            forum_owner_error(ForumError::capability_failure(
+                "facts",
+                "REJECTED",
+                "permanent",
+                false,
+            )),
+            NotificationProviderError::CapabilityUnavailable { retryable: false }
+        );
     }
 }
 

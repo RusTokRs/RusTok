@@ -1,8 +1,12 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{HostRuntimeContext, PortActorKind, PortContext, PortError, PortErrorKind};
+use rustok_api::{
+    HostRuntimeContext, PortActorKind, PortContext, PortError, PortErrorKind,
+    SharedStaticModuleSettingsReader,
+};
 use rustok_core::SecurityContext;
+use serde::Deserialize;
 use rustok_reactions_api::{
     ReactionCatalog, ReactionKey, ReactionProviderError, ReactionProviderResult,
     ReactionSelectionPolicy, ReactionSourceSlug, ReactionSubjectAccess,
@@ -16,18 +20,28 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::audience::SharedForumAudienceFactsPort;
-use crate::entities::{forum_reply, forum_reply_revision, forum_topic, forum_topic_revision};
+use crate::entities::{forum_reply, forum_topic};
 use crate::error::ForumError;
 use crate::notification_recipient::{
     ForumNotificationRecipientContextResolver, SharedForumNotificationRecipientContextPort,
 };
-use crate::services::{ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService};
+use crate::services::{
+    ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService, RevisionService,
+};
 use crate::state_machine::{ReplyStatus, TopicStatus};
 
 pub const FORUM_REACTION_SOURCE: &str = "forum";
 pub const FORUM_TOPIC_REACTION_KIND: &str = "topic";
 pub const FORUM_REPLY_REACTION_KIND: &str = "reply";
 pub const FORUM_REACTION_V1_KEY: &str = "like";
+#[cfg(test)]
+pub const FORUM_USE_REACTIONS_SETTING: &str = "use_reactions";
+
+#[derive(Debug, Deserialize, Default)]
+struct ForumReactionSettings {
+    #[serde(default)]
+    use_reactions: bool,
+}
 
 #[derive(Clone, Default)]
 pub struct ForumReactionSubjectProviderFactory;
@@ -45,6 +59,7 @@ impl ReactionSubjectProviderFactory for ForumReactionSubjectProviderFactory {
             host.db_clone(),
             host.shared_get::<SharedForumNotificationRecipientContextPort>(),
             host.shared_get::<SharedForumAudienceFactsPort>(),
+            host.shared_get::<SharedStaticModuleSettingsReader>(),
         )))
     }
 }
@@ -54,6 +69,7 @@ struct ForumReactionSubjectProvider {
     db: DatabaseConnection,
     recipient_context_port: Option<SharedForumNotificationRecipientContextPort>,
     facts_port: Option<SharedForumAudienceFactsPort>,
+    settings_reader: Option<SharedStaticModuleSettingsReader>,
 }
 
 impl ForumReactionSubjectProvider {
@@ -61,12 +77,49 @@ impl ForumReactionSubjectProvider {
         db: DatabaseConnection,
         recipient_context_port: Option<SharedForumNotificationRecipientContextPort>,
         facts_port: Option<SharedForumAudienceFactsPort>,
+        settings_reader: Option<SharedStaticModuleSettingsReader>,
     ) -> Self {
         Self {
             db,
             recipient_context_port,
             facts_port,
+            settings_reader,
         }
+    }
+
+    async fn reactions_enabled(
+        &self,
+        tenant_id: Uuid,
+    ) -> ReactionProviderResult<bool> {
+        let Some(settings_reader) = self.settings_reader.as_ref() else {
+            return Err(ReactionProviderError::CapabilityUnavailable {
+                retryable: false,
+            });
+        };
+        let Some(snapshot) = settings_reader
+            .settings(
+                tenant_id,
+                crate::services::engagement_mode::FORUM_MODULE_SLUG,
+            )
+            .await
+            .map_err(|error| match error.kind {
+                PortErrorKind::Timeout | PortErrorKind::Unavailable => {
+                    ReactionProviderError::CapabilityUnavailable { retryable: true }
+                }
+                PortErrorKind::InvariantViolation => {
+                    ReactionProviderError::Internal { retryable: false }
+                }
+                _ => ReactionProviderError::InvalidRequest,
+            })?
+        else {
+            return Ok(false);
+        };
+        if !snapshot.enabled {
+            return Ok(false);
+        }
+        let settings = serde_json::from_value::<ForumReactionSettings>(snapshot.settings)
+            .map_err(|_| ReactionProviderError::Internal { retryable: false })?;
+        Ok(settings.use_reactions)
     }
 
     async fn authorize_topic(
@@ -76,6 +129,9 @@ impl ForumReactionSubjectProvider {
         actor_id: Option<Uuid>,
     ) -> ReactionProviderResult<ReactionSubjectAuthorization> {
         let subject = &request.subject;
+        if !self.reactions_enabled(subject.tenant_id()).await? {
+            return Ok(ReactionSubjectAuthorization::Unavailable);
+        }
         let viewer = self
             .resolve_viewer(context, subject.tenant_id(), actor_id)
             .await?;
@@ -102,9 +158,10 @@ impl ForumReactionSubjectProvider {
             return Ok(ReactionSubjectAuthorization::Unavailable);
         }
 
-        let current_revision = self
+        let current_revision = RevisionService::new(self.db.clone())
             .current_topic_revision(subject.tenant_id(), topic.id)
-            .await?;
+            .await
+            .map_err(map_forum_error)?;
         self.allow_exact_revision(request, current_revision)
     }
 
@@ -115,6 +172,9 @@ impl ForumReactionSubjectProvider {
         actor_id: Option<Uuid>,
     ) -> ReactionProviderResult<ReactionSubjectAuthorization> {
         let subject = &request.subject;
+        if !self.reactions_enabled(subject.tenant_id()).await? {
+            return Ok(ReactionSubjectAuthorization::Unavailable);
+        }
         let Some(initial_reply) = self
             .load_active_reply(subject.tenant_id(), subject.subject_id())
             .await?
@@ -160,9 +220,10 @@ impl ForumReactionSubjectProvider {
             return Ok(ReactionSubjectAuthorization::Unavailable);
         }
 
-        let current_revision = self
+        let current_revision = RevisionService::new(self.db.clone())
             .current_reply_revision(subject.tenant_id(), reply.id)
-            .await?;
+            .await
+            .map_err(map_forum_error)?;
         self.allow_exact_revision(request, current_revision)
     }
 
@@ -277,42 +338,6 @@ impl ForumReactionSubjectProvider {
             .map(|row| row.is_some())
             .map_err(database_error)
     }
-
-    async fn current_topic_revision(
-        &self,
-        tenant_id: Uuid,
-        topic_id: Uuid,
-    ) -> ReactionProviderResult<u64> {
-        let latest = forum_topic_revision::Entity::find()
-            .select_only()
-            .column(forum_topic_revision::Column::Id)
-            .filter(forum_topic_revision::Column::TenantId.eq(tenant_id))
-            .filter(forum_topic_revision::Column::TopicId.eq(topic_id))
-            .order_by_desc(forum_topic_revision::Column::Id)
-            .into_tuple::<i64>()
-            .one(&self.db)
-            .await
-            .map_err(database_error)?;
-        current_revision_after(latest)
-    }
-
-    async fn current_reply_revision(
-        &self,
-        tenant_id: Uuid,
-        reply_id: Uuid,
-    ) -> ReactionProviderResult<u64> {
-        let latest = forum_reply_revision::Entity::find()
-            .select_only()
-            .column(forum_reply_revision::Column::Id)
-            .filter(forum_reply_revision::Column::TenantId.eq(tenant_id))
-            .filter(forum_reply_revision::Column::ReplyId.eq(reply_id))
-            .order_by_desc(forum_reply_revision::Column::Id)
-            .into_tuple::<i64>()
-            .one(&self.db)
-            .await
-            .map_err(database_error)?;
-        current_revision_after(latest)
-    }
 }
 
 #[async_trait]
@@ -358,17 +383,6 @@ fn actor_id_for_access(access: &ReactionSubjectAccess) -> Option<Uuid> {
     match access {
         ReactionSubjectAccess::Read { actor_id } => *actor_id,
         ReactionSubjectAccess::Apply { command } => Some(command.identity().actor_id()),
-    }
-}
-
-fn current_revision_after(latest: Option<i64>) -> ReactionProviderResult<u64> {
-    match latest {
-        None => Ok(1),
-        Some(latest) => u64::try_from(latest)
-            .ok()
-            .and_then(|revision| revision.checked_add(1))
-            .filter(|revision| *revision > 0)
-            .ok_or(ReactionProviderError::Internal { retryable: false }),
     }
 }
 
@@ -423,6 +437,9 @@ fn map_forum_error(error: ForumError) -> ReactionProviderError {
             ReactionProviderError::CapabilityUnavailable { retryable }
         }
         ForumError::Validation(_) => ReactionProviderError::InvalidRequest,
+        ForumError::RelationRevisionUnavailable => {
+            ReactionProviderError::Internal { retryable: false }
+        }
         ForumError::RelationRevisionConflict => ReactionProviderError::Conflict,
         ForumError::Database(_) => ReactionProviderError::Internal { retryable: true },
         ForumError::Internal(error) => ReactionProviderError::Internal {
@@ -451,12 +468,15 @@ mod tests {
     }
 
     #[test]
-    fn current_revision_is_positive_and_advances_after_captured_history() {
-        assert_eq!(current_revision_after(None).expect("initial revision"), 1);
-        assert_eq!(
-            current_revision_after(Some(41)).expect("advanced revision"),
-            42
-        );
-        assert!(current_revision_after(Some(-1)).is_err());
+    fn forum_setting_uses_canonical_key() {
+        assert_eq!(FORUM_USE_REACTIONS_SETTING, "use_reactions");
+    }
+
+    #[test]
+    fn unavailable_owner_revision_is_not_reported_as_transient() {
+        assert!(matches!(
+            map_forum_error(ForumError::RelationRevisionUnavailable),
+            ReactionProviderError::Internal { retryable: false }
+        ));
     }
 }

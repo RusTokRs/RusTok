@@ -120,6 +120,14 @@ pub struct ForumMutation(
     topic_split_mutation::ForumTopicSplitMutation,
 );
 
+pub(crate) fn forum_graphql_runtime(
+    ctx: &async_graphql::Context<'_>,
+) -> ForumGraphqlRuntimeData {
+    ctx.data_opt::<ForumGraphqlRuntimeData>()
+        .cloned()
+        .unwrap_or_default()
+}
+
 pub(crate) fn require_forum_permission<'a>(
     ctx: &'a async_graphql::Context<'_>,
     permissions: &[rustok_api::Permission],

@@ -16,8 +16,8 @@ use crate::topic_create_transport::{
     ForumTopicCreateTransport, topic_create_audience_port_context,
 };
 use crate::{
-    CreateReplyCommandInput, CreateTopicCommandInput, ReplyResponse, ReplyService, TopicResponse,
-    TopicService, UpdateReplyCommandInput, UpdateTopicCommandInput,
+    CreateReplyCommandInput, CreateTopicCommandInput, ReplyResponse, TopicResponse,
+    UpdateReplyCommandInput, UpdateTopicCommandInput,
 };
 
 #[utoipa::path(
@@ -174,7 +174,7 @@ pub async fn update_reply(
         Permission::FORUM_REPLIES_UPDATE,
         "Permission denied: forum_replies:update required",
     )?;
-    let reply = ReplyService::new(runtime.db_clone(), runtime.event_bus())
+    let reply = runtime.reply_service()
         .update_command(tenant.id, reply_id, forum_security(&auth), input)
         .await
         .map_err(command_error)?;

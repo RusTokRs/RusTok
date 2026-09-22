@@ -14,7 +14,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{
-    ForumReadModelService, ForumTopicReadOperation, ForumTopicReadState,
+    ForumTopicReadOperation, ForumTopicReadState,
     ForumTopicReadStateService, ForumTopicReadTransport, MarkForumTopicReadInput,
     MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult, TopicReadModel, TopicStatus,
     TopicUnreadCursorQuery, TopicUnreadReadModel, topic_read_audience_port_context,
@@ -158,7 +158,8 @@ impl ForumReadStateQuery {
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let fallback_locale = fallback_locale.or_else(|| Some(tenant.default_locale.clone()));
 
-        let page = ForumReadModelService::new(db.clone())
+        let page = super::forum_graphql_runtime(ctx)
+            .read_model_service(db.clone())
             .list_topics_with_unread(
                 tenant_id,
                 forum_security(auth),

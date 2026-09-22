@@ -17,7 +17,7 @@ use crate::topic_create_transport::{
 };
 use crate::{
     CreateTopicInput, ListTopicsFilter, ModerationService, SubscriptionService, TopicListItem,
-    TopicResponse, TopicService, UpdateTopicInput, VoteService,
+    TopicResponse, UpdateTopicInput,
 };
 
 #[derive(Debug, Clone, Copy, Deserialize, IntoParams, ToSchema)]
@@ -87,7 +87,7 @@ pub async fn list_topics(
     let requested_limit = Some(filter.per_page);
     let effective_limit = clamp_per_page(filter.per_page);
     filter.per_page = effective_limit;
-    let service = TopicService::new(runtime.db_clone(), runtime.event_bus());
+    let service = runtime.topic_service();
     let list_started_at = Instant::now();
     let (topics, _) = service
         .list_with_locale_fallback(
@@ -169,7 +169,7 @@ pub async fn get_topic(
     let locale = filter
         .locale
         .unwrap_or_else(|| request_context.locale.clone());
-    let topic = TopicService::new(runtime.db_clone(), runtime.event_bus())
+    let topic = runtime.topic_service()
         .get_with_locale_fallback(
             tenant.id,
             forum_security(&auth),
@@ -249,7 +249,7 @@ pub async fn update_topic(
         "Permission denied: forum_topics:update required",
     )?;
 
-    let topic = TopicService::new(runtime.db_clone(), runtime.event_bus())
+    let topic = runtime.topic_service()
         .update(tenant.id, id, forum_security(&auth), input)
         .await
         .map_err(crate::controllers::map_forum_error)?;
@@ -280,7 +280,7 @@ pub async fn delete_topic(
         "Permission denied: forum_topics:delete required",
     )?;
 
-    TopicService::new(runtime.db_clone(), runtime.event_bus())
+    runtime.topic_service()
         .delete(tenant.id, id, forum_security(&auth))
         .await
         .map_err(crate::controllers::map_forum_error)?;
@@ -352,7 +352,7 @@ pub async fn mark_topic_solution(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let topic = TopicService::new(runtime.db_clone(), event_bus)
+    let topic = runtime.topic_service()
         .get_with_locale_fallback(
             tenant.id,
             forum_security(&auth),
@@ -398,7 +398,7 @@ pub async fn clear_topic_solution(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let topic = TopicService::new(runtime.db_clone(), event_bus)
+    let topic = runtime.topic_service()
         .get_with_locale_fallback(
             tenant.id,
             forum_security(&auth),
@@ -438,12 +438,12 @@ pub async fn set_topic_vote(
         "Permission denied: forum_topics:read required",
     )?;
 
-    VoteService::new(runtime.db_clone())
+    runtime.vote_service()
         .set_topic_vote(tenant.id, topic_id, forum_security(&auth), value)
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let topic = TopicService::new(runtime.db_clone(), runtime.event_bus())
+    let topic = runtime.topic_service()
         .get_with_locale_fallback(
             tenant.id,
             forum_security(&auth),
@@ -480,12 +480,12 @@ pub async fn clear_topic_vote(
         "Permission denied: forum_topics:read required",
     )?;
 
-    VoteService::new(runtime.db_clone())
+    runtime.vote_service()
         .clear_topic_vote(tenant.id, topic_id, forum_security(&auth))
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let topic = TopicService::new(runtime.db_clone(), runtime.event_bus())
+    let topic = runtime.topic_service()
         .get_with_locale_fallback(
             tenant.id,
             forum_security(&auth),
@@ -527,7 +527,7 @@ pub async fn subscribe_topic(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let topic = TopicService::new(runtime.db_clone(), runtime.event_bus())
+    let topic = runtime.topic_service()
         .get_with_locale_fallback(
             tenant.id,
             forum_security(&auth),
@@ -569,7 +569,7 @@ pub async fn unsubscribe_topic(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let topic = TopicService::new(runtime.db_clone(), runtime.event_bus())
+    let topic = runtime.topic_service()
         .get_with_locale_fallback(
             tenant.id,
             forum_security(&auth),

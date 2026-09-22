@@ -140,7 +140,8 @@ impl ForumContentCommandMutation {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
-        let topic = TopicService::new(db.clone(), event_bus.clone())
+        let topic = super::forum_graphql_runtime(ctx)
+            .topic_service(db.clone(), event_bus.clone())
             .update_command(
                 tenant_id,
                 topic_id,
@@ -226,7 +227,8 @@ impl ForumContentCommandMutation {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
-        let reply = ReplyService::new(db.clone(), event_bus.clone())
+        let reply = super::forum_graphql_runtime(ctx)
+            .reply_service(db.clone(), event_bus.clone())
             .update_command(
                 tenant_id,
                 reply_id,

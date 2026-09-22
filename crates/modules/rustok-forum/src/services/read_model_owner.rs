@@ -16,6 +16,7 @@ use crate::dto::{
 };
 use crate::entities::forum_category;
 use crate::error::{ForumError, ForumResult};
+use crate::services::engagement_mode::ForumSettingsProviders;
 use crate::services::rbac::enforce_scope;
 use crate::services::subscription::SubscriptionService;
 
@@ -32,6 +33,11 @@ impl ForumReadModelService {
             legacy: super::read_model_legacy::ForumReadModelService::new(db.clone()),
             db,
         }
+    }
+
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.legacy = self.legacy.with_settings_providers(settings);
+        self
     }
 
     pub async fn list_categories(

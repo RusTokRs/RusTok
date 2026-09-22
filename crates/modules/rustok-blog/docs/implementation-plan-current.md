@@ -150,6 +150,14 @@ Any Translation-control-plane onboarding for Blog Categories must now target the
 canonical Taxonomy owner contract. It must not restore direct Blog Category
 localized storage or a second `blog/category` provider.
 
+## Reference-v1 category validation boundary
+
+The fresh Taxonomy boundary audit found and closed one contract mismatch: Blog previously advertised and locally accepted Category names up to 255 characters, while the canonical Taxonomy Category owner rejects names above 120 characters. Blog DTO/OpenAPI metadata and service validation now enforce the canonical 120-character bound before opening the owner mutation path.
+
+## Reference-v1 category route normalization boundary
+
+The fresh Taxonomy boundary audit found a second concrete contract mismatch: Blog had its own ASCII-only slug normalizer, while canonical Taxonomy uses the shared routable route-key normalizer with transliteration. Blog could therefore reject localized Category names such as Cyrillic names without an explicit ASCII slug even though the canonical owner could represent them. Blog now delegates route normalization to Taxonomy and keeps a focused regression test for localized route generation.
+
 ## Other retained Blog source tracks
 
 The Category migration does not reopen unrelated source-complete tracks from the
@@ -163,6 +171,8 @@ previous cursor. Their latest retained source states remain:
 - `tag_canonical_projection = source_complete_maintainer_execution_pending`;
 - `tag_mutation_atomic_reindex = source_complete_maintainer_execution_pending`;
 - `post_category_name_projection = source_complete_canonical_taxonomy_read`.
+- `comment_target_lifecycle_guard = source_complete`; comment reads and mutations that begin from a Comments record revalidate canonical Blog post existence, so asynchronously stale Comments threads cannot remain operable after terminal post deletion.
+- `comment_create_target_race_compensation = source_complete`; comment creation revalidates the canonical Blog post after the external Comments write and compensates a comment created after terminal post deletion, while preserving the durable `TargetDeleted` cleanup backstop.
 
 For tags, Taxonomy remains the shared dictionary owner and Blog retains
 `blog_post_tags` attachment ownership. Global Taxonomy tags may be attached and

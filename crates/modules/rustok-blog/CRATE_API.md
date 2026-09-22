@@ -35,6 +35,12 @@ Primary entry points:
 - `BlogQuery` / `BlogMutation`
 - `controllers::axum_router`
 
+## Category owner contract
+
+Blog Category localized names are bounded by the canonical Taxonomy Category owner contract: a name is at most 120 characters. The Blog DTO/OpenAPI schema and service validation use the same bound, so invalid names fail as Blog input validation before any Taxonomy mutation is attempted.
+
+Category route normalization is also delegated to the canonical Taxonomy normalization primitive. This keeps transliteration and routable Unicode handling identical between Blog's command boundary and Taxonomy's persisted route keys.
+
 ## Post owner contract
 
 ### Create
@@ -186,6 +192,9 @@ Blog consumes Comments through `CommentsThreadPort` and typed `PortContext` /
 
 `CreateCommentInput.command_id` is the stable logical command identity and must
 be reused by callers across retries so provider idempotency remains stable.
+
+Comment reads and mutations that start from a Comments record revalidate the canonical Blog post in the same Blog service boundary. A stale Comments thread left briefly by asynchronous target-deletion processing is therefore not treated as a valid Blog surface.
+Comment creation also revalidates the canonical post after the external Comments write; if terminal deletion won the race, Blog compensates the created comment with a fresh idempotent delete command and returns post-not-found. The terminal `TargetDeleted` event remains the durable cleanup backstop.
 
 Current Blog FBA status is `boundary_ready`, not `transport_verified`.
 Remote transport and runtime fallback/live evidence remain separate promotion

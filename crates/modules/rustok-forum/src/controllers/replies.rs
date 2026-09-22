@@ -16,7 +16,7 @@ use crate::reply_create_transport::{
 use crate::{
     CreateReplyInput, ForumReplyAudienceReadService, ForumReplyReadOperation,
     ForumReplyReadTransport, ListRepliesFilter, ReplyListItem, ReplyResponse, UpdateReplyInput,
-    VoteService, reply_read_audience_port_context,
+    reply_read_audience_port_context,
 };
 
 fn clamp_per_page(per_page: u64) -> u64 {
@@ -365,7 +365,7 @@ pub async fn set_reply_vote(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    VoteService::new(runtime.db_clone())
+    runtime.vote_service()
         .set_reply_vote(tenant.id, reply_id, forum_security(&auth), value)
         .await
         .map_err(crate::controllers::map_forum_error)?;
@@ -437,7 +437,7 @@ pub async fn clear_reply_vote(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    VoteService::new(runtime.db_clone())
+    runtime.vote_service()
         .clear_reply_vote(tenant.id, reply_id, forum_security(&auth))
         .await
         .map_err(crate::controllers::map_forum_error)?;

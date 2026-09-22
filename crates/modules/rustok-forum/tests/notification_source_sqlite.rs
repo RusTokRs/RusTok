@@ -205,6 +205,25 @@ async fn forum_topic_and_user_mention_sources_support_notifications_profiles() {
         NotificationOpenAuthorization::Unavailable => panic!("open topic should be available"),
     }
 
+    db.execute_unprepared(&format!(
+        "UPDATE forum_topics SET deleted_at = CURRENT_TIMESTAMP WHERE tenant_id = '{}' AND id = '{}'",
+        tenant_id, topic.id
+    ))
+    .await
+    .expect("soft-delete marker should be writable in regression setup");
+    let deleted_authorization = provider
+        .authorize_target_open(AuthorizeNotificationTargetRequest {
+            tenant_id,
+            recipient_id: first_recipient,
+            target: descriptor.target.clone(),
+        })
+        .await
+        .expect("soft-deleted target authorization should complete");
+    assert_eq!(
+        deleted_authorization,
+        NotificationOpenAuthorization::Unavailable
+    );
+
     let restricted_topic = TopicService::new(db.clone(), event_bus.clone())
         .create(
             tenant_id,
