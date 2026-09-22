@@ -193,28 +193,55 @@ fn map_port_error(error: PortError) -> ForumError {
 
 #[cfg(test)]
 mod tests {
-    use sea_orm::{ConnectionTrait, Database};
+    use std::sync::Arc;
 
-    use super::{ForumEngagementMode, FORUM_USE_REACTIONS_SETTING};
+    use async_trait::async_trait;
+    use rustok_api::{
+        PortError, SharedStaticModuleSettingsReader,
+        SharedStaticModuleSettingsTransactionReader, StaticModuleSettingsReader,
+        StaticModuleSettingsSnapshot, StaticModuleSettingsTransactionReader,
+    };
+    use sea_orm::DatabaseTransaction;
+    use uuid::Uuid;
+
+    use super::{ForumEngagementMode, ForumSettingsProviders, FORUM_USE_REACTIONS_SETTING};
+
+    struct EmptySettingsReader;
+
+    #[async_trait]
+    impl StaticModuleSettingsReader for EmptySettingsReader {
+        async fn settings(
+            &self,
+            _tenant_id: Uuid,
+            _module_slug: &str,
+        ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+            Ok(None)
+        }
+    }
+
+    #[async_trait]
+    impl StaticModuleSettingsTransactionReader for EmptySettingsReader {
+        async fn settings_in_tx(
+            &self,
+            _txn: &DatabaseTransaction,
+            _tenant_id: Uuid,
+            _module_slug: &str,
+        ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+            Ok(None)
+        }
+    }
+
+    fn providers() -> ForumSettingsProviders {
+        let reader = Arc::new(EmptySettingsReader);
+        ForumSettingsProviders::default().with_static_readers(
+            SharedStaticModuleSettingsReader(reader.clone()),
+            SharedStaticModuleSettingsTransactionReader(reader),
+        )
+    }
 
     #[tokio::test]
     async fn forum_defaults_to_internal_votes_without_an_override() {
-        let db = Database::connect("sqlite::memory:").await.expect("db");
-        db.execute_unprepared(
-            "CREATE TABLE tenant_modules (
-                id TEXT NOT NULL PRIMARY KEY,
-                tenant_id TEXT NOT NULL,
-                module_slug TEXT NOT NULL,
-                enabled BOOLEAN NOT NULL,
-                settings TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )",
-        )
-        .await
-        .expect("schema");
-
-        let mode = ForumEngagementMode::resolve(&db, uuid::Uuid::new_v4())
+        let mode = ForumEngagementMode::resolve(&providers(), Uuid::new_v4())
             .await
             .expect("mode");
 
