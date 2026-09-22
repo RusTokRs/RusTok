@@ -451,7 +451,7 @@ jobs:
           mkdir -p /tmp/event-contract-digest
           cp crates/libs/rustok-events/contracts/event-contract-digests.json /tmp/event-contract-digest/generated.json
       - name: Archive generated digest
-        uses: actions/upload-artifact@d6d9d7f6f3d8d4f7a9fdbb3e98f8d4f6c4b56f47
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: tmp-event-contract-digest
           path: /tmp/event-contract-digest/generated.json
