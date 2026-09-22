@@ -15,7 +15,7 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::ReplyResponse;
-use crate::entities::{forum_reply, forum_reply_body, forum_solution};
+use crate::entities::{forum_reply, forum_reply_body, forum_solution, forum_topic_merge_operation};
 use crate::error::{ForumError, ForumResult};
 use crate::mentions::ForumContentTarget;
 use crate::state_machine::{ReplyStatus, TopicStatus};
@@ -146,7 +146,14 @@ impl ReplyService {
         }
 
         let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, reply.topic_id).await?;
-        if topic.status == TopicStatus::Archived {
+        if topic.status == TopicStatus::Archived
+            && forum_topic_merge_operation::Entity::find()
+                .filter(forum_topic_merge_operation::Column::TenantId.eq(tenant_id))
+                .filter(forum_topic_merge_operation::Column::SourceTopicId.eq(topic.id))
+                .one(&txn)
+                .await?
+                .is_some()
+        {
             return Err(ForumError::ReplyRestoreUnavailable(reply_id));
         }
         ensure_category_restore_target_is_active_in_tx(&txn, tenant_id, topic.category_id).await?;
