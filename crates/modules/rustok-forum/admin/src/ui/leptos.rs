@@ -1032,17 +1032,17 @@ pub fn ForumAdmin() -> impl IntoView {
 
     let restore_reply = Callback::new({
         let restore_reply_error = restore_reply_error.clone();
-        move |topic_id: String| {
+        move |reply_id: String| {
             let token_value = token.get_untracked();
             let tenant_value = tenant.get_untracked();
             set_error.set(None);
             set_busy_key.set(Some(forum_admin_busy_key(
                 ForumAdminBusySurface::Reply,
                 ForumAdminBusyAction::Moderate,
-                Some(topic_id.as_str()),
+                Some(reply_id.as_str()),
             )));
             spawn_local(async move {
-                match transport::restore_reply(token_value, tenant_value, topic_id).await {
+                match transport::restore_reply(token_value, tenant_value, reply_id).await {
                     Ok(()) => set_refresh_nonce.update(|value| *value += 1),
                     Err(err) => set_error.set(Some(forum_admin_transport_error_message(
                         restore_topic_error.as_str(),
