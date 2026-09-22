@@ -17,6 +17,12 @@ import { Textarea } from '@/shared/ui/shadcn/textarea';
 import { Switch } from '@/shared/ui/shadcn/switch';
 import { updateModuleSettings, type GqlOpts } from '@/shared/api/modules';
 
+interface ModuleSettingsFieldsContext {
+  settingsText: string;
+  onSettingsTextChange: (value: string) => void;
+  disabled: boolean;
+}
+
 interface ModuleSettingsDialogProps {
   moduleSlug: string;
   initialSettings?: string;
@@ -29,7 +35,7 @@ interface ModuleSettingsDialogProps {
     newRevision: number
   ) => void;
   apiOpts?: GqlOpts;
-  settingsFields?: ReactNode;
+  settingsFields?: (context: ModuleSettingsFieldsContext) => ReactNode;
 }
 
 export function ModuleSettingsDialog({
@@ -127,7 +133,11 @@ export function ModuleSettingsDialog({
         </DialogHeader>
 
         <div className='space-y-3 py-2'>
-          {settingsFields}
+          {settingsFields?.({
+            settingsText,
+            onSettingsTextChange: setSettingsText,
+            disabled: isSaving
+          })}
 
           <div className='flex items-center justify-between'>
             <label className='text-muted-foreground text-xs font-medium'>
