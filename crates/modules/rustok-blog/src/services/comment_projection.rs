@@ -276,8 +276,8 @@ mod tests {
         assert_eq!(
             comment_projection_change(&deleted),
             Some(CommentProjectionChange {
-                comment_id: id(4),
-                post_id: id(5),
+                comment_id: id(10),
+                post_id: id(11),
                 delta: -1,
             })
         );
