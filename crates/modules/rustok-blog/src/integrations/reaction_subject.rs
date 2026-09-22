@@ -36,12 +36,9 @@ impl ReactionSubjectProviderFactory for BlogReactionSubjectProviderFactory {
         &self,
         host: &HostRuntimeContext,
     ) -> ReactionProviderResult<Arc<dyn ReactionSubjectProvider>> {
-        let settings_reader = host
-            .shared_get::<SharedStaticModuleSettingsReader>()
-            .ok_or(ReactionProviderError::CapabilityUnavailable { retryable: false })?;
         Ok(Arc::new(BlogReactionSubjectProvider::new(
             host.db_clone(),
-            settings_reader,
+            host.shared_get::<SharedStaticModuleSettingsReader>(),
         )))
     }
 }
@@ -49,13 +46,13 @@ impl ReactionSubjectProviderFactory for BlogReactionSubjectProviderFactory {
 #[derive(Clone)]
 struct BlogReactionSubjectProvider {
     db: DatabaseConnection,
-    settings_reader: SharedStaticModuleSettingsReader,
+    settings_reader: Option<SharedStaticModuleSettingsReader>,
 }
 
 impl BlogReactionSubjectProvider {
     fn new(
         db: DatabaseConnection,
-        settings_reader: SharedStaticModuleSettingsReader,
+        settings_reader: Option<SharedStaticModuleSettingsReader>,
     ) -> Self {
         Self {
             db,
@@ -69,8 +66,10 @@ impl BlogReactionSubjectProvider {
         request: &ReactionSubjectRequest,
     ) -> ReactionProviderResult<ReactionSubjectAuthorization> {
         let subject = &request.subject;
-        let Some(snapshot) = self
-            .settings_reader
+        let Some(settings_reader) = self.settings_reader.as_ref() else {
+            return Err(ReactionProviderError::CapabilityUnavailable { retryable: false });
+        };
+        let Some(snapshot) = settings_reader
             .settings(subject.tenant_id(), "blog")
             .await
             .map_err(|_| ReactionProviderError::CapabilityUnavailable { retryable: true })?
