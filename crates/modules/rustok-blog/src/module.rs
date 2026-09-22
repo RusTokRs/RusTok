@@ -211,11 +211,25 @@ mod tests {
             target_id: Uuid::from_u128(2),
             author_id: Uuid::from_u128(3),
         };
-        let blog_deleted = DomainEvent::CommentDeleted {
+        let blog_updated = DomainEvent::CommentUpdated {
             comment_id: Uuid::from_u128(4),
             target_type: "blog_post".to_string(),
             target_id: Uuid::from_u128(5),
             author_id: Uuid::from_u128(6),
+        };
+        let blog_status_changed = DomainEvent::CommentStatusChanged {
+            comment_id: Uuid::from_u128(7),
+            target_type: "blog_post".to_string(),
+            target_id: Uuid::from_u128(8),
+            author_id: Uuid::from_u128(9),
+            old_status: "pending".to_string(),
+            new_status: "approved".to_string(),
+        };
+        let blog_deleted = DomainEvent::CommentDeleted {
+            comment_id: Uuid::from_u128(10),
+            target_type: "blog_post".to_string(),
+            target_id: Uuid::from_u128(11),
+            author_id: Uuid::from_u128(12),
         };
         let forum_created = DomainEvent::CommentCreated {
             comment_id: Uuid::from_u128(7),
