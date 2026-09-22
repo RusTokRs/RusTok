@@ -426,7 +426,7 @@ Owners must document:
 | P0 | Platform settings event is published after save on a best-effort path | Owner transaction plus transactional outbox |
 | P0 | Unknown manifest schema keywords are ignored; live SEO metadata uses unsupported nested-shape names | One canonical schema vocabulary, `deny_unknown_fields`, manifest migration, and negative tests |
 | P1 | `platform_settings.schema_version` is decorative | Replace with exact owner schema identity/revision or delete the field |
-| P1 | Forum still consumes a low-level tenant-module settings helper; SEO direct persistence access is now behind the owner port | Move Forum engagement consumers to the canonical static settings owner port, then retire the low-level consumer helper |
+| P1 | Static settings still lack complete owner-port/effective-integration coverage | Finish owner-specific read/effective-capability ports and activation evidence for remaining modules |
 | P1 | Static settings still lack complete owner-port/effective-integration coverage | Finish owner-specific read/effective-capability ports and activation evidence for remaining modules |
 | P1 | Disabled module settings cannot be repaired in Admin | Dormant edit and/or atomic enable-with-settings |
 | P1 | Static rows do not persist exact schema digest/state | Add digest and `not_applicable/ready/migration_required` semantics |
