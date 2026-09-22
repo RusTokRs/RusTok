@@ -1,5 +1,5 @@
 use sea_orm::{
-    ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QuerySelect, DbBackend,
+    ColumnTrait, DatabaseTransaction, DbBackend, EntityTrait, QueryFilter, QuerySelect,
 };
 use uuid::Uuid;
 
