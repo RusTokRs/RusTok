@@ -34,6 +34,39 @@ async fn load_categories_in_tx(
     Ok(categories)
 }
 
+/// Verify that a category and all of its ancestors are currently active.
+///
+/// Topic/reply restore operations use the same category-tree lock as category
+/// lifecycle mutations, so this check and the subsequent restore form one
+/// serialized decision.
+pub(super) async fn ensure_category_restore_target_is_active_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    category_id: Uuid,
+) -> ForumResult<()> {
+    let categories = load_categories_in_tx(txn, tenant_id).await?;
+    let category_ids = categories.iter().map(|category| category.id).collect::<Vec<_>>();
+    let parent_by_id = load_category_parents_in_tx(txn, tenant_id, &category_ids).await?;
+    validate_parent_map(&parent_by_id)?;
+
+    let lifecycle_rows = forum_category_lifecycle::Entity::find()
+        .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
+        .all(txn)
+        .await?;
+    let lifecycle_by_category = lifecycle_rows
+        .into_iter()
+        .map(|lifecycle| (lifecycle.category_id, lifecycle))
+        .collect::<HashMap<_, _>>();
+
+    if !parent_by_id.contains_key(&category_id) || lifecycle_by_category.contains_key(&category_id) {
+        return Err(ForumError::Validation(
+            "Forum content cannot be restored into an archived category".to_string(),
+        ));
+    }
+
+    ensure_restore_ancestors_are_active(&parent_by_id, &lifecycle_by_category, category_id)
+}
+
 async fn load_category_parents_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
