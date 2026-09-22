@@ -242,6 +242,7 @@ impl TopicService {
 
         let txn = self.db.begin().await?;
         lock_topic_delete_tenant_in_tx(&txn, tenant_id).await?;
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
         ForumTopicRouteTombstoneVisibilityService::lock_category_scope_in_tx(&txn, tenant_id)
             .await?;
         ForumTopicRouteTombstoneVisibilityService::lock_topic_audience_scope_in_tx(
