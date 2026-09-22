@@ -342,7 +342,7 @@ async fn internal_votes_switch_by_forum_setting_independently_of_reactions_modul
     ));
 
     let topic_summary = vote_service
-        .topic_vote_summary(tenant_id, topic.id, Some(voter.user_id.expect("voter id")))
+        .topic_vote_summary(tenant_id, topic.id, None)
         .await
         .expect("topic summary should load");
     assert_eq!(topic_summary.score, 0);
