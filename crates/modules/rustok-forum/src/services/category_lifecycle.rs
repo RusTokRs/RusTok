@@ -39,6 +39,17 @@ async fn load_categories_in_tx(
 /// Topic/reply restore operations use the same category-tree lock as category
 /// lifecycle mutations, so this check and the subsequent restore form one
 /// serialized decision.
+/// Verify that a category and every ancestor are active. Structural topic commands
+/// use the same category-tree lifecycle invariant as topic restore, because a child of an
+/// archived ancestor is not an active placement target even when its own lifecycle row is absent.
+pub(super) async fn ensure_category_tree_target_is_active_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    category_id: Uuid,
+) -> ForumResult<()> {
+    ensure_category_restore_target_is_active_in_tx(txn, tenant_id, category_id).await
+}
+
 pub(super) async fn ensure_category_restore_target_is_active_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
