@@ -271,11 +271,18 @@ impl ReplyService {
             .filter(forum_solution::Column::TopicId.eq(reply.topic_id))
             .one(txn)
             .await?;
-        let solution_removed = solution
+        let solution_for_snapshot = solution
             .as_ref()
-            .is_some_and(|solution| solution.reply_id == reply_id);
+            .filter(|solution| solution.reply_id == reply_id);
+        let solution_removed = solution_for_snapshot.is_some();
 
-        record_reply_delete_snapshot_in_tx(txn, tenant_id, &reply, solution.as_ref()).await?;
+        record_reply_delete_snapshot_in_tx(
+            txn,
+            tenant_id,
+            &reply,
+            solution_for_snapshot,
+        )
+        .await?;
 
         forum_solution::Entity::delete_many()
             .filter(forum_solution::Column::TenantId.eq(tenant_id))
