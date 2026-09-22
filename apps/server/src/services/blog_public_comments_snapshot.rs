@@ -75,7 +75,7 @@ mod tests {
 
     #[test]
     fn adapter_contract_is_bounded_and_lazy() {
-        assert_eq!(CACHE_PREFIX, "blog-public-comments-snapshot-v1");
+        assert_eq!(CACHE_PREFIX, "blog-public-comments-snapshot-v2");
         assert_eq!(SNAPSHOT_TTL, Duration::from_secs(900));
         assert_eq!(MAX_SNAPSHOT_KEYS, 10_000);
     }
