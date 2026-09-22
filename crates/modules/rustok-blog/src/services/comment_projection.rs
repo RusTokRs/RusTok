@@ -98,8 +98,10 @@ impl BlogCommentProjectionHandler {
             .one(&txn)
             .await?
         else {
-            txn.commit().await?;
-            return Ok(());
+            return Err(Error::Internal(format!(
+                "blog comment projection references missing post {} for tenant {}",
+                change.post_id, envelope.tenant_id
+            )));
         };
 
         // Event IDs are ULIDs encoded as UUIDs by EventEnvelope::new(), so UUID ordering
@@ -135,7 +137,7 @@ impl BlogCommentProjectionHandler {
         let next_projection_revision = latest_projection_revision
             .checked_add(1)
             .ok_or_else(|| {
-                Error::External(format!(
+                Error::Internal(format!(
                     "blog comment projection revision exhausted for post {}",
                     change.post_id
                 ))
@@ -164,7 +166,7 @@ impl BlogCommentProjectionHandler {
         };
 
         if applied_delta != 0 && !post_updated {
-            return Err(Error::External(format!(
+            return Err(Error::Internal(format!(
                 "blog comment projection could not update post {} after row lock",
                 change.post_id
             )));
