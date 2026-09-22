@@ -232,6 +232,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn transactional_reader_returns_disabled_state_and_exact_tenant_scope() {
+        use sea_orm::TransactionTrait;
+
+        let db = db().await;
+        let tenant_id = Uuid::new_v4();
+        let foreign_tenant_id = Uuid::new_v4();
+
+        db.execute_unprepared(&format!(
+            r#"INSERT INTO tenant_modules (tenant_id, module_slug, enabled, settings) VALUES
+            ('{tenant_id}', 'forum', 0, '{{"use_reactions":true}}'),
+            ('{foreign_tenant_id}', 'forum', 1, '{{"use_reactions":false}}')"#
+        ))
+        .await
+        .expect("rows");
+
+        let reader = DatabaseStaticModuleSettingsReader::new(db.clone());
+        let txn = db.begin().await.expect("transaction");
+
+        let snapshot = reader
+            .settings_in_tx(&txn, tenant_id, "forum")
+            .await
+            .expect("transaction settings read")
+            .expect("exact disabled row");
+        assert!(!snapshot.enabled);
+        assert_eq!(snapshot.settings["use_reactions"], true);
+
+        let foreign = reader
+            .settings_in_tx(&txn, foreign_tenant_id, "forum")
+            .await
+            .expect("foreign transaction settings read")
+            .expect("foreign exact row");
+        assert!(foreign.enabled);
+        assert_eq!(foreign.settings["use_reactions"], false);
+
+        txn.rollback().await.expect("rollback");
+    }
+
+    #[tokio::test]
     async fn reader_rejects_corrupt_settings_as_invariant_failure() {
         let db = db().await;
         let tenant_id = Uuid::new_v4();
