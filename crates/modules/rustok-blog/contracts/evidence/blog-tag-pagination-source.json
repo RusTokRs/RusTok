@@ -24,9 +24,7 @@
     "production_behavior_changed": true,
     "database_schema_changed": false,
     "ffa_promoted": false,
-    "fba_promoted": false,
-    "tag_filter_uses_database_subquery": true,
-    "tag_filter_materializes_post_ids": false
+    "fba_promoted": false
   },
   "source_harness": {
     "path": "crates/modules/rustok-blog/src/services/tag.rs",
@@ -39,8 +37,8 @@
     "runtime_status": "not_run"
   },
   "open_follow_up": {
-    "tag_mutation_projection_consistency": "re_audit_required",
-    "reason": "TagService update/delete mutate Taxonomy or Blog relations while Search currently projects tag text from blog_posts.metadata.tags; this slice deliberately does not redefine that ownership boundary"
+    "tag_mutation_projection_consistency": "retained_execution_in_tag_mutation_reindex_evidence",
+    "reason": "TagService update/delete source semantics are covered by blog-tag-mutation-reindex-source.json; remaining work is maintainer execution of its retained rollback and delete-cascade evidence."
   },
   "execution": [],
   "explicit_non_claims": [
