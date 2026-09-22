@@ -150,6 +150,10 @@ Any Translation-control-plane onboarding for Blog Categories must now target the
 canonical Taxonomy owner contract. It must not restore direct Blog Category
 localized storage or a second `blog/category` provider.
 
+## Reference-v1 category validation boundary
+
+The fresh Taxonomy boundary audit found and closed one contract mismatch: Blog previously advertised and locally accepted Category names up to 255 characters, while the canonical Taxonomy Category owner rejects names above 120 characters. Blog DTO/OpenAPI metadata and service validation now enforce the canonical 120-character bound before opening the owner mutation path.
+
 ## Other retained Blog source tracks
 
 The Category migration does not reopen unrelated source-complete tracks from the
