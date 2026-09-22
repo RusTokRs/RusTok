@@ -47,19 +47,13 @@ when later bounded migrations retire an earlier design.
 
 ## Settings status
 
-The manifest currently declares `postsPerPage` and `showAuthor`. They are exposed by
-the generic settings schema and can be persisted, but no Blog runtime read path
-consumes them. They must either be cut over atomically to canonical `snake_case` keys
-with typed Blog-owned consumers or be deleted as decorative settings. They are not
-evidence of active Blog behavior.
+Blog currently declares no module-owned static settings. Runtime behavior is not
+advertised through decorative manifest keys.
 
-The current composition declares Comments as a Blog lifecycle dependency, but that
-edge is an accepted cutover gap: Blog must remain enableable and serve publications
-without Comments. Any Blog setting for comment visibility or write admission is a
-consumer-owned capability policy, not a static dependency or permission to mutate the
-Comments lifecycle. Reactions is optional; Blog-owned intent and Reactions-owned
-availability must be combined through the platform settings/policy owner contract in
-[`docs/architecture/settings.md`](../../../../docs/architecture/settings.md).
+Comments is an optional capability provider. Blog owns its comment-surface policy;
+Comments owns threads, bodies, moderation, and retention. Provider absence affects only
+comment reads/writes and never Blog publication serving. Reactions remains independently
+optional and follows the same owner-bound capability model.
 
 ## Canonical source layout
 
