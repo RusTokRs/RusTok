@@ -281,6 +281,7 @@ async fn create_projection_tables(db: &DatabaseConnection) -> Result<(), sea_orm
             comment_id UUID NOT NULL,
             post_id UUID NOT NULL,
             delta INTEGER NOT NULL,
+            projection_revision BIGINT NOT NULL DEFAULT 0,
             processed_at TIMESTAMPTZ NOT NULL
         );
 

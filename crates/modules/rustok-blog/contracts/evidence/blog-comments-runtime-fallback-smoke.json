@@ -68,17 +68,19 @@
         "fallback_locale",
         "public_channel_slug",
         "page",
-        "per_page"
+        "per_page",
+        "projection_revision"
       ],
       "key_encoding": "sha256_of_schema_bound_identity",
-      "envelope_schema_version": 1,
+      "envelope_schema_version": 3,
       "visibility_validation": "exact_identity_same_post_approved_only",
       "maximum_payload_bytes": 262144,
       "host_cache_prefix": "blog-public-comments-snapshot-v1",
       "host_ttl_seconds": 900,
       "host_max_keys": 10000,
       "host_cache_owner": "rustok-cache CacheService",
-      "cache_failures": "best_effort_do_not_change_owner_response"
+      "cache_failures": "best_effort_do_not_change_owner_response",
+      "projection_cursor_stability_guard": "read_before_and_after_live_comments_query_must_match"
     },
     "ui_states": [
       "comments_temporarily_unavailable_article_still_available",

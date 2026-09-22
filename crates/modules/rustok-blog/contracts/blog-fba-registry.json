@@ -1,5 +1,5 @@
 {
-  "schema_version": 15,
+  "schema_version": 16,
   "module": "blog",
   "role": "consumer",
   "status": "boundary_ready",
@@ -232,8 +232,8 @@
     "snapshot_invalidation": {
       "owner": "rustok-blog",
       "source": "blog_comment_projection_deliveries",
-      "cursor": "latest processed lifecycle event_id for the tenant/post",
-      "keying": "public snapshot identity includes projection_event_id",
+      "cursor": "latest committed projection_revision for the tenant/post",
+      "keying": "public snapshot identity includes projection_revision",
       "redis_enumeration": false
     }
   },

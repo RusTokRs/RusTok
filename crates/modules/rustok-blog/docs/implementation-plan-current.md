@@ -28,7 +28,7 @@ The hardened contract now requires:
 - derived Comments counters that preserve Blog business `version` and
   `updated_at` and publish locale-neutral reindex requests;
 - Comments lifecycle projections serialize on the tenant-scoped Blog post row lock, order delivery state per comment by envelope id, derive counter transitions from lifecycle state, record update/status-change events without changing `comment_count`, and never mutate Blog business `version` or `updated_at`;
-- public-comment snapshot keys include the latest processed Blog comment lifecycle event id; invalidation is revision-based and requires no cache-key enumeration or second invalidation index;
+- public-comment snapshot keys include the latest committed monotonic Blog comment projection revision per tenant/post; invalidation survives cross-comment out-of-order delivery and requires no cache-key enumeration or second invalidation index;
 - current-tenant authority on GraphQL reads and writes;
 - one redacted Blog public-error mapping boundary;
 - private persistence entities and integrations that consume owner service state;
@@ -57,7 +57,7 @@ The final source audit after #4072 is complete at the architecture/source level.
 Maintainer-owned compile/test/runtime evidence remains separate; this status does not
 promote Comments FBA beyond `boundary_ready`.
 
-Blog FBA registry schema v15 and Comments projection evidence schema v6 encode
+Blog FBA registry schema v16 and Comments projection evidence schema v7 encode
 the corrected derived-state contract. Runtime/remote evidence is still pending,
 so this hardening does not claim `transport_verified`.
 
@@ -157,15 +157,21 @@ previous cursor. Their latest retained source states remain:
 
 - `remote_comments_transport = source_implemented_maintainer_execution_pending`;
 - `canonical_outbox_relay_postgres_evidence_source_ready_maintainer_execution_pending`;
-- `cached_public_comments_snapshot = source_ready_maintainer_execution_pending`;
+- `cached_public_comments_snapshot = source_implemented_maintainer_execution_pending`;
 - `comment_form_fallback = planned`; the active storefront has an authenticated create-comment surface, while `hide_comment_form` remains a planned degraded mode and has not been runtime-verified.
-- `tag_list_pagination = source_ready_maintainer_execution_pending`;
-- `tag_canonical_projection = source_ready_maintainer_execution_pending`;
-- `tag_mutation_atomic_reindex = source_ready_maintainer_execution_pending`;
+- `tag_list_pagination = source_complete_maintainer_execution_pending`;
+- `tag_canonical_projection = source_complete_maintainer_execution_pending`;
+- `tag_mutation_atomic_reindex = source_complete_maintainer_execution_pending`;
 - `post_category_name_projection = source_complete_canonical_taxonomy_read`.
 
 For tags, Taxonomy remains the shared dictionary owner and Blog retains
-`blog_post_tags` attachment ownership. For Comments, the execution-owned
+`blog_post_tags` attachment ownership. Global Taxonomy tags may be attached and
+read by Blog, but shared global terms are mutated only by the Taxonomy owner;
+Blog tag mutations apply only to `module:blog` terms. The Blog-owned
+`blog_tag_usage` projection is derived from canonical attachments and Taxonomy
+`canonical_key`, is maintained in the same transactions as post/tag mutations,
+and provides the database-bounded tag-list read path. Zero-use Blog-local terms
+remain in the projection; zero-use global terms are removed. For Comments, the execution-owned
 transport/restart/relay evidence remains separate from Category Taxonomy work.
 
 ## Accepted Comments and Reactions capability cutover
@@ -198,7 +204,7 @@ source still exists and whose result has not been superseded:
 
 1. Execute the retained Comments transport/composition, restart/ambiguity,
    canonical relay and cached-snapshot evidence at an exact revision.
-2. Execute the retained tag pagination, canonical tag projection and tag
+2. Execute the retained canonical tag projection and tag
    mutation/outbox rollback/delete-cascade evidence before runtime promotion.
 3. Audit deployed data for metadata-only legacy tag rows before canonical tag
    projection rollout; backfill owner relations if such rows exist.

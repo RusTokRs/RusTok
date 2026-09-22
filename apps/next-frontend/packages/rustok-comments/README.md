@@ -9,3 +9,6 @@ visible copy from the host `Comments.composer` and `richText` catalogs. It does
 not reuse the broader Forum `discussion` profile.
 
 Blog is the first consumer. Product reviews and later commentable owners reuse this package and implement only their target-bound backend command.
+
+
+Write retries are idempotent: the composer creates one command ID for a submitted draft and reuses it when the same draft is retried after an error. Editing the draft invalidates that command ID so a changed payload cannot be replayed under the old request identity.

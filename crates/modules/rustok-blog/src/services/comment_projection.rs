@@ -112,7 +112,6 @@ impl BlogCommentProjectionHandler {
             .order_by_desc(blog_comment_projection_delivery::Column::EventId)
             .one(&txn)
             .await?;
-
         if latest
             .as_ref()
             .is_some_and(|delivery| delivery.event_id >= envelope.id)
@@ -120,6 +119,27 @@ impl BlogCommentProjectionHandler {
             txn.commit().await?;
             return Ok(());
         }
+
+        // Event id ordering remains a per-comment lifecycle invariant. The snapshot cursor
+        // must instead advance on every successfully committed event for the post, even when
+        // different comments are processed out of order. The post row lock above serializes
+        // this revision allocation without touching Blog business version.
+        let latest_projection_revision = blog_comment_projection_delivery::Entity::find()
+            .filter(blog_comment_projection_delivery::Column::TenantId.eq(envelope.tenant_id))
+            .filter(blog_comment_projection_delivery::Column::PostId.eq(change.post_id))
+            .order_by_desc(blog_comment_projection_delivery::Column::ProjectionRevision)
+            .one(&txn)
+            .await?
+            .map(|delivery| delivery.projection_revision)
+            .unwrap_or(0);
+        let next_projection_revision = latest_projection_revision
+            .checked_add(1)
+            .ok_or_else(|| {
+                Error::External(format!(
+                    "blog comment projection revision exhausted for post {}",
+                    change.post_id
+                ))
+            })?;
 
         let applied_delta = projection_applied_delta(
             latest.as_ref().map(|delivery| delivery.delta),
@@ -150,15 +170,16 @@ impl BlogCommentProjectionHandler {
             )));
         }
 
-        // Persist the newest per-comment lifecycle state only after the derived counter has
-        // succeeded. The same post row lock serializes competing comment events for this post;
-        // duplicate delivery remains protected by the event-id primary key.
+        // Persist the newest per-comment lifecycle state and monotonic post cursor only after the
+        // derived counter has succeeded. The same post row lock serializes competing comment events
+        // for this post; duplicate delivery remains protected by the event-id primary key.
         blog_comment_projection_delivery::Entity::insert(
             blog_comment_projection_delivery::ActiveModel {
                 event_id: Set(envelope.id),
                 tenant_id: Set(envelope.tenant_id),
                 comment_id: Set(change.comment_id),
                 post_id: Set(change.post_id),
+                projection_revision: Set(next_projection_revision),
                 // Keep the source lifecycle state (+1 active / -1 deleted). Update and status-change
                 // events therefore advance the durable lifecycle cursor without changing count.
                 delta: Set(change.delta),

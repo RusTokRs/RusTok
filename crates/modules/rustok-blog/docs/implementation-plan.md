@@ -10,7 +10,7 @@ redacted public errors, private persistence and owner-service integration seams.
 
 Comments event projection now publishes a neutral Blog reindex request and leaves
 the post business revision unchanged. Current evidence is Comments projection
-schema v5 and Blog registry schema v14. Historical sections below that mention
+schema v7 and Blog registry schema v16. Historical sections below that mention
 `BlogPostUpdated` projection publication, projection-driven post version
 increments, projection evidence schema v4, or Blog registry schema v13 describe
 older slices and are superseded by this note.
@@ -58,7 +58,7 @@ across GraphQL and native SSR. Public comment reads carry typed `AVAILABLE`,
 `UNAVAILABLE`, or `TIMEOUT`
 availability across both transports, while the article remains renderable for the
 two degraded states. The active DTO/UI path has no legacy body or format field.
-The typed storefront comments availability is source-locked. The remote transport remains pending.
+The typed storefront comments availability is source-locked. Cached public-comment snapshots are source-implemented with a monotonic per-post projection revision that survives cross-comment out-of-order delivery. The remote transport remains pending.
 The Leptos article SSR path renders an inert localized comment marker and loads
 an isolated authenticated comment island instead of hydrating the storefront.
 Its CSP-nonced bootstrap imports the shared Tiptap frame only for an active

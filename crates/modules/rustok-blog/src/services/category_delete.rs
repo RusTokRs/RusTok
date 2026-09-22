@@ -8,7 +8,7 @@ use rustok_taxonomy::{
     TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult,
 };
 use sea_orm::{
-    ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    ColumnTrait, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
 };
 use uuid::Uuid;
 
@@ -123,67 +123,42 @@ async fn detach_category_from_posts_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
-) -> BlogResult<Vec<Uuid>> {
-    let posts = blog_post::Entity::find()
-        .filter(blog_post::Column::TenantId.eq(tenant_id))
-        .filter(blog_post::Column::CategoryId.eq(category_id))
-        .order_by_asc(blog_post::Column::Id)
-        .all(txn)
-        .await?;
-
-    let mut affected_post_ids = Vec::with_capacity(posts.len());
+) -> BlogResult<()> {
     let now = Utc::now();
 
-    for post in posts {
-        if post.version <= 0 {
-            return Err(BlogError::invariant(format!(
-                "Blog post {} has invalid persisted version {}",
-                post.id, post.version
-            )));
-        }
+    blog_post::Entity::update_many()
+        .col_expr(
+            blog_post::Column::CategoryId,
+            sea_orm::sea_query::Expr::value(Option::<Uuid>::None),
+        )
+        .col_expr(
+            blog_post::Column::Version,
+            sea_orm::sea_query::Expr::col(blog_post::Column::Version).add(1),
+        )
+        .col_expr(
+            blog_post::Column::UpdatedAt,
+            sea_orm::sea_query::Expr::value(now),
+        )
+        .filter(blog_post::Column::TenantId.eq(tenant_id))
+        .filter(blog_post::Column::CategoryId.eq(category_id))
+        .filter(blog_post::Column::Version.gt(0))
+        .filter(blog_post::Column::Version.ne(i64::MAX))
+        .exec(txn)
+        .await?;
 
-        let next_version = post
-            .version
-            .checked_add(1)
-            .filter(|next| *next > 0)
-            .ok_or_else(|| {
-                BlogError::invariant(format!(
-                    "Blog post version {} is invalid or exhausted",
-                    post.version
-                ))
-            })?;
+    let remaining = blog_post::Entity::find()
+        .filter(blog_post::Column::TenantId.eq(tenant_id))
+        .filter(blog_post::Column::CategoryId.eq(category_id))
+        .count(txn)
+        .await?;
 
-        let updated = blog_post::Entity::update_many()
-            .col_expr(
-                blog_post::Column::CategoryId,
-                sea_orm::sea_query::Expr::value(Option::<Uuid>::None),
-            )
-            .col_expr(
-                blog_post::Column::Version,
-                sea_orm::sea_query::Expr::value(next_version),
-            )
-            .col_expr(
-                blog_post::Column::UpdatedAt,
-                sea_orm::sea_query::Expr::value(now),
-            )
-            .filter(blog_post::Column::TenantId.eq(tenant_id))
-            .filter(blog_post::Column::Id.eq(post.id))
-            .filter(blog_post::Column::CategoryId.eq(category_id))
-            .filter(blog_post::Column::Version.eq(post.version))
-            .exec(txn)
-            .await?;
-
-        if updated.rows_affected != 1 {
-            return Err(BlogError::conflict(format!(
-                "Blog post {} changed before category detachment could commit",
-                post.id
-            )));
-        }
-
-        affected_post_ids.push(post.id);
+    if remaining != 0 {
+        return Err(BlogError::invariant(format!(
+            "Blog category {category_id} cannot be detached from {remaining} post(s) because their persisted version is invalid or exhausted",
+        )));
     }
 
-    Ok(affected_post_ids)
+    Ok(())
 }
 
 fn map_blog_error(error: BlogError) -> TaxonomyError {

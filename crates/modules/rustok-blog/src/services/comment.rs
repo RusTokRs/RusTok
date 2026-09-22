@@ -391,14 +391,14 @@ impl CommentService {
         &self,
         tenant_id: Uuid,
         post_id: Uuid,
-    ) -> BlogResult<Option<Uuid>> {
+    ) -> BlogResult<i64> {
         blog_comment_projection_delivery::Entity::find()
             .filter(blog_comment_projection_delivery::Column::TenantId.eq(tenant_id))
             .filter(blog_comment_projection_delivery::Column::PostId.eq(post_id))
-            .order_by_desc(blog_comment_projection_delivery::Column::EventId)
+            .order_by_desc(blog_comment_projection_delivery::Column::ProjectionRevision)
             .one(&self.db)
             .await
-            .map(|delivery| delivery.map(|row| row.event_id))
+            .map(|delivery| delivery.map(|row| row.projection_revision).unwrap_or(0))
             .map_err(BlogError::from)
     }
 

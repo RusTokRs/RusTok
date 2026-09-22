@@ -381,8 +381,13 @@ impl BlogSearchProjector {
                       ON term.id = relation.tag_id
                      AND term.tenant_id = p.tenant_id
                      AND term.kind = 'tag'
-                     AND term.scope_type = 'module'
-                     AND term.scope_value = 'blog'
+                     AND (
+                         term.scope_type = 'global'
+                         OR (
+                             term.scope_type = 'module'
+                             AND term.scope_value = 'blog'
+                         )
+                     )
                     LEFT JOIN taxonomy_term_translations localized
                       ON localized.term_id = term.id
                      AND localized.tenant_id = p.tenant_id
@@ -443,52 +448,86 @@ impl BlogSearchProjector {
     where
         C: ConnectionTrait,
     {
-        let mut values = vec![tenant_id.into()];
-        let mut where_clause = String::from("WHERE p.tenant_id = $1");
-        if let Some(post_id) = post_id {
-            where_clause.push_str(" AND p.id = $2");
-            values.push(post_id.into());
-        }
+        const BATCH_SIZE: i64 = 128;
+        let mut cursor: Option<String> = None;
 
-        let sql = format!(
-            r#"
-            SELECT
-                CONCAT('blog_post:', p.id::text, ':', bt.locale) AS document_key,
-                bt.excerpt,
-                bt.body
-            FROM blog_posts p
-            JOIN blog_post_translations bt
-                ON bt.post_id = p.id
-            {where_clause}
-            "#
-        );
-        let rows = conn
-            .query_all_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                sql,
-                values,
-            ))
-            .await
-            .map_err(Error::Database)?;
+        loop {
+            let mut values = vec![tenant_id.into()];
+            let mut where_clause = String::from("WHERE p.tenant_id = $1");
+            let mut next_parameter = 2;
 
-        for row in rows {
-            let document_key = row
-                .try_get::<String>("", "document_key")
+            if let Some(post_id) = post_id {
+                where_clause.push_str(" AND p.id = $2");
+                values.push(post_id.into());
+                next_parameter = 3;
+            }
+
+            if let Some(cursor) = cursor.as_deref() {
+                where_clause.push_str(&format!(" AND CONCAT('blog_post:', p.id::text, ':', bt.locale) > ${next_parameter}"));
+                values.push(cursor.to_owned().into());
+                next_parameter += 1;
+            }
+
+            let limit_parameter = next_parameter;
+            values.push(BATCH_SIZE.into());
+
+            let sql = format!(
+                r#"
+                SELECT
+                    CONCAT('blog_post:', p.id::text, ':', bt.locale) AS document_key,
+                    bt.excerpt,
+                    bt.body
+                FROM blog_posts p
+                JOIN blog_post_translations bt
+                    ON bt.post_id = p.id
+                {where_clause}
+                ORDER BY CONCAT('blog_post:', p.id::text, ':', bt.locale) ASC
+                LIMIT ${limit_parameter}
+                "#
+            );
+
+            let rows = conn
+                .query_all_raw(Statement::from_sql_and_values(
+                    DbBackend::Postgres,
+                    sql,
+                    values,
+                ))
+                .await
                 .map_err(Error::Database)?;
-            let excerpt = row
-                .try_get::<Option<String>>("", "excerpt")
-                .map_err(Error::Database)?;
-            let body = row.try_get::<String>("", "body").map_err(Error::Database)?;
-            let article_text = project_canonical_article_plain_text(&body)?;
-            let search_body = compose_search_body(excerpt.as_deref(), &article_text);
 
-            conn.execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "UPDATE search_documents SET body = $1 WHERE tenant_id = $2 AND document_key = $3 AND source_module = 'blog' AND entity_type = 'blog_post'",
-                vec![search_body.into(), tenant_id.into(), document_key.into()],
-            ))
-            .await
-            .map_err(Error::Database)?;
+            if rows.is_empty() {
+                break;
+            }
+
+            for row in &rows {
+                let document_key = row
+                    .try_get::<String>("", "document_key")
+                    .map_err(Error::Database)?;
+                let excerpt = row
+                    .try_get::<Option<String>>("", "excerpt")
+                    .map_err(Error::Database)?;
+                let body = row
+                    .try_get::<String>("", "body")
+                    .map_err(Error::Database)?;
+                let article_text = project_canonical_article_plain_text(&body)?;
+                let search_body = compose_search_body(excerpt.as_deref(), &article_text);
+
+                conn.execute_raw(Statement::from_sql_and_values(
+                    DbBackend::Postgres,
+                    "UPDATE search_documents SET body = $1 WHERE tenant_id = $2 AND document_key = $3 AND source_module = 'blog' AND entity_type = 'blog_post'",
+                    vec![search_body.into(), tenant_id.into(), document_key.into()],
+                ))
+                .await
+                .map_err(Error::Database)?;
+            }
+
+            cursor = rows
+                .last()
+                .and_then(|row| row.try_get::<String>("", "document_key").ok());
+
+            if rows.len() < BATCH_SIZE as usize || cursor.is_none() {
+                break;
+            }
         }
 
         Ok(())

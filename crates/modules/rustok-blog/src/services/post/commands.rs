@@ -654,6 +654,7 @@ impl PostService {
         }
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
+        remove_post_tag_usage_in_tx(&txn, tenant_id, post_id).await?;
         let deleted = blog_post::Entity::delete_many()
             .filter(blog_post::Column::Id.eq(post_id))
             .filter(blog_post::Column::TenantId.eq(tenant_id))

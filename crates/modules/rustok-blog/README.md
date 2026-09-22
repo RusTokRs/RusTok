@@ -121,6 +121,15 @@ copy must use the canonical Taxonomy owner contract.
   by reading another module's lifecycle row.
 - Depends on `rustok-taxonomy` for the shared tag dictionary and canonical Blog
   Category copy/hierarchy projection while keeping `blog_post_tags` Blog-owned.
+  Global Taxonomy tags may be reused by Blog reads and attachments, but Blog tag
+  mutation commands are restricted to `module:blog` terms; shared vocabulary remains
+  Taxonomy-owned.
+- Blog-owned `blog_tag_usage` is a synchronous derived read projection of
+  `blog_post_tags`. It keeps tag-list pagination database-bounded, preserves
+  `use_count DESC, canonical_key ASC, tag_id ASC` ordering, keeps zero-use
+  module-local tags visible, and removes zero-use global tags. Taxonomy remains
+  canonical for term identity and `canonical_key`; the projection is never an
+  independent write source.
 - Depends on `rustok-core` for module contracts, permissions, and
   `SecurityContext`.
 - Depends on `rustok-api` for shared auth/tenant/request GraphQL+HTTP adapter

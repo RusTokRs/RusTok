@@ -30,14 +30,14 @@ use crate::dto::{
     CreatePostInput, PostListQuery, PostListResponse, PostResponse, PostSortField, PostSortOrder,
     PostSummary, UpdatePostInput,
 };
-use crate::entities::{blog_post, blog_post_channel_visibility, blog_post_translation};
+use crate::entities::{blog_post, blog_post_channel_visibility, blog_post_tag, blog_post_translation};
 use crate::error::{BlogError, BlogResult};
 use crate::richtext::{canonical_article_body, normalize_article, project_stored_article};
 use crate::services::category::CategoryService;
 use crate::services::rbac::{
     can_read_non_public_posts, enforce_create_author, enforce_owned_scope, enforce_scope,
 };
-use crate::services::tag::{find_post_ids_by_tag, load_post_tags_map, sync_post_tags_in_tx};
+use crate::services::tag::{load_post_tags_map, resolve_tag_id_for_posts, sync_post_tags_in_tx};
 use crate::state_machine::BlogPostStatus;
 
 pub struct PostService {
@@ -70,6 +70,21 @@ impl PostService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self { db, event_bus }
     }
+}
+
+fn apply_tag_filter(
+    select: Select<blog_post::Entity>,
+    tenant_id: Uuid,
+    tag_id: Uuid,
+) -> Select<blog_post::Entity> {
+    let tagged_post_ids = Query::select()
+        .column(blog_post_tag::Column::PostId)
+        .from(blog_post_tag::Entity)
+        .and_where(blog_post_tag::Column::TenantId.eq(tenant_id))
+        .and_where(blog_post_tag::Column::TagId.eq(tag_id))
+        .to_owned();
+
+    select.filter(blog_post::Column::Id.in_subquery(tagged_post_ids))
 }
 
 fn resolve_translation_record<'a>(

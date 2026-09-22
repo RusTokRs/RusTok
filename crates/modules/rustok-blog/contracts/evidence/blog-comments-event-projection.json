@@ -1,5 +1,5 @@
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "module": "blog",
   "surface": "comments_event_projection",
   "status": "source_verified_no_compile",
@@ -20,7 +20,15 @@
     "delivery_migration": "crates/modules/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs",
     "migration_registry": "crates/modules/rustok-blog/src/migrations/mod.rs",
     "module_registration": "crates/modules/rustok-blog/src/module.rs",
-    "consumer_registry": "crates/modules/rustok-blog/contracts/blog-fba-registry.json"
+    "consumer_registry": "crates/modules/rustok-blog/contracts/blog-fba-registry.json",
+    "cursor_revision_migration": "crates/modules/rustok-blog/src/migrations/m20260922_000026_add_blog_comment_projection_revision.rs",
+    "snapshot_cursor": {
+      "field": "projection_revision",
+      "scope": "tenant/post",
+      "allocation": "incremented under the tenant-scoped Blog post row lock inside the same projection transaction",
+      "event_id_role": "per-comment lifecycle ordering and idempotency only",
+      "out_of_order_cross_comment_safe": true
+    }
   },
   "source_harness": {
     "status": "executable_no_run",
@@ -193,7 +201,11 @@
     },
     {
       "name": "public_snapshot_cursor_invalidation",
-      "expected": "the processed tenant/post lifecycle cursor is part of the snapshot identity and therefore invalidates earlier snapshot keys without cache enumeration"
+      "expected": "the monotonic tenant/post projection_revision is part of the snapshot identity and advances for every successfully committed lifecycle event without cache enumeration"
+    },
+    {
+      "name": "public_snapshot_cache_race_guard",
+      "expected": "the live snapshot writer compares projection_revision before and after the live Comments read and skips cache storage when the revision changed during that read"
     }
   ],
   "runtime_promotion_requirements": [

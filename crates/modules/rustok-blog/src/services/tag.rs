@@ -3,8 +3,8 @@ use std::collections::{HashMap, HashSet};
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect, RelationTrait, TransactionTrait,
-    sea_query::Expr,
+    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
+    sea_query::{Expr, OnConflict},
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -21,7 +21,7 @@ use rustok_taxonomy::{
 };
 
 use crate::dto::{CreateTagInput, ListTagsFilter, TagListItem, TagResponse, UpdateTagInput};
-use crate::entities::{blog_post, blog_post_tag};
+use crate::entities::{blog_post, blog_post_tag, blog_tag_usage};
 use crate::error::{BlogError, BlogResult};
 use crate::services::rbac::enforce_scope;
 
@@ -61,6 +61,19 @@ impl TagService {
                 },
             )
             .await?;
+        let term = TaxonomyOwnerReader::load_terms_by_ids_in_tx(
+            &txn,
+            tenant_id,
+            TaxonomyTermKind::Tag,
+            &[tag_id],
+            PLATFORM_FALLBACK_LOCALE,
+            None,
+        )
+        .await?
+        .into_iter()
+        .next()
+        .ok_or_else(|| BlogError::invariant("Created Blog tag is missing from Taxonomy"))?;
+        initialize_tag_usage_in_tx(&txn, tenant_id, tag_id, &term.canonical_key).await?;
         publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
         txn.commit().await.map_err(BlogError::from)?;
         Ok(tag_id)
@@ -77,11 +90,7 @@ impl TagService {
         enforce_scope(&security, Resource::Tags, Action::Read)?;
         let locale = normalize_locale(locale)?;
         let term = self.find_visible_term(tenant_id, tag_id, &locale).await?;
-        let use_count = self
-            .count_tag_usage_map(tenant_id, &[tag_id])
-            .await?
-            .remove(&tag_id)
-            .unwrap_or_default();
+        let use_count = self.load_tag_usage_count(tenant_id, tag_id).await?;
 
         Ok(to_tag_owner_response(tenant_id, term, use_count))
     }
@@ -96,6 +105,7 @@ impl TagService {
     ) -> BlogResult<TagResponse> {
         enforce_scope(&security, Resource::Tags, Action::Update)?;
         let locale = normalize_locale(&input.locale)?;
+        self.ensure_blog_owned_tag(tenant_id, tag_id, &locale).await?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         let term = update_module_term_in_tx(
             &txn,
@@ -114,11 +124,7 @@ impl TagService {
         publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
         txn.commit().await.map_err(BlogError::from)?;
 
-        let use_count = self
-            .count_tag_usage_map(tenant_id, &[tag_id])
-            .await?
-            .remove(&tag_id)
-            .unwrap_or_default();
+        let use_count = self.load_tag_usage_count(tenant_id, tag_id).await?;
 
         Ok(to_tag_mutation_response(term, use_count))
     }
@@ -131,6 +137,8 @@ impl TagService {
         security: SecurityContext,
     ) -> BlogResult<()> {
         enforce_scope(&security, Resource::Tags, Action::Delete)?;
+        self.ensure_blog_owned_tag(tenant_id, tag_id, PLATFORM_FALLBACK_LOCALE)
+            .await?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         lock_module_term_in_tx(
             &txn,
@@ -140,7 +148,7 @@ impl TagService {
             BLOG_SCOPE_VALUE,
         )
         .await?;
-        detach_tag_from_posts_in_tx(&txn, tenant_id, tag_id).await?;
+        bump_posts_for_tag_relation_removal_in_tx(&txn, tenant_id, tag_id).await?;
         delete_module_term_in_tx(
             &txn,
             tenant_id,
@@ -168,45 +176,92 @@ impl TagService {
         let page = filter.page.max(1);
         let per_page = bounded_tag_page_size(filter.per_page);
 
-        let terms = self.list_visible_terms(tenant_id, &locale).await?;
-        if terms.is_empty() {
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
+        let paginator = blog_tag_usage::Entity::find()
+            .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
+            .order_by_desc(blog_tag_usage::Column::UseCount)
+            .order_by_asc(blog_tag_usage::Column::CanonicalKey)
+            .order_by_asc(blog_tag_usage::Column::TagId)
+            .paginate(&txn, per_page);
+
+        let total = paginator.num_items().await.map_err(BlogError::from)?;
+        if total == 0 {
+            txn.commit().await.map_err(BlogError::from)?;
             return Ok((Vec::new(), 0));
         }
+        let last_page = total
+            .saturating_add(per_page.saturating_sub(1))
+            / per_page;
+        if page > last_page {
+            txn.commit().await.map_err(BlogError::from)?;
+            return Ok((Vec::new(), total));
+        }
 
-        let term_ids = terms.iter().map(|term| term.id).collect::<Vec<_>>();
-        let counts = self.count_tag_usage_map(tenant_id, &term_ids).await?;
-
-        let mut sortable = terms
+        let usage_rows = paginator
+            .fetch_page(page - 1)
+            .await
+            .map_err(BlogError::from)?;
+        let term_ids = usage_rows.iter().map(|row| row.tag_id).collect::<Vec<_>>();
+        let terms = TaxonomyOwnerReader::load_terms_by_ids_in_tx(
+            &txn,
+            tenant_id,
+            TaxonomyTermKind::Tag,
+            &term_ids,
+            &locale,
+            None,
+        )
+        .await?;
+        let terms_by_id = terms
             .into_iter()
-            .map(|term| {
-                let use_count = counts.get(&term.id).copied().unwrap_or_default();
-                (use_count, term)
-            })
-            .collect::<Vec<_>>();
-        sortable.sort_by(|(left_count, left_term), (right_count, right_term)| {
-            right_count
-                .cmp(left_count)
-                .then_with(|| left_term.canonical_key.cmp(&right_term.canonical_key))
-        });
+            .map(|term| (term.id, term))
+            .collect::<HashMap<_, _>>();
 
-        let total = sortable.len() as u64;
-        let offset = tag_page_offset(page, per_page);
-        let items = sortable
-            .into_iter()
-            .skip(offset)
-            .take(per_page as usize)
-            .map(|(use_count, term)| TagListItem {
+        let mut items = Vec::with_capacity(usage_rows.len());
+        for usage in usage_rows {
+            let term = terms_by_id.get(&usage.tag_id).ok_or_else(|| {
+                BlogError::invariant(format!(
+                    "Blog tag usage projection references missing Taxonomy tag {}",
+                    usage.tag_id
+                ))
+            })?;
+            if term.scope_type == TaxonomyScopeType::Module
+                && term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
+            {
+                return Err(BlogError::invariant(format!(
+                    "Blog tag usage projection references non-Blog module term {}",
+                    term.id
+                )));
+            }
+            items.push(TagListItem {
                 id: term.id,
                 locale: locale.clone(),
-                effective_locale: term.effective_locale,
-                name: term.name,
-                slug: term.slug,
-                use_count,
+                effective_locale: term.effective_locale.clone(),
+                name: term.name.clone(),
+                slug: term.slug.clone(),
+                use_count: usage.use_count,
                 created_at: term.created_at,
-            })
-            .collect();
+            });
+        }
 
+        txn.commit().await.map_err(BlogError::from)?;
         Ok((items, total))
+    }
+
+    async fn ensure_blog_owned_tag(
+        &self,
+        tenant_id: Uuid,
+        tag_id: Uuid,
+        locale: &str,
+    ) -> BlogResult<()> {
+        let term = self.find_visible_term(tenant_id, tag_id, locale).await?;
+        if term.scope_type != TaxonomyScopeType::Module
+            || term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
+        {
+            return Err(BlogError::forbidden(
+                "Shared Taxonomy tags must be managed by the Taxonomy owner",
+            ));
+        }
+        Ok(())
     }
 
     async fn find_visible_term(
@@ -250,81 +305,20 @@ impl TagService {
             .ok_or_else(|| BlogError::tag_not_found(tag_id))
     }
 
-    async fn list_visible_terms(
-        &self,
-        tenant_id: Uuid,
-        locale: &str,
-    ) -> BlogResult<Vec<TaxonomyOwnerTerm>> {
-        let reader = TaxonomyOwnerReader::new(self.db.clone());
-        let mut terms = reader
-            .load_scoped_terms(
-                tenant_id,
-                TaxonomyTermKind::Tag,
-                TaxonomyScopeType::Module,
-                Some(BLOG_SCOPE_VALUE),
-                None,
-                locale,
-                None,
-            )
-            .await?;
-
-        let module_term_ids = terms.iter().map(|term| term.id).collect::<HashSet<_>>();
-        let used_term_ids = blog_post_tag::Entity::find()
-            .join(JoinType::InnerJoin, blog_post_tag::Relation::Post.def())
-            .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
-            .filter(blog_post::Column::TenantId.eq(tenant_id))
-            .all(&self.db)
-            .await?
-            .into_iter()
-            .map(|relation| relation.tag_id)
-            .filter(|tag_id| !module_term_ids.contains(tag_id))
-            .collect::<HashSet<_>>();
-
-        if !used_term_ids.is_empty() {
-            let used_term_ids = used_term_ids.into_iter().collect::<Vec<_>>();
-            let mut global_terms = reader
-                .load_scoped_terms(
-                    tenant_id,
-                    TaxonomyTermKind::Tag,
-                    TaxonomyScopeType::Global,
-                    None,
-                    Some(&used_term_ids),
-                    locale,
-                    None,
-                )
-                .await?;
-            terms.append(&mut global_terms);
-        }
-
-        Ok(terms)
-    }
-
-    async fn count_tag_usage_map(
-        &self,
-        tenant_id: Uuid,
-        tag_ids: &[Uuid],
-    ) -> BlogResult<HashMap<Uuid, i32>> {
-        if tag_ids.is_empty() {
-            return Ok(HashMap::new());
-        }
-
-        let relations = blog_post_tag::Entity::find()
-            .join(JoinType::InnerJoin, blog_post_tag::Relation::Post.def())
-            .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
-            .filter(blog_post::Column::TenantId.eq(tenant_id))
-            .filter(blog_post_tag::Column::TagId.is_in(tag_ids.to_vec()))
-            .all(&self.db)
-            .await?;
-
-        let mut counts = HashMap::new();
-        for relation in relations {
-            *counts.entry(relation.tag_id).or_insert(0) += 1;
-        }
-        Ok(counts)
+    async fn load_tag_usage_count(&self, tenant_id: Uuid, tag_id: Uuid) -> BlogResult<i32> {
+        Ok(
+            blog_tag_usage::Entity::find()
+                .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
+                .filter(blog_tag_usage::Column::TagId.eq(tag_id))
+                .one(&self.db)
+                .await?
+                .map(|usage| usage.use_count)
+                .unwrap_or_default(),
+        )
     }
 }
 
-async fn detach_tag_from_posts_in_tx(
+async fn bump_posts_for_tag_relation_removal_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     tag_id: Uuid,
@@ -384,7 +378,7 @@ async fn detach_tag_from_posts_in_tx(
 
         if updated.rows_affected != 1 {
             return Err(BlogError::conflict(format!(
-                "Blog post {} changed before Tag detachment could commit",
+                "Blog post {} changed before Tag relation invalidation could commit",
                 post.id
             )));
         }
@@ -423,11 +417,23 @@ pub(crate) async fn sync_post_tags_in_tx(
     let normalized_locale = normalize_locale(locale)?;
     let normalized_names = normalize_tag_names(tag_names);
 
+    let previous_relations = blog_post_tag::Entity::find()
+        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
+        .filter(blog_post_tag::Column::PostId.eq(post_id))
+        .all(txn)
+        .await?;
+    let previous_tag_ids = previous_relations
+        .into_iter()
+        .map(|relation| relation.tag_id)
+        .collect::<Vec<_>>();
+
     blog_post_tag::Entity::delete_many()
         .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
         .filter(blog_post_tag::Column::PostId.eq(post_id))
         .exec(txn)
         .await?;
+
+    decrement_tag_usage_in_tx(txn, tenant_id, &previous_tag_ids).await?;
 
     if normalized_names.is_empty() {
         return Ok(());
@@ -445,6 +451,8 @@ pub(crate) async fn sync_post_tags_in_tx(
         )
         .await?;
 
+    increment_tag_usage_in_tx(txn, tenant_id, &term_ids).await?;
+
     let now = Utc::now();
     for term_id in term_ids {
         blog_post_tag::ActiveModel {
@@ -457,6 +465,165 @@ pub(crate) async fn sync_post_tags_in_tx(
         .await?;
     }
 
+    Ok(())
+}
+
+async fn increment_tag_usage_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    tag_ids: &[Uuid],
+) -> BlogResult<()> {
+    if tag_ids.is_empty() {
+        return Ok(());
+    }
+    let mut unique_ids = tag_ids.to_vec();
+    unique_ids.sort_unstable();
+    unique_ids.dedup();
+    let terms = TaxonomyOwnerReader::load_terms_by_ids_in_tx(
+        txn,
+        tenant_id,
+        TaxonomyTermKind::Tag,
+        &unique_ids,
+        PLATFORM_FALLBACK_LOCALE,
+        None,
+    )
+    .await?;
+    if terms.len() != unique_ids.len() {
+        return Err(BlogError::invariant(
+            "Blog tag usage increment references a missing or wrong-kind Taxonomy term",
+        ));
+    }
+    for term in terms {
+        if term.scope_type == TaxonomyScopeType::Module
+            && term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
+        {
+            return Err(BlogError::invariant(format!(
+                "Blog post tag {} references a Taxonomy term outside the Blog/module scope",
+                term.id
+            )));
+        }
+        blog_tag_usage::Entity::insert(blog_tag_usage::ActiveModel {
+            tenant_id: Set(tenant_id),
+            tag_id: Set(term.id),
+            canonical_key: Set(term.canonical_key.clone()),
+            use_count: Set(1),
+        })
+        .on_conflict(
+            OnConflict::columns([
+                blog_tag_usage::Column::TenantId,
+                blog_tag_usage::Column::TagId,
+            ])
+            .values([
+                (
+                    blog_tag_usage::Column::UseCount,
+                    Expr::col(blog_tag_usage::Column::UseCount).add(1),
+                ),
+                (
+                    blog_tag_usage::Column::CanonicalKey,
+                    Expr::value(term.canonical_key),
+                ),
+            ])
+            .to_owned(),
+        )
+        .exec(txn)
+        .await
+        .map_err(BlogError::from)?;
+    }
+    Ok(())
+}
+
+async fn decrement_tag_usage_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    tag_ids: &[Uuid],
+) -> BlogResult<()> {
+    if tag_ids.is_empty() { return Ok(()); }
+    let mut unique_ids = tag_ids.to_vec();
+    unique_ids.sort_unstable();
+    unique_ids.dedup();
+    let terms = TaxonomyOwnerReader::load_terms_by_ids_in_tx(
+        txn,
+        tenant_id,
+        TaxonomyTermKind::Tag,
+        &unique_ids,
+        PLATFORM_FALLBACK_LOCALE,
+        None,
+    )
+    .await?;
+    if terms.len() != unique_ids.len() {
+        return Err(BlogError::invariant(
+            "Blog tag usage decrement references a missing or wrong-kind Taxonomy term",
+        ));
+    }
+    for term in terms {
+        if term.scope_type == TaxonomyScopeType::Module
+            && term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
+        {
+            return Err(BlogError::invariant(format!(
+                "Blog post tag {} references a Taxonomy term outside the Blog/module scope",
+                term.id
+            )));
+        }
+        let updated = blog_tag_usage::Entity::update_many()
+            .col_expr(
+                blog_tag_usage::Column::UseCount,
+                Expr::col(blog_tag_usage::Column::UseCount).sub(1),
+            )
+            .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
+            .filter(blog_tag_usage::Column::TagId.eq(term.id))
+            .filter(blog_tag_usage::Column::UseCount.gt(0))
+            .exec(txn)
+            .await?;
+        if updated.rows_affected != 1 {
+            return Err(BlogError::invariant(format!(
+                "Blog tag usage projection underflow for Taxonomy term {}",
+                term.id
+            )));
+        }
+        if term.scope_type == TaxonomyScopeType::Global {
+            blog_tag_usage::Entity::delete_many()
+                .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
+                .filter(blog_tag_usage::Column::TagId.eq(term.id))
+                .filter(blog_tag_usage::Column::UseCount.eq(0))
+                .exec(txn)
+                .await?;
+        }
+    }
+    Ok(())
+}
+
+pub(crate) async fn remove_post_tag_usage_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    post_id: Uuid,
+) -> BlogResult<()> {
+    let relations = blog_post_tag::Entity::find()
+        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
+        .filter(blog_post_tag::Column::PostId.eq(post_id))
+        .all(txn)
+        .await?;
+    let tag_ids = relations
+        .into_iter()
+        .map(|relation| relation.tag_id)
+        .collect::<Vec<_>>();
+    decrement_tag_usage_in_tx(txn, tenant_id, &tag_ids).await
+}
+
+pub(crate) async fn initialize_tag_usage_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    tag_id: Uuid,
+    canonical_key: &str,
+) -> BlogResult<()> {
+    blog_tag_usage::Entity::insert(blog_tag_usage::ActiveModel {
+        tenant_id: Set(tenant_id),
+        tag_id: Set(tag_id),
+        canonical_key: Set(canonical_key.to_string()),
+        use_count: Set(0),
+    })
+    .exec(txn)
+    .await
+    .map_err(BlogError::from)?;
     Ok(())
 }
 
@@ -520,14 +687,14 @@ pub(crate) async fn load_post_tags_map(
     Ok(tags_by_post)
 }
 
-pub(crate) async fn find_post_ids_by_tag(
+pub(crate) async fn resolve_tag_id_for_posts(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     tag: &str,
     locale: &str,
     fallback_locale: Option<&str>,
-) -> BlogResult<Vec<Uuid>> {
-    let Some(tag_id) = TaxonomyService::new(db.clone())
+) -> BlogResult<Option<Uuid>> {
+    TaxonomyService::new(db.clone())
         .resolve_term_id_for_module(
             tenant_id,
             TaxonomyTermKind::Tag,
@@ -536,39 +703,11 @@ pub(crate) async fn find_post_ids_by_tag(
             fallback_locale,
             tag,
         )
-        .await?
-    else {
-        return Ok(Vec::new());
-    };
-
-    let relations = blog_post_tag::Entity::find()
-        .join(JoinType::InnerJoin, blog_post_tag::Relation::Post.def())
-        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
-        .filter(blog_post::Column::TenantId.eq(tenant_id))
-        .filter(blog_post_tag::Column::TagId.eq(tag_id))
-        .all(db)
-        .await?;
-
-    let mut seen = HashSet::new();
-    Ok(relations
-        .into_iter()
-        .filter_map(|relation| {
-            if seen.insert(relation.post_id) {
-                Some(relation.post_id)
-            } else {
-                None
-            }
-        })
-        .collect())
+        .await
 }
 
 fn bounded_tag_page_size(value: u64) -> u64 {
     value.clamp(1, MAX_TAGS_PER_PAGE)
-}
-
-fn tag_page_offset(page: u64, per_page: u64) -> usize {
-    let offset = page.saturating_sub(1).saturating_mul(per_page);
-    usize::try_from(offset).unwrap_or(usize::MAX)
 }
 
 fn validate_tag_name(name: &str) -> BlogResult<()> {
@@ -631,7 +770,7 @@ fn to_tag_mutation_response(term: ModuleTermMutationResult, use_count: i32) -> T
 
 #[cfg(test)]
 mod pagination_tests {
-    use super::{MAX_TAGS_PER_PAGE, bounded_tag_page_size, tag_page_offset};
+    use super::{MAX_TAGS_PER_PAGE, bounded_tag_page_size};
 
     #[test]
     fn tag_page_size_is_bounded_by_owner_service() {
@@ -643,10 +782,4 @@ mod pagination_tests {
         );
     }
 
-    #[test]
-    fn tag_page_offset_saturates_without_arithmetic_overflow() {
-        assert_eq!(tag_page_offset(1, 20), 0);
-        assert_eq!(tag_page_offset(2, 20), 20);
-        assert_eq!(tag_page_offset(u64::MAX, MAX_TAGS_PER_PAGE), usize::MAX);
-    }
 }

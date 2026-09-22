@@ -25,7 +25,11 @@
     "tag_dictionary_source": "taxonomy_terms + taxonomy_term_translations",
     "blog_tag_term_kind_enforced": true,
     "blog_tag_relation_tenant_constrained": true,
-    "legacy_metadata_tags_are_projection_source": false
+    "legacy_metadata_tags_are_projection_source": false,
+    "blog_tag_allowed_taxonomy_scopes": [
+      "global",
+      "module:blog"
+    ]
   },
   "cases": [
     {
@@ -38,7 +42,7 @@
     },
     {
       "name": "canonical_taxonomy_tag_projection",
-      "expected": "Blog tag payload and keywords resolve from tenant-local blog_post_tags plus tenant-local taxonomy translations for the document locale with platform fallback and canonical-key fallback; stale blog_posts.metadata.tags does not affect projection"
+      "expected": "Blog tag payload and keywords resolve from tenant-local blog_post_tags to Taxonomy terms in either global or module:blog scope, using tenant-local taxonomy translations for the document locale with platform fallback and canonical-key fallback; stale blog_posts.metadata.tags does not affect projection"
     },
     {
       "name": "full_blog_reindex",
@@ -64,7 +68,7 @@
   "runtime_promotion_requirements": [
     "execute both Rust test targets against PostgreSQL",
     "execute the source guardrail and its fixture target",
-    "retain canonical Blog tag projection evidence proving stale metadata tags are ignored",
+    "retain canonical Blog tag projection evidence proving both global and module:blog Taxonomy tags are projected and stale metadata tags are ignored",
     "audit deployed Blog rows for metadata-only legacy tags and backfill owner relations before rollout if such rows exist",
     "retain migration and pg_trgm permission evidence",
     "retain host event-delivery evidence for disable and enable toggles",
