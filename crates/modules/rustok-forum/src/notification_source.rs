@@ -819,14 +819,45 @@ fn retryable_database_error(_error: sea_orm::DbErr) -> NotificationProviderError
 fn forum_owner_error(error: ForumError) -> NotificationProviderError {
     match error {
         ForumError::CapabilityUnavailable { .. } => {
-            NotificationProviderError::CapabilityUnavailable { retryable: true }
+            NotificationProviderError::CapabilityUnavailable { retryable: false }
         }
         ForumError::CapabilityFailure { retryable, .. } => {
-            NotificationProviderError::Internal { retryable }
+            NotificationProviderError::CapabilityUnavailable { retryable }
         }
         error => NotificationProviderError::Internal {
             retryable: error.is_retryable(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn owner_capability_errors_preserve_retryability() {
+        assert_eq!(
+            forum_owner_error(ForumError::capability_unavailable("facts", "MISSING")),
+            NotificationProviderError::CapabilityUnavailable { retryable: false }
+        );
+        assert_eq!(
+            forum_owner_error(ForumError::capability_failure(
+                "facts",
+                "TIMEOUT",
+                "temporary",
+                true,
+            )),
+            NotificationProviderError::CapabilityUnavailable { retryable: true }
+        );
+        assert_eq!(
+            forum_owner_error(ForumError::capability_failure(
+                "facts",
+                "REJECTED",
+                "permanent",
+                false,
+            )),
+            NotificationProviderError::CapabilityUnavailable { retryable: false }
+        );
     }
 }
 
