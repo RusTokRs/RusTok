@@ -351,6 +351,7 @@ impl ModerationService {
         }
 
         let txn = self.db.begin().await?;
+        TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         let reply =
             ReplyService::find_reply_for_update_in_tx(&txn, tenant_id, reply_id).await?;
@@ -432,6 +433,7 @@ impl ModerationService {
         }
 
         let txn = self.db.begin().await?;
+        TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         let solution_author_id = if let Some(solution) = forum_solution::Entity::find()
             .filter(forum_solution::Column::TenantId.eq(tenant_id))
@@ -473,6 +475,7 @@ impl ModerationService {
         target: ReplyStatus,
     ) -> ForumResult<()> {
         let txn = self.db.begin().await?;
+        TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         let reply = ReplyService::find_reply_in_tx(&txn, tenant_id, reply_id).await?;
         if reply.topic_id != topic_id {
