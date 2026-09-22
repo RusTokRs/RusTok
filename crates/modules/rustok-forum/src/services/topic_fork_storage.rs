@@ -546,7 +546,7 @@ async fn increment_category_counters_in_tx(
         .one(txn)
         .await?
         .ok_or(ForumError::CategoryNotFound(category_id))?;
-    if category.topic_count < 0 || category.reply_count < 0 {
+    if category.topic_count <= 0 || category.reply_count < 0 {
         return Err(ForumError::Validation(
             "Forum topic fork category counters are inconsistent".to_string(),
         ));
