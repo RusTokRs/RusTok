@@ -126,15 +126,21 @@ Full-text search remains the Search capability's responsibility.
 Blog lifecycle/content mutations publish typed Blog lifecycle/update or neutral
 reindex events through the transactional outbox.
 
-Comments lifecycle events project the derived `comment_count` into Blog. That
-projection:
+Comments lifecycle events project both the derived `comment_count` and the
+processed public-comment lifecycle cursor into Blog. The projection:
 
 - is idempotent through the Blog delivery ledger;
 - is tenant-scoped;
 - uses the observed `comment_count` as its retry predecessor;
 - does **not** mutate Blog business `version` or business `updated_at`;
-- publishes neutral `ReindexRequested { target_type: "blog" }`, not a fabricated
-  locale-specific Blog update.
+- publishes neutral `ReindexRequested { target_type: "blog" }` only when
+  `comment_count` changes;
+- records update/status-change lifecycle events without mutating
+  `comment_count`;
+- exposes the latest processed lifecycle event id as the public snapshot
+  invalidation cursor. Snapshot keys include that cursor, so each processed
+  lifecycle change makes earlier cached snapshots unreachable without cache-key
+  enumeration.
 
 ## Tenant authority
 
