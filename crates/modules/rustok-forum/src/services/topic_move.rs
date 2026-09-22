@@ -403,6 +403,21 @@ async fn transfer_category_counters_in_tx(
         .await?
         .ok_or(ForumError::CategoryNotFound(target_category_id))?;
 
+    if published_reply_count < 0 {
+        return Err(ForumError::Validation(
+            "Forum topic move published reply count must not be negative".to_string(),
+        ));
+    }
+    if source.topic_count < 0
+        || source.reply_count < 0
+        || target.topic_count < 0
+        || target.reply_count < 0
+    {
+        return Err(ForumError::Validation(
+            "Forum topic move category counters are inconsistent".to_string(),
+        ));
+    }
+
     let source_topic_count = source.topic_count.checked_sub(1).ok_or_else(|| {
         ForumError::Validation("Forum source category topic counter is inconsistent".to_string())
     })?;
