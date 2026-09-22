@@ -195,7 +195,7 @@ impl CommentService {
                     locale.as_str(),
                     "update",
                     comment_id,
-                    comment_id,
+                    input.command_id,
                 )?,
                 comment_id,
                 domain_input,
@@ -248,7 +248,7 @@ impl CommentService {
                     locale,
                     "moderate",
                     comment_id,
-                    comment_id,
+                    input.command_id,
                 )?,
                 comment_id,
                 SetCommentStatusRequest {
@@ -267,6 +267,7 @@ impl CommentService {
         tenant_id: Uuid,
         comment_id: Uuid,
         security: SecurityContext,
+        command_id: Uuid,
     ) -> BlogResult<()> {
         enforce_scope(&security, Resource::Comments, Action::Delete)?;
         let existing = self
@@ -293,7 +294,7 @@ impl CommentService {
                     PLATFORM_FALLBACK_LOCALE,
                     "delete",
                     comment_id,
-                    comment_id,
+                    command_id,
                 )?,
                 comment_id,
             )

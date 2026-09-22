@@ -15,6 +15,8 @@ pub struct CreateCommentInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
 pub struct UpdateCommentInput {
+    /// Stable identity of this logical update command. Reuse across retries.
+    pub command_id: Uuid,
     pub locale: String,
     pub content: Option<RichTextDocument>,
 }
@@ -39,6 +41,8 @@ impl From<ModerateCommentStatus> for rustok_comments::CommentStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ModerateCommentInput {
+    /// Stable identity of this logical moderation command. Reuse across retries.
+    pub command_id: Uuid,
     pub status: ModerateCommentStatus,
     pub locale: Option<String>,
 }

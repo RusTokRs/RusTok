@@ -313,6 +313,7 @@ impl BlogMutation {
         &self,
         ctx: &Context<'_>,
         id: Uuid,
+        command_id: Uuid,
         status: GqlModerateCommentStatus,
         locale: Option<String>,
         tenant_id: Option<Uuid>,
@@ -346,6 +347,7 @@ impl BlogMutation {
                     &auth.permissions,
                 ),
                 ModerateCommentInput {
+                    command_id,
                     status: status.into(),
                     locale: Some(locale),
                 },
