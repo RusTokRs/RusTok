@@ -159,7 +159,7 @@ previous cursor. Their latest retained source states remain:
 - `canonical_outbox_relay_postgres_evidence_source_ready_maintainer_execution_pending`;
 - `cached_public_comments_snapshot = source_implemented_maintainer_execution_pending`;
 - `comment_form_fallback = planned`; the active storefront has an authenticated create-comment surface, while `hide_comment_form` remains a planned degraded mode and has not been runtime-verified.
-- `tag_list_pagination = source_ready_maintainer_execution_pending`;
+- `tag_list_pagination = source_complete_maintainer_execution_pending`;
 - `tag_canonical_projection = source_complete_maintainer_execution_pending`;
 - `tag_mutation_atomic_reindex = source_complete_maintainer_execution_pending`;
 - `post_category_name_projection = source_complete_canonical_taxonomy_read`.
@@ -167,7 +167,11 @@ previous cursor. Their latest retained source states remain:
 For tags, Taxonomy remains the shared dictionary owner and Blog retains
 `blog_post_tags` attachment ownership. Global Taxonomy tags may be attached and
 read by Blog, but shared global terms are mutated only by the Taxonomy owner;
-Blog tag mutations apply only to `module:blog` terms. For Comments, the execution-owned
+Blog tag mutations apply only to `module:blog` terms. The Blog-owned
+`blog_tag_usage` projection is derived from canonical attachments and Taxonomy
+`canonical_key`, is maintained in the same transactions as post/tag mutations,
+and provides the database-bounded tag-list read path. Zero-use Blog-local terms
+remain in the projection; zero-use global terms are removed. For Comments, the execution-owned
 transport/restart/relay evidence remains separate from Category Taxonomy work.
 
 ## Remaining execution-owned results
@@ -177,7 +181,7 @@ source still exists and whose result has not been superseded:
 
 1. Execute the retained Comments transport/composition, restart/ambiguity,
    canonical relay and cached-snapshot evidence at an exact revision.
-2. Execute the retained tag pagination, canonical tag projection and tag
+2. Execute the retained canonical tag projection and tag
    mutation/outbox rollback/delete-cascade evidence before runtime promotion.
 3. Audit deployed data for metadata-only legacy tag rows before canonical tag
    projection rollout; backfill owner relations if such rows exist.

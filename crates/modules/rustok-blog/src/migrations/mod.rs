@@ -19,6 +19,7 @@ mod m20260919_000023_enforce_blog_post_category_tenant_integrity;
 mod m20260919_000024_enforce_blog_post_channel_visibility_tenant_integrity;
 mod m20260919_000025_fix_blog_post_category_tenant_delete_action;
 mod m20260922_000026_add_blog_comment_projection_revision;
+mod m20260922_000027_create_blog_tag_usage_projection;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -46,6 +47,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260919_000024_enforce_blog_post_channel_visibility_tenant_integrity::Migration),
         Box::new(m20260919_000025_fix_blog_post_category_tenant_delete_action::Migration),
         Box::new(m20260922_000026_add_blog_comment_projection_revision::Migration),
+        Box::new(m20260922_000027_create_blog_tag_usage_projection::Migration),
     ]
 }
 
@@ -54,6 +56,13 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260922_000026_add_blog_comment_projection_revision",
             vec!["m20260716_000001_create_blog_comment_projection_deliveries"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260922_000027_create_blog_tag_usage_projection",
+            vec![
+                "m20260813_000018_enforce_blog_post_tag_tenant_integrity",
+                "m20260711_000001_add_tenant_identity_key",
+            ],
         ),
         MigrationDependencyDescriptor::new(
             "m20260328_000002_create_blog_taxonomy_tables",

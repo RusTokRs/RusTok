@@ -139,6 +139,53 @@ async fn post_tags_create_blog_scoped_taxonomy_terms_and_usage_counts() {
 }
 
 #[tokio::test]
+#[tokio::test]
+async fn tag_list_is_bounded_by_database_pagination_and_preserves_zero_use_module_terms() {
+    let (db, event_bus, _events, tenant_id) = setup().await;
+    let post_service = PostService::new(db.clone(), event_bus);
+    let tag_service = TagService::new(db.clone());
+    let security = admin();
+
+    tag_service.create_tag(tenant_id, security.clone(), rustok_blog::CreateTagInput {
+        locale: "en".to_string(), name: "unused".to_string(), slug: None,
+    }).await.expect("unused tag should be created");
+
+    post_service.create_post(tenant_id, security.clone(), CreatePostInput {
+        locale: "en".to_string(), title: "Popular tag post".to_string(),
+        content: rustok_blog::richtext::article_document_from_plain_text("Body"),
+        excerpt: None, slug: Some("popular-tag-post".to_string()), publish: true,
+        tags: vec!["popular".to_string(), "single".to_string()],
+        category_id: None, featured_image_url: None, seo_title: None,
+        seo_description: None, channel_slugs: None, metadata: None,
+    }).await.expect("first tagged post should be created");
+
+    post_service.create_post(tenant_id, security.clone(), CreatePostInput {
+        locale: "en".to_string(), title: "Second popular tag post".to_string(),
+        content: rustok_blog::richtext::article_document_from_plain_text("Body"),
+        excerpt: None, slug: Some("second-popular-tag-post".to_string()), publish: true,
+        tags: vec!["popular".to_string()], category_id: None, featured_image_url: None,
+        seo_title: None, seo_description: None, channel_slugs: None, metadata: None,
+    }).await.expect("second tagged post should be created");
+
+    let (page_one, total) = tag_service.list_tags(tenant_id, security.clone(), ListTagsFilter {
+        locale: Some("en".to_string()), page: 1, per_page: 2,
+    }).await.expect("first tag page should load");
+    assert_eq!(total, 3);
+    assert_eq!(page_one.len(), 2);
+    assert_eq!(page_one[0].name, "popular");
+    assert_eq!(page_one[0].use_count, 2);
+    assert_eq!(page_one[1].name, "single");
+    assert_eq!(page_one[1].use_count, 1);
+
+    let (page_two, total_again) = tag_service.list_tags(tenant_id, security, ListTagsFilter {
+        locale: Some("en".to_string()), page: 2, per_page: 2,
+    }).await.expect("second tag page should load");
+    assert_eq!(total_again, 3);
+    assert_eq!(page_two.len(), 1);
+    assert_eq!(page_two[0].name, "unused");
+    assert_eq!(page_two[0].use_count, 0);
+}
+
 async fn post_tag_sync_reuses_existing_global_taxonomy_term() {
     let (db, event_bus, _events, tenant_id) = setup().await;
     let post_service = PostService::new(db.clone(), event_bus);

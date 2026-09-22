@@ -6,3 +6,4 @@ pub mod blog_post;
 pub mod blog_post_channel_visibility;
 pub mod blog_post_tag;
 pub mod blog_post_translation;
+pub mod blog_tag_usage;
