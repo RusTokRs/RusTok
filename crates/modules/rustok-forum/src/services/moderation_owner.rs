@@ -574,6 +574,16 @@ impl ModerationService {
             )
             .await?;
         }
+        if changed_category_id.is_some() {
+            publish_forum_topic_projection_in_tx(
+                &self.event_bus,
+                &txn,
+                tenant_id,
+                security.user_id,
+                topic_id,
+            )
+            .await?;
+        }
 
         txn.commit().await?;
         Ok(())
