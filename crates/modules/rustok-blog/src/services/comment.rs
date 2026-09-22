@@ -509,6 +509,11 @@ fn comments_write_port_context(
     resource_id: Uuid,
     command_id: Uuid,
 ) -> BlogResult<PortContext> {
+    if command_id.is_nil() {
+        return Err(BlogError::validation(
+            "Comment command_id must be a non-nil UUID",
+        ));
+    }
     comments_port_context(
         tenant_id,
         security,
