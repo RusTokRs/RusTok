@@ -202,6 +202,10 @@
     {
       "name": "public_snapshot_cursor_invalidation",
       "expected": "the monotonic tenant/post projection_revision is part of the snapshot identity and advances for every successfully committed lifecycle event without cache enumeration"
+    },
+    {
+      "name": "public_snapshot_cache_race_guard",
+      "expected": "the live snapshot writer compares projection_revision before and after the live Comments read and skips cache storage when the revision changed during that read"
     }
   ],
   "runtime_promotion_requirements": [
