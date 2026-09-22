@@ -1498,6 +1498,7 @@ mod tests {
             title: "Welcome".to_string(),
             slug: "welcome".to_string(),
             status: "PUBLISHED".to_string(),
+            is_deleted: false,
             is_pinned: true,
             is_locked: false,
             reply_count: 4,
@@ -1586,6 +1587,7 @@ mod tests {
             author_id: None,
             content_preview: "Thanks for the update".to_string(),
             status: "pending".to_string(),
+            is_deleted: false,
             parent_reply_id: None,
             created_at: "2026-06-08T00:00:00Z".to_string(),
         };

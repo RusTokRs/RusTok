@@ -1,6 +1,3 @@
-use std::future::Future;
-use std::pin::Pin;
-
 use chrono::Utc;
 use rustok_installer::{InstallPlan, InstallReceipt, InstallState, redact_install_plan};
 use sea_orm::{
@@ -81,42 +78,24 @@ impl InstallerPersistenceService {
         }
         let ttl = ttl.max(chrono::Duration::seconds(1));
         let session_id = session.id;
-        let owner = owner.to_string();
 
-        let claim = move |txn: &DatabaseTransaction| -> Pin<Box<dyn Future<Output = Result<Option<install_session::Model>, sea_orm::DbErr>> + Send + '_>> {
-            let session = session.clone();
-            let owner = owner.clone();
-            Box::pin(async move {
-                acquire_lock_in_transaction(txn, session, &owner, ttl).await
-            })
+        let txn = match self.db.get_database_backend() {
+            sea_orm::DbBackend::Postgres => {
+                self.db
+                    .begin_with_config(
+                        Some(IsolationLevel::Serializable),
+                        Some(AccessMode::ReadWrite),
+                    )
+                    .await?
+            }
+            _ => self.db.begin().await?,
         };
 
-        match self.db.get_database_backend() {
-            sea_orm::DbBackend::Postgres => self
-                .db
-                .transaction_with_config(
-                    claim,
-                    Some(IsolationLevel::Serializable),
-                    Some(AccessMode::ReadWrite),
-                )
-                .await
-                .map_err(|error| match error {
-                    sea_orm::TransactionError::Connection(error)
-                    | sea_orm::TransactionError::Transaction(error) => error,
-                }),
-            _ => self
-                .db
-                .transaction(claim)
-                .await
-                .map_err(|error| match error {
-                    sea_orm::TransactionError::Connection(error)
-                    | sea_orm::TransactionError::Transaction(error) => error,
-                }),
-        }
-        .and_then(|result| {
-            result.ok_or_else(|| sea_orm::DbErr::RecordNotFound(
-                format!("install session {session_id} not found"),
-            ))
+        let result = acquire_lock_in_transaction(&txn, session, owner, ttl).await?;
+        txn.commit().await?;
+
+        result.ok_or_else(|| {
+            sea_orm::DbErr::RecordNotFound(format!("install session {session_id} not found"))
         })
     }
 

@@ -230,6 +230,7 @@ mod tests {
             },
             body_plain_text: "Hello".to_string(),
             status: "published".to_string(),
+            is_deleted: false,
             tags: vec!["intro".to_string(), "news".to_string()],
             is_pinned: false,
             is_locked: false,

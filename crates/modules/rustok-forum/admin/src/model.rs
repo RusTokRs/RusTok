@@ -288,6 +288,7 @@ pub struct TopicDetail {
     pub body: RichTextView,
     pub body_plain_text: String,
     pub status: String,
+    #[serde(default)]
     pub is_deleted: bool,
     pub tags: Vec<String>,
     pub is_pinned: bool,
@@ -307,6 +308,7 @@ pub struct TopicListItem {
     pub title: String,
     pub slug: String,
     pub status: String,
+    #[serde(default)]
     pub is_deleted: bool,
     pub is_pinned: bool,
     pub is_locked: bool,
