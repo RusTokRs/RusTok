@@ -24,7 +24,9 @@
     "production_behavior_changed": true,
     "database_schema_changed": false,
     "ffa_promoted": false,
-    "fba_promoted": false
+    "fba_promoted": false,
+    "tag_filter_uses_database_subquery": true,
+    "tag_filter_materializes_post_ids": false
   },
   "source_harness": {
     "path": "crates/modules/rustok-blog/src/services/tag.rs",

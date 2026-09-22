@@ -140,7 +140,7 @@ impl TagService {
             BLOG_SCOPE_VALUE,
         )
         .await?;
-        detach_tag_from_posts_in_tx(&txn, tenant_id, tag_id).await?;
+        bump_posts_for_tag_relation_removal_in_tx(&txn, tenant_id, tag_id).await?;
         delete_module_term_in_tx(
             &txn,
             tenant_id,
@@ -324,7 +324,7 @@ impl TagService {
     }
 }
 
-async fn detach_tag_from_posts_in_tx(
+async fn bump_posts_for_tag_relation_removal_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     tag_id: Uuid,
@@ -384,7 +384,7 @@ async fn detach_tag_from_posts_in_tx(
 
         if updated.rows_affected != 1 {
             return Err(BlogError::conflict(format!(
-                "Blog post {} changed before Tag detachment could commit",
+                "Blog post {} changed before Tag relation invalidation could commit",
                 post.id
             )));
         }
@@ -520,14 +520,14 @@ pub(crate) async fn load_post_tags_map(
     Ok(tags_by_post)
 }
 
-pub(crate) async fn find_post_ids_by_tag(
+pub(crate) async fn resolve_tag_id_for_posts(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     tag: &str,
     locale: &str,
     fallback_locale: Option<&str>,
-) -> BlogResult<Vec<Uuid>> {
-    let Some(tag_id) = TaxonomyService::new(db.clone())
+) -> BlogResult<Option<Uuid>> {
+    TaxonomyService::new(db.clone())
         .resolve_term_id_for_module(
             tenant_id,
             TaxonomyTermKind::Tag,
@@ -536,30 +536,7 @@ pub(crate) async fn find_post_ids_by_tag(
             fallback_locale,
             tag,
         )
-        .await?
-    else {
-        return Ok(Vec::new());
-    };
-
-    let relations = blog_post_tag::Entity::find()
-        .join(JoinType::InnerJoin, blog_post_tag::Relation::Post.def())
-        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
-        .filter(blog_post::Column::TenantId.eq(tenant_id))
-        .filter(blog_post_tag::Column::TagId.eq(tag_id))
-        .all(db)
-        .await?;
-
-    let mut seen = HashSet::new();
-    Ok(relations
-        .into_iter()
-        .filter_map(|relation| {
-            if seen.insert(relation.post_id) {
-                Some(relation.post_id)
-            } else {
-                None
-            }
-        })
-        .collect())
+        .await
 }
 
 fn bounded_tag_page_size(value: u64) -> u64 {

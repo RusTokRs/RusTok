@@ -132,18 +132,18 @@ impl PostService {
             blog_post::Entity::find().filter(blog_post::Column::TenantId.eq(tenant_id));
 
         if let Some(ref tag) = tag_filter {
-            let tagged_post_ids = find_post_ids_by_tag(
+            let Some(tag_id) = resolve_tag_id_for_posts(
                 &self.db,
                 tenant_id,
                 tag,
                 &locale,
                 fallback_locale.as_deref(),
             )
-            .await?;
-            if tagged_post_ids.is_empty() {
+            .await?
+            else {
                 return Ok(PostListResponse::new(Vec::new(), 0, &query));
-            }
-            select = select.filter(blog_post::Column::Id.is_in(tagged_post_ids));
+            };
+            select = apply_tag_filter(select, tenant_id, tag_id);
         }
 
         if let Some(status) = query.status {
@@ -284,18 +284,18 @@ impl PostService {
             .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)));
 
         if let Some(ref tag) = tag_filter {
-            let tagged_post_ids = find_post_ids_by_tag(
+            let Some(tag_id) = resolve_tag_id_for_posts(
                 &self.db,
                 tenant_id,
                 tag,
                 &locale,
                 fallback_locale.as_deref(),
             )
-            .await?;
-            if tagged_post_ids.is_empty() {
+            .await?
+            else {
                 return Ok(PostListResponse::new(Vec::new(), 0, &query));
-            }
-            select = select.filter(blog_post::Column::Id.is_in(tagged_post_ids));
+            };
+            select = apply_tag_filter(select, tenant_id, tag_id);
         }
 
         if let Some(author_id) = query.author_id {
