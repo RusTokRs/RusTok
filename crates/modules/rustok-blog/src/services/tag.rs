@@ -169,44 +169,67 @@ impl TagService {
         let page = filter.page.max(1);
         let per_page = bounded_tag_page_size(filter.per_page);
 
-        let terms = self.list_visible_terms(tenant_id, &locale).await?;
-        if terms.is_empty() {
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
+        let paginator = blog_tag_usage::Entity::find()
+            .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
+            .order_by_desc(blog_tag_usage::Column::UseCount)
+            .order_by_asc(blog_tag_usage::Column::CanonicalKey)
+            .order_by_asc(blog_tag_usage::Column::TagId)
+            .paginate(&txn, per_page);
+
+        let total = paginator.num_items().await.map_err(BlogError::from)?;
+        if total == 0 {
+            txn.commit().await.map_err(BlogError::from)?;
             return Ok((Vec::new(), 0));
         }
 
-        let term_ids = terms.iter().map(|term| term.id).collect::<Vec<_>>();
-        let counts = self.count_tag_usage_map(tenant_id, &term_ids).await?;
-
-        let mut sortable = terms
+        let usage_rows = paginator
+            .fetch_page(page.saturating_sub(1))
+            .await
+            .map_err(BlogError::from)?;
+        let term_ids = usage_rows.iter().map(|row| row.tag_id).collect::<Vec<_>>();
+        let terms = TaxonomyOwnerReader::load_terms_by_ids_in_tx(
+            &txn,
+            tenant_id,
+            TaxonomyTermKind::Tag,
+            &term_ids,
+            &locale,
+            None,
+        )
+        .await?;
+        let terms_by_id = terms
             .into_iter()
-            .map(|term| {
-                let use_count = counts.get(&term.id).copied().unwrap_or_default();
-                (use_count, term)
-            })
-            .collect::<Vec<_>>();
-        sortable.sort_by(|(left_count, left_term), (right_count, right_term)| {
-            right_count
-                .cmp(left_count)
-                .then_with(|| left_term.canonical_key.cmp(&right_term.canonical_key))
-        });
+            .map(|term| (term.id, term))
+            .collect::<HashMap<_, _>>();
 
-        let total = sortable.len() as u64;
-        let offset = tag_page_offset(page, per_page);
-        let items = sortable
-            .into_iter()
-            .skip(offset)
-            .take(per_page as usize)
-            .map(|(use_count, term)| TagListItem {
+        let mut items = Vec::with_capacity(usage_rows.len());
+        for usage in usage_rows {
+            let term = terms_by_id.get(&usage.tag_id).ok_or_else(|| {
+                BlogError::invariant(format!(
+                    "Blog tag usage projection references missing Taxonomy tag {}",
+                    usage.tag_id
+                ))
+            })?;
+            if term.scope_type == TaxonomyScopeType::Module
+                && term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
+            {
+                return Err(BlogError::invariant(format!(
+                    "Blog tag usage projection references non-Blog module term {}",
+                    term.id
+                )));
+            }
+            items.push(TagListItem {
                 id: term.id,
                 locale: locale.clone(),
-                effective_locale: term.effective_locale,
-                name: term.name,
-                slug: term.slug,
-                use_count,
+                effective_locale: term.effective_locale.clone(),
+                name: term.name.clone(),
+                slug: term.slug.clone(),
+                use_count: usage.use_count,
                 created_at: term.created_at,
-            })
-            .collect();
+            });
+        }
 
+        txn.commit().await.map_err(BlogError::from)?;
         Ok((items, total))
     }
 

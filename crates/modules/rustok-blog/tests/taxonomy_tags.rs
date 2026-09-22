@@ -139,7 +139,6 @@ async fn post_tags_create_blog_scoped_taxonomy_terms_and_usage_counts() {
 }
 
 #[tokio::test]
-#[tokio::test]
 async fn tag_list_is_bounded_by_database_pagination_and_preserves_zero_use_module_terms() {
     let (db, event_bus, _events, tenant_id) = setup().await;
     let post_service = PostService::new(db.clone(), event_bus);
