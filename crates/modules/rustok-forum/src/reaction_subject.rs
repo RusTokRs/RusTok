@@ -20,7 +20,7 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::audience::SharedForumAudienceFactsPort;
-use crate::entities::{forum_reply, forum_reply_revision, forum_topic, forum_topic_revision};
+use crate::entities::{forum_reply, forum_topic};
 use crate::error::ForumError;
 use crate::notification_recipient::{
     ForumNotificationRecipientContextResolver, SharedForumNotificationRecipientContextPort,
@@ -338,7 +338,6 @@ impl ForumReactionSubjectProvider {
             .map(|row| row.is_some())
             .map_err(database_error)
     }
-
 }
 
 #[async_trait]
@@ -384,17 +383,6 @@ fn actor_id_for_access(access: &ReactionSubjectAccess) -> Option<Uuid> {
     match access {
         ReactionSubjectAccess::Read { actor_id } => *actor_id,
         ReactionSubjectAccess::Apply { command } => Some(command.identity().actor_id()),
-    }
-}
-
-fn current_revision_after(latest: Option<i64>) -> ReactionProviderResult<u64> {
-    match latest {
-        None => Ok(1),
-        Some(latest) => u64::try_from(latest)
-            .ok()
-            .and_then(|revision| revision.checked_add(1))
-            .filter(|revision| *revision > 0)
-            .ok_or(ReactionProviderError::Internal { retryable: false }),
     }
 }
 
