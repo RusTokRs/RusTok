@@ -28,17 +28,27 @@ pub struct StaticTenantModuleView {
     pub revision: i64,
 }
 
-/// Owner port for reading normalized static settings for one enabled native module.
+/// Normalized static settings state for one exact tenant/module scope.
+///
+/// Settings remain readable while the module is disabled; `enabled` is lifecycle
+/// truth and must not be inferred from the presence of settings.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StaticModuleSettingsSnapshot {
+    pub enabled: bool,
+    pub settings: Value,
+}
+
+/// Owner port for reading static module settings.
 ///
 /// The platform module-control-plane owns the persistence boundary; consumers receive
 /// only this typed seam and never read `tenant_modules` directly.
 #[async_trait]
 pub trait StaticModuleSettingsReader: Send + Sync {
-    async fn enabled_settings(
+    async fn settings(
         &self,
         tenant_id: Uuid,
         module_slug: &str,
-    ) -> Result<Option<Value>, PortError>;
+    ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError>;
 }
 
 /// Shared owner-composed static settings reader published through the runtime extension registry.
@@ -46,12 +56,12 @@ pub trait StaticModuleSettingsReader: Send + Sync {
 pub struct SharedStaticModuleSettingsReader(pub Arc<dyn StaticModuleSettingsReader>);
 
 impl SharedStaticModuleSettingsReader {
-    pub async fn enabled_settings(
+    pub async fn settings(
         &self,
         tenant_id: Uuid,
         module_slug: &str,
-    ) -> Result<Option<Value>, PortError> {
-        self.0.enabled_settings(tenant_id, module_slug).await
+    ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+        self.0.settings(tenant_id, module_slug).await
     }
 }
 
