@@ -188,6 +188,7 @@ Blog consumes Comments through `CommentsThreadPort` and typed `PortContext` /
 be reused by callers across retries so provider idempotency remains stable.
 
 Comment reads and mutations that start from a Comments record revalidate the canonical Blog post in the same Blog service boundary. A stale Comments thread left briefly by asynchronous target-deletion processing is therefore not treated as a valid Blog surface.
+Comment creation also revalidates the canonical post after the external Comments write; if terminal deletion won the race, Blog compensates the created comment with a fresh idempotent delete command and returns post-not-found. The terminal `TargetDeleted` event remains the durable cleanup backstop.
 
 Current Blog FBA status is `boundary_ready`, not `transport_verified`.
 Remote transport and runtime fallback/live evidence remain separate promotion
