@@ -1,3 +1,6 @@
+use std::future::Future;
+use std::pin::Pin;
+
 use chrono::Utc;
 use rustok_installer::{InstallPlan, InstallReceipt, InstallState, redact_install_plan};
 use sea_orm::{
@@ -80,7 +83,7 @@ impl InstallerPersistenceService {
         let session_id = session.id;
         let owner = owner.to_string();
 
-        let claim = move |txn: &DatabaseTransaction| {
+        let claim = move |txn: &DatabaseTransaction| -> Pin<Box<dyn Future<Output = Result<Option<install_session::Model>, sea_orm::DbErr>> + Send + '_>> {
             let session = session.clone();
             let owner = owner.clone();
             Box::pin(async move {

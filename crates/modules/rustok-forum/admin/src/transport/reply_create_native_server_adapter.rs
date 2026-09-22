@@ -61,6 +61,7 @@ pub(super) async fn create_reply_native(
             author_id: reply.author_id.map(|value| value.to_string()),
             content_preview: reply.content_plain_text,
             status: reply.status,
+            is_deleted: reply.is_deleted,
             parent_reply_id: reply.parent_reply_id.map(|value| value.to_string()),
             created_at: reply.created_at,
         })

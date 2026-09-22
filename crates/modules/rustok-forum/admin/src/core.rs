@@ -96,7 +96,6 @@ pub fn forum_admin_metric_accent_class(surface: ForumAdminMetricSurface) -> &'st
 pub enum ForumAdminActionButtonKind {
     Action,
     Delete,
-    Moderate,
 }
 
 pub fn forum_admin_action_button_class(kind: ForumAdminActionButtonKind) -> &'static str {
@@ -645,6 +644,7 @@ pub enum ForumAdminBusyAction {
     Edit,
     Save,
     Delete,
+    Moderate,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

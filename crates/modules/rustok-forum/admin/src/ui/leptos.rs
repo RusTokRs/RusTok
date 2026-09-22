@@ -1006,52 +1006,48 @@ pub fn ForumAdmin() -> impl IntoView {
         });
     });
 
-    let restore_topic = Callback::new({
+    let restore_topic = Callback::new(move |topic_id: String| {
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
         let restore_topic_error = restore_topic_error.clone();
-        move |topic_id: String| {
-            let token_value = token.get_untracked();
-            let tenant_value = tenant.get_untracked();
-            set_error.set(None);
-            set_busy_key.set(Some(forum_admin_busy_key(
-                ForumAdminBusySurface::Topic,
-                ForumAdminBusyAction::Moderate,
-                Some(topic_id.as_str()),
-            )));
-            spawn_local(async move {
-                match transport::restore_topic(token_value, tenant_value, topic_id).await {
-                    Ok(()) => set_refresh_nonce.update(|value| *value += 1),
-                    Err(err) => set_error.set(Some(forum_admin_transport_error_message(
-                        restore_topic_error.as_str(),
-                        err,
-                    ))),
-                }
-                set_busy_key.set(None);
-            });
-        }
+        set_error.set(None);
+        set_busy_key.set(Some(forum_admin_busy_key(
+            ForumAdminBusySurface::Topic,
+            ForumAdminBusyAction::Moderate,
+            Some(topic_id.as_str()),
+        )));
+        spawn_local(async move {
+            match transport::restore_topic(token_value, tenant_value, topic_id).await {
+                Ok(()) => set_refresh_nonce.update(|value| *value += 1),
+                Err(err) => set_error.set(Some(forum_admin_transport_error_message(
+                    restore_topic_error.as_str(),
+                    err,
+                ))),
+            }
+            set_busy_key.set(None);
+        });
     });
 
-    let restore_reply = Callback::new({
+    let restore_reply = Callback::new(move |reply_id: String| {
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
         let restore_reply_error = restore_reply_error.clone();
-        move |reply_id: String| {
-            let token_value = token.get_untracked();
-            let tenant_value = tenant.get_untracked();
-            set_error.set(None);
-            set_busy_key.set(Some(forum_admin_busy_key(
-                ForumAdminBusySurface::Reply,
-                ForumAdminBusyAction::Moderate,
-                Some(reply_id.as_str()),
-            )));
-            spawn_local(async move {
-                match transport::restore_reply(token_value, tenant_value, reply_id).await {
-                    Ok(()) => set_refresh_nonce.update(|value| *value += 1),
-                    Err(err) => set_error.set(Some(forum_admin_transport_error_message(
-                        restore_topic_error.as_str(),
-                        err,
-                    ))),
-                }
-                set_busy_key.set(None);
-            });
-        }
+        set_error.set(None);
+        set_busy_key.set(Some(forum_admin_busy_key(
+            ForumAdminBusySurface::Reply,
+            ForumAdminBusyAction::Moderate,
+            Some(reply_id.as_str()),
+        )));
+        spawn_local(async move {
+            match transport::restore_reply(token_value, tenant_value, reply_id).await {
+                Ok(()) => set_refresh_nonce.update(|value| *value += 1),
+                Err(err) => set_error.set(Some(forum_admin_transport_error_message(
+                    restore_reply_error.as_str(),
+                    err,
+                ))),
+            }
+            set_busy_key.set(None);
+        });
     });
 
     let topic_count = move || result_item_count(topics.get());
@@ -2259,7 +2255,6 @@ fn render_category_grid(
         edit: t(locale.as_deref(), "forum.render.edit", "Edit"),
     };
     let delete_label = t(locale.as_deref(), "forum.render.delete", "Delete");
-    let restore_label = t(locale.as_deref(), "forum.render.restore", "Restore");
     match forum_admin_collection_state(result) {
         ForumAdminCollectionState::Empty => view! { <div class="mt-6 rounded-[1.5rem] border border-dashed border-border p-8 text-sm text-muted-foreground">{no_categories_label}</div> }.into_any(),
         ForumAdminCollectionState::Ready(items) => view! {
@@ -2411,6 +2406,7 @@ fn render_topic_feed(
     };
     let replies_label = t(locale.as_deref(), "forum.render.replies", "Replies");
     let delete_label = t(locale.as_deref(), "forum.render.delete", "Delete");
+    let restore_label = t(locale.as_deref(), "forum.render.restore", "Restore");
     match forum_admin_collection_state(result) {
         ForumAdminCollectionState::Empty => view! { <div class="mt-6 rounded-[1.5rem] border border-dashed border-border p-8 text-sm text-muted-foreground">{no_topics_label}</div> }.into_any(),
         ForumAdminCollectionState::Ready(items) => view! {
