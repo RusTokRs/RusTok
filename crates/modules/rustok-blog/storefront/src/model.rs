@@ -27,6 +27,9 @@ pub struct BlogPostListItem {
     pub status: String,
     #[serde(rename = "publishedAt")]
     pub published_at: Option<String>,
+    pub tags: Vec<String>,
+    #[serde(rename = "featuredImageUrl")]
+    pub featured_image_url: Option<String>,
 }
 
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]

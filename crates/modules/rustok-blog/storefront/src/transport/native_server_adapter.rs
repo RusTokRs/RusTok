@@ -502,6 +502,8 @@ fn map_post_list_item(post: rustok_blog::PostSummary) -> BlogPostListItem {
         }
         .to_string(),
         published_at: post.published_at.map(|value| value.to_string()),
+        tags: post.tags,
+        featured_image_url: post.featured_image_url,
     }
 }
 
