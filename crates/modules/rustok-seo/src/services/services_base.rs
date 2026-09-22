@@ -21,8 +21,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use rustok_api::{
-    PortError, PortErrorKind, SharedStaticModuleSettingsReader, StaticModuleSettingsReader,
-    normalize_locale_tag,
+    PortError, PortErrorKind, SharedStaticModuleSettingsReader, normalize_locale_tag,
 };
 use rustok_content::normalize_locale_code;
 use rustok_core::ModuleRuntimeExtensions;
@@ -141,6 +140,14 @@ impl SeoService {
             media_asset_read_port: None,
             static_settings_reader: None,
         }
+    }
+
+    pub fn with_static_settings_reader(
+        mut self,
+        reader: SharedStaticModuleSettingsReader,
+    ) -> Self {
+        self.static_settings_reader = Some(reader);
+        self
     }
 
     pub fn with_media_asset_read_port(mut self, port: Arc<dyn MediaAssetReadPort>) -> Self {
