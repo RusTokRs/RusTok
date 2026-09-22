@@ -251,6 +251,7 @@ for (const marker of [
   'async fn missing_post_replay_commits_only_after_source_appears()',
   'missing Blog post must keep the delivery retryable',
   'async fn outbox_failure_rolls_back_counter_and_delivery_before_retry()',
+  'async fn update_and_status_events_advance_projection_cursor_without_count_change()',
   'DROP TABLE sys_events',
   'missing outbox table must fail the projection transaction',
   'create_outbox_table(&test_db.db).await?;',
