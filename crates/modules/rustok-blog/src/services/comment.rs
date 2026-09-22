@@ -51,7 +51,7 @@ impl CommentService {
     }
 
     fn require_comments_thread_port(&self) -> BlogResult<&dyn CommentsThreadPort> {
-        self.require_comments_thread_port()?
+        self.comments_thread_port
             .as_deref()
             .ok_or(BlogError::CommentsUnavailable)
     }
