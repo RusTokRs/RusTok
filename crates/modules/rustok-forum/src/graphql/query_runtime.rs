@@ -859,6 +859,7 @@ fn map_reply_response(
         author_profile,
         content: reply.content,
         content_plain_text: reply.content_plain_text,
+        is_deleted: reply.status == "deleted",
         status: reply.status,
         vote_score: reply.vote_score,
         current_user_vote: reply.current_user_vote,
