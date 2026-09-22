@@ -133,7 +133,7 @@
     },
     {
       "name": "host_registration_routing_harness",
-      "expected": "the retained module test invokes BlogModule::register_event_listeners, extracts one blog_comment_projection handler, accepts Blog comment created/deleted events, and rejects a non-Blog target"
+      "expected": "the retained module test invokes BlogModule::register_event_listeners, extracts one blog_comment_projection handler, accepts Blog comment created/updated/status_changed/deleted events, and rejects a non-Blog target"
     },
     {
       "name": "postgres_event_dispatcher_delivery",
