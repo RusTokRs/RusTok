@@ -160,6 +160,8 @@ impl CommentService {
             )
             .await
             .map_err(comments_port_error_to_blog_error)?;
+        let post_id = Self::ensure_blog_target(&record)?;
+        self.ensure_post_exists(tenant_id, post_id).await?;
         Self::map_comment_record(record)
     }
 
@@ -186,7 +188,8 @@ impl CommentService {
             )
             .await
             .map_err(comments_port_error_to_blog_error)?;
-        Self::ensure_blog_target(&existing)?;
+        let post_id = Self::ensure_blog_target(&existing)?;
+        self.ensure_post_exists(tenant_id, post_id).await?;
 
         let locale = input.locale.clone();
         let domain_input = DomainUpdateCommentInput {
@@ -245,7 +248,8 @@ impl CommentService {
             )
             .await
             .map_err(comments_port_error_to_blog_error)?;
-        Self::ensure_blog_target(&existing)?;
+        let post_id = Self::ensure_blog_target(&existing)?;
+        self.ensure_post_exists(tenant_id, post_id).await?;
 
         let record = self
             .require_comments_thread_port()?
@@ -292,7 +296,8 @@ impl CommentService {
             )
             .await
             .map_err(comments_port_error_to_blog_error)?;
-        Self::ensure_blog_target(&existing)?;
+        let post_id = Self::ensure_blog_target(&existing)?;
+        self.ensure_post_exists(tenant_id, post_id).await?;
 
         self.require_comments_thread_port()?
             .delete_comment(
