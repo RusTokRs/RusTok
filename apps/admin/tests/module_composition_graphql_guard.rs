@@ -1,0 +1,1569 @@
+use std::fs;
+use std::path::Path;
+
+fn read_client_content() -> String {
+    let crate_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let client_path = crate_root.join("src/features/modules/transport/client.rs");
+    if client_path.exists() {
+        fs::read_to_string(&client_path).expect("read client.rs")
+    } else {
+        let transport_path = crate_root.join("src/features/modules/transport.rs");
+        fs::read_to_string(&transport_path).expect("read transport.rs")
+    }
+}
+
+fn read_transport_content() -> String {
+    let crate_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let transport_dir = crate_root.join("src/features/modules/transport");
+    if transport_dir.exists() {
+        let mut content = String::new();
+        for filename in [
+            "types.rs",
+            "manifest.rs",
+            "server.rs",
+            "client.rs",
+            "mod.rs",
+        ] {
+            if let Ok(file_content) = fs::read_to_string(transport_dir.join(filename)) {
+                content.push_str(&file_content);
+                content.push('\n');
+            }
+        }
+        content
+    } else {
+        let transport_path = crate_root.join("src/features/modules/transport.rs");
+        fs::read_to_string(&transport_path).expect("read transport.rs")
+    }
+}
+
+#[test]
+fn native_module_composition_endpoints_are_not_declared() {
+    let content = read_client_content();
+
+    for endpoint in [
+        "endpoint = \"admin/install-module\"",
+        "endpoint = \"admin/uninstall-module\"",
+        "endpoint = \"admin/upgrade-module\"",
+        "endpoint = \"admin/toggle-module\"",
+    ] {
+        assert!(
+            !content.contains(endpoint),
+            "Forbidden native module composition endpoint found: {endpoint}"
+        );
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_use_raw_sql_for_platform_state_or_builds() {
+    let content = read_client_content();
+
+    for forbidden in [
+        "UPDATE platform_state",
+        "INSERT INTO builds",
+        "INSERT INTO module_operations",
+        "SELECT revision FROM platform_state",
+        "save_manifest_and_enqueue_build",
+    ] {
+        assert!(
+            !content.contains(forbidden),
+            "Forbidden raw SQL/platform composition helper fragment found in api.rs: {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn module_composition_client_helpers_do_not_call_native_paths() {
+    let content = read_client_content();
+
+    for native_call in [
+        "install_module_native(",
+        "uninstall_module_native(",
+        "upgrade_module_native(",
+        "toggle_module_native(",
+    ] {
+        assert!(
+            !content.contains(native_call),
+            "Forbidden native composition call path found: {native_call}"
+        );
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_use_native_graphql_fallback_combiner() {
+    let content = read_client_content();
+
+    for helper in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, helper)
+            .unwrap_or_else(|| panic!("helper signature not found: {helper}"));
+
+        assert!(
+            !helper_body.contains("combine_native_and_graphql_error"),
+            "Forbidden native/graphql fallback combiner found in module composition helper: {helper}"
+        );
+    }
+}
+
+#[test]
+fn module_composition_helpers_use_graphql_contract_payloads() {
+    let content = read_client_content();
+
+    assert_graphql_only_helper(
+        &content,
+        "pub async fn install_module(",
+        "INSTALL_MODULE_MUTATION",
+        "InstallModuleVariables {",
+        &["slug", "version", "expected_revision", "idempotency_key"],
+        "Ok(response.install_module)",
+    );
+    assert_graphql_only_helper(
+        &content,
+        "pub async fn uninstall_module(",
+        "UNINSTALL_MODULE_MUTATION",
+        "UninstallModuleVariables {",
+        &["slug", "expected_revision", "idempotency_key"],
+        "Ok(response.uninstall_module)",
+    );
+    assert_graphql_only_helper(
+        &content,
+        "pub async fn upgrade_module(",
+        "UPGRADE_MODULE_MUTATION",
+        "UpgradeModuleVariables {",
+        &["slug", "version", "expected_revision", "idempotency_key"],
+        "Ok(response.upgrade_module)",
+    );
+    assert_graphql_only_helper(
+        &content,
+        "pub async fn toggle_module(",
+        "TOGGLE_MODULE_MUTATION",
+        "ToggleModuleVariables {",
+        &[
+            "module_slug",
+            "enabled",
+            "expected_revision",
+            "idempotency_key",
+        ],
+        "Ok(response.toggle_module)",
+    );
+}
+
+#[test]
+fn module_settings_helper_uses_the_owner_graphql_contract() {
+    let client = read_client_content();
+    let transport = read_transport_content();
+    let mutation = extract_const_string_literal(
+        &transport,
+        "pub const UPDATE_MODULE_SETTINGS_MUTATION: &str = \"",
+    )
+    .expect("update module settings mutation declaration");
+    let helper = extract_function_block(&client, "pub async fn update_module_settings(")
+        .expect("update_module_settings helper signature");
+
+    for required in [
+        "mutation UpdateModuleSettings($moduleSlug: String!, $settings: String!, $expectedRevision: Int!, $idempotencyKey: UUID!)",
+        "updateModuleSettings(moduleSlug: $moduleSlug, settings: $settings, expectedRevision: $expectedRevision, idempotencyKey: $idempotencyKey)",
+        "revision",
+    ] {
+        assert!(
+            mutation.contains(required),
+            "module settings mutation must retain owner contract fragment `{required}`"
+        );
+    }
+    assert_graphql_only_helper(
+        &client,
+        "pub async fn update_module_settings(",
+        "UPDATE_MODULE_SETTINGS_MUTATION",
+        "UpdateModuleSettingsVariables {",
+        &[
+            "module_slug",
+            "settings",
+            "expected_revision",
+            "idempotency_key",
+        ],
+        "Ok(response.update_module_settings)",
+    );
+    for forbidden in [
+        "update_module_settings_native(",
+        "selected_transport_path()",
+        "combine_native_and_graphql_error",
+    ] {
+        assert!(
+            !helper.contains(forbidden),
+            "module settings write must not reintroduce a local fallback `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn module_composition_helpers_forward_auth_context_without_local_overrides() {
+    let content = read_client_content();
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        assert_eq!(
+            helper_body.matches("request(").count(),
+            1,
+            "{signature} must perform exactly one GraphQL request call"
+        );
+        assert!(
+            helper_body.contains("token,"),
+            "{signature} must forward token to canonical GraphQL request"
+        );
+        assert!(
+            helper_body.contains("tenant_slug,"),
+            "{signature} must forward tenant_slug to canonical GraphQL request"
+        );
+        assert!(
+            !helper_body.contains(".map_err("),
+            "{signature} must not remap canonical GraphQL ApiError taxonomy"
+        );
+        assert!(
+            !helper_body.contains("Some("),
+            "{signature} must not locally override auth context when forwarding request"
+        );
+        assert!(
+            !helper_body.contains("None"),
+            "{signature} must not locally null auth context when forwarding request"
+        );
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_branch_on_runtime_error_taxonomy() {
+    let content = read_client_content();
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for forbidden in [
+            "UNKNOWN_MODULE",
+            "CORE_MODULE",
+            "MISSING_DEPENDENCIES",
+            "HAS_DEPENDENTS",
+            "MODULE_HOOK_FAILED",
+            "extensions.code",
+            "reason_code",
+            "module_operations",
+            "correlation_id",
+            "requested_by",
+            "ApiError::GraphQl",
+            "GraphQlError",
+            "graphQLErrors",
+        ] {
+            assert!(
+                !helper_body
+                    .replace("UNINSTALL_MODULE_MUTATION", "")
+                    .contains(forbidden),
+                "{signature} must not branch on runtime taxonomy fragment `{forbidden}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_implement_local_retry_or_compensation_flows() {
+    let content = read_client_content();
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for forbidden in [
+            "for attempt in",
+            "loop {",
+            "retry",
+            "compensat",
+            "module_operations",
+            "correlation_id",
+        ] {
+            assert!(
+                !helper_body.contains(forbidden),
+                "{signature} must not introduce local retry/compensation logic fragment `{forbidden}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_preserve_server_owned_lifecycle_parity_matrix_contract() {
+    let content = read_client_content();
+
+    let lifecycle_taxonomy_fragments = [
+        "UNKNOWN_MODULE",
+        "CORE_MODULE",
+        "MISSING_DEPENDENCIES",
+        "HAS_DEPENDENTS",
+        "MODULE_HOOK_FAILED",
+    ];
+    let journal_metadata_fragments = [
+        "module_operations",
+        "correlation_id",
+        "requested_by",
+        "previous_effective_enabled",
+        "retryable",
+    ];
+    let composition_error_fragments = [
+        "REVISION_CONFLICT",
+        "INVALID_MODULE",
+        "REQUIRED_MODULE",
+        "UNKNOWN_DEPENDENCY",
+        "INTERNAL_ERROR",
+        "manifest_ref",
+        "platform_state:",
+    ];
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for fragment in lifecycle_taxonomy_fragments
+            .iter()
+            .chain(journal_metadata_fragments.iter())
+            .chain(composition_error_fragments.iter())
+        {
+            assert!(
+                !helper_body.contains(fragment),
+                "{signature} must keep server-owned parity contract and not parse fragment `{fragment}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_parse_lifecycle_operation_status_taxonomy() {
+    let content = read_client_content();
+
+    let status_fragments = [
+        "validated",
+        "running",
+        "committed",
+        "failed",
+        "status",
+        "operation",
+        "retryable_issue",
+        "operation_issue",
+    ];
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for fragment in status_fragments {
+            assert!(
+                !helper_body.contains(fragment),
+                "{signature} must not parse lifecycle operation status fragment `{fragment}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_parse_manifest_ref_or_build_revision_output_contract() {
+    let content = read_client_content();
+
+    let manifest_contract_fragments = ["manifest_ref", "platform_state:", "manifest_revision"];
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for fragment in manifest_contract_fragments {
+            assert!(
+                !helper_body.contains(fragment),
+                "{signature} must not parse server-owned build output contract fragment `{fragment}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_branch_on_control_plane_error_taxonomy() {
+    let content = read_client_content();
+
+    let control_plane_error_fragments = [
+        "CONFLICT",
+        "VALIDATION",
+        "INTERNAL",
+        "stale revision",
+        "ApiError::BadRequest",
+        "ApiError::ServerError",
+    ];
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for fragment in control_plane_error_fragments {
+            assert!(
+                !helper_body.contains(fragment),
+                "{signature} must not locally branch on control-plane error taxonomy fragment `{fragment}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_parse_build_or_release_pipeline_contract() {
+    let content = read_client_content();
+
+    let pipeline_fragments = [
+        "builds",
+        "build_id",
+        "build_status",
+        "release",
+        "manifest_hash",
+        "manifest_snapshot",
+        "modules_delta",
+    ];
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for fragment in pipeline_fragments {
+            assert!(
+                !helper_body.contains(fragment),
+                "{signature} must not parse build/release pipeline fragment `{fragment}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_parse_graphql_error_payload_shapes() {
+    let content = read_client_content();
+
+    let graphql_error_shape_fragments = [
+        ".errors",
+        "graphQLErrors",
+        "extensions",
+        "reason_code",
+        "message.as_str()",
+        "errors.first()",
+    ];
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for fragment in graphql_error_shape_fragments {
+            assert!(
+                !helper_body.contains(fragment),
+                "{signature} must not parse GraphQL error payload shape fragment `{fragment}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_map_graphql_taxonomy_to_transport_error_variants() {
+    let content = read_client_content();
+
+    let forbidden_transport_remap_fragments = [
+        "ApiError::Unauthorized",
+        "ApiError::Network",
+        "ApiError::Http(",
+        "\"Unauthorized\"",
+        "\"Network error\"",
+        "\"Http error: \"",
+    ];
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for fragment in forbidden_transport_remap_fragments {
+            assert!(
+                !helper_body.contains(fragment),
+                "{signature} must not remap GraphQL taxonomy into transport fragment `{fragment}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_use_local_serverfn_error_normalizers() {
+    let content = read_client_content();
+
+    let forbidden_local_normalizer_fragments = [
+        "normalize_server_fn_error_message(",
+        "map_server_fn_error(",
+        "ServerFnError::new(",
+    ];
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        for fragment in forbidden_local_normalizer_fragments {
+            assert!(
+                !helper_body.contains(fragment),
+                "{signature} must not implement local ServerFnError normalization fragment `{fragment}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_do_not_cross_wire_foreign_mutation_contracts() {
+    let content = read_client_content();
+
+    let cases = [
+        (
+            "pub async fn install_module(",
+            "INSTALL_MODULE_MUTATION",
+            [
+                "UNINSTALL_MODULE_MUTATION",
+                "UPGRADE_MODULE_MUTATION",
+                "TOGGLE_MODULE_MUTATION",
+            ],
+        ),
+        (
+            "pub async fn uninstall_module(",
+            "UNINSTALL_MODULE_MUTATION",
+            [
+                "INSTALL_MODULE_MUTATION",
+                "UPGRADE_MODULE_MUTATION",
+                "TOGGLE_MODULE_MUTATION",
+            ],
+        ),
+        (
+            "pub async fn upgrade_module(",
+            "UPGRADE_MODULE_MUTATION",
+            [
+                "INSTALL_MODULE_MUTATION",
+                "UNINSTALL_MODULE_MUTATION",
+                "TOGGLE_MODULE_MUTATION",
+            ],
+        ),
+        (
+            "pub async fn toggle_module(",
+            "TOGGLE_MODULE_MUTATION",
+            [
+                "INSTALL_MODULE_MUTATION",
+                "UNINSTALL_MODULE_MUTATION",
+                "UPGRADE_MODULE_MUTATION",
+            ],
+        ),
+    ];
+
+    for (signature, required, forbidden_list) in cases {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        assert!(
+            helper_body.contains(required),
+            "{signature} must reference canonical mutation constant `{required}`"
+        );
+        for forbidden in forbidden_list {
+            assert!(
+                !helper_body
+                    .replace("UNINSTALL_MODULE_MUTATION", "")
+                    .contains(forbidden),
+                "{signature} must not cross-wire foreign mutation constant `{forbidden}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_helpers_use_typed_responses_and_direct_payload_returns() {
+    let content = read_client_content();
+
+    let cases = [
+        (
+            "pub async fn install_module(",
+            "let response: InstallModuleResponse",
+            "Ok(response.install_module)",
+            [
+                "response.uninstall_module",
+                "response.upgrade_module",
+                "response.toggle_module",
+            ],
+        ),
+        (
+            "pub async fn uninstall_module(",
+            "let response: UninstallModuleResponse",
+            "Ok(response.uninstall_module)",
+            [
+                "response.install_module",
+                "response.upgrade_module",
+                "response.toggle_module",
+            ],
+        ),
+        (
+            "pub async fn upgrade_module(",
+            "let response: UpgradeModuleResponse",
+            "Ok(response.upgrade_module)",
+            [
+                "response.install_module",
+                "response.uninstall_module",
+                "response.toggle_module",
+            ],
+        ),
+        (
+            "pub async fn toggle_module(",
+            "let response: ToggleModuleResponse",
+            "Ok(response.toggle_module)",
+            [
+                "response.install_module",
+                "response.uninstall_module",
+                "response.upgrade_module",
+            ],
+        ),
+    ];
+
+    for (signature, typed_response, canonical_return, forbidden_returns) in cases {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        assert!(
+            helper_body.contains(typed_response),
+            "{signature} must decode GraphQL response into `{typed_response}`"
+        );
+        assert!(
+            helper_body.contains(canonical_return),
+            "{signature} must return canonical payload `{canonical_return}`"
+        );
+        for forbidden in forbidden_returns {
+            assert!(
+                !helper_body.contains(forbidden),
+                "{signature} must not return foreign payload fragment `{forbidden}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn module_composition_mutation_constants_are_declared_once() {
+    let content = read_transport_content();
+
+    for constant in [
+        "pub const INSTALL_MODULE_MUTATION: &str =",
+        "pub const UNINSTALL_MODULE_MUTATION: &str =",
+        "pub const UPGRADE_MODULE_MUTATION: &str =",
+        "pub const TOGGLE_MODULE_MUTATION: &str =",
+    ] {
+        let occurrences = content.matches(constant).count();
+        assert_eq!(
+            occurrences, 1,
+            "expected exactly one mutation constant declaration `{constant}`, found {occurrences}"
+        );
+    }
+}
+
+#[test]
+fn module_composition_helpers_reference_single_canonical_mutation_and_request_call() {
+    let content = read_client_content();
+
+    let cases: &[(&str, &str, &[&str])] = &[
+        (
+            "pub async fn install_module(",
+            "INSTALL_MODULE_MUTATION",
+            &["UNINSTALL_MODULE_MUTATION", "UPGRADE_MODULE_MUTATION"],
+        ),
+        (
+            "pub async fn uninstall_module(",
+            "UNINSTALL_MODULE_MUTATION",
+            &["INSTALL_MODULE_MUTATION", "UPGRADE_MODULE_MUTATION"],
+        ),
+        (
+            "pub async fn upgrade_module(",
+            "UPGRADE_MODULE_MUTATION",
+            &["INSTALL_MODULE_MUTATION", "UNINSTALL_MODULE_MUTATION"],
+        ),
+        (
+            "pub async fn toggle_module(",
+            "TOGGLE_MODULE_MUTATION",
+            &[
+                "INSTALL_MODULE_MUTATION",
+                "UNINSTALL_MODULE_MUTATION",
+                "UPGRADE_MODULE_MUTATION",
+            ],
+        ),
+    ];
+
+    for &(signature, canonical_mutation, foreign_mutations) in cases {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+        assert_eq!(
+            helper_body.matches("request(").count(),
+            1,
+            "{signature} must call request exactly once"
+        );
+        assert_eq!(
+            helper_body.matches(canonical_mutation).count(),
+            1,
+            "{signature} must reference canonical mutation constant exactly once"
+        );
+        for foreign in foreign_mutations {
+            assert!(
+                !helper_body
+                    .replace("UNINSTALL_MODULE_MUTATION", "")
+                    .contains(foreign),
+                "{signature} must not reference foreign mutation constant `{foreign}`"
+            );
+        }
+        assert!(
+            !helper_body.to_lowercase().contains("rolled back"),
+            "{signature} must not encode rollback semantics in helper-level contracts"
+        );
+    }
+}
+
+#[test]
+fn module_api_helpers_do_not_use_native_graphql_fallback_combiner() {
+    let content = read_client_content();
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let helper_body = extract_function_block(&content, signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+        assert!(
+            !helper_body.contains("combine_native_and_graphql_error"),
+            "{signature} must not use native/graphql fallback combiner"
+        );
+    }
+}
+
+#[test]
+fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
+    let content = read_client_content();
+
+    struct Case<'a> {
+        signature: &'a str,
+        mutation: &'a str,
+        typed_response: &'a str,
+        canonical_return: &'a str,
+        foreign_mutations: [&'a str; 3],
+        variables_literal: &'a str,
+        variable_fields: &'a [&'a str],
+        request_context_fields: &'a [&'a str],
+    }
+
+    let cases = [
+        Case {
+            signature: "pub async fn install_module(",
+            mutation: "INSTALL_MODULE_MUTATION",
+            typed_response: "let response: InstallModuleResponse",
+            canonical_return: "Ok(response.install_module)",
+            foreign_mutations: [
+                "UNINSTALL_MODULE_MUTATION",
+                "UPGRADE_MODULE_MUTATION",
+                "TOGGLE_MODULE_MUTATION",
+            ],
+            variables_literal: "InstallModuleVariables {",
+            variable_fields: &["slug", "version", "expected_revision", "idempotency_key"],
+            request_context_fields: &["token", "tenant_slug"],
+        },
+        Case {
+            signature: "pub async fn uninstall_module(",
+            mutation: "UNINSTALL_MODULE_MUTATION",
+            typed_response: "let response: UninstallModuleResponse",
+            canonical_return: "Ok(response.uninstall_module)",
+            foreign_mutations: [
+                "INSTALL_MODULE_MUTATION",
+                "UPGRADE_MODULE_MUTATION",
+                "TOGGLE_MODULE_MUTATION",
+            ],
+            variables_literal: "UninstallModuleVariables {",
+            variable_fields: &["slug", "expected_revision", "idempotency_key"],
+            request_context_fields: &["token", "tenant_slug"],
+        },
+        Case {
+            signature: "pub async fn upgrade_module(",
+            mutation: "UPGRADE_MODULE_MUTATION",
+            typed_response: "let response: UpgradeModuleResponse",
+            canonical_return: "Ok(response.upgrade_module)",
+            foreign_mutations: [
+                "INSTALL_MODULE_MUTATION",
+                "UNINSTALL_MODULE_MUTATION",
+                "TOGGLE_MODULE_MUTATION",
+            ],
+            variables_literal: "UpgradeModuleVariables {",
+            variable_fields: &["slug", "version", "expected_revision", "idempotency_key"],
+            request_context_fields: &["token", "tenant_slug"],
+        },
+        Case {
+            signature: "pub async fn toggle_module(",
+            mutation: "TOGGLE_MODULE_MUTATION",
+            typed_response: "let response: ToggleModuleResponse",
+            canonical_return: "Ok(response.toggle_module)",
+            foreign_mutations: [
+                "INSTALL_MODULE_MUTATION",
+                "UNINSTALL_MODULE_MUTATION",
+                "UPGRADE_MODULE_MUTATION",
+            ],
+            variables_literal: "ToggleModuleVariables {",
+            variable_fields: &[
+                "module_slug",
+                "enabled",
+                "expected_revision",
+                "idempotency_key",
+            ],
+            request_context_fields: &["token", "tenant_slug"],
+        },
+    ];
+
+    for case in cases {
+        let helper_body = extract_function_block(&content, case.signature)
+            .unwrap_or_else(|| panic!("helper signature not found: {}", case.signature));
+
+        assert_eq!(
+            helper_body.matches("request(").count(),
+            1,
+            "{} must call request exactly once",
+            case.signature
+        );
+        assert_eq!(
+            helper_body.matches(case.mutation).count(),
+            1,
+            "{} must reference canonical mutation exactly once",
+            case.signature
+        );
+        assert!(
+            helper_body.contains(case.typed_response),
+            "{} must decode typed response",
+            case.signature
+        );
+        assert!(
+            helper_body.contains(case.canonical_return),
+            "{} must return canonical payload",
+            case.signature
+        );
+
+        for forbidden in case.foreign_mutations {
+            assert!(
+                !helper_body
+                    .replace("UNINSTALL_MODULE_MUTATION", "")
+                    .contains(forbidden),
+                "{} must not reference foreign mutation `{forbidden}`",
+                case.signature
+            );
+        }
+        assert_typed_variables_forward_fields(
+            helper_body,
+            case.variables_literal,
+            case.variable_fields,
+            case.signature,
+        );
+        assert_request_context_fields(
+            helper_body,
+            case.variables_literal,
+            case.request_context_fields,
+            case.signature,
+        );
+
+        for forbidden_fragment in [
+            ".map_err(",
+            "combine_native_and_graphql_error",
+            "Some(",
+            "None",
+            "UNKNOWN_MODULE",
+            "CORE_MODULE",
+            "HAS_DEPENDENTS",
+            "MISSING_DEPENDENCIES",
+            "MODULE_HOOK_FAILED",
+            "extensions.code",
+            "reason_code",
+            "module_operations",
+            "correlation_id",
+            "requested_by",
+            "retryable_issue",
+            "operation_issue",
+        ] {
+            assert!(
+                !helper_body.contains(forbidden_fragment),
+                "{} must not contain forbidden helper-level fragment `{forbidden_fragment}`",
+                case.signature
+            );
+        }
+    }
+}
+
+#[test]
+fn toggle_module_helper_preserves_server_owned_lifecycle_taxonomy_contract() {
+    let content = read_client_content();
+
+    let helper_body = extract_function_block(&content, "pub async fn toggle_module(")
+        .expect("toggle_module helper signature not found");
+
+    assert!(
+        helper_body.contains("TOGGLE_MODULE_MUTATION"),
+        "toggle_module must call canonical GraphQL mutation"
+    );
+    assert!(
+        helper_body.contains("Ok(response.toggle_module)"),
+        "toggle_module must return GraphQL payload without local remap"
+    );
+
+    for forbidden in [
+        ".map_err(",
+        "combine_native_and_graphql_error",
+        "UNKNOWN_MODULE",
+        "CORE_MODULE",
+        "MISSING_DEPENDENCIES",
+        "HAS_DEPENDENTS",
+        "MODULE_HOOK_FAILED",
+        "MODULE_PRE_HOOK_FAILED",
+        "MODULE_POST_HOOK_FAILED",
+        "module_operations",
+        "requested_by",
+        "correlation_id",
+        "extensions.code",
+        "retryable_issue",
+        "operation_issue",
+    ] {
+        assert!(
+            !helper_body.contains(forbidden),
+            "toggle_module must keep server-owned taxonomy and not parse fragment `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn module_graphql_mutation_constants_have_stable_operation_shapes() {
+    let content = read_transport_content();
+
+    let cases: &[(&str, &[&str], &[&str])] = &[
+        (
+            "pub const INSTALL_MODULE_MUTATION: &str = \"",
+            &[
+                "mutation InstallModule(",
+                "installModule(",
+                "slug: $slug",
+                "version: $version",
+                "manifestRef",
+                "manifestHash",
+                "manifestRevision",
+            ],
+            &["__typename", "toggleModule(", "moduleSlug: $moduleSlug"],
+        ),
+        (
+            "pub const UNINSTALL_MODULE_MUTATION: &str = \"",
+            &[
+                "mutation UninstallModule(",
+                "uninstallModule(",
+                "slug: $slug",
+                "manifestRef",
+                "manifestHash",
+                "manifestRevision",
+            ],
+            &["__typename", "toggleModule(", "version: $version"],
+        ),
+        (
+            "pub const UPGRADE_MODULE_MUTATION: &str = \"",
+            &[
+                "mutation UpgradeModule(",
+                "upgradeModule(",
+                "slug: $slug",
+                "version: $version",
+                "manifestRef",
+                "manifestHash",
+                "manifestRevision",
+            ],
+            &["__typename", "toggleModule(", "moduleSlug: $moduleSlug"],
+        ),
+        (
+            "pub const TOGGLE_MODULE_MUTATION: &str = \"",
+            &[
+                "mutation ToggleModule($moduleSlug: String!, $enabled: Boolean!, $expectedRevision: Int!, $idempotencyKey: UUID!)",
+                "toggleModule(moduleSlug: $moduleSlug, enabled: $enabled, expectedRevision: $expectedRevision, idempotencyKey: $idempotencyKey)",
+                "expectedRevision",
+                "idempotencyKey",
+                "moduleSlug",
+                "enabled",
+                "settings",
+            ],
+            &[
+                "__typename",
+                "$module_slug",
+                "module_slug:",
+                "toggleModule(moduleSlug: $module_slug",
+            ],
+        ),
+    ];
+
+    for &(declaration, required_fragments, forbidden_fragments) in cases {
+        let mutation = extract_const_string_literal(&content, declaration)
+            .unwrap_or_else(|| panic!("mutation declaration not found: {declaration}"));
+
+        for required in required_fragments {
+            assert!(
+                mutation.contains(required),
+                "mutation shape drifted: missing `{required}` for declaration `{declaration}`"
+            );
+        }
+        for forbidden in forbidden_fragments {
+            assert!(
+                !mutation.contains(forbidden),
+                "mutation contract must not contain `{forbidden}` for declaration `{declaration}`"
+            );
+        }
+    }
+}
+
+fn assert_graphql_only_helper(
+    content: &str,
+    signature: &str,
+    mutation_name: &str,
+    variables_literal: &str,
+    forwarded_fields: &[&str],
+    return_expr: &str,
+) {
+    let helper_body = extract_function_block(content, signature)
+        .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
+    assert!(
+        helper_body.contains(mutation_name),
+        "expected helper {signature} to call canonical mutation {mutation_name}"
+    );
+    assert!(
+        helper_body.contains("request("),
+        "expected helper {signature} to call GraphQL request path"
+    );
+    assert!(
+        helper_body.contains(variables_literal),
+        "expected helper {signature} to construct typed GraphQL variables payload"
+    );
+    assert!(
+        helper_body.contains(return_expr),
+        "expected helper {signature} to return GraphQL payload directly"
+    );
+    assert_typed_variables_forward_fields(
+        helper_body,
+        variables_literal,
+        forwarded_fields,
+        signature,
+    );
+    assert!(
+        !helper_body.contains("combine_native_and_graphql_error"),
+        "helper {signature} must not compose native/graphql fallback errors"
+    );
+}
+
+fn assert_typed_variables_forward_fields(
+    helper_body: &str,
+    variables_literal: &str,
+    forwarded_fields: &[&str],
+    signature: &str,
+) {
+    let variables_start = helper_body
+        .find(variables_literal)
+        .unwrap_or_else(|| panic!("typed GraphQL variables payload not found in {signature}"));
+    let payload = &helper_body[variables_start + variables_literal.len()..];
+    let payload_end = payload
+        .find('}')
+        .unwrap_or_else(|| panic!("typed GraphQL variables payload is not closed in {signature}"));
+    let payload = &payload[..payload_end];
+
+    for field in forwarded_fields {
+        assert!(
+            payload
+                .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+                .any(|token| token == *field),
+            "expected helper {signature} to forward field `{field}` into typed GraphQL payload"
+        );
+    }
+}
+
+fn assert_request_context_fields(
+    helper_body: &str,
+    variables_literal: &str,
+    request_context_fields: &[&str],
+    signature: &str,
+) {
+    let variables_start = helper_body
+        .find(variables_literal)
+        .unwrap_or_else(|| panic!("typed GraphQL variables payload not found in {signature}"));
+    let request_tail = &helper_body[variables_start + variables_literal.len()..];
+    let variables_end = request_tail
+        .find('}')
+        .unwrap_or_else(|| panic!("typed GraphQL variables payload is not closed in {signature}"));
+    let request_tail = &request_tail[variables_end + 1..];
+
+    for field in request_context_fields {
+        assert!(
+            request_tail
+                .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+                .any(|token| token == *field),
+            "expected helper {signature} to forward request context `{field}`"
+        );
+    }
+}
+
+#[test]
+fn module_recovery_helpers_use_canonical_graphql_surface() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let content = read_transport_content();
+    let modules_list_path = crate_root.join("src/features/modules/components/modules_list.rs");
+    let modules_list = fs::read_to_string(&modules_list_path).expect("read modules_list.rs");
+
+    for required in [
+        "pub const MODULE_OPERATION_RECOVERY_PLAN_QUERY",
+        "moduleOperationRecoveryPlan(operationId: $operationId)",
+        "pub const FAILED_MODULE_OPERATION_RECOVERY_PLANS_QUERY",
+        "failedModuleOperationRecoveryPlans(moduleSlug: $moduleSlug, limit: $limit)",
+        "pub const RETRY_FAILED_MODULE_OPERATION_POST_HOOK_MUTATION",
+        "retryFailedModuleOperationPostHook(operationId: $operationId, idempotencyKey: $idempotencyKey, expectedRevision: $expectedRevision)",
+        "pub const COMPENSATE_FAILED_MODULE_OPERATION_MUTATION",
+        "compensateFailedModuleOperation(operationId: $operationId, idempotencyKey: $idempotencyKey, expectedRevision: $expectedRevision)",
+        "pub async fn module_operation_recovery_plan(",
+        "pub async fn failed_module_operation_recovery_plans(",
+        "pub async fn retry_failed_module_operation_post_hook(",
+        "pub async fn compensate_failed_module_operation(",
+    ] {
+        assert!(
+            content.contains(required),
+            "admin module recovery API must expose canonical GraphQL fragment `{required}`"
+        );
+    }
+
+    for forbidden in [
+        "retry_failed_module_operation_post_hook_native(",
+        "compensate_failed_module_operation_native(",
+        "module_operation_recovery_plan_native(",
+        "failed_module_operation_recovery_plans_native(",
+        "UPDATE tenant_modules",
+        "UPDATE module_operations",
+        "DELETE FROM module_operations",
+    ] {
+        assert!(
+            !content.contains(forbidden),
+            "module recovery helpers must not reintroduce native/raw-SQL path `{forbidden}`"
+        );
+        assert!(
+            !modules_list.contains(forbidden),
+            "module recovery UI must not reintroduce native/raw-SQL path `{forbidden}`"
+        );
+    }
+
+    for required_ui_fragment in [
+        "failed_module_operation_recovery_plans(",
+        "Some(10)",
+        "retry_failed_module_operation_post_hook(",
+        "compensate_failed_module_operation(",
+        "Lifecycle recovery",
+        "Recovery retry processed",
+        "Compensation applied",
+        "let compensatable = plan.issue == \"post_hook_failed\";",
+        "|| !compensatable",
+    ] {
+        assert!(
+            modules_list.contains(required_ui_fragment),
+            "module recovery UI must consume canonical GraphQL helper fragment `{required_ui_fragment}`"
+        );
+    }
+}
+
+#[test]
+fn module_composition_helper_signatures_are_unique() {
+    let content = read_client_content();
+
+    for signature in [
+        "pub async fn install_module(",
+        "pub async fn uninstall_module(",
+        "pub async fn upgrade_module(",
+        "pub async fn toggle_module(",
+    ] {
+        let occurrences = content.matches(signature).count();
+        assert_eq!(
+            occurrences, 1,
+            "Expected exactly one `{signature}` helper signature, found {occurrences}"
+        );
+    }
+}
+
+fn extract_function_block<'a>(content: &'a str, signature: &str) -> Option<&'a str> {
+    let start = content.find(signature)?;
+    let rest = &content[start..];
+    let open_rel = rest.find('{')?;
+    let mut depth = 0usize;
+    let mut end_rel = None;
+
+    for (idx, ch) in rest.char_indices().skip(open_rel) {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                if depth == 0 {
+                    return None;
+                }
+                depth -= 1;
+                if depth == 0 {
+                    end_rel = Some(idx + ch.len_utf8());
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    end_rel.map(|end| &rest[..end])
+}
+
+fn extract_const_string_literal<'a>(content: &'a str, declaration: &str) -> Option<&'a str> {
+    let start = content.find(declaration)?;
+    let rest = &content[start + declaration.len()..];
+    let end = rest.find("\";")?;
+    Some(&rest[..end])
+}
+
+#[test]
+fn extract_function_block_handles_nested_braces() {
+    let source = r#"
+pub async fn toggle_module() -> Result<(), ()> {
+    if true {
+        let nested = || {
+            let map = std::collections::BTreeMap::<String, String>::new();
+            map
+        };
+        let _ = nested();
+    }
+    Ok(())
+}
+
+pub async fn other_helper() {}
+"#;
+
+    let extracted = extract_function_block(source, "pub async fn toggle_module()")
+        .expect("toggle_module function should be extracted");
+    assert!(extracted.contains("BTreeMap::<String, String>::new()"));
+    assert!(extracted.trim_end().ends_with('}'));
+    assert!(!extracted.contains("pub async fn other_helper()"));
+}
+
+#[test]
+fn extract_function_block_returns_none_when_signature_missing() {
+    let source = "pub async fn other_helper() {}";
+    assert!(extract_function_block(source, "pub async fn toggle_module(").is_none());
+}
+
+#[test]
+fn extract_function_block_returns_none_when_braces_are_unbalanced() {
+    let source = r#"
+pub async fn toggle_module() {
+    if true {
+        let _x = 1;
+}
+"#;
+    assert!(extract_function_block(source, "pub async fn toggle_module()").is_none());
+}
+
+#[test]
+fn extract_function_block_returns_none_when_body_brace_missing() {
+    let source = "pub async fn toggle_module() -> Result<(), ()>";
+    assert!(extract_function_block(source, "pub async fn toggle_module()").is_none());
+}
+
+#[test]
+fn lifecycle_runtime_and_journal_parity_contract_is_shared_across_surfaces() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = crate_root
+        .parent()
+        .and_then(Path::parent)
+        .expect("workspace root");
+    let admin_transport = read_transport_content();
+    let modules_list_path = crate_root.join("src/features/modules/components/modules_list.rs");
+    let modules_list = fs::read_to_string(&modules_list_path).expect("read modules_list.rs");
+    let shared_api_path = crate_root.join("src/shared/api/mod.rs");
+    let shared_api = fs::read_to_string(&shared_api_path).expect("read shared api.rs");
+    let server_mutations_path = repo_root.join("apps/server/src/graphql/mutations.rs");
+    let server_mutations =
+        fs::read_to_string(&server_mutations_path).expect("read server graphql mutations.rs");
+    let lifecycle_tests_path = repo_root.join("apps/server/tests/module_lifecycle.rs");
+    let lifecycle_tests =
+        fs::read_to_string(&lifecycle_tests_path).expect("read server module lifecycle tests");
+
+    for adapter_test in [
+        "lifecycle_runtime_taxonomy_matrix_is_forwarded_without_remapping",
+        "lifecycle_journal_metadata_fragments_are_forwarded_without_parsing",
+        "lifecycle_operation_status_matrix_is_forwarded_without_local_parsing",
+        "lifecycle_retryable_issue_fragments_are_forwarded_without_local_parsing",
+        "lifecycle_journal_actor_and_correlation_matrix_is_forwarded_without_local_remap",
+        "lifecycle_operation_issue_matrix_is_forwarded_without_local_interpretation",
+    ] {
+        assert!(
+            shared_api.contains(adapter_test),
+            "Leptos SSR adapter lifecycle parity test `{adapter_test}` must remain present"
+        );
+    }
+
+    for mapper_test in [
+        "toggle_error_mapping_sets_expected_error_codes",
+        "toggle_user_input_taxonomy_maps_only_to_bad_user_input_code",
+        "toggle_hook_failed_taxonomy_maps_only_to_module_hook_failed_code",
+        "toggle_internal_error_taxonomy_maps_only_to_internal_error_code",
+        "toggle_error_mapping_matrix_preserves_message_and_code_contract",
+        "toggle_hook_failed_pre_hook_sets_non_retryable_issue_extensions",
+        "toggle_hook_failed_post_hook_sets_retryable_issue_extensions",
+    ] {
+        assert!(
+            server_mutations.contains(mapper_test),
+            "server GraphQL lifecycle mapper test `{mapper_test}` must remain present"
+        );
+    }
+
+    for lifecycle_test in [
+        "successful_toggle_writes_committed_module_operation",
+        "successful_toggle_with_actor_persists_requested_by",
+        "toggle_records_authenticated_actor_identity",
+        "hook_failure_with_actor_records_failed_operation_with_actor",
+        "hook_failure_records_failed_operation_with_authenticated_actor",
+        "post_enable_failure_keeps_committed_state_and_marks_failed_operation",
+        "post_disable_failure_keeps_committed_state_and_marks_failed_operation",
+        "dependency_validation_failure_does_not_create_journal_row",
+        "dependent_validation_failure_does_not_create_journal_row",
+        "unknown_module_failure_does_not_create_journal_row",
+        "core_module_disable_failure_does_not_create_journal_row",
+        "repeated_explicit_disable_records_a_distinct_no_op_receipt",
+        "noop_enable_for_already_enabled_module_records_a_receipt",
+        "successful_enable_and_idempotent_retry",
+    ] {
+        assert!(
+            lifecycle_tests.contains(lifecycle_test),
+            "server lifecycle journal metadata/parity test `{lifecycle_test}` must remain present"
+        );
+    }
+
+    let toggle_helper = extract_function_block(&admin_transport, "pub async fn toggle_module(")
+        .expect("toggle_module helper should exist");
+    assert!(
+        toggle_helper.contains("TOGGLE_MODULE_MUTATION")
+            && toggle_helper.contains("Ok(response.toggle_module)"),
+        "admin toggle helper must continue to pass through canonical GraphQL lifecycle payload"
+    );
+    for forbidden in [
+        "UNKNOWN_MODULE",
+        "CORE_MODULE",
+        "MISSING_DEPENDENCIES",
+        "HAS_DEPENDENTS",
+        "MODULE_HOOK_FAILED",
+        "extensions.code",
+        "module_operations",
+        "correlation_id",
+        "requested_by",
+        ".map_err(",
+    ] {
+        assert!(
+            !toggle_helper.contains(forbidden),
+            "admin toggle helper must not parse server-owned lifecycle/journal fragment `{forbidden}`"
+        );
+    }
+
+    for recovery_ui_fragment in [
+        "failed_module_operation_recovery_plans(",
+        "retry_failed_module_operation_post_hook(",
+        "compensate_failed_module_operation(",
+        "Lifecycle recovery",
+    ] {
+        assert!(
+            modules_list.contains(recovery_ui_fragment),
+            "admin recovery UI must keep canonical lifecycle recovery fragment `{recovery_ui_fragment}`"
+        );
+    }
+}
+
+#[test]
+fn manifest_hash_ref_revision_contract_is_shared_across_surfaces() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = crate_root
+        .parent()
+        .and_then(Path::parent)
+        .expect("workspace root");
+    let admin_transport = read_transport_content();
+    let server_composition_path =
+        repo_root.join("apps/server/src/services/platform_composition.rs");
+    let server_composition =
+        fs::read_to_string(&server_composition_path).expect("read server platform_composition.rs");
+    let server_mutations_path = repo_root.join("apps/server/src/graphql/mutations.rs");
+    let server_mutations =
+        fs::read_to_string(&server_mutations_path).expect("read server graphql mutations.rs");
+    let server_build_tests_path =
+        repo_root.join("apps/server/tests/platform_composition_build_service.rs");
+    let server_build_tests = fs::read_to_string(&server_build_tests_path)
+        .expect("read server platform composition build tests");
+    let shared_api_path = crate_root.join("src/shared/api/mod.rs");
+    let shared_api = fs::read_to_string(&shared_api_path).expect("read shared api.rs");
+
+    assert!(
+        !admin_transport.contains("runtime_manifest_hash"),
+        "admin transport must not restore local composition hashing"
+    );
+
+    let server_hash_helper = extract_function_block(
+        &server_composition,
+        "pub fn manifest_hash(manifest: &ModulesManifest) -> Result<String, PlatformCompositionError>",
+    )
+    .expect("server manifest_hash helper should exist");
+    assert!(
+        server_hash_helper.contains("Self::manifest_snapshot_json("),
+        "server composition hashing must serialize through the canonical snapshot contract"
+    );
+    assert!(
+        server_hash_helper.contains("hash_manifest_snapshot(&"),
+        "server composition hashing must use the canonical snapshot digest"
+    );
+
+    for mutation_decl in [
+        "pub const INSTALL_MODULE_MUTATION: &str = \"",
+        "pub const UNINSTALL_MODULE_MUTATION: &str = \"",
+        "pub const UPGRADE_MODULE_MUTATION: &str = \"",
+    ] {
+        let mutation = extract_const_string_literal(&admin_transport, mutation_decl)
+            .unwrap_or_else(|| panic!("mutation declaration not found: {mutation_decl}"));
+        for required in ["manifestRef", "manifestHash", "manifestRevision"] {
+            assert!(
+                mutation.contains(required),
+                "GraphQL mutation `{mutation_decl}` must request build manifest field `{required}`"
+            );
+        }
+    }
+
+    for helper in [
+        (
+            "pub async fn install_module(",
+            "Ok(response.install_module)",
+        ),
+        (
+            "pub async fn uninstall_module(",
+            "Ok(response.uninstall_module)",
+        ),
+        (
+            "pub async fn upgrade_module(",
+            "Ok(response.upgrade_module)",
+        ),
+    ] {
+        let helper_body = extract_function_block(&admin_transport, helper.0)
+            .unwrap_or_else(|| panic!("helper signature not found: {}", helper.0));
+        assert!(
+            helper_body.contains(helper.1),
+            "{} must return canonical GraphQL build payload directly",
+            helper.0
+        );
+        assert!(
+            !helper_body.contains("manifest_ref")
+                && !helper_body.contains("platform_state:")
+                && !helper_body.contains("manifest_revision"),
+            "{} must not locally parse manifest ref/revision contract",
+            helper.0
+        );
+    }
+
+    for server_fragment in [
+        "PlatformCompositionBuildService::apply_module_mutation_and_request_build(",
+        "format!(\"platform_state:{}\", result.snapshot.revision)",
+        "assert_eq!(result.build.manifest_revision, result.snapshot.revision)",
+        "successful_enqueue_keeps_canonical_composition_digest_with_its_snapshot",
+        "build_request_identity_is_distinct_from_the_composition_digest",
+        "same_manifest_keeps_hash_and_snapshot_stable_across_revisions",
+    ] {
+        let haystack = if server_fragment
+            == "PlatformCompositionBuildService::apply_module_mutation_and_request_build("
+        {
+            server_mutations.as_str()
+        } else {
+            server_build_tests.as_str()
+        };
+        assert!(
+            haystack.contains(server_fragment),
+            "server composition surface must preserve manifest parity fragment `{server_fragment}`"
+        );
+    }
+    for owner_fragment in [
+        "ModuleControlPlane::new(db.clone())",
+        ".admit_build_operation::<Build, _>(",
+        ".replace_active_snapshot_and_enqueue(",
+    ] {
+        assert!(
+            server_composition.contains(owner_fragment),
+            "server composition adapter must delegate atomic manifest/build work through `{owner_fragment}`"
+        );
+    }
+
+    for adapter_test in [
+        "composition_runtime_taxonomy_matrix_is_forwarded_without_remapping",
+        "composition_manifest_fragments_are_forwarded_without_local_parsing",
+    ] {
+        assert!(
+            shared_api.contains(adapter_test),
+            "Leptos SSR adapter parity test `{adapter_test}` must remain present"
+        );
+    }
+}
+
+#[test]
+fn admin_transport_does_not_compute_manifest_hash() {
+    let content = read_transport_content();
+
+    assert!(
+        !content.contains("runtime_manifest_hash"),
+        "admin transport must consume the owner-provided manifest hash rather than recomputing it"
+    );
+}

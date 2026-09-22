@@ -1,0 +1,25 @@
+mod m20260419_000002_expand_seo_locale_columns;
+mod m20260419_000003_create_seo_tables;
+mod m20260420_000004_create_seo_bulk_tables;
+mod m20260421_000005_create_seo_event_deliveries;
+mod m20260602_000006_create_seo_index_tracking;
+mod m20260716_000007_add_redirect_cache_cursor_index;
+mod m20260724_000008_create_seo_index_repair_jobs;
+mod m20260911_000009_add_translation_change_journal;
+mod m20260911_000010_add_translation_apply_receipts;
+
+use sea_orm_migration::prelude::*;
+
+pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+    vec![
+        Box::new(m20260419_000002_expand_seo_locale_columns::Migration),
+        Box::new(m20260419_000003_create_seo_tables::Migration),
+        Box::new(m20260420_000004_create_seo_bulk_tables::Migration),
+        Box::new(m20260421_000005_create_seo_event_deliveries::Migration),
+        Box::new(m20260602_000006_create_seo_index_tracking::Migration),
+        Box::new(m20260716_000007_add_redirect_cache_cursor_index::Migration),
+        Box::new(m20260724_000008_create_seo_index_repair_jobs::Migration),
+        Box::new(m20260911_000009_add_translation_change_journal::Migration),
+        Box::new(m20260911_000010_add_translation_apply_receipts::Migration),
+    ]
+}

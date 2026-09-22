@@ -1,0 +1,212 @@
+impl SeoService {
+    pub(super) async fn execute_next_bulk_job_with_bounded_io(
+        &self,
+    ) -> SeoResult<Option<SeoBulkJobRecord>> {
+        // The server already owns one configured SEO poller. Keep that stable lifecycle boundary,
+        // but let every poll advance at most one bounded job from each durable SEO queue.
+        let bulk_result = self.execute_next_bulk_job_only_with_bounded_io().await;
+        let sitemap_result = self.execute_next_sitemap_job_background().await;
+        let index_result = self.execute_next_index_repair_replay_job_background().await;
+
+        if let Ok(Some(job)) = &sitemap_result {
+            tracing::info!(
+                job_id = %job.id,
+                status = %job.status,
+                "Executed queued SEO sitemap job phase"
+            );
+        }
+        if let Ok(Some(result)) = &index_result {
+            tracing::info!(
+                target_type = ?result.target_type,
+                replay_mode = %result.replay_mode.as_str(),
+                repaired_count = result.repaired_count,
+                replayed_count = result.replayed_count,
+                "Executed queued SEO index repair/replay job"
+            );
+        }
+
+        let bulk_job = bulk_result?;
+        sitemap_result?;
+        index_result?;
+        Ok(bulk_job)
+    }
+
+    async fn execute_next_bulk_job_only_with_bounded_io(
+        &self,
+    ) -> SeoResult<Option<SeoBulkJobRecord>> {
+        const JOB_LEASE_SECS: i64 = 30 * 60;
+        let now = Utc::now().fixed_offset();
+        let stale_before = now - chrono::Duration::seconds(JOB_LEASE_SECS);
+
+        let running = seo_bulk_job::Entity::find()
+            .filter(seo_bulk_job::Column::Status.eq(SeoBulkJobStatus::Running.as_str()))
+            .filter(seo_bulk_job::Column::OperationKind.is_in([
+                SeoBulkJobOperationKind::Apply.as_str(),
+                SeoBulkJobOperationKind::ExportCsv.as_str(),
+                SeoBulkJobOperationKind::ImportCsv.as_str(),
+            ]))
+            .order_by_asc(seo_bulk_job::Column::UpdatedAt)
+            .one(&self.db)
+            .await?;
+
+        let running = if let Some(job) = running {
+            if job.updated_at > stale_before {
+                return Ok(None);
+            }
+
+            let claimed = seo_bulk_job::Entity::update_many()
+                .col_expr(
+                    seo_bulk_job::Column::UpdatedAt,
+                    sea_orm::sea_query::Expr::value(now),
+                )
+                .filter(seo_bulk_job::Column::Id.eq(job.id))
+                .filter(seo_bulk_job::Column::Status.eq(SeoBulkJobStatus::Running.as_str()))
+                .filter(seo_bulk_job::Column::UpdatedAt.lte(stale_before))
+                .exec(&self.db)
+                .await?;
+
+            if claimed.rows_affected != 1 {
+                return Ok(None);
+            }
+
+            seo_bulk_job::Entity::find_by_id(job.id)
+                .one(&self.db)
+                .await?
+                .ok_or(SeoError::NotFound)?
+        } else {
+            let Some(job) = seo_bulk_job::Entity::find()
+                .filter(seo_bulk_job::Column::Status.eq(SeoBulkJobStatus::Queued.as_str()))
+                .order_by_asc(seo_bulk_job::Column::CreatedAt)
+                .one(&self.db)
+                .await?
+            else {
+                return Ok(None);
+            };
+
+            let claimed = seo_bulk_job::Entity::update_many()
+                .col_expr(
+                    seo_bulk_job::Column::Status,
+                    sea_orm::sea_query::Expr::value(SeoBulkJobStatus::Running.as_str()),
+                )
+                .col_expr(
+                    seo_bulk_job::Column::StartedAt,
+                    sea_orm::sea_query::Expr::value(Some(now)),
+                )
+                .col_expr(
+                    seo_bulk_job::Column::UpdatedAt,
+                    sea_orm::sea_query::Expr::value(now),
+                )
+                .filter(seo_bulk_job::Column::Id.eq(job.id))
+                .filter(seo_bulk_job::Column::Status.eq(SeoBulkJobStatus::Queued.as_str()))
+                .exec(&self.db)
+                .await?;
+
+            if claimed.rows_affected != 1 {
+                return Ok(None);
+            }
+
+            seo_bulk_job::Entity::find_by_id(job.id)
+                .one(&self.db)
+                .await?
+                .ok_or(SeoError::NotFound)?
+        };
+
+        let result = match SeoBulkJobOperationKind::parse(running.operation_kind.as_str()) {
+            Some(SeoBulkJobOperationKind::Apply) => self.execute_apply_job_chunk(&running).await,
+            Some(SeoBulkJobOperationKind::ExportCsv) => {
+                self.execute_export_job_chunk_compat(&running).await
+            }
+            Some(SeoBulkJobOperationKind::ImportCsv) => {
+                match self.normalize_bulk_import_job_payload(&running).await {
+                    Ok(normalized) => self.execute_import_job_chunk(&normalized).await,
+                    Err(error) => Err(error),
+                }
+            }
+            None => Err(SeoError::validation(format!(
+                "unknown bulk operation kind `{}`",
+                running.operation_kind
+            ))),
+        };
+
+        if let Err(error) = result {
+            self.fail_bulk_job(&running, error.to_string()).await?;
+        }
+
+        self.bulk_job(running.tenant_id, running.id).await
+    }
+
+    async fn execute_export_job_chunk_compat(&self, job: &seo_bulk_job::Model) -> SeoResult<()> {
+        let tenant = self.load_tenant_context(job.tenant_id).await?;
+        let payload = self.decode_bounded_export_payload(&tenant, job).await?;
+        if !payload.target_ids.is_empty() {
+            return self.execute_export_job_chunk(job).await;
+        }
+
+        let progress = self.load_bulk_job_progress(job.id).await?;
+        if progress.artifacts == 0 {
+            let filter =
+                normalize_bulk_list_input(payload.input.filter, tenant.default_locale.as_str())?;
+            let mut writer = WriterBuilder::new()
+                .has_headers(false)
+                .from_writer(Vec::<u8>::new());
+            writer.write_record(CSV_HEADERS).map_err(|error| {
+                SeoError::validation(format!("failed to write empty export CSV header: {error}"))
+            })?;
+            let bytes = writer.into_inner().map_err(|error| {
+                SeoError::validation(format!(
+                    "failed to finalize empty export CSV writer: {error}"
+                ))
+            })?;
+            let content = String::from_utf8(bytes).map_err(|error| {
+                SeoError::validation(format!("empty export CSV is not valid UTF-8: {error}"))
+            })?;
+            self.insert_bulk_job_artifact(
+                job,
+                "export_csv",
+                format!(
+                    "seo-bulk-export-{}-{}-{}.csv",
+                    filter.target_kind.as_str(),
+                    filter.locale,
+                    job.id,
+                ),
+                CSV_MIME_TYPE,
+                content,
+            )
+            .await?;
+        }
+
+        let progress = self.load_bulk_job_progress(job.id).await?;
+        self.finish_bulk_job(
+            job,
+            progress.processed,
+            progress.succeeded,
+            progress.failed,
+            progress.artifacts,
+            None,
+        )
+        .await
+    }
+
+    async fn normalize_bulk_import_job_payload(
+        &self,
+        job: &seo_bulk_job::Model,
+    ) -> SeoResult<seo_bulk_job::Model> {
+        let mut payload = self.decode_bounded_import_payload(job).await?;
+        if payload.input.locale == job.locale
+            && serde_json::from_value::<QueuedBulkImportPayload>(job.input_payload.clone()).is_ok()
+        {
+            return Ok(job.clone());
+        }
+
+        payload.input.locale = job.locale.clone();
+        let now = Utc::now().fixed_offset();
+        let mut active: seo_bulk_job::ActiveModel = job.clone().into();
+        active.input_payload = Set(serde_json::to_value(&payload).map_err(|error| {
+            SeoError::validation(format!(
+                "failed to normalize bounded bulk import payload: {error}"
+            ))
+        })?);
+        active.updated_at = Set(now);
+        active.update(&self.db).await.map_err(Into::into)
+    }
+}

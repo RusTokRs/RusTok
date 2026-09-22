@@ -1,0 +1,219 @@
+name: Index Storage Scale Run
+
+on:
+  workflow_call:
+    inputs:
+      scale:
+        description: Deterministic Index benchmark scale
+        required: true
+        type: string
+      timeout_minutes:
+        description: Job timeout for the selected scale
+        required: true
+        type: number
+      runner_label:
+        description: GitHub Actions runner label
+        required: true
+        type: string
+      minimum_free_bytes:
+        description: Minimum free root-filesystem bytes before the evidence run
+        required: true
+        type: number
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: "1"
+  DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_index_bench
+  INDEX_BENCH_SCALE: ${{ inputs.scale }}
+  INDEX_BENCH_REPETITIONS: "3"
+  INDEX_BENCH_CHURN_CYCLES: "5"
+  INDEX_BENCH_OUTPUT: evidence/index-storage/${{ inputs.scale }}/read-report.json
+  INDEX_BENCH_MUTATION_OUTPUT: evidence/index-storage/${{ inputs.scale }}/mutation-report.json
+  INDEX_BENCH_MAINTENANCE_OUTPUT: evidence/index-storage/${{ inputs.scale }}/maintenance-report.json
+  INDEX_BENCH_EVIDENCE_ROOT: evidence/index-storage/${{ inputs.scale }}
+  INDEX_BENCH_REQUIRE_RUNNER_RESOURCES: "1"
+  INDEX_BENCH_REQUIRE_GITHUB_PROVENANCE: "1"
+
+jobs:
+  validate-inputs:
+    name: Validate scale evidence inputs
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - name: Require canonical reusable workflow inputs
+        shell: bash
+        env:
+          REQUESTED_SCALE: ${{ inputs.scale }}
+          REQUESTED_TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+          REQUESTED_RUNNER_LABEL: ${{ inputs.runner_label }}
+          REQUESTED_MINIMUM_FREE_BYTES: ${{ inputs.minimum_free_bytes }}
+        run: |
+          set -euo pipefail
+          export LC_ALL=C
+          MAXIMUM_FREE_BYTES=9007199254740991
+
+          case "$REQUESTED_SCALE" in
+            100k|1m) ;;
+            *)
+              echo "::error::scale must be 100k or 1m; got ${REQUESTED_SCALE}"
+              exit 1
+              ;;
+          esac
+          if ! [[ "$REQUESTED_TIMEOUT_MINUTES" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::timeout_minutes must be a positive integer; got ${REQUESTED_TIMEOUT_MINUTES}"
+            exit 1
+          fi
+          if (( REQUESTED_TIMEOUT_MINUTES > 360 )); then
+            echo "::error::timeout_minutes must not exceed 360; got ${REQUESTED_TIMEOUT_MINUTES}"
+            exit 1
+          fi
+          if [[ -z "${REQUESTED_RUNNER_LABEL//[[:space:]]/}" ]]; then
+            echo "::error::runner_label must be non-empty"
+            exit 1
+          fi
+          if [[ "$REQUESTED_RUNNER_LABEL" =~ [[:cntrl:]] ]]; then
+            echo "::error::runner_label must not contain control characters"
+            exit 1
+          fi
+          if (( ${#REQUESTED_RUNNER_LABEL} > 128 )); then
+            echo "::error::runner_label must not exceed 128 bytes"
+            exit 1
+          fi
+          if ! [[ "$REQUESTED_MINIMUM_FREE_BYTES" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::minimum_free_bytes must be a positive integer; got ${REQUESTED_MINIMUM_FREE_BYTES}"
+            exit 1
+          fi
+          if (( ${#REQUESTED_MINIMUM_FREE_BYTES} > ${#MAXIMUM_FREE_BYTES} )) ||
+            { (( ${#REQUESTED_MINIMUM_FREE_BYTES} == ${#MAXIMUM_FREE_BYTES} )) &&
+              [[ "$REQUESTED_MINIMUM_FREE_BYTES" > "$MAXIMUM_FREE_BYTES" ]]; }; then
+            echo "::error::minimum_free_bytes must not exceed ${MAXIMUM_FREE_BYTES}; got ${REQUESTED_MINIMUM_FREE_BYTES}"
+            exit 1
+          fi
+
+  evidence:
+    needs: validate-inputs
+    name: PostgreSQL ${{ inputs.scale }} evidence
+    runs-on: ${{ inputs.runner_label }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_index_bench
+        ports:
+          - 5432:5432
+        options: >-
+          --shm-size=1g
+          --health-cmd "pg_isready -U postgres -d rustok_index_bench"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: index-storage-scale
+
+      - name: Verify runner disk capacity
+        shell: bash
+        env:
+          MINIMUM_FREE_BYTES: ${{ inputs.minimum_free_bytes }}
+        run: |
+          available_bytes=$(df --output=avail -B1 / | tail -n 1 | tr -d ' ')
+          echo "available_bytes=$available_bytes"
+          echo "minimum_free_bytes=$MINIMUM_FREE_BYTES"
+          if (( available_bytes < MINIMUM_FREE_BYTES )); then
+            echo "::error::Index ${INDEX_BENCH_SCALE} evidence requires at least ${MINIMUM_FREE_BYTES} free bytes; runner has ${available_bytes}"
+            exit 1
+          fi
+
+      - name: Capture runner resources before evidence
+        shell: bash
+        run: |
+          mkdir -p "$INDEX_BENCH_EVIDENCE_ROOT"
+          {
+            echo "captured_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "phase=before"
+            echo "runner_label=${{ inputs.runner_label }}"
+            uname -a
+            echo "nproc=$(nproc)"
+            free -b
+            df -B1
+          } > "$INDEX_BENCH_EVIDENCE_ROOT/runner-resources-before.txt"
+
+      - name: Build scale evidence executables
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo build -p rustok-benchmarks --release \
+            --bin index-storage-benchmark \
+            --bin index-storage-mutation-benchmark \
+            --bin index-storage-maintenance-benchmark \
+            2>&1 | tee "$INDEX_BENCH_EVIDENCE_ROOT/build.log"
+
+      - name: Run ${{ inputs.scale }} read/query evidence
+        shell: bash
+        run: |
+          set -o pipefail
+          stdbuf -oL -eL target/release/index-storage-benchmark \
+            2>&1 | tee "$INDEX_BENCH_EVIDENCE_ROOT/read-run.log"
+
+      - name: Run ${{ inputs.scale }} mutation/WAL evidence
+        shell: bash
+        run: |
+          set -o pipefail
+          stdbuf -oL -eL target/release/index-storage-mutation-benchmark \
+            2>&1 | tee "$INDEX_BENCH_EVIDENCE_ROOT/mutation-run.log"
+
+      - name: Run ${{ inputs.scale }} persistent churn/VACUUM evidence
+        shell: bash
+        run: |
+          set -o pipefail
+          stdbuf -oL -eL target/release/index-storage-maintenance-benchmark \
+            2>&1 | tee "$INDEX_BENCH_EVIDENCE_ROOT/maintenance-run.log"
+
+      - name: Capture runner resources after evidence
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$INDEX_BENCH_EVIDENCE_ROOT"
+          {
+            echo "captured_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "phase=after"
+            echo "runner_label=${{ inputs.runner_label }}"
+            uname -a
+            echo "nproc=$(nproc)"
+            free -b
+            df -B1
+          } > "$INDEX_BENCH_EVIDENCE_ROOT/runner-resources-after.txt"
+
+      - name: Validate ${{ inputs.scale }} evidence packet through storage tooling
+        run: >-
+          node scripts/verify/index-storage-tooling.mjs packet
+          --scale ${{ inputs.scale }}
+          --root evidence/index-storage/${{ inputs.scale }}
+
+      - name: Archive validated ${{ inputs.scale }} evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: index-storage-${{ inputs.scale }}-${{ github.sha }}
+          path: evidence/index-storage/${{ inputs.scale }}
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Archive ${{ inputs.scale }} failure diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: index-storage-${{ inputs.scale }}-diagnostic-${{ github.sha }}
+          path: evidence/index-storage/${{ inputs.scale }}
+          if-no-files-found: warn
+          retention-days: 14

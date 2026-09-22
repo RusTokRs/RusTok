@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "module": "marketplace_listing",
+  "registered_in": [
+    "modules.toml",
+    "crates/modules/rustok-distribution/Cargo.toml",
+    "crates/modules/rustok-distribution/src/lib.rs"
+  ],
+  "required_modules": [
+    "marketplace_seller",
+    "product"
+  ],
+  "root_consumer": "marketplace",
+  "default_enabled": false,
+  "server_feature_source_wired": true,
+  "graphql_feature_source_wired": true,
+  "host_runtime_source_composed": true,
+  "runtime_execution_retained": false
+}

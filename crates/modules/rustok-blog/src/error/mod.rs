@@ -1,0 +1,373 @@
+pub(crate) mod public;
+pub use public::BlogPublicError;
+
+use rustok_core::error::{Error as CoreError, ErrorKind, RichError};
+use thiserror::Error;
+use uuid::Uuid;
+
+/// Blog module errors
+///
+/// Uses both legacy Error enum and new RichError system.
+/// Gradually migrate to RichError for better context.
+#[derive(Error, Debug)]
+pub enum BlogError {
+    #[error("Database error: {0}")]
+    Database(#[from] sea_orm::DbErr),
+
+    #[error("Post not found: {0}")]
+    PostNotFound(Uuid),
+
+    #[error("Comment not found: {0}")]
+    CommentNotFound(Uuid),
+
+    #[error("Category not found: {0}")]
+    CategoryNotFound(Uuid),
+
+    #[error("Tag not found: {0}")]
+    TagNotFound(Uuid),
+
+    #[error("Taxonomy term not found: {0}")]
+    TaxonomyTermNotFound(Uuid),
+
+    #[error("Duplicate slug: {slug} already exists")]
+    DuplicateSlug { slug: String },
+
+    #[error("Blog revision conflict: {0}")]
+    Conflict(String),
+
+    #[error(
+        "Category translation revision is exhausted for category {category_id} and locale {locale}"
+    )]
+    CategoryTranslationRevisionExhausted { category_id: Uuid, locale: String },
+
+    #[error("Cannot delete published post")]
+    CannotDeletePublished,
+
+    #[error("Cannot publish archived post")]
+    CannotPublishArchived,
+
+    #[error("Invalid Blog post lifecycle transition: {from:?} -> {to:?}")]
+    InvalidTransition {
+        from: crate::BlogPostStatus,
+        to: crate::BlogPostStatus,
+    },
+
+    #[error("Blog storage invariant violated: {0}")]
+    Invariant(String),
+
+    #[error("Author required")]
+    AuthorRequired,
+
+    #[error("Validation error: {0}")]
+    Validation(String),
+
+    #[error("Forbidden: {0}")]
+    Forbidden(String),
+
+    #[error("Content error: {0}")]
+    Content(#[from] rustok_content::ContentError),
+
+    #[error("Comments error: {0}")]
+    Comments(#[from] rustok_comments::CommentsError),
+
+    #[error("Rich error: {0}")]
+    Rich(#[from] Box<RichError>),
+
+    #[error("Core error: {0}")]
+    Core(#[from] CoreError),
+}
+
+pub type BlogResult<T> = Result<T, BlogError>;
+
+// Conversion from BlogError to RichError for API responses
+impl From<BlogError> for RichError {
+    fn from(err: BlogError) -> Self {
+        match err {
+            BlogError::Database(db_err) => {
+                RichError::new(ErrorKind::Database, "Database operation failed")
+                    .with_user_message("Unable to access blog data")
+                    .with_source(db_err)
+            }
+            BlogError::PostNotFound(id) => {
+                RichError::new(ErrorKind::NotFound, format!("Post {} not found", id))
+                    .with_user_message("The requested blog post does not exist")
+                    .with_field("post_id", id.to_string())
+                    .with_error_code("POST_NOT_FOUND")
+            }
+            BlogError::CommentNotFound(id) => {
+                RichError::new(ErrorKind::NotFound, format!("Comment {} not found", id))
+                    .with_user_message("The requested comment does not exist")
+                    .with_field("comment_id", id.to_string())
+                    .with_error_code("COMMENT_NOT_FOUND")
+            }
+            BlogError::CategoryNotFound(id) => {
+                RichError::new(ErrorKind::NotFound, format!("Category {} not found", id))
+                    .with_user_message("The requested blog category does not exist")
+                    .with_field("category_id", id.to_string())
+                    .with_error_code("CATEGORY_NOT_FOUND")
+            }
+            BlogError::TagNotFound(id) => {
+                RichError::new(ErrorKind::NotFound, format!("Tag {} not found", id))
+                    .with_user_message("The requested tag does not exist")
+                    .with_field("tag_id", id.to_string())
+                    .with_error_code("TAG_NOT_FOUND")
+            }
+            BlogError::TaxonomyTermNotFound(id) => {
+                RichError::new(ErrorKind::NotFound, format!("Taxonomy term {} not found", id))
+                    .with_user_message("The requested taxonomy term does not exist")
+                    .with_field("term_id", id.to_string())
+                    .with_error_code("TAXONOMY_TERM_NOT_FOUND")
+            }
+            BlogError::DuplicateSlug { slug } => {
+                RichError::new(ErrorKind::Conflict, format!("Slug '{slug}' already exists"))
+                    .with_user_message("A post with this URL slug already exists")
+                    .with_field("slug", slug)
+                    .with_error_code("DUPLICATE_SLUG")
+            }
+            BlogError::Conflict(message) => RichError::new(ErrorKind::Conflict, message)
+                .with_user_message("The Blog resource changed before the request could be applied")
+                .with_error_code("BLOG_CONFLICT"),
+            BlogError::CategoryTranslationRevisionExhausted {
+                category_id,
+                locale,
+            } => RichError::new(
+                ErrorKind::Conflict,
+                format!("Category translation revision is exhausted for {category_id} in {locale}"),
+            )
+            .with_user_message("The category translation can no longer be updated safely")
+            .with_error_code("CATEGORY_TRANSLATION_REVISION_EXHAUSTED"),
+            BlogError::CannotDeletePublished => {
+                RichError::new(ErrorKind::BusinessLogic, "Cannot delete published post")
+                    .with_user_message(
+                        "Published posts cannot be deleted. Unpublish or archive them first.",
+                    )
+                    .with_error_code("CANNOT_DELETE_PUBLISHED")
+            }
+            BlogError::CannotPublishArchived => {
+                RichError::new(ErrorKind::BusinessLogic, "Cannot publish archived post")
+                    .with_user_message("Archived posts must be restored before publishing.")
+                    .with_error_code("CANNOT_PUBLISH_ARCHIVED")
+            }
+            BlogError::InvalidTransition { from, to } => RichError::new(
+                ErrorKind::BusinessLogic,
+                format!("Invalid Blog post lifecycle transition: {from:?} -> {to:?}"),
+            )
+            .with_user_message("The requested Blog post state transition is not allowed")
+            .with_error_code("BLOG_INVALID_TRANSITION"),
+            BlogError::Invariant(message) => RichError::new(ErrorKind::Internal, message)
+                .with_user_message("The Blog data is inconsistent")
+                .with_error_code("BLOG_INVARIANT_VIOLATION"),
+            BlogError::AuthorRequired => RichError::new(ErrorKind::Validation, "Author required")
+                .with_user_message("An author must be specified for blog posts")
+                .with_error_code("AUTHOR_REQUIRED"),
+            BlogError::Validation(msg) => {
+                RichError::new(ErrorKind::Validation, msg).with_user_message("Invalid input data")
+            }
+            BlogError::Forbidden(msg) => RichError::new(ErrorKind::Forbidden, msg)
+                .with_user_message("You do not have permission to perform this action"),
+            BlogError::Content(content_err) => content_err.into(),
+            BlogError::Comments(err) => match err {
+                rustok_comments::CommentsError::Database(db_err) => {
+                    RichError::new(ErrorKind::Database, "Database operation failed")
+                        .with_user_message("Unable to access comment data")
+                        .with_source(db_err)
+                }
+                rustok_comments::CommentsError::EventPublication(message) => {
+                    RichError::new(ErrorKind::ExternalService, message)
+                        .with_user_message("Unable to publish the comment lifecycle update")
+                        .with_error_code("COMMENT_EVENT_PUBLICATION_FAILED")
+                }
+                rustok_comments::CommentsError::CommentNotFound(id) => {
+                    RichError::new(ErrorKind::NotFound, format!("Comment {} not found", id))
+                        .with_user_message("The requested comment does not exist")
+                        .with_field("comment_id", id.to_string())
+                        .with_error_code("COMMENT_NOT_FOUND")
+                }
+                rustok_comments::CommentsError::CommentThreadNotFound {
+                    target_type,
+                    target_id,
+                } => RichError::new(
+                    ErrorKind::NotFound,
+                    format!("Comment thread for {}:{} not found", target_type, target_id),
+                )
+                .with_user_message("The requested comment thread does not exist")
+                .with_field("target_type", target_type)
+                .with_field("target_id", target_id.to_string())
+                .with_error_code("COMMENT_THREAD_NOT_FOUND"),
+                rustok_comments::CommentsError::CommentThreadClosed {
+                    target_type,
+                    target_id,
+                } => RichError::new(
+                    ErrorKind::Conflict,
+                    format!("Comment thread for {}:{} is closed", target_type, target_id),
+                )
+                .with_user_message("Comments are closed for this thread")
+                .with_field("target_type", target_type)
+                .with_field("target_id", target_id.to_string())
+                .with_error_code("COMMENT_THREAD_CLOSED"),
+                rustok_comments::CommentsError::Forbidden(message) => {
+                    RichError::new(ErrorKind::Forbidden, message).with_user_message(
+                        "You do not have permission to perform this comment action",
+                    )
+                }
+                rustok_comments::CommentsError::Validation(message) => {
+                    RichError::new(ErrorKind::Validation, message)
+                        .with_user_message("Invalid comment data")
+                }
+            },
+            BlogError::Rich(rich) => *rich,
+            BlogError::Core(core) => core.into(),
+        }
+    }
+}
+
+/// Helper functions for creating common blog errors
+impl BlogError {
+    /// Create a post not found error
+    pub fn post_not_found(post_id: Uuid) -> Self {
+        BlogError::PostNotFound(post_id)
+    }
+
+    /// Create a comment not found error
+    pub fn comment_not_found(comment_id: Uuid) -> Self {
+        BlogError::CommentNotFound(comment_id)
+    }
+
+    /// Create a category not found error
+    pub fn category_not_found(category_id: Uuid) -> Self {
+        BlogError::CategoryNotFound(category_id)
+    }
+
+    /// Create a tag not found error
+    pub fn tag_not_found(tag_id: Uuid) -> Self {
+        BlogError::TagNotFound(tag_id)
+    }
+
+    /// Create a duplicate slug error
+    pub fn duplicate_slug(slug: impl Into<String>) -> Self {
+        BlogError::DuplicateSlug { slug: slug.into() }
+    }
+
+    pub fn invalid_transition(from: crate::BlogPostStatus, to: crate::BlogPostStatus) -> Self {
+        BlogError::InvalidTransition { from, to }
+    }
+
+    pub fn invariant(message: impl Into<String>) -> Self {
+        BlogError::Invariant(message.into())
+    }
+
+    /// Create a revision conflict error.
+    pub fn conflict(message: impl Into<String>) -> Self {
+        Self::Conflict(message.into())
+    }
+
+    /// Create a validation error
+    pub fn validation(message: impl Into<String>) -> Self {
+        BlogError::Validation(message.into())
+    }
+
+    /// Create a forbidden error
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        BlogError::Forbidden(message.into())
+    }
+}
+
+impl From<rustok_taxonomy::TaxonomyError> for BlogError {
+    fn from(value: rustok_taxonomy::TaxonomyError) -> Self {
+        match value {
+            rustok_taxonomy::TaxonomyError::Database(err) => Self::Database(err),
+            rustok_taxonomy::TaxonomyError::Internal(message) => Self::Invariant(format!(
+                "Taxonomy dependency failed: {message}"
+            )),
+            rustok_taxonomy::TaxonomyError::Forbidden(message) => Self::Forbidden(message),
+            rustok_taxonomy::TaxonomyError::Validation(message) => Self::Validation(message),
+            rustok_taxonomy::TaxonomyError::DuplicateCanonicalKey(message)
+            | rustok_taxonomy::TaxonomyError::DuplicateSlug(message)
+            | rustok_taxonomy::TaxonomyError::DuplicateAlias(message)
+            | rustok_taxonomy::TaxonomyError::Conflict(message) => Self::Conflict(message),
+            rustok_taxonomy::TaxonomyError::TermNotFound(term_id) => {
+                Self::TaxonomyTermNotFound(term_id)
+            }
+            rustok_taxonomy::TaxonomyError::TranslationRevisionExhausted { term_id, locale } => {
+                Self::Conflict(format!(
+                    "Taxonomy translation revision is exhausted for term {term_id} and locale {locale}"
+                ))
+            }
+        }
+    }
+}
+
+impl From<rustok_channel::ChannelError> for BlogError {
+    fn from(value: rustok_channel::ChannelError) -> Self {
+        match value {
+            rustok_channel::ChannelError::Database(error) => Self::Database(error),
+            rustok_channel::ChannelError::InvalidTargetType(message)
+            | rustok_channel::ChannelError::InvalidTargetValue(message)
+            | rustok_channel::ChannelError::InvalidPolicyDefinition(message)
+            | rustok_channel::ChannelError::InvalidPolicyOperation(message) => Self::Validation(message),
+            rustok_channel::ChannelError::SlugAlreadyExists(message)
+            | rustok_channel::ChannelError::TargetAlreadyExists(_, message)
+            | rustok_channel::ChannelError::PolicySetSlugAlreadyExists(message) => Self::Conflict(message),
+            rustok_channel::ChannelError::NotFound(channel_id)
+            | rustok_channel::ChannelError::InactiveChannel(channel_id) => {
+                Self::Invariant(format!(
+                    "Channel dependency referenced unavailable channel {channel_id}"
+                ))
+            }
+            rustok_channel::ChannelError::Serialization(error) => {
+                Self::Invariant(format!("Channel dependency serialization failed: {error}"))
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_post_not_found_conversion() {
+        let id = Uuid::new_v4();
+        let err = BlogError::post_not_found(id);
+        let rich: RichError = err.into();
+
+        assert_eq!(rich.kind, ErrorKind::NotFound);
+        assert_eq!(rich.status_code, 404);
+        assert!(rich.fields.contains_key("post_id"));
+    }
+
+    #[test]
+    fn test_duplicate_slug_conversion() {
+        let err = BlogError::duplicate_slug("my-post");
+        let rich: RichError = err.into();
+
+        assert_eq!(rich.kind, ErrorKind::Conflict);
+        assert_eq!(rich.status_code, 409);
+        assert_eq!(rich.fields.get("slug"), Some(&"my-post".to_string()));
+    }
+
+    #[test]
+    fn test_cannot_delete_published_conversion() {
+        let err = BlogError::CannotDeletePublished;
+        let rich: RichError = err.into();
+
+        assert_eq!(rich.kind, ErrorKind::BusinessLogic);
+        assert_eq!(rich.error_code, Some("CANNOT_DELETE_PUBLISHED".to_string()));
+    }
+
+    #[test]
+    fn taxonomy_error_classes_survive_the_blog_boundary() {
+        let missing: BlogError = rustok_taxonomy::TaxonomyError::TermNotFound(Uuid::new_v4()).into();
+        let missing: RichError = missing.into();
+        assert_eq!(missing.kind, ErrorKind::NotFound);
+        assert_eq!(missing.status_code, 404);
+
+        let conflict: BlogError = rustok_taxonomy::TaxonomyError::Conflict(
+            "internal taxonomy predecessor detail".to_string(),
+        )
+        .into();
+        let conflict: RichError = conflict.into();
+        assert_eq!(conflict.kind, ErrorKind::Conflict);
+        assert_eq!(conflict.status_code, 409);
+    }
+}

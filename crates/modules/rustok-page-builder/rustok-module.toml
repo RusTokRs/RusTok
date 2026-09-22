@@ -1,0 +1,54 @@
+[module]
+slug = "page_builder"
+name = "Page Builder"
+version = "0.1.0"
+description = "Standalone FBA-first visual page builder reference module"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "admin_only"
+recommended_admin_surfaces = ["leptos-admin"]
+
+[crate]
+entry_type = "PageBuilderModule"
+
+[provides.admin_ui]
+leptos_crate = "rustok-page-builder-admin"
+route_segment = "page-builder"
+nav_label = "Page Builder"
+nav_group = "Content"
+nav_order = 5
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
+[fba.provider]
+contract = "grapesjs"
+builder_contract_version = "1.1"
+consumer_min_version = "1.0"
+capabilities = ["preview", "tree", "properties", "publish"]
+permission_map = [
+  "preview=pages:read",
+  "tree=pages:read",
+  "properties=pages:update",
+  "publish=pages:publish",
+]
+port_call_policies = [
+  "preview=read_deadline_required",
+  "tree=read_deadline_required",
+  "properties=read_deadline_required",
+  "publish=write_deadline_and_idempotency_required",
+]
+health_profile = "ready"
+health_states = ["ready", "degraded", "unavailable"]
+degradation_reasons = ["capability_disabled", "provider_unhealthy", "sanitize_backpressure", "publish_backlog"]
+
+[fba.provider.error_catalog]
+validation = "validation"
+sanitize = "sanitize"
+runtime = "runtime"
+feature_disabled = "feature-disabled"
+
+[fba.provider.error_codes]
+feature_disabled = "FEATURE_DISABLED"

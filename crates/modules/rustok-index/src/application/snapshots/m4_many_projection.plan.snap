@@ -1,0 +1,11 @@
+root=rustok-product::product@1
+root_alias=t0
+alias:<root>=t0
+alias:variants=t1
+join:variants|t0->t1|rustok-product::variant@1|many|traverses_many=true
+projection:id|t0|uuid|one|nullable=false|traverses_many=false
+projection:variants.id|t1|uuid|one|nullable=false|traverses_many=true
+many:variants|identities=variants|fields=variants.id
+order=<none>
+pagination=cursor:first=2:after=false
+exact_count=false

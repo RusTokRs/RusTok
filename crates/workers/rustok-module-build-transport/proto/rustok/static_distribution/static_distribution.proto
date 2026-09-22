@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package rustok.static_distribution;
+
+// Current transport framing for an already claimed immutable static
+// distribution build. Policy, leases, and terminal persistence remain owned by
+// rustok-modules; the remote service can only execute the supplied work item.
+service StaticDistributionBuildService {
+  rpc ExecuteBuild(ExecuteBuildRequest) returns (ExecuteBuildResponse);
+  rpc GetReadiness(ReadinessRequest) returns (ReadinessResponse);
+}
+
+message ExecuteBuildRequest {
+  bytes work_item_json = 1;
+}
+
+message ExecuteBuildResponse {
+  bytes outcome_json = 1;
+}
+
+message ReadinessRequest {}
+
+message ReadinessResponse {
+  bool ready = 1;
+}

@@ -1,0 +1,1370 @@
+use async_graphql::{Enum, InputObject, SimpleObject};
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+use crate::{
+    AgentDescriptor, AgentKind, AgentWorkflowDescriptor, AiAgentModelAssignmentRecord,
+    AiAgentPrincipalRecord, AiApprovalRequestRecord, AiChatMessageRecord, AiChatRunRecord,
+    AiChatSessionDetail, AiChatSessionSummary, AiMetricBucket, AiProviderProfileRecord,
+    AiRecentRunRecord, AiRunStreamEvent, AiRunStreamEventKind, AiRuntimeMetricsSnapshot,
+    AiStructuredBudgetPolicyRecord, AiStructuredProviderPolicyRecord, AiTaskDataClassification,
+    AiTaskProfileRecord, AiToolProfileRecord, ChatMessageRole, ExecutionMode, ProviderCapability,
+    ProviderConfigField, ProviderFeature, ProviderFieldKind, ProviderUsagePolicy, ToolCall,
+    ToolTrace,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum AiAgentKindGql {
+    Product,
+    Code,
+    Orchestrator,
+    Review,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum AiTaskDataClassificationGql {
+    Public,
+    TenantPrivate,
+    Personal,
+    Sensitive,
+}
+
+impl From<AiTaskDataClassification> for AiTaskDataClassificationGql {
+    fn from(value: AiTaskDataClassification) -> Self {
+        match value {
+            AiTaskDataClassification::Public => Self::Public,
+            AiTaskDataClassification::TenantPrivate => Self::TenantPrivate,
+            AiTaskDataClassification::Personal => Self::Personal,
+            AiTaskDataClassification::Sensitive => Self::Sensitive,
+        }
+    }
+}
+
+impl From<AiTaskDataClassificationGql> for AiTaskDataClassification {
+    fn from(value: AiTaskDataClassificationGql) -> Self {
+        match value {
+            AiTaskDataClassificationGql::Public => Self::Public,
+            AiTaskDataClassificationGql::TenantPrivate => Self::TenantPrivate,
+            AiTaskDataClassificationGql::Personal => Self::Personal,
+            AiTaskDataClassificationGql::Sensitive => Self::Sensitive,
+        }
+    }
+}
+
+impl From<AgentKind> for AiAgentKindGql {
+    fn from(value: AgentKind) -> Self {
+        match value {
+            AgentKind::Product => Self::Product,
+            AgentKind::Code => Self::Code,
+            AgentKind::Orchestrator => Self::Orchestrator,
+            AgentKind::Review => Self::Review,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiAgentDescriptorGql {
+    pub slug: String,
+    pub display_name: String,
+    pub owner: String,
+    pub kind: AiAgentKindGql,
+    pub responsibility: String,
+    pub required_permissions: Vec<String>,
+    pub allowed_operations: Vec<String>,
+    pub required_capabilities: Vec<AiProviderCapabilityGql>,
+    pub can_orchestrate: bool,
+}
+
+impl From<&AgentDescriptor> for AiAgentDescriptorGql {
+    fn from(value: &AgentDescriptor) -> Self {
+        Self {
+            slug: value.slug.clone(),
+            display_name: value.display_name.clone(),
+            owner: value.owner.clone(),
+            kind: value.kind.into(),
+            responsibility: value.responsibility.clone(),
+            required_permissions: value.required_permissions.iter().cloned().collect(),
+            allowed_operations: value.allowed_operations.iter().cloned().collect(),
+            required_capabilities: value
+                .required_capabilities
+                .iter()
+                .copied()
+                .map(Into::into)
+                .collect(),
+            can_orchestrate: value.can_orchestrate,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiAgentWorkflowStageGql {
+    pub id: String,
+    pub agent_slug: String,
+    pub depends_on: Vec<String>,
+    pub requires_approval: bool,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiTenantRbacRoleGql {
+    pub slug: String,
+    pub display_name: String,
+    pub permission_slugs: Vec<String>,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiTenantRbacPermissionGql {
+    pub slug: String,
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiAgentWorkflowGql {
+    pub slug: String,
+    pub display_name: String,
+    pub owner: String,
+    pub stages: Vec<AiAgentWorkflowStageGql>,
+}
+
+impl From<&AgentWorkflowDescriptor> for AiAgentWorkflowGql {
+    fn from(value: &AgentWorkflowDescriptor) -> Self {
+        Self {
+            slug: value.slug.clone(),
+            display_name: value.display_name.clone(),
+            owner: value.owner.clone(),
+            stages: value
+                .stages
+                .iter()
+                .map(|stage| AiAgentWorkflowStageGql {
+                    id: stage.id.clone(),
+                    agent_slug: stage.agent_slug.clone(),
+                    depends_on: stage.depends_on.clone(),
+                    requires_approval: stage.requires_approval,
+                })
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiAgentPrincipalGql {
+    pub id: Uuid,
+    pub slug: String,
+    pub descriptor_owner: String,
+    pub descriptor_slug: String,
+    pub role_slugs: Vec<String>,
+    pub permission_slugs: Vec<String>,
+    pub is_active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<AiAgentPrincipalRecord> for AiAgentPrincipalGql {
+    fn from(value: AiAgentPrincipalRecord) -> Self {
+        Self {
+            id: value.id,
+            slug: value.slug,
+            descriptor_owner: value.descriptor_owner,
+            descriptor_slug: value.descriptor_slug,
+            role_slugs: value.role_slugs,
+            permission_slugs: value.permission_slugs,
+            is_active: value.is_active,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiAgentModelAssignmentGql {
+    pub id: Uuid,
+    pub agent_principal_id: Uuid,
+    pub provider_profile_id: Uuid,
+    pub model_override: Option<String>,
+    pub execution_mode: AiExecutionModeGql,
+    pub is_active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<AiAgentModelAssignmentRecord> for AiAgentModelAssignmentGql {
+    fn from(value: AiAgentModelAssignmentRecord) -> Self {
+        Self {
+            id: value.id,
+            agent_principal_id: value.agent_principal_id,
+            provider_profile_id: value.provider_profile_id,
+            model_override: value.model_override,
+            execution_mode: value.execution_mode.into(),
+            is_active: value.is_active,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum AiProviderCapabilityGql {
+    TextGeneration,
+    StructuredGeneration,
+    ImageGeneration,
+    MultimodalUnderstanding,
+    CodeGeneration,
+    AlloyAssist,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum AiProviderFeatureGql {
+    Chat,
+    Streaming,
+    Tools,
+    StructuredOutput,
+    Embeddings,
+    Rerank,
+    Image,
+    Audio,
+    Transcription,
+    Multimodal,
+}
+
+impl From<ProviderFeature> for AiProviderFeatureGql {
+    fn from(value: ProviderFeature) -> Self {
+        match value {
+            ProviderFeature::Chat => Self::Chat,
+            ProviderFeature::Streaming => Self::Streaming,
+            ProviderFeature::Tools => Self::Tools,
+            ProviderFeature::StructuredOutput => Self::StructuredOutput,
+            ProviderFeature::Embeddings => Self::Embeddings,
+            ProviderFeature::Rerank => Self::Rerank,
+            ProviderFeature::Image => Self::Image,
+            ProviderFeature::Audio => Self::Audio,
+            ProviderFeature::Transcription => Self::Transcription,
+            ProviderFeature::Multimodal => Self::Multimodal,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum AiProviderFieldKindGql {
+    Text,
+    Url,
+    Integer,
+    Boolean,
+    SecretRef,
+}
+
+impl From<ProviderFieldKind> for AiProviderFieldKindGql {
+    fn from(value: ProviderFieldKind) -> Self {
+        match value {
+            ProviderFieldKind::Text => Self::Text,
+            ProviderFieldKind::Url => Self::Url,
+            ProviderFieldKind::Integer => Self::Integer,
+            ProviderFieldKind::Boolean => Self::Boolean,
+            ProviderFieldKind::SecretRef => Self::SecretRef,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiProviderConfigFieldGql {
+    pub key: String,
+    pub label: String,
+    pub kind: AiProviderFieldKindGql,
+    pub required: bool,
+}
+
+impl From<&ProviderConfigField> for AiProviderConfigFieldGql {
+    fn from(value: &ProviderConfigField) -> Self {
+        Self {
+            key: value.key.to_string(),
+            label: value.label.to_string(),
+            kind: value.kind.into(),
+            required: value.required,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiProviderSettingDefaultGql {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiProviderCatalogEntryGql {
+    pub slug: String,
+    pub display_name: String,
+    pub features: Vec<AiProviderFeatureGql>,
+    pub settings_schema: Vec<AiProviderConfigFieldGql>,
+    pub credential_schema: Vec<AiProviderConfigFieldGql>,
+    pub default_settings: Vec<AiProviderSettingDefaultGql>,
+    pub compiled_in: bool,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiProviderTargetGql {
+    pub id: String,
+    pub provider_slug: String,
+    pub display_name: String,
+}
+
+impl From<&crate::AiProviderTarget> for AiProviderTargetGql {
+    fn from(value: &crate::AiProviderTarget) -> Self {
+        Self {
+            id: value.id.to_string(),
+            provider_slug: value.provider_slug.to_string(),
+            display_name: value.display_name.clone(),
+        }
+    }
+}
+
+impl From<&crate::ProviderCatalogEntry> for AiProviderCatalogEntryGql {
+    fn from(value: &crate::ProviderCatalogEntry) -> Self {
+        Self {
+            slug: value.slug.to_string(),
+            display_name: value.display_name.to_string(),
+            features: value.features.iter().copied().map(Into::into).collect(),
+            settings_schema: value.settings.iter().map(Into::into).collect(),
+            credential_schema: value.credentials.iter().map(Into::into).collect(),
+            default_settings: value
+                .default_settings
+                .iter()
+                .map(|setting| AiProviderSettingDefaultGql {
+                    key: setting.key.to_string(),
+                    value: setting.value.to_string(),
+                })
+                .collect(),
+            compiled_in: value.compiled_in,
+        }
+    }
+}
+
+impl From<AiProviderCapabilityGql> for ProviderCapability {
+    fn from(value: AiProviderCapabilityGql) -> Self {
+        match value {
+            AiProviderCapabilityGql::TextGeneration => ProviderCapability::TextGeneration,
+            AiProviderCapabilityGql::StructuredGeneration => {
+                ProviderCapability::StructuredGeneration
+            }
+            AiProviderCapabilityGql::ImageGeneration => ProviderCapability::ImageGeneration,
+            AiProviderCapabilityGql::MultimodalUnderstanding => {
+                ProviderCapability::MultimodalUnderstanding
+            }
+            AiProviderCapabilityGql::CodeGeneration => ProviderCapability::CodeGeneration,
+            AiProviderCapabilityGql::AlloyAssist => ProviderCapability::AlloyAssist,
+        }
+    }
+}
+
+impl From<ProviderCapability> for AiProviderCapabilityGql {
+    fn from(value: ProviderCapability) -> Self {
+        match value {
+            ProviderCapability::TextGeneration => Self::TextGeneration,
+            ProviderCapability::StructuredGeneration => Self::StructuredGeneration,
+            ProviderCapability::ImageGeneration => Self::ImageGeneration,
+            ProviderCapability::MultimodalUnderstanding => Self::MultimodalUnderstanding,
+            ProviderCapability::CodeGeneration => Self::CodeGeneration,
+            ProviderCapability::AlloyAssist => Self::AlloyAssist,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum AiExecutionModeGql {
+    Auto,
+    Direct,
+    McpTooling,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum AiRunStreamEventKindGql {
+    Started,
+    Delta,
+    ToolCall,
+    Usage,
+    Completed,
+    Failed,
+    Cancelled,
+    WaitingApproval,
+}
+
+impl From<AiRunStreamEventKind> for AiRunStreamEventKindGql {
+    fn from(value: AiRunStreamEventKind) -> Self {
+        match value {
+            AiRunStreamEventKind::Started => Self::Started,
+            AiRunStreamEventKind::Delta => Self::Delta,
+            AiRunStreamEventKind::ToolCall => Self::ToolCall,
+            AiRunStreamEventKind::Usage => Self::Usage,
+            AiRunStreamEventKind::Completed => Self::Completed,
+            AiRunStreamEventKind::Failed => Self::Failed,
+            AiRunStreamEventKind::Cancelled => Self::Cancelled,
+            AiRunStreamEventKind::WaitingApproval => Self::WaitingApproval,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiProviderUsagePolicyGql {
+    pub allowed_task_profiles: Vec<String>,
+    pub denied_task_profiles: Vec<String>,
+    pub restricted_role_slugs: Vec<String>,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiMetricBucketGql {
+    pub label: String,
+    pub total: i64,
+}
+
+impl From<AiMetricBucket> for AiMetricBucketGql {
+    fn from(value: AiMetricBucket) -> Self {
+        Self {
+            label: value.label,
+            total: value.total.min(i64::MAX as u64) as i64,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiRuntimeMetricsGql {
+    pub router_resolutions_total: i64,
+    pub router_overrides_total: i64,
+    pub selected_auto_total: i64,
+    pub selected_direct_total: i64,
+    pub selected_mcp_total: i64,
+    pub completed_runs_total: i64,
+    pub failed_runs_total: i64,
+    pub waiting_approval_runs_total: i64,
+    pub locale_fallback_total: i64,
+    pub run_latency_ms_total: i64,
+    pub run_latency_samples: i64,
+    pub provider_slug_totals: Vec<AiMetricBucketGql>,
+    pub execution_target_totals: Vec<AiMetricBucketGql>,
+    pub task_profile_totals: Vec<AiMetricBucketGql>,
+    pub resolved_locale_totals: Vec<AiMetricBucketGql>,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiStreamToolCallGql {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiProviderUsageGql {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub total_tokens: u64,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiRunStreamEventGql {
+    pub session_id: Uuid,
+    pub run_id: Uuid,
+    pub event_kind: AiRunStreamEventKindGql,
+    pub content_delta: Option<String>,
+    pub accumulated_content: Option<String>,
+    pub error_message: Option<String>,
+    pub tool_call: Option<AiStreamToolCallGql>,
+    pub usage: Option<AiProviderUsageGql>,
+    pub sequence: u64,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiRecentRunGql {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub session_title: String,
+    pub provider_profile_id: Uuid,
+    pub provider_display_name: String,
+    pub provider_slug: String,
+    pub task_profile_id: Option<Uuid>,
+    pub task_profile_slug: Option<String>,
+    pub status: String,
+    pub model: String,
+    pub execution_mode: AiExecutionModeGql,
+    pub execution_path: AiExecutionModeGql,
+    pub execution_target: Option<String>,
+    pub requested_locale: Option<String>,
+    pub resolved_locale: String,
+    pub error_message: Option<String>,
+    pub started_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub updated_at: DateTime<Utc>,
+    pub duration_ms: i64,
+}
+
+impl From<AiRecentRunRecord> for AiRecentRunGql {
+    fn from(value: AiRecentRunRecord) -> Self {
+        Self {
+            id: value.id,
+            session_id: value.session_id,
+            session_title: value.session_title,
+            provider_profile_id: value.provider_profile_id,
+            provider_display_name: value.provider_display_name,
+            provider_slug: value.provider_slug.to_string(),
+            task_profile_id: value.task_profile_id,
+            task_profile_slug: value.task_profile_slug,
+            status: value.status,
+            model: value.model,
+            execution_mode: value.execution_mode.into(),
+            execution_path: value.execution_path.into(),
+            execution_target: value.execution_target,
+            requested_locale: value.requested_locale,
+            resolved_locale: value.resolved_locale,
+            error_message: value.error_message,
+            started_at: value.started_at,
+            completed_at: value.completed_at,
+            updated_at: value.updated_at,
+            duration_ms: value.duration_ms,
+        }
+    }
+}
+
+impl From<AiRunStreamEvent> for AiRunStreamEventGql {
+    fn from(value: AiRunStreamEvent) -> Self {
+        Self {
+            session_id: value.session_id,
+            run_id: value.run_id,
+            event_kind: value.event_kind.into(),
+            content_delta: value.content_delta,
+            accumulated_content: value.accumulated_content,
+            error_message: value.error_message,
+            tool_call: value.tool_call.map(|value| AiStreamToolCallGql {
+                id: value.id,
+                name: value.name,
+                arguments: value.arguments.to_string(),
+            }),
+            usage: value.usage.map(|value| AiProviderUsageGql {
+                input_tokens: value.input_tokens,
+                output_tokens: value.output_tokens,
+                total_tokens: value.total_tokens,
+            }),
+            sequence: value.sequence,
+            created_at: value.created_at,
+        }
+    }
+}
+
+#[cfg(test)]
+mod stream_usage_tests {
+    use super::AiRunStreamEventGql;
+    use crate::{AiRunStreamEvent, AiRunStreamEventKind, ProviderUsage};
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    #[test]
+    fn maps_usage_event_without_stringifying_token_fields() {
+        let event = AiRunStreamEventGql::from(AiRunStreamEvent {
+            session_id: Uuid::new_v4(),
+            run_id: Uuid::new_v4(),
+            event_kind: AiRunStreamEventKind::Usage,
+            content_delta: None,
+            accumulated_content: None,
+            error_message: None,
+            tool_call: None,
+            usage: Some(ProviderUsage {
+                input_tokens: 2,
+                output_tokens: 3,
+                total_tokens: 5,
+            }),
+            sequence: 1,
+            created_at: Utc::now(),
+        });
+        assert_eq!(event.usage.unwrap().total_tokens, 5);
+    }
+}
+
+impl From<AiRuntimeMetricsSnapshot> for AiRuntimeMetricsGql {
+    fn from(value: AiRuntimeMetricsSnapshot) -> Self {
+        Self {
+            router_resolutions_total: value.router_resolutions_total.min(i64::MAX as u64) as i64,
+            router_overrides_total: value.router_overrides_total.min(i64::MAX as u64) as i64,
+            selected_auto_total: value.selected_auto_total.min(i64::MAX as u64) as i64,
+            selected_direct_total: value.selected_direct_total.min(i64::MAX as u64) as i64,
+            selected_mcp_total: value.selected_mcp_total.min(i64::MAX as u64) as i64,
+            completed_runs_total: value.completed_runs_total.min(i64::MAX as u64) as i64,
+            failed_runs_total: value.failed_runs_total.min(i64::MAX as u64) as i64,
+            waiting_approval_runs_total: value.waiting_approval_runs_total.min(i64::MAX as u64)
+                as i64,
+            locale_fallback_total: value.locale_fallback_total.min(i64::MAX as u64) as i64,
+            run_latency_ms_total: value.run_latency_ms_total.min(i64::MAX as u64) as i64,
+            run_latency_samples: value.run_latency_samples.min(i64::MAX as u64) as i64,
+            provider_slug_totals: value
+                .provider_slug_totals
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            execution_target_totals: value
+                .execution_target_totals
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            task_profile_totals: value
+                .task_profile_totals
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            resolved_locale_totals: value
+                .resolved_locale_totals
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
+
+impl From<ProviderUsagePolicy> for AiProviderUsagePolicyGql {
+    fn from(value: ProviderUsagePolicy) -> Self {
+        Self {
+            allowed_task_profiles: value.allowed_task_profiles,
+            denied_task_profiles: value.denied_task_profiles,
+            restricted_role_slugs: value.restricted_role_slugs,
+        }
+    }
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct AiProviderUsagePolicyInputGql {
+    pub allowed_task_profiles: Vec<String>,
+    pub denied_task_profiles: Vec<String>,
+}
+
+impl From<AiProviderUsagePolicyInputGql> for ProviderUsagePolicy {
+    fn from(value: AiProviderUsagePolicyInputGql) -> Self {
+        Self {
+            allowed_task_profiles: value.allowed_task_profiles,
+            denied_task_profiles: value.denied_task_profiles,
+            // Tenant-owned provider profiles cannot define a package-local role
+            // vocabulary. Existing restrictions remain read-only migration state
+            // until the platform RBAC catalog contribution is available.
+            restricted_role_slugs: Vec::new(),
+        }
+    }
+}
+
+impl From<AiExecutionModeGql> for ExecutionMode {
+    fn from(value: AiExecutionModeGql) -> Self {
+        match value {
+            AiExecutionModeGql::Auto => ExecutionMode::Auto,
+            AiExecutionModeGql::Direct => ExecutionMode::Direct,
+            AiExecutionModeGql::McpTooling => ExecutionMode::McpTooling,
+        }
+    }
+}
+
+impl From<ExecutionMode> for AiExecutionModeGql {
+    fn from(value: ExecutionMode) -> Self {
+        match value {
+            ExecutionMode::Auto => Self::Auto,
+            ExecutionMode::Direct => Self::Direct,
+            ExecutionMode::McpTooling => Self::McpTooling,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum AiChatMessageRoleGql {
+    System,
+    User,
+    Assistant,
+    Tool,
+}
+
+impl From<ChatMessageRole> for AiChatMessageRoleGql {
+    fn from(value: ChatMessageRole) -> Self {
+        match value {
+            ChatMessageRole::System => Self::System,
+            ChatMessageRole::User => Self::User,
+            ChatMessageRole::Assistant => Self::Assistant,
+            ChatMessageRole::Tool => Self::Tool,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiToolCallGql {
+    pub id: String,
+    pub name: String,
+    pub arguments_json: String,
+}
+
+impl TryFrom<ToolCall> for AiToolCallGql {
+    type Error = async_graphql::Error;
+
+    fn try_from(value: ToolCall) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: value.id,
+            name: value.name,
+            arguments_json: serde_json::to_string(&value.arguments)
+                .map_err(|err| async_graphql::Error::new(err.to_string()))?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiCredentialRefGql {
+    pub key: String,
+    pub resolver: String,
+    pub secret_key: String,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct AiCredentialRefInputGql {
+    pub key: String,
+    pub resolver: String,
+    pub secret_key: String,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiProviderProfileGql {
+    pub id: Uuid,
+    pub slug: String,
+    pub display_name: String,
+    pub provider_slug: String,
+    pub provider_target_id: String,
+    pub model: String,
+    pub credential_refs: Vec<AiCredentialRefGql>,
+    pub temperature: Option<f32>,
+    pub max_tokens: Option<i32>,
+    pub is_active: bool,
+    pub has_credentials: bool,
+    pub capabilities: Vec<AiProviderCapabilityGql>,
+    pub usage_policy: AiProviderUsagePolicyGql,
+    pub metadata: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<AiProviderProfileRecord> for AiProviderProfileGql {
+    fn from(value: AiProviderProfileRecord) -> Self {
+        Self {
+            id: value.id,
+            slug: value.slug,
+            display_name: value.display_name,
+            provider_slug: value.provider_slug.to_string(),
+            provider_target_id: value.provider_target_id.to_string(),
+            model: value.model,
+            credential_refs: value
+                .credential_refs
+                .into_iter()
+                .map(|(key, value)| AiCredentialRefGql {
+                    key,
+                    resolver: value.resolver,
+                    secret_key: value.key,
+                })
+                .collect(),
+            temperature: value.temperature,
+            max_tokens: value.max_tokens,
+            is_active: value.is_active,
+            has_credentials: value.has_credentials,
+            capabilities: value.capabilities.into_iter().map(Into::into).collect(),
+            usage_policy: value.usage_policy.into(),
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiStructuredBudgetPolicyGql {
+    pub id: Uuid,
+    pub currency_code: String,
+    pub limit_minor_units: i64,
+    pub reserved_minor_units: i64,
+    pub committed_minor_units: i64,
+    pub max_concurrent: i32,
+    pub in_flight: i32,
+    pub revision: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<AiStructuredBudgetPolicyRecord> for AiStructuredBudgetPolicyGql {
+    fn from(value: AiStructuredBudgetPolicyRecord) -> Self {
+        Self {
+            id: value.id,
+            currency_code: value.currency_code,
+            limit_minor_units: i64::try_from(value.limit_minor_units).unwrap_or(i64::MAX),
+            reserved_minor_units: i64::try_from(value.reserved_minor_units).unwrap_or(i64::MAX),
+            committed_minor_units: i64::try_from(value.committed_minor_units).unwrap_or(i64::MAX),
+            max_concurrent: i32::try_from(value.max_concurrent).unwrap_or(i32::MAX),
+            in_flight: i32::try_from(value.in_flight).unwrap_or(i32::MAX),
+            revision: i64::try_from(value.revision).unwrap_or(i64::MAX),
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiStructuredProviderPolicyGql {
+    pub id: Uuid,
+    pub provider_profile_id: Uuid,
+    pub allowed_classifications: Vec<AiTaskDataClassificationGql>,
+    pub currency_code: String,
+    pub input_cost_per_million_minor: i64,
+    pub output_cost_per_million_minor: i64,
+    pub max_concurrent: i32,
+    pub in_flight: i32,
+    pub is_active: bool,
+    pub revision: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<AiStructuredProviderPolicyRecord> for AiStructuredProviderPolicyGql {
+    fn from(value: AiStructuredProviderPolicyRecord) -> Self {
+        Self {
+            id: value.id,
+            provider_profile_id: value.provider_profile_id,
+            allowed_classifications: value
+                .allowed_classifications
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            currency_code: value.currency_code,
+            input_cost_per_million_minor: i64::try_from(value.input_cost_per_million_minor)
+                .unwrap_or(i64::MAX),
+            output_cost_per_million_minor: i64::try_from(value.output_cost_per_million_minor)
+                .unwrap_or(i64::MAX),
+            max_concurrent: i32::try_from(value.max_concurrent).unwrap_or(i32::MAX),
+            in_flight: i32::try_from(value.in_flight).unwrap_or(i32::MAX),
+            is_active: value.is_active,
+            revision: i64::try_from(value.revision).unwrap_or(i64::MAX),
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiToolProfileGql {
+    pub id: Uuid,
+    pub slug: String,
+    pub display_name: String,
+    pub description: Option<String>,
+    pub allowed_tools: Vec<String>,
+    pub denied_tools: Vec<String>,
+    pub sensitive_tools: Vec<String>,
+    pub is_active: bool,
+    pub metadata: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<AiToolProfileRecord> for AiToolProfileGql {
+    fn from(value: AiToolProfileRecord) -> Self {
+        Self {
+            id: value.id,
+            slug: value.slug,
+            display_name: value.display_name,
+            description: value.description,
+            allowed_tools: value.allowed_tools,
+            denied_tools: value.denied_tools,
+            sensitive_tools: value.sensitive_tools,
+            is_active: value.is_active,
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiTaskProfileGql {
+    pub id: Uuid,
+    pub slug: String,
+    pub display_name: String,
+    pub description: Option<String>,
+    pub target_capability: AiProviderCapabilityGql,
+    pub system_prompt: Option<String>,
+    pub allowed_provider_profile_ids: Vec<Uuid>,
+    pub preferred_provider_profile_ids: Vec<Uuid>,
+    pub fallback_strategy: String,
+    pub tool_profile_id: Option<Uuid>,
+    pub default_execution_mode: AiExecutionModeGql,
+    pub is_active: bool,
+    pub metadata: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<AiTaskProfileRecord> for AiTaskProfileGql {
+    fn from(value: AiTaskProfileRecord) -> Self {
+        Self {
+            id: value.id,
+            slug: value.slug,
+            display_name: value.display_name,
+            description: value.description,
+            target_capability: value.target_capability.into(),
+            system_prompt: value.system_prompt,
+            allowed_provider_profile_ids: value.allowed_provider_profile_ids,
+            preferred_provider_profile_ids: value.preferred_provider_profile_ids,
+            fallback_strategy: value.fallback_strategy,
+            tool_profile_id: value.tool_profile_id,
+            default_execution_mode: value.default_execution_mode.into(),
+            is_active: value.is_active,
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiChatMessageGql {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub run_id: Option<Uuid>,
+    pub role: AiChatMessageRoleGql,
+    pub content: Option<String>,
+    pub name: Option<String>,
+    pub tool_call_id: Option<String>,
+    pub tool_calls: Vec<AiToolCallGql>,
+    pub metadata: String,
+    pub created_at: DateTime<Utc>,
+    pub created_by: Option<Uuid>,
+}
+
+impl TryFrom<AiChatMessageRecord> for AiChatMessageGql {
+    type Error = async_graphql::Error;
+
+    fn try_from(value: AiChatMessageRecord) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: value.id,
+            session_id: value.session_id,
+            run_id: value.run_id,
+            role: value.role.into(),
+            content: value.content,
+            name: value.name,
+            tool_call_id: value.tool_call_id,
+            tool_calls: value
+                .tool_calls
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<_>, _>>()?,
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at,
+            created_by: value.created_by,
+        })
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiChatRunGql {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub provider_profile_id: Uuid,
+    pub task_profile_id: Option<Uuid>,
+    pub tool_profile_id: Option<Uuid>,
+    pub status: String,
+    pub model: String,
+    pub execution_mode: AiExecutionModeGql,
+    pub execution_path: AiExecutionModeGql,
+    pub requested_locale: Option<String>,
+    pub resolved_locale: String,
+    pub temperature: Option<f32>,
+    pub max_tokens: Option<i32>,
+    pub error_message: Option<String>,
+    pub pending_approval_id: Option<Uuid>,
+    pub decision_trace: String,
+    pub metadata: String,
+    pub created_at: DateTime<Utc>,
+    pub started_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<AiChatRunRecord> for AiChatRunGql {
+    fn from(value: AiChatRunRecord) -> Self {
+        Self {
+            id: value.id,
+            session_id: value.session_id,
+            provider_profile_id: value.provider_profile_id,
+            task_profile_id: value.task_profile_id,
+            tool_profile_id: value.tool_profile_id,
+            status: value.status,
+            model: value.model,
+            execution_mode: value.execution_mode.into(),
+            execution_path: value.execution_path.into(),
+            requested_locale: value.requested_locale,
+            resolved_locale: value.resolved_locale,
+            temperature: value.temperature,
+            max_tokens: value.max_tokens,
+            error_message: value.error_message,
+            pending_approval_id: value.pending_approval_id,
+            decision_trace: serde_json::to_string(&value.decision_trace)
+                .unwrap_or_else(|_| "{}".to_string()),
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at,
+            started_at: value.started_at,
+            completed_at: value.completed_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiApprovalRequestGql {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub run_id: Uuid,
+    pub approval_batch_id: String,
+    pub tool_name: String,
+    pub tool_call_id: String,
+    pub tool_input: String,
+    pub reason: Option<String>,
+    pub status: String,
+    pub resolved_by: Option<Uuid>,
+    pub resolved_at: Option<DateTime<Utc>>,
+    pub metadata: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl AiApprovalRequestGql {
+    pub fn from_record(value: AiApprovalRequestRecord) -> Self {
+        Self {
+            id: value.id,
+            session_id: value.session_id,
+            run_id: value.run_id,
+            approval_batch_id: value.approval_batch_id,
+            tool_name: value.tool_name,
+            tool_call_id: value.tool_call_id,
+            tool_input: value.tool_input.to_string(),
+            reason: value.reason,
+            status: value.status,
+            resolved_by: value.resolved_by,
+            resolved_at: value.resolved_at,
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiToolTraceGql {
+    pub tool_name: String,
+    pub input_payload: String,
+    pub output_payload: Option<String>,
+    pub status: String,
+    pub duration_ms: i64,
+    pub sensitive: bool,
+    pub error_message: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+impl AiToolTraceGql {
+    pub fn from_record(value: ToolTrace) -> Self {
+        Self {
+            tool_name: value.tool_name,
+            input_payload: value.input_payload.to_string(),
+            output_payload: value.output_payload.map(|payload| payload.to_string()),
+            status: value.status,
+            duration_ms: value.duration_ms,
+            sensitive: value.sensitive,
+            error_message: value.error_message,
+            created_at: value.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiChatSessionSummaryGql {
+    pub id: Uuid,
+    pub title: String,
+    pub provider_profile_id: Uuid,
+    pub task_profile_id: Option<Uuid>,
+    pub tool_profile_id: Option<Uuid>,
+    pub execution_mode: AiExecutionModeGql,
+    pub requested_locale: Option<String>,
+    pub resolved_locale: String,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub latest_run_status: Option<String>,
+    pub pending_approvals: i32,
+}
+
+impl From<AiChatSessionSummary> for AiChatSessionSummaryGql {
+    fn from(value: AiChatSessionSummary) -> Self {
+        Self {
+            id: value.id,
+            title: value.title,
+            provider_profile_id: value.provider_profile_id,
+            task_profile_id: value.task_profile_id,
+            tool_profile_id: value.tool_profile_id,
+            execution_mode: value.execution_mode.into(),
+            requested_locale: value.requested_locale,
+            resolved_locale: value.resolved_locale,
+            status: value.status,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+            latest_run_status: value.latest_run_status,
+            pending_approvals: value.pending_approvals as i32,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiChatSessionDetailGql {
+    pub session: AiChatSessionSummaryGql,
+    pub provider_profile: AiProviderProfileGql,
+    pub task_profile: Option<AiTaskProfileGql>,
+    pub tool_profile: Option<AiToolProfileGql>,
+    pub messages: Vec<AiChatMessageGql>,
+    pub runs: Vec<AiChatRunGql>,
+    pub tool_traces: Vec<AiToolTraceGql>,
+    pub approvals: Vec<AiApprovalRequestGql>,
+}
+
+impl TryFrom<AiChatSessionDetail> for AiChatSessionDetailGql {
+    type Error = async_graphql::Error;
+
+    fn try_from(value: AiChatSessionDetail) -> Result<Self, Self::Error> {
+        Ok(Self {
+            session: value.session.into(),
+            provider_profile: value.provider_profile.into(),
+            task_profile: value.task_profile.map(Into::into),
+            tool_profile: value.tool_profile.map(Into::into),
+            messages: value
+                .messages
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<_>, _>>()?,
+            runs: value.runs.into_iter().map(Into::into).collect(),
+            tool_traces: value
+                .tool_traces
+                .into_iter()
+                .map(AiToolTraceGql::from_record)
+                .collect(),
+            approvals: value
+                .approvals
+                .into_iter()
+                .map(AiApprovalRequestGql::from_record)
+                .collect(),
+        })
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiSendMessageResultGql {
+    pub session: AiChatSessionDetailGql,
+    pub run: AiChatRunGql,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AiProviderTestResultGql {
+    pub ok: bool,
+    pub provider: String,
+    pub model: Option<String>,
+    pub latency_ms: i64,
+    pub message: String,
+}
+
+impl From<crate::ProviderTestResult> for AiProviderTestResultGql {
+    fn from(value: crate::ProviderTestResult) -> Self {
+        Self {
+            ok: value.ok,
+            provider: value.provider,
+            model: value.model,
+            latency_ms: value.latency_ms,
+            message: value.message,
+        }
+    }
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct CreateAiProviderProfileInputGql {
+    pub slug: String,
+    pub display_name: String,
+    pub provider_target_id: String,
+    pub model: String,
+    pub credential_refs: Vec<AiCredentialRefInputGql>,
+    pub temperature: Option<f32>,
+    pub max_tokens: Option<i32>,
+    pub capabilities: Vec<AiProviderCapabilityGql>,
+    pub usage_policy: AiProviderUsagePolicyInputGql,
+    pub metadata: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct UpdateAiProviderProfileInputGql {
+    pub display_name: String,
+    pub provider_target_id: String,
+    pub model: String,
+    pub credential_refs: Vec<AiCredentialRefInputGql>,
+    pub temperature: Option<f32>,
+    pub max_tokens: Option<i32>,
+    pub capabilities: Vec<AiProviderCapabilityGql>,
+    pub usage_policy: AiProviderUsagePolicyInputGql,
+    pub is_active: bool,
+    pub metadata: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct PutAiStructuredBudgetPolicyInputGql {
+    pub currency_code: String,
+    pub limit_minor_units: i64,
+    pub max_concurrent: i32,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct PutAiStructuredProviderPolicyInputGql {
+    pub provider_profile_id: Uuid,
+    pub allowed_classifications: Vec<AiTaskDataClassificationGql>,
+    pub currency_code: String,
+    pub input_cost_per_million_minor: i64,
+    pub output_cost_per_million_minor: i64,
+    pub max_concurrent: i32,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct CreateAiAgentPrincipalInputGql {
+    pub slug: String,
+    pub descriptor_owner: String,
+    pub descriptor_slug: String,
+    pub role_slugs: Vec<String>,
+    pub metadata: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct CreateAiAgentModelAssignmentInputGql {
+    pub agent_principal_id: Uuid,
+    pub provider_profile_id: Uuid,
+    pub model_override: Option<String>,
+    pub execution_mode: AiExecutionModeGql,
+    pub metadata: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct UpdateAiAgentPrincipalInputGql {
+    pub role_slugs: Vec<String>,
+    pub metadata: Option<String>,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct UpdateAiAgentModelAssignmentInputGql {
+    pub model_override: Option<String>,
+    pub execution_mode: AiExecutionModeGql,
+    pub metadata: Option<String>,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct AiAgentWorkflowStageBindingInputGql {
+    pub stage_id: String,
+    pub agent_principal_id: Uuid,
+    pub model_assignment_id: Uuid,
+    pub input_payload: String,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct CreateAiAgentWorkflowRunInputGql {
+    pub workflow_owner: String,
+    pub workflow_slug: String,
+    pub stage_bindings: Vec<AiAgentWorkflowStageBindingInputGql>,
+    pub input_payload: String,
+    pub metadata: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct CreateAiToolProfileInputGql {
+    pub slug: String,
+    pub display_name: String,
+    pub description: Option<String>,
+    pub allowed_tools: Vec<String>,
+    pub denied_tools: Vec<String>,
+    pub sensitive_tools: Vec<String>,
+    pub metadata: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct UpdateAiToolProfileInputGql {
+    pub display_name: String,
+    pub description: Option<String>,
+    pub allowed_tools: Vec<String>,
+    pub denied_tools: Vec<String>,
+    pub sensitive_tools: Vec<String>,
+    pub is_active: bool,
+    pub metadata: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct StartAiChatSessionInputGql {
+    pub title: String,
+    pub provider_profile_id: Option<Uuid>,
+    pub task_profile_id: Option<Uuid>,
+    pub tool_profile_id: Option<Uuid>,
+    pub locale: Option<String>,
+    pub initial_message: Option<String>,
+    pub metadata: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct RunAiTaskJobInputGql {
+    pub title: String,
+    pub provider_profile_id: Option<Uuid>,
+    pub model_override: Option<String>,
+    pub task_profile_id: Uuid,
+    pub execution_mode: Option<AiExecutionModeGql>,
+    pub locale: Option<String>,
+    pub task_input_json: String,
+    pub metadata: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct CreateAiTaskProfileInputGql {
+    pub slug: String,
+    pub display_name: String,
+    pub description: Option<String>,
+    pub target_capability: AiProviderCapabilityGql,
+    pub system_prompt: Option<String>,
+    pub allowed_provider_profile_ids: Vec<Uuid>,
+    pub preferred_provider_profile_ids: Vec<Uuid>,
+    pub fallback_strategy: Option<String>,
+    pub tool_profile_id: Option<Uuid>,
+    pub default_execution_mode: AiExecutionModeGql,
+    pub metadata: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct UpdateAiTaskProfileInputGql {
+    pub display_name: String,
+    pub description: Option<String>,
+    pub target_capability: AiProviderCapabilityGql,
+    pub system_prompt: Option<String>,
+    pub allowed_provider_profile_ids: Vec<Uuid>,
+    pub preferred_provider_profile_ids: Vec<Uuid>,
+    pub fallback_strategy: Option<String>,
+    pub tool_profile_id: Option<Uuid>,
+    pub default_execution_mode: AiExecutionModeGql,
+    pub is_active: bool,
+    pub metadata: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct ResumeAiApprovalInputGql {
+    pub approved: bool,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct ResolveAiAgentWorkflowStageApprovalInputGql {
+    pub approved: bool,
+    pub reason: Option<String>,
+}
+
+pub fn parse_metadata(value: Option<String>) -> Result<serde_json::Value, async_graphql::Error> {
+    match value {
+        Some(value) if !value.trim().is_empty() => {
+            serde_json::from_str(&value).map_err(|err| async_graphql::Error::new(err.to_string()))
+        }
+        _ => Ok(serde_json::json!({})),
+    }
+}

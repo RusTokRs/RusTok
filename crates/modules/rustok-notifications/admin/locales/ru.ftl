@@ -1,0 +1,9 @@
+notifications-badge = уведомления
+notifications-delivery = Доставка
+notifications-persistence = Хранилище
+notifications-sourceRegistry = Реестр источников
+notifications-status-planned = Запланировано
+notifications-status-ready = Готово
+notifications-status-unavailable = Недоступно
+notifications-subtitle = Семантический реестр источников доступен. Сохранение входящих и операции доставки еще не включены.
+notifications-title = Уведомления

@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-30",
+  "status": "pricing_storefront_native_error_safety_source_unvalidated",
+  "scope": "pricing-owned storefront native server-function transport",
+  "source_contract": {
+    "runtime_dependency_static_public_envelope": true,
+    "tenant_context_static_public_envelope": true,
+    "optional_request_context_preserved": true,
+    "optional_request_context_failure_logged": true,
+    "owner_runtime_static_public_envelope": true,
+    "internal_variant_id_failure_static_public_envelope": true,
+    "correlation_logging_when_available": true,
+    "tenant_logging_when_available": true,
+    "channel_logging_when_available": true,
+    "locale_logging_when_available": true,
+    "transport_validation_messages_preserved": true,
+    "query_contract_changed": false,
+    "resolution_context_changed": false,
+    "pagination_changed": false,
+    "locale_fallback_changed": false,
+    "channel_fallback_changed": false,
+    "request_response_dto_changed": false,
+    "outer_error_variant_changed": false,
+    "raw_runtime_error_public": false
+  },
+  "stable_public_messages": {
+    "pricing_unavailable": "Storefront pricing is temporarily unavailable",
+    "context_unavailable": "Pricing storefront context is unavailable"
+  },
+  "suggested_execution": [
+    "node scripts/verify/verify-pricing-storefront-native-error-safety.mjs",
+    "node scripts/verify/verify-pricing-storefront-boundary.mjs",
+    "node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
+    "cargo check -p rustok-pricing-storefront --all-features"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "native_runtime_proven": false,
+    "mounted_parity_proven": false
+  }
+}

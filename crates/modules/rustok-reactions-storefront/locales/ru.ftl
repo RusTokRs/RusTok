@@ -1,0 +1,9 @@
+reactions-count = { $count }
+reactions-empty = Для этого элемента реакции недоступны.
+reactions-error-load = Реакции временно недоступны.
+reactions-error-update = Не удалось обновить реакцию.
+reactions-label = Реакции
+reactions-like = Нравится
+reactions-loading = Загрузка реакций…
+reactions-selected = Выбрано
+reactions-signIn = Войдите, чтобы оставить реакцию.

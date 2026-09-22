@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "reviewed_at_utc": "2026-08-03T08:53:00Z",
+  "review_base": "659576d3af1f541924b9bcb3b78ee042fc566609",
+  "status": "product_admin_primary_graphql_read_error_safety_source_reviewed_unvalidated",
+  "scope": "Product Admin primary GraphQL read public and private diagnostic boundary",
+  "reviewed_sources": [
+    "crates/modules/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-product/docs/implementation-plan.md",
+    "crates/modules/rustok-product/admin/src/catalog_transport.rs",
+    "crates/modules/rustok-product/admin/src/transport.rs",
+    "crates/modules/rustok-product/admin/src/transport/graphql_error_safety.rs",
+    "crates/modules/rustok-product/admin/src/transport/admin_catalog_graphql.rs",
+    "crates/modules/rustok-product/admin/src/transport/admin_catalog_native.rs",
+    "crates/modules/rustok-product/admin/src/transport/graphql_adapter.rs",
+    "crates/modules/rustok-product/admin/src/ui/leptos.rs",
+    "crates/ui/rustok-graphql/src/lib.rs",
+    "scripts/verify/verify-product-admin-primary-read-error-safety.mjs",
+    "scripts/verify/verify-product-admin-category-read-error-safety.mjs",
+    "scripts/verify/verify-product-admin-catalog-options-error-safety.mjs"
+  ],
+  "findings": [
+    {
+      "id": "primary-public-envelope-already-static",
+      "severity": "preserved",
+      "finding": "The five primary Product Admin read operations already classified GraphqlHttpError and replaced HTTP and GraphQL payloads with static public messages. Network and Unauthorized remained fixed typed variants."
+    },
+    {
+      "id": "primary-private-debug-payload",
+      "severity": "confirmed",
+      "finding": "The shared GraphqlReadContext still emitted raw_error = ?error in both severity branches. Http and Graphql variants therefore copied complete backend-controlled payloads into structured tracing even though stable classification, code, correlation, and bounded shape were already present."
+    },
+    {
+      "id": "bounded-read-diagnostic-fix",
+      "severity": "selected",
+      "finding": "The read mapper now records only payload presence and character length for Http and Graphql variants, while Network and Unauthorized retain no invented payload. Error kind, stable code, public mapping, correlation, severity, and request-shape facts are unchanged."
+    },
+    {
+      "id": "product-list-native-first",
+      "severity": "preserved",
+      "finding": "The Product Admin list remains native-first through admin_catalog_native. GraphQL fallback order, query construction, result mapping, and owner calls are unchanged."
+    },
+    {
+      "id": "mutation-boundary-separate",
+      "severity": "open",
+      "finding": "GraphqlMutationContext still retains complete typed-error diagnostics and remains a separate next ecommerce cleanup slice. This review does not claim mutation diagnostic closure."
+    }
+  ],
+  "changed_files_expected": [
+    "crates/modules/rustok-product/admin/src/transport/graphql_error_safety.rs",
+    "crates/modules/rustok-product/contracts/evidence/admin-primary-graphql-read-error-safety-source.json",
+    "crates/modules/rustok-product/contracts/evidence/admin-primary-graphql-read-error-safety-source-review.json",
+    "crates/modules/rustok-product/docs/admin-primary-graphql-read-error-safety.md",
+    "crates/modules/rustok-product/contracts/evidence/admin-category-graphql-read-error-safety-source.json",
+    "crates/modules/rustok-product/contracts/evidence/admin-category-graphql-read-error-safety-source-review.json",
+    "crates/modules/rustok-product/docs/admin-category-graphql-read-error-safety.md",
+    "scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs",
+    "scripts/verify/verify-product-admin-primary-read-error-safety.mjs",
+    "scripts/verify/verify-product-admin-category-read-error-safety.mjs"
+  ],
+  "preserved": [
+    "GraphQL query documents and variables",
+    "GraphQL response DTO mapping",
+    "primary read function result types",
+    "public GraphqlHttpError variants and static messages",
+    "product-list native-first fallback order",
+    "Product Admin Leptos resource composition",
+    "catalog search-options public String wrapper",
+    "technical versus ordinary severity",
+    "absence of new retry or fallback paths"
+  ],
+  "remaining_scope": [
+    "Product Admin GraphQL writes and status mutations",
+    "Product Admin focused verifier execution and Cargo compilation",
+    "browser and mounted transport evidence",
+    "remaining ecommerce non-PortError public envelopes"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "browser_runtime_proven": false,
+    "mounted_transport_proven": false
+  },
+  "execution": []
+}

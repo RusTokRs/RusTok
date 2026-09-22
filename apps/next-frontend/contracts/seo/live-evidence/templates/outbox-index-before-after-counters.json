@@ -1,0 +1,30 @@
+{
+  "captured_at": "<iso-8601>",
+  "environment": "<ci-or-runtime-env>",
+  "command_or_ci_job": "<command-or-ci-job-url>",
+  "redactions_applied": [
+    "<redaction-rule>"
+  ],
+  "result": "pending_capture",
+  "surface": "outbox_index_pipeline",
+  "before": {
+    "pending": 0,
+    "sent": 0,
+    "retry": 0,
+    "failed": 0,
+    "dead_letter": 0,
+    "replay_mode": "not_started"
+  },
+  "after": {
+    "pending": 0,
+    "sent": 0,
+    "retry": 0,
+    "failed": 0,
+    "dead_letter": 0,
+    "replay_mode": "<repair_only|replay_completed>"
+  },
+  "samples": {
+    "idempotency_keys_sample": [],
+    "cursor_timeline": []
+  }
+}

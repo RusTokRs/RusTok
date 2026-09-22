@@ -1,0 +1,10 @@
+{
+  "schema": "athanor.adapter_manifest",
+  "name": "rustok-fba",
+  "version": "0.1.0",
+  "adapters": [
+    { "id": "builtin.extractor.rustok_fba", "kind": "extractor", "enabled": true },
+    { "id": "builtin.linker.rustok_fba", "kind": "linker", "enabled": true },
+    { "id": "builtin.checker.rustok_fba", "kind": "checker", "enabled": true }
+  ]
+}

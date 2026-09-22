@@ -1,0 +1,484 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(McpClients::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(McpClients::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(McpClients::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(McpClients::ClientKey).uuid().not_null())
+                    .col(ColumnDef::new(McpClients::Slug).string_len(96).not_null())
+                    .col(
+                        ColumnDef::new(McpClients::DisplayName)
+                            .string_len(160)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(McpClients::Description).text().null())
+                    .col(
+                        ColumnDef::new(McpClients::ActorType)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(McpClients::DelegatedUserId).uuid().null())
+                    .col(
+                        ColumnDef::new(McpClients::IsActive)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .col(
+                        ColumnDef::new(McpClients::RevokedAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(McpClients::LastUsedAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(McpClients::Metadata)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(ColumnDef::new(McpClients::CreatedBy).uuid().null())
+                    .col(
+                        ColumnDef::new(McpClients::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(McpClients::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(McpClients::Table, McpClients::TenantId)
+                            .to(Alias::new("tenants"), Alias::new("id"))
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(McpClients::Table, McpClients::DelegatedUserId)
+                            .to(Alias::new("users"), Alias::new("id"))
+                            .on_delete(ForeignKeyAction::SetNull),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(McpClients::Table, McpClients::CreatedBy)
+                            .to(Alias::new("users"), Alias::new("id"))
+                            .on_delete(ForeignKeyAction::SetNull),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_mcp_clients_tenant_slug")
+                    .table(McpClients::Table)
+                    .unique()
+                    .col(McpClients::TenantId)
+                    .col(McpClients::Slug)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_mcp_clients_client_key")
+                    .table(McpClients::Table)
+                    .unique()
+                    .col(McpClients::ClientKey)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(McpTokens::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(McpTokens::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(McpTokens::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(McpTokens::ClientId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(McpTokens::TokenName)
+                            .string_len(128)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(McpTokens::TokenPreview)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(McpTokens::TokenHash)
+                            .string_len(128)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(McpTokens::CreatedBy).uuid().null())
+                    .col(
+                        ColumnDef::new(McpTokens::LastUsedAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(McpTokens::ExpiresAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(McpTokens::RevokedAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(McpTokens::Metadata)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(
+                        ColumnDef::new(McpTokens::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(McpTokens::Table, McpTokens::TenantId)
+                            .to(Alias::new("tenants"), Alias::new("id"))
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(McpTokens::Table, McpTokens::ClientId)
+                            .to(McpClients::Table, McpClients::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(McpTokens::Table, McpTokens::CreatedBy)
+                            .to(Alias::new("users"), Alias::new("id"))
+                            .on_delete(ForeignKeyAction::SetNull),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_mcp_tokens_hash")
+                    .table(McpTokens::Table)
+                    .unique()
+                    .col(McpTokens::TokenHash)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_mcp_tokens_client_revoked")
+                    .table(McpTokens::Table)
+                    .col(McpTokens::ClientId)
+                    .col(McpTokens::RevokedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(McpPolicies::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(McpPolicies::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(McpPolicies::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(McpPolicies::ClientId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(McpPolicies::AllowedTools)
+                            .json_binary()
+                            .not_null()
+                            .default("[]"),
+                    )
+                    .col(
+                        ColumnDef::new(McpPolicies::DeniedTools)
+                            .json_binary()
+                            .not_null()
+                            .default("[]"),
+                    )
+                    .col(
+                        ColumnDef::new(McpPolicies::GrantedPermissions)
+                            .json_binary()
+                            .not_null()
+                            .default("[]"),
+                    )
+                    .col(
+                        ColumnDef::new(McpPolicies::GrantedScopes)
+                            .json_binary()
+                            .not_null()
+                            .default("[]"),
+                    )
+                    .col(
+                        ColumnDef::new(McpPolicies::Metadata)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(ColumnDef::new(McpPolicies::UpdatedBy).uuid().null())
+                    .col(
+                        ColumnDef::new(McpPolicies::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(McpPolicies::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(McpPolicies::Table, McpPolicies::TenantId)
+                            .to(Alias::new("tenants"), Alias::new("id"))
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(McpPolicies::Table, McpPolicies::ClientId)
+                            .to(McpClients::Table, McpClients::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(McpPolicies::Table, McpPolicies::UpdatedBy)
+                            .to(Alias::new("users"), Alias::new("id"))
+                            .on_delete(ForeignKeyAction::SetNull),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_mcp_policies_client_id")
+                    .table(McpPolicies::Table)
+                    .unique()
+                    .col(McpPolicies::ClientId)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(McpAuditLogs::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(McpAuditLogs::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(McpAuditLogs::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(McpAuditLogs::ClientId).uuid().null())
+                    .col(ColumnDef::new(McpAuditLogs::TokenId).uuid().null())
+                    .col(ColumnDef::new(McpAuditLogs::ActorId).string_len(128).null())
+                    .col(
+                        ColumnDef::new(McpAuditLogs::ActorType)
+                            .string_len(32)
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(McpAuditLogs::Action)
+                            .string_len(96)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(McpAuditLogs::Outcome)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(McpAuditLogs::ToolName).string_len(96).null())
+                    .col(ColumnDef::new(McpAuditLogs::Reason).text().null())
+                    .col(
+                        ColumnDef::new(McpAuditLogs::CorrelationId)
+                            .string_len(128)
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(McpAuditLogs::Metadata)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(ColumnDef::new(McpAuditLogs::CreatedBy).uuid().null())
+                    .col(
+                        ColumnDef::new(McpAuditLogs::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(McpAuditLogs::Table, McpAuditLogs::TenantId)
+                            .to(Alias::new("tenants"), Alias::new("id"))
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(McpAuditLogs::Table, McpAuditLogs::ClientId)
+                            .to(McpClients::Table, McpClients::Id)
+                            .on_delete(ForeignKeyAction::SetNull),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(McpAuditLogs::Table, McpAuditLogs::TokenId)
+                            .to(McpTokens::Table, McpTokens::Id)
+                            .on_delete(ForeignKeyAction::SetNull),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(McpAuditLogs::Table, McpAuditLogs::CreatedBy)
+                            .to(Alias::new("users"), Alias::new("id"))
+                            .on_delete(ForeignKeyAction::SetNull),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_mcp_audit_tenant_created")
+                    .table(McpAuditLogs::Table)
+                    .col(McpAuditLogs::TenantId)
+                    .col(McpAuditLogs::CreatedAt)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_mcp_audit_client_created")
+                    .table(McpAuditLogs::Table)
+                    .col(McpAuditLogs::ClientId)
+                    .col(McpAuditLogs::CreatedAt)
+                    .to_owned(),
+            )
+            .await
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(McpAuditLogs::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(McpPolicies::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(McpTokens::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(McpClients::Table).to_owned())
+            .await
+    }
+}
+
+#[derive(Iden)]
+enum McpClients {
+    Table,
+    Id,
+    TenantId,
+    ClientKey,
+    Slug,
+    DisplayName,
+    Description,
+    ActorType,
+    DelegatedUserId,
+    IsActive,
+    RevokedAt,
+    LastUsedAt,
+    Metadata,
+    CreatedBy,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum McpTokens {
+    Table,
+    Id,
+    TenantId,
+    ClientId,
+    TokenName,
+    TokenPreview,
+    TokenHash,
+    CreatedBy,
+    LastUsedAt,
+    ExpiresAt,
+    RevokedAt,
+    Metadata,
+    CreatedAt,
+}
+
+#[derive(Iden)]
+enum McpPolicies {
+    Table,
+    Id,
+    TenantId,
+    ClientId,
+    AllowedTools,
+    DeniedTools,
+    GrantedPermissions,
+    GrantedScopes,
+    Metadata,
+    UpdatedBy,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum McpAuditLogs {
+    Table,
+    Id,
+    TenantId,
+    ClientId,
+    TokenId,
+    ActorId,
+    ActorType,
+    Action,
+    Outcome,
+    ToolName,
+    Reason,
+    CorrelationId,
+    Metadata,
+    CreatedBy,
+    CreatedAt,
+}

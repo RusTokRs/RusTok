@@ -1,0 +1,40 @@
+[package]
+name = "rustok-cart-storefront"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos storefront UI package for the rustok-cart module"
+
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = [
+  "leptos/ssr",
+  "dep:leptos_axum",
+  "dep:rustok-cart",
+  "dep:rustok-customer",
+  "dep:rustok-outbox",
+  "dep:rustok-pricing",
+  "rustok-api/server",
+]
+
+[dependencies]
+rustok-ui-core.workspace = true
+leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
+rustok-graphql.workspace = true
+leptos-ui-routing.workspace = true
+rustok-api = { workspace = true, default-features = false }
+
+rustok-ui-i18n.workspace = true
+rustok-ui-transport.workspace = true
+rustok-cart = { workspace = true, optional = true }
+rustok-customer = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true }
+rustok-pricing = { workspace = true, optional = true }
+sea-orm.workspace = true
+rust_decimal.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+uuid.workspace = true
+tracing.workspace = true

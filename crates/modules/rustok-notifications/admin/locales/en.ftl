@@ -1,0 +1,9 @@
+notifications-badge = notifications
+notifications-delivery = Delivery
+notifications-persistence = Persistence
+notifications-sourceRegistry = Source registry
+notifications-status-planned = Planned
+notifications-status-ready = Ready
+notifications-status-unavailable = Unavailable
+notifications-subtitle = The semantic source registry is available. Inbox persistence and delivery operations are not enabled yet.
+notifications-title = Notifications

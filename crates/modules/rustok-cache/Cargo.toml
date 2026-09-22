@@ -1,0 +1,42 @@
+[package]
+name = "rustok-cache"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cache module for RusTok — Redis connection lifecycle, backend factory, health checks"
+
+[features]
+default = ["redis-cache"]
+redis-cache = ["rustok-core/redis-cache", "dep:redis", "dep:futures-util"]
+
+[dependencies]
+rustok-core = { workspace = true }
+rustok-telemetry = { workspace = true }
+async-trait.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+sha2.workspace = true
+hex.workspace = true
+serde.workspace = true
+postcard.workspace = true
+uuid.workspace = true
+prometheus = { version = "0.14" }
+futures-util = { version = "0.3", optional = true }
+
+# Optional Redis
+redis = { version = "1.2", features = ["tokio-comp", "connection-manager", "script"], optional = true }
+
+sea-orm-migration = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+
+[[test]]
+name = "fallback_cas_live"
+path = "tests/fallback_cas_live.rs"
+required-features = ["redis-cache"]
+
+[[test]]
+name = "real_redis_hardening"
+path = "tests/real_redis_hardening.rs"
+required-features = ["redis-cache"]

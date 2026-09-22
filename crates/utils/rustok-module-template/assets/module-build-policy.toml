@@ -1,0 +1,5 @@
+schema_version = 1
+allowed_registries = ["https://crates.io"]
+allow_git_dependencies = false
+allow_build_scripts = false
+allow_native_links = false

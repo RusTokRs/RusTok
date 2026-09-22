@@ -1,0 +1,197 @@
+# RusToK Cargo Configuration
+# Provides convenient aliases for common development tasks
+
+[alias]
+# ============================================================================
+# Development Workflow
+# ============================================================================
+
+# Start development server with auto-reload
+dev = "watch -x 'run -p rustok-server'"
+
+# Start admin panel in development mode
+dev-admin = "watch -x 'run -p rustok-admin'"
+
+# Start storefront in development mode
+dev-storefront = "watch -x 'run -p rustok-storefront'"
+
+# ============================================================================
+# Testing
+# ============================================================================
+
+# Run all tests in workspace with all features
+test-all = "test --workspace --all-features"
+
+# Run only unit tests (fast, for pre-commit)
+test-fast = "test --workspace --lib"
+
+# Run integration tests only
+test-integration = "test --workspace --test '*'"
+
+# Run tests with coverage (requires tarpaulin)
+test-coverage = "tarpaulin --workspace --out Html --output-dir coverage"
+
+# Run tests with nextest (faster test runner)
+test-nextest = "nextest run --workspace"
+
+# ============================================================================
+# Code Quality
+# ============================================================================
+
+# Run clippy with all warnings as errors
+lint = "clippy --workspace --all-targets -- -D warnings"
+
+# Run clippy and automatically fix issues
+lint-fix = "clippy --workspace --all-targets --fix --allow-dirty --allow-staged"
+
+# Check code formatting
+fmt-check = "fmt --all -- --check"
+
+# Format all code
+fmt-fix = "fmt --all"
+
+# Run all quality checks (used in CI)
+ci = "fmt --all -- --check && clippy --workspace --all-targets -- -D warnings && test --workspace"
+
+# ============================================================================
+# Build Operations
+# ============================================================================
+
+# Build all workspace packages in release mode
+build-release = "build --release --workspace"
+
+# Build server binary only
+build-server = "build -p rustok-server --release"
+
+# Build admin panel (WebAssembly)
+build-admin = "build -p rustok-admin --target wasm32-unknown-unknown --release"
+
+# Build storefront (WebAssembly)
+build-storefront = "build -p rustok-storefront --target wasm32-unknown-unknown --release"
+
+# Build with optimization for size
+build-small = "build --release --workspace -Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort"
+
+# ============================================================================
+# Security & Auditing
+# ============================================================================
+
+# Run all security checks (audit + deny)
+audit-all = "audit && deny check"
+
+# Check for outdated dependencies
+outdated = "outdated -R"
+
+# Update dependencies and check for breaking changes
+update-deps = "update && test --workspace"
+
+# ============================================================================
+# Documentation
+# ============================================================================
+
+# Build and open documentation
+docs = "doc --workspace --no-deps --open"
+
+# Build documentation with private items
+docs-all = "doc --workspace --document-private-items --no-deps --open"
+
+# ============================================================================
+# Module-Specific Operations
+# ============================================================================
+
+# Test content module only
+test-content = "test -p rustok-content"
+
+# Test commerce module only  
+test-commerce = "test -p rustok-commerce"
+
+# Test core module only
+test-core = "test -p rustok-core"
+
+# Check a specific package
+check-pkg = "check -p"
+
+# ============================================================================
+# Benchmarking & Performance
+# ============================================================================
+
+# Run benchmarks
+bench = "bench --workspace"
+
+# Run benchmarks for specific package
+bench-pkg = "bench -p"
+
+# Profile build time
+time-build = "build --workspace --timings"
+
+# ============================================================================
+# Utility Commands
+# ============================================================================
+
+# Clean build artifacts and Cargo cache
+clean-all = "clean && cargo clean"
+
+# Show dependency tree
+tree = "tree --workspace"
+
+# Check for unused dependencies
+unused = "udeps --workspace"
+
+# Expand macros for debugging
+expand = "expand"
+
+# ============================================================================
+# Git Hooks Helper
+# ============================================================================
+
+# Run pre-commit checks locally
+pre-commit = "fmt --all -- --check && clippy --workspace --all-targets -- -D warnings && test --workspace --lib"
+
+# Run pre-push checks locally  
+pre-push = "test --workspace"
+
+# ============================================================================
+# XTask - Build Automation
+# ============================================================================
+
+# Generate module registry from modules.toml
+xtask = "run -p xtask --"
+
+# Generate registry (convenience alias)
+generate-registry = "run -p xtask -- generate-registry"
+
+# Validate modules.toml
+validate-manifest = "run -p xtask -- validate-manifest"
+
+# List configured modules
+list-modules = "run -p xtask -- list-modules"
+
+[build]
+# Use incremental compilation for faster rebuilds
+incremental = true
+
+# Number of parallel jobs (default: number of logical CPUs)
+# jobs = 4
+
+[term]
+# Show verbose output
+verbose = false
+
+# Use colors in output
+color = "auto"
+
+[cargo-new]
+# Default edition for new projects
+edition = "2021"
+
+# Default VCS
+vcs = "git"
+
+[env]
+# Avoid CI failures when /tmp is mounted with limited space (e.g. coverage builds).
+TMPDIR = { value = "/var/tmp", force = true }
+# Required by playwright-rs 0.14 at compile time; the crate bundles the
+# protocol compatible with Playwright 1.60.0.
+PLAYWRIGHT_DRIVER_VERSION = { value = "1.60.0", force = true }
+# Deep async GraphQL resolver trees in debug test builds require sufficient thread stack on Windows.
+RUST_MIN_STACK = { value = "8388608" }

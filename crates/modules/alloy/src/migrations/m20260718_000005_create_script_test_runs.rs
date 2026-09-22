@@ -1,0 +1,132 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(AlloyScriptTestRuns::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(AlloyScriptTestRuns::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptTestRuns::ScriptId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptTestRuns::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptTestRuns::Revision)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptTestRuns::SourceDigest)
+                            .string_len(71)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptTestRuns::TestPath)
+                            .string_len(160)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptTestRuns::ActorId)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptTestRuns::IdempotencyKey)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptTestRuns::RequestDigest)
+                            .string_len(71)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptTestRuns::Status)
+                            .string_len(16)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(AlloyScriptTestRuns::Passed).boolean())
+                    .col(ColumnDef::new(AlloyScriptTestRuns::Error).text())
+                    .col(ColumnDef::new(AlloyScriptTestRuns::LeaseToken).uuid())
+                    .col(
+                        ColumnDef::new(AlloyScriptTestRuns::LeaseExpiresAt)
+                            .timestamp_with_time_zone(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptTestRuns::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyScriptTestRuns::CompletedAt).timestamp_with_time_zone(),
+                    )
+                    .index(
+                        Index::create()
+                            .unique()
+                            .name("uidx_alloy_script_test_runs_idempotency")
+                            .col(AlloyScriptTestRuns::ScriptId)
+                            .col(AlloyScriptTestRuns::Revision)
+                            .col(AlloyScriptTestRuns::IdempotencyKey),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_alloy_script_test_runs_tenant_revision_created")
+                    .table(AlloyScriptTestRuns::Table)
+                    .col(AlloyScriptTestRuns::TenantId)
+                    .col(AlloyScriptTestRuns::ScriptId)
+                    .col(AlloyScriptTestRuns::Revision)
+                    .col(AlloyScriptTestRuns::CreatedAt)
+                    .to_owned(),
+            )
+            .await
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(AlloyScriptTestRuns::Table).to_owned())
+            .await
+    }
+}
+
+#[derive(DeriveIden)]
+enum AlloyScriptTestRuns {
+    Table,
+    Id,
+    ScriptId,
+    TenantId,
+    Revision,
+    SourceDigest,
+    TestPath,
+    ActorId,
+    IdempotencyKey,
+    RequestDigest,
+    Status,
+    Passed,
+    Error,
+    LeaseToken,
+    LeaseExpiresAt,
+    CreatedAt,
+    CompletedAt,
+}

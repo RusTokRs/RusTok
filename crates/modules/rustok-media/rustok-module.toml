@@ -1,0 +1,44 @@
+[module]
+slug = "media"
+name = "Media"
+version = "0.1.0"
+description = "Media library, uploads and localized asset metadata"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "admin_only"
+recommended_admin_surfaces = ["leptos-admin"]
+
+[dependencies]
+outbox = { version_req = ">=0.1.0" }
+
+[crate]
+entry_type = "MediaModule"
+
+[provides.graphql]
+query = "graphql::MediaQuery"
+mutation = "graphql::MediaMutation"
+
+[provides.http]
+axum_router = "controllers::axum_router"
+
+[provides.cli]
+namespace = "media"
+factory = "rustok_media_cli::command_provider"
+
+[provides.admin_ui]
+leptos_crate = "rustok-media-admin"
+route_segment = "media"
+nav_label = "Media"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
+[fba.provider]
+registry = "contracts/media-fba-registry.json"
+contract_version = "media.asset_read.v1"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+fallback_profiles = ["embedded_native"]
+degraded_modes = ["omit_image_metadata", "keep_existing_seo_image", "skip_asset_enrichment"]

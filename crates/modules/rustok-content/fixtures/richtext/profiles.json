@@ -1,0 +1,115 @@
+[
+  {
+    "id": "article",
+    "nodes": [
+      "doc",
+      "paragraph",
+      "heading",
+      "bulletList",
+      "orderedList",
+      "listItem",
+      "blockquote",
+      "codeBlock",
+      "horizontalRule",
+      "hardBreak",
+      "text"
+    ],
+    "marks": [
+      "bold",
+      "italic",
+      "strike",
+      "code",
+      "link"
+    ],
+    "heading_levels": [
+      2,
+      3,
+      4
+    ],
+    "allow_empty": false,
+    "external_link_rel": "noopener noreferrer",
+    "limits": {
+      "max_json_bytes": 524288,
+      "max_depth": 16,
+      "max_nodes": 4096,
+      "max_text_chars": 200000,
+      "max_marks_per_node": 8,
+      "max_links": 512,
+      "max_attribute_bytes": 2048,
+      "max_url_bytes": 2048
+    }
+  },
+  {
+    "id": "discussion",
+    "nodes": [
+      "doc",
+      "paragraph",
+      "heading",
+      "bulletList",
+      "orderedList",
+      "listItem",
+      "blockquote",
+      "codeBlock",
+      "horizontalRule",
+      "hardBreak",
+      "text"
+    ],
+    "marks": [
+      "bold",
+      "italic",
+      "strike",
+      "code",
+      "link"
+    ],
+    "heading_levels": [
+      2,
+      3,
+      4
+    ],
+    "allow_empty": false,
+    "external_link_rel": "noopener noreferrer nofollow ugc",
+    "limits": {
+      "max_json_bytes": 262144,
+      "max_depth": 14,
+      "max_nodes": 2048,
+      "max_text_chars": 100000,
+      "max_marks_per_node": 8,
+      "max_links": 256,
+      "max_attribute_bytes": 2048,
+      "max_url_bytes": 2048
+    }
+  },
+  {
+    "id": "comment",
+    "nodes": [
+      "doc",
+      "paragraph",
+      "bulletList",
+      "orderedList",
+      "listItem",
+      "blockquote",
+      "hardBreak",
+      "text"
+    ],
+    "marks": [
+      "bold",
+      "italic",
+      "strike",
+      "code",
+      "link"
+    ],
+    "heading_levels": [],
+    "allow_empty": false,
+    "external_link_rel": "noopener noreferrer nofollow ugc",
+    "limits": {
+      "max_json_bytes": 65536,
+      "max_depth": 10,
+      "max_nodes": 512,
+      "max_text_chars": 20000,
+      "max_marks_per_node": 6,
+      "max_links": 32,
+      "max_attribute_bytes": 1024,
+      "max_url_bytes": 1024
+    }
+  }
+]

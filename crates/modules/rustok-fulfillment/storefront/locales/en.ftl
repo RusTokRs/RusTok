@@ -1,0 +1,11 @@
+fulfillment-shipping-badge = Shipping
+fulfillment-shipping-empty = No delivery groups are available for this cart.
+fulfillment-shipping-group = Delivery group
+fulfillment-shipping-lineItems = line items
+fulfillment-shipping-noSelection = No shipping option
+fulfillment-shipping-pending = Processing...
+fulfillment-shipping-provider = Provider
+fulfillment-shipping-select = Select
+fulfillment-shipping-selected = Selected
+fulfillment-shipping-subtitle = Choose shipping options for each delivery group.
+fulfillment-shipping-title = Delivery options

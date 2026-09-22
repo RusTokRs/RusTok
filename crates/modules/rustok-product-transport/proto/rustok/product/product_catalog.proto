@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package rustok.product;
+
+// Product owns canonical request/response DTOs. Protobuf owns RPC identity,
+// framing, deadlines, and status semantics; JSON preserves the owner contract.
+service ProductCatalogReadService {
+  rpc ReadProductProjection(JsonRequest) returns (JsonResponse);
+  rpc ReadVariantProductProjection(JsonRequest) returns (JsonResponse);
+  rpc ListPublishedProducts(JsonRequest) returns (JsonResponse);
+}
+
+message JsonRequest {
+  bytes context_json = 1;
+  bytes input_json = 2;
+}
+
+message JsonResponse {
+  bytes output_json = 1;
+}

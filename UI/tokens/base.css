@@ -1,0 +1,50 @@
+:root {
+  --iu-radius-sm: 6px;
+  --iu-radius-md: 10px;
+  --iu-radius-lg: 14px;
+
+  --iu-space-1: 4px;
+  --iu-space-2: 8px;
+  --iu-space-3: 12px;
+  --iu-space-4: 16px;
+  --iu-space-5: 20px;
+  --iu-space-6: 24px;
+
+  --iu-font-sans: "Inter", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
+  --iu-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  --iu-text-xs: 12px;
+  --iu-text-sm: 14px;
+  --iu-text-md: 16px;
+  --iu-text-lg: 18px;
+
+  --iu-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --iu-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
+  --iu-shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.18);
+
+  --iu-bg: 0 0% 100%;
+  --iu-fg: 222 47% 11%;
+  --iu-muted: 210 40% 96%;
+  --iu-muted-fg: 215 16% 47%;
+  --iu-border: 214 32% 91%;
+  --iu-primary: 222 47% 11%;
+  --iu-primary-fg: 210 40% 98%;
+  --iu-accent: 210 40% 96%;
+  --iu-accent-fg: 222 47% 11%;
+  --iu-danger: 0 84% 60%;
+  --iu-danger-fg: 210 40% 98%;
+}
+
+[data-theme="dark"] {
+  --iu-bg: 222 47% 11%;
+  --iu-fg: 210 40% 98%;
+  --iu-muted: 217 33% 17%;
+  --iu-muted-fg: 215 20% 65%;
+  --iu-border: 217 33% 17%;
+  --iu-primary: 210 40% 98%;
+  --iu-primary-fg: 222 47% 11%;
+  --iu-accent: 217 33% 17%;
+  --iu-accent-fg: 210 40% 98%;
+  --iu-danger: 0 63% 31%;
+  --iu-danger-fg: 210 40% 98%;
+}

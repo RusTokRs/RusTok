@@ -1,0 +1,291 @@
+//! Flex capability contracts shared across attached and standalone modes.
+//! Extracted from `apps/server` as part of Phase 4.5 and formalized as a
+//! capability-only runtime module during Phase 4.6.
+
+use async_trait::async_trait;
+use rustok_api::Permission;
+use rustok_core::{
+    MigrationDependencyDescriptor, MigrationPhaseConstraint, MigrationSafetyClass,
+    MigrationSafetyMetadata, MigrationSource, RusToKModule,
+};
+use sea_orm_migration::MigrationTrait;
+
+pub mod attached;
+pub mod attached_definitions;
+pub mod attached_field_policy;
+pub mod attached_storage;
+pub mod attached_translation;
+pub mod attached_translation_changes;
+pub mod attached_translation_guard;
+pub mod attached_translation_policy_target;
+pub mod attached_translation_progress_target;
+pub mod attached_translation_storage;
+pub mod attached_translation_target;
+pub mod cache_generation;
+pub mod entity_type;
+pub mod errors;
+pub mod events;
+pub mod graphql;
+mod migrations;
+pub mod orchestration;
+pub mod parsing;
+pub mod registry;
+pub mod rest;
+pub mod schema_translation;
+pub mod schema_translation_changes;
+pub mod schema_translation_fields;
+pub mod schema_translation_progress_target;
+pub mod schema_translation_target;
+pub mod standalone;
+pub mod standalone_field_policy;
+pub mod standalone_translation;
+pub mod standalone_translation_changes;
+pub mod standalone_translation_policy_target;
+pub mod standalone_translation_progress_target;
+pub mod standalone_translation_target;
+
+pub struct FlexModule;
+
+pub use attached::{
+    AttachedEntityRef, PreparedAttachedValuesWrite, delete_attached_localized_values,
+    load_exact_locale_values, load_localized_values_by_locale, merge_donor_flex_metadata,
+    merge_reserved_donor_metadata, merge_reserved_donor_patch, persist_localized_values,
+    prepare_attached_values_create, prepare_attached_values_update,
+    prepare_donor_attached_values_create, prepare_donor_attached_values_update,
+    resolve_attached_payload, split_donor_metadata,
+};
+pub use attached_definitions::{
+    GENERIC_ATTACHED_FIELD_DEFINITIONS_TABLE, GenericAttachedFieldDefinitionService,
+    MAX_GENERIC_ATTACHED_FIELDS_PER_TENANT,
+};
+pub use attached_field_policy::{
+    FLEX_ATTACHED_FIELD_POLICIES_TABLE, FlexAttachedFieldPolicy, FlexAttachedFieldPolicyError,
+    FlexAttachedFieldPolicyResolution, FlexAttachedFieldPolicyResolver,
+    FlexAttachedFieldPolicyResult, FlexAttachedFieldPolicyStore, FlexDataClassification,
+    delete_attached_field_policy, resolve_attached_field_policies,
+    resolve_attached_field_policy_resolutions, upsert_attached_field_policy,
+};
+pub use attached_storage::{
+    GENERIC_ATTACHED_VALUES_TABLE, delete_generic_attached_values,
+    load_generic_attached_shared_values, persist_generic_attached_shared_values,
+    persist_prepared_generic_attached_values, prepare_generic_attached_values_update,
+    resolve_generic_attached_values,
+};
+pub use attached_translation::{
+    FlexAttachedTranslationError, FlexAttachedTranslationExactLocaleApply,
+    FlexAttachedTranslationExactLocaleApplyReceipt, FlexAttachedTranslationExactLocaleSnapshot,
+    FlexAttachedTranslationExactProgress, FlexAttachedTranslationLeaf,
+    FlexAttachedTranslationLeafSnapshot, FlexAttachedTranslationOperationContext,
+    FlexAttachedTranslationOwnerPort, FlexAttachedTranslationProgressOwnerPort,
+    FlexAttachedTranslationResourcePage, FlexAttachedTranslationResult,
+    FlexAttachedTranslationTargetValue, MAX_FLEX_ATTACHED_TRANSLATION_RESOURCE_PAGE,
+    flex_attached_translation_field_eligible, validate_flex_attached_translation_entity_type,
+    validate_flex_attached_translation_locale_pair,
+    validate_flex_attached_translation_resource_page,
+};
+pub use attached_translation_changes::{
+    FLEX_ATTACHED_TRANSLATION_CHANGE_JOURNAL_TABLE, FLEX_ATTACHED_TRANSLATION_RESOURCE_STATE_TABLE,
+    FlexAttachedTranslationChangeLifecycle, FlexAttachedTranslationChangeOwnerPort,
+    FlexAttachedTranslationChangeReader, FlexAttachedTranslationChangeRecord,
+    MAX_FLEX_ATTACHED_TRANSLATION_CHANGE_PAGE, flex_attached_translation_deleted_revision,
+    record_flex_attached_translation_deleted_in_tx, validate_flex_attached_translation_change_page,
+};
+pub use attached_translation_guard::{
+    FlexAttachedTranslationSchemaLease, load_attached_translation_schema_in,
+    lock_attached_translation_schema_in_tx,
+};
+pub use attached_translation_policy_target::FlexAttachedTranslationPolicyTargetProvider;
+pub use attached_translation_progress_target::FlexAttachedTranslationProgressTargetProvider;
+pub use attached_translation_storage::{
+    FlexAttachedLocalizedValuesByEntity, FlexAttachedTranslationResourceRevisionsByEntity,
+    MAX_ATTACHED_TRANSLATION_STORAGE_BATCH, load_attached_translation_localized_values,
+    load_attached_translation_resource_revisions,
+};
+pub use attached_translation_target::FlexAttachedTranslationTargetProvider;
+pub use entity_type::{
+    MAX_FLEX_ENTITY_TYPE_BYTES, ORDER_ENTITY_TYPE, PRODUCT_ENTITY_TYPE,
+    TAXONOMY_CATEGORY_ENTITY_TYPE, TOPIC_ENTITY_TYPE, USER_ENTITY_TYPE,
+    is_valid_flex_entity_type, normalize_flex_entity_type,
+};
+pub use errors::{FlexMappedError, FlexMappedErrorKind, map_flex_error};
+pub use orchestration::{
+    FieldDefinitionCachePort, create_field_definition, deactivate_field_definition,
+    find_field_definition, invalidate_field_definition_cache, list_field_definitions,
+    list_field_definitions_with_cache, reorder_field_definitions, update_field_definition,
+};
+pub use parsing::{FieldDefinitionsConfigParseError, parse_field_definitions_config};
+pub use registry::{
+    CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionService, FieldDefinitionSource,
+    FieldDefinitionView, FieldDefinitionViewSource, UpdateFieldDefinitionCommand,
+    field_definition_cache_invalidation_target, field_definition_created_event,
+    field_definition_deleted_event, field_definition_description_json,
+    field_definition_from_source, field_definition_label_json, field_definition_position_or_next,
+    field_definition_type_name, field_definition_updated_event, field_definition_validation_json,
+    validate_field_definition_create,
+};
+pub use rest::{
+    CreateFlexEntryRequest, CreateFlexSchemaRequest, DeleteFlexResponse, FlexEntryResponse,
+    FlexSchemaResponse, UpdateFlexEntryRequest, UpdateFlexSchemaRequest,
+};
+pub use schema_translation::{
+    FlexSchemaTranslationError, FlexSchemaTranslationExactLocaleApply,
+    FlexSchemaTranslationExactLocaleApplyReceipt, FlexSchemaTranslationExactLocaleSnapshot,
+    FlexSchemaTranslationExactProgress, FlexSchemaTranslationLeaf,
+    FlexSchemaTranslationLeafSnapshot, FlexSchemaTranslationOperationContext,
+    FlexSchemaTranslationOwnerPort, FlexSchemaTranslationProgressOwnerPort,
+    FlexSchemaTranslationResourcePage, FlexSchemaTranslationResult,
+    FlexSchemaTranslationTargetValue, MAX_FLEX_SCHEMA_TRANSLATION_RESOURCE_PAGE,
+    flex_schema_translation_leaf_required, validate_flex_schema_translation_locale_pair,
+    validate_flex_schema_translation_resource_page,
+};
+pub use schema_translation_changes::{
+    FlexSchemaTranslationChangeLifecycle, FlexSchemaTranslationChangeOwnerPort,
+    FlexSchemaTranslationChangeRecord, MAX_FLEX_SCHEMA_TRANSLATION_CHANGE_PAGE,
+    flex_schema_translation_deleted_revision, record_flex_schema_translation_change_in_tx,
+};
+pub use schema_translation_fields::{
+    apply_schema_definition_translation_targets, schema_definition_translation_exact_values,
+    schema_definition_translation_leaves, schema_definition_translation_locales,
+};
+pub use schema_translation_progress_target::FlexSchemaTranslationProgressTargetProvider;
+pub use schema_translation_target::FlexSchemaTranslationTargetProvider;
+pub use standalone::{
+    CreateFlexEntryCommand, CreateFlexSchemaCommand, FlexEntryView, FlexSchemaView,
+    FlexStandaloneService, StandaloneEntryViewSource, StandaloneSchemaTranslationSource,
+    StandaloneSchemaViewSource, UpdateFlexEntryCommand, UpdateFlexSchemaCommand,
+    build_standalone_custom_fields_schema, create_entry, create_entry_with_event, create_schema,
+    create_schema_with_event, delete_entry, delete_entry_with_event, delete_schema,
+    delete_schema_with_event, effective_standalone_entry_data, find_entry, find_schema,
+    list_entries, list_schemas, merge_standalone_entry_patch,
+    normalize_and_validate_standalone_entry, parse_standalone_fields_config,
+    serialize_standalone_fields_config, split_standalone_entry_data,
+    standalone_entry_view_from_source, standalone_localized_field_keys,
+    standalone_schema_view_from_source, update_entry, update_entry_with_event, update_schema,
+    update_schema_with_event, validate_create_entry_command, validate_create_schema_command,
+    validate_optional_standalone_uuid, validate_standalone_uuid, validate_update_entry_command,
+    validate_update_schema_command,
+};
+pub use standalone_field_policy::{
+    FLEX_STANDALONE_FIELD_POLICIES_TABLE, FlexStandaloneFieldPolicy,
+    FlexStandaloneFieldPolicyError, FlexStandaloneFieldPolicyResolution,
+    FlexStandaloneFieldPolicyResolver, FlexStandaloneFieldPolicyResult,
+    FlexStandaloneFieldPolicyStore, delete_standalone_field_policy,
+    resolve_standalone_field_policies, resolve_standalone_field_policy_resolutions,
+    upsert_standalone_field_policy,
+};
+pub use standalone_translation::{
+    FlexStandaloneTranslationError, FlexStandaloneTranslationExactLocaleApply,
+    FlexStandaloneTranslationExactLocaleApplyReceipt, FlexStandaloneTranslationExactLocaleSnapshot,
+    FlexStandaloneTranslationExactProgress, FlexStandaloneTranslationLeaf,
+    FlexStandaloneTranslationLeafSnapshot, FlexStandaloneTranslationOperationContext,
+    FlexStandaloneTranslationOwnerPort, FlexStandaloneTranslationProgressOwnerPort,
+    FlexStandaloneTranslationResourcePage, FlexStandaloneTranslationResult,
+    FlexStandaloneTranslationTargetValue, MAX_FLEX_STANDALONE_TRANSLATION_RESOURCE_PAGE,
+    flex_standalone_translation_field_eligible, validate_flex_standalone_translation_locale_pair,
+    validate_flex_standalone_translation_resource_page,
+};
+pub use standalone_translation_changes::{
+    FLEX_STANDALONE_TRANSLATION_CHANGE_JOURNAL_TABLE,
+    FLEX_STANDALONE_TRANSLATION_RESOURCE_STATE_TABLE, FlexStandaloneTranslationChangeLifecycle,
+    FlexStandaloneTranslationChangeOwnerPort, FlexStandaloneTranslationChangeReader,
+    FlexStandaloneTranslationChangeRecord, MAX_FLEX_STANDALONE_TRANSLATION_CHANGE_PAGE,
+    validate_page as validate_flex_standalone_translation_change_page,
+};
+pub use standalone_translation_policy_target::FlexStandaloneTranslationPolicyTargetProvider;
+pub use standalone_translation_progress_target::FlexStandaloneTranslationProgressTargetProvider;
+pub use standalone_translation_target::FlexStandaloneTranslationTargetProvider;
+
+pub use events::{
+    flex_entry_created_event, flex_entry_deleted_event, flex_entry_updated_event,
+    flex_schema_created_event, flex_schema_deleted_event, flex_schema_updated_event,
+};
+
+impl MigrationSource for FlexModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        migrations::migrations()
+    }
+
+    fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
+        vec![
+            MigrationDependencyDescriptor::new(
+                "m20260909_000003_add_attached_translation_change_journal",
+                vec![
+                    "m20260405_000004_create_flex_attached_localized_values",
+                    "m20260822_000001_create_generic_attached_donor_storage",
+                ],
+            ),
+            MigrationDependencyDescriptor::new(
+                "m20260910_000005_add_standalone_translation_change_journal",
+                vec![
+                    "m20260317_000001_create_flex_standalone_tables",
+                    "m20260407_000001_split_flex_entry_localized_values",
+                ],
+            ),
+            MigrationDependencyDescriptor::new(
+                "m20260911_000006_add_standalone_field_policies",
+                vec!["m20260317_000001_create_flex_standalone_tables"],
+            ),
+        ]
+    }
+
+    fn migration_safety_metadata(&self) -> Vec<MigrationSafetyMetadata> {
+        vec![
+            MigrationSafetyMetadata::new(
+                "m20260909_000003_add_attached_translation_change_journal",
+                MigrationSafetyClass::ExpandContract,
+                MigrationPhaseConstraint::PreActivation,
+            ),
+            MigrationSafetyMetadata::new(
+                "m20260910_000004_add_attached_field_policies",
+                MigrationSafetyClass::ExpandContract,
+                MigrationPhaseConstraint::PreActivation,
+            ),
+            MigrationSafetyMetadata::new(
+                "m20260910_000005_add_standalone_translation_change_journal",
+                MigrationSafetyClass::ExpandContract,
+                MigrationPhaseConstraint::PreActivation,
+            ),
+            MigrationSafetyMetadata::new(
+                "m20260911_000006_add_standalone_field_policies",
+                MigrationSafetyClass::ExpandContract,
+                MigrationPhaseConstraint::PreActivation,
+            ),
+        ]
+    }
+}
+
+#[async_trait]
+impl RusToKModule for FlexModule {
+    fn slug(&self) -> &'static str {
+        "flex"
+    }
+
+    fn name(&self) -> &'static str {
+        "Flex"
+    }
+
+    fn description(&self) -> &'static str {
+        "Capability-only custom fields runtime for attached and standalone extension flows"
+    }
+
+    fn version(&self) -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    fn permissions(&self) -> Vec<Permission> {
+        vec![
+            Permission::FLEX_SCHEMAS_CREATE,
+            Permission::FLEX_SCHEMAS_READ,
+            Permission::FLEX_SCHEMAS_UPDATE,
+            Permission::FLEX_SCHEMAS_DELETE,
+            Permission::FLEX_SCHEMAS_LIST,
+            Permission::FLEX_SCHEMAS_MANAGE,
+            Permission::FLEX_ENTRIES_CREATE,
+            Permission::FLEX_ENTRIES_READ,
+            Permission::FLEX_ENTRIES_UPDATE,
+            Permission::FLEX_ENTRIES_DELETE,
+            Permission::FLEX_ENTRIES_LIST,
+            Permission::FLEX_ENTRIES_MANAGE,
+        ]
+    }
+}

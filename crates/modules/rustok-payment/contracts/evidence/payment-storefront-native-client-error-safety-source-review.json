@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "reviewed_at": "2026-07-31",
+  "status": "payment_storefront_native_client_error_safety_source_reviewed_unvalidated",
+  "scope": "source review of the payment storefront native client error boundary",
+  "findings": {
+    "native_context_count": 3,
+    "native_final_mapper_count": 3,
+    "graphql_context_count": 3,
+    "graphql_final_mapper_count": 3,
+    "context_precedes_native_call": true,
+    "validation_variant_passes_through": true,
+    "technical_variants_fail_closed": true,
+    "native_adapter_diff_present": false,
+    "server_function_diff_present": false,
+    "graphql_adapter_diff_present": false,
+    "graphql_error_policy_diff_present": false,
+    "transport_selection_changed": false,
+    "fallback_added": false,
+    "dto_changed": false,
+    "raw_request_values_logged": false
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false
+  }
+}

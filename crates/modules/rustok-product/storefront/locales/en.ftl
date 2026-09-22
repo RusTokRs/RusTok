@@ -1,0 +1,47 @@
+product-badge = product
+product-common-sellerId = seller id
+product-common-sellerUnassigned = seller id: unassigned
+product-error-load = Failed to load storefront product data
+product-list-allCategories = All categories
+product-list-attributeFiltersHelp = Use filterable attribute codes as code=value, separated by semicolons.
+product-list-attributeFiltersLabel = Attribute filters
+product-list-attributeFiltersPlaceholder = color=red;weight=12.5
+product-list-categoryLabel = Category
+product-list-empty = No published products are available yet.
+product-list-open = Open
+product-list-searchLabel = Search catalog
+product-list-searchPlaceholder = Search published products
+product-list-searchSubmit = Apply
+product-list-sortAscending = Oldest first
+product-list-sortByLabel = Sort by
+product-list-sortCreatedAt = Creation date
+product-list-sortDescending = Newest first
+product-list-sortDirectionLabel = Direction
+product-list-sortPublishedAt = Publication date
+product-list-title = Published products
+product-list-total = { $count } total
+product-list-vendorFallback = Independent label
+product-selected-catalog = catalog
+product-selected-catalogSnapshot = Catalog snapshot
+product-selected-channel = channel
+product-selected-compareAt = compare-at { $value }
+product-selected-currency = currency
+product-selected-emptyBody = Publish a product from the product admin package or open one with `?handle=`.
+product-selected-emptyTitle = No published product selected
+product-selected-inventory = Inventory
+product-selected-noDescription = No localized merchandising copy yet.
+product-selected-noPrice = No pricing yet
+product-selected-noPricingPreview = Pricing module preview is unavailable.
+product-selected-openPricing = Open pricing module
+product-selected-previewContext = pricing preview
+product-selected-price = Price
+product-selected-priceList = price list
+product-selected-pricingOwnershipNote = Catalog snapshot stays product-owned; resolved pricing comes from the pricing module preview.
+product-selected-pricingPreview = Pricing module preview
+product-selected-quantity = qty
+product-selected-region = region
+product-selected-unscheduled = scheduled later
+product-selected-untitled = Untitled product
+product-selected-vendorFallback = independent label
+product-subtitle = This storefront route reads product-owned catalog data and shows resolved pricing through a separate pricing-module hook, with GraphQL kept as a fallback path.
+product-title = Published catalog from the product module

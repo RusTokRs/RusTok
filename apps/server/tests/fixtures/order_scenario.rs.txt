@@ -1,0 +1,68 @@
+//! Order flow scenario fixture
+//!
+//! Scenario-level checks that `apps/server` composes order flows via
+//! `rustok-commerce` contracts (state machine + domain events),
+//! without ad-hoc local lifecycle implementations.
+
+use rust_decimal::Decimal;
+use rustok_commerce::{Order, OrderError};
+use rustok_events::DomainEvent;
+use uuid::Uuid;
+
+#[test]
+fn order_happy_path_uses_rustok_commerce_state_machine() {
+    let tenant_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+
+    let pending = Order::new_pending(
+        Uuid::new_v4(),
+        tenant_id,
+        customer_id,
+        Decimal::new(2000, 0),
+        "USD".to_string(),
+    );
+
+    let confirmed = pending
+        .confirm()
+        .expect("pending -> confirmed must be valid");
+    let paid = confirmed
+        .pay("pay_001".to_string(), "card".to_string())
+        .expect("confirmed -> paid must be valid");
+
+    assert_eq!(paid.currency, "USD");
+    assert_eq!(paid.total_amount, Decimal::new(2000, 0));
+}
+
+#[test]
+fn order_payment_invariant_rejects_empty_payment_id() {
+    let pending = Order::new_pending(
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Decimal::new(300, 0),
+        "USD".to_string(),
+    );
+
+    let confirmed = pending
+        .confirm()
+        .expect("pending -> confirmed must be valid");
+    let error = confirmed
+        .pay(String::new(), "card".to_string())
+        .expect_err("empty payment_id must violate domain invariant");
+
+    assert!(matches!(error, OrderError::PaymentFailed(_)));
+}
+
+#[test]
+fn order_domain_event_contract_remains_stable_for_server_scenarios() {
+    let order_id = Uuid::new_v4();
+    let event = DomainEvent::OrderStatusChanged {
+        order_id,
+        from_status: "confirmed".to_string(),
+        to_status: "paid".to_string(),
+        timestamp: chrono::Utc::now(),
+    };
+
+    assert_eq!(event.event_type(), "order.status_changed");
+    assert!(event.validate().is_ok());
+}

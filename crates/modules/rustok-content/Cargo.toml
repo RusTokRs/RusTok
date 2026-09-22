@@ -1,0 +1,42 @@
+[package]
+name = "rustok-content"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description.workspace = true
+build = "build.rs"
+
+[dependencies]
+rustok-api.workspace = true
+axum = { workspace = true, optional = true }
+async-graphql = { workspace = true, optional = true }
+async-trait.workspace = true
+chrono.workspace = true
+rustok-core.workspace = true
+rustok-events.workspace = true
+rustok-outbox.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rustok-telemetry.workspace = true
+rustok-web = { workspace = true, optional = true }
+tracing.workspace = true
+utoipa = { workspace = true, features = ["uuid", "chrono"] }
+thiserror.workspace = true
+url.workspace = true
+uuid.workspace = true
+validator.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+proptest = "1.11"
+rustok-outbox = { workspace = true, features = ["test-transport-fallback"] }
+
+[features]
+default = []
+graphql = ["dep:async-graphql", "rustok-api/server"]
+richtext-assets = ["dep:axum", "dep:rustok-web"]
+
+[build-dependencies]
+serde_json.workspace = true

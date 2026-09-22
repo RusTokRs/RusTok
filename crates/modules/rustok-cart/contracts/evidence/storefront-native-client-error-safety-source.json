@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-31",
+  "status": "storefront_native_client_error_safety_source_unvalidated",
+  "scope": "cart storefront fetch, decrement, and remove native client transport aggregation",
+  "source_contract": {
+    "operation_count": 3,
+    "transport_selection_changed": false,
+    "graphql_transport_changed": false,
+    "native_adapters_changed": false,
+    "server_functions_changed": false,
+    "request_response_dto_changed": false,
+    "ui_transport_error_contract_preserved": true,
+    "validation_message_preserved": true,
+    "technical_native_error_public": false,
+    "static_technical_public_message": true,
+    "context_created_before_native_call": true,
+    "original_error_logged_privately": true,
+    "per_call_correlation_logging": true,
+    "safe_request_shape_only": true,
+    "cart_id_values_logged": false,
+    "line_item_id_values_logged": false,
+    "locale_values_logged": false,
+    "fallback_enabled": false,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "stable_public_messages": {
+    "technical_native_failure": "Cart storefront request could not be completed",
+    "validation": "preserved from CartCoreError::Validation"
+  },
+  "suggested_execution": [
+    "node scripts/verify/verify-cart-storefront-native-client-error-safety.mjs",
+    "node scripts/verify/verify-cart-storefront-native-error-safety.mjs",
+    "node scripts/verify/verify-cart-storefront-graphql-error-safety.mjs",
+    "node scripts/verify/verify-cart-storefront-boundary.mjs",
+    "cargo check -p rustok-cart-storefront",
+    "cargo check -p rustok-cart-storefront --features hydrate",
+    "cargo check -p rustok-cart-storefront --features ssr"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "hydrate_compile_proven": false,
+    "ssr_compile_proven": false,
+    "browser_runtime_proven": false,
+    "mounted_runtime_proven": false
+  }
+}

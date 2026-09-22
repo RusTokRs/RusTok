@@ -1,0 +1,190 @@
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+SCRIPT_PATH = (
+    REPO_ROOT / "rustok_mobile/tooling/scripts/verify_storefront_graphql_contract.py"
+)
+
+
+def read(path: str) -> str:
+    return (REPO_ROOT / path).read_text(encoding="utf-8")
+
+
+def run_contract_check(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(SCRIPT_PATH), "--repo-root", str(REPO_ROOT), *args],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+
+def test_storefront_mobile_cart_operations_match_commerce_graphql_surface() -> None:
+    repo = read(
+        "rustok_mobile/apps/rustok_frontend_mobile/lib/data/"
+        "storefront_catalog_repository.dart"
+    )
+    mutation = read("crates/modules/rustok-commerce/src/graphql/mutations/cart.rs")
+    types = read("crates/modules/rustok-commerce/src/graphql/types.rs")
+
+    expected_operations = {
+        "createStorefrontCart": "async fn create_storefront_cart",
+        "addStorefrontCartLineItem": "async fn add_storefront_cart_line_item",
+        "updateStorefrontCartLineItem": "async fn update_storefront_cart_line_item",
+        "removeStorefrontCartLineItem": "async fn remove_storefront_cart_line_item",
+    }
+    for dart_operation, rust_resolver in expected_operations.items():
+        assert dart_operation in repo
+        assert rust_resolver in mutation
+
+    expected_inputs = [
+        "CreateStorefrontCartInput",
+        "AddStorefrontCartLineItemInput",
+        "UpdateStorefrontCartLineItemInput",
+    ]
+    for input_type in expected_inputs:
+        assert f"{input_type}!" in repo
+        assert f"pub struct {input_type}" in types
+
+    assert "storefrontCart(id: $id)" in repo
+    assert "cart_id: Uuid" in mutation
+    assert "line_id: Uuid" in mutation
+
+
+def test_storefront_mobile_cart_transport_does_not_define_flutter_only_api() -> None:
+    repo = read(
+        "rustok_mobile/apps/rustok_frontend_mobile/lib/data/"
+        "storefront_catalog_repository.dart"
+    )
+    context = read(
+        "rustok_mobile/apps/rustok_frontend_mobile/lib/app_shell/"
+        "storefront_context.dart"
+    )
+
+    assert "/api/flutter" not in repo
+    assert "/api/mobile" not in repo
+    assert "GraphQlStorefrontCatalogRepository" in repo
+    assert "GraphQlClientFactory().create" in context
+
+
+def test_storefront_mobile_graphql_contract_script_outputs_contract_evidence() -> None:
+    result = run_contract_check("--json")
+    payload = json.loads(result.stdout)
+    contracts = payload["storefront_graphql_contracts"]
+    live_execution = payload["storefront_live_execution"]
+
+    assert [contract["operation"] for contract in contracts] == [
+        "StorefrontMobileCatalog",
+        "StorefrontMobileCart",
+        "StorefrontMobileCreateCart",
+        "StorefrontMobileAddCartLine",
+        "StorefrontMobileUpdateCartLine",
+        "StorefrontMobileRemoveCartLine",
+    ]
+    assert contracts[0]["server_evidence"] == [
+        "crates/modules/rustok-search/storefront/src/api.rs"
+    ]
+    assert (
+        "crates/modules/rustok-commerce/tests/graphql_runtime_parity_test/cart.rs"
+        in contracts[-1]["server_evidence"]
+    )
+    assert [item["status"] for item in live_execution] == ["skipped"] * 6
+
+
+def test_storefront_mobile_graphql_contract_script_accepts_live_execution_evidence(
+    tmp_path: Path,
+) -> None:
+    live_results = {
+        "storefront_live_execution": [
+            {
+                "operation": "StorefrontMobileCatalog",
+                "root_field": "storefrontSearch",
+                "status": "passed",
+                "source": "test-server",
+                "message": "catalog query executed",
+            },
+            {
+                "operation": "StorefrontMobileCart",
+                "root_field": "storefrontCart",
+                "status": "passed",
+            },
+            {
+                "operation": "StorefrontMobileCreateCart",
+                "root_field": "createStorefrontCart",
+                "status": "passed",
+            },
+            {
+                "operation": "StorefrontMobileAddCartLine",
+                "root_field": "addStorefrontCartLineItem",
+                "status": "passed",
+            },
+            {
+                "operation": "StorefrontMobileUpdateCartLine",
+                "root_field": "updateStorefrontCartLineItem",
+                "status": "passed",
+            },
+            {
+                "operation": "StorefrontMobileRemoveCartLine",
+                "root_field": "removeStorefrontCartLineItem",
+                "status": "passed",
+            },
+        ]
+    }
+    live_results_path = tmp_path / "storefront-live-results.json"
+    live_results_path.write_text(json.dumps(live_results), encoding="utf-8")
+
+    result = run_contract_check("--json", "--live-results", str(live_results_path))
+    payload = json.loads(result.stdout)
+
+    assert [
+        item["status"] for item in payload["storefront_live_execution"]
+    ] == ["passed"] * 6
+    assert payload["storefront_live_execution"][0]["source"] == "test-server"
+
+
+def test_storefront_mobile_graphql_contract_script_rejects_missing_live_evidence(
+    tmp_path: Path,
+) -> None:
+    live_results_path = tmp_path / "storefront-live-results.json"
+    live_results_path.write_text(
+        json.dumps(
+            {
+                "storefront_live_execution": [
+                    {
+                        "operation": "StorefrontMobileCatalog",
+                        "root_field": "storefrontSearch",
+                        "status": "passed",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT_PATH),
+            "--repo-root",
+            str(REPO_ROOT),
+            "--live-results",
+            str(live_results_path),
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    assert "missing live execution result" in result.stdout
+
+
+def test_storefront_mobile_graphql_contract_script_has_short_ok_output() -> None:
+    result = run_contract_check()
+    assert (
+        result.stdout.strip()
+        == "OK: verified 6 storefront mobile GraphQL contracts; live execution skipped"
+    )

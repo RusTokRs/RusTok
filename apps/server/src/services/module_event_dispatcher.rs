@@ -1,0 +1,933 @@
+use rustok_auth::{
+    AuthConfig, AuthLifecycleRuntime, AuthUserBackfillRuntime, OAuthAdminRuntime,
+    UserAdminMutationRuntime,
+};
+use rustok_core::events::{DispatcherConfig, EventDispatcher};
+use rustok_core::{EventBus, ModuleEventListenerContext, ModuleRegistry, ModuleRuntimeExtensions};
+use rustok_mcp::McpManagementRuntime;
+use sea_orm::DatabaseConnection;
+use std::sync::Arc;
+
+use crate::common::settings::RustokSettings;
+use crate::error::{Error, Result};
+use crate::services::event_transport_factory::EventRuntime;
+use crate::services::server_runtime_context::ServerRuntimeContext;
+
+#[cfg(feature = "mod-blog")]
+#[path = "blog_public_comments_snapshot.rs"]
+mod blog_public_comments_snapshot;
+
+pub fn spawn_module_event_dispatcher(
+    ctx: &ServerRuntimeContext,
+    registry: &ModuleRegistry,
+    extensions: Arc<ModuleRuntimeExtensions>,
+) {
+    let extensions = enrich_runtime_extensions_after_event_start(ctx, extensions);
+    let bus = ctx
+        .shared_get::<Arc<EventRuntime>>()
+        .expect("EventRuntime must be initialized before module event listeners")
+        .listener_bus
+        .clone();
+    let db = ctx.db_clone();
+    let dispatcher = build_module_event_dispatcher(registry, bus, db, extensions.as_ref());
+
+    #[cfg(feature = "mod-commerce")]
+    spawn_paid_order_label_worker_if_enabled(ctx);
+    #[cfg(feature = "commerce-marketplace-financial")]
+    spawn_marketplace_financial_worker_if_enabled(ctx);
+    #[cfg(feature = "mod-payment")]
+    spawn_payment_provider_event_worker_if_enabled(ctx);
+
+    let handler_count = dispatcher.handler_count();
+    if handler_count == 0 {
+        tracing::info!("No module-owned event listeners registered in ModuleRegistry");
+        return;
+    }
+
+    let running = dispatcher.start();
+    tokio::spawn(async move {
+        if let Err(error) = running.join().await {
+            tracing::error!("Module event dispatcher panicked: {:?}", error);
+        }
+    });
+
+    tracing::info!(handler_count, "Module event dispatcher initialized");
+}
+
+fn enrich_runtime_extensions_after_event_start(
+    ctx: &ServerRuntimeContext,
+    extensions: Arc<ModuleRuntimeExtensions>,
+) -> Arc<ModuleRuntimeExtensions> {
+    let mut enriched = extensions.as_ref().clone();
+
+    #[cfg(feature = "mod-pages")]
+    {
+        let cache = crate::services::cache_runtime::ensure_cache_service(ctx);
+        let provider =
+            Arc::new(crate::services::pages_cache_invalidation::ServerPagesCachePort::new(&cache));
+        enriched.insert(rustok_pages::PagesCacheInvalidationRuntime::new(
+            provider.clone(),
+        ));
+        enriched.insert(rustok_pages::PagesCacheReadRuntime::new(provider));
+    }
+
+    #[cfg(feature = "commerce-marketplace-financial")]
+    {
+        let financial_runtime = ctx
+            .shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()
+            .unwrap_or_else(|| {
+                let runtime =
+                    rustok_commerce::MarketplaceFinancialRuntime::in_process(ctx.db_clone());
+                ctx.shared_insert(runtime.clone());
+                runtime
+            });
+        let event_bus = crate::services::event_bus::transactional_event_bus_from_context(ctx);
+        ctx.shared_insert(event_bus.clone());
+        enriched.insert(financial_runtime.clone());
+        enriched.insert(event_bus);
+
+        #[cfg(feature = "mod-payment")]
+        {
+            let observers = ctx
+                .shared_get::<rustok_payment::PaymentProviderEventObservers>()
+                .unwrap_or_else(|| {
+                    let observers =
+                        financial_runtime.payment_provider_event_observers(ctx.db_clone());
+                    ctx.shared_insert(observers.clone());
+                    observers
+                });
+            enriched.insert(observers);
+        }
+    }
+
+    let enriched = Arc::new(enriched);
+    ctx.shared_insert(enriched.clone());
+    enriched
+}
+
+#[cfg(feature = "mod-commerce")]
+fn spawn_paid_order_label_worker_if_enabled(ctx: &ServerRuntimeContext) {
+    if !ctx.settings().runtime.runs_background_workers()
+        || ctx.shared_contains::<
+            crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle,
+        >()
+    {
+        return;
+    }
+
+    let stop_rx = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
+    if let Some(handle) =
+        crate::services::paid_order_label_worker::spawn_paid_order_create_label_worker(
+            ctx.clone(),
+            stop_rx,
+        )
+    {
+        ctx.shared_insert(handle);
+    }
+}
+
+#[cfg(feature = "commerce-marketplace-financial")]
+fn spawn_marketplace_financial_worker_if_enabled(ctx: &ServerRuntimeContext) {
+    if !ctx.settings().runtime.runs_background_workers()
+        || ctx.shared_contains::<
+            crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle,
+        >()
+    {
+        return;
+    }
+
+    let stop_rx = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
+    if let Some(handle) =
+        crate::services::marketplace_financial_worker::spawn_marketplace_financial_worker(
+            ctx.clone(),
+            stop_rx,
+        )
+    {
+        ctx.shared_insert(handle);
+    }
+}
+
+#[cfg(feature = "mod-payment")]
+fn spawn_payment_provider_event_worker_if_enabled(ctx: &ServerRuntimeContext) {
+    if !ctx.settings().runtime.runs_background_workers()
+        || ctx.shared_contains::<
+            crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
+        >()
+    {
+        return;
+    }
+
+    let stop_rx = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
+    ctx.shared_insert(
+        crate::services::payment_provider_event_worker::spawn_payment_provider_event_worker(
+            ctx.clone(),
+            stop_rx,
+        ),
+    );
+}
+
+pub fn build_shared_runtime_extensions(
+    registry: &ModuleRegistry,
+    _settings: &RustokSettings,
+) -> Result<Arc<ModuleRuntimeExtensions>> {
+    let extensions = rustok_distribution::build_runtime_extensions(registry).map_err(|error| {
+        Error::Message(format!(
+            "module runtime extension initialization failed: {error}"
+        ))
+    })?;
+    Ok(Arc::new(extensions))
+}
+
+pub fn build_shared_runtime_extensions_with_host_providers(
+    registry: &ModuleRegistry,
+    settings: &RustokSettings,
+    runtime_ctx: ServerRuntimeContext,
+    auth_config: AuthConfig,
+) -> Result<Arc<ModuleRuntimeExtensions>> {
+    let base = build_shared_runtime_extensions(registry, settings)?;
+    let mut extensions = Arc::try_unwrap(base).map_err(|_| {
+        Error::Message(
+            "module runtime extensions must remain uniquely owned during host provider registration"
+                .to_string(),
+        )
+    })?;
+    let db = runtime_ctx.db_clone();
+
+    #[cfg(all(feature = "mod-seo", feature = "mod-media"))]
+    if let Some(storage) = runtime_ctx.shared_get::<rustok_storage::StorageRuntime>() {
+        let provider: Arc<dyn rustok_media::MediaAssetReadPort> =
+            Arc::new(rustok_media::MediaService::new(db.clone(), storage));
+        extensions.insert(rustok_seo::SeoMediaAssetReadProvider::new(provider));
+    }
+
+    #[cfg(feature = "mod-media")]
+    if let Some(storage) = runtime_ctx.shared_get::<rustok_storage::StorageRuntime>() {
+        let provider = rustok_media::MediaTranslationTargetProvider::new(Arc::new(
+            rustok_media::MediaService::new(db.clone(), storage),
+        ));
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Media translation target provider registration failed: {error}"
+                ))
+            })?;
+    }
+
+    #[cfg(feature = "mod-taxonomy")]
+    {
+        let owner_registry = extensions
+            .get::<rustok_taxonomy::TaxonomyModuleTermTranslationOwnerRegistry>()
+            .cloned()
+            .unwrap_or_default();
+        let provider = rustok_taxonomy::TaxonomyTranslationTargetProvider::with_owner_registry(
+            Arc::new(rustok_taxonomy::TaxonomyService::new(db.clone())),
+            owner_registry,
+        );
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Taxonomy translation target provider registration failed: {error}"
+                ))
+            })?;
+    }
+
+    #[cfg(feature = "mod-blog")]
+    blog_public_comments_snapshot::register(&mut extensions, &runtime_ctx);
+
+    #[cfg(feature = "mod-navigation")]
+    {
+        let provider = rustok_navigation::NavigationMenuTranslationTargetProvider::new(Arc::new(
+            rustok_navigation::MenuService::new(db.clone()),
+        ));
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Navigation menu translation target provider registration failed: {error}"
+                ))
+            })?;
+    }
+
+    #[cfg(feature = "mod-pages")]
+    {
+        let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
+            rustok_outbox::OutboxTransport::new(db.clone()),
+        ));
+        let provider = rustok_pages::PagesMetadataTranslationTargetProvider::new(Arc::new(
+            rustok_pages::PageService::new(db.clone(), event_bus),
+        ));
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Pages metadata translation target provider registration failed: {error}"
+                ))
+            })?;
+    }
+
+    #[cfg(feature = "mod-product")]
+    {
+        let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
+            rustok_outbox::OutboxTransport::new(db.clone()),
+        ));
+        let service = Arc::new(rustok_product::CatalogService::new(
+            db.clone(),
+            event_bus.clone(),
+        ));
+        let schema_service = Arc::new(rustok_product::ProductCatalogSchemaService::new(
+            db.clone(),
+            event_bus,
+        ));
+        let provider = rustok_product::ProductTranslationTargetProvider::new(service.clone());
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Product translation target provider registration failed: {error}"
+                ))
+            })?;
+        let provider =
+            rustok_product::ProductVariantTranslationTargetProvider::new(service.clone());
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Product Variant translation target provider registration failed: {error}"
+                ))
+            })?;
+        let provider = rustok_product::ProductImageTranslationTargetProvider::new(service);
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Product Image translation target provider registration failed: {error}"
+                ))
+            })?;
+        let provider =
+            rustok_product::ProductCatalogSchemaService::attribute_translation_target_provider(
+                schema_service.clone(),
+            );
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Product Attribute translation target provider registration failed: {error}"
+                ))
+            })?;
+        let provider =
+            rustok_product::ProductCatalogSchemaService::attribute_schema_translation_target_provider(
+                schema_service.clone(),
+            );
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Product Attribute Schema translation target provider registration failed: {error}"
+                ))
+            })?;
+        let provider =
+            rustok_product::ProductCatalogSchemaService::category_form_translation_target_provider(
+                schema_service.clone(),
+            );
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Product Category Form translation target provider registration failed: {error}"
+                ))
+            })?;
+        let provider =
+            rustok_product::ProductCatalogSchemaService::attribute_value_translation_target_provider(
+                schema_service.clone(),
+            );
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Product Attribute Value translation target provider registration failed: {error}"
+                ))
+            })?;
+        let provider =
+            rustok_product::ProductCatalogSchemaService::category_seo_translation_target_provider(
+                schema_service.clone(),
+            );
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Product Category SEO translation target provider registration failed: {error}"
+                ))
+            })?;
+        let provider = rustok_product::ProductCatalogSchemaService::variant_attribute_value_translation_target_provider(
+            schema_service,
+        );
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Product Variant Attribute Value translation target provider registration failed: {error}"
+                ))
+            })?;
+    }
+
+    #[cfg(feature = "mod-commerce")]
+    {
+        let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
+            rustok_outbox::OutboxTransport::new(db.clone()),
+        ));
+        let service = Arc::new(
+            rustok_commerce::services::collection_translation::CollectionTranslationService::new(
+                db.clone(),
+                event_bus,
+            ),
+        );
+        let provider = rustok_commerce::CommerceCollectionTranslationTargetProvider::new(service);
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Commerce Collection translation target provider registration failed: {error}"
+                ))
+            })?;
+    }
+
+    #[cfg(feature = "mod-region")]
+    rustok_region::register_region_translation_target_provider(&mut extensions, db.clone())
+        .map_err(|error| {
+            Error::Message(format!(
+                "Region translation target provider registration failed: {error}"
+            ))
+        })?;
+
+    #[cfg(feature = "mod-inventory")]
+    rustok_inventory::register_stock_location_translation_target_provider(
+        &mut extensions,
+        db.clone(),
+    )
+    .map_err(|error| {
+        Error::Message(format!(
+            "Inventory Stock Location translation target provider registration failed: {error}"
+        ))
+    })?;
+
+    #[cfg(feature = "mod-pricing")]
+    rustok_pricing::register_price_list_translation_target_provider(&mut extensions, db.clone())
+        .map_err(|error| {
+            Error::Message(format!(
+                "Pricing translation target provider registration failed: {error}"
+            ))
+        })?;
+
+    #[cfg(feature = "mod-translation")]
+    {
+        let provider =
+            crate::static_settings_translation_target::StaticSettingsTranslationTargetProvider::new(
+                db.clone(),
+            );
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Static Settings translation target provider registration failed: {error}"
+                ))
+            })?;
+    }
+
+    #[cfg(feature = "mod-fulfillment")]
+    {
+        rustok_fulfillment::register_shipping_option_translation_target_provider(
+            &mut extensions,
+            db.clone(),
+        )
+        .map_err(|error| {
+            Error::Message(format!(
+                "Fulfillment Shipping Option translation target provider registration failed: {error}"
+            ))
+        })?;
+
+        let fulfillment_registry = runtime_ctx
+            .shared_get::<rustok_fulfillment::providers::FulfillmentProviderRegistry>()
+            .unwrap_or_else(|| {
+                let registry = rustok_fulfillment::providers::FulfillmentProviderRegistry::with_manual_provider();
+                runtime_ctx.shared_insert(registry.clone());
+                registry
+            });
+        extensions.insert(fulfillment_registry);
+    }
+
+    #[cfg(feature = "mod-marketplace_seller")]
+    rustok_marketplace_seller::register_marketplace_seller_translation_target_provider(
+        &mut extensions,
+        db.clone(),
+    )
+    .map_err(|error| {
+        Error::Message(format!(
+            "Marketplace Seller presentation translation target provider registration failed: {error}"
+        ))
+    })?;
+
+    #[cfg(feature = "commerce-marketplace-financial")]
+    {
+        let financial_runtime = runtime_ctx
+            .shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()
+            .unwrap_or_else(|| {
+                let runtime = rustok_commerce::MarketplaceFinancialRuntime::in_process(db.clone());
+                runtime_ctx.shared_insert(runtime.clone());
+                runtime
+            });
+        extensions.insert(financial_runtime.clone());
+
+        #[cfg(feature = "mod-payment")]
+        {
+            let observers = runtime_ctx
+                .shared_get::<rustok_payment::PaymentProviderEventObservers>()
+                .unwrap_or_else(|| {
+                    let observers = financial_runtime.payment_provider_event_observers(db.clone());
+                    runtime_ctx.shared_insert(observers.clone());
+                    observers
+                });
+            extensions.insert(observers);
+        }
+    }
+
+    let auth_admin_provider = Arc::new(
+        crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider::new(
+            db.clone(),
+        ),
+    );
+    let oauth_admin_provider = Arc::new(
+        crate::services::oauth_admin_guard::GuardedOAuthAdminProvider::new(
+            db.clone(),
+            auth_admin_provider.clone(),
+        ),
+    );
+    extensions.insert(OAuthAdminRuntime::new(oauth_admin_provider));
+    let user_admin_provider = Arc::new(
+        crate::services::user_admin_guard::GuardedUserAdminMutationProvider::new(
+            auth_admin_provider,
+        ),
+    );
+    extensions.insert(UserAdminMutationRuntime::new(user_admin_provider));
+    let auth_lifecycle_provider = Arc::new(
+        crate::services::auth_lifecycle_provider::ServerAuthLifecycleProvider::new(
+            runtime_ctx,
+            auth_config,
+        ),
+    );
+    extensions.insert(AuthLifecycleRuntime::new(auth_lifecycle_provider.clone()));
+    extensions.insert(AuthUserBackfillRuntime::new(auth_lifecycle_provider));
+    let mcp_management_provider = Arc::new(
+        crate::services::mcp_management_mutation_provider::ServerMcpManagementMutationProvider::new(
+            db.clone(),
+        ),
+    );
+    let mcp_management_provider = Arc::new(
+        crate::services::mcp_management_guard::GuardedMcpManagementProvider::new(
+            db.clone(),
+            mcp_management_provider,
+        ),
+    );
+    extensions.insert(McpManagementRuntime::new(mcp_management_provider));
+
+    #[cfg(all(feature = "mod-notifications", feature = "mod-profiles"))]
+    {
+        let policy = crate::services::notification_recipient_policy::ServerNotificationRecipientPolicy::compose(
+            db.clone(),
+            &extensions,
+        );
+        extensions.insert(policy);
+    }
+
+    #[cfg(feature = "mod-forum")]
+    {
+        #[cfg(feature = "mod-groups")]
+        let groups = Some(
+            crate::services::forum_audience_group_facts::ServerForumAudienceGroupFactsPort::shared(
+                db.clone(),
+            ),
+        );
+        #[cfg(not(feature = "mod-groups"))]
+        let groups = None;
+
+        let audience_facts =
+            crate::services::forum_audience_facts::ServerForumAudienceFactsPort::shared(
+                db.clone(),
+                groups,
+            );
+        let posting_policy_facts = crate::services::forum_posting_policy_facts::ServerForumPostingPolicyFactsComposer::shared(
+            db.clone(),
+            audience_facts.clone(),
+        )
+        .map_err(|error| {
+            Error::Message(format!(
+                "Forum posting policy fact composition failed: {}",
+                error.code
+            ))
+        })?;
+        extensions.insert(audience_facts);
+        extensions.insert(posting_policy_facts);
+    }
+
+    #[cfg(feature = "mod-forum")]
+    {
+        let recipient_context = crate::services::forum_notification_recipient_context::ServerForumNotificationRecipientContextPort::shared(
+            db.clone(),
+        );
+        extensions.insert(recipient_context);
+    }
+
+    #[cfg(feature = "mod-reactions")]
+    {
+        if rustok_reactions::api::reaction_subject_registry_from_extensions(&extensions).is_none() {
+            return Err(Error::Message(
+                "Reactions feature is selected but ReactionsModule is missing from ModuleRegistry"
+                    .to_string(),
+            ));
+        }
+        let host =
+            extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db.clone()));
+        rustok_reactions::api::materialize_reaction_subject_registry(&mut extensions, &host)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "reaction subject provider materialization failed: {error}"
+                ))
+            })?;
+    }
+
+    #[cfg(feature = "mod-moderation")]
+    {
+        if !registry.contains("moderation") {
+            return Err(Error::Message(
+                "Moderation feature is selected but ModerationModule is missing from ModuleRegistry"
+                    .to_string(),
+            ));
+        }
+        let host =
+            extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db.clone()));
+        rustok_moderation::materialize_moderation_subject_adapter_registry(&mut extensions, &host)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "moderation subject adapter materialization failed: {error}"
+                ))
+            })?;
+    }
+
+    #[cfg(feature = "mod-notifications")]
+    {
+        let host =
+            extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db.clone()));
+        rustok_notifications::api::materialize_notification_source_registry(&mut extensions, &host)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "notification source provider materialization failed: {error}"
+                ))
+            })?;
+    }
+
+    Ok(Arc::new(extensions))
+}
+
+pub fn build_module_event_dispatcher(
+    registry: &ModuleRegistry,
+    bus: EventBus,
+    db: DatabaseConnection,
+    extensions: &ModuleRuntimeExtensions,
+) -> EventDispatcher {
+    let listener_ctx = ModuleEventListenerContext { db, extensions };
+    let handlers = registry.build_event_listeners(&listener_ctx);
+    let mut dispatcher = EventDispatcher::with_config(
+        bus,
+        DispatcherConfig {
+            retry_count: 3,
+            retry_delay_ms: 500,
+            ..DispatcherConfig::default()
+        },
+    );
+
+    for handler in handlers {
+        dispatcher.register_boxed(handler);
+    }
+
+    dispatcher
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_module_event_dispatcher, build_shared_runtime_extensions,
+        build_shared_runtime_extensions_with_host_providers,
+    };
+    use crate::common::settings::RustokSettings;
+    use rustok_auth::AuthConfig;
+    use rustok_core::{EventBus, ModuleRegistry};
+    use rustok_index::IndexModule;
+    use rustok_search::SearchModule;
+    use sea_orm::Database;
+
+    #[tokio::test]
+    async fn build_module_event_dispatcher_collects_registry_owned_handlers() {
+        let registry = ModuleRegistry::new()
+            .register(IndexModule)
+            .register(SearchModule);
+        #[cfg(feature = "mod-workflow")]
+        let registry = registry.register(rustok_workflow::WorkflowModule);
+        let settings = RustokSettings::default();
+        let extensions = build_shared_runtime_extensions(&registry, &settings)
+            .expect("runtime extensions should initialize");
+
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite should connect");
+        let dispatcher =
+            build_module_event_dispatcher(&registry, EventBus::default(), db, extensions.as_ref());
+
+        let expected = if cfg!(feature = "mod-workflow") { 2 } else { 1 };
+        assert_eq!(dispatcher.handler_count(), expected);
+    }
+
+    #[tokio::test]
+    async fn host_runtime_extensions_register_admin_mutation_providers() {
+        let registry = ModuleRegistry::new();
+        #[cfg(feature = "mod-reactions")]
+        let registry = registry.register(rustok_reactions::ReactionsModule);
+        #[cfg(feature = "mod-moderation")]
+        let registry = registry.register(rustok_moderation::ModerationModule);
+        let settings = RustokSettings::default();
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite should connect");
+        let runtime_ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
+            db,
+            settings.clone(),
+        );
+        #[cfg(feature = "mod-media")]
+        let _media_storage_directory = {
+            let directory = tempfile::tempdir().expect("temporary Media storage should initialize");
+            let storage =
+                rustok_storage::StorageRuntime::local(&rustok_storage::LocalStorageConfig {
+                    base_dir: directory.path().display().to_string(),
+                    base_url: "/media".to_string(),
+                    fsync: false,
+                })
+                .expect("local Media storage runtime should initialize");
+            runtime_ctx.shared_insert(storage);
+            directory
+        };
+
+        let extensions = build_shared_runtime_extensions_with_host_providers(
+            &registry,
+            &settings,
+            runtime_ctx.clone(),
+            AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+        )
+        .expect("host runtime extensions should initialize");
+
+        assert!(extensions.contains::<rustok_auth::AuthLifecycleRuntime>());
+        assert!(extensions.contains::<rustok_auth::AuthUserBackfillRuntime>());
+        assert!(extensions.contains::<rustok_auth::OAuthAdminRuntime>());
+        assert!(extensions.contains::<rustok_auth::UserAdminMutationRuntime>());
+        assert!(extensions.contains::<rustok_mcp::McpManagementRuntime>());
+        #[cfg(feature = "mod-media")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "media"
+                        && descriptor.resource_kind.as_str() == "asset"
+                }))
+        );
+        #[cfg(feature = "mod-taxonomy")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "taxonomy"
+                        && descriptor.resource_kind.as_str() == "term"
+                }))
+        );
+        #[cfg(feature = "mod-blog")]
+        assert!(
+            !rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "blog"
+                        && descriptor.resource_kind.as_str() == "category"
+                }))
+        );
+        #[cfg(feature = "mod-navigation")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "navigation"
+                        && descriptor.resource_kind.as_str() == "menu"
+                }))
+        );
+        #[cfg(feature = "mod-pages")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "pages"
+                        && descriptor.resource_kind.as_str() == "page_metadata"
+                }))
+        );
+        #[cfg(feature = "mod-product")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "product"
+                        && descriptor.resource_kind.as_str() == "product"
+                }))
+        );
+        #[cfg(feature = "mod-product")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "product"
+                        && descriptor.resource_kind.as_str() == "variant"
+                }))
+        );
+        #[cfg(feature = "mod-product")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "product"
+                        && descriptor.resource_kind.as_str() == "option"
+                }))
+        );
+        #[cfg(feature = "mod-product")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "product"
+                        && descriptor.resource_kind.as_str() == "image"
+                }))
+        );
+        #[cfg(feature = "mod-product")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "product"
+                        && descriptor.resource_kind.as_str() == "attribute"
+                }))
+        );
+        #[cfg(feature = "mod-product")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "product"
+                        && descriptor.resource_kind.as_str() == "attribute_schema"
+                }))
+        );
+        #[cfg(feature = "mod-product")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "product"
+                        && descriptor.resource_kind.as_str() == "category_form"
+                }))
+        );
+        #[cfg(feature = "mod-product")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "product"
+                        && descriptor.resource_kind.as_str() == "attribute_value"
+                }))
+        );
+        #[cfg(feature = "mod-product")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "product"
+                        && descriptor.resource_kind.as_str() == "variant_attribute_value"
+                }))
+        );
+        #[cfg(feature = "mod-product")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "product"
+                        && descriptor.resource_kind.as_str() == "category_seo"
+                }))
+        );
+        #[cfg(feature = "mod-commerce")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "commerce"
+                        && descriptor.resource_kind.as_str() == "collection_copy"
+                }))
+        );
+        #[cfg(feature = "mod-inventory")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "inventory"
+                        && descriptor.resource_kind.as_str() == "stock_location_copy"
+                }))
+        );
+        #[cfg(feature = "mod-pricing")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "pricing"
+                        && descriptor.resource_kind.as_str() == "price_list_copy"
+                }))
+        );
+        #[cfg(feature = "mod-translation")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "modules"
+                        && descriptor.resource_kind.as_str() == "static_settings"
+                }))
+        );
+        #[cfg(feature = "mod-marketplace_seller")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "marketplace_seller"
+                        && descriptor.resource_kind.as_str() == "seller_presentation"
+                }))
+        );
+        #[cfg(feature = "mod-forum")]
+        assert!(extensions.contains::<rustok_forum::SharedForumNotificationRecipientContextPort>());
+        #[cfg(feature = "mod-forum")]
+        assert!(extensions.contains::<rustok_forum::SharedForumAudienceFactsPort>());
+        #[cfg(feature = "mod-forum")]
+        assert!(extensions.contains::<
+            crate::services::forum_posting_policy_facts::SharedForumPostingPolicyFactsComposer,
+        >());
+        #[cfg(feature = "mod-reactions")]
+        assert!(
+            rustok_reactions::api::reaction_subject_registry_from_extensions(extensions.as_ref())
+                .is_some()
+        );
+        #[cfg(feature = "mod-moderation")]
+        assert!(
+            rustok_moderation::moderation_subject_adapter_registry_from_extensions(
+                extensions.as_ref()
+            )
+            .is_some()
+        );
+        #[cfg(feature = "mod-notifications")]
+        assert!(
+            rustok_notifications::api::notification_source_registry_from_extensions(
+                extensions.as_ref()
+            )
+            .is_some()
+        );
+        #[cfg(all(feature = "mod-notifications", feature = "mod-profiles"))]
+        assert!(
+            extensions
+                .get::<rustok_notifications::NotificationRecipientPolicyRuntime>()
+                .is_some_and(|runtime| !runtime.candidate_worker_ready())
+        );
+        #[cfg(feature = "mod-fulfillment")]
+        {
+            assert!(
+                rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                    .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                        descriptor.owner_slug.as_str() == "fulfillment"
+                            && descriptor.resource_kind.as_str() == "shipping_option_copy"
+                    }))
+            );
+            assert!(
+                extensions.contains::<rustok_fulfillment::providers::FulfillmentProviderRegistry>()
+            );
+            assert!(
+                runtime_ctx
+                    .shared_get::<rustok_fulfillment::providers::FulfillmentProviderRegistry>()
+                    .is_some()
+            );
+        }
+        #[cfg(feature = "commerce-marketplace-financial")]
+        assert!(extensions.contains::<rustok_commerce::MarketplaceFinancialRuntime>());
+        #[cfg(all(feature = "commerce-marketplace-financial", feature = "mod-payment"))]
+        assert!(extensions.contains::<rustok_payment::PaymentProviderEventObservers>());
+    }
+}

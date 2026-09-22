@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1125" viewBox="0 0 1800 1125" role="img" aria-labelledby="title desc">
+  <title id="title">RusToK Monolith Deployment</title>
+  <desc id="desc">Monolith deployment with server, Leptos admin, Leptos storefront, FFA and FBA in-process boundaries.</desc>
+  <defs>
+    <style>.bg{fill:#f8fafc}.panel{fill:#fff;stroke:#d8dee8;stroke-width:2}.shell{fill:#e0f2fe;stroke:#0284c7;stroke-width:3}.ui{fill:#dcfce7;stroke:#16a34a;stroke-width:2}.transport{fill:#fef3c7;stroke:#d97706;stroke-width:2}.mod{fill:#eef2ff;stroke:#4f46e5;stroke-width:2}.infra{fill:#f1f5f9;stroke:#64748b;stroke-width:2}.ffa{fill:#ecfdf5;stroke:#10b981;stroke-width:2}.fba{fill:#fff7ed;stroke:#f97316;stroke-width:2}.text{font-family:Inter,Segoe UI,Arial,sans-serif;fill:#0f172a}.title{font-size:48px;font-weight:800}.sub{font-size:24px;fill:#475569}.h{font-size:28px;font-weight:800}.m{font-size:21px;font-weight:700}.s{font-size:18px;font-weight:500}.xs{font-size:15px;font-weight:500;fill:#475569}.line{stroke:#334155;stroke-width:3;fill:none;marker-end:url(#arrow)}.dash{stroke:#64748b;stroke-width:3;stroke-dasharray:8 8;fill:none;marker-end:url(#arrow)}.shadow{filter:url(#shadow)}</style>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0f172a" flood-opacity=".12"/></filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#334155"/></marker>
+  </defs>
+  <rect class="bg" width="1800" height="1125"/>
+  <text x="900" y="76" text-anchor="middle" class="text title">Deployment Profile 1: Monolith</text>
+  <text x="900" y="112" text-anchor="middle" class="sub">One process, same-origin runtime, zero HTTP between integrated Leptos surfaces and server functions</text>
+
+  <rect x="95" y="170" width="1610" height="720" rx="34" class="shell shadow"/>
+  <text x="135" y="225" class="text h">Single binary / single runtime: apps/server</text>
+  <text x="135" y="258" class="sub">Composition root, HTTP, GraphQL, auth, RBAC, tenant context, locale and lifecycle hooks</text>
+
+  <rect x="145" y="305" width="430" height="150" rx="24" class="ui"/>
+  <text x="360" y="360" text-anchor="middle" class="text m">Leptos Admin</text>
+  <text x="360" y="392" text-anchor="middle" class="text s">embedded SSR host</text>
+  <text x="360" y="420" text-anchor="middle" class="xs">apps/admin</text>
+
+  <rect x="615" y="305" width="430" height="150" rx="24" class="ui"/>
+  <text x="830" y="360" text-anchor="middle" class="text m">Leptos Storefront</text>
+  <text x="830" y="392" text-anchor="middle" class="text s">embedded SSR host</text>
+  <text x="830" y="420" text-anchor="middle" class="xs">apps/storefront</text>
+
+  <rect x="1085" y="305" width="540" height="150" rx="24" class="transport"/>
+  <text x="1355" y="360" text-anchor="middle" class="text m">Transport boundary</text>
+  <text x="1355" y="392" text-anchor="middle" class="text s">in-process Leptos #[server] calls</text>
+  <text x="1355" y="420" text-anchor="middle" class="xs">GraphQL and REST remain available externally</text>
+
+  <rect x="145" y="535" width="1480" height="185" rx="28" class="mod"/>
+  <text x="185" y="590" class="text h">Module-owned domains</text>
+  <text x="185" y="625" class="sub">Commerce, Product, Cart, Order, Payment, Fulfillment, Content, Pages, Blog, Forum, Media, SEO, Search, Index, Outbox</text>
+  <text x="185" y="665" class="text s">FBA mode: embedded modular monolith. Module services are in-process but still use canonical service contracts.</text>
+
+  <rect x="145" y="760" width="1480" height="82" rx="24" class="infra"/>
+  <text x="185" y="812" class="text s">Infrastructure: PostgreSQL, Redis / Cache, Meilisearch, Iggy Streaming, Object Storage, Telemetry</text>
+
+  <path d="M360 455 L360 535" class="line"/>
+  <path d="M830 455 L830 535" class="line"/>
+  <path d="M1355 455 L1355 535" class="line"/>
+
+  <rect x="95" y="930" width="760" height="120" rx="26" class="ffa"/>
+  <text x="135" y="978" class="text m">FFA effect</text>
+  <text x="135" y="1012" class="text s">The same module-owned UI can later run standalone or headless-adjacent without rewriting routes, state or UX logic.</text>
+  <rect x="945" y="930" width="760" height="120" rx="26" class="fba"/>
+  <text x="985" y="978" class="text m">FBA effect</text>
+  <text x="985" y="1012" class="text s">Modules stay in-process by default, but typed boundaries make remote extraction possible when there is an operational reason.</text>
+</svg>

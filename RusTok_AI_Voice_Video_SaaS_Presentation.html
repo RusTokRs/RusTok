@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>SaaS Платформа AI-Озвучки и ИИ-Дубляжа на базе RusTok</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+
+    @page {
+      size: 16in 9in;
+      margin: 0;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #07090E;
+      color: #E2E8F0;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      width: 16in;
+    }
+
+    .slide {
+      width: 16in;
+      height: 9in;
+      page-break-after: always;
+      break-after: page;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 3.5rem 4.5rem;
+      background: #07090E;
+      background-image: 
+        radial-gradient(circle at 85% 15%, rgba(6, 182, 212, 0.12) 0%, transparent 40%),
+        radial-gradient(circle at 15% 85%, rgba(139, 92, 246, 0.15) 0%, transparent 45%);
+    }
+
+    /* Slide Header */
+    .slide-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 1.25rem;
+    }
+
+    .slide-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #06B6D4;
+      font-weight: 600;
+      background: rgba(6, 182, 212, 0.1);
+      padding: 0.35rem 0.85rem;
+      border-radius: 6px;
+      border: 1px solid rgba(6, 182, 212, 0.2);
+    }
+
+    .slide-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 2.2rem;
+      font-weight: 700;
+      color: #FFFFFF;
+      letter-spacing: -0.5px;
+      margin-top: 0.4rem;
+    }
+
+    .slide-subtitle {
+      font-size: 1.05rem;
+      color: #94A3B8;
+      font-weight: 400;
+    }
+
+    /* Slide Body */
+    .slide-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 1.8rem 0;
+    }
+
+    /* Slide Footer */
+    .slide-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      padding-top: 1rem;
+      font-size: 0.85rem;
+      color: #64748B;
+    }
+
+    .slide-footer-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 600;
+      color: #94A3B8;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      background: #06B6D4;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    /* Grid Layouts */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1.75rem;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.25rem;
+    }
+
+    /* Cards */
+    .card {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 1.75rem;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    }
+
+    .card-glow {
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(30, 41, 59, 0.5) 100%);
+      border: 1px solid rgba(6, 182, 212, 0.25);
+      position: relative;
+    }
+
+    .card-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #F8FAFC;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .card-text {
+      font-size: 0.95rem;
+      color: #94A3B8;
+      line-height: 1.6;
+    }
+
+    /* Badges & Metrics */
+    .metric-number {
+      font-family: 'Outfit', sans-serif;
+      font-size: 3rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #38BDF8 0%, #818CF8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1;
+      margin-bottom: 0.5rem;
+    }
+
+    .metric-label {
+      font-size: 0.9rem;
+      color: #94A3B8;
+      font-weight: 500;
+    }
+
+    /* Flow Steps */
+    .flow-step {
+      background: rgba(15, 23, 42, 0.7);
+      border-left: 4px solid #06B6D4;
+      border-radius: 0 12px 12px 0;
+      padding: 1.2rem 1.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .flow-num {
+      font-family: 'JetBrains Mono', monospace;
+      color: #38BDF8;
+      font-size: 0.85rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+
+    /* Lists */
+    ul.feature-list {
+      list-style: none;
+    }
+
+    ul.feature-list li {
+      position: relative;
+      padding-left: 1.5rem;
+      margin-bottom: 0.75rem;
+      font-size: 0.95rem;
+      color: #CBD5E1;
+      line-height: 1.5;
+    }
+
+    ul.feature-list li::before {
+      content: "✦";
+      position: absolute;
+      left: 0;
+      color: #06B6D4;
+      font-size: 0.9rem;
+    }
+
+    /* Title Slide Specifics */
+    .title-slide {
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      background: radial-gradient(circle at 50% 40%, rgba(139, 92, 246, 0.2) 0%, rgba(6, 182, 212, 0.1) 35%, #07090E 70%);
+      padding: 4rem;
+    }
+
+    .title-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 0.5rem 1.25rem;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      color: #38BDF8;
+      font-weight: 600;
+      margin-bottom: 2rem;
+      letter-spacing: 1px;
+    }
+
+    .title-main {
+      font-family: 'Outfit', sans-serif;
+      font-size: 3.8rem;
+      font-weight: 800;
+      color: #FFFFFF;
+      line-height: 1.15;
+      letter-spacing: -1.5px;
+      margin-bottom: 1.5rem;
+      max-width: 1200px;
+    }
+
+    .title-main span {
+      background: linear-gradient(135deg, #38BDF8 0%, #A855F7 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .title-sub {
+      font-size: 1.35rem;
+      color: #94A3B8;
+      max-width: 850px;
+      line-height: 1.6;
+      margin-bottom: 3rem;
+    }
+
+    .meta-pills {
+      display: flex;
+      gap: 1.5rem;
+      justify-content: center;
+    }
+
+    .meta-pill {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 0.75rem 1.5rem;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      color: #CBD5E1;
+    }
+
+    .meta-pill strong {
+      color: #FFF;
+    }
+
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #38BDF8;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- SLIDE 1: COVER -->
+  <div class="slide title-slide">
+    <div class="title-badge">
+      <span class="dot"></span> ARCHITECTURAL PROPOSAL & BUSINESS VISION
+    </div>
+    <h1 class="title-main">SaaS Платформа <span>AI-Озвучки & ИИ-Дубляжа Видео</span></h1>
+    <p class="title-sub">Полнофункциональный мультимодальный AI-сервис с непрерывным сохранением контекста на базе высокопроизводительного Rust-ядра RusTok</p>
+    <div class="meta-pills">
+      <div class="meta-pill">Фундамент: <strong>RusTok Core & AI Engine</strong></div>
+      <div class="meta-pill">Архитектура: <strong>Rig 0.39 + RAG + S3 Media</strong></div>
+      <div class="meta-pill">Год: <strong>2026</strong></div>
+    </div>
+  </div>
+
+  <!-- SLIDE 2: MARKET OPPORTUNITY & PROBLEM -->
+  <div class="slide">
+    <div class="slide-header">
+      <div>
+        <div class="slide-tag">01 / АНАЛИЗ РЫНКА</div>
+        <h2 class="slide-title">Проблема и Рыночная Возможность</h2>
+      </div>
+      <div class="slide-subtitle">Почему текущие решения уступают платформе с контекстной памятью</div>
+    </div>
+
+    <div class="slide-body">
+      <div class="grid-3" style="margin-bottom: 2rem;">
+        <div class="card">
+          <div class="metric-number">+38%</div>
+          <div class="metric-label">Ежегодный рост рынка AI Voice & Video Localization (CAGR)</div>
+        </div>
+        <div class="card">
+          <div class="metric-number">10x</div>
+          <div class="metric-label">Экономия бюджета по сравнению с дубляжом в классической студии</div>
+        </div>
+        <div class="card">
+          <div class="metric-number">&lt; 3 сек</div>
+          <div class="metric-label">Целевая задержка синтеза речи в режиме Realtime Streaming</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card" style="border-left: 4px solid #EF4444;">
+          <div class="card-title" style="color: #F87171;">⚠️ Проблемы существующего рынка</div>
+          <ul class="feature-list">
+            <li><strong>Потеря контекста между сессиями:</strong> Обычные TTS сервисы генерируют каждую фразу с нуля, меняя тембр и произношение.</li>
+            <li><strong>Сложности с хронометражем при дубляже:</strong> Переведенный текст на 20-30% длиннее оригинала, ломая синхронизацию с видео.</li>
+            <li><strong>Высокая стоимость и фрагментация:</strong> Отдельные сервисы для текста, аудио, перевода и хранения.</li>
+          </ul>
+        </div>
+
+        <div class="card card-glow" style="border-left: 4px solid #10B981;">
+          <div class="card-title" style="color: #34D399;">💡 Наше Решение на RusTok</div>
+          <ul class="feature-list">
+            <li><strong>Непрерывная RAG-память:</strong> Единая "библия проекта" и словарь правил гарантируют стабильность голоса и терминов.</li>
+            <li><strong>Умная адаптация длины фраз:</strong> AI-оркестратор подгоняет перевод под точные таймкоды исходника.</li>
+            <li><strong>Единая экосистема:</strong> Контекст + Озвучка + Видео + Биллинг в одной модульной Rust-системе.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div class="slide-footer-brand"><span class="dot"></span> RusTok Platform</div>
+      <div>Слайд 2 из 9</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 3: RUSTOK FOUNDATION -->
+  <div class="slide">
+    <div class="slide-header">
+      <div>
+        <div class="slide-tag">02 / АРХИТЕКТУРА РУСТОК</div>
+        <h2 class="slide-title">Ядро RusTok как Готовый Фундамент</h2>
+      </div>
+      <div class="slide-subtitle">Использование более 70% готовых платформенных сервисов без написания кода с нуля</div>
+    </div>
+
+    <div class="slide-body">
+      <div class="grid-4">
+        <div class="card card-glow">
+          <div class="card-title" style="color: #38BDF8;">🧠 rustok-ai</div>
+          <div class="card-text">
+            - Оркестратор на Rig 0.39<br>
+            - RAG дата-плейн (Athanor/PostgreSQL)<br>
+            - Таблицы сессий и сообщений<br>
+            - GraphQL Subscriptions streaming
+          </div>
+        </div>
+
+        <div class="card card-glow">
+          <div class="card-title" style="color: #A855F7;">📁 rustok-media</div>
+          <div class="card-text">
+            - Прямая работа с S3 / object_store<br>
+            - HLS / DASH стриминг потоков<br>
+            - Хранение видео и аудио ассетов<br>
+            - REST/gRPC транспортный слой
+          </div>
+        </div>
+
+        <div class="card card-glow">
+          <div class="card-title" style="color: #34D399;">🌐 i18n Core Engine</div>
+          <div class="card-text">
+            - Нативная схема <code>base + translations</code><br>
+            - Управление tenant_locales<br>
+            - Мультиязычные метаданные<br>
+            - Автоматический цепочечный фолбэк
+          </div>
+        </div>
+
+        <div class="card card-glow">
+          <div class="card-title" style="color: #F59E0B;">💳 rustok-order / cart</div>
+          <div class="card-text">
+            - Готовая мультиарендность<br>
+            - Биллинг подписок и минут<br>
+            - Управление API-ключами<br>
+            - Права доступа и роли
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 1.5rem; background: rgba(30, 41, 59, 0.4);">
+        <div class="card-title" style="font-size: 1.05rem;">🚀 Асинхронное масштабирование тяжелых задач</div>
+        <div class="card-text">
+          Платформа включает высокопроизводительную событийно-ориентированную шину на базе <strong>Iggy / MessagePack</strong> и изолированные исполняемые среды <strong>rustok-sandbox</strong>, идеально подходящие для фонового извлечения звука, генерации спектрограмм и AI-рендеринга.
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div class="slide-footer-brand"><span class="dot"></span> RusTok Platform</div>
+      <div>Слайд 3 из 9</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 4: 3 LAYERS OF CONTEXT -->
+  <div class="slide">
+    <div class="slide-header">
+      <div>
+        <div class="slide-tag">03 / ИИ И КОНТЕКСТ</div>
+        <h2 class="slide-title">Трехуровневая Система Памяти Контекста</h2>
+      </div>
+      <div class="slide-subtitle">Как система обеспечивает идеальную точность тональности и произношения</div>
+    </div>
+
+    <div class="slide-body">
+      <div class="grid-3">
+        <div class="card" style="border-top: 4px solid #38BDF8;">
+          <div class="card-title" style="color: #38BDF8;">1. Сессионный контекст</div>
+          <div class="slide-subtitle" style="margin-bottom: 1rem;">Short-Term Session Memory</div>
+          <ul class="feature-list">
+            <li>История взаимодействия в <code>ai_chat_sessions</code>.</li>
+            <li>Сохранение оперативных правок ("сделай паузу", "озвучь более эмоционально").</li>
+            <li>Динамическое управление окном токенов.</li>
+          </ul>
+        </div>
+
+        <div class="card" style="border-top: 4px solid #A855F7;">
+          <div class="card-title" style="color: #A855F7;">2. Долгосрочный RAG</div>
+          <div class="slide-subtitle" style="margin-bottom: 1rem;">Long-Term Knowledge Memory</div>
+          <ul class="feature-list">
+            <li>Векторное хранилище в PostgreSQL (Athanor).</li>
+            <li>"Библия проекта", характеры персонажей, сюжетный контекст предшествующих глав.</li>
+            <li>Автоматический контекстный поиск перед синтезом.</li>
+          </ul>
+        </div>
+
+        <div class="card" style="border-top: 4px solid #34D399;">
+          <div class="card-title" style="color: #34D399;">3. Голосовой профиль</div>
+          <div class="slide-subtitle" style="margin-bottom: 1rem;">Speaker & Lexicon Profile</div>
+          <ul class="feature-list">
+            <li>Пользовательские словари ударений и исключений (IPA/Lexicon).</li>
+            <li>Эмбеддинги клонированного голоса.</li>
+            <li>Стилевые промпты тембра и эмоциональных выражений.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card card-glow" style="margin-top: 1.5rem; text-align: center; padding: 1.25rem;">
+        <span style="color: #38BDF8; font-weight: 600;">Результат:</span> Полное отсутствие "сброса памяти" диктора при озвучке длинных серий видео или многотомных аудиокниг.
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div class="slide-footer-brand"><span class="dot"></span> RusTok Platform</div>
+      <div>Слайд 4 из 9</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 5: DUBBING PIPELINE -->
+  <div class="slide">
+    <div class="slide-header">
+      <div>
+        <div class="slide-tag">04 / ПАЙПЛАЙН ДУБЛЯЖА</div>
+        <h2 class="slide-title">Сквозной Процесс ИИ-Локализации Видео</h2>
+      </div>
+      <div class="slide-subtitle">Шесть шагов от загрузки видео до генерации мульти-аудио HLS потока</div>
+    </div>
+
+    <div class="slide-body">
+      <div class="grid-3" style="gap: 1.25rem;">
+        <div class="flow-step">
+          <div class="flow-num">ШАГ 01</div>
+          <div style="font-weight: 700; color: #FFF; margin-bottom: 0.3rem;">Upload & Demux</div>
+          <div style="font-size: 0.85rem; color: #94A3B8;">Загрузка видеофайла в <code>rustok-media</code> и фоновое извлечение оригинального аудио.</div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">ШАГ 02</div>
+          <div style="font-weight: 700; color: #FFF; margin-bottom: 0.3rem;">Speech-to-Text</div>
+          <div style="font-size: 0.85rem; color: #94A3B8;">Транскрибация речи (Whisper/Deepgram) с точными пословными таймкодами.</div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">ШАГ 03</div>
+          <div style="font-weight: 700; color: #FFF; margin-bottom: 0.3rem;">AI Context Translation</div>
+          <div style="font-size: 0.85rem; color: #94A3B8;">Перевод через LLM с контролем длины фраз (Time-matching) и проверкой по RAG.</div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">ШАГ 04</div>
+          <div style="font-weight: 700; color: #FFF; margin-bottom: 0.3rem;">Multilingual Voice TTS</div>
+          <div style="font-size: 0.85rem; color: #94A3B8;">Синтез речи с клонированием голоса оригинала на N целевых языков.</div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">ШАГ 05</div>
+          <div style="font-weight: 700; color: #FFF; margin-bottom: 0.3rem;">Time Alignment & Lip-Sync</div>
+          <div style="font-size: 0.85rem; color: #94A3B8;">Подгонка таймингов звука или визуальная перерисовка движения губ (Lip-Sync).</div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">ШАГ 06</div>
+          <div style="font-weight: 700; color: #FFF; margin-bottom: 0.3rem;">Multi-Track Packaging</div>
+          <div style="font-size: 0.85rem; color: #94A3B8;">Сборка итогового HLS/DASH видео с возможностью переключения языков в плеере.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div class="slide-footer-brand"><span class="dot"></span> RusTok Platform</div>
+      <div>Слайд 5 из 9</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 6: NEW MODULE RUSTOK-VOICE -->
+  <div class="slide">
+    <div class="slide-header">
+      <div>
+        <div class="slide-tag">05 / РАЗРАБОТКА</div>
+        <h2 class="slide-title">Новый Специализированный Модуль <code>rustok-voice</code></h2>
+      </div>
+      <div class="slide-subtitle">Целевое расширение экосистемы RusTok для работы со звуком</div>
+    </div>
+
+    <div class="slide-body">
+      <div class="grid-2">
+        <div class="card card-glow">
+          <div class="card-title" style="color: #38BDF8;">🎙️ Функциональные Обязанности Модуля</div>
+          <ul class="feature-list">
+            <li><strong>TTS & STT Abstraction Layer:</strong> Единый trait-интерфейс для ElevenLabs, Cartesia, PlayHT и локальных Kokoro/CosyVoice моделей.</li>
+            <li><strong>Phoneme & Lexicon Engine:</strong> Обработка фонетических правил, ударений и SSML-разметки пауз.</li>
+            <li><strong>Audio Processing Pipeline:</strong> Сведение дикторского голоса с фоновой музыкой и эффектами.</li>
+            <li><strong>Voice Cloning Management:</strong> Управление емкостью голосовых слепков арендаторов.</li>
+          </ul>
+        </div>
+
+        <div class="card card-glow">
+          <div class="card-title" style="color: #A855F7;">⚙️ Технический Стек</div>
+          <ul class="feature-list">
+            <li><strong>Backend:</strong> Rust (Tokio, Tonic gRPC, Axum) для сверхбыстрой обработки потоков.</li>
+            <li><strong>AI Runner:</strong> Rig 0.39 + ONNX Runtime / PyTorch sidecars через gRPC.</li>
+            <li><strong>Media Engine:</strong> FFmpeg bindings + Rust native audio decoders.</li>
+            <li><strong>Frontend Packages:</strong> Leptos SSR/Wasm & Next.js UI пакеты в концепции FFA (Fluid Frontend).</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div class="slide-footer-brand"><span class="dot"></span> RusTok Platform</div>
+      <div>Слайд 6 из 9</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 7: BUSINESS MODEL & MONETIZATION -->
+  <div class="slide">
+    <div class="slide-header">
+      <div>
+        <div class="slide-tag">06 / МОНЕТИЗАЦИЯ</div>
+        <h2 class="slide-title">Бизнес-Модель и Тарификация</h2>
+      </div>
+      <div class="slide-subtitle">Гибкие источники выручки для различных сегментов клиентов</div>
+    </div>
+
+    <div class="slide-body">
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-title" style="color: #38BDF8;">1. Creator Plan</div>
+          <div class="metric-number" style="font-size: 2.2rem; margin-bottom: 0.2rem;">$29 / мес</div>
+          <div class="slide-subtitle" style="margin-bottom: 1rem;">Блогеры & Контент-мейкеры</div>
+          <ul class="feature-list" style="font-size: 0.85rem;">
+            <li>До 60 минут озвучки/дубляжа в месяц</li>
+            <li>3 клонированных голоса</li>
+            <li>Базовый RAG-контекст</li>
+            <li>Поддержка 15 языков</li>
+          </ul>
+        </div>
+
+        <div class="card card-glow">
+          <div class="card-title" style="color: #A855F7;">2. Business & EdTech</div>
+          <div class="metric-number" style="font-size: 2.2rem; margin-bottom: 0.2rem;">$199 / мес</div>
+          <div class="slide-subtitle" style="margin-bottom: 1rem;">Образование & Онлайн-школы</div>
+          <ul class="feature-list" style="font-size: 0.85rem;">
+            <li>До 500 минут дубляжа в месяц</li>
+            <li>Неограниченные голоса</li>
+            <li>Расширенная RAG-память курсов</li>
+            <li>Авто-синхронизация губ (Lip-Sync)</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title" style="color: #34D399;">3. Enterprise & API</div>
+          <div class="metric-number" style="font-size: 2.2rem; margin-bottom: 0.2rem;">Custom / Pay-as-you-go</div>
+          <div class="slide-subtitle" style="margin-bottom: 1rem;">Медиа-холдинги & Платформы</div>
+          <ul class="feature-list" style="font-size: 0.85rem;">
+            <li>Оплата за минуту / 1000 символов</li>
+            <li>On-premise / Private Cloud</li>
+            <li>Выделенные GPU-воркеры</li>
+            <li>SLA 99.9% и кастомные модели</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div class="slide-footer-brand"><span class="dot"></span> RusTok Platform</div>
+      <div>Слайд 7 из 9</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 8: ROADMAP -->
+  <div class="slide">
+    <div class="slide-header">
+      <div>
+        <div class="slide-tag">07 / ДОРОЖНАЯ КАРТА</div>
+        <h2 class="slide-title">План Реализации (Roadmap)</h2>
+      </div>
+      <div class="slide-subtitle">Поэтапный ввод в эксплуатацию за 3 фазы</div>
+    </div>
+
+    <div class="slide-body">
+      <div class="grid-3">
+        <div class="card" style="border-left: 4px solid #38BDF8;">
+          <div class="slide-tag" style="margin-bottom: 0.5rem;">ФАЗА 1 (1-2 МЕС)</div>
+          <div class="card-title">Voice Core MVP</div>
+          <ul class="feature-list" style="font-size: 0.85rem;">
+            <li>Создание модуля <code>rustok-voice</code>.</li>
+            <li>Подключение ElevenLabs / OpenAI Audio.</li>
+            <li>Сессионный контекст и базовый RAG слов.</li>
+            <li>Запуск личного кабинета диктора.</li>
+          </ul>
+        </div>
+
+        <div class="card" style="border-left: 4px solid #A855F7;">
+          <div class="slide-tag" style="margin-bottom: 0.5rem; background: rgba(168, 85, 247, 0.1); color: #C084FC; border-color: rgba(168, 85, 247, 0.2);">ФАЗА 2 (3-4 МЕС)</div>
+          <div class="card-title">Video Dubbing Engine</div>
+          <ul class="feature-list" style="font-size: 0.85rem;">
+            <li>Пайплайн извлечения и сборки видео.</li>
+            <li>Интеграция STT (Whisper).</li>
+            <li>Time-matching алгоритм подгона фраз.</li>
+            <li>HLS мульти-аудио плеер.</li>
+          </ul>
+        </div>
+
+        <div class="card" style="border-left: 4px solid #34D399;">
+          <div class="slide-tag" style="margin-bottom: 0.5rem; background: rgba(52, 211, 153, 0.1); color: #34D399; border-color: rgba(52, 211, 153, 0.2);">ФАЗА 3 (5-6 МЕС)</div>
+          <div class="card-title">Enterprise & Lip-Sync</div>
+          <ul class="feature-list" style="font-size: 0.85rem;">
+            <li>AI Lip-Sync визуальная подгонка.</li>
+            <li>Локальные GPU-воркеры (Kokoro/CosyVoice).</li>
+            <li>B2B подписки и биллинг API.</li>
+            <li>Релиз мобильных UI (Flutter).</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div class="slide-footer-brand"><span class="dot"></span> RusTok Platform</div>
+      <div>Слайд 8 из 9</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 9: SUMMARY -->
+  <div class="slide title-slide" style="background: radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.15) 0%, #07090E 75%);">
+    <div class="title-badge" style="border-color: rgba(52, 211, 153, 0.3); color: #34D399;">
+      <span class="dot" style="background: #34D399;"></span> READY TO LAUNCH
+    </div>
+    <h1 class="title-main" style="font-size: 3.2rem;">RusTok — <span>Идеальный Ускоритель</span> для AI SaaS</h1>
+    <p class="title-sub" style="font-size: 1.15rem; max-width: 900px;">
+      Наличие готовности ядра на 70%+ позволяет сократить Time-to-Market с 12 месяцев до 2 месяцев, фокусируясь исключительно на ценности продукта для клиентов.
+    </p>
+    <div style="font-size: 1.1rem; color: #FFF; font-weight: 600; margin-top: 1rem;">
+      Готовы переходить к проектированию модуля <code>rustok-voice</code>!
+    </div>
+  </div>
+
+</body>
+</html>

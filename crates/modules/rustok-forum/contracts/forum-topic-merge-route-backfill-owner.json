@@ -1,0 +1,65 @@
+{
+  "task": "FORUM-24E",
+  "owner": "rustok-forum",
+  "command": "ForumTopicMergeRouteBackfillService::backfill_merge_route_aliases",
+  "input": {
+    "type": "BackfillForumTopicMergeRouteAliasesInput",
+    "fields": ["cursor", "limit"],
+    "cursor": {
+      "type": "ForumTopicMergeRouteBackfillCursor",
+      "fields": ["merged_at", "operation_id"],
+      "order": ["merged_at_ascending", "operation_id_ascending"]
+    },
+    "minimum_limit": 1,
+    "maximum_limit": 100
+  },
+  "authorization": {
+    "resource": "forum_topics",
+    "action": "manage"
+  },
+  "source": {
+    "table": "forum_topic_merge_operations",
+    "tenant_scoped": true,
+    "immutable_receipts": true,
+    "page_index": "idx_forum_topic_merge_operations_route_backfill"
+  },
+  "write_policy": {
+    "delegates_to": "ForumTopicRouteService::record_merge_redirect_aliases_in_tx",
+    "single_page_transaction": true,
+    "append_only_aliases": true,
+    "exact_page_replay_idempotent": true,
+    "existing_exact_alias_is_verified": true,
+    "payload_drift_fails_closed": true,
+    "new_merges_already_compose_aliases": true
+  },
+  "locale_policy": {
+    "source": "every_non_empty_source_translation_slug",
+    "target_precedence": [
+      "exact_source_locale",
+      "platform_fallback_locale",
+      "lexicographically_first_target_locale"
+    ],
+    "routed_source_without_target_route": "fail_closed"
+  },
+  "output": {
+    "type": "ForumTopicMergeRouteBackfillResult",
+    "fields": [
+      "processed_operation_count",
+      "ensured_alias_count",
+      "next_cursor",
+      "exhausted"
+    ],
+    "ensured_alias_count_semantics": "inserted_or_exactly_verified_routes"
+  },
+  "out_of_scope": [
+    "delete-history recovery after localized rows were removed",
+    "category routes",
+    "REST transport",
+    "GraphQL transport",
+    "admin UI",
+    "storefront mounting",
+    "hreflang and SEO publication policy",
+    "runtime evidence"
+  ],
+  "validation_status": "source_ready_maintainer_execution_pending"
+}

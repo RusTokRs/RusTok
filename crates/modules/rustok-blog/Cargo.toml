@@ -1,0 +1,48 @@
+[package]
+name = "rustok-blog"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-graphql = { workspace = true, features = ["dataloader"] }
+async-trait.workspace = true
+axum.workspace = true
+chrono.workspace = true
+proptest = { workspace = true, optional = true }
+rustok-api = { workspace = true, features = ["server"] }
+rustok-channel.workspace = true
+rustok-comments = { workspace = true, features = ["server"] }
+rustok-content.workspace = true
+rustok-core.workspace = true
+rustok-events.workspace = true
+rustok-outbox.workspace = true
+rustok-profiles.workspace = true
+rustok-reactions-api = { path = "../rustok-reactions-api" }
+rustok-seo-targets.workspace = true
+rustok-translation-targets.workspace = true
+rustok-taxonomy.workspace = true
+rustok-telemetry.workspace = true
+rustok-web.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+utoipa = { workspace = true, features = ["uuid", "chrono"] }
+url = "2.5"
+uuid.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+rustok-test-utils.workspace = true
+tokio.workspace = true
+
+[features]
+default = []
+comment-assets = []
+proptest = ["dep:proptest"]

@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package rustok.verification.v1;
+
+// The JSON body is the canonical serialized form of the versioned, Rust-owned
+// TrustVerificationRequest/TrustVerificationDecision contract. Protobuf owns
+// framing, method identity, deadlines, and status semantics only.
+service VerificationService {
+  rpc Verify(VerifyRequest) returns (VerifyResponse);
+  // This endpoint is intentionally served on the same mutually authenticated
+  // listener as verification. A successful response means the worker has
+  // completed its fail-closed startup validation and is accepting requests.
+  rpc GetReadiness(ReadinessRequest) returns (ReadinessResponse);
+}
+
+message VerifyRequest {
+  bytes trust_verification_request_json = 1;
+}
+
+message VerifyResponse {
+  bytes trust_verification_decision_json = 1;
+}
+
+message ReadinessRequest {}
+
+message ReadinessResponse {
+  bool ready = 1;
+}

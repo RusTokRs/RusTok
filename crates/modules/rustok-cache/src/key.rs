@@ -1,0 +1,436 @@
+use sha2::{Digest, Sha256};
+
+const MAX_SAFE_COMPONENT_BYTES: usize = 96;
+const MAX_CACHE_KEY_BYTES: usize = 512;
+pub const MAX_CACHE_IDENTITY_BYTES: usize = 64 * 1024;
+pub const MAX_CACHE_KEY_INPUT_BYTES: usize = 8 * 1024;
+pub const MAX_CACHE_KEY_DYNAMIC_COMPONENTS: usize = 128;
+
+/// Canonical builder for versioned, tenant-aware cache keys.
+///
+/// Fixed namespace components are validated strictly. Dynamic identity components are
+/// type-tagged so positional, named and explicitly hashed identities cannot collapse to the same
+/// component sequence. Values remain readable when they are short and safe; otherwise they are
+/// replaced by a SHA-256 digest so user-controlled input cannot create ambiguous or unbounded
+/// Redis keys.
+///
+/// Dynamic identities are rejected before hashing when they exceed [`MAX_CACHE_IDENTITY_BYTES`].
+/// The builder also limits the aggregate canonical input and logical identity count, preventing an
+/// unbounded number of individually valid identities from creating excessive intermediate
+/// allocations in [`CacheKeyBuilder::build`].
+#[derive(Debug, Clone)]
+pub struct CacheKeyBuilder {
+    fixed_prefix: Vec<String>,
+    components: Vec<String>,
+    input_bytes: usize,
+    identity_count: usize,
+}
+
+impl CacheKeyBuilder {
+    pub fn new(
+        service: impl Into<String>,
+        environment: impl Into<String>,
+        tenant_or_global: impl Into<String>,
+        domain: impl Into<String>,
+        schema_version: impl Into<String>,
+        resource: impl Into<String>,
+    ) -> Result<Self, CacheKeyError> {
+        let fixed_prefix = [
+            ("service", service.into()),
+            ("environment", environment.into()),
+            ("tenant_or_global", tenant_or_global.into()),
+            ("domain", domain.into()),
+            ("schema_version", schema_version.into()),
+            ("resource", resource.into()),
+        ]
+        .into_iter()
+        .map(|(name, value)| validate_fixed_component(name, value))
+        .collect::<Result<Vec<_>, _>>()?;
+        let input_bytes = joined_len(&fixed_prefix);
+
+        Ok(Self {
+            fixed_prefix,
+            components: Vec::new(),
+            input_bytes,
+            identity_count: 0,
+        })
+    }
+
+    /// Add a positional dynamic identity component.
+    ///
+    /// Empty and oversized identities are rejected. Safe ASCII components remain readable; all
+    /// other values are represented as `h-<sha256>`. The `i` tag distinguishes this operation from
+    /// named and explicitly hashed identities.
+    pub fn identity(self, value: impl AsRef<[u8]>) -> Result<Self, CacheKeyError> {
+        self.push_identity(["i".to_string(), canonical_identity(value.as_ref())?])
+    }
+
+    /// Add a named identity component while retaining the field name in the key.
+    ///
+    /// The leading `n` tag prevents a named pair from colliding with two positional identities.
+    pub fn named_identity(
+        self,
+        name: impl Into<String>,
+        value: impl AsRef<[u8]>,
+    ) -> Result<Self, CacheKeyError> {
+        let name = validate_fixed_component("identity_name", name.into())?;
+        let value = canonical_identity(value.as_ref())?;
+        self.push_identity(["n".to_string(), name, value])
+    }
+
+    /// Always hash a dynamic component, including binary input or canonical query bytes.
+    ///
+    /// The leading `h` tag keeps explicit hashing distinct from a readable positional identity that
+    /// happens to look like a digest.
+    pub fn hashed(self, value: impl AsRef<[u8]>) -> Result<Self, CacheKeyError> {
+        let value = value.as_ref();
+        validate_identity_size(value)?;
+        self.push_identity(["h".to_string(), sha256_hex(value)])
+    }
+
+    pub fn build(self) -> String {
+        let fixed_prefix = self.fixed_prefix.join(":");
+        let mut all = self.fixed_prefix;
+        all.extend(self.components);
+        let key = all.join(":");
+        if key.len() <= MAX_CACHE_KEY_BYTES {
+            return key;
+        }
+
+        let hashed = format!("key-h-{}", sha256_hex(key.as_bytes()));
+        let namespaced = format!("{fixed_prefix}:{hashed}");
+        if namespaced.len() <= MAX_CACHE_KEY_BYTES {
+            namespaced
+        } else {
+            // All fixed components are individually bounded, but their combined length can still
+            // exceed the total key budget. Hash the complete canonical input rather than returning
+            // an oversized key or truncating namespace bytes ambiguously.
+            hashed
+        }
+    }
+
+    fn push_identity<const N: usize>(
+        mut self,
+        additional: [String; N],
+    ) -> Result<Self, CacheKeyError> {
+        let next_count = self.identity_count.saturating_add(1);
+        if next_count > MAX_CACHE_KEY_DYNAMIC_COMPONENTS {
+            return Err(CacheKeyError::TooManyDynamicComponents {
+                count: next_count,
+                maximum: MAX_CACHE_KEY_DYNAMIC_COMPONENTS,
+            });
+        }
+
+        // Every appended physical component also adds one separator because the fixed prefix is
+        // non-empty.
+        let added_bytes = additional
+            .iter()
+            .try_fold(N, |total, component| total.checked_add(component.len()));
+        let next_input_bytes = added_bytes
+            .and_then(|added| self.input_bytes.checked_add(added))
+            .unwrap_or(usize::MAX);
+        if next_input_bytes > MAX_CACHE_KEY_INPUT_BYTES {
+            return Err(CacheKeyError::KeyInputTooLong {
+                length: next_input_bytes,
+                maximum: MAX_CACHE_KEY_INPUT_BYTES,
+            });
+        }
+
+        self.components.extend(additional);
+        self.input_bytes = next_input_bytes;
+        self.identity_count = next_count;
+        Ok(self)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CacheKeyError {
+    EmptyFixedComponent {
+        name: &'static str,
+    },
+    InvalidFixedComponent {
+        name: &'static str,
+        value: String,
+    },
+    FixedComponentTooLong {
+        name: &'static str,
+        length: usize,
+        maximum: usize,
+    },
+    EmptyIdentity,
+    IdentityTooLong {
+        length: usize,
+        maximum: usize,
+    },
+    TooManyDynamicComponents {
+        count: usize,
+        maximum: usize,
+    },
+    KeyInputTooLong {
+        length: usize,
+        maximum: usize,
+    },
+}
+
+impl std::fmt::Display for CacheKeyError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyFixedComponent { name } => {
+                write!(formatter, "cache key component `{name}` must not be empty")
+            }
+            Self::InvalidFixedComponent { name, value } => write!(
+                formatter,
+                "cache key component `{name}` contains unsupported characters: {value:?}"
+            ),
+            Self::FixedComponentTooLong {
+                name,
+                length,
+                maximum,
+            } => write!(
+                formatter,
+                "cache key component `{name}` is {length} bytes; maximum is {maximum}"
+            ),
+            Self::EmptyIdentity => write!(formatter, "cache key identity must not be empty"),
+            Self::IdentityTooLong { length, maximum } => write!(
+                formatter,
+                "cache key identity is {length} bytes; maximum is {maximum}"
+            ),
+            Self::TooManyDynamicComponents { count, maximum } => write!(
+                formatter,
+                "cache key has {count} dynamic components; maximum is {maximum}"
+            ),
+            Self::KeyInputTooLong { length, maximum } => write!(
+                formatter,
+                "cache key canonical input is {length} bytes; maximum is {maximum}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for CacheKeyError {}
+
+fn validate_fixed_component(name: &'static str, value: String) -> Result<String, CacheKeyError> {
+    if value.is_empty() {
+        return Err(CacheKeyError::EmptyFixedComponent { name });
+    }
+    if value.len() > MAX_SAFE_COMPONENT_BYTES {
+        return Err(CacheKeyError::FixedComponentTooLong {
+            name,
+            length: value.len(),
+            maximum: MAX_SAFE_COMPONENT_BYTES,
+        });
+    }
+    if !is_safe_component(value.as_bytes()) {
+        return Err(CacheKeyError::InvalidFixedComponent { name, value });
+    }
+    Ok(value)
+}
+
+fn validate_identity_size(value: &[u8]) -> Result<(), CacheKeyError> {
+    if value.is_empty() {
+        return Err(CacheKeyError::EmptyIdentity);
+    }
+    if value.len() > MAX_CACHE_IDENTITY_BYTES {
+        return Err(CacheKeyError::IdentityTooLong {
+            length: value.len(),
+            maximum: MAX_CACHE_IDENTITY_BYTES,
+        });
+    }
+    Ok(())
+}
+
+fn canonical_identity(value: &[u8]) -> Result<String, CacheKeyError> {
+    validate_identity_size(value)?;
+
+    if value.len() <= MAX_SAFE_COMPONENT_BYTES && is_safe_component(value) {
+        // INVARIANT: is_safe_component ensures only [a-z0-9-_], guaranteed ASCII and valid UTF-8.
+        if let Ok(safe_str) = std::str::from_utf8(value) {
+            return Ok(safe_str.to_string());
+        }
+    }
+
+    Ok(format!("h-{}", sha256_hex(value)))
+}
+
+fn joined_len(components: &[String]) -> usize {
+    components
+        .iter()
+        .map(String::len)
+        .sum::<usize>()
+        .saturating_add(components.len().saturating_sub(1))
+}
+
+fn is_safe_component(value: &[u8]) -> bool {
+    value
+        .iter()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(*byte, b'-' | b'_' | b'.'))
+}
+
+fn sha256_hex(value: &[u8]) -> String {
+    hex::encode(Sha256::digest(value))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base() -> CacheKeyBuilder {
+        CacheKeyBuilder::new("rustok", "prod", "tenant-a", "catalog", "v2", "product").unwrap()
+    }
+
+    #[test]
+    fn builds_readable_versioned_tenant_key() {
+        let key = base().named_identity("id", "product-42").unwrap().build();
+
+        assert_eq!(
+            key,
+            "rustok:prod:tenant-a:catalog:v2:product:n:id:product-42"
+        );
+    }
+
+    #[test]
+    fn positional_named_and_hashed_identities_are_unambiguous() {
+        let named = base().named_identity("id", "42").unwrap().build();
+        let positional = base()
+            .identity("id")
+            .unwrap()
+            .identity("42")
+            .unwrap()
+            .build();
+        let raw = b"query with spaces";
+        let explicit_hash = base().hashed(raw).unwrap().build();
+        let digest_shaped = base()
+            .identity(format!("h-{}", sha256_hex(raw)))
+            .unwrap()
+            .build();
+
+        assert_ne!(named, positional);
+        assert_ne!(explicit_hash, digest_shaped);
+        assert!(named.contains(":n:id:42"));
+        assert!(positional.contains(":i:id:i:42"));
+        assert!(explicit_hash.contains(":h:"));
+    }
+
+    #[test]
+    fn unsafe_and_large_identity_is_hashed_deterministically() {
+        let raw = "query with spaces and : separators";
+        let first = base().identity(raw).unwrap().build();
+        let second = base().identity(raw).unwrap().build();
+
+        assert_eq!(first, second);
+        assert!(first.contains(":i:h-"));
+        assert!(!first.contains(raw));
+    }
+
+    #[test]
+    fn oversized_identity_is_rejected_before_hashing() {
+        let oversized = vec![b'x'; MAX_CACHE_IDENTITY_BYTES + 1];
+        let expected = CacheKeyError::IdentityTooLong {
+            length: oversized.len(),
+            maximum: MAX_CACHE_IDENTITY_BYTES,
+        };
+
+        assert_eq!(base().identity(&oversized).unwrap_err(), expected);
+        assert_eq!(base().hashed(&oversized).unwrap_err(), expected);
+        assert_eq!(
+            base().named_identity("query", &oversized).unwrap_err(),
+            expected
+        );
+    }
+
+    #[test]
+    fn dynamic_component_count_is_bounded_by_logical_identities() {
+        let mut builder = base();
+        for _ in 0..MAX_CACHE_KEY_DYNAMIC_COMPONENTS {
+            builder = builder.identity("x").unwrap();
+        }
+
+        assert_eq!(
+            builder.identity("overflow").unwrap_err(),
+            CacheKeyError::TooManyDynamicComponents {
+                count: MAX_CACHE_KEY_DYNAMIC_COMPONENTS + 1,
+                maximum: MAX_CACHE_KEY_DYNAMIC_COMPONENTS,
+            }
+        );
+    }
+
+    #[test]
+    fn aggregate_canonical_input_is_bounded() {
+        let mut builder = base();
+        let component = "x".repeat(MAX_SAFE_COMPONENT_BYTES);
+        let error = loop {
+            match builder.clone().identity(&component) {
+                Ok(next) => builder = next,
+                Err(error) => break error,
+            }
+        };
+
+        assert!(matches!(
+            error,
+            CacheKeyError::KeyInputTooLong {
+                maximum: MAX_CACHE_KEY_INPUT_BYTES,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn tenant_and_version_are_part_of_identity() {
+        let first = CacheKeyBuilder::new("rustok", "prod", "tenant-a", "catalog", "v1", "product")
+            .unwrap()
+            .identity("42")
+            .unwrap()
+            .build();
+        let second = CacheKeyBuilder::new("rustok", "prod", "tenant-b", "catalog", "v2", "product")
+            .unwrap()
+            .identity("42")
+            .unwrap()
+            .build();
+
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn overlong_complete_key_preserves_prefix_and_hashes_tail() {
+        let mut builder = base();
+        for index in 0..20 {
+            builder = builder
+                .named_identity("filter", format!("value-{index}-{}", "x".repeat(80)))
+                .unwrap();
+        }
+
+        let key = builder.build();
+        assert!(key.starts_with("rustok:prod:tenant-a:catalog:v2:product:key-h-"));
+        assert!(key.len() <= MAX_CACHE_KEY_BYTES);
+    }
+
+    #[test]
+    fn maximum_fixed_components_still_obey_total_key_limit() {
+        let component = "x".repeat(MAX_SAFE_COMPONENT_BYTES);
+        let key = CacheKeyBuilder::new(
+            component.clone(),
+            component.clone(),
+            component.clone(),
+            component.clone(),
+            component.clone(),
+            component,
+        )
+        .unwrap()
+        .build();
+
+        assert!(key.starts_with("key-h-"));
+        assert!(key.len() <= MAX_CACHE_KEY_BYTES);
+    }
+
+    #[test]
+    fn rejects_ambiguous_fixed_namespace_component() {
+        assert_eq!(
+            CacheKeyBuilder::new("rustok", "prod", "tenant:a", "catalog", "v1", "product")
+                .unwrap_err(),
+            CacheKeyError::InvalidFixedComponent {
+                name: "tenant_or_global",
+                value: "tenant:a".to_string(),
+            }
+        );
+    }
+}

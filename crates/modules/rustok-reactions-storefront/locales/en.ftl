@@ -1,0 +1,9 @@
+reactions-count = { $count }
+reactions-empty = No reactions are available for this item.
+reactions-error-load = Reactions are temporarily unavailable.
+reactions-error-update = Could not update this reaction.
+reactions-label = Reactions
+reactions-like = Like
+reactions-loading = Loading reactions…
+reactions-selected = Selected
+reactions-signIn = Sign in to react.

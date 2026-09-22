@@ -1,0 +1,38 @@
+const SOURCE: &str = include_str!("../src/services/category_taxonomy_read.rs");
+
+fn function_source(name: &str) -> &str {
+    let marker = format!("fn {name}(");
+    let start = SOURCE
+        .find(marker.as_str())
+        .unwrap_or_else(|| panic!("missing category service function {name}"));
+    let after_start = &SOURCE[start + marker.len()..];
+    let end = after_start
+        .find("\n    pub ")
+        .or_else(|| after_start.find("\n    pub("))
+        .or_else(|| after_start.find("\nfn "))
+        .unwrap_or(after_start.len());
+    &SOURCE[start..start + marker.len() + end]
+}
+
+#[test]
+fn category_pagination_filters_archived_rows_in_sql_without_preloading_ids() {
+    let list_source = function_source("list_paginated_with_locale_fallback_and_hidden_categories");
+
+    assert!(
+        list_source.contains("not_in_subquery(archived_category_ids_subquery(tenant_id))"),
+        "category pagination must exclude archived rows in the database query"
+    );
+    assert!(
+        !list_source.contains("forum_category_lifecycle::Entity::find()"),
+        "category pagination must not load all lifecycle rows into memory"
+    );
+    assert!(
+        list_source.contains("paginate(&self.db"),
+        "category pagination must remain bounded before hydration"
+    );
+
+    let helper = function_source("archived_category_ids_subquery");
+    assert!(helper.contains("forum_category_lifecycle::Column::CategoryId"));
+    assert!(helper.contains("forum_category_lifecycle::Column::TenantId"));
+    assert!(helper.contains(".eq(tenant_id)"));
+}

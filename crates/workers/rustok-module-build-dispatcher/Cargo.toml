@@ -1,0 +1,24 @@
+[package]
+name = "rustok-module-build-dispatcher"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Transport-neutral delivery consumer for RusToK module builds"
+
+[[bin]]
+name = "rustok-module-build-dispatcher"
+path = "src/main.rs"
+
+[dependencies]
+async-trait.workspace = true
+rustok-iggy.workspace = true
+rustok-events.workspace = true
+rustok-module-build-transport.workspace = true
+rustok-modules.workspace = true
+rustok-worker-transport.workspace = true
+sea-orm.workspace = true
+tokio.workspace = true
+tonic.workspace = true
+tracing.workspace = true
+uuid.workspace = true

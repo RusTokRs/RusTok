@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "module": "taxonomy",
+  "surface": "route_registry_postgres_contention",
+  "status": "runtime_recorded",
+  "compile_policy": "ci_runtime_workflow",
+  "runtime_status": "passed",
+  "environment": {
+    "primary": "RUSTOK_TAXONOMY_TEST_DATABASE_URL",
+    "fallback": "DATABASE_URL",
+    "required_backend": "postgresql",
+    "rust_toolchain": "1.96.0",
+    "isolation": "canonical ephemeral PostgreSQL runtime plus a unique schema with independent single-connection route writers"
+  },
+  "test_target": "crates/modules/rustok-taxonomy/tests/route_registry_contention_postgres.rs",
+  "source_guardrail": "scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs",
+  "runtime_workflow": ".github/workflows/taxonomy-postgres-evidence.yml",
+  "runtime_evidence": {
+    "workflow": "Taxonomy PostgreSQL Evidence",
+    "required_backend": "PostgreSQL 16",
+    "exact_head_pull_request": {
+      "run_id": 33407161450,
+      "head_sha": "3c42235867036511eabeb87ed421d9d74b7ff997",
+      "source_job_id": 99537462097,
+      "runtime_job_id": 99537547759,
+      "gate_job_id": 99539081717,
+      "conclusion": "success",
+      "artifact_id": 9763777630,
+      "artifact_name": "taxonomy-postgres-evidence-33407161450-3c42235867036511eabeb87ed421d9d74b7ff997",
+      "artifact_digest": "sha256:70d124fba72cf14c00f88330639ff8e70200a6f3919963ae0af5cf9760874854",
+      "artifact_expires_at": "2026-09-07T15:13:04Z"
+    },
+    "post_merge_main": {
+      "run_id": 33420044854,
+      "head_sha": "0ebb3f53aaa2b9ef62be7fea56cb462dcebbdcf6",
+      "source_job_id": 99579915117,
+      "runtime_job_id": 99580063917,
+      "gate_job_id": 99581484039,
+      "conclusion": "success",
+      "artifact_id": 9768688596,
+      "artifact_name": "taxonomy-postgres-evidence-33420044854-0ebb3f53aaa2b9ef62be7fea56cb462dcebbdcf6",
+      "artifact_digest": "sha256:bed3651b428a2e779cec8faca0bef804b079655608982ddb3de922549f195303",
+      "artifact_expires_at": "2026-09-07T17:31:39Z"
+    }
+  },
+  "runtime_input_snapshot": {
+    "runtime_commit": "0ebb3f53aaa2b9ef62be7fea56cb462dcebbdcf6",
+    "validated_through_commit": "0ebb3f53aaa2b9ef62be7fea56cb462dcebbdcf6",
+    "git_objects": {
+      "Cargo.toml": "69ce6062ba6e8ca403c1ac7381a1b6cdf39a4a68",
+      "Cargo.lock": "48fbe029c648c948fdae655e41d52654408b1b93",
+      "crates/libs/rustok-core/Cargo.toml": "69acba7cf0a6f8b118e23bad3f3c822cc0a13231",
+      "crates/libs/rustok-core/src": "5646d4bfd1809e68f512c43e3210cfdaaecd26e9",
+      "crates/utils/rustok-migrations/Cargo.toml": "038cacf3c2d3b24d75cd0bc524ba1bbade8514fe",
+      "crates/utils/rustok-migrations/src": "2ea3687866eaf852c1c6e7baa0d91693ce476ca2",
+      "crates/modules/rustok-outbox/Cargo.toml": "adcdca31ec764c3955212943163ba586855dd917",
+      "crates/modules/rustok-outbox/src": "e78910b707a9baa3f48b939c82a7758d85496a2e",
+      "crates/modules/rustok-taxonomy/Cargo.toml": "0441c8785f1f6c62596441f9a98c1aed57fa0775",
+      "crates/modules/rustok-taxonomy/src": "6562820d3d790aa699ca89747c9c674862a09cfa",
+      "crates/modules/rustok-taxonomy/tests/route_registry_contention_postgres.rs": "5fc31718590e9b9c18c7b1601fbad63d62a1939b",
+      "crates/modules/rustok-taxonomy/tests/translation_target_postgres.rs": "6f62da2b1b400723fbcbc8135210771606e37bac",
+      "crates/modules/rustok-translation-targets/Cargo.toml": "7cdc77394d05244ca3f4fa41971c58bf0f39e3d3",
+      "crates/modules/rustok-translation-targets/src": "a52cc4fb614cc6cc9ab5ee18fdcfab0746a968e8",
+      ".github/workflows/taxonomy-postgres-evidence.yml": "4e2b934f44e86a196708ef55ad63976d76f054ad"
+    }
+  },
+  "production_contract": {
+    "mutation_path": "update_module_term_in_tx",
+    "route_registry_table": "taxonomy_term_route_keys",
+    "two_independent_writer_connections": true,
+    "both_writers_complete_route_preflight_before_release": true,
+    "contention_is_forced_after_translation_row_prelock": true,
+    "route_registry_primary_key_is_storage_authority": true,
+    "exactly_one_writer_commits": true,
+    "losing_writer_reports_concurrent_route_claim": true,
+    "losing_translation_update_rolls_back": true,
+    "winner_translation_and_route_reservation_commit_together": true,
+    "exactly_one_durable_route_owner": true
+  },
+  "scope": {
+    "tenant_isolated": true,
+    "kind": "tag",
+    "scope_type": "module",
+    "scope_value": "blog",
+    "locale": "en"
+  },
+  "remaining_open_result_4_evidence": []
+}

@@ -1,0 +1,13 @@
+[module]
+slug = "content"
+name = "Content"
+version = "0.1.0"
+description = "Shared content helpers and cross-domain orchestration module"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "capability_only"
+[crate]
+entry_type = "ContentModule"
+
+[provides.graphql]
+query = "graphql::ContentQuery"

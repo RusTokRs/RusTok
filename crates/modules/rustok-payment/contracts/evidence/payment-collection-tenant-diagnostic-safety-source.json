@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-03",
+  "status": "payment_collection_tenant_diagnostic_safety_source_unvalidated",
+  "scope": "PaymentCollectionPort tenant UUID parse-failure diagnostics only",
+  "source_contract": {
+    "tenant_parser_bounded": true,
+    "complete_parse_error_logged": false,
+    "constructed_port_error_logged": false,
+    "tenant_internal_message_text_logged": false,
+    "tenant_context_shape_only": true,
+    "tenant_correlation_preserved": true,
+    "tenant_owner_operations_preserved": true,
+    "tenant_validation_phase_preserved": true,
+    "tenant_error_kind_closed": true,
+    "tenant_warning_severity_preserved": true,
+    "same_validation_port_error_returned": true,
+    "tenant_parser_call_sites_preserved": true,
+    "admission_mapper_changed": false,
+    "canonical_payment_error_mapper_cleanup_out_of_scope": true,
+    "execution_behavior_changed": false,
+    "public_port_error_changed": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "suggested_execution": [
+    "node scripts/verify/verify-payment-collection-tenant-context.mjs",
+    "node scripts/verify/verify-payment-collection-admission-context.mjs",
+    "node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
+    "cargo check -p rustok-payment --lib"
+  ],
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "runtime_proven": false
+  }
+}

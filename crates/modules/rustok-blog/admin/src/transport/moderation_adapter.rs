@@ -1,0 +1,121 @@
+use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql, graphql_url};
+use serde::{Deserialize, Serialize};
+
+use crate::model::{BlogModerationCommentList, BlogModerationStatus};
+
+const BLOG_MODERATION_COMMENTS_QUERY: &str = "query BlogModerationComments($postId: UUID!, $locale: String, $page: Int!, $perPage: Int!) { post(id: $postId, locale: $locale) { moderationComments(locale: $locale, page: $page, perPage: $perPage) { total items { id effectiveLocale authorId contentPreview status parentCommentId createdAt } } } }";
+const MODERATE_BLOG_COMMENT_MUTATION: &str = "mutation ModerateBlogComment($id: UUID!, $commandId: UUID!, $status: BlogCommentModerationStatus!, $locale: String) { moderateComment(id: $id, commandId: $commandId, status: $status, locale: $locale) }";
+
+#[derive(Debug, Deserialize)]
+struct ModerationCommentsResponse {
+    post: Option<ModerationPostPayload>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModerationPostPayload {
+    #[serde(rename = "moderationComments")]
+    moderation_comments: BlogModerationCommentList,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModerateCommentResponse {
+    #[serde(rename = "moderateComment")]
+    moderate_comment: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct ModerationCommentsVariables {
+    #[serde(rename = "postId")]
+    post_id: String,
+    locale: Option<String>,
+    page: u64,
+    #[serde(rename = "perPage")]
+    per_page: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct ModerateCommentVariables {
+    id: String,
+    #[serde(rename = "commandId")]
+    command_id: String,
+    status: String,
+    locale: Option<String>,
+}
+
+
+async fn request<V, T>(
+    query: &str,
+    variables: V,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<T, GraphqlHttpError>
+where
+    V: Serialize,
+    T: for<'de> Deserialize<'de>,
+{
+    execute_graphql(
+        &graphql_url(),
+        GraphqlRequest::new(query, Some(variables)),
+        token,
+        tenant_slug,
+        None,
+    )
+    .await
+}
+
+pub async fn fetch_comments(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    post_id: String,
+    locale: Option<String>,
+    page: u64,
+    per_page: u64,
+) -> Result<BlogModerationCommentList, GraphqlHttpError> {
+    let response: ModerationCommentsResponse = request(
+        BLOG_MODERATION_COMMENTS_QUERY,
+        ModerationCommentsVariables {
+            post_id,
+            locale,
+            page: page.max(1),
+            per_page: per_page.clamp(1, 100),
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+
+    Ok(response
+        .post
+        .map(|post| post.moderation_comments)
+        .unwrap_or_default())
+}
+
+pub async fn moderate_comment(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    comment_id: String,
+    command_id: String,
+    status: BlogModerationStatus,
+    locale: Option<String>,
+) -> Result<bool, GraphqlHttpError> {
+    let response: ModerateCommentResponse = request(
+        MODERATE_BLOG_COMMENT_MUTATION,
+        ModerateCommentVariables {
+            id: comment_id,
+            command_id,
+            status: status.graphql_value().to_string(),
+            locale,
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+
+    Ok(response.moderate_comment)
+}
+
+pub(crate) fn is_contract_unavailable_message(message: &str) -> bool {
+    message.contains("Unknown field \"moderationComments\"")
+        || message.contains("Unknown field \"moderateComment\"")
+        || message.contains("Unknown type \"BlogCommentModerationStatus\"")
+}

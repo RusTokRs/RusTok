@@ -1,0 +1,25 @@
+{
+  "captured_at": "<iso-8601>",
+  "environment": "<ci-or-runtime-env>",
+  "command_or_ci_job": "<command-or-ci-job-url>",
+  "redactions_applied": [
+    "<redaction-rule>"
+  ],
+  "result": "pending_capture",
+  "surface": "next_frontend_runtime",
+  "before": {
+    "fallback_source": "static"
+  },
+  "after": {
+    "robots_source": "runtime_or_static_fallback",
+    "sitemap_source": "runtime_or_static_fallback"
+  },
+  "samples": {
+    "metadata_routes": [
+      "/",
+      "/modules/product?slug=demo-product",
+      "/modules/blog?slug=release-notes"
+    ],
+    "json_ld_blocks": []
+  }
+}

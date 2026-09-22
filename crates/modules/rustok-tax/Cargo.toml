@@ -1,0 +1,21 @@
+[package]
+name = "rustok-tax"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Tax domain foundation and provider seam for commerce"
+
+[dependencies]
+async-trait.workspace = true
+rust_decimal.workspace = true
+rustok-core.workspace = true
+rustok-api.workspace = true
+sea-orm-migration.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

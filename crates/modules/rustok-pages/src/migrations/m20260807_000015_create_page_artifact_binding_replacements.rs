@@ -1,0 +1,216 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(PageArtifactBindingReplacementOperations::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(PageArtifactBindingReplacementOperations::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactBindingReplacementOperations::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactBindingReplacementOperations::PageId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            PageArtifactBindingReplacementOperations::RebuildOperationId,
+                        )
+                        .uuid()
+                        .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactBindingReplacementOperations::PageBodyId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactBindingReplacementOperations::Locale)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactBindingReplacementOperations::IdempotencyKey)
+                            .string_len(191)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactBindingReplacementOperations::RequestHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactBindingReplacementOperations::ExpectedVersion)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            PageArtifactBindingReplacementOperations::ExpectedCurrentArtifactId,
+                        )
+                        .uuid()
+                        .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            PageArtifactBindingReplacementOperations::ReplacementArtifactId,
+                        )
+                        .uuid()
+                        .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            PageArtifactBindingReplacementOperations::ReplacementArtifactHash,
+                        )
+                        .string_len(64)
+                        .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            PageArtifactBindingReplacementOperations::ReplacementMaterializationHash,
+                        )
+                        .string_len(64)
+                        .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactBindingReplacementOperations::ResultVersion)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactBindingReplacementOperations::ReplacedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageArtifactBindingReplacementOperations::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_page_artifact_binding_replacements_page")
+                            .from(
+                                PageArtifactBindingReplacementOperations::Table,
+                                PageArtifactBindingReplacementOperations::PageId,
+                            )
+                            .to(Pages::Table, Pages::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_page_artifact_binding_replacements_rebuild")
+                            .from(
+                                PageArtifactBindingReplacementOperations::Table,
+                                PageArtifactBindingReplacementOperations::RebuildOperationId,
+                            )
+                            .to(
+                                PageArtifactRebuildOperations::Table,
+                                PageArtifactRebuildOperations::Id,
+                            )
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_page_artifact_binding_replacements_idempotency")
+                    .table(PageArtifactBindingReplacementOperations::Table)
+                    .col(PageArtifactBindingReplacementOperations::TenantId)
+                    .col(PageArtifactBindingReplacementOperations::PageId)
+                    .col(PageArtifactBindingReplacementOperations::IdempotencyKey)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_page_artifact_binding_replacements_rebuild")
+                    .table(PageArtifactBindingReplacementOperations::Table)
+                    .col(PageArtifactBindingReplacementOperations::TenantId)
+                    .col(PageArtifactBindingReplacementOperations::PageId)
+                    .col(PageArtifactBindingReplacementOperations::RebuildOperationId)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_page_artifact_binding_replacements_result")
+                    .table(PageArtifactBindingReplacementOperations::Table)
+                    .col(PageArtifactBindingReplacementOperations::TenantId)
+                    .col(PageArtifactBindingReplacementOperations::PageId)
+                    .col(PageArtifactBindingReplacementOperations::ResultVersion)
+                    .to_owned(),
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(PageArtifactBindingReplacementOperations::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+    }
+}
+
+#[derive(DeriveIden)]
+enum PageArtifactBindingReplacementOperations {
+    Table,
+    Id,
+    TenantId,
+    PageId,
+    RebuildOperationId,
+    PageBodyId,
+    Locale,
+    IdempotencyKey,
+    RequestHash,
+    ExpectedVersion,
+    ExpectedCurrentArtifactId,
+    ReplacementArtifactId,
+    ReplacementArtifactHash,
+    ReplacementMaterializationHash,
+    ResultVersion,
+    ReplacedAt,
+    CreatedAt,
+}
+
+#[derive(DeriveIden)]
+enum PageArtifactRebuildOperations {
+    Table,
+    Id,
+}
+
+#[derive(DeriveIden)]
+enum Pages {
+    Table,
+    Id,
+}

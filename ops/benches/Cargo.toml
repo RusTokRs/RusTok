@@ -1,0 +1,98 @@
+[package]
+name = "rustok-benchmarks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Performance benchmarks for RusToK platform"
+publish = false
+
+[features]
+default = []
+content-benches = ["dep:rustok-content"]
+commerce-benches = ["dep:rustok-commerce"]
+state-machine-benches = ["content-benches", "commerce-benches"]
+
+[dependencies]
+criterion = { workspace = true }
+tokio = { workspace = true }
+rustok-core = { workspace = true }
+rustok-content = { workspace = true, optional = true }
+rustok-commerce = { workspace = true, optional = true }
+rustok-index = { workspace = true }
+sea-orm = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+rust_decimal = "1.42"
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+futures = "0.3"
+
+[[bin]]
+name = "index-storage-benchmark"
+path = "src/bin/index_storage_benchmark.rs"
+
+[[bin]]
+name = "index-storage-mutation-benchmark"
+path = "src/bin/index_storage_mutation_benchmark.rs"
+
+[[bin]]
+name = "index-storage-maintenance-benchmark"
+path = "src/bin/index_storage_maintenance_benchmark.rs"
+
+[[bin]]
+name = "index-partition-snapshot-capture"
+path = "src/bin/index_partition_snapshot_capture.rs"
+
+[[bin]]
+name = "index-partition-query-evidence"
+path = "src/bin/index_partition_query_evidence.rs"
+
+[[bin]]
+name = "index-partition-mutation-evidence"
+path = "src/bin/index_partition_mutation_evidence.rs"
+
+[[bin]]
+name = "index-partition-maintenance-evidence"
+path = "src/bin/index_partition_maintenance_evidence.rs"
+
+[[bin]]
+name = "index-partition-cutover-evidence"
+path = "src/bin/index_partition_cutover_evidence.rs"
+
+[[bin]]
+name = "index-partition-capture-finalize"
+path = "src/bin/index_partition_capture_finalize.rs"
+
+[[bin]]
+name = "index-query-equivalence-capture"
+path = "src/bin/index_query_equivalence_capture.rs"
+
+[[bin]]
+name = "index-query-equivalence-admission"
+path = "src/bin/index_query_equivalence_admission.rs"
+
+[[bench]]
+name = "tenant_cache"
+harness = false
+
+[[bench]]
+name = "state_machine"
+harness = false
+required-features = ["state-machine-benches"]
+
+[[bench]]
+name = "event_bus"
+harness = false
+
+[[bench]]
+name = "content_operations"
+harness = false
+required-features = ["content-benches"]
+
+[[bench]]
+name = "order_operations"
+harness = false
+required-features = ["commerce-benches"]

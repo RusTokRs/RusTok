@@ -1,0 +1,201 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(PagePublishRebuildSources::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(PagePublishRebuildSources::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishRebuildSources::OperationId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishRebuildSources::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishRebuildSources::PageId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishRebuildSources::PageBodyId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishRebuildSources::Locale)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishRebuildSources::ArtifactId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishRebuildSources::SourceFormat)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishRebuildSources::SourceRevision)
+                            .string_len(128)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishRebuildSources::SanitizedProject)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishRebuildSources::SanitizedHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishRebuildSources::SourceHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishRebuildSources::ReviewHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishRebuildSources::ArtifactHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishRebuildSources::MaterializationHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishRebuildSources::MaterializationIdentity)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishRebuildSources::RuntimeSnapshots)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishRebuildSources::ProvenanceHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishRebuildSources::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_page_publish_rebuild_sources_operation")
+                            .from(
+                                PagePublishRebuildSources::Table,
+                                PagePublishRebuildSources::OperationId,
+                            )
+                            .to(PagePublishOperations::Table, PagePublishOperations::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_page_publish_rebuild_sources_operation_locale")
+                    .table(PagePublishRebuildSources::Table)
+                    .col(PagePublishRebuildSources::OperationId)
+                    .col(PagePublishRebuildSources::Locale)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_page_publish_rebuild_sources_page")
+                    .table(PagePublishRebuildSources::Table)
+                    .col(PagePublishRebuildSources::TenantId)
+                    .col(PagePublishRebuildSources::PageId)
+                    .col(PagePublishRebuildSources::OperationId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_page_publish_rebuild_sources_artifact")
+                    .table(PagePublishRebuildSources::Table)
+                    .col(PagePublishRebuildSources::TenantId)
+                    .col(PagePublishRebuildSources::ArtifactId)
+                    .to_owned(),
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(PagePublishRebuildSources::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+    }
+}
+
+#[derive(DeriveIden)]
+enum PagePublishRebuildSources {
+    Table,
+    Id,
+    OperationId,
+    TenantId,
+    PageId,
+    PageBodyId,
+    Locale,
+    ArtifactId,
+    SourceFormat,
+    SourceRevision,
+    SanitizedProject,
+    SanitizedHash,
+    SourceHash,
+    ReviewHash,
+    ArtifactHash,
+    MaterializationHash,
+    MaterializationIdentity,
+    RuntimeSnapshots,
+    ProvenanceHash,
+    CreatedAt,
+}
+
+#[derive(DeriveIden)]
+enum PagePublishOperations {
+    Table,
+    Id,
+}

@@ -1,0 +1,48 @@
+[advisories]
+db-urls = ["https://github.com/RustSec/advisory-db"]
+unmaintained = "workspace"
+unsound = "workspace"
+git-fetch-with-cli = true
+# Advisory exceptions must be time-bounded and registered in
+# docs/security/advisory-exceptions.md.
+ignore = []
+
+[licenses]
+allow = [
+    "0BSD",
+    "MIT",
+    "BUSL-1.1",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "BSD-2-Clause",
+    "BSL-1.0",
+    "CDLA-Permissive-2.0",
+    "CC0-1.0",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "MPL-2.0",
+    "NCSA",
+    ]
+confidence-threshold = 0.8
+# These version-pinned transitive dependencies are selected only by Athanor's
+# optional embedded SurrealDB store. Their permissive licenses are accepted for
+# this reviewed dependency graph without broadening the workspace license set.
+exceptions = [
+    { allow = ["Unlicense"], name = "async_io_stream", version = "0.3.3" },
+    { allow = ["MIT-0"], name = "borrow-or-share", version = "0.2.4" },
+    { allow = ["Unlicense"], name = "ext-sort", version = "0.1.5" },
+    { allow = ["Unlicense"], name = "pharos", version = "0.5.3" },
+    { allow = ["Unlicense"], name = "ws_stream_wasm", version = "0.7.5" },
+]
+
+[bans]
+multiple-versions = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# Athanor is an owned, revision-pinned AI infrastructure dependency.
+allow-git = ["https://github.com/RusTokRs/Athanor.git"]

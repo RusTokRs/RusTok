@@ -1,0 +1,41 @@
+search-badge = search
+search-error-loadPresets = Failed to load presets
+search-error-loadResults = Failed to load storefront search results
+search-error-loadSuggestions = Failed to load search suggestions
+search-features-engineBody = Storefront uses the public published-only search surface backed by PostgreSQL FTS.
+search-features-engineTitle = Engine
+search-features-facetsBody = Entity type and source module facets come from the same search payload used by admin previews.
+search-features-facetsTitle = Facet model
+search-filters-attributeCode = Attribute code
+search-filters-attributeValues = Attribute values (CSV)
+search-filters-categoryIds = Category IDs (CSV)
+search-filters-channelId = Channel ID
+search-filters-maximum = Maximum
+search-filters-minimum = Minimum
+search-filters-sortAttribute = Sort attribute code
+search-filters-sortDesc = Descending order
+search-filters-title = Catalog filters and sorting
+search-form-autocompleteHint = Autocomplete uses popular successful queries and matching published document titles from rustok-search.
+search-form-placeholder = Search products and published content
+search-form-queryLabel = Search query
+search-form-submit = Search
+search-results-emptyBody = Storefront search reads `?q=` from the generic module route and runs the public PostgreSQL FTS pipeline.
+search-results-emptyTitle = Enter a search query
+search-results-locale = locale = { $locale }
+search-results-noResultsBody = Try a different query or relax the storefront filters in the query string.
+search-results-noResultsTitle = No results
+search-results-noSnippet = No snippet returned.
+search-results-noTarget = No storefront target is available for this result yet.
+search-results-none = none
+search-results-openResult = Open result
+search-results-preset = preset = { $preset }
+search-results-queryLabel = Query
+search-results-summary = { $count } results in { $took_ms } ms via { $engine } ({ $ranking_profile })
+search-subtitle = This storefront surface is backed by PostgreSQL full-text search over published content and products.
+search-suggestions-badge = autocomplete
+search-suggestions-empty = Type at least 2 characters to see autocomplete suggestions.
+search-suggestions-loading = Loading suggestions...
+search-suggestions-open = Open
+search-suggestions-search = Search
+search-suggestions-title = Suggestions
+search-title = Search across published content and catalog

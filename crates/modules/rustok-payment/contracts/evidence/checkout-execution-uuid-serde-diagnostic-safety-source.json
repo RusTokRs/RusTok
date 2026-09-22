@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "status": "payment_checkout_execution_uuid_serde_diagnostic_safety_source_reviewed_unvalidated",
+  "owner": "rustok-payment",
+  "boundary": "checkout_payment_execution_port",
+  "scope": "tenant UUID parse and durable provider-result serde diagnostics",
+  "source_contract": {
+    "uuid_diagnostic_site_count": 1,
+    "serde_diagnostic_site_count": 1,
+    "complete_uuid_error_logged": false,
+    "complete_serde_error_logged": false,
+    "tenant_id_text_logged": false,
+    "provider_result_payload_logged": false,
+    "tenant_id_length_logged": true,
+    "tenant_parse_failure_fact_logged": true,
+    "provider_result_decode_failure_fact_logged": true,
+    "provider_result_kind_logged": true,
+    "provider_result_collection_length_logged": true,
+    "tenant_validation_mapping_preserved": true,
+    "persisted_provider_result_mapping_preserved": true,
+    "manual_reconciliation_routing_preserved": true,
+    "public_port_error_contract_changed": false,
+    "payment_lifecycle_changed": false,
+    "provider_execution_changed": false,
+    "manual_reconciliation_reason_changed": false,
+    "local_persistence_diagnostics_changed": false,
+    "provider_checkpoint_diagnostics_changed": false,
+    "remaining_payment_execution_diagnostics_open": true,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "notes": [
+    "Malformed durable provider results still route through the same manual-reconciliation path and public PortError.",
+    "Invalid tenant IDs still return the same validation code and public message.",
+    "Serde diagnostics retain only the top-level JSON kind and array/object cardinality, never the payload or decode error text.",
+    "UUID diagnostics retain only a parse-failure fact and the existing tenant ID character length, never the tenant value or parse error.",
+    "Manual-reconciliation reason text, local persistence, and provider checkpoint diagnostics remain separate open slices.",
+    "No payment FFA or FBA status is promoted from source inspection."
+  ]
+}

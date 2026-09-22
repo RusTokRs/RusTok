@@ -1,0 +1,168 @@
+[package]
+name = "rustok-commerce"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description.workspace = true
+autotests = false
+
+[features]
+default = []
+marketplace-financial = [
+    "dep:rustok-marketplace",
+    "dep:rustok-marketplace-allocation",
+    "dep:rustok-marketplace-commission",
+    "dep:rustok-marketplace-ledger",
+]
+
+[dependencies]
+anyhow.workspace = true
+async-graphql = { workspace = true, features = ["decimal"] }
+rustok-core.workspace = true
+rustok-events.workspace = true
+rustok-outbox.workspace = true
+rustok-translation-targets.workspace = true
+rustok-commerce-foundation.workspace = true
+rustok-cart.workspace = true
+rustok-customer.workspace = true
+rustok-product.workspace = true
+rustok-product-relations.workspace = true
+rustok-brand.workspace = true
+rustok-product-bundles.workspace = true
+rustok-region.workspace = true
+rustok-pricing.workspace = true
+rustok-inventory.workspace = true
+rustok-order.workspace = true
+rustok-payment.workspace = true
+rustok-fulfillment.workspace = true
+rustok-tenant.workspace = true
+rustok-marketplace = { path = "../rustok-marketplace", optional = true }
+rustok-marketplace-allocation = { path = "../rustok-marketplace-allocation", optional = true }
+rustok-marketplace-commission = { path = "../rustok-marketplace-commission", optional = true }
+rustok-marketplace-ledger = { path = "../rustok-marketplace-ledger", optional = true }
+flex.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+rust_decimal.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+chrono.workspace = true
+rustok-web.workspace = true
+rustok-api = { workspace = true, features = ["server"] }
+rustok-channel.workspace = true
+rustok-telemetry.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+utoipa = { workspace = true, features = ["uuid", "chrono", "decimal"] }
+uuid.workspace = true
+validator.workspace = true
+
+[dev-dependencies]
+rustok-test-utils.workspace = true
+tower.workspace = true
+proptest = "1.11"
+rust_decimal_macros = "1.36"
+rustok-taxonomy.workspace = true
+sea-orm-migration.workspace = true
+rustok-product-transport = { path = "../rustok-product-transport" }
+tokio-stream = { version = "0.1", features = ["net"] }
+tonic.workspace = true
+
+# `autotests = false` in [package] combined with explicit test targets below prevents
+# support/mod.rs from being auto-discovered as a standalone integration-test root. Without this
+# Cargo (and rust-analyzer) treat every .rs file in tests/ as a binary root; support/mod.rs is
+# only ever used via `mod support;` inside the real roots below.
+[[test]]
+name = "catalog_service_test"
+path = "tests/catalog_service_test.rs"
+
+[[test]]
+name = "checkout_fulfillment_label_boundary_test"
+path = "tests/checkout_fulfillment_label_boundary_test.rs"
+
+[[test]]
+name = "checkout_marketplace_economics_checkpoint"
+path = "tests/checkout_marketplace_economics_checkpoint.rs"
+required-features = ["marketplace-financial"]
+
+[[test]]
+name = "checkout_service_test"
+path = "tests/checkout_service_test/main.rs"
+
+[[test]]
+name = "context_service_test"
+path = "tests/context_service_test.rs"
+
+[[test]]
+name = "contract_surface"
+path = "tests/contract_surface.rs"
+
+[[test]]
+name = "fulfillment_read_port_failure_contract"
+path = "tests/fulfillment_read_port_failure_contract.rs"
+
+[[test]]
+name = "graphql_runtime_parity_test"
+path = "tests/graphql_runtime_parity_test/main.rs"
+
+[[test]]
+name = "graphql_surface_regression"
+path = "tests/graphql_surface_regression.rs"
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"
+
+[[test]]
+name = "inventory_service_test"
+path = "tests/inventory_service_test.rs"
+
+[[test]]
+name = "marketplace_reversal_recovery_source"
+path = "tests/marketplace_reversal_recovery_source.rs"
+required-features = ["marketplace-financial"]
+
+[[test]]
+name = "module"
+path = "tests/module.rs"
+
+[[test]]
+name = "order_inventory_reservation_test"
+path = "tests/order_inventory_reservation_test.rs"
+
+[[test]]
+name = "order_returns_bridge_test"
+path = "tests/order_returns_bridge_test.rs"
+
+[[test]]
+name = "payment_service_test"
+path = "tests/payment_service_test.rs"
+
+[[test]]
+name = "pricing_service_test"
+path = "tests/pricing_service_test/main.rs"
+
+[[test]]
+name = "product_event_index_integration_test"
+path = "tests/product_event_index_integration_test.rs"
+
+[[test]]
+name = "product_remote_consumer_behavior"
+path = "tests/product_remote_consumer_behavior.rs"
+
+[[test]]
+name = "product_taxonomy_tags"
+path = "tests/product_taxonomy_tags.rs"
+
+[[test]]
+name = "routes_contract_test"
+path = "tests/routes_contract_test.rs"
+
+[[test]]
+name = "storefront_returns_graphql_test"
+path = "tests/storefront_returns_graphql_test.rs"

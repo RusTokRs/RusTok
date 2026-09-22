@@ -1,0 +1,120 @@
+name: OAuth Application Translation PostgreSQL Evidence
+
+on:
+  pull_request:
+    paths:
+      - "apps/server/Cargo.toml"
+      - "apps/server/src/models/_entities/oauth_app_translations.rs"
+      - "apps/server/src/models/_entities/oauth_apps.rs"
+      - "apps/server/src/models/oauth_app_translations.rs"
+      - "apps/server/src/models/oauth_apps.rs"
+      - "apps/server/src/services/auth_admin_mutation_provider.rs"
+      - "apps/server/src/services/oauth_app.rs"
+      - "apps/server/src/services/oauth_app_translation.rs"
+      - "apps/server/src/services/oauth_app_translation_target.rs"
+      - "apps/server/src/services/mod.rs"
+      - "apps/server/src/services/rbac_request_scope.rs"
+      - "apps/server/tests/oauth_app_translation_target_postgres.rs"
+      - "crates/modules/rustok-auth/src/migrations/**"
+      - "crates/modules/rustok-auth/src/oauth_app_translation.rs"
+      - "crates/modules/rustok-auth/src/lib.rs"
+      - "crates/modules/rustok-outbox/**"
+      - "crates/modules/rustok-translation-targets/**"
+      - "crates/utils/rustok-migrations/**"
+      - "docs/modules/translation-surfaces.json"
+      - ".github/workflows/oauth-app-translation-target-postgres.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/server/Cargo.toml"
+      - "apps/server/src/models/_entities/oauth_app_translations.rs"
+      - "apps/server/src/models/_entities/oauth_apps.rs"
+      - "apps/server/src/models/oauth_app_translations.rs"
+      - "apps/server/src/models/oauth_apps.rs"
+      - "apps/server/src/services/auth_admin_mutation_provider.rs"
+      - "apps/server/src/services/oauth_app.rs"
+      - "apps/server/src/services/oauth_app_translation.rs"
+      - "apps/server/src/services/oauth_app_translation_target.rs"
+      - "apps/server/src/services/mod.rs"
+      - "apps/server/src/services/rbac_request_scope.rs"
+      - "apps/server/tests/oauth_app_translation_target_postgres.rs"
+      - "crates/modules/rustok-auth/src/migrations/**"
+      - "crates/modules/rustok-auth/src/oauth_app_translation.rs"
+      - "crates/modules/rustok-auth/src/lib.rs"
+      - "crates/modules/rustok-outbox/**"
+      - "crates/modules/rustok-translation-targets/**"
+      - "crates/utils/rustok-migrations/**"
+      - "docs/modules/translation-surfaces.json"
+      - ".github/workflows/oauth-app-translation-target-postgres.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_TOOLCHAIN: "1.96.0"
+  TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  postgres-evidence:
+    name: OAuth application registered provider PostgreSQL evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Check focused Rust formatting
+        shell: bash
+        run: |
+          rustfmt +${RUST_TOOLCHAIN} --edition 2024 --check \
+            apps/server/tests/oauth_app_translation_target_postgres.rs \
+            apps/server/src/models/oauth_apps.rs \
+            apps/server/src/services/oauth_app_translation.rs \
+            apps/server/src/services/oauth_app_translation_target.rs \
+            crates/modules/rustok-auth/src/oauth_app_translation.rs \
+            crates/modules/rustok-auth/src/migrations/m20260913_000010_add_oauth_app_translation_target.rs
+      - name: Compile OAuth application registered provider PostgreSQL evidence
+        run: >-
+          cargo test --locked -p rustok-server --no-default-features
+          --features mod-translation
+          --test oauth_app_translation_target_postgres
+          --no-run
+      - name: Run OAuth application registered provider PostgreSQL evidence
+        run: >-
+          cargo test --locked -p rustok-server --no-default-features
+          --features mod-translation
+          --test oauth_app_translation_target_postgres
+          -- --ignored --nocapture

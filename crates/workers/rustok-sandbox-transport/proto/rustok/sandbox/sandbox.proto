@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package rustok.sandbox;
+
+// This is an independently deployed wire boundary. protocol_revision is
+// checked exactly by both peers; the repository keeps one current internal
+// sandbox model and does not branch domain logic by wire revision.
+service SandboxWorkerService {
+  rpc Execute(stream HostFrame) returns (stream WorkerFrame);
+  rpc GetReadiness(ReadinessRequest) returns (ReadinessResponse);
+}
+
+message HostFrame {
+  uint32 protocol_revision = 1;
+  string execution_id = 2;
+  oneof frame {
+    SandboxRequestPayload request_payload = 3;
+    CapabilityResult capability_result = 4;
+    CancelExecution cancel_execution = 5;
+  }
+}
+
+message SandboxRequestPayload {
+  // The current repository-owned request model without payload.bytes. JSON is
+  // required because serde_json::Value is part of the capability/input model.
+  bytes request_json = 1;
+  // Artifact bytes remain native protobuf bytes and are never base64-expanded.
+  bytes artifact_bytes = 2;
+}
+
+message WorkerFrame {
+  uint32 protocol_revision = 1;
+  string execution_id = 2;
+  oneof frame {
+    CapabilityRequest capability_request = 3;
+    bytes outcome_payload = 4;
+    bytes error_payload = 5;
+  }
+}
+
+message CapabilityRequest {
+  uint64 call_id = 1;
+  bytes call_payload = 2;
+}
+
+message CapabilityResult {
+  uint64 call_id = 1;
+  oneof result {
+    bytes response_payload = 2;
+    bytes error_payload = 3;
+  }
+}
+
+message CancelExecution {}
+
+message ReadinessRequest {}
+
+message ReadinessResponse {
+  bool ready = 1;
+  string executor = 2;
+  uint32 protocol_revision = 3;
+}

@@ -1,0 +1,11 @@
+[package]
+name = "rustok-seo-render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Rust-side SEO head renderer and adapter helpers for RusToK hosts"
+
+[dependencies]
+serde_json.workspace = true
+rustok-core.workspace = true
+rustok-seo.workspace = true

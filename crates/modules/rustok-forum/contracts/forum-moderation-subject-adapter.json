@@ -1,0 +1,253 @@
+{
+  "id": "forum-moderation-subject-adapter",
+  "status": "source_ready_maintainer_execution_pending",
+  "producer": "rustok-forum",
+  "capability_owner": "rustok-moderation",
+  "neutral_api": "rustok-moderation-api",
+  "module": "forum",
+  "subjects": [
+    {
+      "kind": "forum_topic",
+      "source": "forum topic owner",
+      "revision": "forum_topic_moderation_subject_revisions.revision"
+    },
+    {
+      "kind": "forum_post",
+      "source": "Forum reply owner",
+      "revision": "forum_reply_moderation_subject_revisions.revision"
+    }
+  ],
+  "revision_clock": {
+    "owner": "rustok-forum",
+    "persistence": [
+      "forum_topic_moderation_subject_revisions",
+      "forum_reply_moderation_subject_revisions"
+    ],
+    "backfill": "existing subjects start with a positive opaque revision",
+    "advances_on": [
+      "topic core lifecycle moderation fields and soft delete",
+      "topic translation insert update delete",
+      "reply core lifecycle structural fields and soft delete",
+      "reply body insert update delete"
+    ],
+    "not_equivalent_to": [
+      "Reactions subject revision",
+      "latest content revision row id",
+      "updated_at timestamp",
+      "global Forum domain event sequence"
+    ]
+  },
+  "application": {
+    "trusted_callers": [
+      "service",
+      "system"
+    ],
+    "direct_user_callers": "forbidden",
+    "idempotency": "PortContext idempotency key equals decision UUID",
+    "receipt_owner": "rustok-outbox owner_operation_receipts",
+    "receipt_namespace": "forum",
+    "request_binding": "full ApplyModerationDecisionCommand including immutable decision_hash",
+    "revision_rule": "exact reviewed Forum moderation subject revision must match before mutation",
+    "revision_locking": "active subject row and moderation revision row are transactionally fenced before application",
+    "postgres_isolation": "serializable read-write owner transaction",
+    "sqlite_locking": "writer reservation uses the dedicated moderation revision row",
+    "retryable_failure": "leave processing receipt reclaimable",
+    "terminal_failure": "persist shared typed failed receipt",
+    "success": "Forum mutation, required Forum root/projection events and shared completed receipt commit in one transaction",
+    "applied_revision": "post-application moderation subject revision"
+  },
+  "host_materialization": {
+    "host": "rustok-server",
+    "owner_feature": "mod-moderation",
+    "owner_selection": "ModerationModule must be present in ModuleRegistry when mod-moderation is selected",
+    "factory_timing": "materialize only after HostRuntimeContext exists and Forum host facts have been composed",
+    "moderation_without_forum": "materialize an empty subject adapter registry",
+    "forum_with_moderation": [
+      "forum/forum_topic",
+      "forum/forum_post"
+    ],
+    "forum_without_moderation": "Forum remains available and its neutral factories remain unmaterialized",
+    "materialization_failure": "fail host composition; never fall back to another adapter or imply applied"
+  },
+  "owner_application_operation": {
+    "owner": "rustok-moderation",
+    "table": "moderation_application_operations",
+    "identity": "tenant + immutable decision UUID/hash + exact reviewed subject",
+    "atomic_enqueue": "decision, typed effect, pending operation, case_decided event and Moderation command receipt share one owner transaction",
+    "typed_effect_backfill": "existing decisions are backfilled only when moderation_decision_effects exists; legacy effect None decisions remain non-dispatchable",
+    "states": [
+      "pending",
+      "applying",
+      "retryable",
+      "applied",
+      "rejected",
+      "operator_review"
+    ],
+    "lease": "bounded CAS claim with attempt counter, expiry and fresh UUID lease token; expired applying leases are reclaimable",
+    "applied_evidence": "ModerationDecisionApplication must match decision and exact reviewed subject identity before applied revision/time are stored",
+    "dispatch": {
+      "primitive": "ModerationService::dispatch_application_operation_once",
+      "scope": "one exact due tenant/decision operation per call; no polling loop",
+      "command": "reconstruct from immutable Moderation decision/effect/case and exact operation subject/hash",
+      "adapter_lookup": "exact materialized registry key subject_module + subject_kind; no fallback",
+      "actor": "trusted service rustok-moderation",
+      "domain_idempotency": "immutable decision UUID; lease token is attempt/correlation identity only",
+      "deadline_seconds": 30,
+      "operation_lease_seconds": 60,
+      "retry_backoff_seconds": [
+        5,
+        10,
+        20,
+        40,
+        80,
+        160,
+        300
+      ],
+      "missing_adapter": "retryable",
+      "retryable_port_error": "retryable",
+      "non_retryable_conflict_or_invariant": "operator_review, including stale reviewed revision conflicts",
+      "invalid_success_evidence": "operator_review while the live lease is still held",
+      "other_non_retryable_port_error": "rejected",
+      "owner_storage_failure_after_claim": "return owner error and rely on lease expiry/reclaim; never forge a domain result"
+    },
+    "shared_scheduler": {
+      "runtime_owner": "rustok-runtime ModuleWorkScheduler",
+      "registration": "ModerationModule publishes one ModuleWorkRegistration",
+      "worker_slug": "moderation_decision_application",
+      "candidate_discovery": "read-only earliest due Moderation application row across tenants; at most one candidate per scheduler pass per host",
+      "durable_claim": "dispatch_application_operation_once remains the sole authoritative Moderation operation CAS before domain dispatch",
+      "generic_envelope_token": "scheduler-only token; never used as Moderation operation lease or domain idempotency key",
+      "multi_host": "duplicate candidate discovery converges on the existing Moderation CAS; losing hosts perform no domain mutation",
+      "completion": "generic ModuleWorkSource completion is a no-op because moderation_application_operations is the durable outcome source",
+      "shutdown": "shared deployment StopHandle prevents new claims while already claimed module work is allowed to finish",
+      "bespoke_loop": "forbidden; Moderation does not add its own tokio spawn or polling interval"
+    },
+    "audit_lifecycle": {
+      "audit_owner": "existing moderation_events table",
+      "schema_change": "none",
+      "scope": "atomic lifecycle applies to claims/finalizers executed after this source is active",
+      "claim": "winning operation CAS and first case decided -> applying_decision transition share one owner transaction; reclaim while already applying_decision does not bump the case revision",
+      "retryable": "operation retry scheduling and application_retry_scheduled audit share one owner transaction while the case remains applying_decision",
+      "applied": "operation applied evidence, case applying_decision -> closed, closed_at, active deduplication key release, application_applied and case_closed share one owner transaction",
+      "rejected": "operation rejected, case applying_decision -> escalated, application_rejected and case_escalated share one owner transaction",
+      "operator_review": "operation operator_review, case applying_decision -> escalated, application_operator_review and case_escalated share one owner transaction",
+      "active_case_identity": "released only on closed; preserved on escalated for operator work and report attachment",
+      "legacy_terminal_rows": "pre-audit applied/rejected/operator_review rows are terminal truth and are reconciled explicitly by the Moderation owner without domain application or fabricated historical lifecycle facts",
+      "public_event_contract": "not frozen; moderation_events remains an internal owner audit ledger rather than a typed cross-domain rustok-events family"
+    },
+    "operator_recovery": {
+      "owner": "rustok-moderation",
+      "actor": "human PortActorKind User with UUID identity",
+      "receipt": "existing moderation command receipt ledger; request identity binds actor, decision ID, expected case revision and bounded reason",
+      "same_decision_requeue": "only rejected or operator_review may move to retryable due now; applied can never be requeued",
+      "requeue_case": "escalated or legacy pre-audit decided moves to applying_decision with exact expected revision CAS",
+      "immutable_identity": "decision UUID/hash/reviewed subject remain unchanged; next domain attempt still comes only from the shared scheduler and one-attempt dispatcher",
+      "legacy_terminal_reconciliation": "applied maps to closed; rejected/operator_review map to escalated; already-consistent terminal case is a no-op",
+      "applied_reconciliation_evidence": "stored applied_revision must be at least reviewed revision and stored applied_at must exist",
+      "reconciliation_time": "a legacy applied case closes at current reconciliation time; stored historical applied_at is evidence, not a fabricated case closure timestamp",
+      "reconciliation_events": [
+        "application_legacy_terminal_reconciled",
+        "case_legacy_terminal_reconciled"
+      ],
+      "domain_invocation_during_reconciliation": "forbidden",
+      "re_review": "stale reviewed revision requires a new case and new immutable decision using a freshly authorized producer revision; old decision is never retargeted",
+      "authorized_transport": "host-owned apps/server GraphQL transport requires tenant match, human user principal, moderation_cases:override effective authority, enabled moderation module and non-nil root idempotency",
+      "fresh_revision_rereview": "authorized GraphQL workflow composes read + open_case + assign_case + decide_case with deterministic receipt identities to create a new case and immutable decision at an explicit newer producer revision"
+    }
+  },
+  "supported_effects": [
+    "NoDomainMutation for forum_topic and forum_post",
+    "permanent Lock for forum_topic using TopicService::set_locked_in_tx",
+    "SetVisibility Hidden for forum_post using exact Forum ReplyStatus::Hidden lifecycle semantics",
+    "SetVisibility Removed for forum_post using the complete Forum ReplyService::remove_in_tx soft-delete owner path",
+    "RejectPublication for forum_post using exact Forum ReplyStatus::Rejected moderator publication semantics"
+  ],
+  "reply_hidden_semantics": {
+    "target": "ReplyStatus::Hidden",
+    "already_hidden": "no-op without duplicate counters or ForumReplyStatusChanged event",
+    "approved_to_hidden": [
+      "decrement topic public reply count",
+      "decrement category public reply count",
+      "decrement author Forum reply statistics"
+    ],
+    "other_valid_to_hidden_transitions": "status change only; public counters remain unchanged",
+    "root_event": "ForumReplyStatusChanged",
+    "search_projection": "ForumReplyStatusChanged is a canonical Forum Search full-scope source event; category invalidation is also emitted when public counters change",
+    "atomicity": "status, counters/statistics, root/projection events, moderation revision advancement and shared receipt share the adapter owner transaction"
+  },
+  "reply_rejected_semantics": {
+    "neutral_effect": "RejectPublication",
+    "target": "ReplyStatus::Rejected",
+    "owner_contract": "the established Forum moderator reject_reply action uses ReplyStatus::Rejected and the same validated reply lifecycle",
+    "already_rejected": "no-op without duplicate counters or ForumReplyStatusChanged event",
+    "approved_to_rejected": [
+      "decrement topic public reply count",
+      "decrement category public reply count",
+      "decrement author Forum reply statistics"
+    ],
+    "other_valid_to_rejected_transitions": "status change only; public counters remain unchanged",
+    "root_event": "ForumReplyStatusChanged with new_status rejected",
+    "search_projection": "ForumReplyStatusChanged is the canonical Forum Search full-scope source event; category invalidation is also emitted when public counters change",
+    "unpublished_distinction": "SetVisibility Unpublished is a separate neutral effect and remains unsupported; it is not mapped to ReplyStatus::Rejected",
+    "atomicity": "status, counters/statistics, root/projection events, moderation revision advancement and shared receipt share the adapter owner transaction"
+  },
+  "reply_removed_semantics": {
+    "target": "ReplyStatus::Deleted plus deleted_at soft-delete tombstone",
+    "owner_helper": "ReplyService::remove_in_tx",
+    "owner_mutations": [
+      "validate the existing Forum transition to ReplyStatus::Deleted",
+      "remove accepted-solution relation when this reply owns it",
+      "capture delete revisions through the established Forum soft-delete guards",
+      "set status deleted and deleted_at atomically",
+      "decrement topic/category/author public reply accounting when the reply was approved",
+      "decrement author solution statistics when the removed reply was the accepted solution"
+    ],
+    "root_event": "ForumReplyStatusChanged with new_status deleted",
+    "search_projection": "ForumReplyStatusChanged remains the canonical Forum Search full-scope source event; category invalidation is also emitted when public counters change",
+    "idempotency": "completed Moderation receipt replays before subject reads; an already soft-deleted subject is unavailable rather than re-deleted",
+    "atomicity": "soft delete/tombstone, solution cleanup, counters/statistics, root/projection events, moderation revision advancement and shared receipt share the adapter owner transaction"
+  },
+  "deferred_effects": [
+    "temporary topic Lock until Forum owns expiry-safe enforcement state",
+    "SetVisibility Unpublished until an exact Forum lifecycle mapping is established",
+    "topic visibility removal/unpublish effects",
+    "RequireEdit",
+    "RestrictInteraction",
+    "SuspendSubject",
+    "Escalate",
+    "AccountSanctionRecommended"
+  ],
+  "ownership": [
+    "Moderation owns reports cases queues decisions appeals application orchestration operator recovery and cross-domain audit",
+    "Forum owns topic/reply lifecycle state moderation subject revision local enforcement and Search projection invalidation",
+    "Forum depends on rustok-moderation-api only and does not depend on rustok-moderation",
+    "Forum registers neutral subject adapter factories; the selected host composes rustok-moderation and materializes them"
+  ],
+  "forbidden": [
+    "Forum moderation case table",
+    "Forum report queue",
+    "Forum appeal queue",
+    "Forum application recovery state or commands",
+    "Forum copy of Moderation decisions or audit log",
+    "direct rustok-moderation owner dependency",
+    "retargeting a stale decision to a newer Forum revision",
+    "reusing Reactions or content revision as the Moderation subject clock",
+    "temporary lock without expiry-safe owner state",
+    "mapping SetVisibility Unpublished to ReplyStatus::Rejected",
+    "bypassing ReplyService::remove_in_tx for Moderation Removed reply application",
+    "reaction state catalog aggregate or presentation ownership changes"
+  ],
+  "not_claimed": [
+    "Moderation-owned bespoke polling loop outside the shared ModuleWorkScheduler",
+    "typed cross-domain application lifecycle outbox event family",
+    "module-owned Moderation admin UI for recovery",
+    "automatic replacement decision or silent retargeting after escalation",
+    "SetVisibility Unpublished support",
+    "all neutral Moderation effect coverage",
+    "production deployment or rollout validation",
+    "release readiness"
+  ],
+  "implementation_status": "complete",
+  "production_validation": "deferred",
+  "completion_boundary": "FORUM-19 bounded implementation is complete; deployment-dependent promotion is deferred to final production validation and does not reopen implementation unless it exposes a regression"
+}

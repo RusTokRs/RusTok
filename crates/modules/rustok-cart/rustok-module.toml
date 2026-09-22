@@ -1,0 +1,30 @@
+[module]
+slug = "cart"
+name = "Cart"
+version = "0.1.0"
+description = "Default cart submodule in the ecommerce family"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "storefront_only"
+[crate]
+entry_type = "CartModule"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-cart-storefront"
+slot = "home_after_catalog"
+route_segment = "cart"
+page_title = "Cart"
+
+[provides.storefront_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"
+
+[fba.provider]
+registry = "contracts/cart-fba-registry.json"
+contract_version = "cart.checkout.v2"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+profiles = ["checkout_cart_snapshot"]
+fallback_profiles = ["embedded_native", "graphql_checkout_compat", "graphql_storefront_compat"]
+degraded_modes = ["preserve_cart_checkout_state", "show_cart_refresh_required"]

@@ -1,0 +1,61 @@
+{
+  "contract": "forum_search_link_forum_03_private_trusted_exclusion_proof_v1",
+  "task": "FORUM-23B2G2B3D15",
+  "target_link": "LINK-FORUM-03",
+  "coverage": "private_and_trusted_channel_exclusion_only",
+  "status": "source_ready_maintainer_execution_pending",
+  "test": "apps/server/tests/forum_versioned_invalidation_private_trusted_exclusion.rs",
+  "verifier": "scripts/verify/verify-forum-search-link-forum-03-private-trusted-exclusion-proof.mjs",
+  "evidence_artifact": "target/forum-search-link-forum-03-private-trusted-exclusion-evidence.json",
+  "required_runtime": {
+    "database": "postgresql",
+    "broker_used": false,
+    "host_package": "rustok-server",
+    "search_inbox": "search_projection_inbox",
+    "projector": "ForumProjectionReconciler",
+    "storefront_execution": "execute_forum_storefront_search"
+  },
+  "required_owner_trace": [
+    "revisions 1 and 2 are the two real category-create forum-scope invalidations",
+    "revisions 3 through 5 are the unrestricted private and trusted topic-create category invalidations",
+    "revision 6 is the private topic explicit-user audience invalidation",
+    "revision 7 is the trusted category minimum-trust audience invalidation",
+    "revision 8 is the trusted topic channel-membership audience invalidation"
+  ],
+  "fail_closed_requirements": [
+    "the test creates one isolated PostgreSQL schema and applies real Outbox Taxonomy Forum and Search migrations",
+    "all category topic and audience mutations use exported Forum owner services",
+    "the eight owner revisions are contiguous and have exact target types and target identifiers",
+    "every owner revision retains one legacy root envelope and one distinct caused typed envelope from sys_events",
+    "the exact typed envelopes enter Search through ForumSearchContractIngress rather than manual inbox insertion",
+    "the production Forum projection source and ForumProjectionReconciler retain only the unrestricted public category and topic documents",
+    "the explicit-user private topic and the trusted-channel topic are absent from the legitimate public Search projection",
+    "stale Search rows are injected only after projection to exercise current owner reauthorization rather than simulate Forum writes",
+    "the production storefront execution and ForumSearchResultEligibilityService deny public outsider low-trust non-member and wrong-route views",
+    "the exact explicitly allowed private user and exact high-trust trusted-channel member are allowed from the same stale candidate rows",
+    "the trusted-channel decision is a conjunction of exact route channel inherited trust floor and topic channel membership",
+    "trusted storefront route contexts carry both a non-nil channel identifier and the matching slug",
+    "owner-facts requests are bounded to the exact requested trust or channel subset and carry deadline semantics",
+    "each root event retains exactly one Search inbox row and a caught-up repeat performs no duplicate work",
+    "the evidence artifact is written only after every assertion succeeds and the isolated schema is removed"
+  ],
+  "proves_after_maintainer_execution": [
+    "private and trusted-channel Forum topics do not enter the canonical anonymous Search projection",
+    "a stale Search candidate cannot bypass the current Forum explicit-user private policy",
+    "a stale trusted-channel candidate requires the exact route plus inherited trust and channel-membership decisions",
+    "public outsider low-trust non-member and wrong-route result totals items and facets remain empty",
+    "exact authorized viewers can still receive their allowed stale candidate through current owner reauthorization"
+  ],
+  "maintainer_commands": [
+    "node scripts/verify/verify-forum-search-link-forum-03-private-trusted-exclusion-proof.mjs",
+    "RUSTOK_SEARCH_TEST_DATABASE_URL=\"$DATABASE_URL\" cargo test -p rustok-server --test forum_versioned_invalidation_private_trusted_exclusion -- --nocapture --test-threads=1"
+  ],
+  "non_claims": [
+    "this source-ready slice does not claim that the verifier PostgreSQL test or storefront execution ran",
+    "this proof uses complete internally consistent trusted RequestContext values but does not independently authenticate host Channel resolution",
+    "this proof does not execute or simulate topic move because the owner command remains planned under FORUM-21",
+    "this proof does not use external Iggy or replace the reviewed D0 D12 D13 or D14 artifacts",
+    "this proof does not close arbitrary group role deny-list or attachment-presence combinations",
+    "this proof is not sufficient to mark LINK-FORUM-03 done or promote FORUM-23"
+  ]
+}

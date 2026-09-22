@@ -24,7 +24,7 @@ impl RusToKModule for BlogModule {
     }
 
     fn description(&self) -> &'static str {
-        "Posts, Categories, Tags, and optional Comments integration"
+        "Posts, Comments, Categories, Tags"
     }
 
     fn version(&self) -> &'static str {
@@ -32,7 +32,7 @@ impl RusToKModule for BlogModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["content", "taxonomy", "outbox", "channel", "profiles"]
+        &["content", "comments", "taxonomy", "outbox", "channel", "profiles"]
     }
 
     fn permissions(&self) -> Vec<Permission> {
@@ -125,11 +125,11 @@ mod tests {
         let module = BlogModule;
         assert_eq!(module.slug(), "blog");
         assert_eq!(module.name(), "Blog");
-        assert_eq!(module.description(), "Posts, Categories, Tags, and optional Comments integration");
+        assert_eq!(module.description(), "Posts, Comments, Categories, Tags");
         assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
         assert_eq!(
             module.dependencies(),
-            &["content", "taxonomy", "outbox", "channel", "profiles"]
+            &["content", "comments", "taxonomy", "outbox", "channel", "profiles"]
         );
     }
 

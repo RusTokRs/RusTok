@@ -1,0 +1,416 @@
+use std::collections::HashMap;
+
+use chrono::Utc;
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, TransactionTrait,
+};
+use tracing::instrument;
+use uuid::Uuid;
+
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
+use rustok_content::{normalize_locale_code, resolve_by_locale_with_fallback};
+use rustok_core::SecurityContext;
+use rustok_events::DomainEvent;
+use rustok_outbox::TransactionalEventBus;
+
+use crate::dto::{ListRepliesFilter, ReplyListItem, ReplyResponse};
+use crate::entities::{forum_reply, forum_reply_body, forum_solution};
+use crate::error::{ForumError, ForumResult};
+use crate::richtext::project_stored_discussion;
+use crate::services::rbac::{enforce_owned_scope, enforce_scope};
+use crate::services::vote::{VoteService, VoteSummary};
+use crate::state_machine::ReplyStatus;
+
+pub struct ReplyService {
+    db: DatabaseConnection,
+    event_bus: TransactionalEventBus,
+}
+
+impl ReplyService {
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+        Self { db, event_bus }
+    }
+
+    #[instrument(skip(self))]
+    pub async fn get(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        reply_id: Uuid,
+        locale: &str,
+    ) -> ForumResult<ReplyResponse> {
+        self.get_with_locale_fallback(tenant_id, security, reply_id, locale, None)
+            .await
+    }
+
+    #[instrument(skip(self))]
+    pub async fn get_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        reply_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> ForumResult<ReplyResponse> {
+        enforce_scope(&security, Resource::ForumReplies, Action::Read)?;
+        let locale = normalize_locale(locale)?;
+        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+        let reply = self.find_reply(tenant_id, reply_id).await?;
+        let bodies = self.load_bodies(tenant_id, reply_id).await?;
+        let solution_reply_id = self
+            .load_solution_reply_id_for_topic(tenant_id, reply.topic_id)
+            .await?;
+        let vote_summary = VoteService::new(self.db.clone())
+            .reply_vote_summary(tenant_id, reply_id, security.user_id)
+            .await?;
+        to_reply_response(
+            reply,
+            bodies,
+            vote_summary,
+            solution_reply_id,
+            &locale,
+            fallback_locale.as_deref(),
+        )
+    }
+
+    #[instrument(skip(self, security))]
+    pub async fn list_for_topic_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        topic_id: Uuid,
+        filter: ListRepliesFilter,
+        fallback_locale: Option<&str>,
+    ) -> ForumResult<(Vec<ReplyListItem>, u64)> {
+        enforce_scope(&security, Resource::ForumReplies, Action::List)?;
+        let locale = filter
+            .locale
+            .clone()
+            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+        let locale = normalize_locale(&locale)?;
+        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+
+        let (replies, total) = self
+            .fetch_reply_page(tenant_id, topic_id, filter.page, filter.per_page, None)
+            .await?;
+        let solution_reply_id = self
+            .load_solution_reply_id_for_topic(tenant_id, topic_id)
+            .await?;
+        let reply_ids: Vec<Uuid> = replies.iter().map(|reply| reply.id).collect();
+        let bodies_map = self.load_bodies_map(tenant_id, &reply_ids).await?;
+        let vote_summaries = VoteService::new(self.db.clone())
+            .reply_vote_summaries(tenant_id, &reply_ids, security.user_id)
+            .await?;
+
+        let items = replies
+            .into_iter()
+            .map(|reply| {
+                let bodies = bodies_map.get(&reply.id).cloned().unwrap_or_default();
+                let resolved = resolve_reply_body(&bodies, &locale, fallback_locale.as_deref());
+                let body = resolved.item.ok_or_else(|| {
+                    ForumError::Validation("Forum reply body is unavailable".to_string())
+                })?;
+                let preview: String = project_stored_discussion(&body.body)?
+                    .plain_text
+                    .chars()
+                    .take(200)
+                    .collect();
+                Ok(ReplyListItem {
+                    id: reply.id,
+                    locale: locale.clone(),
+                    effective_locale: resolved.effective_locale,
+                    topic_id: reply.topic_id,
+                    author_id: reply.author_id,
+                    content_preview: preview,
+                    status: reply.status.to_string(),
+                    is_deleted: reply.status == ReplyStatus::Deleted,
+                    vote_score: vote_summaries
+                        .get(&reply.id)
+                        .map(|summary| summary.score)
+                        .unwrap_or_default(),
+                    current_user_vote: vote_summaries
+                        .get(&reply.id)
+                        .and_then(|summary| summary.current_user_vote),
+                    is_solution: Some(reply.id) == solution_reply_id,
+                    parent_reply_id: reply.parent_reply_id,
+                    created_at: reply.created_at.to_rfc3339(),
+                })
+            })
+            .collect::<ForumResult<Vec<_>>>()?;
+
+        Ok((items, total))
+    }
+
+    #[instrument(skip(self, security))]
+    pub async fn list_response_for_topic_by_statuses_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        topic_id: Uuid,
+        filter: ListRepliesFilter,
+        fallback_locale: Option<&str>,
+        statuses: Option<&[ReplyStatus]>,
+    ) -> ForumResult<(Vec<ReplyResponse>, u64)> {
+        enforce_scope(&security, Resource::ForumReplies, Action::List)?;
+        let locale = filter
+            .locale
+            .clone()
+            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+        let locale = normalize_locale(&locale)?;
+        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+        let (replies, total) = self
+            .fetch_reply_page(tenant_id, topic_id, filter.page, filter.per_page, statuses)
+            .await?;
+        let solution_reply_id = self
+            .load_solution_reply_id_for_topic(tenant_id, topic_id)
+            .await?;
+        let reply_ids: Vec<Uuid> = replies.iter().map(|reply| reply.id).collect();
+        let bodies_map = self.load_bodies_map(tenant_id, &reply_ids).await?;
+        let vote_summaries = VoteService::new(self.db.clone())
+            .reply_vote_summaries(tenant_id, &reply_ids, security.user_id)
+            .await?;
+
+        let items = replies
+            .into_iter()
+            .map(|reply| {
+                let reply_id = reply.id;
+                to_reply_response(
+                    reply,
+                    bodies_map.get(&reply_id).cloned().unwrap_or_default(),
+                    vote_summaries.get(&reply_id).copied().unwrap_or_default(),
+                    solution_reply_id,
+                    &locale,
+                    fallback_locale.as_deref(),
+                )
+            })
+            .collect::<ForumResult<Vec<_>>>()?;
+
+        Ok((items, total))
+    }
+
+    pub(crate) async fn find_reply(
+        &self,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+    ) -> ForumResult<forum_reply::Model> {
+        Self::find_reply_in_conn(&self.db, tenant_id, reply_id).await
+    }
+
+    pub(crate) async fn find_reply_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+    ) -> ForumResult<forum_reply::Model> {
+        Self::find_reply_in_conn(txn, tenant_id, reply_id).await
+    }
+
+    pub(crate) async fn find_reply_for_update_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+    ) -> ForumResult<forum_reply::Model> {
+        let query = forum_reply::Entity::find_by_id(reply_id)
+            .filter(forum_reply::Column::TenantId.eq(tenant_id));
+        let reply = match txn.get_database_backend() {
+            DatabaseBackend::Postgres => query.lock_exclusive().one(txn).await?,
+            DatabaseBackend::Sqlite => query.one(txn).await?,
+            backend => {
+                return Err(ForumError::Validation(format!(
+                    "Forum reply row locking does not support database backend {backend:?}"
+                )));
+            }
+        };
+        reply.ok_or(ForumError::ReplyNotFound(reply_id))
+    }
+
+    async fn find_reply_in_conn(
+        conn: &impl sea_orm::ConnectionTrait,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+    ) -> ForumResult<forum_reply::Model> {
+        forum_reply::Entity::find_by_id(reply_id)
+            .filter(forum_reply::Column::TenantId.eq(tenant_id))
+            .one(conn)
+            .await?
+            .ok_or(ForumError::ReplyNotFound(reply_id))
+    }
+
+    pub(crate) async fn set_status_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+        status: ReplyStatus,
+    ) -> ForumResult<forum_reply::Model> {
+        let reply = Self::find_reply_in_tx(txn, tenant_id, reply_id).await?;
+        let mut active: forum_reply::ActiveModel = reply.clone().into();
+        active.status = Set(status);
+        active.updated_at = Set(Utc::now().into());
+        active.update(txn).await?;
+        Ok(reply)
+    }
+
+    async fn load_bodies(
+        &self,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+    ) -> ForumResult<Vec<forum_reply_body::Model>> {
+        Ok(forum_reply_body::Entity::find()
+            .filter(forum_reply_body::Column::TenantId.eq(tenant_id))
+            .filter(forum_reply_body::Column::ReplyId.eq(reply_id))
+            .all(&self.db)
+            .await?)
+    }
+
+    async fn load_solution_reply_id_for_topic(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+    ) -> ForumResult<Option<Uuid>> {
+        Ok(forum_solution::Entity::find()
+            .filter(forum_solution::Column::TenantId.eq(tenant_id))
+            .filter(forum_solution::Column::TopicId.eq(topic_id))
+            .one(&self.db)
+            .await?
+            .map(|solution| solution.reply_id))
+    }
+
+    async fn fetch_reply_page(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        page: u64,
+        per_page: u64,
+        statuses: Option<&[ReplyStatus]>,
+    ) -> ForumResult<(Vec<forum_reply::Model>, u64)> {
+        let mut query = forum_reply::Entity::find()
+            .filter(forum_reply::Column::TenantId.eq(tenant_id))
+            .filter(forum_reply::Column::TopicId.eq(topic_id))
+            .order_by_asc(forum_reply::Column::Position);
+
+        if let Some(statuses) = statuses
+            && !statuses.is_empty()
+        {
+            let mut condition = Condition::any();
+            for status in statuses {
+                condition = condition.add(forum_reply::Column::Status.eq(*status));
+            }
+            query = query.filter(condition);
+        }
+
+        let paginator = query.paginate(&self.db, per_page.max(1));
+        let total = paginator.num_items().await?;
+        let replies = paginator.fetch_page(page.saturating_sub(1)).await?;
+        Ok((replies, total))
+    }
+
+    async fn load_bodies_map(
+        &self,
+        tenant_id: Uuid,
+        reply_ids: &[Uuid],
+    ) -> ForumResult<HashMap<Uuid, Vec<forum_reply_body::Model>>> {
+        if reply_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let rows = forum_reply_body::Entity::find()
+            .filter(forum_reply_body::Column::TenantId.eq(tenant_id))
+            .filter(forum_reply_body::Column::ReplyId.is_in(reply_ids.to_vec()))
+            .all(&self.db)
+            .await?;
+        let mut map: HashMap<Uuid, Vec<forum_reply_body::Model>> = HashMap::new();
+        for row in rows {
+            map.entry(row.reply_id).or_default().push(row);
+        }
+        Ok(map)
+    }
+
+    async fn upsert_body_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+        locale: &str,
+        body: String,
+    ) -> ForumResult<()> {
+        let existing = forum_reply_body::Entity::find()
+            .filter(forum_reply_body::Column::TenantId.eq(tenant_id))
+            .filter(forum_reply_body::Column::ReplyId.eq(reply_id))
+            .filter(forum_reply_body::Column::Locale.eq(locale))
+            .one(txn)
+            .await?;
+        let now = Utc::now();
+
+        match existing {
+            Some(existing) => {
+                let mut active: forum_reply_body::ActiveModel = existing.into();
+                active.body = Set(body);
+                active.updated_at = Set(now.into());
+                active.update(txn).await?;
+            }
+            None => {
+                forum_reply_body::ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    reply_id: Set(reply_id),
+                    tenant_id: Set(tenant_id),
+                    locale: Set(locale.to_string()),
+                    body: Set(body),
+                    created_at: Set(now.into()),
+                    updated_at: Set(now.into()),
+                }
+                .insert(txn)
+                .await?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+fn to_reply_response(
+    reply: forum_reply::Model,
+    bodies: Vec<forum_reply_body::Model>,
+    vote_summary: VoteSummary,
+    solution_reply_id: Option<Uuid>,
+    locale: &str,
+    fallback_locale: Option<&str>,
+) -> ForumResult<ReplyResponse> {
+    let resolved = resolve_reply_body(&bodies, locale, fallback_locale);
+    let body = resolved
+        .item
+        .ok_or_else(|| ForumError::Validation("Forum reply body is unavailable".to_string()))?;
+    let content = project_stored_discussion(&body.body)?;
+
+    Ok(ReplyResponse {
+        id: reply.id,
+        requested_locale: locale.to_string(),
+        locale: locale.to_string(),
+        effective_locale: resolved.effective_locale,
+        topic_id: reply.topic_id,
+        author_id: reply.author_id,
+        content: content.view,
+        content_plain_text: content.plain_text,
+        status: reply.status.to_string(),
+        is_deleted: reply.status == ReplyStatus::Deleted,
+        vote_score: vote_summary.score,
+        current_user_vote: vote_summary.current_user_vote,
+        is_solution: Some(reply.id) == solution_reply_id,
+        parent_reply_id: reply.parent_reply_id,
+        created_at: reply.created_at.to_rfc3339(),
+        updated_at: reply.updated_at.to_rfc3339(),
+    })
+}
+
+fn normalize_locale(locale: &str) -> ForumResult<String> {
+    normalize_locale_code(locale)
+        .ok_or_else(|| ForumError::Validation("Invalid locale".to_string()))
+}
+
+fn resolve_reply_body<'a>(
+    bodies: &'a [forum_reply_body::Model],
+    locale: &str,
+    fallback_locale: Option<&str>,
+) -> rustok_content::ResolvedLocale<'a, forum_reply_body::Model> {
+    resolve_by_locale_with_fallback(bodies, locale, fallback_locale, |body| body.locale.as_str())
+}
+

@@ -1,0 +1,228 @@
+use std::{
+    env,
+    path::{Component, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
+
+use rustok_build_publication::{CommandRegistryCredentialBroker, CosignArtifactSigner};
+use rustok_modules::{
+    ModuleAlloyPublicationEvidenceProducer, ModuleControlPlane,
+    ModulePlatformPublicationEvidenceProducer, OciArtifactPublicationTarget,
+    SeaOrmModuleGovernanceService,
+};
+use rustok_registry_validation_worker::{
+    CredentialedOciRegistryProvider, RegistryValidationAlloyPublication,
+    RegistryValidationPublicationPolicy, RegistryValidationWorker,
+};
+use rustok_storage::{StorageConfig, StorageRuntime};
+use rustok_verification_transport::GrpcTrustVerifier;
+use rustok_worker_transport::MutualTlsClientConfig;
+use sea_orm::{ConnectOptions, Database, DatabaseConnection};
+use tonic::transport::Endpoint;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    required_env("RUSTOK_INSTANCE_ROOT")?;
+    let layout = rustok_runtime::resolve_instance_layout_from_environment()?;
+    let actor_id = required_env("RUSTOK_REGISTRY_VALIDATION_WORKER_ID")?;
+    let poll_delay = Duration::from_millis(optional_u64(
+        "RUSTOK_REGISTRY_VALIDATION_POLL_DELAY_MS",
+        1_000,
+    )?);
+    if poll_delay.is_zero() {
+        return Err("RUSTOK_REGISTRY_VALIDATION_POLL_DELAY_MS must be positive".into());
+    }
+    let worker = init_worker(&layout, actor_id).await?;
+    run_worker_loop(worker, poll_delay).await
+}
+
+async fn run_worker_loop(
+    worker: RegistryValidationWorker,
+    poll_delay: Duration,
+) -> Result<(), Box<dyn std::error::Error>> {
+    loop {
+        tokio::select! {
+            shutdown = tokio::signal::ctrl_c() => {
+                shutdown?;
+                return Ok(());
+            }
+            result = worker.process_next() => match result {
+                Ok(Some(job_id)) => tracing::info!(validation_job_id = %job_id, "Registry validation job completed"),
+                Ok(None) => tokio::time::sleep(poll_delay).await,
+                Err(error) => {
+                    tracing::error!(error = %error, "Registry validation worker iteration failed");
+                    tokio::time::sleep(poll_delay).await;
+                }
+            }
+        }
+    }
+}
+
+async fn init_storage_and_db(
+    layout: &rustok_runtime::InstanceLayout,
+) -> Result<(DatabaseConnection, StorageRuntime), Box<dyn std::error::Error>> {
+    let database_url = required_env("RUSTOK_REGISTRY_VALIDATION_DATABASE_URL")?;
+    let mut storage_config: StorageConfig = serde_json::from_str(&required_env(
+        "RUSTOK_REGISTRY_VALIDATION_STORAGE_CONFIG_JSON",
+    )?)?;
+    storage_config.bind_local_base_dir(layout.storage());
+    let mut options = ConnectOptions::new(database_url);
+    options.sqlx_logging(false);
+    let database = Database::connect(options).await?;
+    let storage = StorageRuntime::from_config(&storage_config).await?;
+    Ok((database, storage))
+}
+
+async fn init_verifier() -> Result<Arc<GrpcTrustVerifier>, Box<dyn std::error::Error>> {
+    let verification_endpoint = required_https_endpoint(
+        "RUSTOK_REGISTRY_VALIDATION_VERIFICATION_ENDPOINT",
+        required_env("RUSTOK_REGISTRY_VALIDATION_VERIFICATION_ENDPOINT")?,
+    )?;
+    let verification_tls =
+        MutualTlsClientConfig::from_env_prefix("RUSTOK_REGISTRY_VALIDATION_VERIFICATION")?;
+    let verifier = Arc::new(
+        GrpcTrustVerifier::connect_with_tls(
+            Endpoint::from_shared(verification_endpoint)?,
+            verification_tls.tls_config(),
+        )
+        .await?,
+    );
+    verifier.check_readiness().await?;
+    Ok(verifier)
+}
+
+async fn init_worker(
+    layout: &rustok_runtime::InstanceLayout,
+    actor_id: String,
+) -> Result<RegistryValidationWorker, Box<dyn std::error::Error>> {
+    let (database, storage) = init_storage_and_db(layout).await?;
+    let verifier = init_verifier().await?;
+    let credential_broker = Arc::new(CommandRegistryCredentialBroker::new(
+        required_instance_path(
+            layout,
+            "RUSTOK_REGISTRY_VALIDATION_REGISTRY_CREDENTIAL_BROKER",
+        )?,
+        required_env("RUSTOK_REGISTRY_VALIDATION_REGISTRY_CREDENTIAL_BROKER_DIGEST")?,
+    )?);
+    let registry_provider = Arc::new(CredentialedOciRegistryProvider::new(
+        credential_broker.clone(),
+    )?);
+    let owner = ModuleControlPlane::new(database).publication();
+    let publication_evidence = Arc::new(ModulePlatformPublicationEvidenceProducer::new(
+        Arc::new(owner.clone()),
+        registry_provider.clone(),
+        verifier.clone(),
+    ));
+    let alloy_publication = build_alloy_publication(
+        layout,
+        &owner,
+        registry_provider,
+        verifier,
+        credential_broker,
+    )?;
+    let publication_policy = parse_publication_policy()?;
+    Ok(RegistryValidationWorker::new(
+        owner,
+        storage,
+        actor_id,
+        publication_evidence,
+        alloy_publication,
+        publication_policy,
+    )?)
+}
+
+fn build_alloy_publication(
+    layout: &rustok_runtime::InstanceLayout,
+    owner: &SeaOrmModuleGovernanceService,
+    registry_provider: Arc<CredentialedOciRegistryProvider>,
+    verifier: Arc<GrpcTrustVerifier>,
+    credential_broker: Arc<CommandRegistryCredentialBroker>,
+) -> Result<RegistryValidationAlloyPublication, Box<dyn std::error::Error>> {
+    let alloy_publication_target = OciArtifactPublicationTarget {
+        registry: required_env("RUSTOK_REGISTRY_VALIDATION_ALLOY_PUBLICATION_REGISTRY")?,
+        repository: required_env("RUSTOK_REGISTRY_VALIDATION_ALLOY_PUBLICATION_REPOSITORY")?,
+    };
+    let alloy_signer = Arc::new(CosignArtifactSigner::new(
+        required_instance_path(layout, "RUSTOK_REGISTRY_VALIDATION_COSIGN_PROGRAM")?,
+        required_env("RUSTOK_REGISTRY_VALIDATION_COSIGN_PROGRAM_DIGEST")?,
+        required_env("RUSTOK_REGISTRY_VALIDATION_COSIGN_KEY_REFERENCE")?,
+    )?);
+    let alloy_publication_evidence = Arc::new(ModuleAlloyPublicationEvidenceProducer::new(
+        Arc::new(owner.clone()),
+        registry_provider,
+        verifier,
+    ));
+    Ok(RegistryValidationAlloyPublication::new(
+        alloy_publication_evidence,
+        alloy_publication_target,
+        credential_broker,
+        alloy_signer,
+    )?)
+}
+
+fn parse_publication_policy() -> Result<RegistryValidationPublicationPolicy, Box<dyn std::error::Error>> {
+    Ok(RegistryValidationPublicationPolicy {
+        registry_id: required_env("RUSTOK_REGISTRY_VALIDATION_REGISTRY_ID")?,
+        trust_policy_revision: required_u64("RUSTOK_REGISTRY_VALIDATION_TRUST_POLICY_REVISION")?,
+        capability_policy_revision: required_u64(
+            "RUSTOK_REGISTRY_VALIDATION_CAPABILITY_POLICY_REVISION",
+        )?,
+        build_service_issuer_identity: required_env(
+            "RUSTOK_REGISTRY_VALIDATION_BUILD_SERVICE_ISSUER_IDENTITY",
+        )?,
+        build_service_policy_revision: required_env(
+            "RUSTOK_REGISTRY_VALIDATION_BUILD_SERVICE_POLICY_REVISION",
+        )?,
+    })
+}
+
+fn required_env(name: &str) -> Result<String, String> {
+    env::var(name).map_err(|_| format!("{name} must be configured"))
+}
+
+fn required_instance_path(
+    layout: &rustok_runtime::InstanceLayout,
+    name: &str,
+) -> Result<PathBuf, String> {
+    let path = PathBuf::from(required_env(name)?);
+    if path.is_absolute()
+        || path
+            .components()
+            .any(|component| matches!(component, Component::ParentDir | Component::Prefix(_)))
+    {
+        return Err(format!(
+            "{name} must be a path relative to RUSTOK_INSTANCE_ROOT"
+        ));
+    }
+    layout
+        .resolve_relative(path)
+        .map_err(|error| error.to_string())
+}
+
+fn optional_u64(name: &str, default: u64) -> Result<u64, String> {
+    env::var(name).map_or(Ok(default), |value| {
+        value
+            .parse()
+            .map_err(|error| format!("{name} is invalid: {error}"))
+    })
+}
+
+fn required_u64(name: &str) -> Result<u64, String> {
+    let value = required_env(name)?;
+    let value = value
+        .parse::<u64>()
+        .map_err(|error| format!("{name} is invalid: {error}"))?;
+    if value == 0 {
+        return Err(format!("{name} must be positive"));
+    }
+    Ok(value)
+}
+
+fn required_https_endpoint(name: &str, endpoint: String) -> Result<String, String> {
+    if endpoint.starts_with("https://") {
+        Ok(endpoint)
+    } else {
+        Err(format!("{name} must use an https:// endpoint for mTLS"))
+    }
+}

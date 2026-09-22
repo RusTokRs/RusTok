@@ -1,0 +1,432 @@
+use std::path::{Path, PathBuf};
+
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("apps/server should live under workspace root")
+        .to_path_buf()
+}
+
+fn source(relative: &str) -> String {
+    let path = repo_root().join(relative);
+    let mut content = std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+    if let Some(parent) = path.parent() {
+        for line in content.clone().lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("include!(\"") {
+                if let Some(inc_file) = rest.strip_suffix("\");") {
+                    let inc_path = parent.join(inc_file);
+                    if inc_path.exists() {
+                        if let Ok(inc_content) = std::fs::read_to_string(&inc_path) {
+                            content.push('\n');
+                            content.push_str(&inc_content);
+                        }
+                    }
+                }
+            } else if let Some(rest) = trimmed.strip_prefix("#[path = \"") {
+                if let Some(mod_file) = rest.strip_suffix("\"]") {
+                    let mod_path = parent.join(mod_file);
+                    if mod_path.exists() {
+                        if let Ok(mod_content) = std::fs::read_to_string(&mod_path) {
+                            content.push('\n');
+                            content.push_str(&mod_content);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    content
+}
+
+#[test]
+fn variable_payload_caches_use_weighted_capacity() {
+    let weighted_caches = [
+        "apps/server/src/services/field_definition_cache.rs",
+        "apps/server/src/services/rbac_runtime.rs",
+        "apps/server/src/middleware/locale.rs",
+        "apps/server/src/middleware/channel.rs",
+        "crates/modules/rustok-seo/src/services/mod.rs",
+    ];
+
+    for relative in weighted_caches {
+        let source = source(relative);
+        assert!(
+            source.contains(".weigher("),
+            "variable-size cache must use byte-weighted capacity: {relative}"
+        );
+    }
+}
+
+#[test]
+fn database_backed_hot_misses_are_coalesced() {
+    for relative in [
+        "apps/server/src/middleware/locale.rs",
+        "apps/server/src/middleware/channel.rs",
+        "crates/modules/rustok-seo/src/services/redirects.rs",
+    ] {
+        let source = source(relative);
+        assert!(
+            source.contains(".try_get_with("),
+            "database-backed cache miss must be coalesced: {relative}"
+        );
+    }
+}
+
+#[test]
+fn channel_cache_bounds_request_keys_and_negative_results() {
+    let channel = source("apps/server/src/middleware/channel.rs");
+    assert!(
+        channel.contains("bounded_cache_component"),
+        "request-controlled channel selectors must not be stored verbatim in cache keys"
+    );
+    assert!(
+        channel.contains("Sha256::digest"),
+        "channel selector cache components must remain cryptographically bounded"
+    );
+    assert!(
+        channel.contains("CHANNEL_NEGATIVE_CACHE_TTL"),
+        "missing channel resolutions must keep an independent short negative TTL"
+    );
+    assert!(
+        channel.contains("ChannelCacheExpiry"),
+        "positive and negative channel resolutions must retain separate expirations"
+    );
+}
+
+#[test]
+fn redis_rate_limit_operations_are_bounded_and_redacted() {
+    let rate_limit = source("apps/server/src/middleware/rate_limit.rs");
+    assert!(
+        rate_limit.contains("RATE_LIMIT_REDIS_OPERATION_TIMEOUT"),
+        "Redis rate-limit connection, Lua and health operations must retain a deadline"
+    );
+    assert!(
+        rate_limit.contains("redis_with_timeout("),
+        "Redis rate-limit operations must use the shared timeout wrapper"
+    );
+    assert!(
+        rate_limit.contains("redis_rate_limit_key"),
+        "Redis rate-limit identities must use a bounded canonical key helper"
+    );
+    assert!(
+        rate_limit.contains("Sha256::digest(identity.as_bytes())"),
+        "Redis rate-limit keys must not contain raw IP, tenant or OAuth identity"
+    );
+    assert!(
+        rate_limit.contains("bounded_redis_window_seconds"),
+        "Redis EXPIRE arguments must not overflow when converting to i64"
+    );
+}
+
+#[test]
+fn weighted_backend_uses_cache_service_owned_redis_client() {
+    let weighted = source("crates/modules/rustok-cache/src/weighted.rs");
+    assert!(
+        weighted.contains("SharedClientRedisCacheBackend::new"),
+        "weighted backend must reuse the CacheService-owned Redis client"
+    );
+    assert!(
+        !weighted.contains("redis_url()"),
+        "weighted backend must not reopen Redis from a URL"
+    );
+    assert!(
+        !weighted.contains("RedisCacheBackend::with_circuit_breaker"),
+        "weighted backend must not use the legacy URL constructor"
+    );
+}
+
+#[test]
+fn default_backend_factory_uses_the_service_owned_redis_client() {
+    let service = source("crates/modules/rustok-cache/src/service.rs");
+
+    assert!(
+        service.contains("self.backend_shared_client(prefix, ttl, max_capacity)"),
+        "the default backend factory must delegate to the service-owned client path"
+    );
+    assert!(
+        service.contains(
+            "self.backend_shared_client_with_options(prefix, ttl, max_capacity, options)"
+        ),
+        "the per-call backend factory must delegate to the service-owned client path"
+    );
+    assert!(
+        !service.contains("async fn raw_backend("),
+        "the default factory must not retain a second URL-based Redis construction path"
+    );
+    assert!(
+        !service.contains("RedisCacheBackend::with_circuit_breaker"),
+        "the default factory must not reopen Redis from the stored URL"
+    );
+}
+
+#[test]
+fn generic_invalidation_and_loader_inputs_are_bounded() {
+    let service = source("crates/modules/rustok-cache/src/service.rs");
+    let policy = source("crates/modules/rustok-cache/src/policy.rs");
+
+    for required in [
+        "MAX_CACHE_INVALIDATION_CHANNEL_BYTES",
+        "MAX_CACHE_INVALIDATION_KEY_BYTES",
+        "MAX_CACHE_LOAD_KEY_BYTES",
+        "DEFAULT_MAX_IN_FLIGHT_CACHE_LOADS",
+        "ChannelTooLong",
+        "KeyTooLong",
+        "cache load coordinator saturated",
+    ] {
+        assert!(
+            service.contains(required),
+            "generic cache resource contract must retain {required}"
+        );
+    }
+    assert!(
+        service.contains("load_or_fill_rejects_empty_and_oversized_keys_before_loader"),
+        "load-key bounds must retain regression coverage"
+    );
+    assert!(
+        service.contains("unique_in_flight_loads_are_bounded_without_breaking_same_key_coalescing"),
+        "unique-flight capacity must retain regression coverage"
+    );
+    assert!(
+        policy.contains("zero_ttl_policy_is_rejected_before_cache_or_loader_work"),
+        "load policies must not report a successful fill when zero TTL deletes the value"
+    );
+}
+
+#[test]
+fn shared_fallback_health_does_not_mask_primary_degradation() {
+    let fallback = source("crates/modules/rustok-cache/src/fallback.rs");
+    let weighted = source("crates/modules/rustok-cache/src/weighted.rs");
+    let shared = source("crates/modules/rustok-cache/src/shared_backend.rs");
+
+    assert!(
+        fallback.contains("self.primary.health().await"),
+        "fallback health must report the shared primary state"
+    );
+    assert!(
+        weighted.contains("DegradationAwareFallbackBackend::new"),
+        "weighted Redis backends must use degradation-aware fallback"
+    );
+    assert!(
+        shared.contains("DegradationAwareFallbackBackend::new"),
+        "entry-count shared Redis backends must use degradation-aware fallback"
+    );
+}
+
+#[test]
+fn stale_refresh_is_bounded_deduplicated_and_atomic() {
+    let core_context = source("crates/libs/rustok-core/src/context.rs");
+    let core_atomic = source("crates/libs/rustok-core/src/cache_atomic.rs");
+    let refresh = source("crates/modules/rustok-cache/src/refresh.rs");
+    let observability = source("crates/modules/rustok-cache/src/observability.rs");
+    let shared = source("crates/modules/rustok-cache/src/shared_backend.rs");
+    let fallback = source("crates/modules/rustok-cache/src/fallback.rs");
+    let weighted = source("crates/modules/rustok-cache/src/weighted.rs");
+    let service = source("crates/modules/rustok-cache/src/service.rs");
+    let atomic_cas = source("crates/modules/rustok-cache/tests/atomic_cas.rs");
+
+    for required in [
+        "MAX_CACHE_REFRESH_KEY_BYTES",
+        "CacheRefreshSchedule::InvalidKey",
+        "validate_refresh_request(&key, expected_schema_version, max_encoded_bytes)?",
+        "coordinator_rejects_invalid_keys_without_running_refresh",
+        "swr_rejects_invalid_key_before_backend_or_loader_work",
+        "invalid_swr_configuration_does_not_delete_a_valid_entry",
+        "CacheRefreshTaskCompletionGuard",
+        "dropping_unpolled_refresh_future_releases_lease_and_counts_failure",
+        "system_clock_rejects_refresh_that_expires_while_loader_runs",
+    ] {
+        assert!(
+            refresh.contains(required),
+            "stale refresh resource contract must retain {required}"
+        );
+    }
+    assert!(
+        observability.contains("rustok_cache_refresh_rejected_total"),
+        "rejected stale refresh work must remain observable without key labels"
+    );
+    assert!(
+        core_context.contains("pub enum CacheCompareAndSetOutcome"),
+        "the backend contract must expose explicit CAS applied/mismatch outcomes"
+    );
+    assert!(
+        core_context.contains("atomic cache compare-and-set is not supported by this backend"),
+        "unsupported CAS backends must fail closed instead of emulating GET plus SET"
+    );
+    assert!(
+        core_atomic.contains("IN_MEMORY_WRITE_LOCK_STRIPES"),
+        "in-memory CAS and ordinary writes must share bounded striped locks"
+    );
+    assert!(
+        core_atomic.contains(".and_compute_with(move |current|"),
+        "local CAS must couple comparison and mutation in one Moka entry operation"
+    );
+    assert!(
+        shared.contains("SHARED_REDIS_COMPARE_AND_SET_SCRIPT")
+            && shared.contains("current ~= ARGV[1]")
+            && shared.contains("PSETEX"),
+        "service-owned Redis CAS must use one binary-safe conditional Lua operation"
+    );
+    for (name, source) in [
+        ("fallback", fallback.as_str()),
+        ("weighted", weighted.as_str()),
+        ("service instrumentation", service.as_str()),
+        ("shared instrumentation", shared.as_str()),
+    ] {
+        assert!(
+            source.contains("compare_and_set"),
+            "{name} must delegate the atomic CAS contract"
+        );
+    }
+    assert!(
+        fallback.contains("compare_and_set_fails_closed_when_shared_primary_is_unavailable"),
+        "distributed fallback CAS must retain fail-closed outage coverage"
+    );
+    assert!(
+        refresh.contains(".compare_and_set(&key, &observed_bytes, bytes, ttl)"),
+        "background refresh must publish through backend-level atomic CAS"
+    );
+    assert!(
+        !refresh.contains("backend.get(&key).await?.as_deref() != Some(observed_bytes.as_slice())"),
+        "background refresh must not use a racy prewrite GET check"
+    );
+    assert!(
+        refresh.contains("concurrent_replacement_wins_over_slow_stale_refresh"),
+        "SWR must retain regression coverage for superseded refresh writes"
+    );
+    assert!(
+        atomic_cas.contains("real_redis_compare_and_set_is_binary_safe_and_conditionally_deletes"),
+        "atomic Redis CAS must retain live integration coverage"
+    );
+}
+
+#[test]
+fn invalidation_recovery_is_two_phase_and_monotonic() {
+    let invalidation = source("crates/modules/rustok-cache/src/invalidation.rs");
+    assert!(
+        invalidation.contains("UnverifiedFirst"),
+        "unseeded invalidation consumers must not trust the first observed generation"
+    );
+    assert!(
+        invalidation.contains("pub fn acknowledge_recovery("),
+        "gap recovery must be acknowledged only after clear/rebuild succeeds"
+    );
+    assert!(
+        invalidation.contains("OffsetRegressed"),
+        "durable invalidation offsets must never move backwards"
+    );
+    assert!(
+        invalidation.contains("gap_does_not_advance_until_recovery_is_acknowledged"),
+        "gap tracking must retain regression coverage for failed recovery"
+    );
+}
+
+#[test]
+fn generation_fallback_is_trusted_monotonic_and_bounded() {
+    let generation = source("crates/modules/rustok-cache/src/generation.rs");
+    let backend_generation = source("crates/modules/rustok-cache/src/backend_generation.rs");
+    assert!(
+        generation.contains("NoLocalSnapshot"),
+        "Redis generation failure without a trusted local snapshot must fail closed"
+    );
+    assert!(
+        generation.contains("GenerationRegressed"),
+        "shared generation loss must not lower a locally observed generation"
+    );
+    assert!(
+        generation.contains("DEFAULT_MAX_LOCAL_GENERATION_SNAPSHOTS"),
+        "trusted generation snapshots must have a default process memory bound"
+    );
+    assert!(
+        generation.contains("LocalSnapshotCapacityExceeded"),
+        "new generation namespaces must fail closed after snapshot capacity is reached"
+    );
+    assert!(
+        generation
+            .contains("trusted_local_snapshots_are_bounded_without_evicting_existing_namespaces"),
+        "generation capacity must retain regression coverage without evicting trusted state"
+    );
+    for required in [
+        "MAX_GENERATION_OPERATION_ATTEMPTS",
+        "snapshot_is_current",
+        "get_discards_old_namespace_result_when_generation_changes_midflight",
+        "set_retries_current_namespace_when_generation_changes_midflight",
+    ] {
+        assert!(
+            backend_generation.contains(required),
+            "generation-aware cache operations must retain {required}"
+        );
+    }
+}
+
+#[test]
+fn typed_loading_invalidates_raced_incompatible_values() {
+    let typed = source("crates/modules/rustok-cache/src/typed.rs");
+    assert!(
+        typed.contains("incompatible_value_racing_after_initial_probe_is_invalidated"),
+        "typed loading must retain race regression coverage"
+    );
+    assert!(
+        typed.contains("backend.invalidate(&key).await?"),
+        "typed validation failures must propagate shared invalidation failures"
+    );
+}
+
+#[test]
+fn distributed_lease_deadline_is_usable_after_confirmation() {
+    let lease = source("crates/modules/rustok-cache/src/lease.rs");
+    assert!(
+        lease.contains("OperationTimeoutNotLessThanTtl"),
+        "lease operation timeout must remain strictly below lease TTL"
+    );
+    assert!(
+        lease.contains("ExpiredBeforeConfirmation"),
+        "a lease confirmed after its deadline must not be returned as acquired"
+    );
+    assert!(
+        lease.contains("MAX_LEASE_CACHE_KEY_BYTES"),
+        "lease source keys must be bounded before hashing"
+    );
+}
+
+#[test]
+fn cache_values_and_keys_have_bounded_versioned_contracts() {
+    let key = source("crates/modules/rustok-cache/src/key.rs");
+    let envelope = source("crates/modules/rustok-cache/src/envelope.rs");
+
+    for required in [
+        "MAX_CACHE_KEY_BYTES",
+        "MAX_CACHE_IDENTITY_BYTES",
+        "MAX_CACHE_KEY_INPUT_BYTES",
+        "MAX_CACHE_KEY_DYNAMIC_COMPONENTS",
+        "IdentityTooLong",
+        "TooManyDynamicComponents",
+    ] {
+        assert!(
+            key.contains(required),
+            "canonical cache key contract must retain {required}"
+        );
+    }
+    assert!(
+        envelope.contains("DEFAULT_MAX_CACHE_ENVELOPE_BYTES"),
+        "typed cache envelopes must retain an explicit maximum encoded size"
+    );
+    assert!(
+        envelope.contains("CACHE_ENVELOPE_FORMAT_VERSION"),
+        "typed cache envelopes must remain wire-format versioned"
+    );
+    assert!(
+        envelope.contains("ser_flavors::Size::default()"),
+        "cache envelopes must be measured before output allocation"
+    );
+    assert!(
+        envelope.contains("BoundedEnvelopeWriter"),
+        "cache envelope output must remain physically bounded during serialization"
+    );
+    assert!(
+        !envelope.contains("postcard::to_stdvec(self)"),
+        "cache envelope limits must not be checked only after allocating the complete output"
+    );
+}

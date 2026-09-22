@@ -1,0 +1,317 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(SeoBulkJobs::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(SeoBulkJobs::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(SeoBulkJobs::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(SeoBulkJobs::OperationKind)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoBulkJobs::Status)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoBulkJobs::TargetKind)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoBulkJobs::Locale)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoBulkJobs::FilterPayload)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoBulkJobs::InputPayload)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoBulkJobs::PublishAfterWrite)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .col(
+                        ColumnDef::new(SeoBulkJobs::MatchedCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(SeoBulkJobs::ProcessedCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(SeoBulkJobs::SucceededCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(SeoBulkJobs::FailedCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(SeoBulkJobs::ArtifactCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(ColumnDef::new(SeoBulkJobs::LastError).string_len(2048))
+                    .col(ColumnDef::new(SeoBulkJobs::CreatedBy).uuid())
+                    .col(ColumnDef::new(SeoBulkJobs::StartedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(SeoBulkJobs::CompletedAt).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(SeoBulkJobs::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoBulkJobs::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_seo_bulk_jobs_tenant_created")
+                    .table(SeoBulkJobs::Table)
+                    .col(SeoBulkJobs::TenantId)
+                    .col(SeoBulkJobs::CreatedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_seo_bulk_jobs_tenant_status")
+                    .table(SeoBulkJobs::Table)
+                    .col(SeoBulkJobs::TenantId)
+                    .col(SeoBulkJobs::Status)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(SeoBulkJobItems::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(SeoBulkJobItems::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(SeoBulkJobItems::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(SeoBulkJobItems::JobId).uuid().not_null())
+                    .col(ColumnDef::new(SeoBulkJobItems::TargetId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(SeoBulkJobItems::Status)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(SeoBulkJobItems::ErrorMessage).string_len(2048))
+                    .col(ColumnDef::new(SeoBulkJobItems::PublishedRevision).integer())
+                    .col(
+                        ColumnDef::new(SeoBulkJobItems::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoBulkJobItems::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(SeoBulkJobItems::Table, SeoBulkJobItems::JobId)
+                            .to(SeoBulkJobs::Table, SeoBulkJobs::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_seo_bulk_job_items_job_target")
+                    .table(SeoBulkJobItems::Table)
+                    .col(SeoBulkJobItems::JobId)
+                    .col(SeoBulkJobItems::TargetId)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(SeoBulkJobArtifacts::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(SeoBulkJobArtifacts::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoBulkJobArtifacts::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(SeoBulkJobArtifacts::JobId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(SeoBulkJobArtifacts::Kind)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoBulkJobArtifacts::FileName)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoBulkJobArtifacts::MimeType)
+                            .string_len(128)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoBulkJobArtifacts::Content)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoBulkJobArtifacts::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoBulkJobArtifacts::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(SeoBulkJobArtifacts::Table, SeoBulkJobArtifacts::JobId)
+                            .to(SeoBulkJobs::Table, SeoBulkJobs::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_seo_bulk_job_artifacts_job_file")
+                    .table(SeoBulkJobArtifacts::Table)
+                    .col(SeoBulkJobArtifacts::JobId)
+                    .col(SeoBulkJobArtifacts::FileName)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(SeoBulkJobArtifacts::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(SeoBulkJobItems::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(SeoBulkJobs::Table).to_owned())
+            .await?;
+        Ok(())
+    }
+}
+
+#[derive(Iden)]
+enum SeoBulkJobs {
+    Table,
+    Id,
+    TenantId,
+    OperationKind,
+    Status,
+    TargetKind,
+    Locale,
+    FilterPayload,
+    InputPayload,
+    PublishAfterWrite,
+    MatchedCount,
+    ProcessedCount,
+    SucceededCount,
+    FailedCount,
+    ArtifactCount,
+    LastError,
+    CreatedBy,
+    StartedAt,
+    CompletedAt,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum SeoBulkJobItems {
+    Table,
+    Id,
+    TenantId,
+    JobId,
+    TargetId,
+    Status,
+    ErrorMessage,
+    PublishedRevision,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum SeoBulkJobArtifacts {
+    Table,
+    Id,
+    TenantId,
+    JobId,
+    Kind,
+    FileName,
+    MimeType,
+    Content,
+    CreatedAt,
+    UpdatedAt,
+}

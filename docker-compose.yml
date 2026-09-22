@@ -1,0 +1,89 @@
+services:
+  db:
+    image: postgres:16-bookworm@sha256:05bb94c3949035f4da16815d91b389443f3dbc5db95d65e2cb9b1abbf8565974
+    container_name: rustok_db
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  db-bootstrap:
+    image: postgres:16-bookworm@sha256:05bb94c3949035f4da16815d91b389443f3dbc5db95d65e2cb9b1abbf8565974
+    container_name: rustok_db_bootstrap
+    environment:
+      PGPASSWORD: postgres
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-euo", "pipefail", "-c"]
+    command:
+      - |
+        psql --host db --username postgres --dbname postgres --set ON_ERROR_STOP=1 <<'SQL'
+        DO $$do$$
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'rustok') THEN
+            CREATE ROLE rustok
+              LOGIN
+              PASSWORD 'rustok'
+              NOSUPERUSER
+              NOCREATEDB
+              NOCREATEROLE
+              NOREPLICATION
+              NOBYPASSRLS
+              CONNECTION LIMIT 20;
+          ELSE
+            ALTER ROLE rustok WITH
+              LOGIN
+              PASSWORD 'rustok'
+              NOSUPERUSER
+              NOCREATEDB
+              NOCREATEROLE
+              NOREPLICATION
+              NOBYPASSRLS
+              CONNECTION LIMIT 20;
+          END IF;
+        END
+        $$do$$;
+        SQL
+        if ! psql --host db --username postgres --dbname postgres --tuples-only --no-align \
+          --command "SELECT 1 FROM pg_database WHERE datname = 'rustok_dev'" | grep -qx 1; then
+          createdb --host db --username postgres --owner rustok rustok_dev
+        fi
+        psql --host db --username postgres --dbname rustok_dev --set ON_ERROR_STOP=1 <<'SQL'
+        REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+        GRANT ALL ON SCHEMA public TO rustok;
+        SQL
+    restart: "no"
+
+  iggy:
+    image: apache/iggy:0.7.0
+    container_name: rustok_iggy
+    environment:
+      - IGGY_ROOT_USERNAME=iggy
+      - IGGY_ROOT_PASSWORD=iggy
+      - IGGY_TCP_ENABLED=true
+      - IGGY_TCP_ADDRESS=0.0.0.0:8090
+      - IGGY_HTTP_ENABLED=false
+      - IGGY_QUIC_ENABLED=false
+    ports:
+      - "8090:8090"
+    volumes:
+      - iggy_data:/iggy/local_data
+    healthcheck:
+      test: ["CMD-SHELL", "iggy --tcp-server-address localhost:8090 --username iggy --password iggy ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  iggy_data:

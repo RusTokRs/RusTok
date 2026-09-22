@@ -1,0 +1,254 @@
+use sea_orm_migration::prelude::*;
+
+use sea_orm_migration::sea_orm::DatabaseBackend;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(PlatformState::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(PlatformState::Id)
+                            .string_len(32)
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(PlatformState::Revision)
+                            .big_integer()
+                            .not_null()
+                            .default(1),
+                    )
+                    .col(
+                        ColumnDef::new(PlatformState::ManifestJson)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PlatformState::ManifestHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(PlatformState::UpdatedBy).string_len(255))
+                    .col(
+                        ColumnDef::new(PlatformState::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(PlatformState::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(ModuleOperations::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ModuleOperations::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(ModuleOperations::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(ModuleOperations::ModuleSlug)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ModuleOperations::RequestedEnabled)
+                            .boolean()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ModuleOperations::PreviousEffectiveEnabled)
+                            .boolean()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ModuleOperations::Status)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(ModuleOperations::RequestedBy).string_len(255))
+                    .col(ColumnDef::new(ModuleOperations::TraceId).string_len(255))
+                    .col(ColumnDef::new(ModuleOperations::CorrelationId).string_len(255))
+                    .col(ColumnDef::new(ModuleOperations::IdempotencyKey).uuid())
+                    .col(ColumnDef::new(ModuleOperations::ExpectedRevision).big_integer())
+                    .col(ColumnDef::new(ModuleOperations::ErrorMessage).text())
+                    .col(
+                        ColumnDef::new(ModuleOperations::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(ModuleOperations::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_module_operations_tenant_id")
+                            .from(ModuleOperations::Table, ModuleOperations::TenantId)
+                            .to(Alias::new("tenants"), Alias::new("id"))
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_module_operations_tenant_module")
+                    .table(ModuleOperations::Table)
+                    .col(ModuleOperations::TenantId)
+                    .col(ModuleOperations::ModuleSlug)
+                    .to_owned(),
+            )
+            .await?;
+
+        if manager.get_database_backend() == DatabaseBackend::Sqlite {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Builds::Table)
+                        .add_column(
+                            ColumnDef::new(Builds::ManifestRevision)
+                                .big_integer()
+                                .not_null()
+                                .default(0),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Builds::Table)
+                        .add_column(
+                            ColumnDef::new(Builds::ManifestSnapshot)
+                                .json_binary()
+                                .not_null()
+                                .default("{}"),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+            Ok(())
+        } else {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Builds::Table)
+                        .add_column(
+                            ColumnDef::new(Builds::ManifestRevision)
+                                .big_integer()
+                                .not_null()
+                                .default(0),
+                        )
+                        .add_column(
+                            ColumnDef::new(Builds::ManifestSnapshot)
+                                .json_binary()
+                                .not_null()
+                                .default("{}"),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+
+            Ok(())
+        }
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        if manager.get_database_backend() == DatabaseBackend::Sqlite {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Builds::Table)
+                        .drop_column(Builds::ManifestSnapshot)
+                        .to_owned(),
+                )
+                .await?;
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Builds::Table)
+                        .drop_column(Builds::ManifestRevision)
+                        .to_owned(),
+                )
+                .await?;
+        } else {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Builds::Table)
+                        .drop_column(Builds::ManifestSnapshot)
+                        .drop_column(Builds::ManifestRevision)
+                        .to_owned(),
+                )
+                .await?;
+        }
+        manager
+            .drop_table(Table::drop().table(ModuleOperations::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(PlatformState::Table).to_owned())
+            .await
+    }
+}
+
+#[derive(Iden)]
+enum PlatformState {
+    Table,
+    Id,
+    Revision,
+    ManifestJson,
+    ManifestHash,
+    UpdatedBy,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum ModuleOperations {
+    Table,
+    Id,
+    TenantId,
+    ModuleSlug,
+    RequestedEnabled,
+    PreviousEffectiveEnabled,
+    Status,
+    RequestedBy,
+    TraceId,
+    CorrelationId,
+    IdempotencyKey,
+    ExpectedRevision,
+    ErrorMessage,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum Builds {
+    Table,
+    ManifestRevision,
+    ManifestSnapshot,
+}

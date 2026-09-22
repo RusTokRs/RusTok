@@ -1,0 +1,28 @@
+[package]
+name = "rustok-installer-persistence"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "SeaORM persistence adapter for RusToK installer state"
+
+[dependencies]
+chrono.workspace = true
+async-trait.workspace = true
+rustok-core.workspace = true
+rustok-auth.workspace = true
+rustok-installer.workspace = true
+rustok-migrations = { path = "../rustok-migrations" }
+rustok-modules.workspace = true
+rustok-rbac.workspace = true
+rustok-tenant.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+url.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+rustok-test-utils.workspace = true
+tokio.workspace = true

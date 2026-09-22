@@ -1,0 +1,11 @@
+[package]
+name = "rustok-e2e-rust"
+version = "0.1.0"
+edition = "2021"
+license = "BUSL-1.1"
+publish = false
+
+[dev-dependencies]
+anyhow.workspace = true
+playwright-rs.workspace = true
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

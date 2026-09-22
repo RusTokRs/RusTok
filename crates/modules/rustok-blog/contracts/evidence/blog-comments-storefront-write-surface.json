@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "surface": "storefront_comments_write_surface",
+  "owner": "rustok-blog-storefront",
+  "status": "source_verified_present",
+  "actualization": "active_storefront_write_surface_source_verified",
+  "legacy_degraded_mode": "hide_comment_form",
+  "legacy_registry_semantics": "legacy_fallback_vocabulary_now_maps_to_active_write_surface",
+  "runner": "scripts/verify/verify-blog-comments-storefront-write-surface.mjs",
+  "self_test": "scripts/verify/verify-blog-comments-storefront-write-surface.test.mjs",
+  "source_inventory": {
+    "readme": "crates/modules/rustok-blog/storefront/README.md",
+    "ui": "crates/modules/rustok-blog/storefront/src/ui/leptos.rs",
+    "graphql_transport": "crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs",
+    "native_transport": "crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs",
+    "transport_facade": "crates/modules/rustok-blog/storefront/src/transport/mod.rs",
+    "model": "crates/modules/rustok-blog/storefront/src/model.rs"
+  },
+  "source_contract": {
+    "storefront_responsibility_is_dual_path_read": true,
+    "approved_public_comments_are_read_only_projection": true,
+    "graphql_transport_contains_storefront_query_only": false,
+    "native_transport_contains_storefront_data_read_only": false,
+    "leptos_ui_renders_comments_without_submit_surface": false,
+    "create_comment_surface_present": true,
+    "comment_form_present": true,
+    "textarea_present": false,
+    "submit_handler_present": true,
+    "production_behavior_changed": false,
+    "runtime_execution_observed": false,
+    "browser_execution_observed": false,
+    "channel_context_required_for_create": true,
+    "channel_module_state_checked_for_create": true,
+    "missing_channel_context_fails_closed": true,
+    "disabled_channel_fails_closed": true
+  },
+  "planning_effect": {
+    "comment_form_fallback": "planned",
+    "cached_thread_snapshot": "source_ready_maintainer_execution_pending",
+    "fallback_smoke_status": "planned_runtime_execution_only",
+    "new_storefront_write_surface_authorized": false
+  },
+  "execution": []
+}

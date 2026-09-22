@@ -1,0 +1,672 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        create_jobs(manager).await?;
+        create_items(manager).await?;
+        create_proposals(manager).await?;
+        create_apply_receipts(manager).await
+    }
+
+    async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
+        // Forward-only: jobs, approvals, and owner application receipts are
+        // durable workflow and audit records.
+        Ok(())
+    }
+}
+
+async fn create_jobs(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .create_table(
+            Table::create()
+                .table(Jobs::Table)
+                .if_not_exists()
+                .col(ColumnDef::new(Jobs::Id).uuid().not_null().primary_key())
+                .col(ColumnDef::new(Jobs::TenantId).uuid().not_null())
+                .col(ColumnDef::new(Jobs::SourceLocale).string_len(32).not_null())
+                .col(ColumnDef::new(Jobs::TargetLocale).string_len(32).not_null())
+                .col(
+                    ColumnDef::new(Jobs::Status)
+                        .string_len(32)
+                        .not_null()
+                        .default("open"),
+                )
+                .col(
+                    ColumnDef::new(Jobs::CreatedByActorKind)
+                        .string_len(16)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(Jobs::CreatedByActorId)
+                        .string_len(191)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(Jobs::IdempotencyKey)
+                        .string_len(191)
+                        .not_null(),
+                )
+                .col(ColumnDef::new(Jobs::RequestHash).string_len(64).not_null())
+                .col(
+                    ColumnDef::new(Jobs::Revision)
+                        .big_integer()
+                        .not_null()
+                        .default(0),
+                )
+                .col(
+                    ColumnDef::new(Jobs::CreatedAt)
+                        .timestamp_with_time_zone()
+                        .not_null()
+                        .default(Expr::current_timestamp()),
+                )
+                .col(
+                    ColumnDef::new(Jobs::UpdatedAt)
+                        .timestamp_with_time_zone()
+                        .not_null()
+                        .default(Expr::current_timestamp()),
+                )
+                .foreign_key(
+                    ForeignKey::create()
+                        .name("fk_translation_jobs_tenant")
+                        .from(Jobs::Table, Jobs::TenantId)
+                        .to(Tenants::Table, Tenants::Id)
+                        .on_delete(ForeignKeyAction::Cascade),
+                )
+                .check(Expr::cust("source_locale <> target_locale"))
+                .check(Expr::cust(
+                    "status IN ('open', 'in_progress', 'completed', 'cancelled')",
+                ))
+                .check(Expr::cust(
+                    "created_by_actor_kind IN ('user', 'service', 'system')",
+                ))
+                .check(Expr::cust("revision >= 0"))
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .name("uq_translation_jobs_tenant_id")
+                .table(Jobs::Table)
+                .col(Jobs::TenantId)
+                .col(Jobs::Id)
+                .unique()
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .name("uq_translation_jobs_idempotency")
+                .table(Jobs::Table)
+                .col(Jobs::TenantId)
+                .col(Jobs::IdempotencyKey)
+                .unique()
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .name("idx_translation_jobs_tenant_status")
+                .table(Jobs::Table)
+                .col(Jobs::TenantId)
+                .col(Jobs::Status)
+                .col(Jobs::UpdatedAt)
+                .to_owned(),
+        )
+        .await
+}
+
+async fn create_items(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .create_table(
+            Table::create()
+                .table(Items::Table)
+                .if_not_exists()
+                .col(ColumnDef::new(Items::Id).uuid().not_null().primary_key())
+                .col(ColumnDef::new(Items::TenantId).uuid().not_null())
+                .col(ColumnDef::new(Items::JobId).uuid().not_null())
+                .col(ColumnDef::new(Items::OwnerSlug).string_len(64).not_null())
+                .col(
+                    ColumnDef::new(Items::ResourceKind)
+                        .string_len(64)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(Items::ResourceId)
+                        .string_len(191)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(Items::SubresourceKey)
+                        .string_len(191)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(Items::ResourceRevision)
+                        .string_len(256)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(Items::SourceRevision)
+                        .string_len(256)
+                        .not_null(),
+                )
+                .col(ColumnDef::new(Items::TargetRevision).string_len(256))
+                .col(ColumnDef::new(Items::SourceSnapshot).json_binary().not_null())
+                .col(
+                    ColumnDef::new(Items::SourceDigest)
+                        .string_len(64)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(Items::Status)
+                        .string_len(32)
+                        .not_null()
+                        .default("missing"),
+                )
+                .col(ColumnDef::new(Items::CurrentProposalId).uuid())
+                .col(
+                    ColumnDef::new(Items::AssignedActorKind)
+                        .string_len(16)
+                        .null(),
+                )
+                .col(
+                    ColumnDef::new(Items::AssignedActorId)
+                        .string_len(191)
+                        .null(),
+                )
+                .col(
+                    ColumnDef::new(Items::IdempotencyKey)
+                        .string_len(191)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(Items::RequestHash)
+                        .string_len(64)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(Items::Revision)
+                        .big_integer()
+                        .not_null()
+                        .default(0),
+                )
+                .col(
+                    ColumnDef::new(Items::CreatedAt)
+                        .timestamp_with_time_zone()
+                        .not_null()
+                        .default(Expr::current_timestamp()),
+                )
+                .col(
+                    ColumnDef::new(Items::UpdatedAt)
+                        .timestamp_with_time_zone()
+                        .not_null()
+                        .default(Expr::current_timestamp()),
+                )
+                .foreign_key(
+                    ForeignKey::create()
+                        .name("fk_translation_items_tenant_job")
+                        .from(Items::Table, Items::TenantId)
+                        .from_col(Items::JobId)
+                        .to(Jobs::Table, Jobs::TenantId)
+                        .to_col(Jobs::Id)
+                        .on_delete(ForeignKeyAction::Cascade),
+                )
+                .check(Expr::cust(
+                    "status IN ('missing', 'draft', 'in_review', 'approved', 'applying', 'applied', 'stale', 'conflict', 'blocked', 'excluded', 'cancelled')",
+                ))
+                .check(Expr::cust(
+                    "(assigned_actor_kind IS NULL AND assigned_actor_id IS NULL) OR (assigned_actor_kind IN ('user', 'service', 'system') AND assigned_actor_id IS NOT NULL)",
+                ))
+                .check(Expr::cust("revision >= 0"))
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .name("uq_translation_items_tenant_id")
+                .table(Items::Table)
+                .col(Items::TenantId)
+                .col(Items::Id)
+                .unique()
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .name("uq_translation_items_identity")
+                .table(Items::Table)
+                .col(Items::TenantId)
+                .col(Items::JobId)
+                .col(Items::OwnerSlug)
+                .col(Items::ResourceKind)
+                .col(Items::ResourceId)
+                .col(Items::SubresourceKey)
+                .unique()
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .name("uq_translation_items_idempotency")
+                .table(Items::Table)
+                .col(Items::TenantId)
+                .col(Items::IdempotencyKey)
+                .unique()
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .name("idx_translation_items_job_status")
+                .table(Items::Table)
+                .col(Items::TenantId)
+                .col(Items::JobId)
+                .col(Items::Status)
+                .to_owned(),
+        )
+        .await
+}
+
+async fn create_proposals(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .create_table(
+            Table::create()
+                .table(Proposals::Table)
+                .if_not_exists()
+                .col(ColumnDef::new(Proposals::Id).uuid().not_null().primary_key())
+                .col(ColumnDef::new(Proposals::TenantId).uuid().not_null())
+                .col(ColumnDef::new(Proposals::ItemId).uuid().not_null())
+                .col(
+                    ColumnDef::new(Proposals::ProposalRevision)
+                        .big_integer()
+                        .not_null(),
+                )
+                .col(ColumnDef::new(Proposals::Origin).string_len(16).not_null())
+                .col(ColumnDef::new(Proposals::Values).json_binary().not_null())
+                .col(
+                    ColumnDef::new(Proposals::ValuesDigest)
+                        .string_len(64)
+                        .not_null(),
+                )
+                .col(ColumnDef::new(Proposals::QaIssues).json_binary().not_null())
+                .col(
+                    ColumnDef::new(Proposals::CreatedByActorKind)
+                        .string_len(16)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(Proposals::CreatedByActorId)
+                        .string_len(191)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(Proposals::IdempotencyKey)
+                        .string_len(191)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(Proposals::RequestHash)
+                        .string_len(64)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(Proposals::SubmittedAt)
+                        .timestamp_with_time_zone()
+                        .null(),
+                )
+                .col(
+                    ColumnDef::new(Proposals::SubmissionIdempotencyKey)
+                        .string_len(191)
+                        .null(),
+                )
+                .col(
+                    ColumnDef::new(Proposals::SubmissionRequestHash)
+                        .string_len(64)
+                        .null(),
+                )
+                .col(
+                    ColumnDef::new(Proposals::ApprovedByActorKind)
+                        .string_len(16)
+                        .null(),
+                )
+                .col(
+                    ColumnDef::new(Proposals::ApprovedByActorId)
+                        .string_len(191)
+                        .null(),
+                )
+                .col(
+                    ColumnDef::new(Proposals::ApprovedAt)
+                        .timestamp_with_time_zone()
+                        .null(),
+                )
+                .col(
+                    ColumnDef::new(Proposals::ApprovalReceiptId)
+                        .string_len(191)
+                        .null(),
+                )
+                .col(
+                    ColumnDef::new(Proposals::ApprovalIdempotencyKey)
+                        .string_len(191)
+                        .null(),
+                )
+                .col(
+                    ColumnDef::new(Proposals::ApprovalRequestHash)
+                        .string_len(64)
+                        .null(),
+                )
+                .col(
+                    ColumnDef::new(Proposals::CreatedAt)
+                        .timestamp_with_time_zone()
+                        .not_null()
+                        .default(Expr::current_timestamp()),
+                )
+                .col(
+                    ColumnDef::new(Proposals::UpdatedAt)
+                        .timestamp_with_time_zone()
+                        .not_null()
+                        .default(Expr::current_timestamp()),
+                )
+                .foreign_key(
+                    ForeignKey::create()
+                        .name("fk_translation_proposals_tenant_item")
+                        .from(Proposals::Table, Proposals::TenantId)
+                        .from_col(Proposals::ItemId)
+                        .to(Items::Table, Items::TenantId)
+                        .to_col(Items::Id)
+                        .on_delete(ForeignKeyAction::Cascade),
+                )
+                .check(Expr::cust("proposal_revision > 0"))
+                .check(Expr::cust(
+                    "origin IN ('manual', 'import', 'memory', 'ai')",
+                ))
+                .check(Expr::cust(
+                    "created_by_actor_kind IN ('user', 'service', 'system')",
+                ))
+                .check(Expr::cust(
+                    "(submitted_at IS NULL AND submission_idempotency_key IS NULL AND submission_request_hash IS NULL) OR (submitted_at IS NOT NULL AND submission_idempotency_key IS NOT NULL AND submission_request_hash IS NOT NULL)",
+                ))
+                .check(Expr::cust(
+                    "(approved_at IS NULL AND approved_by_actor_kind IS NULL AND approved_by_actor_id IS NULL AND approval_receipt_id IS NULL AND approval_idempotency_key IS NULL AND approval_request_hash IS NULL) OR (submitted_at IS NOT NULL AND approved_at IS NOT NULL AND approved_by_actor_kind IN ('user', 'service', 'system') AND approved_by_actor_id IS NOT NULL AND approval_receipt_id IS NOT NULL AND approval_idempotency_key IS NOT NULL AND approval_request_hash IS NOT NULL)",
+                ))
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .name("uq_translation_proposals_tenant_id")
+                .table(Proposals::Table)
+                .col(Proposals::TenantId)
+                .col(Proposals::Id)
+                .unique()
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .name("uq_translation_proposals_item_revision")
+                .table(Proposals::Table)
+                .col(Proposals::TenantId)
+                .col(Proposals::ItemId)
+                .col(Proposals::ProposalRevision)
+                .unique()
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .name("uq_translation_proposals_idempotency")
+                .table(Proposals::Table)
+                .col(Proposals::TenantId)
+                .col(Proposals::IdempotencyKey)
+                .unique()
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .name("uq_translation_proposals_submission_idempotency")
+                .table(Proposals::Table)
+                .col(Proposals::TenantId)
+                .col(Proposals::SubmissionIdempotencyKey)
+                .unique()
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .name("uq_translation_proposals_approval_idempotency")
+                .table(Proposals::Table)
+                .col(Proposals::TenantId)
+                .col(Proposals::ApprovalIdempotencyKey)
+                .unique()
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .name("uq_translation_proposals_approval_receipt")
+                .table(Proposals::Table)
+                .col(Proposals::TenantId)
+                .col(Proposals::ApprovalReceiptId)
+                .unique()
+                .to_owned(),
+        )
+        .await
+}
+
+async fn create_apply_receipts(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .create_table(
+            Table::create()
+                .table(ApplyReceipts::Table)
+                .if_not_exists()
+                .col(
+                    ColumnDef::new(ApplyReceipts::Id)
+                        .uuid()
+                        .not_null()
+                        .primary_key(),
+                )
+                .col(ColumnDef::new(ApplyReceipts::TenantId).uuid().not_null())
+                .col(ColumnDef::new(ApplyReceipts::ItemId).uuid().not_null())
+                .col(ColumnDef::new(ApplyReceipts::ProposalId).uuid().not_null())
+                .col(
+                    ColumnDef::new(ApplyReceipts::IdempotencyKey)
+                        .string_len(191)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ApplyReceipts::RequestHash)
+                        .string_len(64)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ApplyReceipts::ApprovalReceiptId)
+                        .string_len(191)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ApplyReceipts::ProviderReceiptId)
+                        .string_len(191)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ApplyReceipts::ResourceRevision)
+                        .string_len(256)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ApplyReceipts::TargetRevision)
+                        .string_len(256)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ApplyReceipts::AppliedFieldKeys)
+                        .json_binary()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ApplyReceipts::CreatedAt)
+                        .timestamp_with_time_zone()
+                        .not_null()
+                        .default(Expr::current_timestamp()),
+                )
+                .foreign_key(
+                    ForeignKey::create()
+                        .name("fk_translation_apply_receipts_tenant_item")
+                        .from(ApplyReceipts::Table, ApplyReceipts::TenantId)
+                        .from_col(ApplyReceipts::ItemId)
+                        .to(Items::Table, Items::TenantId)
+                        .to_col(Items::Id)
+                        .on_delete(ForeignKeyAction::Restrict),
+                )
+                .foreign_key(
+                    ForeignKey::create()
+                        .name("fk_translation_apply_receipts_tenant_proposal")
+                        .from(ApplyReceipts::Table, ApplyReceipts::TenantId)
+                        .from_col(ApplyReceipts::ProposalId)
+                        .to(Proposals::Table, Proposals::TenantId)
+                        .to_col(Proposals::Id)
+                        .on_delete(ForeignKeyAction::Restrict),
+                )
+                .to_owned(),
+        )
+        .await?;
+    for (name, columns) in [
+        (
+            "uq_translation_apply_receipts_idempotency",
+            vec![ApplyReceipts::TenantId, ApplyReceipts::IdempotencyKey],
+        ),
+        (
+            "uq_translation_apply_receipts_provider",
+            vec![ApplyReceipts::TenantId, ApplyReceipts::ProviderReceiptId],
+        ),
+        (
+            "uq_translation_apply_receipts_approval",
+            vec![ApplyReceipts::TenantId, ApplyReceipts::ApprovalReceiptId],
+        ),
+    ] {
+        let mut index = Index::create();
+        index.name(name).table(ApplyReceipts::Table);
+        for column in columns {
+            index.col(column);
+        }
+        manager.create_index(index.unique().to_owned()).await?;
+    }
+    Ok(())
+}
+
+#[derive(Iden)]
+enum Jobs {
+    #[iden = "translation_jobs"]
+    Table,
+    Id,
+    TenantId,
+    SourceLocale,
+    TargetLocale,
+    Status,
+    CreatedByActorKind,
+    CreatedByActorId,
+    IdempotencyKey,
+    RequestHash,
+    Revision,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum Items {
+    #[iden = "translation_job_items"]
+    Table,
+    Id,
+    TenantId,
+    JobId,
+    OwnerSlug,
+    ResourceKind,
+    ResourceId,
+    SubresourceKey,
+    ResourceRevision,
+    SourceRevision,
+    TargetRevision,
+    SourceSnapshot,
+    SourceDigest,
+    Status,
+    CurrentProposalId,
+    AssignedActorKind,
+    AssignedActorId,
+    IdempotencyKey,
+    RequestHash,
+    Revision,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum Proposals {
+    #[iden = "translation_proposals"]
+    Table,
+    Id,
+    TenantId,
+    ItemId,
+    ProposalRevision,
+    Origin,
+    Values,
+    ValuesDigest,
+    QaIssues,
+    CreatedByActorKind,
+    CreatedByActorId,
+    IdempotencyKey,
+    RequestHash,
+    SubmittedAt,
+    SubmissionIdempotencyKey,
+    SubmissionRequestHash,
+    ApprovedByActorKind,
+    ApprovedByActorId,
+    ApprovedAt,
+    ApprovalReceiptId,
+    ApprovalIdempotencyKey,
+    ApprovalRequestHash,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum ApplyReceipts {
+    #[iden = "translation_apply_receipts"]
+    Table,
+    Id,
+    TenantId,
+    ItemId,
+    ProposalId,
+    IdempotencyKey,
+    RequestHash,
+    ApprovalReceiptId,
+    ProviderReceiptId,
+    ResourceRevision,
+    TargetRevision,
+    AppliedFieldKeys,
+    CreatedAt,
+}
+
+#[derive(Iden)]
+enum Tenants {
+    #[iden = "tenants"]
+    Table,
+    Id,
+}

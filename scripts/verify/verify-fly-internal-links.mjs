@@ -1,0 +1,205 @@
+import { readFile } from 'node:fs/promises';
+
+const paths = {
+  flyLib: 'crates/ui/fly/src/lib.rs',
+  componentVisit: 'crates/ui/fly/src/component_visit.rs',
+  interactionRoute: 'crates/ui/fly/src/interaction_route.rs',
+  safeUrl: 'crates/ui/fly/src/safe_url.rs',
+  internalLink: 'crates/ui/fly/src/internal_link.rs',
+  localizedRoute: 'crates/ui/fly/src/localized_route.rs',
+  runtimePipeline: 'crates/ui/fly/src/runtime_pipeline.rs',
+  runtimeRender: 'crates/ui/fly/src/runtime_render.rs',
+  runtimeValidation: 'crates/ui/fly/src/runtime_validation.rs',
+  browserContract: 'crates/ui/fly-browser/src/lib.rs',
+  browserIntent: 'crates/modules/rustok-page-builder/admin/src/browser_intent.rs',
+  ssrInternalLink: 'crates/modules/rustok-page-builder/admin/src/editor/ssr_internal_link.rs',
+  adminMod: 'crates/modules/rustok-page-builder/admin/src/editor/mod.rs',
+  adminCanvas: 'crates/modules/rustok-page-builder/admin/src/editor/modular_canvas.rs',
+  localeEn: 'crates/modules/rustok-page-builder/admin/locales/en.ftl',
+  localeRu: 'crates/modules/rustok-page-builder/admin/locales/ru.ftl',
+};
+
+const source = Object.fromEntries(await Promise.all(
+  Object.entries(paths).map(async ([key, path]) => [key, await readFile(path, 'utf8')]),
+));
+const failures = [];
+const requireMarker = (key, marker, message) => {
+  if (!source[key].includes(marker)) failures.push(message);
+};
+const rejectMarker = (key, marker, message) => {
+  if (source[key].includes(marker)) failures.push(message);
+};
+const requireMarkers = (key, markers, label) => {
+  for (const marker of markers) requireMarker(key, marker, `${label} is missing ${marker}`);
+};
+const localeValue = (locale, path) => locale[path] || locale[path.replace(/\./g, '-')];
+
+requireMarkers('flyLib', [
+  'mod component_visit;',
+  'mod interaction_route;',
+  'mod safe_url;',
+  'pub use component_visit::{ComponentVisit, visit_project_components};',
+], 'Fly traversal, route, and URL infrastructure');
+requireMarkers('componentVisit', [
+  'pub struct ComponentVisit',
+  'pub fn visit_project_components(',
+  'pub(crate) fn visit_project_components_mut(',
+  'Mutation stays crate-private',
+  'project.pages[{page_index}].component',
+  'immutable_and_mutable_walks_share_page_depth_and_path_contract',
+], 'shared component visitor');
+requireMarkers('interactionRoute', [
+  'pub(crate) struct InteractionRouteCatalog',
+  'pub(crate) fn page_index',
+  'pub(crate) fn has_route',
+  'pub(crate) fn slug_for',
+  'pub(crate) fn interaction_locale_candidates',
+  'pub(crate) fn build_interaction_href',
+  'catalog_resolves_identical_locale_fallback_for_all_interactions',
+], 'shared interaction route catalog');
+requireMarkers('safeUrl', [
+  'pub(crate) fn validate_safe_url',
+  'pub(crate) fn normalize_safe_url',
+  'rejects_network_paths_backslashes_controls_and_unsafe_schemes',
+  'rejects_absolute_urls_without_authority_or_scheme_targets',
+], 'shared safe URL boundary');
+requireMarkers('internalLink', [
+  'pub const FLY_PAGE_LINK_FIELD',
+  'pub struct InternalPageLink',
+  'pub struct InternalLinkMaterialization',
+  'pub fn materialize_internal_page_links',
+  'pub fn validate_internal_page_links',
+  'component_visit::{visit_project_components, visit_project_components_mut}',
+  'build_interaction_href',
+  'interaction_locale_candidates',
+  'InteractionRouteCatalog',
+  'safe_url::normalize_safe_url',
+  'GENERATED_INTERNAL_LINK_ATTRIBUTES',
+  'clear_internal_link_materialization',
+  'anonymous_component_diagnostics_use_the_shared_canonical_path',
+  'internal_page_link_materializes_locale_specific_href',
+  'missing_target_is_blocking_validation_and_clears_stale_href_at_runtime',
+  'fallback_href_is_used_when_target_page_has_no_slug',
+  'unsafe_fallback_and_network_base_path_are_rejected',
+  'unencoded_query_and_backslash_fragment_are_rejected',
+], 'Fly internal page link contract');
+for (const forbidden of [
+  'fn materialize_node(',
+  'fn validate_node(',
+  'fn page_index(',
+  'fn route_slug(',
+  'fn locale_candidates(',
+  'fn build_href(',
+  '#[allow(clippy::too_many_arguments)]',
+]) {
+  rejectMarker(
+    'internalLink',
+    forbidden,
+    `internal links must use shared infrastructure instead of ${forbidden}`,
+  );
+}
+rejectMarker(
+  'internalLink',
+  'missing_target_is_blocking_validation_and_preserves_raw_href_at_runtime',
+  'internal link tests must not preserve stale href for unresolved targets',
+);
+requireMarkers('localizedRoute', [
+  'pub fn localized_page_route_index',
+  'pub struct LocalizedPageRouteEntry',
+], 'localized route dependency');
+requireMarkers('runtimePipeline', [
+  'validate_internal_page_links(&dynamic_document)',
+  'materialize_internal_page_links(&dynamic_document, &effective_context)',
+  'pub resolved_internal_links: usize',
+  'pub fallback_internal_links: usize',
+  'pub unresolved_internal_links: usize',
+  'internal_page_links_materialize_after_bindings_and_repeaters',
+  'runtime_bound_navigation_conflict_is_validated_before_materialization',
+], 'internal link runtime ordering');
+requireMarkers('runtimeRender', [
+  'pub resolved_internal_links: usize',
+  'pub fallback_internal_links: usize',
+  'pub unresolved_internal_links: usize',
+  'resolved_internal_links,',
+], 'internal link render counters');
+requireMarkers('runtimeValidation', [
+  'validate_internal_page_links(document)',
+  'missing_internal_page_link_target_blocks_publish_validation',
+], 'internal link publish validation');
+requireMarkers('browserContract', [
+  '"set_internal_page_link"',
+  '"remove_internal_page_link"',
+  'command_producing_and_draft_intents_are_mutating',
+], 'internal link mutation protection');
+requireMarkers('browserIntent', [
+  'SsrInternalPageLinkRequest',
+  'SsrInternalPageLinkRemoveRequest',
+  '"set_internal_page_link"',
+  '"remove_internal_page_link"',
+  'ssr_internal_page_link_intent',
+  'ssr_remove_internal_page_link_intent',
+  'internal_page_link_form_uses_revision_protected_patch_history',
+], 'internal link browser dispatcher');
+requireMarkers('ssrInternalLink', [
+  'pub struct SsrInternalPageLinkRequest',
+  'pub struct SsrInternalPageLinkRemoveRequest',
+  'data-fly-ssr-internal-link="true"',
+  'data-fly-intent-form="set_internal_page_link"',
+  'data-fly-intent-form="remove_internal_page_link"',
+  'data-fly-selected-component-input="true"',
+  'InternalPageLink',
+  'internal_link_form_uses_patch_history_and_preserves_extensions',
+  'missing_target_is_rejected_before_dispatch',
+], 'localized SSR internal link editor');
+requireMarkers('adminMod', [
+  'mod ssr_internal_link;',
+  'SsrInternalPageLinkPanel',
+  'SsrInternalPageLinkRemoveRequest',
+  'SsrInternalPageLinkRequest',
+], 'internal link editor registration');
+requireMarker(
+  'adminCanvas',
+  '<SsrInternalPageLinkPanel runtime=ssr_internal_link_runtime />',
+  'internal link panel is not mounted in the admin canvas',
+);
+
+const parseFtl = (content) => {
+  const result = {};
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.match(/^([a-zA-Z][a-zA-Z0-9_-]*)\s*=\s*(.*)$/);
+    if (match) {
+      result[match[1]] = match[2].trim();
+    }
+  }
+  return result;
+};
+const en = parseFtl(source.localeEn);
+const ru = parseFtl(source.localeRu);
+const requiredKeys = [
+  'page_builder.internalLink.title',
+  'page_builder.internalLink.description',
+  'page_builder.internalLink.empty',
+  'page_builder.internalLink.targetLabel',
+  'page_builder.internalLink.basePathLabel',
+  'page_builder.internalLink.queryLabel',
+  'page_builder.internalLink.fragmentLabel',
+  'page_builder.internalLink.fallbackLabel',
+  'page_builder.internalLink.save',
+  'page_builder.internalLink.remove',
+];
+for (const [localeName, locale] of [['en', en], ['ru', ru]]) {
+  for (const key of requiredKeys) {
+    const value = localeValue(locale, key);
+    if (typeof value !== 'string' || value.trim() === '') {
+      failures.push(`Page Builder ${localeName} locale is missing non-empty ${key}`);
+    }
+  }
+}
+
+if (failures.length > 0) {
+  console.error('Fly internal page link verification failed:');
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
+
+console.log('Fly internal page links verified.');

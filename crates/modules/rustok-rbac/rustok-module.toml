@@ -1,0 +1,42 @@
+[module]
+slug = "rbac"
+name = "RBAC"
+version = "0.1.0"
+description = "Role-based access control helpers."
+ownership = "first_party"
+trust_level = "core"
+ui_classification = "admin_only"
+recommended_admin_surfaces = ["leptos-admin"]
+
+[dependencies]
+outbox = { version_req = ">=0.1.0" }
+
+[crate]
+entry_type = "RbacModule"
+
+[provides.admin_ui]
+leptos_crate = "rustok-rbac-admin"
+route_segment = "rbac"
+nav_label = "RBAC"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
+[provides.graphql]
+query = "graphql::RbacQuery"
+mutation = "graphql::RbacMutation"
+
+[provides.cli]
+namespace = "rbac"
+factory = "rustok_rbac_cli::command_provider"
+
+[fba.provider]
+registry = "contracts/rbac-fba-registry.json"
+contract_version = "rbac.permission_decision.v1"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+profiles = ["admin_permission_decision"]
+fallback_profiles = ["embedded_native"]
+degraded_modes = ["hide_restricted_actions", "show_permission_refresh_prompt"]

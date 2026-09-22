@@ -1,0 +1,76 @@
+name: Pages Page Builder Parity
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/pages-page-builder-parity.yml"
+      - "docs/modules/pages-page-builder-parity-continuation-plan.md"
+      - "docs/modules/page-builder-implementation-plan.md"
+      - "docs/modules/page-builder-admin-accessibility-actualization-2026-08-10.md"
+      - "docs/modules/pages-page-builder-parity-accessibility-actualization-2026-08-12.md"
+      - "crates/modules/rustok-page-builder/docs/implementation-plan.md"
+      - "crates/modules/rustok-page-builder/admin/src/editor/**"
+      - "crates/modules/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs"
+      - "crates/modules/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json"
+      - "crates/modules/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-packet-verifier-source.json"
+      - "apps/next-admin/playwright.page-builder-accessibility.config.ts"
+      - "apps/next-admin/tests/page-builder-accessibility/**"
+      - "scripts/evidence/verify-page-builder-accessibility-browser-packet.mjs"
+      - "scripts/evidence/verify-page-builder-accessibility-browser-packet.test.mjs"
+      - "scripts/verify/verify-page-builder-admin-accessibility.mjs"
+      - "scripts/verify/verify-page-builder-accessibility-browser-evidence-harness.mjs"
+      - "scripts/verify/verify-page-builder-accessibility-browser-packet-verifier.mjs"
+      - "scripts/verify/verify-pages-page-builder-accessibility-plan-sync.mjs"
+      - "crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - ".github/workflows/pages-page-builder-parity.yml"
+      - "docs/modules/pages-page-builder-parity-continuation-plan.md"
+      - "docs/modules/page-builder-implementation-plan.md"
+      - "docs/modules/page-builder-admin-accessibility-actualization-2026-08-10.md"
+      - "docs/modules/pages-page-builder-parity-accessibility-actualization-2026-08-12.md"
+      - "crates/modules/rustok-page-builder/docs/implementation-plan.md"
+      - "crates/modules/rustok-page-builder/admin/src/editor/**"
+      - "crates/modules/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs"
+      - "crates/modules/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json"
+      - "crates/modules/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-packet-verifier-source.json"
+      - "apps/next-admin/playwright.page-builder-accessibility.config.ts"
+      - "apps/next-admin/tests/page-builder-accessibility/**"
+      - "scripts/evidence/verify-page-builder-accessibility-browser-packet.mjs"
+      - "scripts/evidence/verify-page-builder-accessibility-browser-packet.test.mjs"
+      - "scripts/verify/verify-page-builder-admin-accessibility.mjs"
+      - "scripts/verify/verify-page-builder-accessibility-browser-evidence-harness.mjs"
+      - "scripts/verify/verify-page-builder-accessibility-browser-packet-verifier.mjs"
+      - "scripts/verify/verify-pages-page-builder-accessibility-plan-sync.mjs"
+      - "crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  source-parity:
+    name: Source parity and accessibility guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify generic editor accessibility source
+        run: node scripts/verify/verify-page-builder-admin-accessibility.mjs
+      - name: Verify generic editor accessibility browser evidence harness
+        run: node scripts/verify/verify-page-builder-accessibility-browser-evidence-harness.mjs
+      - name: Verify generic editor accessibility browser packet verifier
+        run: node scripts/verify/verify-page-builder-accessibility-browser-packet-verifier.mjs
+      - name: Exercise generic editor accessibility browser packet verifier
+        run: node scripts/evidence/verify-page-builder-accessibility-browser-packet.test.mjs
+      - name: Verify Pages and Page Builder plan parity
+        run: node crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
+      - name: Verify accessibility plan synchronization
+        run: node scripts/verify/verify-pages-page-builder-accessibility-plan-sync.mjs

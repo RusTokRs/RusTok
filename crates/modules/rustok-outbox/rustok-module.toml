@@ -1,0 +1,31 @@
+[module]
+slug = "outbox"
+name = "Outbox"
+version = "0.1.0"
+description = "Transactional event persistence, relay, retry, and DLQ lifecycle."
+ownership = "first_party"
+trust_level = "core"
+ui_classification = "admin_only"
+recommended_admin_surfaces = ["leptos-admin"]
+
+[crate]
+entry_type = "OutboxModule"
+
+[provides.admin_ui]
+leptos_crate = "rustok-outbox-admin"
+route_segment = "outbox"
+nav_label = "Outbox"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
+[fba.provider]
+registry = "contracts/outbox-fba-registry.json"
+contract_version = "outbox.relay_control.v1"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+runtime_profile = "embedded_native"
+fallback_profiles = ["embedded_native"]
+degraded_modes = ["pause_relay_worker", "surface_dlq_retry_needed"]

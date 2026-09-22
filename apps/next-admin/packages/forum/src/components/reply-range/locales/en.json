@@ -1,0 +1,23 @@
+{
+  "title": "Move reply range",
+  "subtitle": "Move one inclusive source-position range into an existing topic through the idempotent Forum owner.",
+  "source": "Source topic",
+  "target": "Target topic",
+  "choose": "Choose a topic",
+  "startPosition": "Inclusive start position",
+  "endPosition": "Inclusive end position",
+  "reason": "Reason",
+  "warning": "Positions are canonical owner positions, not row numbers. Sparse positions are valid; the owner verifies occupied endpoints, the 500-reply bound, parent edges, ACL equality, solution conflicts and counters.",
+  "retryIdentity": "Retry identity",
+  "retryHint": "An exact retry keeps this identity. Editing source, target, either endpoint or reason rotates it.",
+  "submit": "Move reply range",
+  "pending": "Moving…",
+  "success": "Reply range moved.",
+  "failure": "Reply range could not be moved.",
+  "receipt": "Move committed",
+  "sourceRange": "Source range",
+  "targetRange": "Target range",
+  "movedReplies": "Moved replies",
+  "publishedReplies": "Moved published replies",
+  "operation": "Operation"
+}
