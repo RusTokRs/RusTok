@@ -10,9 +10,47 @@ use crate::shared::context::enabled_modules::use_is_module_enabled;
 
 const FORUM_ROUTE_SEGMENT: &str = "forum";
 
+#[cfg(feature = "ssr")]
+#[server(prefix = "/api/fn", endpoint = "storefront/forum-reactions-enabled")]
+async fn forum_reactions_enabled_for_tenant() -> Result<bool, ServerFnError> {
+    use leptos::prelude::expect_context;
+    use rustok_api::TenantContext;
+    use rustok_tenant::TenantService;
+
+    let runtime = expect_context::<rustok_api::HostRuntimeContext>();
+    let tenant = leptos_axum::extract::<TenantContext>()
+        .await
+        .map_err(ServerFnError::new)?;
+    let service = TenantService::new(runtime.db_clone());
+    let module = service
+        .find_tenant_module(tenant.id, "forum")
+        .await
+        .map_err(ServerFnError::new)?;
+
+    Ok(module
+        .and_then(|module| {
+            module
+                .settings
+                .get("useReactions")
+                .and_then(serde_json::Value::as_bool)
+        })
+        .unwrap_or(false))
+}
+
 #[component]
 pub fn ForumStorefrontComposition() -> impl IntoView {
     let reactions_enabled = use_is_module_enabled("reactions");
+    let forum_reactions_enabled = LocalResource::new({
+        move || {
+            let reactions_enabled = reactions_enabled.get();
+            async move {
+                if !reactions_enabled {
+                    return Ok(false);
+                }
+                forum_reactions_enabled_for_tenant().await
+            }
+        }
+    });
     let route = use_context::<UiRouteContext>().unwrap_or_default();
     let topic_id = explicit_forum_topic_id(&route);
     let reply_id = explicit_forum_reply_id(&route, topic_id.as_ref());
@@ -26,12 +64,13 @@ pub fn ForumStorefrontComposition() -> impl IntoView {
         move || {
             (
                 reactions_enabled.get(),
+                forum_reactions_enabled.get(),
                 topic_reaction_id,
                 topic_locale.clone(),
             )
         },
-        |(enabled, topic_id, locale)| async move {
-            if !enabled {
+        |(reactions_enabled, forum_reactions_enabled, topic_id, locale)| async move {
+            if !reactions_enabled || !forum_reactions_enabled.unwrap_or(false) {
                 return Ok(None);
             }
             let Some(topic_id) = topic_id else {
@@ -44,9 +83,14 @@ pub fn ForumStorefrontComposition() -> impl IntoView {
     );
 
     let reply_revision_resource = Resource::new_blocking(
-        move || (reactions_enabled.get(), reply_id, reply_locale.clone()),
-        |(enabled, reply_id, locale)| async move {
-            if !enabled {
+        move || (
+            reactions_enabled.get(),
+            forum_reactions_enabled.get(),
+            reply_id,
+            reply_locale.clone(),
+        ),
+        |(reactions_enabled, forum_reactions_enabled, reply_id, locale)| async move {
+            if !reactions_enabled || !forum_reactions_enabled.unwrap_or(false) {
                 return Ok(None);
             }
             let Some(reply_id) = reply_id else {
