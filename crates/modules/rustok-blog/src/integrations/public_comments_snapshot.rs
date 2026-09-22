@@ -9,7 +9,7 @@ use rustok_core::error::ErrorKind;
 
 use crate::{BlogError, BlogResult, CommentListItem, CommentService, ListCommentsFilter};
 
-const SNAPSHOT_SCHEMA_VERSION: u16 = 1;
+const SNAPSHOT_SCHEMA_VERSION: u16 = 2;
 pub const MAX_PUBLIC_COMMENTS_SNAPSHOT_BYTES: usize = 256 * 1024;
 
 #[async_trait]
@@ -42,7 +42,7 @@ struct PublicCommentsSnapshotIdentity {
     public_channel_slug: Option<String>,
     page: u64,
     per_page: u64,
-}
+    projection_event_id: Option<Uuid>,
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PublicCommentsSnapshotEnvelope {
@@ -237,7 +237,7 @@ fn snapshot_key(identity: &PublicCommentsSnapshotIdentity) -> Option<String> {
             return None;
         }
     };
-    let digest = sha256_digest(&[b"blog-public-comments-snapshot-v1\0", encoded.as_slice()]);
+    let digest = sha256_digest(&[b"blog-public-comments-snapshot-v2\0", encoded.as_slice()]);
     let mut hex = String::with_capacity(digest.len() * 2);
     for byte in digest {
         let _ = write!(&mut hex, "{byte:02x}");
