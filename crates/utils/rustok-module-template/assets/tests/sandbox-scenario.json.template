@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "input": {
+    "message": "hello from {{slug}}"
+  },
+  "policy": {
+    "grants": [
+      {
+        "name": "platform.events",
+        "constraints": {
+          "topics": ["module.{{slug}}.executed"],
+          "operations": ["publish"]
+        }
+      }
+    ],
+    "limits": {
+      "wall_clock_ms": 1000,
+      "instruction_budget": 500000,
+      "max_memory_bytes": 67108864,
+      "max_output_bytes": 1048576,
+      "max_concurrency": 1,
+      "max_capability_calls": 16,
+      "max_capability_input_bytes": 65536,
+      "max_capability_calls_per_second": 16
+    }
+  },
+  "fixtures": [
+    {
+      "capability": "platform.events",
+      "operation": "publish",
+      "output": {
+        "accepted": true
+      }
+    }
+  ],
+  "expectation": {
+    "outcome": "success",
+    "output": {
+      "message": "hello from {{slug}}"
+    }
+  }
+}

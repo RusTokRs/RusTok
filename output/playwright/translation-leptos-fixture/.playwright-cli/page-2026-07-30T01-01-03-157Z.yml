@@ -1,0 +1,74 @@
+- main [ref=f3e2]:
+  - generic [ref=f3e3]:
+    - generic [ref=f3e5]:
+      - generic [ref=f3e6]: admin only
+      - heading "Translation control plane" [level=1] [ref=f3e7]
+      - paragraph [ref=f3e8]: Exact-locale coverage, required-target policy, inventory repair, and reviewed owner-safe workflow.
+    - tablist "Translation sections" [ref=f3e9]:
+      - tab "Overview" [ref=f3e10]
+      - tab "Jobs" [active] [selected] [ref=f3e11]
+      - tab "Glossaries" [ref=f3e12]
+      - tab "Memory" [ref=f3e13]
+      - tab "Inventory" [ref=f3e14]
+      - tab "Workflow" [ref=f3e15]
+    - tabpanel "Jobs" [ref=f3e128]:
+      - generic [ref=f3e129]:
+        - generic [ref=f3e130]:
+          - generic [ref=f3e131]:
+            - generic [ref=f3e132]: Create translation job
+            - generic [ref=f3e133]: Start a tenant-scoped manual workflow for one exact locale pair.
+          - generic [ref=f3e134]:
+            - generic [ref=f3e135]:
+              - generic [ref=f3e136]:
+                - generic [ref=f3e137]: Source locale*
+                - textbox "Source locale*" [ref=f3e138]:
+                  - /placeholder: ""
+                  - text: en
+              - generic [ref=f3e139]:
+                - generic [ref=f3e140]: Target locale*
+                - textbox "Target locale*" [ref=f3e141]:
+                  - /placeholder: ""
+                  - text: de
+              - generic [ref=f3e142]:
+                - generic [ref=f3e143]: Glossary ID
+                - textbox "Glossary ID" [ref=f3e144]:
+                  - /placeholder: ""
+              - generic [ref=f3e145]:
+                - generic [ref=f3e146]: Glossary revision
+                - textbox "Glossary revision" [ref=f3e147]:
+                  - /placeholder: ""
+            - button "Create job" [ref=f3e148]
+        - generic [ref=f3e149]:
+          - generic [ref=f3e150]:
+            - generic [ref=f3e151]: Inspect or rebuild job progress
+            - generic [ref=f3e152]: Job selection remains explicit until a list contract is available.
+          - generic [ref=f3e153]:
+            - generic [ref=f3e154]:
+              - generic [ref=f3e155]: Job ID*
+              - textbox "Job ID*" [ref=f3e156]:
+                - /placeholder: ""
+            - generic [ref=f3e157]:
+              - button "Read progress" [ref=f3e158]
+              - button "Rebuild projection" [ref=f3e159]
+        - generic [ref=f3e160]:
+          - generic [ref=f3e161]:
+            - generic [ref=f3e162]: Bounded interchange
+            - generic [ref=f3e163]: Export immutable job snapshots and import one translated item through canonical QA.
+          - generic [ref=f3e165]:
+            - generic [ref=f3e166]:
+              - generic [ref=f3e167]:
+                - generic [ref=f3e168]: Maximum export items
+                - textbox "Maximum export items" [ref=f3e169]:
+                  - /placeholder: ""
+                  - text: "200"
+              - button "Export job" [ref=f3e170]
+              - generic [ref=f3e171]:
+                - generic [ref=f3e172]: Export document
+                - textbox "Export document" [ref=f3e173]:
+                  - /placeholder: ""
+            - generic [ref=f3e174]:
+              - generic [ref=f3e175]:
+                - generic [ref=f3e176]: Import item JSON*
+                - textbox "Import item JSON*" [ref=f3e177]:
+                  - /placeholder: ""
+              - button "Import item" [ref=f3e178]

@@ -1,0 +1,101 @@
+[package]
+name = "rustok-ai"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "AI orchestration capability for RusToK"
+
+[features]
+default = []
+graphql = ["server", "dep:async-graphql", "rustok-api/server"]
+fastembed = ["server", "dep:rig-fastembed"]
+server = [
+  "dep:aes-gcm",
+  "dep:alloy",
+  "dep:bytes",
+  "dep:jsonschema",
+  "dep:once_cell",
+  "dep:rhai",
+  "dep:rustok-ai-content",
+  "dep:rustok-ai-order",
+  "dep:rustok-ai-product",
+  "dep:rustok-ai-media",
+  "dep:rustok-blog-owner",
+  "dep:rustok-core",
+  "dep:rustok-media",
+  "dep:rustok-mcp",
+  "dep:rustok-outbox",
+  "dep:rustok-order",
+  "dep:rustok-product",
+  "dep:rustok-runtime",
+  "dep:rustok-storage",
+  "dep:rustok-telemetry",
+  "dep:rig",
+  "dep:rig-bedrock",
+  "dep:rig-gemini-grpc",
+  "dep:rig-vertexai",
+  "dep:schemars",
+  "dep:secrecy",
+  "dep:sea-orm",
+  "dep:sea-orm-migration",
+  "dep:tokio",
+  "dep:url",
+]
+
+[dependencies]
+aes-gcm = { workspace = true, optional = true }
+async-trait.workspace = true
+bytes = { version = "1.0", optional = true }
+async-graphql = { workspace = true, optional = true }
+chrono.workspace = true
+alloy = { workspace = true, optional = true }
+base64.workspace = true
+once_cell = { workspace = true, optional = true }
+futures-util = { version = "0.3" }
+jsonschema = { version = "=0.55.1", default-features = false, optional = true }
+hex.workspace = true
+reqwest = { workspace = true, features = ["json", "stream"] }
+rhai = { workspace = true, optional = true }
+rig = { workspace = true, optional = true }
+rig-bedrock = { workspace = true, optional = true }
+rig-fastembed = { workspace = true, optional = true, features = ["ort-download-binaries"] }
+rig-gemini-grpc = { workspace = true, optional = true }
+rig-vertexai = { workspace = true, optional = true }
+rustok-ai-content = { workspace = true, optional = true }
+rustok-ai-order = { workspace = true, optional = true }
+rustok-ai-product = { workspace = true, optional = true }
+rustok-ai-media = { workspace = true, optional = true }
+rustok-ai-alloy.workspace = true
+rustok-api.workspace = true
+rustok-blog-owner = { package = "rustok-blog", path = "../rustok-blog", optional = true }
+rustok-core = { workspace = true, optional = true }
+rustok-media = { workspace = true, optional = true }
+rustok-mcp = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true }
+rustok-order = { workspace = true, optional = true }
+rustok-product = { workspace = true, optional = true }
+rustok-runtime = { workspace = true, optional = true }
+rustok-storage = { workspace = true, optional = true }
+rustok-secrets.workspace = true
+rustok-telemetry = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
+secrecy = { workspace = true, optional = true }
+sea-orm = { workspace = true, optional = true }
+sea-orm-migration = { workspace = true, optional = true }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, optional = true, features = ["sync", "time"] }
+url = { workspace = true, optional = true }
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+rust_decimal.workspace = true
+rustok-taxonomy.workspace = true
+rustok-test-utils.workspace = true
+rustok-product-transport = { path = "../rustok-product-transport" }
+tokio.workspace = true
+tokio-stream = { version = "0.1", features = ["net"] }
+tonic.workspace = true

@@ -1,0 +1,1605 @@
+{
+  "generated_at": "2026-07-26T23:05:43.874Z",
+  "methodology": {
+    "source_oracle": "normalized idx_bench_source workload result digests",
+    "result_digest": "ordered_length_prefixed_json_v1",
+    "evidence_validation": "fail closed on report shape, metrics, plans, effects, ordering, digest semantics, and cardinalities",
+    "first_run": "first EXPLAIN ANALYZE repetition",
+    "warm_run": "median after the first repetition; not a guaranteed OS cold-cache comparison",
+    "automatic_winner_selection": false,
+    "comparable_database_fields": [
+      "server_version_num",
+      "shared_buffers",
+      "effective_cache_size",
+      "work_mem",
+      "random_page_cost",
+      "jit",
+      "standard_conforming_strings",
+      "timezone",
+      "date_style",
+      "extra_float_digits"
+    ],
+    "database_settings_source": "read-report.json database metadata observed from the active PostgreSQL benchmark session after exact equality was verified against mutation-report.json and maintenance-report.json active-session metadata"
+  },
+  "decision_ready": true,
+  "decision_contract": {
+    "required_scales_present": true,
+    "same_packet_contract_version": true,
+    "same_result_digest_contract": true,
+    "same_repository": true,
+    "same_commit": true,
+    "same_postgres_image": true,
+    "same_repetitions": true,
+    "same_churn_cycles": true,
+    "same_database_settings": true,
+    "same_dataset_shape": true,
+    "same_source_oracle_shape": true,
+    "same_report_shape": true,
+    "same_mutation_effect_contract": true
+  },
+  "scales": [
+    {
+      "scale": "100k",
+      "directory": "evidence/index-storage/100k",
+      "provenance": {
+        "packet_contract_version": 2,
+        "result_digest_contract": "ordered_length_prefixed_json_v1",
+        "repository": "RusTokRs/RusTok",
+        "commit": "eae5f74241e9431bffe2fd8c43cd046fc1c1f679",
+        "ref": "refs/heads/agent/index-m2-evidence-eae5f74",
+        "run_id": "30222913450",
+        "run_attempt": "1",
+        "postgres_image": "postgres:16",
+        "runner_os": "Linux",
+        "runner_arch": "X64",
+        "repetitions": 3,
+        "churn_cycles": 5,
+        "source_workload_names": [
+          "status_equality",
+          "price_range_sort",
+          "multi_value_tag",
+          "two_hop_channel_filter",
+          "keyset_page",
+          "exact_count"
+        ],
+        "expected_product_rows": 100000,
+        "expected_entity_rows": 300080,
+        "expected_eav_field_rows": 1400160,
+        "expected_link_rows": 600000
+      },
+      "database": {
+        "version": "PostgreSQL 16.14 (Debian 16.14-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+        "server_version_num": "160014",
+        "shared_buffers": "128MB",
+        "effective_cache_size": "4GB",
+        "work_mem": "4MB",
+        "random_page_cost": "4",
+        "jit": "off",
+        "standard_conforming_strings": "on",
+        "timezone": "UTC",
+        "date_style": "ISO, YMD",
+        "extra_float_digits": "3"
+      },
+      "dataset": {
+        "scale": "rows100k",
+        "tenants": 10,
+        "products_per_tenant": 5000,
+        "locales": [
+          "en-US",
+          "ru-RU"
+        ],
+        "variants_per_product": 2,
+        "channels_per_tenant": 8,
+        "sales_channels_per_variant": 2
+      },
+      "source_load_ms": 5014,
+      "source_entity_rows": 300080,
+      "source_link_rows": 600000,
+      "source_workloads": [
+        {
+          "name": "status_equality",
+          "sql": "SELECT product_id AS entity_id FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = 'en-US' AND status = 'published' ORDER BY entity_id LIMIT 100",
+          "result_rows": 100,
+          "result_digest": "4ad6336e71b37400a6765e30d56ebd29"
+        },
+        {
+          "name": "price_range_sort",
+          "sql": "SELECT product_id AS entity_id, price_minor FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = 'en-US' AND price_minor BETWEEN 20000 AND 80000 ORDER BY price_minor, entity_id LIMIT 100",
+          "result_rows": 100,
+          "result_digest": "e13c87858433010e8262191f0f0513b9"
+        },
+        {
+          "name": "multi_value_tag",
+          "sql": "SELECT product_id AS entity_id FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = 'en-US' AND tags @> ARRAY['tag-3']::text[] ORDER BY entity_id LIMIT 100",
+          "result_rows": 100,
+          "result_digest": "ca1d7a330e7b136afb21d69ed4ebeb3b"
+        },
+        {
+          "name": "two_hop_channel_filter",
+          "sql": "SELECT DISTINCT product.product_id AS entity_id FROM idx_bench_source.product AS product JOIN idx_bench_source.variant AS variant ON variant.tenant_id = product.tenant_id AND variant.product_id = product.product_id AND variant.locale = product.locale JOIN idx_bench_source.variant_channel AS variant_channel ON variant_channel.tenant_id = variant.tenant_id AND variant_channel.variant_id = variant.variant_id AND variant_channel.locale = variant.locale JOIN idx_bench_source.channel AS channel ON channel.tenant_id = variant_channel.tenant_id AND channel.channel_id = variant_channel.channel_id WHERE product.tenant_no = 1 AND product.locale = 'en-US' AND channel.code = 'channel-1' ORDER BY entity_id LIMIT 100",
+          "result_rows": 100,
+          "result_digest": "9480db66a1be8b6e2f768a7c56275d44"
+        },
+        {
+          "name": "keyset_page",
+          "sql": "SELECT product_id AS entity_id, price_minor FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = 'en-US' AND (price_minor, product_id) > (198101, md5('product:1:2500')::uuid) ORDER BY price_minor, entity_id LIMIT 100",
+          "result_rows": 61,
+          "result_digest": "e989786d5952535720b16f97ce5e4f7c"
+        },
+        {
+          "name": "exact_count",
+          "sql": "SELECT count(*)::bigint AS result_count FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = 'en-US' AND status = 'published'",
+          "result_rows": 1,
+          "result_digest": "897f9cf1ebbe1918c58534b53e587ea5"
+        }
+      ],
+      "read": [
+        {
+          "prototype": "jsonb",
+          "schema": "idx_bench_jsonb",
+          "load_ms": 15612,
+          "schema_bytes": 471564288,
+          "entity_rows": 300080,
+          "link_rows": 600000,
+          "workloads": [
+            {
+              "name": "status_equality",
+              "result_rows": 100,
+              "result_digest": "4ad6336e71b37400a6765e30d56ebd29",
+              "repetitions": 3,
+              "first_execution_ms": 2.582,
+              "warm_median_execution_ms": 2.2525,
+              "median_execution_ms": 2.388,
+              "median_planning_ms": 0.139,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 2268,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "price_range_sort",
+              "result_rows": 100,
+              "result_digest": "e13c87858433010e8262191f0f0513b9",
+              "repetitions": 3,
+              "first_execution_ms": 1.784,
+              "warm_median_execution_ms": 1.6320000000000001,
+              "median_execution_ms": 1.666,
+              "median_planning_ms": 0.134,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 1257,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "multi_value_tag",
+              "result_rows": 100,
+              "result_digest": "ca1d7a330e7b136afb21d69ed4ebeb3b",
+              "repetitions": 3,
+              "first_execution_ms": 1.577,
+              "warm_median_execution_ms": 1.5365,
+              "median_execution_ms": 1.559,
+              "median_planning_ms": 0.155,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 491,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "two_hop_channel_filter",
+              "result_rows": 100,
+              "result_digest": "9480db66a1be8b6e2f768a7c56275d44",
+              "repetitions": 3,
+              "first_execution_ms": 31.803,
+              "warm_median_execution_ms": 32.025,
+              "median_execution_ms": 31.803,
+              "median_planning_ms": 1.007,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 32076,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "keyset_page",
+              "result_rows": 61,
+              "result_digest": "e989786d5952535720b16f97ce5e4f7c",
+              "repetitions": 3,
+              "first_execution_ms": 0.095,
+              "warm_median_execution_ms": 0.057999999999999996,
+              "median_execution_ms": 0.061,
+              "median_planning_ms": 0.143,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 64,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "exact_count",
+              "result_rows": 1,
+              "result_digest": "897f9cf1ebbe1918c58534b53e587ea5",
+              "repetitions": 3,
+              "first_execution_ms": 2.259,
+              "warm_median_execution_ms": 1.936,
+              "median_execution_ms": 1.948,
+              "median_planning_ms": 0.109,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 2268,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            }
+          ]
+        },
+        {
+          "prototype": "typed_eav",
+          "schema": "idx_bench_eav",
+          "load_ms": 42349,
+          "schema_bytes": 872546304,
+          "entity_rows": 300080,
+          "link_rows": 600000,
+          "workloads": [
+            {
+              "name": "status_equality",
+              "result_rows": 100,
+              "result_digest": "4ad6336e71b37400a6765e30d56ebd29",
+              "repetitions": 3,
+              "first_execution_ms": 0.509,
+              "warm_median_execution_ms": 0.446,
+              "median_execution_ms": 0.459,
+              "median_planning_ms": 0.231,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 505,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "price_range_sort",
+              "result_rows": 100,
+              "result_digest": "e13c87858433010e8262191f0f0513b9",
+              "repetitions": 3,
+              "first_execution_ms": 0.577,
+              "warm_median_execution_ms": 0.47750000000000004,
+              "median_execution_ms": 0.492,
+              "median_planning_ms": 0.207,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 504,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "multi_value_tag",
+              "result_rows": 100,
+              "result_digest": "ca1d7a330e7b136afb21d69ed4ebeb3b",
+              "repetitions": 3,
+              "first_execution_ms": 0.571,
+              "warm_median_execution_ms": 0.482,
+              "median_execution_ms": 0.488,
+              "median_planning_ms": 0.206,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 513,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "two_hop_channel_filter",
+              "result_rows": 100,
+              "result_digest": "9480db66a1be8b6e2f768a7c56275d44",
+              "repetitions": 3,
+              "first_execution_ms": 32.188,
+              "warm_median_execution_ms": 31.8135,
+              "median_execution_ms": 31.957,
+              "median_planning_ms": 0.975,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 32079,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "keyset_page",
+              "result_rows": 61,
+              "result_digest": "e989786d5952535720b16f97ce5e4f7c",
+              "repetitions": 3,
+              "first_execution_ms": 18.161,
+              "warm_median_execution_ms": 18.5395,
+              "median_execution_ms": 18.341,
+              "median_planning_ms": 0.239,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 4261,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "exact_count",
+              "result_rows": 1,
+              "result_digest": "897f9cf1ebbe1918c58534b53e587ea5",
+              "repetitions": 3,
+              "first_execution_ms": 11.989,
+              "warm_median_execution_ms": 11.458,
+              "median_execution_ms": 11.718,
+              "median_planning_ms": 0.332,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 11536,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            }
+          ]
+        },
+        {
+          "prototype": "hot_projection",
+          "schema": "idx_bench_hot",
+          "load_ms": 11479,
+          "schema_bytes": 379101184,
+          "entity_rows": 300080,
+          "link_rows": 600000,
+          "workloads": [
+            {
+              "name": "status_equality",
+              "result_rows": 100,
+              "result_digest": "4ad6336e71b37400a6765e30d56ebd29",
+              "repetitions": 3,
+              "first_execution_ms": 0.137,
+              "warm_median_execution_ms": 0.07150000000000001,
+              "median_execution_ms": 0.075,
+              "median_planning_ms": 0.065,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 104,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "price_range_sort",
+              "result_rows": 100,
+              "result_digest": "e13c87858433010e8262191f0f0513b9",
+              "repetitions": 3,
+              "first_execution_ms": 0.106,
+              "warm_median_execution_ms": 0.097,
+              "median_execution_ms": 0.106,
+              "median_planning_ms": 0.11,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 104,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "multi_value_tag",
+              "result_rows": 100,
+              "result_digest": "ca1d7a330e7b136afb21d69ed4ebeb3b",
+              "repetitions": 3,
+              "first_execution_ms": 1.379,
+              "warm_median_execution_ms": 1.3010000000000002,
+              "median_execution_ms": 1.306,
+              "median_planning_ms": 0.089,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 485,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "two_hop_channel_filter",
+              "result_rows": 100,
+              "result_digest": "9480db66a1be8b6e2f768a7c56275d44",
+              "repetitions": 3,
+              "first_execution_ms": 27.255,
+              "warm_median_execution_ms": 26.6455,
+              "median_execution_ms": 26.705,
+              "median_planning_ms": 0.825,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 32075,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "keyset_page",
+              "result_rows": 61,
+              "result_digest": "e989786d5952535720b16f97ce5e4f7c",
+              "repetitions": 3,
+              "first_execution_ms": 0.099,
+              "warm_median_execution_ms": 0.083,
+              "median_execution_ms": 0.084,
+              "median_planning_ms": 0.077,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 64,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "exact_count",
+              "result_rows": 1,
+              "result_digest": "897f9cf1ebbe1918c58534b53e587ea5",
+              "repetitions": 3,
+              "first_execution_ms": 2.242,
+              "warm_median_execution_ms": 1.8635000000000002,
+              "median_execution_ms": 1.899,
+              "median_planning_ms": 0.071,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 2396,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            }
+          ]
+        }
+      ],
+      "mutation": [
+        {
+          "prototype": "jsonb",
+          "schema": "idx_bench_jsonb",
+          "workloads": [
+            {
+              "name": "update_product_batch",
+              "affected_entities": 1000,
+              "affected_fields": null,
+              "affected_links": null,
+              "repetitions": 3,
+              "first_execution_ms": 52.947,
+              "warm_median_execution_ms": 42.003,
+              "median_execution_ms": 42.595,
+              "median_planning_ms": 0.37,
+              "first_shared_read_blocks": 23,
+              "warm_median_shared_read_blocks": 0.5,
+              "warm_median_shared_hit_blocks": 23247.5,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1,
+              "median_maximum_node_wal_records": 6409,
+              "median_maximum_node_wal_fpi": 2,
+              "median_maximum_node_wal_bytes": 1066436,
+              "peak_maximum_node_wal_bytes": 1125595
+            },
+            {
+              "name": "delete_product_batch",
+              "affected_entities": 1000,
+              "affected_fields": null,
+              "affected_links": 2000,
+              "repetitions": 3,
+              "first_execution_ms": 34.449,
+              "warm_median_execution_ms": 21.6485,
+              "median_execution_ms": 21.687,
+              "median_planning_ms": 0.358,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 17684,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1,
+              "median_maximum_node_wal_records": 3000,
+              "median_maximum_node_wal_fpi": 0,
+              "median_maximum_node_wal_bytes": 162000,
+              "peak_maximum_node_wal_bytes": 162000
+            }
+          ]
+        },
+        {
+          "prototype": "typed_eav",
+          "schema": "idx_bench_eav",
+          "workloads": [
+            {
+              "name": "update_product_batch",
+              "affected_entities": 1000,
+              "affected_fields": 2000,
+              "affected_links": null,
+              "repetitions": 3,
+              "first_execution_ms": 88.301,
+              "warm_median_execution_ms": 67.89150000000001,
+              "median_execution_ms": 74.215,
+              "median_planning_ms": 0.352,
+              "first_shared_read_blocks": 528,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 52746,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1,
+              "median_maximum_node_wal_records": 11097,
+              "median_maximum_node_wal_fpi": 0,
+              "median_maximum_node_wal_bytes": 1318162,
+              "peak_maximum_node_wal_bytes": 1336010
+            },
+            {
+              "name": "delete_product_batch",
+              "affected_entities": 1000,
+              "affected_fields": 8000,
+              "affected_links": 2000,
+              "repetitions": 3,
+              "first_execution_ms": 120.326,
+              "warm_median_execution_ms": 53.2815,
+              "median_execution_ms": 55.405,
+              "median_planning_ms": 0.381,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 42116,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1,
+              "median_maximum_node_wal_records": 11000,
+              "median_maximum_node_wal_fpi": 0,
+              "median_maximum_node_wal_bytes": 594000,
+              "peak_maximum_node_wal_bytes": 594000
+            }
+          ]
+        },
+        {
+          "prototype": "hot_projection",
+          "schema": "idx_bench_hot",
+          "workloads": [
+            {
+              "name": "update_product_batch",
+              "affected_entities": 1000,
+              "affected_fields": null,
+              "affected_links": null,
+              "repetitions": 3,
+              "first_execution_ms": 42.451,
+              "warm_median_execution_ms": 36.0245,
+              "median_execution_ms": 36.481,
+              "median_planning_ms": 0.217,
+              "first_shared_read_blocks": 1,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 22345.5,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1,
+              "median_maximum_node_wal_records": 6377,
+              "median_maximum_node_wal_fpi": 1,
+              "median_maximum_node_wal_bytes": 834784,
+              "peak_maximum_node_wal_bytes": 844686
+            },
+            {
+              "name": "delete_product_batch",
+              "affected_entities": 1000,
+              "affected_fields": null,
+              "affected_links": 2000,
+              "repetitions": 3,
+              "first_execution_ms": 31.754,
+              "warm_median_execution_ms": 19.4095,
+              "median_execution_ms": 19.519,
+              "median_planning_ms": 0.284,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 16321,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1,
+              "median_maximum_node_wal_records": 3000,
+              "median_maximum_node_wal_fpi": 0,
+              "median_maximum_node_wal_bytes": 162000,
+              "peak_maximum_node_wal_bytes": 162000
+            }
+          ]
+        }
+      ],
+      "maintenance": [
+        {
+          "prototype": "jsonb",
+          "schema": "idx_bench_jsonb",
+          "baseline": {
+            "schema_bytes": 471564288,
+            "entity_rows": 300080,
+            "field_rows": null,
+            "link_rows": 600000,
+            "estimated_live_tuples": 900080,
+            "estimated_dead_tuples": 0,
+            "tuples_inserted": 900080,
+            "tuples_updated": 0,
+            "tuples_deleted": 0,
+            "hot_updates": 0
+          },
+          "after_churn": {
+            "schema_bytes": 478986240,
+            "entity_rows": 300080,
+            "field_rows": null,
+            "link_rows": 600000,
+            "estimated_live_tuples": 900080,
+            "estimated_dead_tuples": 20000,
+            "tuples_inserted": 915080,
+            "tuples_updated": 5000,
+            "tuples_deleted": 15000,
+            "hot_updates": 0
+          },
+          "after_vacuum": {
+            "schema_bytes": 479084544,
+            "entity_rows": 300080,
+            "field_rows": null,
+            "link_rows": 600000,
+            "estimated_live_tuples": 900080,
+            "estimated_dead_tuples": 0,
+            "tuples_inserted": 915080,
+            "tuples_updated": 5000,
+            "tuples_deleted": 15000,
+            "hot_updates": 0
+          },
+          "churn_growth_bytes": 7421952,
+          "churn_growth_percent": 1.5739003543881593,
+          "vacuum_size_delta_bytes": 98304,
+          "vacuum_size_delta_percent": 0.02052334530528476,
+          "vacuum_duration_ms": 943
+        },
+        {
+          "prototype": "typed_eav",
+          "schema": "idx_bench_eav",
+          "baseline": {
+            "schema_bytes": 872546304,
+            "entity_rows": 300080,
+            "field_rows": 1400160,
+            "link_rows": 600000,
+            "estimated_live_tuples": 2300240,
+            "estimated_dead_tuples": 0,
+            "tuples_inserted": 2300240,
+            "tuples_updated": 0,
+            "tuples_deleted": 0,
+            "hot_updates": 0
+          },
+          "after_churn": {
+            "schema_bytes": 883802112,
+            "entity_rows": 300080,
+            "field_rows": 1400160,
+            "link_rows": 600000,
+            "estimated_live_tuples": 2300240,
+            "estimated_dead_tuples": 69903,
+            "tuples_inserted": 2355240,
+            "tuples_updated": 15000,
+            "tuples_deleted": 55000,
+            "hot_updates": 121
+          },
+          "after_vacuum": {
+            "schema_bytes": 883826688,
+            "entity_rows": 300080,
+            "field_rows": 1400160,
+            "link_rows": 600000,
+            "estimated_live_tuples": 2300240,
+            "estimated_dead_tuples": 0,
+            "tuples_inserted": 2355240,
+            "tuples_updated": 15000,
+            "tuples_deleted": 55000,
+            "hot_updates": 121
+          },
+          "churn_growth_bytes": 11255808,
+          "churn_growth_percent": 1.2899954934655251,
+          "vacuum_size_delta_bytes": 24576,
+          "vacuum_size_delta_percent": 0.002780712974806741,
+          "vacuum_duration_ms": 804
+        },
+        {
+          "prototype": "hot_projection",
+          "schema": "idx_bench_hot",
+          "baseline": {
+            "schema_bytes": 379101184,
+            "entity_rows": 300080,
+            "field_rows": null,
+            "link_rows": 600000,
+            "estimated_live_tuples": 900080,
+            "estimated_dead_tuples": 0,
+            "tuples_inserted": 900080,
+            "tuples_updated": 0,
+            "tuples_deleted": 0,
+            "hot_updates": 0
+          },
+          "after_churn": {
+            "schema_bytes": 384311296,
+            "entity_rows": 300080,
+            "field_rows": null,
+            "link_rows": 600000,
+            "estimated_live_tuples": 900080,
+            "estimated_dead_tuples": 20000,
+            "tuples_inserted": 915080,
+            "tuples_updated": 5000,
+            "tuples_deleted": 15000,
+            "hot_updates": 0
+          },
+          "after_vacuum": {
+            "schema_bytes": 384434176,
+            "entity_rows": 300080,
+            "field_rows": null,
+            "link_rows": 600000,
+            "estimated_live_tuples": 900080,
+            "estimated_dead_tuples": 0,
+            "tuples_inserted": 915080,
+            "tuples_updated": 5000,
+            "tuples_deleted": 15000,
+            "hot_updates": 0
+          },
+          "churn_growth_bytes": 5210112,
+          "churn_growth_percent": 1.3743328219201763,
+          "vacuum_size_delta_bytes": 122880,
+          "vacuum_size_delta_percent": 0.03197407967940656,
+          "vacuum_duration_ms": 672
+        }
+      ]
+    },
+    {
+      "scale": "1m",
+      "directory": "evidence/index-storage/1m",
+      "provenance": {
+        "packet_contract_version": 2,
+        "result_digest_contract": "ordered_length_prefixed_json_v1",
+        "repository": "RusTokRs/RusTok",
+        "commit": "eae5f74241e9431bffe2fd8c43cd046fc1c1f679",
+        "ref": "refs/heads/agent/index-m2-evidence-eae5f74",
+        "run_id": "30222913450",
+        "run_attempt": "1",
+        "postgres_image": "postgres:16",
+        "runner_os": "Linux",
+        "runner_arch": "X64",
+        "repetitions": 3,
+        "churn_cycles": 5,
+        "source_workload_names": [
+          "status_equality",
+          "price_range_sort",
+          "multi_value_tag",
+          "two_hop_channel_filter",
+          "keyset_page",
+          "exact_count"
+        ],
+        "expected_product_rows": 1000000,
+        "expected_entity_rows": 3000160,
+        "expected_eav_field_rows": 14000320,
+        "expected_link_rows": 6000000
+      },
+      "database": {
+        "version": "PostgreSQL 16.14 (Debian 16.14-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+        "server_version_num": "160014",
+        "shared_buffers": "128MB",
+        "effective_cache_size": "4GB",
+        "work_mem": "4MB",
+        "random_page_cost": "4",
+        "jit": "off",
+        "standard_conforming_strings": "on",
+        "timezone": "UTC",
+        "date_style": "ISO, YMD",
+        "extra_float_digits": "3"
+      },
+      "dataset": {
+        "scale": "rows1m",
+        "tenants": 20,
+        "products_per_tenant": 25000,
+        "locales": [
+          "en-US",
+          "ru-RU"
+        ],
+        "variants_per_product": 2,
+        "channels_per_tenant": 8,
+        "sales_channels_per_variant": 2
+      },
+      "source_load_ms": 39857,
+      "source_entity_rows": 3000160,
+      "source_link_rows": 6000000,
+      "source_workloads": [
+        {
+          "name": "status_equality",
+          "sql": "SELECT product_id AS entity_id FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = 'en-US' AND status = 'published' ORDER BY entity_id LIMIT 100",
+          "result_rows": 100,
+          "result_digest": "2d0c9482a04578526dbbce0bdaff8297"
+        },
+        {
+          "name": "price_range_sort",
+          "sql": "SELECT product_id AS entity_id, price_minor FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = 'en-US' AND price_minor BETWEEN 20000 AND 80000 ORDER BY price_minor, entity_id LIMIT 100",
+          "result_rows": 100,
+          "result_digest": "195bb590eb6dabf314e299e01a610ce5"
+        },
+        {
+          "name": "multi_value_tag",
+          "sql": "SELECT product_id AS entity_id FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = 'en-US' AND tags @> ARRAY['tag-3']::text[] ORDER BY entity_id LIMIT 100",
+          "result_rows": 100,
+          "result_digest": "20c363844f408d2b4541d710c2f65c7a"
+        },
+        {
+          "name": "two_hop_channel_filter",
+          "sql": "SELECT DISTINCT product.product_id AS entity_id FROM idx_bench_source.product AS product JOIN idx_bench_source.variant AS variant ON variant.tenant_id = product.tenant_id AND variant.product_id = product.product_id AND variant.locale = product.locale JOIN idx_bench_source.variant_channel AS variant_channel ON variant_channel.tenant_id = variant.tenant_id AND variant_channel.variant_id = variant.variant_id AND variant_channel.locale = variant.locale JOIN idx_bench_source.channel AS channel ON channel.tenant_id = variant_channel.tenant_id AND channel.channel_id = variant_channel.channel_id WHERE product.tenant_no = 1 AND product.locale = 'en-US' AND channel.code = 'channel-1' ORDER BY entity_id LIMIT 100",
+          "result_rows": 100,
+          "result_digest": "28ef39381985a678283f95f09e34e16f"
+        },
+        {
+          "name": "keyset_page",
+          "sql": "SELECT product_id AS entity_id, price_minor FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = 'en-US' AND (price_minor, product_id) > (188101, md5('product:1:12500')::uuid) ORDER BY price_minor, entity_id LIMIT 100",
+          "result_rows": 100,
+          "result_digest": "a50ab417583d2e9606a68a1eb6582ddf"
+        },
+        {
+          "name": "exact_count",
+          "sql": "SELECT count(*)::bigint AS result_count FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = 'en-US' AND status = 'published'",
+          "result_rows": 1,
+          "result_digest": "9d753e3079b79503643c296531167bcb"
+        }
+      ],
+      "read": [
+        {
+          "prototype": "jsonb",
+          "schema": "idx_bench_jsonb",
+          "load_ms": 127965,
+          "schema_bytes": 4559560704,
+          "entity_rows": 3000160,
+          "link_rows": 6000000,
+          "workloads": [
+            {
+              "name": "status_equality",
+              "result_rows": 100,
+              "result_digest": "2d0c9482a04578526dbbce0bdaff8297",
+              "repetitions": 3,
+              "first_execution_ms": 0.066,
+              "warm_median_execution_ms": 0.062,
+              "median_execution_ms": 0.062,
+              "median_planning_ms": 0.126,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 103,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "price_range_sort",
+              "result_rows": 100,
+              "result_digest": "195bb590eb6dabf314e299e01a610ce5",
+              "repetitions": 3,
+              "first_execution_ms": 0.085,
+              "warm_median_execution_ms": 0.0825,
+              "median_execution_ms": 0.083,
+              "median_planning_ms": 0.112,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 104,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "multi_value_tag",
+              "result_rows": 100,
+              "result_digest": "20c363844f408d2b4541d710c2f65c7a",
+              "repetitions": 3,
+              "first_execution_ms": 12.309,
+              "warm_median_execution_ms": 11.6085,
+              "median_execution_ms": 11.804,
+              "median_planning_ms": 0.181,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 2456,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "two_hop_channel_filter",
+              "result_rows": 100,
+              "result_digest": "28ef39381985a678283f95f09e34e16f",
+              "repetitions": 3,
+              "first_execution_ms": 258.946,
+              "warm_median_execution_ms": 255.554,
+              "median_execution_ms": 256.704,
+              "median_planning_ms": 1.021,
+              "first_shared_read_blocks": 29115,
+              "warm_median_shared_read_blocks": 29115.5,
+              "warm_median_shared_hit_blocks": 168752.5,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "keyset_page",
+              "result_rows": 100,
+              "result_digest": "a50ab417583d2e9606a68a1eb6582ddf",
+              "repetitions": 3,
+              "first_execution_ms": 0.096,
+              "warm_median_execution_ms": 0.0825,
+              "median_execution_ms": 0.084,
+              "median_planning_ms": 0.124,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 104,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "exact_count",
+              "result_rows": 1,
+              "result_digest": "9d753e3079b79503643c296531167bcb",
+              "repetitions": 3,
+              "first_execution_ms": 19.875,
+              "warm_median_execution_ms": 10.675,
+              "median_execution_ms": 10.739,
+              "median_planning_ms": 0.14,
+              "first_shared_read_blocks": 3330,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 12605,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            }
+          ]
+        },
+        {
+          "prototype": "typed_eav",
+          "schema": "idx_bench_eav",
+          "load_ms": 427256,
+          "schema_bytes": 8734990336,
+          "entity_rows": 3000160,
+          "link_rows": 6000000,
+          "workloads": [
+            {
+              "name": "status_equality",
+              "result_rows": 100,
+              "result_digest": "2d0c9482a04578526dbbce0bdaff8297",
+              "repetitions": 3,
+              "first_execution_ms": 0.475,
+              "warm_median_execution_ms": 0.482,
+              "median_execution_ms": 0.475,
+              "median_planning_ms": 0.228,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 605,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "price_range_sort",
+              "result_rows": 100,
+              "result_digest": "195bb590eb6dabf314e299e01a610ce5",
+              "repetitions": 3,
+              "first_execution_ms": 0.502,
+              "warm_median_execution_ms": 0.529,
+              "median_execution_ms": 0.527,
+              "median_planning_ms": 0.206,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 605,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "multi_value_tag",
+              "result_rows": 100,
+              "result_digest": "20c363844f408d2b4541d710c2f65c7a",
+              "repetitions": 3,
+              "first_execution_ms": 0.562,
+              "warm_median_execution_ms": 0.5275000000000001,
+              "median_execution_ms": 0.545,
+              "median_planning_ms": 0.19,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 620,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "two_hop_channel_filter",
+              "result_rows": 100,
+              "result_digest": "28ef39381985a678283f95f09e34e16f",
+              "repetitions": 3,
+              "first_execution_ms": 246.729,
+              "warm_median_execution_ms": 251.4565,
+              "median_execution_ms": 246.729,
+              "median_planning_ms": 1.012,
+              "first_shared_read_blocks": 25133,
+              "warm_median_shared_read_blocks": 25837,
+              "warm_median_shared_hit_blocks": 172033,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "keyset_page",
+              "result_rows": 100,
+              "result_digest": "a50ab417583d2e9606a68a1eb6582ddf",
+              "repetitions": 3,
+              "first_execution_ms": 156.216,
+              "warm_median_execution_ms": 152.4525,
+              "median_execution_ms": 153.055,
+              "median_planning_ms": 0.282,
+              "first_shared_read_blocks": 36454,
+              "warm_median_shared_read_blocks": 36444.5,
+              "warm_median_shared_hit_blocks": 101614.5,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "exact_count",
+              "result_rows": 1,
+              "result_digest": "9d753e3079b79503643c296531167bcb",
+              "repetitions": 3,
+              "first_execution_ms": 111.522,
+              "warm_median_execution_ms": 100.7185,
+              "median_execution_ms": 106.46,
+              "median_planning_ms": 0.278,
+              "first_shared_read_blocks": 15020,
+              "warm_median_shared_read_blocks": 16600.5,
+              "warm_median_shared_hit_blocks": 58561.5,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            }
+          ]
+        },
+        {
+          "prototype": "hot_projection",
+          "schema": "idx_bench_hot",
+          "load_ms": 100939,
+          "schema_bytes": 3786776576,
+          "entity_rows": 3000160,
+          "link_rows": 6000000,
+          "workloads": [
+            {
+              "name": "status_equality",
+              "result_rows": 100,
+              "result_digest": "2d0c9482a04578526dbbce0bdaff8297",
+              "repetitions": 3,
+              "first_execution_ms": 0.085,
+              "warm_median_execution_ms": 0.0755,
+              "median_execution_ms": 0.085,
+              "median_planning_ms": 0.069,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 103,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "price_range_sort",
+              "result_rows": 100,
+              "result_digest": "195bb590eb6dabf314e299e01a610ce5",
+              "repetitions": 3,
+              "first_execution_ms": 0.109,
+              "warm_median_execution_ms": 0.07200000000000001,
+              "median_execution_ms": 0.074,
+              "median_planning_ms": 0.089,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 104,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "multi_value_tag",
+              "result_rows": 100,
+              "result_digest": "20c363844f408d2b4541d710c2f65c7a",
+              "repetitions": 3,
+              "first_execution_ms": 0.978,
+              "warm_median_execution_ms": 0.5854999999999999,
+              "median_execution_ms": 0.588,
+              "median_planning_ms": 0.082,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 1079,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "two_hop_channel_filter",
+              "result_rows": 100,
+              "result_digest": "28ef39381985a678283f95f09e34e16f",
+              "repetitions": 3,
+              "first_execution_ms": 236.503,
+              "warm_median_execution_ms": 231.83249999999998,
+              "median_execution_ms": 235.394,
+              "median_planning_ms": 0.965,
+              "first_shared_read_blocks": 29113,
+              "warm_median_shared_read_blocks": 29114.5,
+              "warm_median_shared_hit_blocks": 156252.5,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "keyset_page",
+              "result_rows": 100,
+              "result_digest": "a50ab417583d2e9606a68a1eb6582ddf",
+              "repetitions": 3,
+              "first_execution_ms": 0.071,
+              "warm_median_execution_ms": 0.0805,
+              "median_execution_ms": 0.071,
+              "median_planning_ms": 0.073,
+              "first_shared_read_blocks": 0,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 104,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            },
+            {
+              "name": "exact_count",
+              "result_rows": 1,
+              "result_digest": "9d753e3079b79503643c296531167bcb",
+              "repetitions": 3,
+              "first_execution_ms": 18.918,
+              "warm_median_execution_ms": 10.136,
+              "median_execution_ms": 11.045,
+              "median_planning_ms": 0.098,
+              "first_shared_read_blocks": 2828,
+              "warm_median_shared_read_blocks": 0,
+              "warm_median_shared_hit_blocks": 12604,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1
+            }
+          ]
+        }
+      ],
+      "mutation": [
+        {
+          "prototype": "jsonb",
+          "schema": "idx_bench_jsonb",
+          "workloads": [
+            {
+              "name": "update_product_batch",
+              "affected_entities": 1000,
+              "affected_fields": null,
+              "affected_links": null,
+              "repetitions": 3,
+              "first_execution_ms": 148.576,
+              "warm_median_execution_ms": 153.6775,
+              "median_execution_ms": 149.593,
+              "median_planning_ms": 0.322,
+              "first_shared_read_blocks": 26832,
+              "warm_median_shared_read_blocks": 26784,
+              "warm_median_shared_hit_blocks": 22339.5,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1,
+              "median_maximum_node_wal_records": 6300,
+              "median_maximum_node_wal_fpi": 0,
+              "median_maximum_node_wal_bytes": 1029145,
+              "peak_maximum_node_wal_bytes": 1046469
+            },
+            {
+              "name": "delete_product_batch",
+              "affected_entities": 1000,
+              "affected_fields": null,
+              "affected_links": 2000,
+              "repetitions": 3,
+              "first_execution_ms": 133.144,
+              "warm_median_execution_ms": 132.8065,
+              "median_execution_ms": 132.952,
+              "median_planning_ms": 0.361,
+              "first_shared_read_blocks": 26704,
+              "warm_median_shared_read_blocks": 26656,
+              "warm_median_shared_hit_blocks": 16225,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1,
+              "median_maximum_node_wal_records": 3000,
+              "median_maximum_node_wal_fpi": 0,
+              "median_maximum_node_wal_bytes": 162000,
+              "peak_maximum_node_wal_bytes": 162000
+            }
+          ]
+        },
+        {
+          "prototype": "typed_eav",
+          "schema": "idx_bench_eav",
+          "workloads": [
+            {
+              "name": "update_product_batch",
+              "affected_entities": 1000,
+              "affected_fields": 2000,
+              "affected_links": null,
+              "repetitions": 3,
+              "first_execution_ms": 180.945,
+              "warm_median_execution_ms": 190.94400000000002,
+              "median_execution_ms": 188.793,
+              "median_planning_ms": 0.345,
+              "first_shared_read_blocks": 26926,
+              "warm_median_shared_read_blocks": 26816,
+              "warm_median_shared_hit_blocks": 56339,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1,
+              "median_maximum_node_wal_records": 11434,
+              "median_maximum_node_wal_fpi": 0,
+              "median_maximum_node_wal_bytes": 1346681,
+              "peak_maximum_node_wal_bytes": 1352252
+            },
+            {
+              "name": "delete_product_batch",
+              "affected_entities": 1000,
+              "affected_fields": 8000,
+              "affected_links": 2000,
+              "repetitions": 3,
+              "first_execution_ms": 171.494,
+              "warm_median_execution_ms": 169.692,
+              "median_execution_ms": 169.76,
+              "median_planning_ms": 0.38,
+              "first_shared_read_blocks": 26736,
+              "warm_median_shared_read_blocks": 26688,
+              "warm_median_shared_hit_blocks": 43193,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1,
+              "median_maximum_node_wal_records": 11000,
+              "median_maximum_node_wal_fpi": 0,
+              "median_maximum_node_wal_bytes": 594000,
+              "peak_maximum_node_wal_bytes": 594000
+            }
+          ]
+        },
+        {
+          "prototype": "hot_projection",
+          "schema": "idx_bench_hot",
+          "workloads": [
+            {
+              "name": "update_product_batch",
+              "affected_entities": 1000,
+              "affected_fields": null,
+              "affected_links": null,
+              "repetitions": 3,
+              "first_execution_ms": 137.636,
+              "warm_median_execution_ms": 142.494,
+              "median_execution_ms": 142.318,
+              "median_planning_ms": 0.252,
+              "first_shared_read_blocks": 26832,
+              "warm_median_shared_read_blocks": 26784,
+              "warm_median_shared_hit_blocks": 20466.5,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1,
+              "median_maximum_node_wal_records": 6316,
+              "median_maximum_node_wal_fpi": 1,
+              "median_maximum_node_wal_bytes": 810672,
+              "peak_maximum_node_wal_bytes": 837139
+            },
+            {
+              "name": "delete_product_batch",
+              "affected_entities": 1000,
+              "affected_fields": null,
+              "affected_links": 2000,
+              "repetitions": 3,
+              "first_execution_ms": 136.589,
+              "warm_median_execution_ms": 132.4435,
+              "median_execution_ms": 133.104,
+              "median_planning_ms": 0.32,
+              "first_shared_read_blocks": 26704,
+              "warm_median_shared_read_blocks": 26656,
+              "warm_median_shared_hit_blocks": 15225,
+              "median_temp_read_blocks": 0,
+              "median_temp_written_blocks": 0,
+              "plan_shape_variants": 1,
+              "median_maximum_node_wal_records": 3000,
+              "median_maximum_node_wal_fpi": 0,
+              "median_maximum_node_wal_bytes": 162000,
+              "peak_maximum_node_wal_bytes": 162000
+            }
+          ]
+        }
+      ],
+      "maintenance": [
+        {
+          "prototype": "jsonb",
+          "schema": "idx_bench_jsonb",
+          "baseline": {
+            "schema_bytes": 4559560704,
+            "entity_rows": 3000160,
+            "field_rows": null,
+            "link_rows": 6000000,
+            "estimated_live_tuples": 9001801,
+            "estimated_dead_tuples": 0,
+            "tuples_inserted": 9000160,
+            "tuples_updated": 0,
+            "tuples_deleted": 0,
+            "hot_updates": 0
+          },
+          "after_churn": {
+            "schema_bytes": 4568358912,
+            "entity_rows": 3000160,
+            "field_rows": null,
+            "link_rows": 6000000,
+            "estimated_live_tuples": 8997779,
+            "estimated_dead_tuples": 21916,
+            "tuples_inserted": 9015160,
+            "tuples_updated": 5000,
+            "tuples_deleted": 15000,
+            "hot_updates": 0
+          },
+          "after_vacuum": {
+            "schema_bytes": 4568801280,
+            "entity_rows": 3000160,
+            "field_rows": null,
+            "link_rows": 6000000,
+            "estimated_live_tuples": 9002210,
+            "estimated_dead_tuples": 9573,
+            "tuples_inserted": 9015160,
+            "tuples_updated": 5000,
+            "tuples_deleted": 15000,
+            "hot_updates": 0
+          },
+          "churn_growth_bytes": 8798208,
+          "churn_growth_percent": 0.19296174722011114,
+          "vacuum_size_delta_bytes": 442368,
+          "vacuum_size_delta_percent": 0.009683302221241937,
+          "vacuum_duration_ms": 3124
+        },
+        {
+          "prototype": "typed_eav",
+          "schema": "idx_bench_eav",
+          "baseline": {
+            "schema_bytes": 8734990336,
+            "entity_rows": 3000160,
+            "field_rows": 14000320,
+            "link_rows": 6000000,
+            "estimated_live_tuples": 23003593,
+            "estimated_dead_tuples": 0,
+            "tuples_inserted": 23000480,
+            "tuples_updated": 0,
+            "tuples_deleted": 0,
+            "hot_updates": 0
+          },
+          "after_churn": {
+            "schema_bytes": 8749924352,
+            "entity_rows": 3000160,
+            "field_rows": 14000320,
+            "link_rows": 6000000,
+            "estimated_live_tuples": 22998186,
+            "estimated_dead_tuples": 69270,
+            "tuples_inserted": 23055480,
+            "tuples_updated": 15000,
+            "tuples_deleted": 55000,
+            "hot_updates": 151
+          },
+          "after_vacuum": {
+            "schema_bytes": 8750030848,
+            "entity_rows": 3000160,
+            "field_rows": 14000320,
+            "link_rows": 6000000,
+            "estimated_live_tuples": 22999540,
+            "estimated_dead_tuples": 8919,
+            "tuples_inserted": 23055480,
+            "tuples_updated": 15000,
+            "tuples_deleted": 55000,
+            "hot_updates": 151
+          },
+          "churn_growth_bytes": 14934016,
+          "churn_growth_percent": 0.17096774496076558,
+          "vacuum_size_delta_bytes": 106496,
+          "vacuum_size_delta_percent": 0.0012171076653440763,
+          "vacuum_duration_ms": 16490
+        },
+        {
+          "prototype": "hot_projection",
+          "schema": "idx_bench_hot",
+          "baseline": {
+            "schema_bytes": 3786784768,
+            "entity_rows": 3000160,
+            "field_rows": null,
+            "link_rows": 6000000,
+            "estimated_live_tuples": 9000160,
+            "estimated_dead_tuples": 0,
+            "tuples_inserted": 9000160,
+            "tuples_updated": 0,
+            "tuples_deleted": 0,
+            "hot_updates": 0
+          },
+          "after_churn": {
+            "schema_bytes": 3793264640,
+            "entity_rows": 3000160,
+            "field_rows": null,
+            "link_rows": 6000000,
+            "estimated_live_tuples": 8999996,
+            "estimated_dead_tuples": 20496,
+            "tuples_inserted": 9015160,
+            "tuples_updated": 5000,
+            "tuples_deleted": 15000,
+            "hot_updates": 0
+          },
+          "after_vacuum": {
+            "schema_bytes": 3793330176,
+            "entity_rows": 3000160,
+            "field_rows": null,
+            "link_rows": 6000000,
+            "estimated_live_tuples": 9001785,
+            "estimated_dead_tuples": 9270,
+            "tuples_inserted": 9015160,
+            "tuples_updated": 5000,
+            "tuples_deleted": 15000,
+            "hot_updates": 0
+          },
+          "churn_growth_bytes": 6479872,
+          "churn_growth_percent": 0.17111804332682898,
+          "vacuum_size_delta_bytes": 65536,
+          "vacuum_size_delta_percent": 0.0017276938526493105,
+          "vacuum_duration_ms": 2043
+        }
+      ]
+    }
+  ],
+  "cross_scale_ratios": {
+    "source_workloads": [
+      {
+        "name": "status_equality",
+        "result_rows_ratio_1m_to_100k": 1
+      },
+      {
+        "name": "price_range_sort",
+        "result_rows_ratio_1m_to_100k": 1
+      },
+      {
+        "name": "multi_value_tag",
+        "result_rows_ratio_1m_to_100k": 1
+      },
+      {
+        "name": "two_hop_channel_filter",
+        "result_rows_ratio_1m_to_100k": 1
+      },
+      {
+        "name": "keyset_page",
+        "result_rows_ratio_1m_to_100k": 1.639344262295082
+      },
+      {
+        "name": "exact_count",
+        "result_rows_ratio_1m_to_100k": 1
+      }
+    ],
+    "prototypes": [
+      {
+        "prototype": "jsonb",
+        "load_ms_ratio_1m_to_100k": 8.196579554189086,
+        "schema_bytes_ratio_1m_to_100k": 9.669011882426517,
+        "field_rows_ratio_1m_to_100k": null,
+        "vacuum_duration_ratio_1m_to_100k": 3.312831389183457,
+        "read_workloads": [
+          {
+            "name": "status_equality",
+            "warm_execution_ratio_1m_to_100k": 0.027524972253052164
+          },
+          {
+            "name": "price_range_sort",
+            "warm_execution_ratio_1m_to_100k": 0.050551470588235295
+          },
+          {
+            "name": "multi_value_tag",
+            "warm_execution_ratio_1m_to_100k": 7.555157826228441
+          },
+          {
+            "name": "two_hop_channel_filter",
+            "warm_execution_ratio_1m_to_100k": 7.979828259172522
+          },
+          {
+            "name": "keyset_page",
+            "warm_execution_ratio_1m_to_100k": 1.4224137931034484
+          },
+          {
+            "name": "exact_count",
+            "warm_execution_ratio_1m_to_100k": 5.513946280991736
+          }
+        ],
+        "mutation_workloads": [
+          {
+            "name": "update_product_batch",
+            "execution_ratio_1m_to_100k": 3.5119849747622958,
+            "wal_bytes_ratio_1m_to_100k": 0.965032125697182
+          },
+          {
+            "name": "delete_product_batch",
+            "execution_ratio_1m_to_100k": 6.13049292202702,
+            "wal_bytes_ratio_1m_to_100k": 1
+          }
+        ]
+      },
+      {
+        "prototype": "typed_eav",
+        "load_ms_ratio_1m_to_100k": 10.088927719662802,
+        "schema_bytes_ratio_1m_to_100k": 10.010918957488357,
+        "field_rows_ratio_1m_to_100k": 9.99908581876357,
+        "vacuum_duration_ratio_1m_to_100k": 20.50995024875622,
+        "read_workloads": [
+          {
+            "name": "status_equality",
+            "warm_execution_ratio_1m_to_100k": 1.0807174887892377
+          },
+          {
+            "name": "price_range_sort",
+            "warm_execution_ratio_1m_to_100k": 1.1078534031413612
+          },
+          {
+            "name": "multi_value_tag",
+            "warm_execution_ratio_1m_to_100k": 1.0943983402489628
+          },
+          {
+            "name": "two_hop_channel_filter",
+            "warm_execution_ratio_1m_to_100k": 7.904081600578371
+          },
+          {
+            "name": "keyset_page",
+            "warm_execution_ratio_1m_to_100k": 8.223118207071387
+          },
+          {
+            "name": "exact_count",
+            "warm_execution_ratio_1m_to_100k": 8.790233897713389
+          }
+        ],
+        "mutation_workloads": [
+          {
+            "name": "update_product_batch",
+            "execution_ratio_1m_to_100k": 2.5438657953243955,
+            "wal_bytes_ratio_1m_to_100k": 1.021635428725756
+          },
+          {
+            "name": "delete_product_batch",
+            "execution_ratio_1m_to_100k": 3.063983395000451,
+            "wal_bytes_ratio_1m_to_100k": 1
+          }
+        ]
+      },
+      {
+        "prototype": "hot_projection",
+        "load_ms_ratio_1m_to_100k": 8.793361791096785,
+        "schema_bytes_ratio_1m_to_100k": 9.98882814357024,
+        "field_rows_ratio_1m_to_100k": null,
+        "vacuum_duration_ratio_1m_to_100k": 3.0401785714285716,
+        "read_workloads": [
+          {
+            "name": "status_equality",
+            "warm_execution_ratio_1m_to_100k": 1.0559440559440558
+          },
+          {
+            "name": "price_range_sort",
+            "warm_execution_ratio_1m_to_100k": 0.7422680412371134
+          },
+          {
+            "name": "multi_value_tag",
+            "warm_execution_ratio_1m_to_100k": 0.4500384319754034
+          },
+          {
+            "name": "two_hop_channel_filter",
+            "warm_execution_ratio_1m_to_100k": 8.70062487099135
+          },
+          {
+            "name": "keyset_page",
+            "warm_execution_ratio_1m_to_100k": 0.9698795180722891
+          },
+          {
+            "name": "exact_count",
+            "warm_execution_ratio_1m_to_100k": 5.439227260531258
+          }
+        ],
+        "mutation_workloads": [
+          {
+            "name": "update_product_batch",
+            "execution_ratio_1m_to_100k": 3.901154025383076,
+            "wal_bytes_ratio_1m_to_100k": 0.9711158814735309
+          },
+          {
+            "name": "delete_product_batch",
+            "execution_ratio_1m_to_100k": 6.819201803371076,
+            "wal_bytes_ratio_1m_to_100k": 1
+          }
+        ]
+      }
+    ]
+  }
+}

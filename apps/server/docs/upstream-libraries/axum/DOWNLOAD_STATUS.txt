@@ -1,0 +1,3 @@
+Unable to download docs.rs pages in this environment.
+crate_page=<urlopen error Tunnel connection failed: 403 Forbidden>
+rustdoc_page=<urlopen error Tunnel connection failed: 403 Forbidden>

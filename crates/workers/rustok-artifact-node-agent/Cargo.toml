@@ -1,0 +1,31 @@
+[package]
+name = "rustok-artifact-node-agent"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Independent artifact materialization and readiness agent for RusToK nodes"
+autobins = false
+
+[[bin]]
+name = "rustok-artifact-node-agent"
+path = "src/main.rs"
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+hex.workspace = true
+rustok-artifact-node-transport.workspace = true
+rustok-modules.workspace = true
+rustok-runtime.workspace = true
+rustok-sandbox = { workspace = true, features = ["rhai", "wasm-component"] }
+rustok-sandbox-transport.workspace = true
+rustok-storage = { workspace = true, features = ["s3"] }
+rustok-worker-transport.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tonic = { workspace = true, features = ["tls-ring"] }
+uuid.workspace = true

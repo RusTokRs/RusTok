@@ -1,0 +1,635 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(ForumCategories::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ForumCategories::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(ForumCategories::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(ForumCategories::ParentId).uuid())
+                    .col(
+                        ColumnDef::new(ForumCategories::Position)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(ColumnDef::new(ForumCategories::Icon).string_len(255))
+                    .col(ColumnDef::new(ForumCategories::Color).string_len(64))
+                    .col(
+                        ColumnDef::new(ForumCategories::Moderated)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(ForumCategories::TopicCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(ForumCategories::ReplyCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(ForumCategories::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(ForumCategories::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_forum_categories_parent")
+                            .from(ForumCategories::Table, ForumCategories::ParentId)
+                            .to(ForumCategories::Table, ForumCategories::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::SetNull),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_forum_categories_tenant_parent_position")
+                    .table(ForumCategories::Table)
+                    .col(ForumCategories::TenantId)
+                    .col(ForumCategories::ParentId)
+                    .col(ForumCategories::Position)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(ForumCategoryTranslations::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ForumCategoryTranslations::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(ForumCategoryTranslations::CategoryId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ForumCategoryTranslations::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ForumCategoryTranslations::Locale)
+                            .string_len(16)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ForumCategoryTranslations::Name)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ForumCategoryTranslations::Slug)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(ForumCategoryTranslations::Description).text())
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_forum_category_translations_category")
+                            .from(
+                                ForumCategoryTranslations::Table,
+                                ForumCategoryTranslations::CategoryId,
+                            )
+                            .to(ForumCategories::Table, ForumCategories::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_forum_category_translations_category_locale")
+                    .table(ForumCategoryTranslations::Table)
+                    .col(ForumCategoryTranslations::CategoryId)
+                    .col(ForumCategoryTranslations::Locale)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_forum_category_translations_tenant_locale_slug")
+                    .table(ForumCategoryTranslations::Table)
+                    .col(ForumCategoryTranslations::TenantId)
+                    .col(ForumCategoryTranslations::Locale)
+                    .col(ForumCategoryTranslations::Slug)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(ForumTopics::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ForumTopics::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(ForumTopics::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(ForumTopics::CategoryId).uuid().not_null())
+                    .col(ColumnDef::new(ForumTopics::AuthorId).uuid())
+                    .col(
+                        ColumnDef::new(ForumTopics::Status)
+                            .string_len(32)
+                            .not_null()
+                            .default("open"),
+                    )
+                    .col(
+                        ColumnDef::new(ForumTopics::IsPinned)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(ForumTopics::IsLocked)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(ForumTopics::Tags)
+                            .json_binary()
+                            .not_null()
+                            .default("[]"),
+                    )
+                    .col(
+                        ColumnDef::new(ForumTopics::ReplyCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(ForumTopics::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(ForumTopics::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(ColumnDef::new(ForumTopics::LastReplyAt).timestamp_with_time_zone())
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_forum_topics_category")
+                            .from(ForumTopics::Table, ForumTopics::CategoryId)
+                            .to(ForumCategories::Table, ForumCategories::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_forum_topics_tenant_category_pinned_reply")
+                    .table(ForumTopics::Table)
+                    .col(ForumTopics::TenantId)
+                    .col(ForumTopics::CategoryId)
+                    .col(ForumTopics::IsPinned)
+                    .col(ForumTopics::LastReplyAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_forum_topics_tenant_status_updated")
+                    .table(ForumTopics::Table)
+                    .col(ForumTopics::TenantId)
+                    .col(ForumTopics::Status)
+                    .col(ForumTopics::UpdatedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(ForumTopicTranslations::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ForumTopicTranslations::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(ForumTopicTranslations::TopicId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ForumTopicTranslations::Locale)
+                            .string_len(16)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ForumTopicTranslations::Title)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(ForumTopicTranslations::Slug).string_len(255))
+                    .col(
+                        ColumnDef::new(ForumTopicTranslations::Body)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ForumTopicTranslations::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(ForumTopicTranslations::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_forum_topic_translations_topic")
+                            .from(
+                                ForumTopicTranslations::Table,
+                                ForumTopicTranslations::TopicId,
+                            )
+                            .to(ForumTopics::Table, ForumTopics::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_forum_topic_translations_topic_locale")
+                    .table(ForumTopicTranslations::Table)
+                    .col(ForumTopicTranslations::TopicId)
+                    .col(ForumTopicTranslations::Locale)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(ForumTopicChannelAccess::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ForumTopicChannelAccess::TopicId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ForumTopicChannelAccess::ChannelSlug)
+                            .string_len(128)
+                            .not_null(),
+                    )
+                    .primary_key(
+                        Index::create()
+                            .col(ForumTopicChannelAccess::TopicId)
+                            .col(ForumTopicChannelAccess::ChannelSlug),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_forum_topic_channel_access_topic")
+                            .from(
+                                ForumTopicChannelAccess::Table,
+                                ForumTopicChannelAccess::TopicId,
+                            )
+                            .to(ForumTopics::Table, ForumTopics::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_forum_topic_channel_access_channel")
+                    .table(ForumTopicChannelAccess::Table)
+                    .col(ForumTopicChannelAccess::ChannelSlug)
+                    .col(ForumTopicChannelAccess::TopicId)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(ForumReplies::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ForumReplies::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(ForumReplies::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(ForumReplies::TopicId).uuid().not_null())
+                    .col(ColumnDef::new(ForumReplies::AuthorId).uuid())
+                    .col(ColumnDef::new(ForumReplies::ParentReplyId).uuid())
+                    .col(
+                        ColumnDef::new(ForumReplies::Status)
+                            .string_len(32)
+                            .not_null()
+                            .default("approved"),
+                    )
+                    .col(
+                        ColumnDef::new(ForumReplies::Position)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ForumReplies::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(ForumReplies::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_forum_replies_topic")
+                            .from(ForumReplies::Table, ForumReplies::TopicId)
+                            .to(ForumTopics::Table, ForumTopics::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_forum_replies_parent_reply")
+                            .from(ForumReplies::Table, ForumReplies::ParentReplyId)
+                            .to(ForumReplies::Table, ForumReplies::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::SetNull),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_forum_replies_topic_position")
+                    .table(ForumReplies::Table)
+                    .col(ForumReplies::TopicId)
+                    .col(ForumReplies::Position)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_forum_replies_topic_created")
+                    .table(ForumReplies::Table)
+                    .col(ForumReplies::TopicId)
+                    .col(ForumReplies::CreatedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(ForumReplyBodies::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ForumReplyBodies::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(ForumReplyBodies::ReplyId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(ForumReplyBodies::Locale)
+                            .string_len(16)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(ForumReplyBodies::Body).text().not_null())
+                    .col(
+                        ColumnDef::new(ForumReplyBodies::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(ForumReplyBodies::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_forum_reply_bodies_reply")
+                            .from(ForumReplyBodies::Table, ForumReplyBodies::ReplyId)
+                            .to(ForumReplies::Table, ForumReplies::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_forum_reply_bodies_reply_locale")
+                    .table(ForumReplyBodies::Table)
+                    .col(ForumReplyBodies::ReplyId)
+                    .col(ForumReplyBodies::Locale)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(ForumReplyBodies::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(ForumReplies::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(ForumTopicChannelAccess::Table)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(ForumTopicTranslations::Table)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(Table::drop().table(ForumTopics::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(ForumCategoryTranslations::Table)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(Table::drop().table(ForumCategories::Table).to_owned())
+            .await?;
+        Ok(())
+    }
+}
+
+#[derive(DeriveIden)]
+enum ForumCategories {
+    Table,
+    Id,
+    TenantId,
+    ParentId,
+    Position,
+    Icon,
+    Color,
+    Moderated,
+    TopicCount,
+    ReplyCount,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum ForumCategoryTranslations {
+    Table,
+    Id,
+    CategoryId,
+    TenantId,
+    Locale,
+    Name,
+    Slug,
+    Description,
+}
+
+#[derive(DeriveIden)]
+enum ForumTopics {
+    Table,
+    Id,
+    TenantId,
+    CategoryId,
+    AuthorId,
+    Status,
+    IsPinned,
+    IsLocked,
+    Tags,
+    ReplyCount,
+    CreatedAt,
+    UpdatedAt,
+    LastReplyAt,
+}
+
+#[derive(DeriveIden)]
+enum ForumTopicTranslations {
+    Table,
+    Id,
+    TopicId,
+    Locale,
+    Title,
+    Slug,
+    Body,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum ForumTopicChannelAccess {
+    Table,
+    TopicId,
+    ChannelSlug,
+}
+
+#[derive(DeriveIden)]
+enum ForumReplies {
+    Table,
+    Id,
+    TenantId,
+    TopicId,
+    AuthorId,
+    ParentReplyId,
+    Status,
+    Position,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum ForumReplyBodies {
+    Table,
+    Id,
+    ReplyId,
+    Locale,
+    Body,
+    CreatedAt,
+    UpdatedAt,
+}

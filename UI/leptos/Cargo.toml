@@ -1,0 +1,13 @@
+[package]
+name = "iu-leptos"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "IU design system — Leptos component implementations"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+leptos = { workspace = true }
+serde = { workspace = true, features = ["derive"] }

@@ -1,0 +1,94 @@
+{
+  "contract": "forum_topic_fork_admin_ui_v1",
+  "task": "FORUM-21W",
+  "status": "source_ready_maintainer_execution_pending",
+  "extends": [
+    "FORUM-21Q",
+    "FORUM-21U"
+  ],
+  "surfaces": {
+    "leptos": {
+      "route": "/modules/forum/fork",
+      "component": "ForumTopicForkAdmin"
+    },
+    "next_admin": {
+      "route": "/dashboard/forum/fork",
+      "component": "ForumTopicFork",
+      "permission": "forum_topics:manage"
+    }
+  },
+  "command": {
+    "graphql_field": "forkForumTopicReplyBranch",
+    "input_type": "ForkForumTopicReplyBranchGraphqlInput",
+    "root_reply_selection_limit": 1,
+    "owner_branch_limit": 500,
+    "operation_id_is_retained_for_exact_retry": true,
+    "target_topic_id_is_retained_for_exact_retry": true,
+    "both_ids_rotate_when_command_shape_changes": true,
+    "shape_fields": [
+      "source_topic_id",
+      "root_reply_id",
+      "target_locale",
+      "target_title",
+      "target_slug",
+      "reason"
+    ]
+  },
+  "preflight": {
+    "selected_root_must_be_loaded": true,
+    "visible_branch_is_not_authoritative": true,
+    "owner_discovers_descendants": true,
+    "owner_enforces_branch_bound": true
+  },
+  "receipt": {
+    "immutable_owner_result": true,
+    "fields": [
+      "operation_id",
+      "event_id",
+      "source_topic_id",
+      "target_topic_id",
+      "root_reply_id",
+      "category_id",
+      "actor_id",
+      "reason",
+      "copied_reply_count",
+      "copied_published_reply_count",
+      "copied_body_count",
+      "copied_reply_revision_count",
+      "copied_relation_revision_count",
+      "copied_mention_count",
+      "copied_quote_count",
+      "forked_at"
+    ]
+  },
+  "composition": {
+    "owner_method_changed": false,
+    "graphql_schema_changed": false,
+    "transport_local_branch_discovery": false,
+    "transport_local_reply_copy": false,
+    "transport_local_revision_copy": false,
+    "transport_local_policy_clone": false,
+    "transport_local_counter_reconciliation": false,
+    "transport_fallback": false
+  },
+  "compatibility": {
+    "migration": false,
+    "rest_route": false,
+    "native_fork_command": false,
+    "semantic_event_changed": false,
+    "direct_owner_callers_changed": false
+  },
+  "verification": {
+    "commands": [
+      "node scripts/verify/verify-forum-topic-fork-owner.mjs",
+      "node scripts/verify/verify-forum-topic-fork-graphql-transport.mjs",
+      "node scripts/verify/verify-forum-topic-fork-admin-ui.mjs",
+      "cargo test -p rustok-forum-admin topic_fork_model -- --nocapture",
+      "cargo check -p rustok-forum-admin --all-targets",
+      "npm --prefix apps/next-admin run typecheck",
+      "npm run verify:forum:admin-boundary",
+      "npm run verify:blog:forum-ui-ownership"
+    ],
+    "executed_by_implementation_agent": false
+  }
+}

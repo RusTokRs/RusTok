@@ -1,0 +1,45 @@
+[package]
+name = "rustok-media-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos admin UI package for the rustok-media module"
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = [
+  "leptos/ssr",
+  "dep:leptos_axum",
+  "rustok-api/server",
+  "dep:rustok-core",
+  "dep:rustok-media",
+  "dep:rustok-storage",
+  "dep:sea-orm",
+]
+
+[dependencies]
+rustok-ui-core.workspace = true
+rustok-ui-transport.workspace = true
+base64.workspace = true
+js-sys = "0.3"
+leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
+leptos-auth.workspace = true
+rustok-graphql.workspace = true
+reqwest = { workspace = true, features = ["json", "multipart"] }
+rustok-api = { workspace = true, default-features = false }
+rustok-ui-i18n.workspace = true
+leptos-ui-routing.workspace = true
+rustok-core = { workspace = true, optional = true }
+rustok-media = { workspace = true, optional = true }
+rustok-storage = { workspace = true, optional = true }
+sea-orm = { workspace = true, optional = true }
+serde = { workspace = true, features = ["derive"] }
+uuid.workspace = true
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["Event", "File", "FileList", "HtmlInputElement", "Location", "Window"] }

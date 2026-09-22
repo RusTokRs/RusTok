@@ -1,0 +1,10 @@
+{
+  "locale": "en",
+  "module": {
+    "name": "{{display_name}}",
+    "description": "Standalone RusToK module component"
+  },
+  "actions": {
+    "execute": "Execute {{display_name}}"
+  }
+}

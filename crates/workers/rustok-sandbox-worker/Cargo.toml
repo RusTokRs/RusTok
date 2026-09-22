@@ -1,0 +1,29 @@
+[package]
+name = "rustok-sandbox-worker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Isolated Rhai sandbox worker process for RusToK"
+autobins = false
+
+[[bin]]
+name = "rustok-sandbox-worker"
+path = "src/main.rs"
+
+[[bin]]
+name = "rustok-sandbox-worker-probe"
+path = "src/bin/probe.rs"
+
+[dependencies]
+async-trait.workspace = true
+rustok-sandbox = { workspace = true, features = ["rhai"] }
+rustok-sandbox-transport.workspace = true
+rustok-worker-transport.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tonic = { workspace = true, features = ["tls-ring"] }
+
+[dev-dependencies]
+uuid.workspace = true

@@ -1,0 +1,76 @@
+[package]
+
+name = "rustok-migrations"
+version = "0.1.0"
+edition.workspace = true
+license = "BUSL-1.1"
+description.workspace = true
+
+[[bin]]
+name = "rustok-migrate"
+path = "src/bin/rustok_migrate.rs"
+
+[dependencies]
+rustok-api.workspace = true
+sea-orm-migration.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+tokio.workspace = true
+serde.workspace = true
+sha2.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+# Platform-core dependencies
+rustok-core.workspace = true
+rustok-modules.workspace = true
+rustok-tenant.workspace = true
+# Module crates — each owns its own migration files
+alloy.workspace = true
+flex.workspace = true
+rustok-auth.workspace = true
+rustok-rbac.workspace = true
+rustok-channel.workspace = true
+rustok-navigation.workspace = true
+rustok-cart.workspace = true
+rustok-customer.workspace = true
+rustok-product.workspace = true
+rustok-region.workspace = true
+rustok-pricing.workspace = true
+rustok-inventory.workspace = true
+rustok-order.workspace = true
+rustok-payment.workspace = true
+rustok-fulfillment.workspace = true
+rustok-commerce.workspace = true
+rustok-marketplace-seller.workspace = true
+rustok-marketplace-listing.workspace = true
+rustok-marketplace-allocation.workspace = true
+rustok-marketplace-commission.workspace = true
+rustok-marketplace-ledger.workspace = true
+rustok-marketplace-payout.workspace = true
+rustok-moderation.workspace = true
+rustok-content.workspace = true
+rustok-blog.workspace = true
+rustok-comments.workspace = true
+rustok-pages.workspace = true
+rustok-seo.workspace = true
+rustok-forum.workspace = true
+rustok-index.workspace = true
+rustok-search.workspace = true
+rustok-taxonomy.workspace = true
+rustok-workflow.workspace = true
+rustok-media.workspace = true
+rustok-profiles.workspace = true
+rustok-social-graph.workspace = true
+rustok-translation.workspace = true
+rustok-outbox.workspace = true
+rustok-iggy-connector = { workspace = true, features = ["migrations"] }
+
+[dev-dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true
+rustok-test-utils.workspace = true
+sea-orm.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0.0",
+  "status": "payment_checkout_execution_admission_context_source_reviewed_unvalidated",
+  "captured_at": "2026-07-30",
+  "base_main_sha": "8b4e9ef48c380a584cd3a30bed6b63193f4d9475",
+  "review": {
+    "public_port_signatures_preserved": true,
+    "prepare_authorize_capture_read_operations_preserved": true,
+    "read_policy_preserved": true,
+    "write_policy_and_write_semantics_preserved": true,
+    "admission_helpers_use_inspect_err": true,
+    "port_error_kind_code_message_retryability_preserved": true,
+    "owner_delegation_order_preserved": true,
+    "post_delegation_local_mapper_preserved": true,
+    "safe_request_fact_policy_preserved": true,
+    "compensation_source_not_modified": true
+  },
+  "execution": {
+    "commands_run": [],
+    "tests_run": [],
+    "verifiers_run": [],
+    "cargo_run": false,
+    "formatting_run": false,
+    "workflow_or_ci_run": false
+  },
+  "limitations": [
+    "No compiler evidence has been retained.",
+    "No policy or write-semantics failure trace has been retained.",
+    "The updated source guard has not been executed.",
+    "CheckoutPaymentCompensationPort admission remains a separate open mapper-cleanup slice."
+  ]
+}

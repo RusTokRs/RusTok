@@ -1,0 +1,31 @@
+[package]
+name = "rustok-iggy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rmp-serde.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+iggy = { workspace = true, optional = true }
+
+rustok-core.workspace = true
+rustok-events.workspace = true
+rustok-iggy-connector.workspace = true
+
+[features]
+default = ["iggy"]
+iggy = ["dep:iggy", "rustok-iggy-connector/iggy"]
+
+[dev-dependencies]
+futures-util.workspace = true
+tokio.workspace = true
+serde_yaml.workspace = true

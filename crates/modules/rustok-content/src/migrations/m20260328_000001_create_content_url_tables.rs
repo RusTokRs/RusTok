@@ -1,0 +1,206 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(ContentCanonicalUrls::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ContentCanonicalUrls::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(ContentCanonicalUrls::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ContentCanonicalUrls::TargetKind)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ContentCanonicalUrls::TargetId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ContentCanonicalUrls::Locale)
+                            .string_len(16)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ContentCanonicalUrls::CanonicalUrl)
+                            .string_len(512)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ContentCanonicalUrls::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ContentCanonicalUrls::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_content_canonical_urls_target_locale")
+                    .table(ContentCanonicalUrls::Table)
+                    .col(ContentCanonicalUrls::TenantId)
+                    .col(ContentCanonicalUrls::TargetKind)
+                    .col(ContentCanonicalUrls::TargetId)
+                    .col(ContentCanonicalUrls::Locale)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_content_canonical_urls_unique_url")
+                    .table(ContentCanonicalUrls::Table)
+                    .col(ContentCanonicalUrls::TenantId)
+                    .col(ContentCanonicalUrls::Locale)
+                    .col(ContentCanonicalUrls::CanonicalUrl)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(ContentUrlAliases::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ContentUrlAliases::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(ContentUrlAliases::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ContentUrlAliases::TargetKind)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ContentUrlAliases::TargetId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ContentUrlAliases::Locale)
+                            .string_len(16)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ContentUrlAliases::AliasUrl)
+                            .string_len(512)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ContentUrlAliases::CanonicalUrl)
+                            .string_len(512)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ContentUrlAliases::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ContentUrlAliases::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_content_url_aliases_target_locale")
+                    .table(ContentUrlAliases::Table)
+                    .col(ContentUrlAliases::TenantId)
+                    .col(ContentUrlAliases::TargetKind)
+                    .col(ContentUrlAliases::TargetId)
+                    .col(ContentUrlAliases::Locale)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_content_url_aliases_unique_url")
+                    .table(ContentUrlAliases::Table)
+                    .col(ContentUrlAliases::TenantId)
+                    .col(ContentUrlAliases::Locale)
+                    .col(ContentUrlAliases::AliasUrl)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(ContentUrlAliases::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(ContentCanonicalUrls::Table).to_owned())
+            .await?;
+        Ok(())
+    }
+}
+
+#[derive(Iden)]
+enum ContentCanonicalUrls {
+    Table,
+    Id,
+    TenantId,
+    TargetKind,
+    TargetId,
+    Locale,
+    CanonicalUrl,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum ContentUrlAliases {
+    Table,
+    Id,
+    TenantId,
+    TargetKind,
+    TargetId,
+    Locale,
+    AliasUrl,
+    CanonicalUrl,
+    CreatedAt,
+    UpdatedAt,
+}

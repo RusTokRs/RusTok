@@ -1,0 +1,251 @@
+function parseFtl(content) {
+  const result = {};
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.match(/^([a-zA-Z][a-zA-Z0-9_-]*)\s*=\s*(.*)$/);
+    if (match) {
+      const key = match[1];
+      const val = match[2].trim();
+      result[key] = val;
+      result[key.replace(/-/g, '.')] = val;
+    }
+  }
+  return result;
+}
+
+import fs from "node:fs";
+import path from "node:path";
+
+const root = process.cwd();
+const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
+const exists = (relative) => fs.existsSync(path.join(root, relative));
+const failures = [];
+
+const required = [
+  "crates/modules/rustok-groups/src/application_entities.rs",
+  "crates/modules/rustok-groups/src/applications.rs",
+  "crates/modules/rustok-groups/src/applications_legacy.rs",
+  "crates/modules/rustok-groups/src/applications_cas.rs",
+  "crates/modules/rustok-groups/src/graphql_applications.rs",
+  "crates/modules/rustok-groups/src/graphql_policy_history.rs",
+  "crates/modules/rustok-groups/src/graphql_application_cas.rs",
+  "crates/modules/rustok-groups/src/migrations/m20260722_000006_create_group_membership_applications.rs",
+  "crates/modules/rustok-groups/admin/src/application_core.rs",
+  "crates/modules/rustok-groups/admin/src/application_model.rs",
+  "crates/modules/rustok-groups/admin/src/transport/native_applications_adapter.rs",
+  "crates/modules/rustok-groups/admin/src/transport/native_policy_locale_adapter.rs",
+  "crates/modules/rustok-groups/admin/src/transport/graphql_applications_adapter.rs",
+  "crates/modules/rustok-groups/admin/src/transport/graphql_policy_locale_adapter.rs",
+  "crates/modules/rustok-groups/admin/src/ui/applications.rs",
+  "crates/modules/rustok-groups/admin/src/ui/policy_editor.rs",
+  "crates/modules/rustok-groups/storefront/src/application_core.rs",
+  "crates/modules/rustok-groups/storefront/src/application_model.rs",
+  "crates/modules/rustok-groups/storefront/src/transport/native_applications_adapter.rs",
+  "crates/modules/rustok-groups/storefront/src/transport/graphql_applications_adapter.rs",
+  "crates/modules/rustok-groups/storefront/src/ui/application.rs",
+];
+
+for (const relative of required) {
+  if (!exists(relative)) failures.push(`missing membership application artifact: ${relative}`);
+}
+
+const migrationPath = "crates/modules/rustok-groups/src/migrations/m20260722_000006_create_group_membership_applications.rs";
+if (exists(migrationPath)) {
+  const migration = read(migrationPath);
+  for (const marker of [
+    "group_membership_policies",
+    "group_membership_policy_translations",
+    "group_membership_applications",
+    "ux_group_membership_policies_tenant_group",
+    "ux_group_membership_policy_translations_tenant_policy_locale",
+    "ux_group_membership_applications_tenant_group_user",
+    "policy_snapshot",
+    "acknowledged_rule_keys",
+    "status IN ('pending', 'approved', 'rejected', 'cancelled')",
+  ]) {
+    if (!migration.includes(marker)) failures.push(`membership application migration is missing marker: ${marker}`);
+  }
+}
+
+const legacyPath = "crates/modules/rustok-groups/src/applications_legacy.rs";
+if (exists(legacyPath)) {
+  const service = read(legacyPath);
+  for (const marker of [
+    "GroupApplicationReadPort",
+    "GroupApplicationCommandPort",
+    "PortCallPolicy::read()",
+    "PortCallPolicy::write()",
+    "normalize_locale_tag",
+    "GroupJoinPolicy::Request",
+    "GroupVisibility::Secret",
+    "policy_snapshot",
+    "validate_submission",
+    "command_receipt",
+    "audit_entry",
+    "increment_group_membership_version",
+    "exclusive_lock",
+    "group.membership_application_submitted",
+    "group.membership_application_approved",
+    "group.membership_application_rejected",
+  ]) {
+    if (!service.includes(marker)) failures.push(`membership application owner service is missing marker: ${marker}`);
+  }
+  for (const forbidden of [
+    "rustok_profiles::",
+    "rustok_notifications::",
+    "rustok_forum::",
+    "rustok_blog::",
+    "PLATFORM_FALLBACK_LOCALE",
+    "rows.first()",
+  ]) {
+    if (service.includes(forbidden)) failures.push(`membership application owner service crosses a forbidden boundary: ${forbidden}`);
+  }
+}
+
+const casPath = "crates/modules/rustok-groups/src/applications_cas.rs";
+if (exists(casPath)) {
+  const cas = read(casPath);
+  for (const marker of [
+    "GroupApplicationCasCommandPort",
+    "GroupApplicationPolicyPrecondition",
+    "upsert_group_application_policy_if_current",
+    "submit_group_membership_application_if_current",
+    "GROUP_APPLICATION_POLICY_CHANGED_CODE",
+    "find_group_for_update",
+    "ensure_policy_update_precondition",
+    "ensure_loaded_policy_precondition",
+  ]) {
+    if (!cas.includes(marker)) failures.push(`membership application CAS service is missing marker: ${marker}`);
+  }
+}
+
+const graphqlPath = "crates/modules/rustok-groups/src/graphql_applications.rs";
+if (exists(graphqlPath)) {
+  const graphql = read(graphqlPath);
+  for (const marker of [
+    "MergedObject",
+    "group_application_policy",
+    "group_membership_applications",
+    "review_group_membership_application",
+    "GroupApplicationCommandPort",
+    "GroupApplicationReadPort",
+    "with_idempotency_key",
+  ]) {
+    if (!graphql.includes(marker)) failures.push(`membership application GraphQL surface is missing marker: ${marker}`);
+  }
+}
+
+const casGraphqlPath = "crates/modules/rustok-groups/src/graphql_application_cas.rs";
+if (exists(casGraphqlPath)) {
+  const graphql = read(casGraphqlPath);
+  for (const marker of [
+    "GroupsApplicationCasMutation",
+    "upsert_group_application_policy_if_current",
+    "submit_group_membership_application_if_current",
+    "GroupApplicationPolicyPreconditionInputGql",
+    "GroupApplicationCasCommandPort",
+  ]) {
+    if (!graphql.includes(marker)) failures.push(`membership application CAS GraphQL surface is missing marker: ${marker}`);
+  }
+}
+
+const manifestPath = "crates/modules/rustok-groups/rustok-module.toml";
+if (exists(manifestPath)) {
+  const manifest = read(manifestPath);
+  for (const marker of [
+    'query = "graphql_application_cas::GroupsQueryRoot"',
+    'mutation = "graphql_application_cas::GroupsMutationRoot"',
+    'subpath = "applications"',
+  ]) {
+    if (!manifest.includes(marker)) failures.push(`Groups manifest is missing application composition marker: ${marker}`);
+  }
+}
+
+for (const corePath of [
+  "crates/modules/rustok-groups/admin/src/application_core.rs",
+  "crates/modules/rustok-groups/storefront/src/application_core.rs",
+]) {
+  if (exists(corePath) && /use\s+leptos|leptos::/.test(read(corePath))) {
+    failures.push(`membership application FFA core must remain framework-neutral: ${corePath}`);
+  }
+}
+
+for (const uiPath of [
+  "crates/modules/rustok-groups/admin/src/ui/applications.rs",
+  "crates/modules/rustok-groups/admin/src/ui/policy_editor.rs",
+  "crates/modules/rustok-groups/storefront/src/ui/application.rs",
+]) {
+  if (!exists(uiPath)) continue;
+  const ui = read(uiPath);
+  if (!ui.includes("crate::transport")) failures.push(`membership application UI must consume the transport facade: ${uiPath}`);
+  if (/graphql_(?:applications|policy_locale)_adapter|native_(?:applications|policy_locale)_adapter/.test(ui)) {
+    failures.push(`membership application UI must not import raw adapters: ${uiPath}`);
+  }
+}
+
+for (const facadePath of [
+  "crates/modules/rustok-groups/admin/src/transport.rs",
+  "crates/modules/rustok-groups/storefront/src/transport.rs",
+]) {
+  if (!exists(facadePath)) continue;
+  const facade = read(facadePath);
+  for (const marker of ["execute_selected_transport", "never falls back"]) {
+    if (!facade.includes(marker)) failures.push(`membership application facade is missing marker ${marker}: ${facadePath}`);
+  }
+}
+
+const registryPath = "crates/modules/rustok-groups/contracts/groups-fba-registry.json";
+if (exists(registryPath)) {
+  const registry = JSON.parse(read(registryPath));
+  const readPort = registry?.provider?.ports?.find((port) => port?.name === "GroupApplicationReadPort");
+  const commandPort = registry?.provider?.ports?.find((port) => port?.name === "GroupApplicationCommandPort");
+  const casPort = registry?.provider?.ports?.find((port) => port?.name === "GroupApplicationCasCommandPort");
+  if (!readPort?.exact_locale_only) failures.push("GroupApplicationReadPort must declare exact-locale selection");
+  if (!commandPort?.transactional_receipt || !commandPort?.transactional_audit || !commandPort?.transactional_membership) {
+    failures.push("GroupApplicationCommandPort must declare transactional receipt, audit, and membership state");
+  }
+  if (!casPort?.operations?.includes("submit_group_membership_application_if_current")) {
+    failures.push("GroupApplicationCasCommandPort must publish candidate submit CAS");
+  }
+  if (casPort?.conflict_code !== "groups.application_policy_changed") {
+    failures.push("GroupApplicationCasCommandPort must publish the stable conflict code");
+  }
+  if (registry?.membership_applications?.module_local_fallback !== false) {
+    failures.push("membership application policy must not own locale fallback");
+  }
+  if (registry?.membership_applications?.transport_fallback !== "never") {
+    failures.push("membership application transport must never fall back implicitly");
+  }
+  for (const evidenceKey of [
+    "membership_application_transport_parity",
+    "membership_application_concurrency",
+    "membership_application_policy_revision",
+    "membership_application_policy_cas",
+    "membership_application_bulk_review",
+  ]) {
+    if (registry?.evidence?.[evidenceKey] !== null) {
+      failures.push(`unexecuted membership application evidence must remain null: ${evidenceKey}`);
+    }
+  }
+}
+
+for (const localePath of [
+  "crates/modules/rustok-groups/admin/locales/en.ftl",
+  "crates/modules/rustok-groups/admin/locales/ru.ftl",
+  "crates/modules/rustok-groups/storefront/locales/en.ftl",
+  "crates/modules/rustok-groups/storefront/locales/ru.ftl",
+]) {
+  if (!exists(localePath)) continue;
+  const messages = parseFtl(read(localePath));
+  const prefix = localePath.includes("admin/") ? "groups.admin.applications." : "groups.storefront.application.";
+  if (!Object.keys(messages).some((key) => key.startsWith(prefix))) {
+    failures.push(`membership application locale namespace is missing: ${localePath}`);
+  }
+}
+
+if (failures.length > 0) {
+  console.error("Groups membership application boundary verification failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
+
+console.log("Groups membership application owner, CAS, FBA, FFA, exact-locale, snapshot, and no-fallback boundary checks passed.");

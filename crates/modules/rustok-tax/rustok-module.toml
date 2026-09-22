@@ -1,0 +1,20 @@
+[module]
+slug = "tax"
+name = "Tax"
+version = "0.1.0"
+description = "Tax domain foundation, tax-line calculation contract, and provider seam"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "none"
+
+[crate]
+entry_type = "TaxModule"
+
+[fba.provider]
+registry = "contracts/tax-fba-registry.json"
+contract_version = "tax.calculation.v1"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+profiles = ["cart_tax_calculation"]
+fallback_profiles = ["embedded_native"]
+degraded_modes = ["block_checkout_with_tax_refresh"]

@@ -1,0 +1,240 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(PaymentCollections::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(PaymentCollections::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(PaymentCollections::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(PaymentCollections::CartId).uuid())
+                    .col(ColumnDef::new(PaymentCollections::OrderId).uuid())
+                    .col(ColumnDef::new(PaymentCollections::CustomerId).uuid())
+                    .col(
+                        ColumnDef::new(PaymentCollections::Status)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PaymentCollections::CurrencyCode)
+                            .string_len(3)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PaymentCollections::Amount)
+                            .decimal()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PaymentCollections::AuthorizedAmount)
+                            .decimal()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PaymentCollections::CapturedAmount)
+                            .decimal()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(PaymentCollections::ProviderId).string_len(100))
+                    .col(ColumnDef::new(PaymentCollections::CancellationReason).string_len(500))
+                    .col(
+                        ColumnDef::new(PaymentCollections::Metadata)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(
+                        ColumnDef::new(PaymentCollections::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(PaymentCollections::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(PaymentCollections::AuthorizedAt).timestamp_with_time_zone(),
+                    )
+                    .col(ColumnDef::new(PaymentCollections::CapturedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(PaymentCollections::CancelledAt).timestamp_with_time_zone())
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(Payments::Table)
+                    .if_not_exists()
+                    .col(ColumnDef::new(Payments::Id).uuid().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(Payments::PaymentCollectionId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Payments::ProviderId)
+                            .string_len(100)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Payments::ProviderPaymentId)
+                            .string_len(191)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(Payments::Status).string_len(32).not_null())
+                    .col(
+                        ColumnDef::new(Payments::CurrencyCode)
+                            .string_len(3)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(Payments::Amount).decimal().not_null())
+                    .col(
+                        ColumnDef::new(Payments::CapturedAmount)
+                            .decimal()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(Payments::ErrorMessage).string_len(500))
+                    .col(
+                        ColumnDef::new(Payments::Metadata)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(
+                        ColumnDef::new(Payments::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(Payments::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(ColumnDef::new(Payments::AuthorizedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(Payments::CapturedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(Payments::CancelledAt).timestamp_with_time_zone())
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(Payments::Table, Payments::PaymentCollectionId)
+                            .to(PaymentCollections::Table, PaymentCollections::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_payment_collections_tenant_status")
+                    .table(PaymentCollections::Table)
+                    .col(PaymentCollections::TenantId)
+                    .col(PaymentCollections::Status)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_payment_collections_order")
+                    .table(PaymentCollections::Table)
+                    .col(PaymentCollections::OrderId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_payment_collections_cart")
+                    .table(PaymentCollections::Table)
+                    .col(PaymentCollections::CartId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_payments_collection")
+                    .table(Payments::Table)
+                    .col(Payments::PaymentCollectionId)
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(Payments::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(PaymentCollections::Table).to_owned())
+            .await?;
+        Ok(())
+    }
+}
+
+#[derive(Iden)]
+enum PaymentCollections {
+    Table,
+    Id,
+    TenantId,
+    CartId,
+    OrderId,
+    CustomerId,
+    Status,
+    CurrencyCode,
+    Amount,
+    AuthorizedAmount,
+    CapturedAmount,
+    ProviderId,
+    CancellationReason,
+    Metadata,
+    CreatedAt,
+    UpdatedAt,
+    AuthorizedAt,
+    CapturedAt,
+    CancelledAt,
+}
+
+#[derive(Iden)]
+enum Payments {
+    Table,
+    Id,
+    PaymentCollectionId,
+    ProviderId,
+    ProviderPaymentId,
+    Status,
+    CurrencyCode,
+    Amount,
+    CapturedAmount,
+    ErrorMessage,
+    Metadata,
+    CreatedAt,
+    UpdatedAt,
+    AuthorizedAt,
+    CapturedAt,
+    CancelledAt,
+}

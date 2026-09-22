@@ -1,0 +1,50 @@
+[package]
+name = "rustok-seo-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos admin UI package for the rustok-seo module"
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = [
+    "leptos/ssr",
+    "dep:leptos_axum",
+    "dep:rustok-core",
+    "dep:rustok-outbox",
+    "dep:rustok-tenant",
+    "dep:sea-orm",
+    "rustok-api/server",
+    "rustok-seo/server",
+]
+
+[dependencies]
+rustok-ui-core.workspace = true
+async-graphql.workspace = true
+leptos.workspace = true
+leptos-auth.workspace = true
+leptos-ui-routing.workspace = true
+leptos_axum = { workspace = true, optional = true }
+rustok-api = { workspace = true, default-features = false }
+
+rustok-ui-i18n.workspace = true
+rustok-core = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true }
+rustok-seo = { path = "..", default-features = false }
+rustok-seo-targets = { path = "../../rustok-seo-targets", default-features = false }
+rustok-tenant = { workspace = true, optional = true }
+sea-orm = { workspace = true, optional = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+chrono.workspace = true
+tokio.workspace = true
+
+[package.metadata.cargo-udeps.ignore]
+normal = ["leptos-auth"]

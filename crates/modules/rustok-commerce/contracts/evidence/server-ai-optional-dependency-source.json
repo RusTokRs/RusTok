@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-30",
+  "status": "server_ai_optional_dependency_source_unvalidated",
+  "scope": "non-AI rustok-server composition with ecommerce enabled",
+  "server_feature_contract": {
+    "ai_dependency_optional": true,
+    "mod_ai_owns_dependency": true,
+    "ai_translation_requires_mod_ai": true,
+    "mod_commerce_requires_mod_ai": false,
+    "default_profile_includes_ai": true,
+    "non_default_ai_free_profile_source_complete": true
+  },
+  "distribution_contract": {
+    "default_features_empty": true,
+    "ai_dependency_optional": true,
+    "mod_ai_owns_dependency": true,
+    "ai_registration_feature_gated": true
+  },
+  "commerce_contract": {
+    "rustok_ai_dependency_present": false,
+    "mod_commerce_ai_edge_present": false
+  },
+  "server_source_contract": {
+    "ai_runtime_references_feature_gated": true,
+    "known_ai_runtime_file": "apps/server/src/services/commerce_provider_runtime.rs",
+    "known_ai_runtime_feature": "mod-ai"
+  },
+  "suggested_execution": [
+    "cargo check -p rustok-server --no-default-features --features mod-commerce",
+    "cargo tree -p rustok-server --no-default-features --features mod-commerce -e normal",
+    "node scripts/verify/verify-server-ai-optional-dependency.mjs"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "cargo_tree_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "non_ai_server_compile_proven": false,
+    "dependency_tree_absence_proven": false
+  }
+}

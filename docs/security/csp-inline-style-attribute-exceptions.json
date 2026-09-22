@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "policy": {
+    "directive": "style-src-attr 'none'",
+    "owner": "Platform security and UI maintainers",
+    "approved_on": "2026-07-18",
+    "review_by": "2027-07-18",
+    "exit_criteria": "Any reintroduction of an inline style attribute or an unsafe style-src-attr source must fail the repository hardening gates."
+  },
+  "exceptions": []
+}

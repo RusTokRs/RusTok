@@ -1,0 +1,189 @@
+# RusToK Code Review & Antipattern Rule Catalog
+# Governed by docs/standards/patterns-vs-antipatterns.md, docs/ai/KNOWN_PITFALLS.md, and AGENTS.md
+
+title = "RusToK Review Rules"
+version = "1.0.0"
+
+# ==============================================================================
+# TIER 0: Critical Correctness, Multi-Tenancy & Production Panics
+# ==============================================================================
+
+[[rules]]
+id = "SEC-TENANT-01"
+tier = 0
+severity = "error"
+title = "SeaORM query without explicit tenant_id filter"
+description = "Every SELECT, UPDATE, DELETE query in domain modules must filter by tenant_id to prevent critical cross-tenant data leaks."
+reference = "docs/standards/patterns-vs-antipatterns.md §3.1, docs/ai/KNOWN_PITFALLS.md §Database"
+target_globs = ["crates/modules/**/*.rs", "apps/server/src/**/*.rs"]
+exclude_globs = ["**/tests/**", "**/*_test.rs", "**/*_tests.rs", "**/migration/**"]
+heuristic = "tenant_filter_missing"
+remediation = "Add `.filter(<Entity>::Column::TenantId.eq(tenant_id))` to the SeaORM query chain."
+
+[[rules]]
+id = "REL-UNWRAP-01"
+tier = 0
+severity = "error"
+title = "Direct .unwrap() or .expect() in non-test runtime code"
+description = "Production code must propagate errors with Result<T, E>. unwrap()/expect() can panic and crash the server. Allowed only when physically guaranteed by prior code with an explicit '// INVARIANT:' comment."
+reference = "docs/standards/patterns-vs-antipatterns.md §2.1, AGENTS.md §14"
+target_globs = ["crates/libs/**/*.rs", "crates/modules/**/*.rs", "apps/server/src/**/*.rs"]
+exclude_globs = ["**/tests/**", "**/*_test.rs", "**/*_tests.rs", "**/tests.rs", "**/benches/**", "**/examples/**"]
+pattern = '(\.unwrap\(\)|\.expect\("[^"]+"\))'
+remediation = "Replace with `?` error propagation using thiserror, or if physically impossible to fail, add `// INVARIANT: <explanation>` immediately above the call."
+
+[[rules]]
+id = "SUPP-FORBIDDEN-01"
+tier = 0
+severity = "error"
+title = "Forbidden suppression or stub in production code"
+description = "AGENTS.md §14 prohibits silencing lints with broad #[allow(...)], @ts-ignore, or using todo! / unimplemented! as completion markers."
+reference = "AGENTS.md §14"
+target_globs = ["crates/**/*.rs", "apps/**/*.rs", "apps/**/*.ts", "apps/**/*.tsx"]
+exclude_globs = ["**/tests/**", "**/*_test.rs", "**/benches/**"]
+pattern = '(todo!|unimplemented!|#\[allow\(dead_code\)|#\[allow\(unused\)|@ts-ignore|@ts-expect-error)'
+remediation = "Remove the stub/suppression. Implement genuine target behavior or delete unused code if not part of target architecture."
+
+# ==============================================================================
+# TIER 1: Architecture, Transports & Event Consistency
+# ==============================================================================
+
+[[rules]]
+id = "EVENT-OUTBOX-01"
+tier = 1
+severity = "warning"
+title = "Fire-and-forget event publishing in transactional domain writes"
+description = "In write paths, calling publish() directly risks silent event loss if the DB transaction aborts. Must use publish_in_tx()."
+reference = "docs/standards/patterns-vs-antipatterns.md §4.1, docs/ai/KNOWN_PITFALLS.md §Outbox"
+target_globs = ["crates/modules/**/*.rs", "apps/server/src/**/*.rs"]
+exclude_globs = ["**/tests/**", "**/*_test.rs", "**/benches/**"]
+pattern = '\.publish\((?!.*_in_tx)'
+remediation = "Use `event_bus.publish_in_tx(&mut txn, event)` within the database transaction."
+
+[[rules]]
+id = "ERR-ANYHOW-01"
+tier = 1
+severity = "warning"
+title = "Use of anyhow or bare String error in library or module crates"
+description = "Library crates and domain modules must use strongly-typed errors via thiserror. anyhow loses type safety and prevents callers from matching on error variants."
+reference = "docs/standards/patterns-vs-antipatterns.md §2.2, docs/standards/errors.md"
+target_globs = ["crates/libs/**/*.rs", "crates/modules/**/*.rs"]
+exclude_globs = ["**/tests/**", "**/*_test.rs", "**/benches/**", "apps/**"]
+pattern = '(anyhow::|Result<[^<>,]+(?:<[^<>]*>)?,\s*anyhow::Error>|Result<[^<>,]+(?:<[^<>]*>)?,\s*String>)'
+remediation = "Define a typed error enum with `#[derive(thiserror::Error)]` in the crate's error module and return that instead."
+
+[[rules]]
+id = "LOG-RAW-PRINT-01"
+tier = 1
+severity = "warning"
+title = "Direct println!, eprintln!, or dbg! in runtime code"
+description = "AGENTS.md §10 forbids ad-hoc stdout diagnostics in production paths. Must use platform tracing macros."
+reference = "AGENTS.md §10, docs/standards/logging.md"
+target_globs = ["crates/libs/**/*.rs", "crates/modules/**/*.rs", "apps/server/src/**/*.rs"]
+exclude_globs = ["**/tests/**", "**/*_test.rs", "**/benches/**", "**/examples/**", "crates/**/cli/**"]
+pattern = '(println!|eprintln!|dbg!)'
+remediation = "Replace with `tracing::info!`, `tracing::warn!`, `tracing::error!`, or `tracing::debug!`."
+
+# ==============================================================================
+# TIER 2: Code Metrics, Observability & Performance
+# ==============================================================================
+
+[[rules]]
+id = "OBS-INSTRUMENT-01"
+tier = 2
+severity = "info"
+title = "Public service method missing #[instrument]"
+description = "Key domain service methods should have #[instrument(skip(...))] for distributed request tracing and observability."
+reference = "docs/standards/patterns-vs-antipatterns.md §2.10, docs/standards/logging.md"
+target_globs = ["crates/modules/**/service.rs", "crates/modules/**/services/**/*.rs"]
+exclude_globs = ["**/tests/**", "**/*_test.rs"]
+heuristic = "service_missing_instrument"
+remediation = "Add `#[tracing::instrument(skip(self, db), err)]` to public service methods."
+
+[[rules]]
+id = "METRIC-FN-LEN-01"
+tier = 2
+severity = "info"
+title = "Function length exceeds 40 lines"
+description = "Functions longer than 40 lines are considered a design smell in RusToK. Break down into smaller pure helpers or subroutines."
+reference = "docs/standards/patterns-vs-antipatterns.md §2.8, docs/standards/coding.md §9.1"
+target_globs = ["crates/**/*.rs", "apps/server/src/**/*.rs"]
+exclude_globs = ["**/tests/**", "**/*_test.rs", "**/migration/**", "**/generated/**"]
+heuristic = "function_length_exceeded"
+max_lines = 40
+remediation = "Decompose complex multi-step functions into private helper methods or state machine transitions."
+
+[[rules]]
+id = "METRIC-MOD-LEN-01"
+tier = 2
+severity = "info"
+title = "Module length exceeds 1000 lines"
+description = "Rust source files over 1000 lines should be split into smaller focused modules within the crate."
+reference = "docs/standards/patterns-vs-antipatterns.md §2.8, docs/standards/coding.md §9.1"
+target_globs = ["crates/**/*.rs", "apps/server/src/**/*.rs"]
+exclude_globs = ["**/tests/**", "**/migration/**", "**/generated/**"]
+heuristic = "file_length_exceeded"
+max_lines = 1000
+remediation = "Split the oversized file into submodules (e.g. `service/`, `adapters/`, `types/`)."
+
+[[rules]]
+id = "PERF-CLONE-CHURN-01"
+tier = 2
+severity = "info"
+title = "Potential excessive .clone() or .to_string() in loops"
+description = "Avoid unnecessary allocations in loops or high-frequency paths. Consider using references, Cow<'_, str>, or borrowing."
+reference = "docs/standards/patterns-vs-antipatterns.md §2.7, docs/standards/coding.md §4"
+target_globs = ["crates/libs/**/*.rs", "crates/modules/**/*.rs"]
+exclude_globs = ["**/tests/**", "**/*_test.rs", "**/benches/**"]
+pattern = '(for\s+.*\s+in\s+.*\{[^}]*(\.clone\(\)|\.to_string\(\)))'
+remediation = "Pass borrowed references or use Cow<'_, str> instead of cloning on each iteration."
+
+[[rules]]
+id = "SLOP-COMMENT-01"
+tier = 2
+severity = "info"
+title = "AI slop captain-obvious comments"
+description = "Needless verbose comments generated by AI that restate what the code clearly does without providing rationale."
+reference = "docs/standards/coding.md"
+target_globs = ["crates/**/*.rs", "apps/**/*.rs"]
+exclude_globs = ["**/tests/**", "**/*_test.rs"]
+pattern = '(?i)//\s*(create a new|initialize the|return the result|helper function to|function to get|set the|construct a new)'
+remediation = "Delete the redundant comment. Write comments only when explaining non-obvious domain invariants or rationale."
+
+[[rules]]
+id = "SLOP-CLONE-CHURN-01"
+tier = 2
+severity = "info"
+title = "Chained or redundant .clone()/.to_string() conversions"
+description = "Pointless conversions like .clone().to_string() or .to_string().clone() typical of AI hallucinated borrow-checker workarounds."
+reference = "docs/standards/patterns-vs-antipatterns.md §2.7"
+target_globs = ["crates/**/*.rs", "apps/**/*.rs"]
+exclude_globs = ["**/tests/**", "**/*_test.rs"]
+pattern = '(\.clone\(\)\.to_string\(\)|\.to_string\(\)\.clone\(\)|\.to_string\(\)\.to_string\(\))'
+remediation = "Simplify to a single borrow or clean conversion."
+
+[[rules]]
+id = "SLOP-INCLUDE-MACRO-01"
+tier = 1
+severity = "warning"
+title = "File stitching anti-pattern via include!() macro"
+description = "Using include!(\"...\") to stitch together multiple source files bypasses Rust's module system, creates invisible scope dependencies, and represents AI-generated slop. Use canonical Rust modules (mod foo; use foo::*)."
+reference = "docs/backend/module-backend-implementation.md, AGENTS.md §5"
+target_globs = ["crates/**/*.rs", "apps/**/*.rs"]
+exclude_globs = ["**/tests/**", "**/build.rs"]
+pattern = 'include!\("[^"]+\.rs"\)'
+remediation = "Replace `include!(\"...\")` with canonical Rust module declarations (`mod name;`)."
+
+[[rules]]
+id = "ASYNC-BLOCKING-IO-01"
+tier = 1
+severity = "error"
+title = "Blocking IO or sleep inside async runtime"
+description = "Calling std::fs::*, std::thread::sleep, or holding std::sync::Mutex across await points in async functions blocks the Tokio thread pool and degrades throughput."
+reference = "docs/standards/patterns-vs-antipatterns.md §2.5, docs/standards/coding.md §3"
+target_globs = ["crates/**/*.rs", "apps/**/*.rs"]
+exclude_globs = ["**/tests/**", "**/*_test.rs", "**/tests.rs", "**/benches/**", "**/examples/**"]
+pattern = '(std::fs::(read|write|remove|create|rename|copy)|std::thread::sleep)'
+remediation = "Use `tokio::fs::*` or `tokio::time::sleep`, or wrap blocking operations in `tokio::task::spawn_blocking`."
+
+

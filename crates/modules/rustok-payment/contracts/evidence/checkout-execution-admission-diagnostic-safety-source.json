@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "status": "payment_checkout_execution_admission_diagnostic_safety_source_reviewed_unvalidated",
+  "owner": "rustok-payment",
+  "boundary": "checkout_payment_execution_port",
+  "scope": "read and write admission rejection diagnostics",
+  "source_contract": {
+    "read_admission_preserved": true,
+    "write_policy_admission_preserved": true,
+    "write_semantics_admission_preserved": true,
+    "complete_port_error_logged": false,
+    "port_error_message_text_logged": false,
+    "stable_error_code_logged": true,
+    "static_error_kind_logged": true,
+    "retryability_logged": true,
+    "message_shape_only": true,
+    "context_shape_preserved": true,
+    "severity_classification_preserved": true,
+    "original_admission_error_returned": true,
+    "public_port_error_contract_changed": false,
+    "payment_lifecycle_changed": false,
+    "provider_execution_changed": false,
+    "owner_payment_error_diagnostics_changed": false,
+    "uuid_serde_diagnostics_changed": false,
+    "provider_checkpoint_diagnostics_changed": false,
+    "remaining_payment_execution_diagnostics_open": true,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "notes": [
+    "Read admission still applies PortCallPolicy::read and returns its original error.",
+    "Write admission still applies PortCallPolicy::write followed by write-semantics enforcement.",
+    "The complete PortError and its message text are replaced by stable code, static kind, retryability, and message presence/length facts.",
+    "Warning versus error severity remains selected from the original PortError kind.",
+    "Owner PaymentError, UUID/serde, manual-reconciliation, local persistence, and provider checkpoint diagnostics remain outside this source slice and open.",
+    "No payment FFA or FBA status is promoted from source inspection."
+  ]
+}

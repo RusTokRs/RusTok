@@ -1,0 +1,347 @@
+# Contributing to RusToK
+
+Thank you for your interest in contributing to RusToK! This document provides guidelines and information for contributors.
+
+## Table of Contents
+
+- [Code of Conduct](#code-of-conduct)
+- [Getting Started](#getting-started)
+- [Development Setup](#development-setup)
+- [Contributing Guidelines](#contributing-guidelines)
+- [Project Structure](#project-structure)
+- [Testing](#testing)
+- [Documentation](#documentation)
+- [Pull Request Process](#pull-request-process)
+
+## Code of Conduct
+
+By participating in this project, you are expected to uphold our Code of Conduct. Please read it before contributing.
+
+## Getting Started
+
+### Prerequisites
+
+- **Rust**: Version 1.80 or higher
+- **PostgreSQL**: Version 16 or higher
+- **Docker & Docker Compose**: For local development
+- **Node.js**: Version 18+ (for admin/storefront)
+- **Git**: For version control
+
+### Recommended Tools
+
+- **Rust Analyzer**: VS Code extension
+- **Trunk**: For Leptos WASM builds
+- **RusToK Xtask**: `cargo xtask --help`
+
+## Development Setup
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/RustokCMS/RusToK.git
+cd RusToK
+```
+
+### 2. Quick Start
+
+The fastest way to get everything running:
+
+```bash
+# Start all services (server, admin panels, storefronts)
+./scripts/dev-start.sh
+```
+
+This will start:
+- PostgreSQL database
+- RusToK server (http://localhost:5150)
+- Next.js Admin (http://localhost:3000)
+- Leptos Admin (http://localhost:3001)
+- Next.js Storefront (http://localhost:3100)
+- Leptos Storefront (http://localhost:3101)
+
+Canonical profile matrix: [`docs/guides/quickstart.md`](docs/guides/quickstart.md).
+
+### 3. Manual Setup
+
+If you prefer manual setup:
+
+```bash
+# 1. Copy environment configuration
+cp .env.dev.example .env.dev
+
+# 2. Start database
+docker-compose up -d db
+
+# 3. Provision the local database, run migrations and seed development data
+cargo xtask install-dev --create-db
+
+# 4. Start the server according to the canonical local profile
+./scripts/dev-start.sh
+
+# 6. In separate terminals:
+cd apps/next-admin && bun install && bun run dev
+cd apps/admin && trunk serve --port 3001
+cd apps/next-frontend && bun install && bun run dev
+cd apps/storefront && trunk serve --port 3101
+```
+
+### 4. Default Login Credentials
+
+After the first startup, you can log in using:
+- **Email**: admin@local
+- **Password**: admin12345
+
+## Contributing Guidelines
+
+### Branch Naming
+
+Use descriptive branch names:
+- `feature/short-description`
+- `fix/issue-description`
+- `docs/update-readme`
+- `refactor/component-name`
+
+### Commit Messages
+
+Follow conventional commits:
+- `feat:` - New features
+- `fix:` - Bug fixes
+- `docs:` - Documentation updates
+- `refactor:` - Code refactoring
+- `test:` - Adding tests
+- `chore:` - Maintenance tasks
+
+Examples:
+```
+feat: add product listing to storefront
+fix: resolve user authentication issue
+docs: update API documentation
+```
+
+### Code Style
+
+We use Rust's standard formatting:
+
+```bash
+# Format code
+cargo fmt --all
+
+# Lint code
+cargo clippy --workspace -- -D warnings
+```
+
+### Documentation
+
+Update documentation when:
+- Adding new features
+- Changing APIs
+- Modifying configuration
+- Updating dependencies
+- Changing architecture, events, modules, tenancy, routing, or UI contracts (also update [`docs/index.md`](docs/index.md) and [`docs/modules/registry.md`](docs/modules/registry.md))
+
+## Project Structure
+
+### Apps
+
+- **apps/server**: Main Axum backend API (Composition Root)
+- **apps/admin**: Leptos admin host (SSR-first contract)
+- **apps/storefront**: Leptos storefront host (SSR-first contract)
+- **apps/next-admin**: Next.js admin host
+- **apps/next-frontend**: Next.js storefront
+- **rustok_mobile/apps/rustok_admin_mobile**: Flutter admin mobile host (experimental rollout)
+
+### Crates Workspace Layout (`crates/`)
+
+Crates are categorized into 5 dedicated directories:
+- **`crates/libs/`**: Platform foundation libraries (`rustok-core`, `rustok-api`, `rustok-events`, `rustok-telemetry`, `rustok-runtime`, `rustok-web`, `rustok-fba`)
+- **`crates/modules/`**: Domain, system, and integration modules (`rustok-auth`, `rustok-commerce`, `rustok-product`, `rustok-content`, `rustok-blog`, `rustok-index`, `rustok-mcp`, `alloy`, etc.)
+- **`crates/ui/`**: Leptos and frontend support crates (`leptos-ui`, `rustok-ui-core`, `rustok-ui-i18n`, `rustok-graphql`, etc.)
+- **`crates/utils/`**: Tooling, CLI, migrations, and shared utilities (`rustok-cli`, `rustok-build`, `rustok-migrations`, `rustok-secrets`, `rustok-installer`, `rustok-module-sdk`, etc.)
+- **`crates/workers/`**: Execution plane, sandboxes, and artifact reconciliation workers (`rustok-sandbox`, `rustok-module-build-worker`, `rustok-artifact-node-agent`, etc.)
+
+### Development Workflow
+
+1. **Module-First Development**: Most features are implemented as modules
+2. **Event-Driven Architecture**: Modules communicate via events
+3. **CQRS-lite**: Write models in modules, read models in rustok-index
+4. **Tenant Isolation**: All features respect multi-tenant boundaries
+
+## Testing
+
+### Running Tests
+
+Install the Rust quality tools once before using the local shortcuts:
+
+```bash
+cargo install cargo-nextest --locked
+cargo install cargo-machete --locked
+```
+
+```bash
+# All tests
+cargo nextest run --workspace --all-targets --all-features
+
+# Doc tests
+cargo test --workspace --doc --all-features
+
+# Specific crate
+cargo test -p rustok-core
+
+# With database
+DATABASE_URL=postgres://localhost/rustok_test cargo nextest run --workspace --all-targets --all-features
+
+# Coverage
+cargo install cargo-tarpaulin
+cargo tarpaulin --workspace --out html
+```
+
+### Testing Guidelines
+
+1. **Unit Tests**: Test individual functions and methods
+2. **Integration Tests**: Test module interactions
+3. **Property Tests**: Use proptest for complex logic
+4. **E2E Tests**: Test complete user flows
+5. **Event-flow changes require integration coverage**:
+   - Changes to `DomainEvent` producers/consumers or handler routing are not accepted without integration tests for the full chain `event created -> handler executed -> projection/index updated`.
+   - Integration test naming must describe the chain explicitly, for example: `test_product_created_event_updates_index_projection`.
+   - Every newly introduced `DomainEvent` must include at least:
+     - one happy-path integration test;
+     - one repeat/idempotency integration test.
+   - **Legacy event-flow transition policy**: existing legacy flows may be covered incrementally, but any PR that touches legacy producer/consumer logic, routing, outbox/delivery, or projection/index updates must add or update the corresponding integration tests in the same PR.
+
+See `docs/testing-guidelines.md` for detailed testing strategies.
+
+## Documentation
+
+### Where to Document
+
+- **API Changes**: Update CHANGELOG.md
+- **Architecture**: Update relevant docs in `docs/`
+- **Module APIs**: Document in module README files
+- **User Guides**: Update QUICKSTART.md or create new guides
+
+### Documentation Standards
+
+- Use clear, concise language
+- Include code examples
+- Add diagrams for complex concepts
+- Keep documentation up-to-date with code
+
+### Building Documentation
+
+```bash
+# Generate API documentation
+cargo doc --workspace --no-deps
+
+# Build book documentation (if applicable)
+cd docs && mdbook build
+```
+
+## Pull Request Process
+
+### Before Submitting
+
+1. **Run Tests**: Ensure `cargo nextest run --workspace --all-targets --all-features` and `cargo test --workspace --doc --all-features` pass
+2. **Format Code**: Use `cargo fmt --all`
+3. **Lint Code**: Use `cargo clippy --workspace`
+4. **Update Documentation**: Include relevant docs updates
+5. **Update Changelog**: Add entry to CHANGELOG.md
+
+### PR Checklist
+
+- [ ] Code follows project style guidelines
+- [ ] Tests added/updated for new features
+- [ ] Event-flow changes include integration tests for `event -> handler -> projection/index`
+- [ ] Every new `DomainEvent` has happy-path + idempotency/repeat integration tests
+- [ ] Documentation updated
+- [ ] Review: "Is there new code in app-layer that should live in library?"
+- [ ] Review: "Are there changes in module docs and `docs/index.md` when contract changes?"
+- [ ] For critical domains (content/commerce/blog/forum/pages/index/rbac/tenant), any intentional DoD bypass has explicit architecture approval
+- [ ] Module-first rule is applied with boundary exceptions: platform foundation may live in `apps/server` + core crates; frontend duplication is extracted into shared frontend libraries (not backend domain crates)
+- [ ] DOCS_MAP.md updated when docs triggers were touched
+- [ ] CHANGELOG.md updated
+- [ ] Framework deviation checklist completed for every new framework/runtime deviation (benchmark evidence, failure-mode table, rollback strategy, owner sign-off); see `docs/standards/forbidden-actions.md#64-framework-deviation-checklist-mandatory-for-each-new-deviation`
+- [ ] All CI checks pass
+- [ ] No breaking changes (or properly documented)
+
+### Review Process
+
+1. **Automated Checks**: CI must pass
+2. **Code Review**: At least one maintainer review
+3. **Testing**: Manual testing may be required
+4. **Documentation**: Review for completeness
+5. **Merge**: Squash and merge after approval
+
+## Areas for Contribution
+
+### High Priority
+
+- **Testing**: Integration tests and E2E tests
+- **Documentation**: API docs and guides
+- **Bug Fixes**: Issues in GitHub tracker
+- **Performance**: Optimizations and benchmarks
+
+### Medium Priority
+
+- **Features**: New modules and functionality
+- **UI/UX**: Admin panel and storefront improvements
+- **DevOps**: CI/CD improvements
+- **Security**: Security audits and fixes
+
+### Good First Issues
+
+Look for issues labeled:
+- `good first issue`
+- `help wanted`
+- `documentation`
+
+## Getting Help
+
+- **Documentation**: Check `docs/` directory
+- **Issues**: Search GitHub issues
+- **Discussions**: Use GitHub Discussions
+- **Chat**: Join our community channels
+
+## Release Process
+
+1. **Version Bump**: Update version in Cargo.toml
+2. **CHANGELOG**: Finalize changelog
+3. **Testing**: Run full test suite
+4. **License checklist**:
+   - Verify LICENSE exists
+   - Verify NOTICE exists
+   - Verify COMMERCIAL-LICENSE.md exists
+   - Verify package manifests do not say MIT
+   - Verify Change Date is updated for the new release
+   - Verify key source files preserve copyright/license headers
+   - Verify no frontend attribution was added
+5. **Tag**: Create Git tag
+6. **Release**: GitHub release with notes
+
+## Security
+
+### Reporting Security Issues
+
+Please report security vulnerabilities to: security@rustok-cms.com
+
+### Security Guidelines
+
+- Never commit secrets or API keys
+- Use environment variables for configuration
+- Follow OWASP security best practices
+- Regular dependency audits: `cargo audit`
+- Manifest dependency hygiene: `cargo machete`
+
+## License
+
+## Licensing of Contributions
+
+By contributing to RusTok, you agree that your contributions may be licensed by the project maintainers under the Business Source License 1.1 with RusTok Additional Use Grant and under separate RusTok Commercial License terms.
+
+This is required so the project can remain free for the community and small businesses while offering commercial licenses to larger organizations and SaaS providers.
+
+---
+
+Thank you for contributing to RusToK! 🚀
+
+For questions about contributing, please open an issue or discussion.

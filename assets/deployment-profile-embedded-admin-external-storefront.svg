@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1125" viewBox="0 0 1800 1125" role="img" aria-labelledby="title desc">
+  <title id="title">RusToK Server plus Embedded Admin and External Storefront Deployment</title>
+  <desc id="desc">Server and embedded Leptos admin with external storefront clients, showing FFA and FBA boundaries.</desc>
+  <defs>
+    <style>.bg{fill:#f8fafc}.panel{fill:#fff;stroke:#d8dee8;stroke-width:2}.server{fill:#e0f2fe;stroke:#0284c7;stroke-width:3}.ui{fill:#dcfce7;stroke:#16a34a;stroke-width:2}.external{fill:#f0fdfa;stroke:#0d9488;stroke-width:2}.transport{fill:#fef3c7;stroke:#d97706;stroke-width:2}.mod{fill:#eef2ff;stroke:#4f46e5;stroke-width:2}.infra{fill:#f1f5f9;stroke:#64748b;stroke-width:2}.ffa{fill:#ecfdf5;stroke:#10b981;stroke-width:2}.fba{fill:#fff7ed;stroke:#f97316;stroke-width:2}.text{font-family:Inter,Segoe UI,Arial,sans-serif;fill:#0f172a}.title{font-size:48px;font-weight:800}.sub{font-size:24px;fill:#475569}.h{font-size:28px;font-weight:800}.m{font-size:21px;font-weight:700}.s{font-size:18px;font-weight:500}.xs{font-size:15px;font-weight:500;fill:#475569}.line{stroke:#334155;stroke-width:3;fill:none;marker-end:url(#arrow)}.dash{stroke:#64748b;stroke-width:3;stroke-dasharray:8 8;fill:none;marker-end:url(#arrow)}.shadow{filter:url(#shadow)}</style>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0f172a" flood-opacity=".12"/></filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#334155"/></marker>
+  </defs>
+  <rect class="bg" width="1800" height="1125"/>
+  <text x="900" y="76" text-anchor="middle" class="text title">Deployment Profile 2: Embedded Admin, External Storefront</text>
+  <text x="900" y="112" text-anchor="middle" class="sub">Backoffice stays in-process; customer-facing storefront scales or ships independently</text>
+
+  <rect x="90" y="180" width="960" height="650" rx="34" class="server shadow"/>
+  <text x="130" y="235" class="text h">apps/server + embedded admin</text>
+  <text x="130" y="268" class="sub">Same-origin admin runtime with server-side auth, tenant context and RBAC</text>
+
+  <rect x="140" y="325" width="370" height="135" rx="24" class="ui"/>
+  <text x="325" y="378" text-anchor="middle" class="text m">Leptos Admin</text>
+  <text x="325" y="410" text-anchor="middle" class="text s">in-process #[server]</text>
+  <text x="325" y="438" text-anchor="middle" class="xs">apps/admin</text>
+
+  <rect x="560" y="325" width="420" height="135" rx="24" class="transport"/>
+  <text x="770" y="378" text-anchor="middle" class="text m">Admin transport</text>
+  <text x="770" y="410" text-anchor="middle" class="text s">direct server functions</text>
+  <text x="770" y="438" text-anchor="middle" class="xs">no public network hop required</text>
+
+  <rect x="140" y="535" width="840" height="145" rx="26" class="mod"/>
+  <text x="180" y="590" class="text h">Module runtime</text>
+  <text x="180" y="625" class="sub">Module-owned domains, transport adapters, events and read models</text>
+  <text x="180" y="660" class="text s">Default FBA mode: in-process modules with typed service contracts.</text>
+
+  <rect x="1120" y="180" width="590" height="650" rx="34" class="panel shadow"/>
+  <text x="1160" y="235" class="text h">External storefront surface</text>
+  <text x="1160" y="268" class="sub">Any client can consume the same server runtime</text>
+
+  <rect x="1180" y="325" width="210" height="112" rx="22" class="external"/>
+  <text x="1285" y="372" text-anchor="middle" class="text m">Next.js</text>
+  <text x="1285" y="402" text-anchor="middle" class="text s">storefront</text>
+  <rect x="1430" y="325" width="210" height="112" rx="22" class="external"/>
+  <text x="1535" y="372" text-anchor="middle" class="text m">Mobile</text>
+  <text x="1535" y="402" text-anchor="middle" class="text s">or partner UI</text>
+
+  <rect x="1180" y="500" width="460" height="125" rx="24" class="transport"/>
+  <text x="1410" y="550" text-anchor="middle" class="text m">Storefront transport</text>
+  <text x="1410" y="582" text-anchor="middle" class="text s">GraphQL, REST or HTTP /api/fn/*</text>
+  <text x="1410" y="610" text-anchor="middle" class="xs">depending on client type</text>
+
+  <rect x="140" y="730" width="1500" height="70" rx="22" class="infra"/>
+  <text x="180" y="775" class="text s">Infrastructure: PostgreSQL, Redis / Cache, Meilisearch, Iggy Streaming, Object Storage, Telemetry</text>
+
+  <path d="M325 460 L325 535" class="line"/>
+  <path d="M770 460 L770 535" class="line"/>
+  <path d="M1410 500 C1320 430, 1160 430, 1035 520" class="line"/>
+
+  <rect x="90" y="900" width="760" height="120" rx="26" class="ffa"/>
+  <text x="130" y="948" class="text m">FFA effect</text>
+  <text x="130" y="982" class="text s">Admin remains embedded while storefront can move out; module-owned UI contracts are not duplicated.</text>
+  <rect x="940" y="900" width="770" height="120" rx="26" class="fba"/>
+  <text x="980" y="948" class="text m">FBA effect</text>
+  <text x="980" y="982" class="text s">Storefront reads can stay local, call remote module services, or consume event-built read models without changing public UI contracts.</text>
+</svg>

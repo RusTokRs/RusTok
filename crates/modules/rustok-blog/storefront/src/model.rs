@@ -1,0 +1,131 @@
+use rustok_api::{RichTextDocument, RichTextView};
+use serde::{Deserialize, Serialize};
+
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct StorefrontBlogData {
+    pub selected_post: Option<BlogPostDetail>,
+    pub posts: BlogPostList,
+}
+
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct BlogPostList {
+    pub items: Vec<BlogPostListItem>,
+    pub total: u64,
+}
+
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct BlogPostListItem {
+    pub id: String,
+    pub title: String,
+    #[serde(rename = "effectiveLocale")]
+    pub effective_locale: String,
+    pub slug: Option<String>,
+    pub excerpt: Option<String>,
+    pub status: String,
+    #[serde(rename = "publishedAt")]
+    pub published_at: Option<String>,
+    pub tags: Vec<String>,
+    #[serde(rename = "featuredImageUrl")]
+    pub featured_image_url: Option<String>,
+}
+
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum BlogCommentsAvailability {
+    #[default]
+    Available,
+    Unavailable,
+    Timeout,
+}
+
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct BlogCommentList {
+    #[serde(default)]
+    pub availability: BlogCommentsAvailability,
+    #[serde(default, rename = "cachedSnapshot")]
+    pub cached_snapshot: bool,
+    pub items: Vec<BlogCommentListItem>,
+    pub total: u64,
+}
+
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct BlogCommentListItem {
+    pub id: String,
+    #[serde(rename = "effectiveLocale")]
+    pub effective_locale: String,
+    #[serde(rename = "authorId")]
+    pub author_id: Option<String>,
+    #[serde(rename = "contentPreview")]
+    pub content_preview: String,
+    #[serde(rename = "parentCommentId")]
+    pub parent_comment_id: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlogCommentCreateRequest {
+    pub command_id: String,
+    pub post_id: String,
+    pub locale: String,
+    pub content: RichTextDocument,
+    pub parent_comment_id: Option<String>,
+}
+
+impl BlogCommentCreateRequest {
+    pub fn for_post(post_id: String, locale: String, content: RichTextDocument) -> Self {
+        Self {
+            command_id: rustok_api::new_command_id(),
+            post_id,
+            locale,
+            content,
+            parent_comment_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlogCommentDetail {
+    pub id: String,
+    pub requested_locale: String,
+    pub effective_locale: String,
+    pub post_id: String,
+    pub author_id: Option<String>,
+    pub content: RichTextView,
+    pub content_plain_text: String,
+    pub status: String,
+    pub parent_comment_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct BlogPostDetail {
+    pub id: String,
+    #[serde(rename = "effectiveLocale")]
+    pub effective_locale: String,
+    pub title: String,
+    pub slug: Option<String>,
+    pub excerpt: Option<String>,
+    #[serde(default)]
+    pub content: Option<RichTextView>,
+    #[serde(default, rename = "contentPlainText")]
+    pub content_plain_text: Option<String>,
+    pub status: String,
+    #[serde(rename = "publishedAt")]
+    pub published_at: Option<String>,
+    pub tags: Vec<String>,
+    #[serde(rename = "featuredImageUrl")]
+    pub featured_image_url: Option<String>,
+    #[serde(default, rename = "publicComments")]
+    pub public_comments: BlogCommentList,
+}

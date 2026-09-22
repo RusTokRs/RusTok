@@ -1,0 +1,15 @@
+bind:1={"type":"uuid","value":"00000000-0000-0000-0000-000000000001"}
+bind:2={"type":"text","value":"rustok-product"}
+bind:3={"type":"text","value":"product"}
+bind:4={"type":"integer","value":1}
+bind:5={"type":"text","value":"en-US"}
+bind:6={"type":"text","value":"id"}
+bind:7={"type":"text","value":"variants"}
+bind:8={"type":"text","value":"rustok-product"}
+bind:9={"type":"text","value":"variant"}
+bind:10={"type":"integer","value":1}
+bind:11={"type":"text","value":"id"}
+bind:12={"type":"integer","value":2}
+column:entity_id|__t0_entity_id|t0
+column:field|f0|id|t0
+many_column:__many_0|path=variants|identities=variants|fields=variants.id

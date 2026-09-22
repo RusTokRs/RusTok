@@ -1,0 +1,103 @@
+# rustok-commerce
+
+## Purpose
+
+`rustok-commerce` is the `Ecommerce` umbrella/root module for RusToK's commerce family.
+
+## Responsibilities
+
+- Provide `CommerceModule` metadata for the runtime registry.
+- Serve as the umbrella entry point for the ecommerce family.
+- Preserve the GraphQL surface while the Medusa-style REST transport expands.
+- Expose the Medusa-style REST transport slice under `/store/*` and `/admin/*`.
+- Resolve storefront cart line items from server-owned catalog/pricing data using `variant_id + quantity`, instead of trusting client-provided title and price.
+- Orchestrate submodules of the ecommerce family through owner-crate services and typed ports, without masking owner APIs behind umbrella aliases.
+- Own the checkout orchestration flow across cart, payment, order, and fulfillment submodules.
+- Own store-context resolution across region, currency, and tenant locale policy.
+- Apply channel-aware storefront availability on top of platform `ChannelContext` and `rustok-channel` bindings, without introducing a second sales-channel domain inside commerce.
+- Apply shipping-profile compatibility between catalog products, storefront shipping discovery, cart context, and checkout validation, with typed product/variant bindings, typed line-item snapshots, and metadata normalization kept only as a backward-compatibility layer.
+- Expose first-class `shipping_profile_slug` on product and variant create/update/read contracts and `allowed_shipping_profile_slugs` on shipping-option contracts.
+- Expose deliverability-aware cart and checkout contracts with `delivery_groups[]`, typed `shipping_selections[]`, `fulfillments[]`, and typed `fulfillment.items[]`, while keeping the old singular shipping/fulfillment fields only as single-group compatibility shims.
+- Treat nullable `seller_id` as the canonical marketplace identity key across product, cart, order, checkout, and fulfillment contracts; `seller_scope` is not used as a runtime grouping or selection fallback.
+- Expose admin/manual post-order fulfillment creation over REST and GraphQL with typed `items[]`, seller-aware delivery-group consistency checks, and remaining-quantity validation against order line items.
+- Expose partial item-level `ship` / `deliver` adjustments over admin REST and GraphQL, with per-item shipped/delivered counters and a language-agnostic metadata-based audit trail.
+- Expose explicit admin `reopen` / `reship` fulfillment recovery operations over REST and GraphQL, so post-order delivery corrections do not rely on implicit status rewrites.
+- Expose admin return decision-tree transport over REST (`POST /admin/orders/{id}/returns/decision`) and GraphQL (`createOrderReturnDecision`) on top of `PostOrderOrchestrationService`, so `return_only` / `refund` / `exchange` orchestration stays service-owned.
+- Keep the module-owned admin UI as an aggregate operator workspace for shipping profiles, cart promotions, and post-order order-change actions; exchange/claim apply/cancel actions call `orderChanges` / `applyOrderChange` / `cancelOrderChange` instead of embedding domain rules.
+- Own the typed `shipping_profiles` registry and validate product/shipping-option references against active shipping profiles before write-path mutations are accepted.
+- Resolve the effective shipping profile as `variant -> product -> default`, persist it into cart/order line-item snapshots, and use those snapshots instead of live product metadata for checkout deliverability decisions.
+- Expose admin shipping-option management over REST and GraphQL (`list/show/create/update/deactivate/reactivate`) on top of `FulfillmentService`, so delivery compatibility and lifecycle are configurable without dropping to direct service calls.
+- Expose admin shipping-profile management over REST and GraphQL (`list/show/create/update/deactivate/reactivate`) on top of `ShippingProfileService`.
+- Expose only commerce-owned checkout/context/shipping-profile DTOs and shipping-profile entities; owner DTO/entity/service contracts are imported directly from `rustok-cart`, `rustok-customer`, `rustok-product`, `rustok-region`, `rustok-pricing`, `rustok-inventory`, `rustok-order`, `rustok-payment`, and `rustok-fulfillment`.
+- Expose commerce-owned orchestration services such as `CheckoutService`, `StoreContextService`, `ShippingProfileService`, `PaymentOrchestrationService`, and `PostOrderOrchestrationService`.
+- Keep shared/admin product, storefront product/catalog/order/cart/checkout, admin order/change/return, admin fulfillment, admin shipping, and admin payment HTTP handlers on narrow `CommerceHttpRuntime` state; remaining admin/storefront REST adapters are still cut over in separate owner-boundary slices.
+- Keep commerce-owned orchestration code and leftover migrations not yet moved to new modules.
+- Publish a module-owned Leptos admin UI package in `admin/` for host composition.
+- Let the module-owned Leptos admin UI package keep the typed shipping-profile registry after product CRUD moved into `rustok-product/admin`, shipping-option UI moved into `rustok-fulfillment/admin`, order operations UI moved into `rustok-order/admin`, inventory visibility moved into `rustok-inventory/admin`, and pricing visibility moved into `rustok-pricing/admin`.
+- Publish a module-owned Leptos storefront UI package in `storefront/` for host composition.
+- Keep the aggregate storefront package focused on checkout orchestration while split modules publish their own storefront routes, with `rustok-region/storefront`, `rustok-product/storefront`, `rustok-pricing/storefront`, and `rustok-cart/storefront` already owning their public slices.
+- Keep `rustok-commerce/storefront` focused on aggregate checkout workspace concerns such as delivery-group shipping selection, payment-collection reuse, and checkout completion over a selected cart.
+- Publish the typed RBAC surface for commerce resources.
+
+## Interactions
+
+- Depends on `rustok-core` for module contracts and permission vocabulary.
+- Depends on `rustok-commerce-foundation` for shared DTOs, entities, search helpers, and errors.
+- Depends on `rustok-cart`, `rustok-customer`, `rustok-product`, `rustok-region`, `rustok-pricing`,
+  `rustok-inventory`, `rustok-order`, `rustok-payment`, and `rustok-fulfillment` as the default cart,
+  customer, product, region, pricing, inventory, order, payment, and fulfillment submodules of the ecommerce family.
+- Depends on `rustok-api` for shared auth/tenant/request GraphQL+HTTP adapter contracts.
+- Depends on `rustok-channel` for platform-level channel bindings and request-aware storefront visibility rules.
+- Depends on `rustok-outbox` and `rustok-events` for transactional domain-event publishing.
+- Used by `apps/server` through thin GraphQL/REST shims and route composition.
+- `apps/admin` consumes `rustok-commerce-admin` through manifest-driven `build.rs` code generation, with a module-owned commerce control room mounted under `/modules/commerce` for shipping-profile operations.
+- `apps/admin` also consumes `rustok-fulfillment-admin` through the same manifest-driven composition path, with shipping-option CRUD and lifecycle now owned by the fulfillment module.
+- `apps/admin` also consumes `rustok-order-admin` through the same manifest-driven composition path, with order list/detail/lifecycle now owned by the order module.
+- `apps/admin` also consumes `rustok-inventory-admin` through the same manifest-driven composition path, with inventory visibility and stock-health inspection now owned by the inventory module.
+- `apps/admin` also consumes `rustok-pricing-admin` through the same manifest-driven composition path, with pricing visibility and sale-marker inspection now owned by the pricing module.
+- `apps/admin` also consumes `rustok-product-admin` through the same manifest-driven composition path, with catalog CRUD now owned by the product module instead of the aggregate commerce route.
+- `apps/storefront` consumes `rustok-commerce-storefront` through manifest-driven `build.rs` code generation, with the aggregate checkout workspace mounted under `/modules/commerce`.
+- `apps/storefront` also consumes `rustok-product-storefront` through the same manifest-driven composition path, with published catalog discovery now owned by the product module under `/modules/products`.
+- `apps/storefront` also consumes `rustok-pricing-storefront` through the same manifest-driven composition path, with public pricing discovery now owned by the pricing module under `/modules/pricing`.
+- `apps/storefront` also consumes `rustok-region-storefront` through the same manifest-driven composition path, with public region discovery mounted under `/modules/regions`.
+- `apps/storefront` also consumes `rustok-cart-storefront` through the same manifest-driven composition path, with cart inspection and safe line-item decrement/remove actions mounted under `/modules/cart`.
+- `rustok-module.toml` exports both surfaces through `[provides.admin_ui]` and `[provides.storefront_ui]`, so host wiring stays manifest-derived instead of relying on manual route registration.
+- Declares permissions via `rustok-core::Permission` for `products`, `orders`, `customers`,
+  `regions`, `payments`, `fulfillments`, `inventory`, and `discounts`.
+- Transport adapters validate permissions against `AuthContext.permissions`, then invoke
+  commerce services or direct tenant-scoped SeaORM reads where the module still owns the
+  read-model assembly; post-order order-change preview/apply/cancel transport and
+  return decision-tree transport stay backed by module services (`rustok-order::OrderService`
+  and `PostOrderOrchestrationService`) rather than host-owned logic.
+- Channel-aware price resolution is intentionally not part of the current storefront availability baseline and remains planned under Pricing 2.0.
+
+## Capability classification gap
+
+The current module graph declares Fulfillment as an unconditional Commerce dependency,
+and current checkout assumes delivery groups for the shipping-aware path. That is
+current executable truth, not the accepted target for all product kinds. Digital
+products and digital order lines require no shipping capability; Commerce must remain
+available for a digital-only flow when Fulfillment is absent.
+
+The cutover must preserve a typed fulfillment requirement in product/cart/order
+snapshots, form delivery groups only for physical lines, and require Fulfillment at
+the affected operation boundary. Mixed carts must not assign a synthetic shipping
+profile to digital lines. See
+[`docs/architecture/settings.md`](../../../docs/architecture/settings.md).
+
+## Entry points
+
+- `CommerceModule`
+- `ShippingProfileService`
+- `CheckoutService`
+- `StoreContextService`
+- `PaymentOrchestrationService`
+- `PostOrderOrchestrationService`
+- `graphql::CommerceQuery`
+- `graphql::CommerceMutation`
+- `controllers::routes`
+- `admin::CommerceAdmin` (publishable Leptos package)
+- `storefront::CommerceView` (publishable Leptos package)
+- commerce-owned `dto` and `entities` modules; owner DTO/entity/service contracts are imported from owner crates directly
+
+See also `docs/README.md`.

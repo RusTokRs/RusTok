@@ -1,0 +1,63 @@
+# Prometheus Configuration for RusToK
+#
+# Scrape targets:
+# - RusToK server metrics endpoint
+# - cAdvisor (container metrics)
+# - Node Exporter (host metrics)
+# - Prometheus self-monitoring
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'rustok-dev'
+    environment: 'development'
+
+# Alertmanager configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - "/etc/prometheus/alert_rules.yml"
+
+scrape_configs:
+  # RusToK Server Metrics
+  - job_name: 'rustok-server'
+    static_configs:
+      - targets: ['host.docker.internal:3000']  # Adjust port if needed
+        labels:
+          service: 'rustok-server'
+          env: 'development'
+    metrics_path: '/api/_health/metrics'  # Adjust to your metrics endpoint
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # cAdvisor - Container metrics
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          service: 'cadvisor'
+    # Only scrape container metrics we care about
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'container_(cpu|memory|network|fs).*'
+        action: keep
+
+  # Node Exporter - Host metrics
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'node-exporter'
+
+  # Add more scrape configs as needed
+  # Example: PostgreSQL exporter, Redis exporter, etc.

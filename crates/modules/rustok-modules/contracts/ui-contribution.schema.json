@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.rustok.dev/module/ui-contribution.schema.json",
+  "title": "RusToK Module Declarative UI Contribution",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "surface", "localization_digest", "permission", "content"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,47}$"
+    },
+    "surface": {
+      "enum": [
+        "admin_settings",
+        "admin_actions",
+        "admin_status",
+        "admin_help",
+        "admin_navigation",
+        "admin_table",
+        "admin_form",
+        "storefront_slot"
+      ]
+    },
+    "localization_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "permission": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,47}(?:\\.[a-z][a-z0-9_]*)+$"
+    },
+    "content": {
+      "oneOf": [
+        { "$ref": "#/$defs/settings" },
+        { "$ref": "#/$defs/action" },
+        { "$ref": "#/$defs/status" },
+        { "$ref": "#/$defs/help" },
+        { "$ref": "#/$defs/navigation" },
+        { "$ref": "#/$defs/table" },
+        { "$ref": "#/$defs/form" },
+        { "$ref": "#/$defs/storefront_slot" }
+      ]
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9A-Fa-f]{64}$"
+    },
+    "localization_key": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*){0,7}$"
+    },
+    "binding_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,47}$"
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "title_key", "binding_id", "confirmation", "destructive", "audit_policy"],
+      "properties": {
+        "kind": { "const": "action" },
+        "title_key": { "$ref": "#/$defs/localization_key" },
+        "binding_id": { "$ref": "#/$defs/binding_id" },
+        "confirmation": { "enum": ["none", "acknowledge", "destructive"] },
+        "destructive": { "type": "boolean" },
+        "audit_policy": { "const": "required" }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "title_key", "settings_schema_digest"],
+      "properties": {
+        "kind": { "const": "settings" },
+        "title_key": { "$ref": "#/$defs/localization_key" },
+        "settings_schema_digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "title_key", "status_key"],
+      "properties": {
+        "kind": { "const": "status" },
+        "title_key": { "$ref": "#/$defs/localization_key" },
+        "status_key": { "$ref": "#/$defs/localization_key" }
+      }
+    },
+    "help": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "title_key", "body_key"],
+      "properties": {
+        "kind": { "const": "help" },
+        "title_key": { "$ref": "#/$defs/localization_key" },
+        "body_key": { "$ref": "#/$defs/localization_key" }
+      }
+    },
+    "navigation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "title_key", "route"],
+      "properties": {
+        "kind": { "const": "navigation" },
+        "title_key": { "$ref": "#/$defs/localization_key" },
+        "route": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_/-]{0,127}$"
+        }
+      }
+    },
+    "table": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "title_key", "schema_digest"],
+      "properties": {
+        "kind": { "const": "table" },
+        "title_key": { "$ref": "#/$defs/localization_key" },
+        "schema_digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "form": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "title_key", "binding_id", "confirmation", "destructive", "audit_policy"],
+      "properties": {
+        "kind": { "const": "form" },
+        "title_key": { "$ref": "#/$defs/localization_key" },
+        "binding_id": { "$ref": "#/$defs/binding_id" },
+        "confirmation": { "enum": ["none", "acknowledge", "destructive"] },
+        "destructive": { "type": "boolean" },
+        "audit_policy": { "const": "required" }
+      }
+    },
+    "storefront_slot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "title_key", "slot"],
+      "properties": {
+        "kind": { "const": "storefront_slot" },
+        "title_key": { "$ref": "#/$defs/localization_key" },
+        "slot": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,47}$"
+        }
+      }
+    }
+  }
+}

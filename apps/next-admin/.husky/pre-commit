@@ -1,0 +1,2 @@
+npx lint-staged
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-pages-legacy-bridge.mjs

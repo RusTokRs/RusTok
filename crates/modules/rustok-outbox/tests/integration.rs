@@ -1,0 +1,378 @@
+use std::any::Any;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use async_trait::async_trait;
+use chrono::Utc;
+use rustok_core::events::{EventTransport, ReliabilityLevel};
+use rustok_core::{Error, Result};
+use rustok_events::{DomainEvent, EventEnvelope};
+use rustok_outbox::entity::{self, SysEventStatus};
+use rustok_outbox::{OutboxRelay, RelayConfig, SysEventsMigration};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend,
+    DatabaseConnection, EntityTrait, QueryFilter, Set, Statement,
+};
+use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
+use tokio::sync::Mutex;
+use uuid::Uuid;
+
+#[derive(Default)]
+struct MockTransport {
+    delivered: Mutex<Vec<Uuid>>,
+    remaining_failures: Mutex<HashMap<Uuid, usize>>,
+}
+
+#[derive(Default)]
+struct TrackingTransport {
+    active: AtomicUsize,
+    max_active: AtomicUsize,
+}
+
+impl TrackingTransport {
+    fn max_active(&self) -> usize {
+        self.max_active.load(Ordering::SeqCst)
+    }
+}
+
+impl MockTransport {
+    async fn fail_n_times_for(&self, event_id: Uuid, n: usize) {
+        self.remaining_failures.lock().await.insert(event_id, n);
+    }
+
+    async fn delivered(&self) -> Vec<Uuid> {
+        self.delivered.lock().await.clone()
+    }
+}
+
+#[async_trait]
+impl EventTransport for MockTransport {
+    async fn publish(&self, envelope: EventEnvelope) -> Result<()> {
+        let mut remaining_failures = self.remaining_failures.lock().await;
+        if let Some(remaining) = remaining_failures.get_mut(&envelope.id)
+            && *remaining > 0
+        {
+            *remaining -= 1;
+            return Err(Error::External("temporary transport error".to_string()));
+        }
+
+        self.delivered.lock().await.push(envelope.id);
+        Ok(())
+    }
+
+    fn reliability_level(&self) -> ReliabilityLevel {
+        ReliabilityLevel::Outbox
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[async_trait]
+impl EventTransport for TrackingTransport {
+    async fn publish(&self, _envelope: EventEnvelope) -> Result<()> {
+        let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+        self.max_active.fetch_max(active, Ordering::SeqCst);
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        self.active.fetch_sub(1, Ordering::SeqCst);
+        Ok(())
+    }
+
+    fn reliability_level(&self) -> ReliabilityLevel {
+        ReliabilityLevel::Outbox
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+type TestResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+#[tokio::test]
+async fn relay_delivers_successfully() -> TestResult<()> {
+    let _guard = test_lock().lock().await;
+
+    let Some(db) = setup_db().await? else {
+        return Ok(());
+    };
+    let envelope = seed_event(&db).await?;
+    let transport = Arc::new(MockTransport::default());
+
+    let relay = OutboxRelay::new(db.clone(), transport.clone()).with_config(RelayConfig {
+        batch_size: 10,
+        max_attempts: 3,
+        ..Default::default()
+    });
+
+    let processed = relay.process_pending_once(None).await?;
+    assert_eq!(processed, 1);
+
+    let record = entity::Entity::find_by_id(envelope.id)
+        .one(&db)
+        .await?
+        .expect("event record");
+    assert_eq!(record.status, SysEventStatus::Dispatched);
+    assert_eq!(record.retry_count, 0);
+
+    let delivered = transport.delivered().await;
+    assert_eq!(delivered, vec![envelope.id]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn relay_retries_then_succeeds() -> TestResult<()> {
+    let _guard = test_lock().lock().await;
+
+    let Some(db) = setup_db().await? else {
+        return Ok(());
+    };
+    let envelope = seed_event(&db).await?;
+    let transport = Arc::new(MockTransport::default());
+    transport.fail_n_times_for(envelope.id, 1).await;
+
+    let relay = OutboxRelay::new(db.clone(), transport.clone()).with_config(RelayConfig {
+        batch_size: 10,
+        max_attempts: 3,
+        backoff_base: std::time::Duration::from_millis(1),
+        backoff_max: std::time::Duration::from_millis(2),
+        ..Default::default()
+    });
+
+    let processed_first = relay.process_pending_once(None).await?;
+    assert_eq!(processed_first, 1);
+
+    let mut failed_once: entity::ActiveModel = entity::Entity::find_by_id(envelope.id)
+        .one(&db)
+        .await?
+        .expect("event record")
+        .into();
+    failed_once.next_attempt_at = Set(Some(Utc::now() - chrono::Duration::milliseconds(1)));
+    failed_once.update(&db).await?;
+
+    let processed_second = relay.process_pending_once(None).await?;
+    assert_eq!(processed_second, 1);
+
+    let record = entity::Entity::find_by_id(envelope.id)
+        .one(&db)
+        .await?
+        .expect("event record");
+    assert_eq!(record.status, SysEventStatus::Dispatched);
+    assert_eq!(record.retry_count, 1);
+
+    let metrics = relay.metrics();
+    assert_eq!(metrics.retry_total, 1);
+    assert_eq!(metrics.success_total, 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn relay_moves_to_dlq_on_max_retry() -> TestResult<()> {
+    let _guard = test_lock().lock().await;
+
+    let Some(db) = setup_db().await? else {
+        return Ok(());
+    };
+    let envelope = seed_event(&db).await?;
+    let transport = Arc::new(MockTransport::default());
+    transport.fail_n_times_for(envelope.id, 10).await;
+
+    let relay = OutboxRelay::new(db.clone(), transport).with_config(RelayConfig {
+        batch_size: 10,
+        max_attempts: 2,
+        backoff_base: std::time::Duration::from_millis(1),
+        backoff_max: std::time::Duration::from_millis(1),
+        ..Default::default()
+    });
+
+    let _ = relay.process_pending_once(None).await?;
+
+    let mut first_failed: entity::ActiveModel = entity::Entity::find_by_id(envelope.id)
+        .one(&db)
+        .await?
+        .expect("event record")
+        .into();
+    first_failed.next_attempt_at = Set(Some(Utc::now() - chrono::Duration::milliseconds(1)));
+    first_failed.update(&db).await?;
+
+    let _ = relay.process_pending_once(None).await?;
+
+    let record = entity::Entity::find_by_id(envelope.id)
+        .one(&db)
+        .await?
+        .expect("event record");
+    assert_eq!(record.status, SysEventStatus::Failed);
+    assert_eq!(record.retry_count, 2);
+    assert!(record.next_attempt_at.is_none());
+    assert!(record.last_error.is_some());
+
+    let metrics = relay.metrics();
+    assert_eq!(metrics.dlq_total, 1);
+    assert_eq!(metrics.failure_total, 2);
+    Ok(())
+}
+
+#[tokio::test]
+async fn relay_reclaims_stale_claims() -> TestResult<()> {
+    let db = setup_sqlite_db().await?;
+    let envelope = seed_event(&db).await?;
+    let mut claimed: entity::ActiveModel = entity::Entity::find_by_id(envelope.id)
+        .one(&db)
+        .await?
+        .expect("event record")
+        .into();
+    claimed.claimed_by = Set(Some("dead-worker".to_string()));
+    claimed.claimed_at = Set(Some(Utc::now() - chrono::Duration::seconds(10)));
+    claimed.update(&db).await?;
+
+    let relay =
+        OutboxRelay::new(db.clone(), Arc::new(MockTransport::default())).with_config(RelayConfig {
+            claim_ttl: std::time::Duration::from_millis(1),
+            ..Default::default()
+        });
+
+    assert_eq!(relay.process_pending_once(None).await?, 1);
+    let record = entity::Entity::find_by_id(envelope.id)
+        .one(&db)
+        .await?
+        .expect("event record");
+    assert_eq!(record.status, SysEventStatus::Dispatched);
+    assert!(record.claimed_by.is_none());
+    assert!(record.claimed_at.is_none());
+    Ok(())
+}
+
+#[tokio::test]
+async fn relay_bounds_parallel_dispatch() -> TestResult<()> {
+    let db = setup_sqlite_db().await?;
+    for _ in 0..4 {
+        seed_event(&db).await?;
+    }
+    let transport = Arc::new(TrackingTransport::default());
+    let relay = OutboxRelay::new(db, transport.clone()).with_config(RelayConfig {
+        batch_size: 4,
+        max_concurrency: 2,
+        ..Default::default()
+    });
+
+    assert_eq!(relay.process_pending_once(None).await?, 4);
+    assert_eq!(transport.max_active(), 2);
+    Ok(())
+}
+
+#[tokio::test]
+async fn relay_processes_baseline_batch_with_bounded_latency() -> TestResult<()> {
+    let db = setup_sqlite_db().await?;
+    for _ in 0..32 {
+        seed_event(&db).await?;
+    }
+    let transport = Arc::new(TrackingTransport::default());
+    let relay = OutboxRelay::new(db.clone(), transport.clone()).with_config(RelayConfig {
+        batch_size: 32,
+        max_concurrency: 8,
+        ..Default::default()
+    });
+
+    let started = std::time::Instant::now();
+    assert_eq!(relay.process_pending_once(None).await?, 32);
+    let elapsed = started.elapsed();
+
+    assert_eq!(transport.max_active(), 8);
+    assert!(
+        elapsed < std::time::Duration::from_secs(2),
+        "relay baseline batch took too long: {elapsed:?}"
+    );
+
+    let remaining_pending = entity::Entity::find()
+        .filter(entity::Column::Status.eq(SysEventStatus::Pending))
+        .all(&db)
+        .await?;
+    assert!(
+        remaining_pending.is_empty(),
+        "baseline batch left pending events"
+    );
+    Ok(())
+}
+
+async fn setup_db() -> TestResult<Option<DatabaseConnection>> {
+    let database_url = match std::env::var("RUSTOK_OUTBOX_TEST_DATABASE_URL")
+        .or_else(|_| std::env::var("DATABASE_URL"))
+    {
+        Ok(url) => url,
+        Err(_) => return Ok(None),
+    };
+
+    let mut options = ConnectOptions::new(database_url.clone());
+    options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
+
+    let db = Database::connect(options).await?;
+
+    if database_url.starts_with("postgres://") || database_url.starts_with("postgresql://") {
+        let schema_name = format!("rustok_outbox_test_{}", Uuid::new_v4().simple());
+        db.execute_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            format!(r#"CREATE SCHEMA "{schema_name}""#),
+        ))
+        .await?;
+        db.execute_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            format!(r#"SET search_path TO "{schema_name}""#),
+        ))
+        .await?;
+    }
+
+    let schema_manager = SchemaManager::new(&db);
+
+    SysEventsMigration.up(&schema_manager).await?;
+
+    Ok(Some(db))
+}
+
+async fn setup_sqlite_db() -> TestResult<DatabaseConnection> {
+    let db = Database::connect("sqlite::memory:").await?;
+    let schema_manager = SchemaManager::new(&db);
+    SysEventsMigration.up(&schema_manager).await?;
+    Ok(db)
+}
+
+async fn seed_event(db: &DatabaseConnection) -> TestResult<EventEnvelope> {
+    let envelope = EventEnvelope::new(
+        Uuid::new_v4(),
+        None,
+        DomainEvent::UserAccountRegistered {
+            user_id: Uuid::new_v4(),
+        },
+    );
+
+    let payload = serde_json::to_value(&envelope)?;
+    let model = entity::ActiveModel {
+        id: Set(envelope.id),
+        event_type: Set(envelope.event_type.clone()),
+        schema_version: Set(envelope.schema_version as i16),
+        payload: Set(payload),
+        status: Set(SysEventStatus::Pending),
+        retry_count: Set(0),
+        next_attempt_at: Set(None),
+        last_error: Set(None),
+        claimed_by: Set(None),
+        claimed_at: Set(None),
+        created_at: Set(Utc::now()),
+        dispatched_at: Set(None),
+    };
+    entity::Entity::insert(model)
+        .exec_without_returning(db)
+        .await?;
+
+    Ok(envelope)
+}
+
+fn test_lock() -> &'static Mutex<()> {
+    static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    TEST_LOCK.get_or_init(|| Mutex::new(()))
+}

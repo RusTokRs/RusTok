@@ -1,0 +1,53 @@
+[module]
+slug = "notifications"
+name = "Notifications"
+version = "0.1.0"
+description = "Notification inbox, preferences, bounded fan-out, grouping, digests, and delivery orchestration"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "dual_surface"
+recommended_admin_surfaces = ["leptos-admin"]
+
+[marketplace]
+category = "communication"
+tags = ["notifications", "inbox", "delivery"]
+
+[dependencies]
+outbox = { version_req = ">=0.1.0" }
+
+[crate]
+entry_type = "NotificationsModule"
+
+[provides.graphql]
+query = "graphql::NotificationsQuery"
+mutation = "graphql::NotificationsMutation"
+runtime_data_factory = "graphql::attach_schema_data"
+
+[provides.admin_ui]
+leptos_crate = "rustok-notifications-admin"
+route_segment = "notifications"
+nav_label = "Notifications"
+nav_group = "operations"
+nav_order = 70
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-notifications-storefront"
+slot = "home_before_footer"
+route_segment = "notifications"
+page_title = "Notifications"
+
+[[provides.storefront_ui.components]]
+id = "notifications-header-action"
+component = "NotificationNavigation"
+slot = "header_actions"
+order = 100
+
+[provides.storefront_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"

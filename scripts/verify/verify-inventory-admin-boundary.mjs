@@ -1,0 +1,379 @@
+#!/usr/bin/env node
+// RusTok inventory admin boundary guardrails.
+// Fast source-level checks for Wave 5 inventory-owned transport/write semantics.
+
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
+  ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
+  : path.resolve(scriptDir, "../..");
+const failures = [];
+
+function readRepo(relativePath) {
+  return readFileSync(path.join(repoRoot, relativePath), "utf8");
+}
+
+function fail(message) {
+  failures.push(message);
+}
+
+function assertContains(text, pattern, description) {
+  const found = typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
+  if (!found) {
+    fail(description);
+  }
+}
+
+function assertNotContains(text, pattern, description) {
+  const found = typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
+  if (found) {
+    fail(description);
+  }
+}
+
+function functionBody(text, functionName) {
+  const signature = new RegExp(`(?:pub(?:\\([^)]*\\))?\\s+)?(?:async\\s+)?fn\\s+${functionName}\\s*\\(`);
+  const match = signature.exec(text);
+  if (!match) {
+    fail(`missing function ${functionName}`);
+    return "";
+  }
+
+  const openBrace = text.indexOf("{", match.index);
+  if (openBrace === -1) {
+    fail(`missing body for function ${functionName}`);
+    return "";
+  }
+
+  let depth = 0;
+  for (let index = openBrace; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return text.slice(openBrace, index + 1);
+      }
+    }
+  }
+
+  fail(`unterminated body for function ${functionName}`);
+  return "";
+}
+
+function assertInventoryServiceWriteResults() {
+  const relativePath = "crates/modules/rustok-inventory/src/services/inventory.rs";
+  const source = readRepo(relativePath);
+  const adjustFacade = functionBody(source, "adjust_variant_quantity");
+  const setFacade = functionBody(source, "set_variant_quantity");
+  const adjustUpdate = functionBody(source, "adjust_inventory_update");
+  const setUpdate = functionBody(source, "set_inventory_update");
+
+  assertContains(
+    source,
+    /fn\s+from_quantity_and_policy\s*\(quantity:\s*i32,\s*inventory_policy:\s*&str\)[\s\S]*quantity\s*>\s*0\s*\|\|\s*inventory_policy_allows_backorder\(inventory_policy\)/,
+    `${relativePath}: InventoryQuantityWriteResult must derive in_stock from quantity plus backorder policy`,
+  );
+  assertContains(
+    source,
+    /struct\s+InventoryQuantityUpdate\s*\{[\s\S]*quantity:\s*i32,[\s\S]*inventory_policy:\s*String,[\s\S]*\}/,
+    `${relativePath}: internal InventoryQuantityUpdate must carry quantity and inventory_policy`,
+  );
+
+  for (const [name, body, helperName] of [
+    ["adjust_variant_quantity", adjustFacade, "adjust_inventory_update"],
+    ["set_variant_quantity", setFacade, "set_inventory_update"],
+  ]) {
+    assertContains(
+      body,
+      helperName,
+      `${relativePath}: ${name} must use ${helperName} instead of re-deriving policy state`,
+    );
+    assertContains(
+      body,
+      /InventoryQuantityWriteResult::from_quantity_and_policy\(\s*update\.quantity,\s*&update\.inventory_policy,\s*\)/,
+      `${relativePath}: ${name} must build policy-aware typed write result from committed update`,
+    );
+    assertNotContains(
+      body,
+      "load_variant(&self.db",
+      `${relativePath}: ${name} must not pre-read variant policy outside the mutation path`,
+    );
+  }
+
+  for (const [name, body] of [
+    ["adjust_inventory_update", adjustUpdate],
+    ["set_inventory_update", setUpdate],
+  ]) {
+    assertContains(
+      body,
+      "let inventory_policy = variant.inventory_policy.clone();",
+      `${relativePath}: ${name} must preserve the policy loaded inside the mutation path`,
+    );
+    assertContains(
+      body,
+      "Ok(InventoryQuantityUpdate",
+      `${relativePath}: ${name} must return InventoryQuantityUpdate`,
+    );
+    assertContains(
+      body,
+      "inventory_policy,",
+      `${relativePath}: ${name} must return inventory_policy with the committed quantity`,
+    );
+  }
+
+  assertContains(
+    source,
+    "quantity_write_result_honors_backorder_policy_for_native_write_facades",
+    `${relativePath}: missing targeted policy-aware write result regression test`,
+  );
+}
+
+function assertInventoryAdminTransportBoundary() {
+  const transportPath = "crates/modules/rustok-inventory/admin/src/transport/mod.rs";
+  const transport = readRepo(transportPath);
+  const nativeAdapterPath = "crates/modules/rustok-inventory/admin/src/transport/native_server_adapter.rs";
+  const nativeAdapter = readRepo(nativeAdapterPath);
+  const libPath = "crates/modules/rustok-inventory/admin/src/lib.rs";
+  const lib = readRepo(libPath);
+  const cargoPath = "crates/modules/rustok-inventory/admin/Cargo.toml";
+  const cargo = readRepo(cargoPath);
+  const legacyTransportPath = "crates/modules/rustok-inventory/admin/src/transport.rs";
+  const removedGraphqlMarkers = [
+    "rustok_graphql",
+    "rustok-graphql",
+    "GraphqlRequest",
+    "GraphqlHttpError",
+    "execute_graphql",
+    "/api/graphql",
+    "RUSTOK_GRAPHQL_URL",
+    "CommerceGraphqlInventoryReadAdapter",
+    "removed_graphql_read_transport",
+    "graphql_selected_path_",
+  ];
+
+  if (existsSync(path.join(repoRoot, legacyTransportPath))) {
+    fail(`${legacyTransportPath}: removed GraphQL adapter file must stay absent after native read parity`);
+  }
+
+  const legacyApiPath = "crates/modules/rustok-inventory/admin/src/api.rs";
+  if (existsSync(path.join(repoRoot, legacyApiPath))) {
+    fail(`${legacyApiPath}: remove the pre-FFA api facade after introducing transport/`);
+  }
+
+  for (const [relativePath, source] of [
+    [transportPath, transport],
+    [nativeAdapterPath, nativeAdapter],
+    [libPath, lib],
+    [cargoPath, cargo],
+    ["crates/modules/rustok-inventory/admin/src/core.rs", readRepo("crates/modules/rustok-inventory/admin/src/core.rs")],
+    ["crates/modules/rustok-inventory/admin/src/model.rs", readRepo("crates/modules/rustok-inventory/admin/src/model.rs")],
+    ["crates/modules/rustok-inventory/admin/src/ui/leptos.rs", readRepo("crates/modules/rustok-inventory/admin/src/ui/leptos.rs")],
+  ]) {
+    for (const marker of removedGraphqlMarkers) {
+      assertNotContains(source, marker, `${relativePath}: removed GraphQL fallback marker must stay absent: ${marker}`);
+    }
+  }
+
+  assertContains(lib, "mod transport;", `${libPath}: inventory admin FFA facade must be wired through transport/`);
+  assertNotContains(lib, "mod api;", `${libPath}: UI must not be wired to the pre-FFA api facade`);
+  assertContains(nativeAdapter, "expect_context::<rustok_api::HostRuntimeContext>()", `${nativeAdapterPath}: native functions must consume neutral host runtime context`);
+  assertContains(nativeAdapter, "runtime_ctx.db_clone()", `${nativeAdapterPath}: native functions must read DB from neutral host runtime context`);
+  assertContains(nativeAdapter, "shared_get::<rustok_outbox::TransactionalEventBus>()", `${nativeAdapterPath}: native write functions must read the typed event bus from host runtime context`);
+
+  for (const functionName of [
+    "set_variant_quantity",
+    "adjust_variant_quantity",
+    "reserve_variant_quantity",
+    "release_reservation_quantity",
+    "check_variant_availability",
+  ]) {
+    const body = functionBody(nativeAdapter, functionName);
+    assertNotContains(body, "token", `${nativeAdapterPath}: ${functionName} must not accept auth tokens for a GraphQL fallback path`);
+    assertNotContains(body, "tenant_slug", `${nativeAdapterPath}: ${functionName} must not accept tenant slugs for a GraphQL fallback path`);
+  }
+
+  for (const functionName of [
+    "fetch_bootstrap",
+    "fetch_products",
+    "fetch_product",
+  ]) {
+    const body = functionBody(nativeAdapter, functionName);
+    assertNotContains(body, "token", `${nativeAdapterPath}: ${functionName} must not accept auth tokens for a GraphQL fallback path`);
+    assertNotContains(body, "tenant_slug", `${nativeAdapterPath}: ${functionName} must not accept tenant slugs for a GraphQL fallback path`);
+  }
+
+
+  for (const functionName of [
+    "fetch_bootstrap",
+    "fetch_products",
+    "fetch_product",
+    "set_variant_quantity",
+    "adjust_variant_quantity",
+    "reserve_variant_quantity",
+    "release_reservation_quantity",
+    "check_variant_availability",
+  ]) {
+    const body = functionBody(transport, functionName);
+    assertContains(
+      body,
+      `native_server_adapter::${functionName}`,
+      `${transportPath}: ${functionName} must route through the explicit native_server_adapter`,
+    );
+  }
+
+  for (const endpoint of [
+    'endpoint = "inventory/bootstrap"',
+    'endpoint = "inventory/products"',
+    'endpoint = "inventory/product"',
+    'endpoint = "inventory/variant/set-quantity"',
+    'endpoint = "inventory/variant/adjust-quantity"',
+    'endpoint = "inventory/variant/reserve-quantity"',
+    'endpoint = "inventory/variant/release-reservation"',
+    'endpoint = "inventory/variant/check-availability"',
+  ]) {
+    assertContains(nativeAdapter, endpoint, `${nativeAdapterPath}: missing native server-function endpoint ${endpoint}`);
+  }
+
+
+  for (const [relativePath, source] of [
+    ["crates/modules/rustok-inventory/admin/src/ui/leptos.rs", readRepo("crates/modules/rustok-inventory/admin/src/ui/leptos.rs")],
+    ["crates/modules/rustok-inventory/admin/locales/en.ftl", readRepo("crates/modules/rustok-inventory/admin/locales/en.ftl")],
+    ["crates/modules/rustok-inventory/admin/locales/ru.ftl", readRepo("crates/modules/rustok-inventory/admin/locales/ru.ftl")],
+  ]) {
+    assertNotContains(
+      source,
+      "remaining inventory mutations",
+      `${relativePath}: admin UI copy must not claim current stock operations are still split from umbrella transport`,
+    );
+    assertContains(
+      source,
+      "native inventory facade",
+      `${relativePath}: admin UI copy should describe the module-owned native inventory facade`,
+    );
+  }
+}
+
+function assertCommercePublicChannelAvailabilityBoundary() {
+  const facadeCallerPaths = [
+    "crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs",
+    "crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs",
+  ];
+
+  for (const relativePath of facadeCallerPaths) {
+    const source = readRepo(relativePath);
+    assertContains(
+      source,
+      "check_variant_availability_for_public_channel",
+      `${relativePath}: public-channel inventory availability must use the inventory-owned facade`,
+    );
+    assertNotContains(
+      source,
+      "load_available_inventory_for_variant_in_public_channel",
+      `${relativePath}: must not call channel-visible inventory loaders directly from commerce callers`,
+    );
+    assertNotContains(
+      source,
+      "inventory_policy_allows_backorder",
+      `${relativePath}: must not duplicate backorder policy branching outside the inventory facade`,
+    );
+  }
+
+  const checkoutPath = "crates/modules/rustok-commerce/src/services/checkout.rs";
+  const checkout = readRepo(checkoutPath);
+  assertContains(
+    checkout,
+    "inventory_reservation_port",
+    `${checkoutPath}: checkout availability must use the typed inventory provider port`,
+  );
+  assertContains(
+    checkout,
+    ".check_availability(",
+    `${checkoutPath}: checkout availability must invoke InventoryReservationPort`,
+  );
+  assertContains(
+    checkout,
+    "InventoryAvailabilityRequest {",
+    `${checkoutPath}: checkout availability must pass a typed inventory request`,
+  );
+  assertNotContains(
+    checkout,
+    "check_variant_availability_for_public_channel",
+    `${checkoutPath}: checkout must not bypass InventoryReservationPort through the legacy public helper`,
+  );
+  assertNotContains(
+    checkout,
+    "load_available_inventory_for_variant_in_public_channel",
+    `${checkoutPath}: checkout must not call channel-visible inventory loaders directly`,
+  );
+  assertNotContains(
+    checkout,
+    "inventory_policy_allows_backorder",
+    `${checkoutPath}: checkout must not duplicate inventory backorder policy branching`,
+  );
+  const storefrontLineItemResolutionPath = "crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs";
+  const storefrontLineItemResolution = readRepo(storefrontLineItemResolutionPath);
+  assertContains(
+    storefrontLineItemResolution,
+    "check_variant_availability_for_public_channel",
+    `${storefrontLineItemResolutionPath}: storefront product projection must use the inventory-owned projection facade`,
+  );
+  assertContains(
+    storefrontLineItemResolution,
+    "PublicChannelInventoryVariantProjectionInput",
+    `${storefrontLineItemResolutionPath}: storefront product projection must pass typed borrowed inventory projection inputs`,
+  );
+  assertNotContains(
+    storefrontLineItemResolution,
+    "load_available_inventory_by_variant_for_public_channel",
+    `${storefrontLineItemResolutionPath}: storefront product projection must not assemble availability quantities directly`,
+  );
+  assertNotContains(
+    storefrontLineItemResolution,
+    "inventory_policy_allows_backorder",
+    `${storefrontLineItemResolutionPath}: storefront product projection must not duplicate backorder policy branching`,
+  );
+  assertNotContains(
+    storefrontLineItemResolution,
+    "inventory_policy.clone()",
+    `${storefrontLineItemResolutionPath}: storefront projection input should borrow inventory policy instead of cloning DTO strings`,
+  );
+}
+
+function assertInventoryDocsBoundaryEvidence() {
+  const planPath = "crates/modules/rustok-inventory/docs/implementation-plan.md";
+  const plan = readRepo(planPath);
+
+  assertContains(
+    plan,
+    "Inventory admin stock operations are owned by native/transport mutations",
+    `${planPath}: implementation plan must mark current inventory admin stock operations as native/transport covered`,
+  );
+  assertContains(
+    plan,
+    "verification/CI evidence slice",
+    `${planPath}: next step must move to verification/CI evidence after current admin stock operations are native`,
+  );
+  assertNotContains(
+    plan,
+    "- [ ] move remaining inventory admin UI stock operations",
+    `${planPath}: implementation plan must not keep stale unchecked admin UI stock-operation split item`,
+  );
+}
+
+assertInventoryServiceWriteResults();
+assertInventoryAdminTransportBoundary();
+assertCommercePublicChannelAvailabilityBoundary();
+assertInventoryDocsBoundaryEvidence();
+
+if (failures.length > 0) {
+  console.error("Inventory admin boundary check failed:");
+  failures.forEach((failure) => console.error(`✗ ${failure}`));
+  process.exit(Math.min(failures.length, 255));
+}
+
+console.log("✔ Inventory admin boundary invariants passed");

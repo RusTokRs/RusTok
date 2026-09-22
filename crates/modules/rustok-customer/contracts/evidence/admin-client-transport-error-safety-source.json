@@ -1,0 +1,53 @@
+{
+  "status": "customer_admin_client_transport_error_safety_source_unvalidated",
+  "reviewed_at": "2026-07-30",
+  "boundary": "customer_admin_client_transport",
+  "public_error_type": "ApiError",
+  "public_message": "Customer admin request could not be completed",
+  "covered_operations": [
+    "fetch_bootstrap",
+    "fetch_customers",
+    "fetch_customer_detail",
+    "create_customer",
+    "update_customer"
+  ],
+  "confirmed_gap": {
+    "raw_server_fn_string_public": true,
+    "source_pattern": "native_server_adapter::ApiError::ServerFn(value.to_string())",
+    "context_free_mapping": "public facade returned private native ApiError unchanged"
+  },
+  "source_contract": {
+    "native_server_adapter_changed": false,
+    "server_functions_changed": false,
+    "request_response_dto_changed": false,
+    "operation_count": 5,
+    "context_created_before_native_call": true,
+    "private_native_error_reexported": false,
+    "public_error_string_payload": false,
+    "static_public_message": true,
+    "original_error_logged_privately": true,
+    "per_call_correlation_logging": true,
+    "safe_request_shape_only": true,
+    "customer_id_values_logged": false,
+    "search_values_logged": false,
+    "payload_values_logged": false,
+    "pagination_values_logged": false
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "hydrate_compile_proven": false,
+    "ssr_compile_proven": false,
+    "mounted_runtime_proven": false
+  },
+  "remaining": [
+    "Run the focused source verifier",
+    "Compile the customer admin package for default, hydrate, and ssr profiles",
+    "Retain mounted browser and server-function failure evidence",
+    "Continue the broad ecommerce mapper cleanup in other owners"
+  ]
+}

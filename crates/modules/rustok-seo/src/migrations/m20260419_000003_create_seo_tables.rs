@@ -1,0 +1,293 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(SeoRedirects::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(SeoRedirects::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(SeoRedirects::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(SeoRedirects::MatchType)
+                            .string_len(16)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoRedirects::SourcePattern)
+                            .string_len(512)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoRedirects::TargetUrl)
+                            .string_len(1024)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoRedirects::StatusCode)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(SeoRedirects::ExpiresAt).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(SeoRedirects::IsActive)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .col(
+                        ColumnDef::new(SeoRedirects::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoRedirects::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_seo_redirects_unique_match")
+                    .table(SeoRedirects::Table)
+                    .col(SeoRedirects::TenantId)
+                    .col(SeoRedirects::MatchType)
+                    .col(SeoRedirects::SourcePattern)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(SeoRevisions::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(SeoRevisions::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(SeoRevisions::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(SeoRevisions::TargetKind)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(SeoRevisions::TargetId).uuid().not_null())
+                    .col(ColumnDef::new(SeoRevisions::Revision).integer().not_null())
+                    .col(ColumnDef::new(SeoRevisions::Note).string_len(512))
+                    .col(
+                        ColumnDef::new(SeoRevisions::Payload)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoRevisions::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_seo_revisions_target_revision")
+                    .table(SeoRevisions::Table)
+                    .col(SeoRevisions::TenantId)
+                    .col(SeoRevisions::TargetKind)
+                    .col(SeoRevisions::TargetId)
+                    .col(SeoRevisions::Revision)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(SeoSitemapJobs::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(SeoSitemapJobs::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(SeoSitemapJobs::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(SeoSitemapJobs::Status)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoSitemapJobs::FileCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(ColumnDef::new(SeoSitemapJobs::StartedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(SeoSitemapJobs::CompletedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(SeoSitemapJobs::LastError).string_len(2048))
+                    .col(
+                        ColumnDef::new(SeoSitemapJobs::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoSitemapJobs::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(SeoSitemapFiles::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(SeoSitemapFiles::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(SeoSitemapFiles::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(SeoSitemapFiles::JobId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(SeoSitemapFiles::Path)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoSitemapFiles::UrlCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(ColumnDef::new(SeoSitemapFiles::Content).text().not_null())
+                    .col(
+                        ColumnDef::new(SeoSitemapFiles::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoSitemapFiles::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(SeoSitemapFiles::Table, SeoSitemapFiles::JobId)
+                            .to(SeoSitemapJobs::Table, SeoSitemapJobs::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_seo_sitemap_files_job_path")
+                    .table(SeoSitemapFiles::Table)
+                    .col(SeoSitemapFiles::JobId)
+                    .col(SeoSitemapFiles::Path)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(SeoSitemapFiles::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(SeoSitemapJobs::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(SeoRevisions::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(SeoRedirects::Table).to_owned())
+            .await?;
+        Ok(())
+    }
+}
+
+#[derive(Iden)]
+enum SeoRedirects {
+    Table,
+    Id,
+    TenantId,
+    MatchType,
+    SourcePattern,
+    TargetUrl,
+    StatusCode,
+    ExpiresAt,
+    IsActive,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum SeoRevisions {
+    Table,
+    Id,
+    TenantId,
+    TargetKind,
+    TargetId,
+    Revision,
+    Note,
+    Payload,
+    CreatedAt,
+}
+
+#[derive(Iden)]
+enum SeoSitemapJobs {
+    Table,
+    Id,
+    TenantId,
+    Status,
+    FileCount,
+    StartedAt,
+    CompletedAt,
+    LastError,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum SeoSitemapFiles {
+    Table,
+    Id,
+    TenantId,
+    JobId,
+    Path,
+    UrlCount,
+    Content,
+    CreatedAt,
+    UpdatedAt,
+}

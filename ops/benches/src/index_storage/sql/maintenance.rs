@@ -1,0 +1,116 @@
+use super::{Prototype, WorkloadContext};
+
+pub fn churn_cycle_sql(prototype: Prototype, context: &WorkloadContext) -> String {
+    match prototype {
+        Prototype::Jsonb => jsonb_cycle(context),
+    }
+}
+
+fn jsonb_cycle(context: &WorkloadContext) -> String {
+    let tenant = context.tenant;
+    let locale = &context.locale;
+    let update_end = context.mutation_batch;
+    let churn_start = context.churn_first_product;
+
+    format!(
+        r#"
+UPDATE idx_bench_jsonb.entity AS entity
+SET source_version = entity.source_version + 1,
+    payload = jsonb_set(
+        jsonb_set(
+            entity.payload,
+            '{{price_minor}}',
+            to_jsonb((entity.payload->>'price_minor')::bigint + 17),
+            false
+        ),
+        '{{rating_milli}}',
+        to_jsonb((entity.payload->>'rating_milli')::bigint + 1),
+        false
+    )
+FROM idx_bench_source.product AS source
+WHERE source.tenant_no = 1
+  AND source.locale = {locale}
+  AND source.product_no <= {update_end}
+  AND entity.tenant_id = {tenant}
+  AND entity.module_name = 'product'
+  AND entity.entity_name = 'product'
+  AND entity.schema_version = 1
+  AND entity.locale = source.locale
+  AND entity.entity_id = source.product_id;
+
+DELETE FROM idx_bench_jsonb.link AS link
+USING idx_bench_source.product AS source
+WHERE source.tenant_no = 1
+  AND source.locale = {locale}
+  AND source.product_no >= {churn_start}
+  AND link.tenant_id = {tenant}
+  AND link.source_module = 'product'
+  AND link.source_entity = 'product'
+  AND link.source_schema_version = 1
+  AND link.source_locale = source.locale
+  AND link.source_entity_id = source.product_id;
+
+DELETE FROM idx_bench_jsonb.entity AS entity
+USING idx_bench_source.product AS source
+WHERE source.tenant_no = 1
+  AND source.locale = {locale}
+  AND source.product_no >= {churn_start}
+  AND entity.tenant_id = {tenant}
+  AND entity.module_name = 'product'
+  AND entity.entity_name = 'product'
+  AND entity.schema_version = 1
+  AND entity.locale = source.locale
+  AND entity.entity_id = source.product_id;
+
+INSERT INTO idx_bench_jsonb.entity (
+    tenant_id, module_name, entity_name, schema_version, entity_id, locale,
+    source_version, payload
+)
+SELECT
+    tenant_id,
+    'product',
+    'product',
+    1,
+    product_id,
+    locale,
+    source_version,
+    jsonb_build_object(
+        'status', status,
+        'title', title,
+        'price_minor', price_minor,
+        'rating_milli', rating_milli,
+        'tags', to_jsonb(tags),
+        'updated_at', updated_at
+    )
+FROM idx_bench_source.product
+WHERE tenant_no = 1
+  AND locale = {locale}
+  AND product_no >= {churn_start};
+
+INSERT INTO idx_bench_jsonb.link (
+    tenant_id, source_module, source_entity, source_schema_version,
+    source_entity_id, source_locale, link_name, ordinal,
+    target_module, target_entity, target_schema_version,
+    target_entity_id, target_locale
+)
+SELECT
+    tenant_id,
+    'product',
+    'product',
+    1,
+    product_id,
+    locale,
+    'variants',
+    (variant_no - 1)::smallint,
+    'product',
+    'variant',
+    1,
+    variant_id,
+    locale
+FROM idx_bench_source.variant
+WHERE tenant_no = 1
+  AND locale = {locale}
+  AND product_no >= {churn_start};
+"#
+    )
+}

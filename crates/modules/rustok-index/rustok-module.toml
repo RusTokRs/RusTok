@@ -1,0 +1,22 @@
+[module]
+slug = "index"
+name = "Index"
+version = "0.1.0"
+description = "Cross-module relational index and query engine."
+ownership = "first_party"
+trust_level = "core"
+ui_classification = "admin_only"
+recommended_admin_surfaces = ["leptos-admin"]
+
+[crate]
+entry_type = "IndexModule"
+
+[provides.admin_ui]
+leptos_crate = "rustok-index-admin"
+route_segment = "index"
+nav_label = "Index"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"

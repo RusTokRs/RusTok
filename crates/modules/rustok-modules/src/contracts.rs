@@ -1,0 +1,384 @@
+//! Stable, transport-neutral contracts for module control-plane commands.
+//!
+//! These types deliberately contain no SeaORM, Axum, GraphQL, or compile-time
+//! module-registry types. Owner services accept them before performing a write
+//! and transports map their serialized form without recreating error taxonomy.
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+/// Optimistic-concurrency revision of one durable control-plane aggregate.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ControlPlaneRevision(pub u64);
+
+impl ControlPlaneRevision {
+    pub const INITIAL: Self = Self(0);
+
+    pub const fn next(self) -> Self {
+        Self(self.0 + 1)
+    }
+
+    pub fn require(self, expected: Self) -> Result<Self, ModuleControlPlaneError> {
+        if self == expected {
+            Ok(self.next())
+        } else {
+            Err(ModuleControlPlaneError::conflict(
+                ModuleErrorCode::RevisionConflict,
+                "The command was based on a stale aggregate revision.",
+                serde_json::json!({ "expected_revision": expected.0, "actual_revision": self.0 }),
+            ))
+        }
+    }
+}
+
+/// Mandatory request-scoped evidence carried by every owner command.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleCommandContext {
+    /// Authenticated owner identity. Module control-plane actors are platform
+    /// principals and therefore use the same non-nil UUID identity as the
+    /// durable event and audit contracts.
+    pub actor_id: Uuid,
+    pub tenant_id: Option<Uuid>,
+    pub trace_id: String,
+    pub correlation_id: Uuid,
+    pub idempotency_key: Uuid,
+}
+
+/// Versioned owner command envelope used by mutable control-plane services.
+///
+/// The envelope separates request evidence from the aggregate CAS precondition
+/// and leaves the payload owned by the concrete catalog, installation,
+/// composition, governance, or build command.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RevisionedModuleCommand<T> {
+    pub context: ModuleCommandContext,
+    pub aggregate_kind: ModuleSnapshotKind,
+    pub aggregate_id: String,
+    pub expected_revision: ControlPlaneRevision,
+    pub payload: T,
+}
+
+impl<T> RevisionedModuleCommand<T> {
+    pub fn validate(&self) -> Result<(), ModuleControlPlaneError> {
+        self.context.validate()?;
+        if self.aggregate_id.trim().is_empty() {
+            return Err(ModuleControlPlaneError::validation(
+                ModuleErrorCode::Validation,
+                "`aggregate_id` must not be empty.",
+                serde_json::json!({ "field": "aggregate_id" }),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn advance(
+        &self,
+        actual_revision: ControlPlaneRevision,
+    ) -> Result<ControlPlaneRevision, ModuleControlPlaneError> {
+        actual_revision.require(self.expected_revision)
+    }
+}
+
+impl ModuleCommandContext {
+    pub fn validate(&self) -> Result<(), ModuleControlPlaneError> {
+        if self.actor_id.is_nil() {
+            return Err(ModuleControlPlaneError::validation(
+                ModuleErrorCode::InvalidCommandContext,
+                "`actor_id` must be a non-nil UUID.",
+                serde_json::json!({ "field": "actor_id" }),
+            ));
+        }
+        if self.trace_id.trim().is_empty() {
+            return Err(ModuleControlPlaneError::validation(
+                ModuleErrorCode::InvalidCommandContext,
+                "`trace_id` must not be empty.",
+                serde_json::json!({ "field": "trace_id" }),
+            ));
+        }
+        if self.trace_id.len() > 512 {
+            return Err(ModuleControlPlaneError::validation(
+                ModuleErrorCode::InvalidCommandContext,
+                "`trace_id` exceeds the durable event metadata limit.",
+                serde_json::json!({ "field": "trace_id", "limit": 512 }),
+            ));
+        }
+        for (name, value) in [
+            ("correlation_id", self.correlation_id),
+            ("idempotency_key", self.idempotency_key),
+        ] {
+            if value.is_nil() {
+                return Err(ModuleControlPlaneError::validation(
+                    ModuleErrorCode::InvalidCommandContext,
+                    format!("`{name}` must be a non-nil UUID."),
+                    serde_json::json!({ "field": name }),
+                ));
+            }
+        }
+        if self.tenant_id.is_some_and(|tenant_id| tenant_id.is_nil()) {
+            return Err(ModuleControlPlaneError::validation(
+                ModuleErrorCode::InvalidCommandContext,
+                "`tenant_id` must be a non-nil UUID when the command is tenant-scoped.",
+                serde_json::json!({ "field": "tenant_id" }),
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Stable error code families exposed by owner transports.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ModuleErrorCode {
+    Validation,
+    NotFound,
+    Conflict,
+    RevisionConflict,
+    PermissionDenied,
+    PolicyDenied,
+    DependencyConflict,
+    InvalidCommandContext,
+    Unavailable,
+    Internal,
+    Unknown(String),
+}
+
+impl ModuleErrorCode {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Validation => "validation",
+            Self::NotFound => "not_found",
+            Self::Conflict => "conflict",
+            Self::RevisionConflict => "revision_conflict",
+            Self::PermissionDenied => "permission_denied",
+            Self::PolicyDenied => "policy_denied",
+            Self::DependencyConflict => "dependency_conflict",
+            Self::InvalidCommandContext => "invalid_command_context",
+            Self::Unavailable => "unavailable",
+            Self::Internal => "internal",
+            Self::Unknown(value) => value,
+        }
+    }
+}
+
+impl Serialize for ModuleErrorCode {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for ModuleErrorCode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(match value.as_str() {
+            "validation" => Self::Validation,
+            "not_found" => Self::NotFound,
+            "conflict" => Self::Conflict,
+            "revision_conflict" => Self::RevisionConflict,
+            "permission_denied" => Self::PermissionDenied,
+            "policy_denied" => Self::PolicyDenied,
+            "dependency_conflict" => Self::DependencyConflict,
+            "invalid_command_context" => Self::InvalidCommandContext,
+            "unavailable" => Self::Unavailable,
+            "internal" => Self::Internal,
+            _ => Self::Unknown(value),
+        })
+    }
+}
+
+/// One serialized owner error envelope for GraphQL, native, and future worker adapters.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ModuleControlPlaneError {
+    pub code: ModuleErrorCode,
+    pub message: String,
+    pub details: Box<serde_json::Value>,
+    pub retryable: bool,
+}
+
+impl std::fmt::Display for ModuleControlPlaneError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.code.as_str(), self.message)
+    }
+}
+
+impl std::error::Error for ModuleControlPlaneError {}
+
+impl ModuleControlPlaneError {
+    pub fn validation(
+        code: ModuleErrorCode,
+        message: impl Into<String>,
+        details: serde_json::Value,
+    ) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            details: Box::new(details),
+            retryable: false,
+        }
+    }
+
+    pub fn conflict(
+        code: ModuleErrorCode,
+        message: impl Into<String>,
+        details: serde_json::Value,
+    ) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            details: Box::new(details),
+            retryable: false,
+        }
+    }
+}
+
+/// Kinds of durable control-plane state that have a serializable snapshot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleSnapshotKind {
+    Catalog,
+    Release,
+    Artifact,
+    Installation,
+    EffectivePolicy,
+    Composition,
+    Governance,
+    Lifecycle,
+    Recovery,
+    Build,
+}
+
+/// Transport-neutral snapshot envelope. `state` is a versioned owner DTO for
+/// the selected kind, keeping transport evolution independent from persistence.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ModuleControlPlaneSnapshot {
+    pub kind: ModuleSnapshotKind,
+    pub aggregate_id: String,
+    pub revision: ControlPlaneRevision,
+    pub captured_at: DateTime<Utc>,
+    pub state: serde_json::Value,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn context() -> ModuleCommandContext {
+        ModuleCommandContext {
+            actor_id: Uuid::new_v4(),
+            tenant_id: Some(Uuid::new_v4()),
+            trace_id: "trace-1".into(),
+            correlation_id: Uuid::new_v4(),
+            idempotency_key: Uuid::new_v4(),
+        }
+    }
+
+    #[test]
+    fn contracts_round_trip_through_json() {
+        let snapshot = ModuleControlPlaneSnapshot {
+            kind: ModuleSnapshotKind::Installation,
+            aggregate_id: "tenant:00000000-0000-0000-0000-000000000000/sample".into(),
+            revision: ControlPlaneRevision(4),
+            captured_at: Utc::now(),
+            state: serde_json::json!({ "status": "installed" }),
+        };
+        let decoded: ModuleControlPlaneSnapshot =
+            serde_json::from_str(&serde_json::to_string(&snapshot).expect("serialize"))
+                .expect("deserialize");
+        assert_eq!(decoded, snapshot);
+    }
+
+    #[test]
+    fn unknown_error_codes_remain_explicit_and_round_trip() {
+        let error: ModuleControlPlaneError = serde_json::from_value(serde_json::json!({
+            "code": "future_code", "message": "future", "details": {}, "retryable": false
+        }))
+        .expect("deserialize");
+        assert_eq!(error.code, ModuleErrorCode::Unknown("future_code".into()));
+        assert_eq!(
+            serde_json::to_value(error).expect("serialize")["code"],
+            "future_code"
+        );
+    }
+
+    #[test]
+    fn stale_revision_cannot_advance() {
+        assert!(matches!(
+            ControlPlaneRevision(3).require(ControlPlaneRevision(2)),
+            Err(ModuleControlPlaneError {
+                code: ModuleErrorCode::RevisionConflict,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn command_context_requires_audit_and_idempotency_evidence() {
+        context().validate().expect("valid context");
+        for field in ["actor_id", "trace_id", "correlation_id", "idempotency_key"] {
+            let mut invalid = context();
+            match field {
+                "actor_id" => invalid.actor_id = Uuid::nil(),
+                "trace_id" => invalid.trace_id.clear(),
+                "correlation_id" => invalid.correlation_id = Uuid::nil(),
+                "idempotency_key" => invalid.idempotency_key = Uuid::nil(),
+                _ => unreachable!("test field is exhaustive"),
+            }
+            assert!(matches!(
+                invalid.validate(),
+                Err(ModuleControlPlaneError {
+                    code: ModuleErrorCode::InvalidCommandContext,
+                    ..
+                })
+            ));
+        }
+
+        let mut nil_tenant = context();
+        nil_tenant.tenant_id = Some(Uuid::nil());
+        assert!(matches!(
+            nil_tenant.validate(),
+            Err(ModuleControlPlaneError {
+                code: ModuleErrorCode::InvalidCommandContext,
+                ..
+            })
+        ));
+
+        let mut oversized_trace = context();
+        oversized_trace.trace_id = "x".repeat(513);
+        assert!(matches!(
+            oversized_trace.validate(),
+            Err(ModuleControlPlaneError {
+                code: ModuleErrorCode::InvalidCommandContext,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn revisioned_command_rejects_stale_writes() {
+        let command = RevisionedModuleCommand {
+            context: context(),
+            aggregate_kind: ModuleSnapshotKind::Installation,
+            aggregate_id: "installation:1".into(),
+            expected_revision: ControlPlaneRevision(2),
+            payload: serde_json::json!({ "action": "install" }),
+        };
+        command.validate().expect("valid command");
+        assert_eq!(
+            command.advance(ControlPlaneRevision(2)).expect("advance"),
+            ControlPlaneRevision(3)
+        );
+        assert!(matches!(
+            command.advance(ControlPlaneRevision(3)),
+            Err(ModuleControlPlaneError {
+                code: ModuleErrorCode::RevisionConflict,
+                ..
+            })
+        ));
+    }
+}

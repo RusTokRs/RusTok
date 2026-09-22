@@ -1,0 +1,81 @@
+#!/usr/bin/env node
+
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, "..", "..", "..", "..", "..");
+
+const moduleArg = process.argv[2] ?? "pages";
+const moduleToCrate = {
+  pages: "rustok-pages",
+  forum: "rustok-forum",
+};
+const crateName = moduleToCrate[moduleArg];
+if (!crateName) {
+  console.error(`[${path.basename(__filename, ".mjs")}] FAIL`);
+  console.error(`- unsupported module '${moduleArg}'. supported: ${Object.keys(moduleToCrate).join(", ")}`);
+  process.exit(1);
+}
+
+const pagesManifest = path.join(repoRoot, "crates", "modules", crateName, "rustok-module.toml");
+
+function fail(message) {
+  console.error("[verify-page-builder-toggle-profiles-consistency] FAIL");
+  console.error(`- ${message}`);
+  process.exit(1);
+}
+
+if (!fs.existsSync(pagesManifest)) {
+  fail(`missing file: ${pagesManifest}`);
+}
+
+const manifest = fs.readFileSync(pagesManifest, "utf8");
+
+const profileExpectations = {
+  all_on: {
+    "builder.enabled": "true",
+    "builder.preview.enabled": "true",
+    "builder.properties.enabled": "true",
+    "builder.publish.enabled": "true",
+  },
+  publish_off: {
+    "builder.enabled": "true",
+    "builder.preview.enabled": "true",
+    "builder.properties.enabled": "true",
+    "builder.publish.enabled": "false",
+  },
+  preview_off: {
+    "builder.enabled": "true",
+    "builder.preview.enabled": "false",
+    "builder.properties.enabled": "true",
+    "builder.publish.enabled": "false",
+  },
+  builder_off: {
+    "builder.enabled": "false",
+    "builder.preview.enabled": "false",
+    "builder.properties.enabled": "false",
+    "builder.publish.enabled": "false",
+  },
+};
+
+for (const [profile, flags] of Object.entries(profileExpectations)) {
+  const sectionRegex = new RegExp(`${profile}\\s*=\\s*\\[(.*?)\\]`, "s");
+  const sectionMatch = manifest.match(sectionRegex);
+  if (!sectionMatch?.[1]) {
+    fail(`missing toggle profile section: ${profile}`);
+  }
+
+  const sectionBody = sectionMatch[1];
+  for (const [flag, value] of Object.entries(flags)) {
+    const expected = `${flag}=${value}`;
+    if (!sectionBody.includes(expected)) {
+      fail(`profile '${profile}' is missing expected entry '${expected}'`);
+    }
+  }
+}
+
+console.log("[verify-page-builder-toggle-profiles-consistency] PASS");
+console.log(`module=${moduleArg}; crate=${crateName}`);

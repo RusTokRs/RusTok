@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "status": "payment_checkout_execution_owner_error_diagnostic_safety_source_reviewed_unvalidated",
+  "owner": "rustok-payment",
+  "boundary": "checkout_payment_execution_port",
+  "scope": "PaymentError to PortError owner mapper diagnostics",
+  "source_contract": {
+    "payment_error_variant_count": 11,
+    "complete_payment_error_logged": false,
+    "database_error_text_logged": false,
+    "validation_text_logged": false,
+    "uuid_value_logged": false,
+    "provider_id_text_logged": false,
+    "provider_operation_text_logged": false,
+    "transition_text_logged": false,
+    "static_error_variant_logged": true,
+    "text_field_shape_logged": true,
+    "uuid_field_shape_logged": true,
+    "opaque_database_payload_presence_logged": true,
+    "stable_owner_code_logged": true,
+    "context_shape_preserved": true,
+    "public_port_error_mapping_preserved": true,
+    "manual_reconciliation_routing_preserved": true,
+    "provider_reconciliation_policy_changed": false,
+    "payment_lifecycle_changed": false,
+    "provider_execution_changed": false,
+    "uuid_serde_diagnostics_changed": false,
+    "provider_checkpoint_diagnostics_changed": false,
+    "remaining_payment_execution_diagnostics_open": true,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "notes": [
+    "The owner mapper retains the same stable code selection before converting PaymentError to PortError.",
+    "Diagnostics retain only a static variant, aggregate text-field count and length, UUID-field count and non-nil count, and opaque database-payload presence.",
+    "The complete database, validation, transition, provider, and identity payloads are not logged.",
+    "All eleven PaymentError match arms and their public PortError codes, kinds, messages, and retryability remain unchanged.",
+    "Provider invalid-response and outcome-unknown variants still route through manual reconciliation.",
+    "UUID/serde, manual-reconciliation reason, local persistence, and provider checkpoint diagnostics remain separate open slices.",
+    "No payment FFA or FBA status is promoted from source inspection."
+  ]
+}

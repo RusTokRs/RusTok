@@ -1,0 +1,335 @@
+#!/usr/bin/env node
+
+import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
+const prepareScript = path.resolve('scripts/verify/prepare-index-storage-decision.mjs');
+const finalizeScript = path.resolve('scripts/verify/finalize-index-storage-adr.mjs');
+const verifyScript = path.resolve('scripts/verify/verify-index-storage-adr.mjs');
+const commit = '0123456789abcdef0123456789abcdef01234567';
+const prototypes = ['jsonb', 'typed_eav', 'hot_projection'];
+const readWorkloads = ['status_equality', 'price_range_sort'];
+const mutationWorkloads = ['update_product_batch', 'delete_product_batch'];
+const markdownCode = String.fromCharCode(96);
+const comparableDatabaseFields = [
+  'server_version_num',
+  'shared_buffers',
+  'effective_cache_size',
+  'work_mem',
+  'random_page_cost',
+  'jit',
+  'standard_conforming_strings',
+  'timezone',
+  'date_style',
+  'extra_float_digits',
+];
+const databaseSettingsSource =
+  'read-report.json database metadata observed from the active PostgreSQL benchmark session after exact equality was verified against mutation-report.json and maintenance-report.json active-session metadata';
+const decisionFlags = {
+  required_scales_present: true,
+  same_packet_contract_version: true,
+  same_result_digest_contract: true,
+  same_repository: true,
+  same_commit: true,
+  same_postgres_image: true,
+  same_repetitions: true,
+  same_churn_cycles: true,
+  same_database_settings: true,
+  same_dataset_shape: true,
+  same_source_oracle_shape: true,
+  same_report_shape: true,
+  same_mutation_effect_contract: true,
+};
+
+const scale = (name, factor) => ({
+  scale: name,
+  provenance: {
+    packet_contract_version: 2,
+    result_digest_contract: 'ordered_length_prefixed_json_v1',
+    repository: 'RusTokRs/RusTok',
+    commit,
+    postgres_image: 'postgres:16',
+  },
+  read: prototypes.map((prototype) => ({
+    prototype,
+    schema_bytes: 1_024 * factor,
+    workloads: readWorkloads.map((workload, index) => ({
+      name: workload,
+      warm_median_execution_ms: (index + 1) * factor,
+      plan_shape_variants: 1,
+    })),
+  })),
+  mutation: prototypes.map((prototype) => ({
+    prototype,
+    workloads: mutationWorkloads.map((workload, index) => ({
+      name: workload,
+      median_execution_ms: (index + 2) * factor,
+      median_maximum_node_wal_bytes: (index + 3) * 1_024 * factor,
+    })),
+  })),
+  maintenance: prototypes.map((prototype) => ({
+    prototype,
+    after_churn: {
+      field_rows: prototype === 'typed_eav' ? 1_400_160 * factor : null,
+    },
+    churn_growth_percent: 5 * factor,
+    vacuum_duration_ms: 20 * factor,
+  })),
+});
+
+const comparison = () => ({
+  generated_at: '2026-07-24T12:00:00Z',
+  methodology: {
+    source_oracle: 'normalized idx_bench_source workload result digests',
+    result_digest: 'ordered_length_prefixed_json_v1',
+    evidence_validation: 'fail closed on report shape, metrics, plans, effects, ordering, digest semantics, and cardinalities',
+    first_run: 'first EXPLAIN ANALYZE repetition',
+    warm_run: 'median after the first repetition; not a guaranteed OS cold-cache comparison',
+    automatic_winner_selection: false,
+    comparable_database_fields: [...comparableDatabaseFields],
+    database_settings_source: databaseSettingsSource,
+  },
+  decision_ready: true,
+  decision_contract: { ...decisionFlags },
+  scales: [scale('100k', 1), scale('1m', 10)],
+  cross_scale_ratios: {
+    prototypes: prototypes.map((prototype) => ({
+      prototype,
+      schema_bytes_ratio_1m_to_100k: 10,
+      read_workloads: readWorkloads.map((workload) => ({
+        name: workload,
+        warm_execution_ratio_1m_to_100k: 10,
+      })),
+      mutation_workloads: mutationWorkloads.map((workload) => ({
+        name: workload,
+        execution_ratio_1m_to_100k: 10,
+        wal_bytes_ratio_1m_to_100k: 10,
+      })),
+    })),
+  },
+});
+
+const writeJson = (filename, value) => {
+  const text = `${JSON.stringify(value, null, 2)}\n`;
+  writeFileSync(filename, text, 'utf8');
+  return Buffer.from(text, 'utf8');
+};
+const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
+const run = (script, args) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
+
+const withFixture = (callback) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'rustok-index-decision-'));
+  try {
+    callback(root);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+};
+
+const prepare = (root) => {
+  const comparisonPath = path.join(root, 'comparison.json');
+  const decisionPath = path.join(root, 'decision.json');
+  const comparisonBytes = writeJson(comparisonPath, comparison());
+  const result = run(prepareScript, [
+    '--comparison', comparisonPath,
+    '--selected', 'typed_eav',
+    '--owner', 'Index maintainers',
+    '--date', '2026-07-24',
+    '--output', decisionPath,
+  ]);
+  return { result, comparisonPath, decisionPath, comparisonBytes };
+};
+
+const completeDecision = (decision) => ({
+  ...decision,
+  status: 'accepted',
+  selection_rationale: 'Typed EAV provides the selected balance of measured query behavior and schema evolution.',
+  rejection_rationales: {
+    jsonb: 'JSONB was not selected because its measured and operational trade-offs were less suitable.',
+    hot_projection: 'Hot projection was not selected because its migration and schema-expansion cost was higher.',
+  },
+  operational_tradeoffs: 'Operate field indexes explicitly and monitor relation growth, WAL, and VACUUM behavior.',
+  migration_strategy: 'Create the selected tables, backfill, verify parity, and cut over the persistence port.',
+  rollback_strategy: 'Keep the previous persistence path readable until verification and switch the port back on failure.',
+});
+
+const finalize = (fixture, outputPath) => {
+  const decision = completeDecision(JSON.parse(readFileSync(fixture.decisionPath, 'utf8')));
+  const decisionBytes = writeJson(fixture.decisionPath, decision);
+  const result = run(finalizeScript, [
+    '--comparison', fixture.comparisonPath,
+    '--decision', fixture.decisionPath,
+    '--output', outputPath,
+  ]);
+  return { result, decisionBytes };
+};
+
+const verify = (fixture, outputPath) => run(verifyScript, [
+  '--comparison', fixture.comparisonPath,
+  '--decision', fixture.decisionPath,
+  '--adr', outputPath,
+]);
+
+test('prepares an exact-comparison-bound manual decision draft', () => {
+  withFixture((root) => {
+    const { result, decisionPath, comparisonBytes } = prepare(root);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const decision = JSON.parse(readFileSync(decisionPath, 'utf8'));
+    assert.equal(Object.hasOwn(decision, '$schema'), false);
+    assert.equal(decision.status, 'proposed');
+    assert.equal(decision.comparison_commit, commit);
+    assert.equal(decision.comparison_sha256, sha256(comparisonBytes));
+    assert.equal(decision.selected_prototype, 'typed_eav');
+    assert.deepEqual(Object.keys(decision.rejection_rationales), ['jsonb', 'hot_projection']);
+    assert.match(decision.selection_rationale, /^TODO\(index-storage-decision\):/u);
+  });
+});
+
+test('rejects a comparison without the canonical database-settings methodology', () => {
+  withFixture((root) => {
+    const comparisonPath = path.join(root, 'comparison.json');
+    const decisionPath = path.join(root, 'decision.json');
+    const value = comparison();
+    delete value.methodology.comparable_database_fields;
+    writeJson(comparisonPath, value);
+    const result = run(prepareScript, [
+      '--comparison', comparisonPath,
+      '--selected', 'typed_eav',
+      '--owner', 'Index maintainers',
+      '--date', '2026-07-24',
+      '--output', decisionPath,
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /comparison methodology must contain exactly the canonical methodology fields/u);
+    assert.equal(existsSync(decisionPath), false);
+  });
+});
+
+test('refuses to overwrite an existing decision without force', () => {
+  withFixture((root) => {
+    const fixture = prepare(root);
+    assert.equal(fixture.result.status, 0, fixture.result.stderr || fixture.result.stdout);
+    const result = run(prepareScript, [
+      '--comparison', fixture.comparisonPath,
+      '--selected', 'typed_eav',
+      '--owner', 'Index maintainers',
+      '--date', '2026-07-24',
+      '--output', fixture.decisionPath,
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /refusing to overwrite existing decision without --force/u);
+  });
+});
+
+test('never overwrites the comparison input even with force', () => {
+  withFixture((root) => {
+    const comparisonPath = path.join(root, 'comparison.json');
+    const original = writeJson(comparisonPath, comparison());
+    const result = run(prepareScript, [
+      '--comparison', comparisonPath,
+      '--selected', 'typed_eav',
+      '--owner', 'Index maintainers',
+      '--date', '2026-07-24',
+      '--output', comparisonPath,
+      '--force',
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /--output must not overwrite the comparison input/u);
+    assert.deepEqual(readFileSync(comparisonPath), original);
+  });
+});
+
+test('rejects an unedited prepared decision', () => {
+  withFixture((root) => {
+    const fixture = prepare(root);
+    assert.equal(fixture.result.status, 0, fixture.result.stderr || fixture.result.stdout);
+    const decision = JSON.parse(readFileSync(fixture.decisionPath, 'utf8'));
+    decision.status = 'accepted';
+    writeJson(fixture.decisionPath, decision);
+    const result = run(finalizeScript, [
+      '--comparison', fixture.comparisonPath,
+      '--decision', fixture.decisionPath,
+      '--output', path.join(root, 'adr.md'),
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /still contains a preparation placeholder/u);
+  });
+});
+
+test('finalizer rejects database-settings provenance drift with a matching comparison digest', () => {
+  withFixture((root) => {
+    const fixture = prepare(root);
+    assert.equal(fixture.result.status, 0, fixture.result.stderr || fixture.result.stdout);
+    const comparisonValue = JSON.parse(readFileSync(fixture.comparisonPath, 'utf8'));
+    comparisonValue.methodology.database_settings_source =
+      'read-report.json database metadata observed from the active PostgreSQL benchmark session';
+    const comparisonBytes = writeJson(fixture.comparisonPath, comparisonValue);
+    const decision = completeDecision(JSON.parse(readFileSync(fixture.decisionPath, 'utf8')));
+    decision.comparison_sha256 = sha256(comparisonBytes);
+    writeJson(fixture.decisionPath, decision);
+    const outputPath = path.join(root, 'adr.md');
+    const result = run(finalizeScript, [
+      '--comparison', fixture.comparisonPath,
+      '--decision', fixture.decisionPath,
+      '--output', outputPath,
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(
+      result.stderr,
+      /database_settings_source must identify read metadata observed from the active PostgreSQL benchmark session after exact equality with mutation and maintenance active-session metadata/u,
+    );
+    assert.equal(existsSync(outputPath), false);
+  });
+});
+
+test('rejects unsupported fields in the decision envelope', () => {
+  withFixture((root) => {
+    const fixture = prepare(root);
+    assert.equal(fixture.result.status, 0, fixture.result.stderr || fixture.result.stdout);
+    const decision = completeDecision(JSON.parse(readFileSync(fixture.decisionPath, 'utf8')));
+    decision.unreviewed_note = 'This field must not be silently ignored.';
+    writeJson(fixture.decisionPath, decision);
+    const result = run(finalizeScript, [
+      '--comparison', fixture.comparisonPath,
+      '--decision', fixture.decisionPath,
+      '--output', path.join(root, 'adr.md'),
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /decision contains unsupported field unreviewed_note/u);
+  });
+});
+
+test('finalizes an ADR bound to exact comparison and decision bytes', () => {
+  withFixture((root) => {
+    const fixture = prepare(root);
+    assert.equal(fixture.result.status, 0, fixture.result.stderr || fixture.result.stdout);
+    const outputPath = path.join(root, 'adr.md');
+    const finalized = finalize(fixture, outputPath);
+    assert.equal(finalized.result.status, 0, finalized.result.stderr || finalized.result.stdout);
+    const markdown = readFileSync(outputPath, 'utf8');
+    assert.ok(markdown.includes(`Comparison SHA-256: ${markdownCode}${sha256(fixture.comparisonBytes)}${markdownCode}`));
+    assert.ok(markdown.includes(`Decision SHA-256: ${markdownCode}${sha256(finalized.decisionBytes)}${markdownCode}`));
+    assert.match(markdown, /Use \*\*typed_eav\*\*/u);
+    const verified = verify(fixture, outputPath);
+    assert.equal(verified.status, 0, verified.stderr || verified.stdout);
+  });
+});
+
+test('rejects a saved ADR changed after finalization', () => {
+  withFixture((root) => {
+    const fixture = prepare(root);
+    assert.equal(fixture.result.status, 0, fixture.result.stderr || fixture.result.stdout);
+    const outputPath = path.join(root, 'adr.md');
+    const finalized = finalize(fixture, outputPath);
+    assert.equal(finalized.result.status, 0, finalized.result.stderr || finalized.result.stdout);
+    writeFileSync(outputPath, `${readFileSync(outputPath, 'utf8')}tampered\n`, 'utf8');
+    const verified = verify(fixture, outputPath);
+    assert.notEqual(verified.status, 0);
+    assert.match(verified.stderr, /ADR bytes differ from deterministic finalization/u);
+  });
+});

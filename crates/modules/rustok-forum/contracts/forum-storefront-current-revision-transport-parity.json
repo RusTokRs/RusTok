@@ -1,0 +1,34 @@
+{
+  "id": "forum-storefront-current-revision-transport-parity",
+  "status": "source_ready_maintainer_execution_pending",
+  "owner": "rustok-forum",
+  "surface": "storefront_transport_facade",
+  "facts": [
+    "topic current revision",
+    "reply current revision"
+  ],
+  "paths": {
+    "ssr_hydrate": "native server adapter",
+    "headless_csr": "GraphQL adapter"
+  },
+  "invariants": [
+    "both paths return only an optional positive decimal Forum owner revision",
+    "both paths preserve the existing Forum tenant/channel/audience gates",
+    "reply revision remains limited to approved storefront replies",
+    "native paths call Forum RevisionService only after visibility succeeds",
+    "GraphQL paths call only Forum current-revision fields"
+  ],
+  "forbidden": [
+    "rustok-reactions dependency in Forum storefront",
+    "rustok-reactions-storefront dependency in Forum storefront",
+    "reaction subject construction in Forum transport",
+    "reaction catalog or actor state in Forum transport",
+    "reaction commands in Forum transport"
+  ],
+  "not_claimed": [
+    "ReactionBar embedding",
+    "host composition",
+    "runtime transport evidence",
+    "browser evidence"
+  ]
+}

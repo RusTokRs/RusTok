@@ -1,0 +1,40 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(CartTaxLines::Table)
+                    .add_column(
+                        ColumnDef::new(CartTaxLines::ProviderId)
+                            .string_len(64)
+                            .not_null()
+                            .default("region_default"),
+                    )
+                    .to_owned(),
+            )
+            .await
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(CartTaxLines::Table)
+                    .drop_column(CartTaxLines::ProviderId)
+                    .to_owned(),
+            )
+            .await
+    }
+}
+
+#[derive(DeriveIden)]
+enum CartTaxLines {
+    Table,
+    ProviderId,
+}

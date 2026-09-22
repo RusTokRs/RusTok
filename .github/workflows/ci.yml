@@ -1,0 +1,466 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+  CARGO_ENCODED_RUSTFLAGS: "-Dwarnings"
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  SQLX_OFFLINE: true
+  NEXT_TELEMETRY_DISABLED: 1
+  NEXT_PUBLIC_SENTRY_DISABLED: 1
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  fmt:
+    name: Formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets --no-deps -- -D warnings
+        env:
+          PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
+
+  check:
+    name: Cargo Check (${{ matrix.rust }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        rust:
+          - "1.96.0"
+          - stable
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.rust }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace --all-targets --all-features
+        env:
+          PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
+
+  platform-contract:
+    name: Platform Contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: check
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo xtask validate-manifest
+      - run: cargo xtask module validate
+      - name: Check Dependabot directories
+        run: python scripts/ci/check-dependabot-directories.py
+
+  audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-audit
+      - name: Run cargo audit
+        run: cargo audit
+
+  deny:
+    name: Cargo Deny
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CARGO_HOME: ${{ github.workspace }}/.cargo
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: Clean cargo-deny advisory db cache
+        run: |
+          rm -rf "$CARGO_HOME/advisory-dbs" || true
+          rm -rf "$CARGO_HOME"/advisory-db-empty-* || true
+        shell: bash
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+          arguments: --all-features
+          manifest-path: ./Cargo.toml
+          log-level: warn
+
+  typos:
+    name: Spell Check (Typos)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: crate-ci/typos@master
+
+  doc:
+    name: Documentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo doc --no-deps --all-features --workspace
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+          PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
+
+  udeps:
+    name: Unused Dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      RUSTFLAGS: ""
+      CARGO_ENCODED_RUSTFLAGS: ""
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-udeps
+      - run: cargo +nightly udeps --workspace --all-targets --all-features
+        env:
+          PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
+
+  coverage:
+    name: Tests & Coverage (Nextest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    needs: check
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_test
+    steps:
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force || true
+          df -h
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - name: Install lld
+        run: sudo apt-get update && sudo apt-get install -y lld
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@nextest
+      - name: Run nextest with coverage and collect logs
+        run: |
+          set -o pipefail
+          cargo llvm-cov nextest --workspace --all-targets --all-features --no-fail-fast --lcov --output-path lcov.info 2>&1 | tee nextest-coverage.log
+        env:
+          RUST_BACKTRACE: 1
+          RUSTFLAGS: "-Dwarnings -C link-arg=-fuse-ld=lld"
+      - name: Enforce minimum coverage
+        run: bash scripts/ci/check-coverage.sh lcov.info
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: lcov
+          path: lcov.info
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: nextest-coverage-logs
+          path: nextest-coverage.log
+
+  sbom:
+    name: SBOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: check
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: sbom.spdx.json
+      - name: Attest SBOM provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: sbom.spdx.json
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: sbom
+          path: sbom.spdx.json
+
+  build-crates:
+    name: Build Workspace
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    needs: check
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace
+
+  build-server:
+    name: Build Server
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: check
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p rustok-server --all-features
+      - name: Upload rustok-server binary
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: rustok-server-bin
+          path: target/debug/rustok-server
+
+  build-storefront:
+    name: Build Storefront
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: check
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p rustok-storefront
+
+  migration-smoke:
+    name: Migration Smoke (PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: check
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Apply migrations from zero
+        run: ./scripts/verify/verify-migration-smoke.sh
+      - name: Apply migrations incrementally
+        run: ./scripts/verify/verify-migration-smoke.sh
+        env:
+          RUSTOK_MIGRATION_SMOKE_INCREMENTAL: 1
+
+  doc-tests:
+    name: Doc Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    needs: check
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --doc --all-features
+
+  next-apps:
+    name: Next.js (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - apps/next-admin
+          - apps/next-frontend
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+      - name: Install dependencies
+        working-directory: ${{ matrix.app }}
+        run: npm ci
+      - name: Format
+        working-directory: ${{ matrix.app }}
+        run: npm run format:check --if-present
+      - name: Lint
+        working-directory: ${{ matrix.app }}
+        run: npm run lint
+      - name: Typecheck
+        working-directory: ${{ matrix.app }}
+        run: npm run typecheck
+      - name: Build
+        working-directory: ${{ matrix.app }}
+        run: npm run build
+
+  reference-artifacts:
+    name: Reference Artifacts Export
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: build-server
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_dev
+      RUSTOK_BASE_URL: http://127.0.0.1:5150
+      SKIP_RUSTDOC: 1
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: Download rustok-server binary
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v7
+        with:
+          name: rustok-server-bin
+          path: target/debug
+      - name: Ensure rustok-server is executable
+        run: chmod +x target/debug/rustok-server
+      - name: Start rustok-server
+        run: |
+          ./target/debug/rustok-server > server.log 2>&1 &
+          echo $! > server.pid
+      - name: Wait for OpenAPI endpoint
+        run: |
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:5150/api/openapi.json > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Server did not become ready in time" >&2
+          tail -n 200 server.log || true
+          exit 1
+      - name: Export reference artifacts
+        run: scripts/verify/export-reference-artifacts.sh artifacts/reference
+      - name: Upload reference artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: reference-artifacts
+          path: artifacts/reference/**
+      - name: Verify reference artifact layout
+        run: node scripts/verify/verify-reference-artifacts.mjs artifacts/reference
+      - name: Show manifest entries
+        run: rg -n "openapi/|graphql/|manifest.json" artifacts/reference -S
+      - name: Stop rustok-server
+        if: always()
+        run: |
+          if [[ -f server.pid ]]; then
+            kill "$(cat server.pid)" || true
+          fi
+          tail -n 100 server.log || true
+
+  server-library-docs-snapshot:
+    name: Server Library Docs Snapshot Freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: Validate server library docs snapshot
+        run: make docs-check-server-libs
+
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [fmt, clippy, check, platform-contract, audit, deny, typos, doc, udeps, coverage, sbom, build-crates, build-server, build-storefront, migration-smoke, doc-tests, next-apps, server-library-docs-snapshot, reference-artifacts]
+    if: always()
+    steps:
+      - name: Check all jobs
+        run: |
+          if [[ "${{ needs.fmt.result }}" != "success" ]] || \
+             [[ "${{ needs.clippy.result }}" != "success" ]] || \
+             [[ "${{ needs.check.result }}" != "success" ]] || \
+             [[ "${{ needs.platform-contract.result }}" != "success" ]] || \
+             [[ "${{ needs.audit.result }}" != "success" ]] || \
+             [[ "${{ needs.deny.result }}" != "success" ]] || \
+             [[ "${{ needs.typos.result }}" != "success" ]] || \
+             [[ "${{ needs.doc.result }}" != "success" ]] || \
+             [[ "${{ needs.udeps.result }}" != "success" ]] || \
+             [[ "${{ needs.coverage.result }}" != "success" ]] || \
+             [[ "${{ needs.sbom.result }}" != "success" ]] || \
+             [[ "${{ needs.build-crates.result }}" != "success" ]] || \
+             [[ "${{ needs.build-server.result }}" != "success" ]] || \
+             [[ "${{ needs.build-storefront.result }}" != "success" ]] || \
+             [[ "${{ needs.migration-smoke.result }}" != "success" ]] || \
+             [[ "${{ needs.doc-tests.result }}" != "success" ]] || \
+             [[ "${{ needs.next-apps.result }}" != "success" ]] || \
+             [[ "${{ needs.server-library-docs-snapshot.result }}" != "success" ]] || \
+             [[ "${{ needs.reference-artifacts.result }}" != "success" ]]; then
+            echo "One or more jobs failed"
+            exit 1
+          fi
+          echo "All checks passed!"

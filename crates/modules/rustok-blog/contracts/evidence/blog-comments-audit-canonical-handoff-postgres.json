@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "reviewed_at_utc": "2026-08-03T11:55:00Z",
+  "review_base": "e557f06aec0dd55f1b15e5319c5557a8b302a35c",
+  "logical_tree_base": "0fc0c3130307a9ec514f8cc278ba882545a45d5a",
+  "status": "canonical_handoff_source_ready_maintainer_execution_pending",
+  "scope": "Blog Comments schedule audit PostgreSQL source-to-canonical handoff",
+  "source_row": {
+    "table": "blog_comments_tcp_delegation_schedule_audit_outbox",
+    "source_identity": "request_id",
+    "source_identity_is_canonical_envelope_id": true,
+    "state_and_source_audit_insert_remain_atomic": true,
+    "legacy_published_rows_fail_migration_closed": true
+  },
+  "migration": {
+    "name": "m20260803_000009_add_blog_comments_audit_canonical_handoff",
+    "irreversible": true,
+    "canonical_envelope_id_added": true,
+    "handoff_claim_token_added": true,
+    "handoff_claim_expires_at_added": true,
+    "handoff_attempt_count_added": true,
+    "canonical_envelope_unique": true,
+    "claim_token_unique": true,
+    "pending_scan_index_added": true,
+    "attempt_non_negative_check": true,
+    "claim_token_expiry_pair_check": true,
+    "claim_token_non_nil_check": true,
+    "terminal_identity_pair_check": true,
+    "terminal_row_unclaimed_check": true
+  },
+  "claim": {
+    "api": "PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff::claim_next",
+    "oldest_first": true,
+    "for_update_skip_locked": true,
+    "unpublished_only": true,
+    "uncanonicalized_only": true,
+    "expired_claim_recovery": true,
+    "random_non_nil_claim_token": true,
+    "durable_attempt_increment": true,
+    "claim_ttl_seconds_min": 1,
+    "claim_ttl_seconds_max": 300,
+    "claim_commit_ambiguity_readback_by_unique_token": true
+  },
+  "publication": {
+    "api": "PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff::publish_claimed",
+    "source_row_locked_for_update": true,
+    "claim_token_fenced": true,
+    "attempt_count_fenced": true,
+    "active_expiry_fenced": true,
+    "source_payload_revalidated": true,
+    "canonical_writer_called_in_same_transaction": true,
+    "returned_envelope_must_equal_request_id": true,
+    "source_terminal_update_in_same_transaction": true,
+    "terminal_update_repeats_claim_fence": true,
+    "exact_terminal_replay_returns_request_id": true,
+    "ambiguous_commit_reconciled_by_terminal_identity_pair": true
+  },
+  "closed_errors": {
+    "conflict": "claim or stable identity mismatch",
+    "unavailable": "invalid durable state or infrastructure failure",
+    "raw_database_details_returned": false,
+    "raw_writer_details_returned": false
+  },
+  "ownership": {
+    "blog_owns_source_claim": true,
+    "blog_owns_source_fencing": true,
+    "blog_owns_source_terminal_acknowledgement": true,
+    "rustok_outbox_owns_sys_events": true,
+    "rustok_outbox_owns_canonical_relay": true,
+    "rustok_outbox_owns_retry_and_dlq": true,
+    "second_relay_added": false,
+    "second_canonical_claim_added": false
+  },
+  "runtime_boundary": {
+    "public_owner_exported": true,
+    "runtime_extension_registered": false,
+    "worker_spawned": false,
+    "polling_loop_added": false,
+    "environment_switch_added": false,
+    "heartbeat_added": false,
+    "automatic_retry_policy_added": false,
+    "source_dead_letter_added": false
+  },
+  "preserved_contracts": {
+    "registered_event_payload_changed": false,
+    "event_type_changed": false,
+    "event_digest_changed": false,
+    "sys_events_schema_changed": false,
+    "outbox_relay_changed": false,
+    "schedule_authorization_changed": false,
+    "schedule_state_write_changed": false,
+    "blog_audit_insert_changed": false,
+    "module_manifest_changed": false
+  },
+  "validation": {
+    "cargo_check_run": false,
+    "rust_unit_tests_run": false,
+    "rust_integration_tests_run": false,
+    "javascript_verifier_run": false,
+    "migration_applied": false,
+    "postgresql_run": false,
+    "concurrency_run": false,
+    "restart_run": false,
+    "runtime_run": false,
+    "production_run": false
+  },
+  "next_cursor": {
+    "compose_host_owned_runner": true,
+    "add_cooperative_shutdown": true,
+    "define_retry_and_exhaustion_policy": true,
+    "define_source_dead_letter_and_requeue": true,
+    "add_claim_heartbeat_if_required": true,
+    "prove_postgresql_concurrency_and_recovery": true,
+    "define_source_retention": true
+  }
+}

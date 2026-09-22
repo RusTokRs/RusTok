@@ -1,0 +1,44 @@
+[module]
+slug = "workflow"
+name = "Workflow"
+version = "0.1.0"
+description = "Visual workflow automation and event orchestration"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "admin_only"
+recommended_admin_surfaces = ["leptos-admin"]
+
+[crate]
+entry_type = "WorkflowModule"
+
+[provides.graphql]
+query = "graphql::WorkflowQuery"
+mutation = "graphql::WorkflowMutation"
+
+[provides.http]
+axum_router = "controllers::axum_router"
+axum_webhook_router = "controllers::axum_webhook_router"
+
+[provides.admin_ui]
+leptos_crate = "rustok-workflow-admin"
+route_segment = "workflow"
+nav_label = "Workflow"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
+[[provides.admin_ui.child_pages]]
+subpath = "templates"
+title = "Workflow Templates"
+nav_label = "Templates"
+
+[fba.provider]
+registry = "contracts/workflow-fba-registry.json"
+contract_version = "workflow.read_projection.v1"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+profiles = ["workflow_admin_read_projection"]
+fallback_profiles = ["embedded_native", "graphql_compat"]
+degraded_modes = ["show_cached_workflow_list", "disable_workflow_detail_open"]

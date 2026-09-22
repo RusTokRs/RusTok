@@ -1,0 +1,63 @@
+{
+  "contract": "forum_topic_delete_route_tombstone_owner_v1",
+  "task": "FORUM-24C",
+  "status": "source_ready_maintainer_execution_pending",
+  "extends": [
+    "FORUM-24A",
+    "FORUM-24B"
+  ],
+  "owner": {
+    "delete_service": "TopicService::delete",
+    "route_service": "ForumTopicRouteService::record_delete_tombstones_in_tx",
+    "same_transaction": true,
+    "fixed_reason": "Topic deleted",
+    "public_input_changed": false,
+    "receipt_changed": false,
+    "event_changed": false
+  },
+  "routes": {
+    "source": "all topic translations with a non-empty slug",
+    "disposition": "gone",
+    "target_topic_id": null,
+    "target_locale": null,
+    "recorded_before_soft_delete": true,
+    "append_only": true,
+    "missing_routes_are_noop": true
+  },
+  "existing_history": {
+    "existing_redirect_for_same_topic_and_route": "preserved",
+    "exact_existing_gone": "idempotent",
+    "topic_or_payload_drift": "fail_closed",
+    "merged_source_delete_keeps_redirect": true
+  },
+  "resolution": {
+    "deleted_topic_is_excluded_from_current_routes": true,
+    "old_route_resolves_to_gone": true,
+    "canonical_target": null,
+    "authorization_before_disclosure_required": true
+  },
+  "compatibility": {
+    "graphql_schema_changed": false,
+    "rest_schema_changed": false,
+    "delete_command_changed": false,
+    "storefront_route_mounted": false,
+    "rename_aliases_included": false,
+    "historical_backfill_included": false
+  },
+  "remaining": [
+    "compose aliases into future topic slug rename owner",
+    "mount authorized localized topic routes in both storefront hosts",
+    "add localized category paths",
+    "add hreflang and SEO publication policy",
+    "retain SQLite, PostgreSQL and mounted-browser runtime evidence"
+  ],
+  "verification": {
+    "commands": [
+      "node scripts/verify/verify-forum-topic-delete-route-tombstone-owner.mjs",
+      "cargo test -p rustok-forum --test topic_delete_route_tombstone_sqlite -- --nocapture",
+      "cargo test -p rustok-forum --test topic_merge_route_alias_sqlite -- --nocapture",
+      "cargo check -p rustok-forum --all-targets"
+    ],
+    "executed_by_implementation_agent": false
+  }
+}

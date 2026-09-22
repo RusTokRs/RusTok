@@ -1,0 +1,16 @@
+[package]
+name = "rustok-module-template"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Canonical independently versioned Rust module component template for RusToK"
+repository.workspace = true
+include = ["src/**", "assets/**", "README.md", "docs/**", "Cargo.toml"]
+
+[dependencies]
+rustok-module-sdk.workspace = true
+rustok-modules.workspace = true
+rustok-sandbox.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

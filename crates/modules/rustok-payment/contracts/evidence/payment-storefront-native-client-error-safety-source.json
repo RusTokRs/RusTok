@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-31",
+  "status": "payment_storefront_native_client_error_safety_source_unvalidated",
+  "scope": "payment storefront native client facade for collection create/read and refund summary read",
+  "source_contract": {
+    "operation_count": 3,
+    "transport_selection_changed": false,
+    "graphql_transport_changed": false,
+    "native_adapter_changed": false,
+    "server_functions_changed": false,
+    "request_response_dto_changed": false,
+    "payment_facade_error_contract_preserved": true,
+    "validation_message_preserved": true,
+    "technical_native_error_public": false,
+    "static_technical_public_message": true,
+    "context_created_before_native_call": true,
+    "original_error_logged_privately": true,
+    "per_call_correlation_logging": true,
+    "safe_request_shape_only": true,
+    "cart_id_values_logged": false,
+    "order_id_values_logged": false,
+    "command_metadata_values_logged": false,
+    "fallback_enabled": false,
+    "broad_ecommerce_cleanup_closed": false
+  },
+  "stable_public_messages": {
+    "technical_native_failure": "Payment storefront request could not be completed"
+  },
+  "suggested_execution": [
+    "node scripts/verify/verify-payment-storefront-native-client-error-safety.mjs",
+    "node scripts/verify/verify-payment-storefront-native-error-safety.mjs",
+    "node scripts/verify/verify-payment-storefront-graphql-error-safety.mjs",
+    "npm run verify:payment:storefront-boundary",
+    "cargo check -p rustok-payment-storefront",
+    "cargo check -p rustok-payment-storefront --features hydrate",
+    "cargo check -p rustok-payment-storefront --features ssr"
+  ],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "hydrate_compile_proven": false,
+    "ssr_compile_proven": false,
+    "browser_runtime_proven": false,
+    "mounted_runtime_proven": false
+  }
+}

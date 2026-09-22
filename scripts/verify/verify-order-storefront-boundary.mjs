@@ -1,0 +1,155 @@
+#!/usr/bin/env node
+// RusTok order storefront FFA boundary guardrails.
+// Fast source-level checks for order-owned checkout result/action UI and request ownership.
+
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import "./verify-order-storefront-runtime-error-diagnostics.mjs";
+import "./verify-order-storefront-graphql-error-safety.mjs";
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
+  ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
+  : path.resolve(scriptDir, "../..");
+const failures = [];
+
+function repoPath(relativePath) {
+  return path.join(repoRoot, relativePath);
+}
+
+function readRepo(relativePath) {
+  return readFileSync(repoPath(relativePath), "utf8");
+}
+
+function fail(message) {
+  failures.push(message);
+}
+
+function assertExists(relativePath, description) {
+  if (!existsSync(repoPath(relativePath))) fail(description);
+}
+
+function assertContains(text, pattern, description) {
+  const found = typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
+  if (!found) fail(description);
+}
+
+function assertNotContains(text, pattern, description) {
+  const found = typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
+  if (found) fail(description);
+}
+
+const libPath = "crates/modules/rustok-order/storefront/src/lib.rs";
+const corePath = "crates/modules/rustok-order/storefront/src/core.rs";
+const transportPath = "crates/modules/rustok-order/storefront/src/transport.rs";
+const graphqlPath = "crates/modules/rustok-order/storefront/src/transport/graphql_adapter.rs";
+const nativeServerFunctionsPath = "crates/modules/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs";
+const cargoPath = "crates/modules/rustok-order/storefront/Cargo.toml";
+const uiPath = "crates/modules/rustok-order/storefront/src/ui/leptos.rs";
+const i18nPath = "crates/modules/rustok-order/storefront/src/i18n.rs";
+const manifestPath = "crates/modules/rustok-order/rustok-module.toml";
+const commerceUiPath = "crates/modules/rustok-commerce/storefront/src/ui/leptos/mod.rs";
+const commerceRequestsPath = "crates/modules/rustok-commerce/storefront/src/core/requests.rs";
+const planPath = "crates/modules/rustok-order/docs/implementation-plan.md";
+const registryPath = "docs/modules/registry.md";
+const packagePath = "package.json";
+
+for (const filePath of [libPath, corePath, transportPath, graphqlPath, nativeServerFunctionsPath, cargoPath, uiPath, i18nPath, manifestPath, commerceUiPath, commerceRequestsPath, planPath, registryPath, packagePath]) {
+  assertExists(filePath, `${filePath}: expected order storefront FFA file`);
+}
+
+const lib = readRepo(libPath);
+const core = readRepo(corePath);
+const transport = readRepo(transportPath);
+const graphql = readRepo(graphqlPath);
+const nativeServerFunctions = readRepo(nativeServerFunctionsPath);
+const cargo = readRepo(cargoPath);
+const ui = readRepo(uiPath);
+const i18n = readRepo(i18nPath);
+const manifest = readRepo(manifestPath);
+const commerceUi = readRepo(commerceUiPath);
+const commerceRequests = readRepo(commerceRequestsPath);
+const plan = readRepo(planPath);
+const registry = readRepo(registryPath);
+const packageJson = readRepo(packagePath);
+
+for (const marker of ["pub mod core;", "pub mod transport;", "OrderCheckoutCompleteButton", "OrderCheckoutResultCard"]) {
+  assertContains(lib, marker, `${libPath}: expected storefront public surface marker ${marker}`);
+}
+
+for (const marker of [
+  "OrderCheckoutResultData",
+  "OrderCheckoutResultViewModel",
+  "build_order_checkout_result_view_model",
+  "OrderCheckoutActionLabels",
+  "order_checkout_action_label",
+]) {
+  assertContains(core, marker, `${corePath}: expected core-owned order presentation marker ${marker}`);
+}
+for (const marker of ["leptos::", "#[component]", "#[server", "GraphqlRequest", "web_sys::"]) {
+  assertNotContains(core, marker, `${corePath}: core must stay UI/transport free (${marker})`);
+}
+
+for (const marker of ["CompleteCheckoutRequest", "CheckoutCompletion", "build_complete_checkout_request", "complete_checkout", "mod graphql_adapter;", "normalize_required"]) {
+  assertContains(transport, marker, `${transportPath}: expected transport-owned request marker ${marker}`);
+}
+assertContains(transport, "mod graphql_error_safety;", `${transportPath}: order transport facade must wire GraphQL error safety`);
+assertContains(transport, "mod native_server_adapter;", `${transportPath}: order transport facade must wire native server adapter`);
+for (const marker of ["leptos::", "#[component]", "#[server", "GraphqlRequest", "web_sys::"]) {
+  assertNotContains(transport, marker, `${transportPath}: transport facade must stay framework/native-endpoint free (${marker})`);
+}
+for (const marker of ["COMPLETE_STOREFRONT_CHECKOUT_MUTATION", "GraphqlRequest::new", "CheckoutAdjustment"]) {
+  assertContains(graphql, marker, `${graphqlPath}: order must own GraphQL completion marker ${marker}`);
+}
+assertNotContains(graphql, "rustok_commerce::", `${graphqlPath}: order GraphQL adapter must not depend on commerce storefront internals`);
+assertContains(nativeServerFunctions, "#[server", `${nativeServerFunctionsPath}: order native server-functions adapter must own a server-function endpoint shell`);
+assertContains(nativeServerFunctions, "endpoint = \"order/complete-checkout\"", `${nativeServerFunctionsPath}: order native server-functions adapter must expose the owner endpoint path`);
+assertContains(nativeServerFunctions, "rustok_commerce::storefront_checkout_runtime", `${nativeServerFunctionsPath}: order native server-functions adapter must call the explicit commerce checkout runtime API`);
+assertContains(nativeServerFunctions, "expect_context::<HostRuntimeContext>()", `${nativeServerFunctionsPath}: order native server-functions adapter must use the host runtime context`);
+assertContains(nativeServerFunctions, "shared_get::<TransactionalEventBus>()", `${nativeServerFunctionsPath}: order native server-functions adapter must receive the event bus through the host runtime context`);
+assertContains(nativeServerFunctions, "runtime_ctx.db_clone()", `${nativeServerFunctionsPath}: order native server-functions adapter must receive DB through the host runtime context`);
+
+for (const marker of [
+  "OrderView",
+  "use_context::<UiRouteContext>()",
+  "crate::i18n::t",
+  "OrderCheckoutCompleteButton",
+  "OrderCheckoutResultCard",
+  "CompleteCheckoutRequest",
+  "build_complete_checkout_request",
+  "on_complete_checkout: Callback<CompleteCheckoutRequest>",
+]) {
+  assertContains(ui, marker, `${uiPath}: expected order-owned UI/request marker ${marker}`);
+}
+if (!i18n.includes("declare_module_i18n!")) {
+  for (const marker of ["UiMessages", "include_str!(\"../locales/en.ftl\")", "include_str!(\"../locales/ru.ftl\")", "t_for_locale"]) {
+    assertContains(i18n, marker, `${i18nPath}: expected host-locale catalog marker ${marker}`);
+  }
+}
+for (const marker of ["slot = \"checkout_result_handoff\"", "[provides.storefront_ui.i18n]", "leptos_locales_path = \"storefront/locales\""]) {
+  assertContains(manifest, marker, `${manifestPath}: expected locale-aware storefront manifest marker ${marker}`);
+}
+for (const marker of ["crate::api", "rustok_commerce::", "GraphqlRequest", "#[server"]) {
+  assertNotContains(ui, marker, `${uiPath}: UI adapter must not call commerce/raw transport directly (${marker})`);
+}
+
+assertContains(commerceUi, "OrderCheckoutCompleteButton", `${commerceUiPath}: commerce host must render order-owned complete-checkout UI`);
+assertContains(commerceUi, "Callback::new(move |request: CompleteCheckoutRequest|", `${commerceUiPath}: commerce callback must accept order-owned request DTO`);
+assertNotContains(commerceUi, "build_checkout_completion_command_request", `${commerceUiPath}: commerce UI must not rebuild order requests from raw cart ids`);
+assertContains(commerceRequests, "pub type CheckoutCompletionCommandRequest = CompleteCheckoutRequest", `${commerceRequestsPath}: commerce transport must keep the owner request alias for aggregate checkout composition`);
+assertNotContains(commerceRequests, "build_complete_checkout_request", `${commerceRequestsPath}: commerce core must not wrap order-owned request construction`);
+assertNotContains(commerceRequests, "build_checkout_completion_command_request", `${commerceRequestsPath}: commerce core must not expose an order request builder after owner UI handoff`);
+assertContains(plan, "verify-order-storefront-boundary.mjs", `${planPath}: local plan must mention storefront boundary guardrail`);
+assertContains(registry, "verify-order-storefront-boundary.mjs", `${registryPath}: central registry must mention storefront boundary guardrail`);
+assertContains(packageJson, "verify:order:storefront-boundary", `${packagePath}: expected order storefront boundary script`);
+assertContains(packageJson, "npm run verify:order:storefront-boundary", `${packagePath}: aggregate FFA migration verification must include storefront order boundary`);
+
+if (failures.length > 0) {
+  console.error("order storefront boundary verification failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
+
+console.log("order storefront boundary verification passed");

@@ -1,0 +1,22 @@
+{
+  "captured_at": "<iso-8601>",
+  "environment": "<ci-or-runtime-env>",
+  "command_or_ci_job": "<command-or-ci-job-url>",
+  "redactions_applied": [
+    "<redaction-rule>"
+  ],
+  "result": "pending_capture",
+  "surface": "leptos_storefront_runtime",
+  "before": {
+    "route": "<route>",
+    "locale": "<locale>",
+    "channel": "<channel>"
+  },
+  "after": {
+    "seo_page_context": "<captured-redacted-context>"
+  },
+  "samples": {
+    "head_tags": [],
+    "canonical": "<url>"
+  }
+}

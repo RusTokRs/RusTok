@@ -1,0 +1,250 @@
+name: Index Storage Smoke Evidence
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "crates/modules/rustok-index/**"
+      - "ops/benches/**"
+      - "scripts/verify/verify-index-fba.mjs"
+      - "scripts/verify/verify-index-storage-source-oracle.mjs"
+      - "scripts/verify/check-index-storage-read-ordering.mjs"
+      - "scripts/verify/check-index-storage-read-ordering.test.mjs"
+      - "scripts/verify/verify-index-storage-read-ordering-contract.mjs"
+      - "scripts/verify/validate-index-storage-evidence.mjs"
+      - "scripts/verify/validate-index-storage-runner-resources.mjs"
+      - "scripts/verify/run-index-storage-validator-core.mjs"
+      - "scripts/verify/index-storage-validator-arguments.test.mjs"
+      - "scripts/verify/validate-index-storage-evidence-core.mjs"
+      - "scripts/verify/compare-index-storage-evidence.mjs"
+      - "scripts/verify/compare-index-storage-evidence-core.mjs"
+      - "scripts/verify/index-storage-database-settings-contract.mjs"
+      - "scripts/verify/index-storage-standalone-tools.test.mjs"
+      - "scripts/verify/verify-index-storage-standalone-tools.mjs"
+      - "scripts/verify/hash-index-storage-comparison.mjs"
+      - "scripts/verify/render-index-storage-adr.mjs"
+      - "scripts/verify/render-index-storage-adr.test.mjs"
+      - "scripts/verify/prepare-index-storage-decision.mjs"
+      - "scripts/verify/finalize-index-storage-adr.mjs"
+      - "scripts/verify/verify-index-storage-adr.mjs"
+      - "scripts/verify/index-storage-decision-tooling.test.mjs"
+      - "scripts/verify/index-storage-tooling.mjs"
+      - "scripts/verify/index-storage-tooling.test.mjs"
+      - "scripts/verify/index-partition-evidence-core.mjs"
+      - "scripts/verify/index-partition-evidence-assembly-core.mjs"
+      - "scripts/verify/prepare-index-partition-evidence.mjs"
+      - "scripts/verify/assemble-index-partition-evidence.mjs"
+      - "scripts/verify/validate-index-partition-evidence.mjs"
+      - "scripts/verify/index-partition-evidence.test.mjs"
+      - "scripts/verify/index-partition-evidence-assembly.test.mjs"
+      - "scripts/verify/verify-index-partition-evidence.mjs"
+      - "scripts/verify/verify-index-partition-snapshot-capture.mjs"
+      - "scripts/verify/verify-index-partition-query-evidence.mjs"
+      - "scripts/verify/verify-index-partition-mutation-evidence.mjs"
+      - "scripts/verify/verify-index-partition-maintenance-evidence.mjs"
+      - "scripts/verify/verify-index-storage-adr-tooling.mjs"
+      - "scripts/verify/verify-index-storage-adr-integrity.mjs"
+      - ".github/workflows/index-storage-smoke.yml"
+  push:
+    branches:
+      - main
+      - "agent/**"
+    paths:
+      - "crates/modules/rustok-index/**"
+      - "ops/benches/**"
+      - "scripts/verify/verify-index-fba.mjs"
+      - "scripts/verify/verify-index-storage-source-oracle.mjs"
+      - "scripts/verify/check-index-storage-read-ordering.mjs"
+      - "scripts/verify/check-index-storage-read-ordering.test.mjs"
+      - "scripts/verify/verify-index-storage-read-ordering-contract.mjs"
+      - "scripts/verify/validate-index-storage-evidence.mjs"
+      - "scripts/verify/validate-index-storage-runner-resources.mjs"
+      - "scripts/verify/run-index-storage-validator-core.mjs"
+      - "scripts/verify/index-storage-validator-arguments.test.mjs"
+      - "scripts/verify/validate-index-storage-evidence-core.mjs"
+      - "scripts/verify/compare-index-storage-evidence.mjs"
+      - "scripts/verify/compare-index-storage-evidence-core.mjs"
+      - "scripts/verify/index-storage-database-settings-contract.mjs"
+      - "scripts/verify/index-storage-standalone-tools.test.mjs"
+      - "scripts/verify/verify-index-storage-standalone-tools.mjs"
+      - "scripts/verify/hash-index-storage-comparison.mjs"
+      - "scripts/verify/render-index-storage-adr.mjs"
+      - "scripts/verify/render-index-storage-adr.test.mjs"
+      - "scripts/verify/prepare-index-storage-decision.mjs"
+      - "scripts/verify/finalize-index-storage-adr.mjs"
+      - "scripts/verify/verify-index-storage-adr.mjs"
+      - "scripts/verify/index-storage-decision-tooling.test.mjs"
+      - "scripts/verify/index-storage-tooling.mjs"
+      - "scripts/verify/index-storage-tooling.test.mjs"
+      - "scripts/verify/index-partition-evidence-core.mjs"
+      - "scripts/verify/index-partition-evidence-assembly-core.mjs"
+      - "scripts/verify/prepare-index-partition-evidence.mjs"
+      - "scripts/verify/assemble-index-partition-evidence.mjs"
+      - "scripts/verify/validate-index-partition-evidence.mjs"
+      - "scripts/verify/index-partition-evidence.test.mjs"
+      - "scripts/verify/index-partition-evidence-assembly.test.mjs"
+      - "scripts/verify/verify-index-partition-evidence.mjs"
+      - "scripts/verify/verify-index-partition-snapshot-capture.mjs"
+      - "scripts/verify/verify-index-partition-query-evidence.mjs"
+      - "scripts/verify/verify-index-partition-mutation-evidence.mjs"
+      - "scripts/verify/verify-index-partition-maintenance-evidence.mjs"
+      - "scripts/verify/verify-index-storage-adr-tooling.mjs"
+      - "scripts/verify/verify-index-storage-adr-integrity.mjs"
+      - ".github/workflows/index-storage-smoke.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_index_bench
+  INDEX_BENCH_SCALE: smoke
+  INDEX_BENCH_REPETITIONS: "3"
+  INDEX_BENCH_CHURN_CYCLES: "5"
+  INDEX_BENCH_OUTPUT: evidence/index-storage/smoke/read-report.json
+  INDEX_BENCH_MUTATION_OUTPUT: evidence/index-storage/smoke/mutation-report.json
+  INDEX_BENCH_MAINTENANCE_OUTPUT: evidence/index-storage/smoke/maintenance-report.json
+  INDEX_BENCH_EVIDENCE_ROOT: evidence/index-storage/smoke
+  INDEX_BENCH_REQUIRE_GITHUB_PROVENANCE: "1"
+
+jobs:
+  contract:
+    name: Index boundary contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify Index storage command and repository contracts
+        shell: bash
+        run: |
+          mkdir -p evidence/index-storage/contract
+          set -o pipefail
+          {
+            node --check scripts/verify/index-storage-tooling.mjs
+            node --check scripts/verify/index-storage-tooling.test.mjs
+            node --check scripts/verify/check-index-storage-read-ordering.mjs
+            node --check scripts/verify/check-index-storage-read-ordering.test.mjs
+            node --check scripts/verify/verify-index-storage-read-ordering-contract.mjs
+            node --check scripts/verify/validate-index-storage-evidence.mjs
+            node --check scripts/verify/validate-index-storage-runner-resources.mjs
+            node --check scripts/verify/run-index-storage-validator-core.mjs
+            node --check scripts/verify/index-storage-validator-arguments.test.mjs
+            node --check scripts/verify/validate-index-storage-evidence-core.mjs
+            node --check scripts/verify/index-storage-database-settings-contract.mjs
+            node --check scripts/verify/compare-index-storage-evidence.mjs
+            node --check scripts/verify/compare-index-storage-evidence-core.mjs
+            node --check scripts/verify/index-storage-standalone-tools.test.mjs
+            node --check scripts/verify/verify-index-storage-standalone-tools.mjs
+            node --check scripts/verify/prepare-index-storage-decision.mjs
+            node --check scripts/verify/finalize-index-storage-adr.mjs
+            node --check scripts/verify/verify-index-storage-adr.mjs
+            node --check scripts/verify/verify-index-storage-adr-integrity.mjs
+            node --check scripts/verify/index-storage-decision-tooling.test.mjs
+            node --check scripts/verify/index-partition-evidence-core.mjs
+            node --check scripts/verify/index-partition-evidence-assembly-core.mjs
+            node --check scripts/verify/prepare-index-partition-evidence.mjs
+            node --check scripts/verify/assemble-index-partition-evidence.mjs
+            node --check scripts/verify/validate-index-partition-evidence.mjs
+            node --check scripts/verify/index-partition-evidence.test.mjs
+            node --check scripts/verify/index-partition-evidence-assembly.test.mjs
+            node --check scripts/verify/verify-index-partition-evidence.mjs
+            node --check scripts/verify/verify-index-partition-snapshot-capture.mjs
+            node --check scripts/verify/verify-index-partition-query-evidence.mjs
+            node --check scripts/verify/verify-index-partition-mutation-evidence.mjs
+            node --check scripts/verify/verify-index-partition-maintenance-evidence.mjs
+            node scripts/verify/index-storage-tooling.mjs contract
+            node --test scripts/verify/index-storage-tooling.test.mjs
+            node --test scripts/verify/check-index-storage-read-ordering.test.mjs
+            node --test scripts/verify/index-storage-validator-arguments.test.mjs
+            node --test scripts/verify/index-storage-standalone-tools.test.mjs
+            node --test scripts/verify/index-storage-decision-tooling.test.mjs
+            node --test scripts/verify/index-partition-evidence.test.mjs
+            node --test scripts/verify/index-partition-evidence-assembly.test.mjs
+          } 2>&1 | tee evidence/index-storage/contract/verify.log
+      - name: Archive contract diagnostic
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: index-storage-contract-${{ github.sha }}
+          path: evidence/index-storage/contract/verify.log
+          if-no-files-found: error
+          retention-days: 7
+
+  smoke-evidence:
+    name: PostgreSQL smoke evidence
+    needs: contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_index_bench
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rustok_index_bench"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: index-storage-smoke
+
+      - name: Build smoke evidence executables
+        shell: bash
+        run: |
+          mkdir -p evidence/index-storage/build
+          set -o pipefail
+          cargo build -p rustok-benchmarks --release \
+            --bin index-storage-benchmark \
+            --bin index-storage-mutation-benchmark \
+            --bin index-storage-maintenance-benchmark \
+            --bin index-partition-snapshot-capture \
+            --bin index-partition-query-evidence \
+            --bin index-partition-mutation-evidence \
+            --bin index-partition-maintenance-evidence \
+            2>&1 | tee evidence/index-storage/build/release-build.log
+
+      - name: Archive release build diagnostic
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: index-storage-build-${{ github.sha }}
+          path: evidence/index-storage/build/release-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Run read/query smoke evidence
+        run: target/release/index-storage-benchmark
+
+      - name: Run mutation/WAL smoke evidence
+        run: target/release/index-storage-mutation-benchmark
+
+      - name: Run persistent churn/VACUUM smoke evidence
+        run: target/release/index-storage-maintenance-benchmark
+
+      - name: Validate evidence packet through storage tooling
+        run: >-
+          node scripts/verify/index-storage-tooling.mjs packet
+          --scale smoke
+          --root evidence/index-storage/smoke
+
+      - name: Archive smoke evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: index-storage-smoke-${{ github.sha }}
+          path: evidence/index-storage/smoke
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9

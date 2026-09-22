@@ -1,0 +1,20 @@
+[package]
+name = "rustok-product-catalog-service"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Standalone authenticated gRPC host for the RusTok Product catalog read port"
+
+[dependencies]
+anyhow.workspace = true
+rustok-api.workspace = true
+rustok-outbox.workspace = true
+rustok-product.workspace = true
+rustok-product-transport = { path = "../rustok-product-transport" }
+rustok-telemetry.workspace = true
+sea-orm.workspace = true
+tokio.workspace = true
+tonic = { workspace = true, features = ["tls-ring"] }
+tracing.workspace = true
+url.workspace = true

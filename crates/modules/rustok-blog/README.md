@@ -1,0 +1,168 @@
+# rustok-blog
+
+## Purpose
+
+`rustok-blog` owns the Blog domain: posts, Blog Category membership/settings,
+Blog-owned post-term relations, and comment integration via `rustok-comments`.
+Shared vocabulary and canonical Blog Category localized identity are provided by
+`rustok-taxonomy` through explicit owner boundaries.
+
+## Canonical native module reference layout
+
+`rustok-blog` is the first enrolled reference implementation for the canonical
+native module source layout defined by
+[`docs/backend/module-backend-implementation.md`](../../../docs/backend/module-backend-implementation.md)
+and the canonical layout ADR.
+
+The physical source tree separates module wiring, domain policy, application
+services, persistence, integrations, and transports without changing the public
+Blog contract:
+
+- `src/module.rs` owns `RusToKModule` / `MigrationSource` wiring;
+- `src/domain/` owns the Blog state machine and article richtext policy;
+- `src/services/` owns application/use-case orchestration;
+- `src/entities/` and `src/migrations/` own Blog persistence;
+- `src/integrations/` owns SEO, reaction, and public-comment snapshot adapters;
+- `src/graphql/` and `src/controllers/` are thin owner transport adapters;
+- `src/lib.rs` is a facade that preserves deliberate public re-exports.
+
+Large responsibilities are nested below their owner slot. In particular,
+`PostService` is split into command, query, repository/projection, helper-policy,
+and test files instead of one shared source hotspot.
+
+The source shape is guarded by `npm run verify:module-source-layout`.
+
+## Canonical reference semantic contract
+
+Blog is not a reference merely because its folders are canonical. It is also the
+first implementation of the semantic reference contract in
+[`DECISIONS/2026-09-18-canonical-native-module-reference-contract.md`](../../../DECISIONS/2026-09-18-canonical-native-module-reference-contract.md).
+
+Key invariants include current-tenant authority, truthful locale provenance,
+explicit `Patch<T>` updates, mandatory edit CAS, one executable lifecycle
+policy, derived-state/business-revision separation, redacted public errors,
+private persistence entities, owner-service integration seams, deterministic
+pagination, and honest FBA readiness.
+
+The module-owned UI packages use a separate adapter profile:
+`core/` for commands/presentation/tests, `transport/` for GraphQL/native
+adapters, and `ui/` for render/controller components. Bundled UI locales are
+interface-copy coverage and do not restrict Blog content locales.
+
+Run both `npm run verify:module-source-layout` and
+`npm run verify:module-reference-contract` before using Blog as a template.
+
+## Responsibilities
+
+- Provide `BlogModule` metadata for the runtime registry.
+- Own Blog post lifecycle, Blog Category membership/settings/revision, SEO, and
+  Blog-local orchestration.
+- Own Blog GraphQL and REST transport adapters alongside domain services,
+  including comment moderation and category CRUD under `/api/blog/categories`.
+- Keep REST handlers on narrow `BlogHttpRuntime` state; the manifest-declared
+  Axum router builds it from `HostRuntimeContext` and the host transactional
+  event bus.
+- Publish module-owned Leptos admin/storefront packages for installable UI
+  surfaces.
+- Declare schema-driven tenant settings through `rustok-module.toml`; the current
+  `postsPerPage` and `showAuthor` declarations are persisted/editor-visible but
+  have no Blog runtime consumer and therefore remain a settings cutover gap.
+- Publish separate typed RBAC resources: `blog_posts:*`,
+  `blog_categories:*`, and the Blog-owned `tags:*` permission surface.
+- Keep Blog Category commands synchronized with canonical Taxonomy Category
+  state without restoring retired Blog Category translation storage.
+
+## Category Taxonomy boundary
+
+The former Blog-owned Category Translation target has been retired.
+`BlogCategoryTranslationTargetProvider`, its owner change journal, its live
+translation mirror and its provider-era test/evidence sources are not production
+entry points.
+
+The current boundary is:
+
+- `rustok-taxonomy` owns canonical Blog Category localized copy and route
+  history;
+- Blog Category reads and mutation responses project canonical Taxonomy state;
+- Blog Category create/update and hierarchy commands synchronize Taxonomy in the
+  owner transaction;
+- Blog Category delete delegates canonical lifecycle cleanup to Taxonomy;
+- `blog_categories` remains Blog-owned for module membership, settings, owner
+  revision and local command invariants;
+- historical migration `000020` may use the crate-private donor translation
+  entity during upgrade, after which `000021` irreversibly removes
+  `blog_category_translations` and `blog_translation_changes` once same-ID
+  Taxonomy ownership is proven.
+
+Do not reintroduce a second `blog/category` Translation provider or direct
+localized Blog Category storage. Translation-control-plane work for Category
+copy must use the canonical Taxonomy owner contract.
+
+## Interactions
+
+- Depends on `rustok-channel` for channel-aware public Blog read gating.
+- Depends on `rustok-content` for shared content helpers and cross-domain
+  orchestration primitives.
+- Currently declares `rustok-comments` as a static dependency for comment threads,
+  bodies, and lifecycle. This is an over-constrained current graph, not the accepted
+  target: Blog publications, categories, and tags remain valid without Comments.
+- Blog comment writes consume `RichTextDocument`; moderation reads consume the
+  Comments-owned `RichTextView` and plain-text projection.
+- Blog article writes accept the shared `RichTextDocument`; the owner applies
+  the fixed `article` profile and persists canonical root JSON.
+- Routes comment reads, create/update/delete, and moderation through the public
+  `CommentsThreadPort`; Blog does not call `CommentsService` directly.
+- The capability cutover must remove the static `blog -> comments` lifecycle edge.
+  Blog-owned comment policy may require the Comments capability for comment
+  operations, but provider absence must not disable Blog publication serving.
+- Reactions remains an optional integration. Blog owns whether its post surface
+  requests reactions; the Reactions owner controls reaction capabilities and state,
+  and effective availability must be resolved through an owner contract rather than
+  by reading another module's lifecycle row.
+- Depends on `rustok-taxonomy` for the shared tag dictionary and canonical Blog
+  Category copy/hierarchy projection while keeping `blog_post_tags` Blog-owned.
+  Global Taxonomy tags may be reused by Blog reads and attachments, but Blog tag
+  mutation commands are restricted to `module:blog` terms; shared vocabulary remains
+  Taxonomy-owned.
+- Blog-owned `blog_tag_usage` is a synchronous derived read projection of
+  `blog_post_tags`. It keeps tag-list pagination database-bounded, preserves
+  `use_count DESC, canonical_key ASC, tag_id ASC` ordering, keeps zero-use
+  module-local tags visible, and removes zero-use global tags. Taxonomy remains
+  canonical for term identity and `canonical_key`; the projection is never an
+  independent write source.
+- Depends on `rustok-core` for module contracts, permissions, and
+  `SecurityContext`.
+- Depends on `rustok-api` for shared auth/tenant/request GraphQL+HTTP adapter
+  contracts.
+- Used by `apps/server` through generated GraphQL composition and a
+  manifest-declared Axum router mount.
+- Used by `apps/admin` and `apps/storefront` through manifest-driven Leptos
+  package composition.
+- Public Blog reads honor channel module bindings and typed post visibility
+  allowlists; authenticated/admin flows bypass the public channel gate.
+- Post adapters validate `blog_posts:*`; category adapters validate only
+  `blog_categories:*`. Catalog `categories:*` and `blog_posts:*` do not
+  authorize Blog Category operations.
+- Blog services re-validate RBAC locally.
+- `CategoryService::new(db, event_bus)` is the Category service constructor; the
+  required `TransactionalEventBus` keeps owner mutation and Search reindex
+  publication in the same transaction.
+
+## Entry points
+
+- `BlogModule`
+- `PostService`
+- `CommentService`
+- `CategoryService`
+- `TagService`
+- `graphql::BlogQuery`
+- `graphql::BlogMutation`
+- `controllers::axum_router`
+- `admin::BlogAdmin`
+- `storefront::BlogView`
+
+## Docs
+
+- [Module docs](./docs/README.md)
+- [Current implementation cursor](./docs/implementation-plan-current.md)
+- [Platform docs index](../../../docs/index.md)

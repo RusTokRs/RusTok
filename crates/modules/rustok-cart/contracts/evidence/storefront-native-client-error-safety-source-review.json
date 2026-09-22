@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-31",
+  "status": "storefront_native_client_error_safety_source_reviewed_unvalidated",
+  "review": {
+    "native_context_before_call": true,
+    "native_final_mapper_count": 3,
+    "graphql_mapper_count_preserved": 3,
+    "selected_transport_path_preserved": true,
+    "validation_variant_preserved": true,
+    "technical_variants_fail_closed": true,
+    "static_public_message": true,
+    "raw_error_private_to_tracing": true,
+    "request_values_logged": false,
+    "native_adapters_outside_diff": true,
+    "server_functions_outside_diff": true,
+    "request_response_dto_outside_diff": true,
+    "ui_transport_error_type_preserved": true,
+    "existing_transport_tests_preserved": true,
+    "broad_ecommerce_cleanup_remains_open": true
+  },
+  "execution": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false
+  }
+}

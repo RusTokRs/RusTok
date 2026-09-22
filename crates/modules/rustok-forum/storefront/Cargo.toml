@@ -1,0 +1,43 @@
+[package]
+name = "rustok-forum-storefront"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = [
+    "leptos/ssr",
+    "dep:leptos_axum",
+    "dep:rustok-channel",
+    "dep:rustok-core",
+    "dep:rustok-forum",
+    "dep:rustok-outbox",
+    "rustok-api/server",
+]
+
+[dependencies]
+rustok-ui-core.workspace = true
+rustok-ui-i18n.workspace = true
+leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
+rustok-graphql.workspace = true
+leptos-ui-routing.workspace = true
+leptos-ui.workspace = true
+serde = { workspace = true, features = ["derive"] }
+rustok-api = { workspace = true, default-features = false }
+rustok-channel = { workspace = true, optional = true }
+rustok-core = { workspace = true, optional = true }
+rustok-forum = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true }
+uuid.workspace = true
+
+[dev-dependencies]
+axum.workspace = true
+rustok-taxonomy.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tower.workspace = true

@@ -1,0 +1,198 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(ShippingOptions::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ShippingOptions::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(ShippingOptions::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(ShippingOptions::Name)
+                            .string_len(120)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ShippingOptions::CurrencyCode)
+                            .string_len(3)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(ShippingOptions::Amount).decimal().not_null())
+                    .col(
+                        ColumnDef::new(ShippingOptions::ProviderId)
+                            .string_len(100)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ShippingOptions::Active)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .col(
+                        ColumnDef::new(ShippingOptions::Metadata)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(
+                        ColumnDef::new(ShippingOptions::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(ShippingOptions::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(Fulfillments::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(Fulfillments::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(Fulfillments::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(Fulfillments::OrderId).uuid().not_null())
+                    .col(ColumnDef::new(Fulfillments::ShippingOptionId).uuid())
+                    .col(ColumnDef::new(Fulfillments::CustomerId).uuid())
+                    .col(
+                        ColumnDef::new(Fulfillments::Status)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(Fulfillments::Carrier).string_len(100))
+                    .col(ColumnDef::new(Fulfillments::TrackingNumber).string_len(100))
+                    .col(ColumnDef::new(Fulfillments::DeliveredNote).string_len(255))
+                    .col(ColumnDef::new(Fulfillments::CancellationReason).string_len(500))
+                    .col(
+                        ColumnDef::new(Fulfillments::Metadata)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(
+                        ColumnDef::new(Fulfillments::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(Fulfillments::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(ColumnDef::new(Fulfillments::ShippedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(Fulfillments::DeliveredAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(Fulfillments::CancelledAt).timestamp_with_time_zone())
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(Fulfillments::Table, Fulfillments::ShippingOptionId)
+                            .to(ShippingOptions::Table, ShippingOptions::Id)
+                            .on_delete(ForeignKeyAction::SetNull),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_shipping_options_tenant_active")
+                    .table(ShippingOptions::Table)
+                    .col(ShippingOptions::TenantId)
+                    .col(ShippingOptions::Active)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_fulfillments_tenant_status")
+                    .table(Fulfillments::Table)
+                    .col(Fulfillments::TenantId)
+                    .col(Fulfillments::Status)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_fulfillments_order")
+                    .table(Fulfillments::Table)
+                    .col(Fulfillments::OrderId)
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(Fulfillments::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(ShippingOptions::Table).to_owned())
+            .await?;
+        Ok(())
+    }
+}
+
+#[derive(Iden)]
+enum ShippingOptions {
+    Table,
+    Id,
+    TenantId,
+    Name,
+    CurrencyCode,
+    Amount,
+    ProviderId,
+    Active,
+    Metadata,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum Fulfillments {
+    Table,
+    Id,
+    TenantId,
+    OrderId,
+    ShippingOptionId,
+    CustomerId,
+    Status,
+    Carrier,
+    TrackingNumber,
+    DeliveredNote,
+    CancellationReason,
+    Metadata,
+    CreatedAt,
+    UpdatedAt,
+    ShippedAt,
+    DeliveredAt,
+    CancelledAt,
+}

@@ -1,0 +1,198 @@
+#!/usr/bin/env node
+
+import fs from "node:fs";
+import path from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(scriptDir, "../..");
+const failures = [];
+let rootDir = repoRoot;
+const argv = process.argv.slice(2);
+let runtimeOnly = false;
+for (let index = 0; index < argv.length; index += 1) {
+  const argument = argv[index];
+  if (argument === "--runtime-only") {
+    runtimeOnly = true;
+  } else if (argument === "--root") {
+    const value = argv[index + 1];
+    if (!value) {
+      failures.push("--root requires a value");
+    } else {
+      rootDir = path.resolve(value);
+      runtimeOnly = true;
+    }
+    index += 1;
+  } else {
+    failures.push(`unknown argument ${argument}`);
+  }
+}
+
+function read(relativePath) {
+  const file = path.join(rootDir, relativePath);
+  if (!fs.existsSync(file)) {
+    failures.push(`${relativePath}: required file is missing`);
+    return "";
+  }
+  const stats = fs.lstatSync(file);
+  if (!stats.isFile() || stats.isSymbolicLink()) {
+    failures.push(`${relativePath}: must be a regular non-symlink file`);
+    return "";
+  }
+  return fs.readFileSync(file, "utf8");
+}
+
+function requireMarkers(relativePath, markers) {
+  const source = read(relativePath);
+  for (const marker of markers) {
+    if (!source.includes(marker)) failures.push(`${relativePath}: missing marker ${marker}`);
+  }
+}
+
+function forbidMarkers(relativePath, markers) {
+  const source = read(relativePath);
+  for (const marker of markers) {
+    if (source.includes(marker)) failures.push(`${relativePath}: forbidden marker ${marker}`);
+  }
+}
+
+function countMarker(source, marker) {
+  return source.split(marker).length - 1;
+}
+
+function requireCount(relativePath, marker, expected) {
+  const actual = countMarker(read(relativePath), marker);
+  if (actual !== expected) {
+    failures.push(`${relativePath}: expected ${expected} occurrence(s) of ${marker}, found ${actual}`);
+  }
+}
+
+function requireMatchedCount(relativePath, constructorMarker, cancellationMarker) {
+  const source = read(relativePath);
+  const constructors = countMarker(source, constructorMarker);
+  const cancellations = countMarker(source, cancellationMarker);
+  if (constructors === 0) {
+    failures.push(`${relativePath}: expected at least one subprocess constructor`);
+  }
+  if (constructors !== cancellations) {
+    failures.push(
+      `${relativePath}: expected one ${cancellationMarker} per ${constructorMarker}; found ${constructors} constructor(s) and ${cancellations} cancellation marker(s)`,
+    );
+  }
+}
+
+requireMarkers("crates/workers/rustok-worker-transport/Cargo.toml", ["tokio.workspace = true"]);
+requireMarkers("crates/workers/rustok-worker-transport/src/lib.rs", [
+  "pub admission_timeout: Duration",
+  'parse_duration_ms(prefix, "ADMISSION_TIMEOUT_MS", 250)',
+  "must not exceed REQUEST_TIMEOUT_MS",
+  "pub struct WorkerAdmission",
+  "Arc<Semaphore>",
+  "pub async fn acquire(&self) -> Result<WorkerPermit, Status>",
+  "Status::resource_exhausted",
+  "Status::unavailable",
+  "pub async fn shutdown_signal()",
+  "SignalKind::terminate()",
+  "tokio::signal::ctrl_c()",
+  "failed to install SIGTERM handler; stopping worker",
+  "admission_sheds_after_bounded_wait",
+]);
+forbidMarkers("crates/workers/rustok-worker-transport/src/lib.rs", [
+  "Semaphore::new(usize::MAX)",
+  "Duration::ZERO",
+  "unwrap()",
+]);
+
+requireMarkers("crates/workers/rustok-verification-transport/src/server.rs", [
+  "admission: WorkerAdmission",
+  "pub fn new(verifier: Arc<V>, admission: WorkerAdmission)",
+  "let _permit = self.admission.acquire().await?;",
+]);
+requireCount(
+  "crates/workers/rustok-verification-transport/src/server.rs",
+  "self.admission.acquire().await?",
+  1,
+);
+requireMarkers("crates/workers/rustok-verification-worker/src/main.rs", [
+  "WorkerAdmission::from_listener(&listener)",
+  "VerificationGrpcService::new(worker, admission)",
+  ".serve_with_shutdown(listener.address, shutdown_signal())",
+]);
+forbidMarkers("crates/workers/rustok-verification-worker/src/main.rs", [
+  ".serve(listener.address)",
+]);
+
+requireMarkers("crates/workers/rustok-module-build-transport/src/server.rs", [
+  "pub struct ModuleBuildGrpcService",
+  "admission: WorkerAdmission",
+  "pub fn new(worker: Arc<W>, admission: WorkerAdmission)",
+  "let _permit = self.admission.acquire().await?;",
+  "self.worker.is_ready()",
+  ".execute_build(request)",
+]);
+requireCount(
+  "crates/workers/rustok-module-build-transport/src/server.rs",
+  "self.admission.acquire().await?",
+  1,
+);
+requireMarkers("crates/workers/rustok-module-build-worker/src/main.rs", [
+  "WorkerAdmission::from_listener(&listener)",
+  "ModuleBuildGrpcService::new(worker, admission)",
+  ".serve_with_shutdown(listener.address, shutdown_signal())",
+]);
+forbidMarkers("crates/workers/rustok-module-build-worker/src/main.rs", [
+  ".serve(listener.address)",
+]);
+forbidMarkers("crates/workers/rustok-module-build-worker/src/lib.rs", ["mod admission;"]);
+
+requireMatchedCount(
+  "crates/workers/rustok-verification-worker/src/cosign.rs",
+  "Command::new(",
+  "kill_on_drop(true)",
+);
+requireMarkers("crates/workers/rustok-module-build-worker/src/runner.rs", [
+  "let mut child = Command::new(&self.job_launcher_path)",
+  ".kill_on_drop(true)",
+  "timeout(job_timeout, child.wait())",
+]);
+
+for (const subprocessFile of [
+  "crates/workers/rustok-module-build-worker/src/artifact.rs",
+  "crates/workers/rustok-module-build-worker/src/materializer.rs",
+  "crates/workers/rustok-module-build-worker/src/policy.rs",
+  "crates/workers/rustok-module-build-worker/src/runner.rs",
+  "crates/utils/rustok-build-publication/src/credentials.rs",
+  "crates/utils/rustok-build-publication/src/signing.rs",
+]) {
+  requireMatchedCount(subprocessFile, "Command::new(", "kill_on_drop(true)");
+}
+
+if (!runtimeOnly) {
+  requireMarkers(".github/workflows/worker-runtime-infrastructure.yml", [
+    "verify-worker-runtime-policy.mjs",
+  ]);
+}
+requireMarkers("scripts/verify/verify-all.sh", [
+  "worker-runtime-policy  Verify bounded admission, graceful shutdown and subprocess cancellation",
+  "verify-worker-runtime-policy.mjs:Worker Runtime Backpressure Policy",
+]);
+
+for (const temporaryWorkflow of [
+  ".github/workflows/one-off-kill-cancelled-build-processes.yml",
+  ".github/workflows/one-off-pin-release-actions.yml",
+]) {
+  if (fs.existsSync(path.join(rootDir, temporaryWorkflow))) {
+    failures.push(`${temporaryWorkflow}: temporary privileged workflow must not remain`);
+  }
+}
+
+if (failures.length > 0) {
+  console.error("Worker runtime policy verification failed:");
+  failures.forEach((failure) => console.error(`✗ ${failure}`));
+  process.exit(Math.min(failures.length, 255));
+}
+
+console.log(
+  "✔ worker admission is bounded, readiness remains available, hosts stop gracefully, and every module-build subprocess is killed on cancellation",
+);

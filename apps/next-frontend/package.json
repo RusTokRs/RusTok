@@ -1,0 +1,51 @@
+{
+  "name": "@rustok/next-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typegen:i18n": "next-fluent typegen -i messages/en.ftl -o src/types/i18n.d.ts",
+    "typecheck": "npm run typegen:i18n && next typegen && tsc --noEmit",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:install": "playwright install chromium",
+    "verify:seo-runtime-fixtures": "node scripts/verify-seo-runtime-fixtures.mjs && node scripts/verify-forum-route-fixture.mjs"
+  },
+  "dependencies": {
+    "@apollo/client": "^4.2.12",
+    "@radix-ui/react-slot": "^1.3.3",
+    "@rustok/comments-frontend": "file:./packages/rustok-comments",
+    "@rustok/next-fluent": "github:RusTokRs/next-fluent",
+    "@rustok/richtext": "file:../../packages/richtext",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "graphql": "^17.0.2",
+    "@rustok/ui-auth": "file:../../packages/rustok-ui-auth",
+    "lucide-react": "^1.41.0",
+    "next": "16.3.4",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.8",
+    "rxjs": "7.8.2",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss-animate": "^1.0.7",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.7",
+    "autoprefixer": "^10.5.5",
+    "eslint": "^10.10.0",
+    "eslint-config-next": "16.3.4",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^4.1.18",
+    "typescript": "7.0.2"
+  },
+  "license": "BUSL-1.1"
+}

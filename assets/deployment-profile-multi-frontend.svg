@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1125" viewBox="0 0 1800 1125" role="img" aria-labelledby="title desc">
+  <title id="title">RusToK Multi-Frontend Deployment</title>
+  <desc id="desc">Multi-frontend deployment where many client surfaces share one RusToK runtime with FFA and FBA boundaries.</desc>
+  <defs>
+    <style>.bg{fill:#f8fafc}.panel{fill:#fff;stroke:#d8dee8;stroke-width:2}.client{fill:#dcfce7;stroke:#16a34a;stroke-width:2}.server{fill:#e0f2fe;stroke:#0284c7;stroke-width:3}.transport{fill:#fef3c7;stroke:#d97706;stroke-width:2}.mod{fill:#eef2ff;stroke:#4f46e5;stroke-width:2}.remote{fill:#fef2f2;stroke:#dc2626;stroke-width:2}.infra{fill:#f1f5f9;stroke:#64748b;stroke-width:2}.ffa{fill:#ecfdf5;stroke:#10b981;stroke-width:2}.fba{fill:#fff7ed;stroke:#f97316;stroke-width:2}.text{font-family:Inter,Segoe UI,Arial,sans-serif;fill:#0f172a}.title{font-size:48px;font-weight:800}.sub{font-size:24px;fill:#475569}.h{font-size:28px;font-weight:800}.m{font-size:21px;font-weight:700}.s{font-size:18px;font-weight:500}.xs{font-size:15px;font-weight:500;fill:#475569}.line{stroke:#334155;stroke-width:3;fill:none;marker-end:url(#arrow)}.dash{stroke:#64748b;stroke-width:3;stroke-dasharray:8 8;fill:none;marker-end:url(#arrow)}.shadow{filter:url(#shadow)}</style>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0f172a" flood-opacity=".12"/></filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#334155"/></marker>
+  </defs>
+  <rect class="bg" width="1800" height="1125"/>
+  <text x="900" y="76" text-anchor="middle" class="text title">Deployment Profile 5: Multi-Frontend</text>
+  <text x="900" y="112" text-anchor="middle" class="sub">Multiple web, mobile and partner surfaces share one tenant-aware platform runtime</text>
+
+  <rect x="85" y="170" width="1630" height="260" rx="34" class="panel shadow"/>
+  <text x="130" y="225" class="text h">Client and host surfaces</text>
+  <g transform="translate(130 270)">
+    <rect width="245" height="92" rx="20" class="client"/><text x="122" y="40" text-anchor="middle" class="text s">Leptos Admin</text><text x="122" y="66" text-anchor="middle" class="xs">embedded or standalone</text>
+  </g>
+  <g transform="translate(410 270)">
+    <rect width="245" height="92" rx="20" class="client"/><text x="122" y="40" text-anchor="middle" class="text s">Leptos Storefront</text><text x="122" y="66" text-anchor="middle" class="xs">embedded or standalone</text>
+  </g>
+  <g transform="translate(690 270)">
+    <rect width="245" height="92" rx="20" class="client"/><text x="122" y="40" text-anchor="middle" class="text s">Next.js Admin</text><text x="122" y="66" text-anchor="middle" class="xs">GraphQL</text>
+  </g>
+  <g transform="translate(970 270)">
+    <rect width="245" height="92" rx="20" class="client"/><text x="122" y="40" text-anchor="middle" class="text s">Next.js Storefront</text><text x="122" y="66" text-anchor="middle" class="xs">GraphQL</text>
+  </g>
+  <g transform="translate(1250 270)">
+    <rect width="245" height="92" rx="20" class="client"/><text x="122" y="40" text-anchor="middle" class="text s">Flutter / Partner</text><text x="122" y="66" text-anchor="middle" class="xs">GraphQL / REST</text>
+  </g>
+
+  <rect x="250" y="500" width="1300" height="110" rx="28" class="transport shadow"/>
+  <text x="900" y="548" text-anchor="middle" class="text h">Transport selector per client</text>
+  <text x="900" y="582" text-anchor="middle" class="text s">in-process #[server], HTTP /api/fn/*, GraphQL, REST, WebSocket subscriptions</text>
+
+  <rect x="115" y="685" width="670" height="210" rx="32" class="server shadow"/>
+  <text x="450" y="752" text-anchor="middle" class="text h">apps/server</text>
+  <text x="450" y="790" text-anchor="middle" class="text s">composition root, auth, RBAC, tenant context</text>
+  <text x="450" y="824" text-anchor="middle" class="xs">one runtime serving many channels and brands</text>
+
+  <rect x="870" y="685" width="360" height="210" rx="32" class="mod shadow"/>
+  <text x="1050" y="750" text-anchor="middle" class="text h">Embedded modules</text>
+  <text x="1050" y="790" text-anchor="middle" class="text s">commerce, content, pages</text>
+  <text x="1050" y="824" text-anchor="middle" class="xs">fast in-process path</text>
+
+  <rect x="1315" y="685" width="370" height="210" rx="32" class="remote shadow"/>
+  <text x="1500" y="750" text-anchor="middle" class="text h">Remote / async services</text>
+  <text x="1500" y="790" text-anchor="middle" class="text s">search, index, AI, media jobs</text>
+  <text x="1500" y="824" text-anchor="middle" class="xs">gRPC/RPC or outbox events</text>
+
+  <rect x="250" y="940" width="1300" height="66" rx="22" class="infra"/>
+  <text x="900" y="982" text-anchor="middle" class="text s">PostgreSQL | Redis / Cache | Meilisearch | Iggy Streaming | Object Storage | Telemetry</text>
+
+  <path d="M900 430 L900 500" class="line"/>
+  <path d="M900 610 C790 650, 590 650, 450 685" class="line"/>
+  <path d="M785 790 L870 790" class="line"/>
+  <path d="M1230 790 L1315 790" class="dash"/>
+  <path d="M1050 895 L1050 940" class="line"/>
+  <path d="M1500 895 L1500 940" class="dash"/>
+
+  <rect x="85" y="1032" width="780" height="62" rx="22" class="ffa"/>
+  <text x="475" y="1071" text-anchor="middle" class="text s">FFA: each host mounts module-owned surfaces without taking domain ownership.</text>
+  <rect x="935" y="1032" width="780" height="62" rx="22" class="fba"/>
+  <text x="1325" y="1071" text-anchor="middle" class="text s">FBA: remote extraction is selective, contract-preserving and operationally justified.</text>
+</svg>

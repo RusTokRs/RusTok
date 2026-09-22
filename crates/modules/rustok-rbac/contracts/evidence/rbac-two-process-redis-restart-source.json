@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "evidence_id": "RBAC-TWO-PROCESS-REDIS-RESTART-SOURCE-20260801",
+  "generated_at": "2026-08-01T16:19:00Z",
+  "status": "source_ready_unvalidated",
+  "cycle": "cycle-001",
+  "component": "core/rbac",
+  "severity": "P0",
+  "topology": {
+    "database": "isolated_postgresql_database",
+    "observer_processes": 1,
+    "mutator_processes": 2,
+    "independent_os_processes": true,
+    "shared_process_cache": false,
+    "redis_server": "isolated_loopback_child_process",
+    "redis_channel": "rbac.permissions.generation.v1",
+    "subscription_readiness_probe": "PUBSUB_NUMSUB"
+  },
+  "fast_path_scenario": {
+    "initial_role": "admin",
+    "committed_role": "customer",
+    "mutation_entrypoint": "RbacService::replace_user_role_committed",
+    "observer_watchdog_started": false,
+    "periodic_reconciliation_interval_ms": 30000,
+    "maximum_decision_convergence_ms": 3000,
+    "expected_final_decision": "deny",
+    "only_cross_process_delivery_path_within_bound": "redis_pubsub"
+  },
+  "restart_scenario": {
+    "initial_role": "admin",
+    "committed_role": "customer",
+    "mutation_committed_while_redis_unavailable": true,
+    "expected_outage_cached_decision": "allow",
+    "expected_outage_authoritative_decision": "deny",
+    "same_observer_process_survives_restart": true,
+    "redis_process_restarted_on_same_loopback_port": true,
+    "recovery_action": "redis_resubscribe_ready_callback_reads_durable_generation_and_clears_permission_snapshots",
+    "maximum_reconnect_recovery_ms": 8000,
+    "maximum_replica_sequence_ms": 25000,
+    "periodic_reconciliation_excluded": true,
+    "expected_final_decision": "deny"
+  },
+  "forbidden_shortcuts": [
+    "start_rbac_invalidation_generation_watchdog",
+    "manual_permission_cache_clear",
+    "direct_generation_update_sql",
+    "test_only_role_mutation",
+    "same_process_replica_simulation",
+    "synthetic_invalidation_publication"
+  ],
+  "validation": {
+    "rust_test_executed": false,
+    "source_verifier_executed": false,
+    "postgresql_runtime_executed": false,
+    "redis_runtime_executed": false,
+    "subprocess_runtime_executed": false,
+    "format_checked": false,
+    "cargo_checked": false,
+    "ci_observed": false
+  },
+  "remaining_gates": {
+    "cli_repair_live_replica_evidence": false,
+    "transport_negative_requests": false,
+    "same_revision_compile_and_module_gates": false,
+    "full_multi_replica_gate_complete": false
+  },
+  "cursor_advanced": false
+}

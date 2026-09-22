@@ -1,0 +1,1305 @@
+{
+  "version": 1,
+  "updatedAt": "2026-07-24T00:00:00Z",
+  "fallbackBehavior": [
+    {
+      "case": "module_disabled",
+      "transportCode": "NOT_FOUND",
+      "messageContains": "seo module is not enabled",
+      "expectedReason": "module_disabled",
+      "expectedSource": "fallback_static"
+    },
+    {
+      "case": "not_found",
+      "transportCode": "NOT_FOUND",
+      "messageContains": "target not found",
+      "expectedReason": "not_found",
+      "expectedSource": "fallback_static"
+    },
+    {
+      "case": "permission_denied",
+      "transportCode": "PERMISSION_DENIED",
+      "messageContains": "permission denied",
+      "expectedReason": "permission_denied",
+      "expectedSource": "fallback_static"
+    },
+    {
+      "case": "transport_failure",
+      "transportCode": "TRANSPORT_ERROR",
+      "messageContains": "connection refused",
+      "expectedReason": "transport_failure",
+      "expectedSource": "fallback_static"
+    }
+  ],
+  "routeOwnership": [
+    {
+      "ownerModule": "rustok-pages",
+      "routePatterns": [
+        "/",
+        "/modules/pages?slug=:slug"
+      ],
+      "targetKind": "page",
+      "nextSmokeRoute": {
+        "locale": "en",
+        "routeSegment": "pages",
+        "query": {
+          "slug": "about"
+        }
+      },
+      "rustStorefrontRoute": "/modules/pages?slug=about"
+    },
+    {
+      "ownerModule": "rustok-product",
+      "routePatterns": [
+        "/modules/product?slug=:slug",
+        "/products/:slug"
+      ],
+      "targetKind": "product",
+      "nextSmokeRoute": {
+        "locale": "en",
+        "routeSegment": "product",
+        "query": {
+          "slug": "demo-product"
+        }
+      },
+      "rustStorefrontRoute": "/modules/product?slug=demo-product"
+    },
+    {
+      "ownerModule": "rustok-blog",
+      "routePatterns": [
+        "/modules/blog?slug=:slug",
+        "/blog/:slug"
+      ],
+      "targetKind": "blog_post",
+      "nextSmokeRoute": {
+        "locale": "en",
+        "routeSegment": "blog",
+        "query": {
+          "slug": "release-notes"
+        }
+      },
+      "rustStorefrontRoute": "/modules/blog?slug=release-notes"
+    },
+    {
+      "ownerModule": "rustok-forum",
+      "routePatterns": [
+        "/modules/forum?category=:category_id",
+        "/modules/forum?topic=:topic_id",
+        "/modules/forum?category=:category_id&topic=:topic_id"
+      ],
+      "targetKind": "forum_topic",
+      "nextSmokeRoute": {
+        "locale": "en",
+        "routeSegment": "forum",
+        "query": {
+          "category": "11111111-1111-4111-8111-111111111111",
+          "topic": "22222222-2222-4222-8222-222222222222"
+        }
+      },
+      "rustStorefrontRoute": "/modules/forum?category=11111111-1111-4111-8111-111111111111&topic=22222222-2222-4222-8222-222222222222"
+    }
+  ],
+  "longTailDiffAllowlist": [
+    {
+      "field": "metadataBase",
+      "reason": "Next Metadata API materializes absolute URLs from host env while Rust renderer writes already-resolved head tags."
+    },
+    {
+      "field": "scriptNonce",
+      "reason": "Host CSP nonce is request-local and intentionally not part of SeoPageContext."
+    },
+    {
+      "field": "jsonLdWhitespace",
+      "reason": "Rust and Next serializers may differ in whitespace only; payload object equality is required."
+    }
+  ],
+  "smokeEvidence": [
+    {
+      "name": "product owner route metadata adapter",
+      "route": "/modules/product?slug=demo-product",
+      "assertions": [
+        "canonical",
+        "robots",
+        "openGraph",
+        "twitter",
+        "structuredDataBlocks"
+      ]
+    },
+    {
+      "name": "blog owner route metadata adapter",
+      "route": "/modules/blog?slug=release-notes",
+      "assertions": [
+        "canonical",
+        "hreflang",
+        "robots",
+        "openGraph",
+        "structuredDataBlocks"
+      ]
+    }
+  ],
+  "verificationMatrix": [
+    {
+      "gate": "fixture_schema",
+      "scope": "apps/next-frontend/contracts/seo/runtime-parity-fixtures.json",
+      "command": "npm run verify:seo-runtime-fixtures",
+      "compileFree": true,
+      "expected": "fallback, route ownership, smoke evidence and allowlist invariants pass"
+    },
+    {
+      "gate": "next_runtime_adapter_static_review",
+      "scope": "apps/next-frontend/src/shared/seo",
+      "command": "rg -n \"SeoTransportError|buildSeoMetadata|resolveSeoPageContextForRoute\" src/shared/seo",
+      "compileFree": true,
+      "expected": "REST-first + GraphQL fallback and Metadata adapter symbols remain present"
+    },
+    {
+      "gate": "rust_renderer_static_review",
+      "scope": "crates/modules/rustok-seo/render/src/lib.rs",
+      "command": "rg -n \"render_head_html|robots_directives|structured_data_blocks\" crates/modules/rustok-seo/render/src/lib.rs",
+      "compileFree": true,
+      "expected": "shared Rust renderer still owns head serialization for canonical SeoPageContext"
+    },
+    {
+      "gate": "backend_transport_static_review",
+      "scope": "crates/modules/rustok-seo/src/graphql/mod.rs;apps/next-admin/src/shared/api/seo.ts",
+      "command": "rg -n \"seoPageContext|seoDiagnostics|seoIndexDeliveryStatus|/api/seo/index/tracking|/api/seo/index/repair-replay\" crates/modules/rustok-seo/src/graphql/mod.rs apps/next-admin/src/shared/api/seo.ts",
+      "compileFree": true,
+      "expected": "GraphQL page context/diagnostics/index status and REST tracking/replay adapter strings remain present"
+    },
+    {
+      "gate": "leptos_storefront_static_review",
+      "scope": "apps/storefront/src/shared/context/seo_page_context.rs",
+      "command": "rg -n \"storefront/seo-page-context|fetch_seo_page_context_server|fetch_seo_page_context_graphql|to_seo_page_context\" apps/storefront/src/shared/context/seo_page_context.rs",
+      "compileFree": true,
+      "expected": "Leptos storefront keeps server-function first with GraphQL fallback and shared renderer conversion"
+    },
+    {
+      "gate": "backend_rbac_gating_static_review",
+      "scope": "crates/modules/rustok-seo/src/graphql/mod.rs;crates/modules/rustok-seo/src/controllers/mod.rs",
+      "command": "rg -n \"require_seo_permission|ensure_seo_permission|SEO_MANAGE|SEO_READ\" crates/modules/rustok-seo/src/graphql/mod.rs crates/modules/rustok-seo/src/controllers/mod.rs",
+      "compileFree": true,
+      "expected": "GraphQL and REST control-plane surfaces keep explicit SEO_READ/SEO_MANAGE permission guards."
+    },
+    {
+      "gate": "replay_index_idempotency_static_review",
+      "scope": "crates/modules/rustok-seo/src/services/events.rs;crates/modules/rustok-seo/src/entities/mod.rs;crates/modules/rustok-seo/src/migrations",
+      "command": "rg -n \"idempotency_key|idx_seo_event_deliveries_idempotency|idx_seo_index_deliveries_unique_transition|ReplayCompleted|RepairOnly\" crates/modules/rustok-seo/src/services/events.rs crates/modules/rustok-seo/src/entities/mod.rs crates/modules/rustok-seo/src/migrations",
+      "compileFree": true,
+      "expected": "Delivery trackers and replay state symbols keep idempotency and forward-only replay invariants visible."
+    },
+    {
+      "gate": "next_host_runtime_entrypoints_static_review",
+      "scope": "apps/next-frontend/src/app/robots.ts;apps/next-frontend/src/app/sitemap.ts;apps/next-frontend/src/app/[locale]/page.tsx",
+      "command": "rg -n \"resolveRobotsMetadata|resolveSitemapMetadata|generateMetadata|resolveSeoPageContextForRoute|buildSeoMetadata\" apps/next-frontend/src/app",
+      "compileFree": true,
+      "expected": "Next robots, sitemap and page metadata remain wired to runtime SEO adapter entrypoints."
+    },
+    {
+      "gate": "d8_unit_inventory_static_review",
+      "scope": "crates/modules/rustok-seo/src/services/events.rs;crates/modules/rustok-seo/src/services/sitemaps.rs;crates/modules/rustok-seo/src/graphql/mod.rs;apps/storefront/src/lib.rs",
+      "command": "npm --prefix apps/next-frontend run verify:seo-runtime-fixtures",
+      "compileFree": true,
+      "expected": "targeted unit/integration test inventory remains source-locked without executing Rust or Next compilers"
+    },
+    {
+      "gate": "d8_live_artifact_manifest_template_review",
+      "scope": "apps/next-frontend/contracts/seo/runtime-parity-fixtures.json",
+      "command": "npm --prefix apps/next-frontend run verify:seo-runtime-fixtures",
+      "compileFree": true,
+      "expected": "live evidence artifact checklist requires backend, host, media fallback and owner sign-off artifacts before closeout"
+    }
+  ],
+  "d8EvidencePacket": {
+    "status": "lightweight_static_baseline",
+    "capturedAt": "2026-06-24T00:00:00Z",
+    "compilationPolicy": "not_run_by_request",
+    "coveredBatches": [
+      "D8.1 fixture invariants",
+      "D8.3 host parity static contract",
+      "D8.4 evidence packet seed",
+      "D9.1 docs sync matrix seed",
+      "D9.3 owner sign-off checklist seed",
+      "D8.2 backend transport static contract",
+      "D8.3 Leptos storefront static contract",
+      "D8.2 RBAC/module gating static matrix",
+      "D8.3 replay/index idempotency static matrix",
+      "D8.3 host runtime entrypoint static matrix",
+      "D8.2 semantic error parity static matrix",
+      "D8.4 live evidence capture template",
+      "D9.2 incident evidence template seed",
+      "D9.3 owner closeout criteria matrix",
+      "D8.1 targeted unit coverage inventory",
+      "D8.2 integration matrix execution plan",
+      "D8.4 live artifact manifest template",
+      "D8.4 runtime artifact schema template",
+      "D9.2 runbook live drill acceptance matrix",
+      "D9.3 signed-state transition guard"
+    ],
+    "deferredBatches": [
+      "D8.1 Rust unit execution",
+      "D8.2 backend integration matrix",
+      "D8.3 live host integration matrix",
+      "D9.2 live incident evidence examples"
+    ],
+    "stopCriteria": [
+      "missing fallback behavior case",
+      "missing route ownership target kind",
+      "missing non-home smoke evidence",
+      "missing long-tail diff allowlist",
+      "missing compile-free verification matrix",
+      "missing backend transport static evidence",
+      "missing Leptos storefront server-function/GraphQL parity evidence",
+      "missing RBAC/module gating static evidence",
+      "missing replay/index idempotency static evidence",
+      "missing host runtime entrypoint wiring",
+      "missing semantic error parity evidence for GraphQL REST Next fallback",
+      "missing live evidence capture command template",
+      "missing operational incident evidence template",
+      "missing owner closeout acceptance criteria",
+      "targeted unit inventory source token missing",
+      "integration matrix lacks GraphQL REST host and media-fallback surfaces",
+      "live artifact manifest lacks before/after counters or redaction policy",
+      "live artifact manifest lacks semantic error samples",
+      "owner sign-off moved to signed before artifact review"
+    ]
+  },
+  "docsSyncMatrix": [
+    {
+      "scope": "rustok-seo runtime docs",
+      "path": "crates/modules/rustok-seo/docs/README.md",
+      "covers": [
+        "Phase D status",
+        "D8/D9 verification policy",
+        "operations runbook links"
+      ],
+      "status": "synced_compile_free"
+    },
+    {
+      "scope": "Next storefront SEO parity docs",
+      "path": "apps/next-frontend/docs/README.md",
+      "covers": [
+        "runtime adapter policy",
+        "fixture evidence",
+        "live evidence deferral"
+      ],
+      "status": "synced_compile_free"
+    },
+    {
+      "scope": "Next admin SEO operator docs",
+      "path": "apps/next-admin/docs/README.md",
+      "covers": [
+        "control-plane helper",
+        "semantic errors",
+        "repair/replay surfaces"
+      ],
+      "status": "synced_compile_free"
+    },
+    {
+      "scope": "Leptos storefront SEO host docs",
+      "path": "apps/storefront/docs/README.md",
+      "covers": [
+        "SeoPageContext SSR preflight",
+        "rustok-seo-render",
+        "host parity evidence"
+      ],
+      "status": "synced_compile_free"
+    },
+    {
+      "scope": "SEO operations runbook",
+      "path": "crates/modules/rustok-seo/docs/operations-runbook.md",
+      "covers": [
+        "D9 incident drill templates",
+        "live evidence closeout criteria",
+        "owner sign-off preconditions"
+      ],
+      "status": "synced_compile_free"
+    }
+  ],
+  "ownerSignoffChecklist": [
+    {
+      "owner": "Platform foundation",
+      "scope": "SEO runtime, GraphQL/REST parity, outbox/index delivery tracking",
+      "requiredEvidence": [
+        "D8 backend integration matrix",
+        "semantic error parity",
+        "idempotency/cursor invariants"
+      ],
+      "status": "pending_live_runtime_evidence",
+      "mayMoveToSignedWhen": [
+        "all requiredEvidence artifacts attached",
+        "no unresolved high-severity defects",
+        "owner reviewed redacted samples"
+      ]
+    },
+    {
+      "owner": "Frontends",
+      "scope": "apps/storefront, apps/next-frontend, apps/next-admin SEO host parity",
+      "requiredEvidence": [
+        "runtime page context smoke",
+        "robots/sitemap runtime source smoke",
+        "operator repair/replay smoke"
+      ],
+      "status": "pending_live_runtime_evidence",
+      "mayMoveToSignedWhen": [
+        "all requiredEvidence artifacts attached",
+        "no unresolved high-severity defects",
+        "owner reviewed redacted samples"
+      ]
+    },
+    {
+      "owner": "Domain modules",
+      "scope": "pages/product/blog/forum SEO owner panels and target providers",
+      "requiredEvidence": [
+        "route ownership matrix",
+        "owner route metadata smoke",
+        "no host-local entity SEO editors"
+      ],
+      "status": "static_evidence_seeded",
+      "mayMoveToSignedWhen": [
+        "all requiredEvidence artifacts attached",
+        "no unresolved high-severity defects",
+        "owner reviewed redacted samples"
+      ]
+    }
+  ],
+  "liveEvidencePlan": {
+    "status": "deferred_no_backend_hosts_started_by_request",
+    "requiredSurfaces": [
+      "GraphQL seoPageContext/seoDiagnostics/seoIndexDeliveryStatus",
+      "REST /api/seo/page-context /diagnostics /index/tracking /index/repair-replay",
+      "Next robots.ts sitemap.ts generateMetadata",
+      "Leptos storefront storefront/seo-page-context"
+    ],
+    "minimumBeforeClose": [
+      "record backend/host command or CI job URL",
+      "capture before/after delivery counters",
+      "capture semantic error parity sample",
+      "capture non-home metadata smoke for product and blog",
+      "capture Leptos storefront server-function and GraphQL fallback smoke for the same route",
+      "capture Next admin replay repair semantic-error sample"
+    ],
+    "stopCriteria": [
+      "missing live backend evidence for D8.2",
+      "missing host evidence for D8.3",
+      "unexplained GraphQL/REST error-code drift",
+      "cursor moves backward or duplicate idempotency transition observed"
+    ],
+    "staticSubstituteCapturedAt": "2026-06-17T00:00:00Z",
+    "staticSubstituteReason": "User requested no compilations; this packet only proves contract files and adapter symbols remain wired before live backend/host evidence."
+  },
+  "staticEvidenceAssertions": [
+    {
+      "name": "next_frontend_adapter_symbols",
+      "path": "apps/next-frontend/src/shared/seo/runtime.ts",
+      "mustContain": [
+        "SeoTransportError",
+        "resolveSeoPageContextForRoute"
+      ]
+    },
+    {
+      "name": "next_frontend_metadata_builder",
+      "path": "apps/next-frontend/src/shared/seo/metadata.ts",
+      "mustContain": [
+        "buildSeoMetadata",
+        "structuredDataBlocks"
+      ]
+    },
+    {
+      "name": "next_frontend_rest_graphql_transport",
+      "path": "apps/next-frontend/src/shared/seo/transport.ts",
+      "mustContain": [
+        "/api/seo/page-context",
+        "seoPageContext",
+        "SeoTransportError"
+      ]
+    },
+    {
+      "name": "rust_renderer_head_contract",
+      "path": "crates/modules/rustok-seo/render/src/lib.rs",
+      "mustContain": [
+        "render_head_html",
+        "robots_directives",
+        "structured_data_blocks"
+      ]
+    },
+    {
+      "name": "next_admin_index_transport",
+      "path": "apps/next-admin/src/shared/api/seo.ts",
+      "mustContain": [
+        "seoIndexDeliveryStatus",
+        "/api/seo/index/tracking",
+        "/api/seo/index/repair-replay"
+      ]
+    },
+    {
+      "name": "leptos_storefront_runtime_core_contract",
+      "path": "apps/storefront/src/shared/context/seo_page_context.rs",
+      "mustContain": [
+        "fetch_seo_page_context_server",
+        "fetch_seo_page_context_graphql",
+        "to_seo_page_context"
+      ]
+    },
+    {
+      "name": "leptos_storefront_runtime_native_adapter",
+      "path": "apps/storefront/src/shared/context/seo_page_context_native_server_adapter.rs",
+      "mustContain": [
+        "storefront/seo-page-context",
+        "resolve_seo_page_context"
+      ]
+    }
+  ],
+  "rbacModuleGatingMatrix": [
+    {
+      "surface": "GraphQL page context read",
+      "path": "crates/modules/rustok-seo/src/graphql/mod.rs",
+      "mustContain": [
+        "seo_page_context",
+        "Permission::SEO_READ",
+        "require_seo_permission"
+      ],
+      "expected": "seoPageContext keeps read permission guard before service resolution."
+    },
+    {
+      "surface": "GraphQL index tracking/replay manage",
+      "path": "crates/modules/rustok-seo/src/graphql/mod.rs",
+      "mustContain": [
+        "seo_index_delivery_status",
+        "run_seo_index_repair_replay",
+        "Permission::SEO_MANAGE"
+      ],
+      "expected": "index tracking and replay remain SEO_MANAGE-gated."
+    },
+    {
+      "surface": "REST diagnostics/tracking/replay manage",
+      "path": "crates/modules/rustok-seo/src/controllers/mod.rs",
+      "mustContain": [
+        "ensure_seo_permission",
+        "Permission::SEO_MANAGE",
+        "run_index_repair_replay"
+      ],
+      "expected": "REST control-plane parity endpoints keep permission checks."
+    },
+    {
+      "surface": "Next runtime fallback classification",
+      "path": "apps/next-frontend/src/shared/seo/runtime.ts",
+      "mustContain": [
+        "module_disabled",
+        "PERMISSION_DENIED",
+        "TRANSPORT_ERROR",
+        "fallback_static"
+      ],
+      "expected": "Next host maps module gating, permission and transport failures to safe static fallback."
+    }
+  ],
+  "replayIndexInvariantMatrix": [
+    {
+      "invariant": "event delivery idempotency",
+      "path": "crates/modules/rustok-seo/src/services/events.rs",
+      "mustContain": [
+        "load_delivery_by_idempotency_key",
+        "skipping duplicate SEO domain event emission",
+        "idx_seo_event_deliveries_idempotency"
+      ]
+    },
+    {
+      "invariant": "index delivery unique transition",
+      "path": "crates/modules/rustok-seo/src/services/events.rs",
+      "mustContain": [
+        "upsert_index_delivery",
+        "idx_seo_index_deliveries_unique_transition",
+        "skipping duplicate"
+      ]
+    },
+    {
+      "invariant": "forward-only replay modes",
+      "path": "crates/modules/rustok-seo/src/dto.rs",
+      "mustContain": [
+        "NotStarted",
+        "RepairOnly",
+        "ReplayRequested",
+        "Replaying",
+        "ReplayCompleted"
+      ]
+    },
+    {
+      "invariant": "operator replay API parity",
+      "path": "apps/next-admin/src/shared/api/seo.ts",
+      "mustContain": [
+        "SeoIndexReplayMode",
+        "runSeoIndexRepairReplay",
+        "/api/seo/index/repair-replay",
+        "BAD_USER_INPUT",
+        "PERMISSION_DENIED",
+        "NOT_FOUND"
+      ]
+    }
+  ],
+  "hostRuntimeEntrypointMatrix": [
+    {
+      "host": "Next frontend robots",
+      "path": "apps/next-frontend/src/app/robots.ts",
+      "mustContain": [
+        "resolveRobotsMetadata"
+      ]
+    },
+    {
+      "host": "Next frontend sitemap",
+      "path": "apps/next-frontend/src/app/sitemap.ts",
+      "mustContain": [
+        "resolveSitemapMetadata"
+      ]
+    },
+    {
+      "host": "Next frontend metadata",
+      "path": "apps/next-frontend/src/app/[locale]/page.tsx",
+      "mustContain": [
+        "generateMetadata",
+        "resolveSeoPageContextForRoute",
+        "buildSeoMetadata"
+      ]
+    },
+    {
+      "host": "Leptos storefront SSR preflight",
+      "path": "apps/storefront/src/lib.rs",
+      "mustContain": [
+        "build_seo_head",
+        "render_head_html",
+        "render_module_page_response"
+      ]
+    }
+  ],
+  "semanticErrorParityMatrix": [
+    {
+      "surface": "GraphQL validation errors",
+      "path": "crates/modules/rustok-seo/src/graphql/mod.rs",
+      "mustContain": [
+        "GraphQLError>::bad_user_input",
+        "SeoIndexRepairReplayInput",
+        "limit"
+      ],
+      "expected": "invalid replay input maps to BAD_USER_INPUT without changing REST semantics"
+    },
+    {
+      "surface": "GraphQL permission errors",
+      "path": "crates/modules/rustok-seo/src/graphql/mod.rs",
+      "mustContain": [
+        "GraphQLError>::permission_denied",
+        "Permission::SEO_MANAGE",
+        "require_seo_permission"
+      ],
+      "expected": "manage/read permission failures keep GraphQL semantic PERMISSION_DENIED"
+    },
+    {
+      "surface": "REST error envelope",
+      "path": "crates/modules/rustok-seo/src/controllers/mod.rs",
+      "mustContain": [
+        "ErrorCode::BadUserInput",
+        "ErrorCode::PermissionDenied",
+        "ErrorCode::NotFound",
+        "error"
+      ],
+      "expected": "REST control-plane endpoints expose GraphQL-compatible semantic error codes"
+    },
+    {
+      "surface": "Next storefront safe fallback",
+      "path": "apps/next-frontend/src/shared/seo/runtime.ts",
+      "mustContain": [
+        "NOT_FOUND",
+        "PERMISSION_DENIED",
+        "TRANSPORT_ERROR",
+        "fallback_static"
+      ],
+      "expected": "Next runtime classifies semantic and transport failures before static fallback"
+    },
+    {
+      "surface": "Next admin operator API",
+      "path": "apps/next-admin/src/shared/api/seo.ts",
+      "mustContain": [
+        "BAD_USER_INPUT",
+        "PERMISSION_DENIED",
+        "NOT_FOUND",
+        "SeoRestErrorEnvelope"
+      ],
+      "expected": "operator helper preserves backend semantic codes for UI remediation"
+    }
+  ],
+  "liveEvidenceCaptureTemplate": {
+    "status": "template_only_no_runtime_started",
+    "commands": [
+      {
+        "surface": "backend_graphql_rest_parity",
+        "command": "cargo test -p rustok-seo --test seo_graphql_rest_parity -- --nocapture",
+        "requiredArtifacts": [
+          "seoPageContext sample",
+          "seoDiagnostics sample",
+          "seoIndexDeliveryStatus sample",
+          "REST /api/seo/index/tracking sample"
+        ]
+      },
+      {
+        "surface": "outbox_index_pipeline",
+        "command": "cargo test -p rustok-seo --test seo_index_pipeline -- --nocapture",
+        "requiredArtifacts": [
+          "before/after seo_event_deliveries counters",
+          "before/after seo_index_deliveries counters",
+          "duplicate idempotency sample"
+        ]
+      },
+      {
+        "surface": "next_frontend_runtime",
+        "command": "npm --prefix apps/next-frontend run test:seo-runtime-smoke",
+        "requiredArtifacts": [
+          "robots runtime source",
+          "sitemap runtime source",
+          "product metadata JSON-LD",
+          "blog hreflang"
+        ]
+      },
+      {
+        "surface": "leptos_storefront_runtime",
+        "command": "cargo test -p rustok-storefront seo_page_context -- --nocapture",
+        "requiredArtifacts": [
+          "server-function success sample",
+          "GraphQL fallback sample",
+          "rendered head sample"
+        ]
+      },
+      {
+        "surface": "next_admin_operator",
+        "command": "npm --prefix apps/next-admin run test:seo-operator-smoke",
+        "requiredArtifacts": [
+          "index tracking sample",
+          "repair replay success sample",
+          "semantic error sample"
+        ]
+      },
+      {
+        "surface": "media_descriptor_fallback_smoke",
+        "command": "live MediaAssetReadPort fallback smoke for SEO consumer (backend/host runtime required)",
+        "requiredArtifacts": [
+          "MediaAssetReadPort unavailable sample",
+          "SEO page context without image metadata",
+          "existing explicit SEO image preservation sample"
+        ]
+      }
+    ],
+    "redactionRules": [
+      "tenant ids may be UUID-only",
+      "do not include auth tokens or cookies",
+      "replace public hostnames with example.test when logs leave CI"
+    ],
+    "closeoutRequires": "all commands or equivalent CI jobs attached to D8/D9 closeout with zero high-severity parity defects"
+  },
+  "incidentEvidenceTemplates": [
+    {
+      "scenario": "seo_event_backlog_stuck",
+      "runbook": "crates/modules/rustok-seo/docs/operations-runbook.md",
+      "requiredEvidence": [
+        "initial queued/failed counters",
+        "worker/outbox health sample",
+        "repair action taken",
+        "post-repair counters"
+      ],
+      "status": "pending_live_incident_or_drill"
+    },
+    {
+      "scenario": "partial_indexing_failures",
+      "runbook": "crates/modules/rustok-seo/docs/operations-runbook.md",
+      "requiredEvidence": [
+        "failed/dead-letter deliveries by target_kind",
+        "root cause classification",
+        "targeted replay command",
+        "post-replay delivery status"
+      ],
+      "status": "pending_live_incident_or_drill"
+    },
+    {
+      "scenario": "safe_replay_reindex",
+      "runbook": "crates/modules/rustok-seo/docs/replay-repair-runbook.md",
+      "requiredEvidence": [
+        "selected replay mode",
+        "cursor before/after",
+        "idempotency duplicate check",
+        "rollback/stop criteria decision"
+      ],
+      "status": "pending_live_incident_or_drill"
+    }
+  ],
+  "ownerCloseoutCriteria": [
+    {
+      "owner": "Platform foundation",
+      "acceptance": [
+        "GraphQL/REST semantic error parity attached",
+        "outbox/index counters attached",
+        "no duplicate idempotency transitions"
+      ],
+      "blocksCloseoutIf": [
+        "unexplained NOT_FOUND/PERMISSION_DENIED drift",
+        "cursor regression",
+        "missing D8.2 live artifact"
+      ]
+    },
+    {
+      "owner": "Frontends",
+      "acceptance": [
+        "Next robots/sitemap runtime smoke attached",
+        "Next non-home metadata smoke attached",
+        "Leptos server-function and GraphQL fallback smoke attached"
+      ],
+      "blocksCloseoutIf": [
+        "runtime falls back silently for healthy SEO module",
+        "JSON-LD missing on product/blog smoke",
+        "missing D8.3 live artifact"
+      ]
+    },
+    {
+      "owner": "Domain modules",
+      "acceptance": [
+        "route ownership matrix remains current",
+        "owner panels remain canonical entity SEO editors",
+        "target provider route smoke attached"
+      ],
+      "blocksCloseoutIf": [
+        "host-local entity editor appears",
+        "target_kind owner mismatch",
+        "missing owner route smoke"
+      ]
+    }
+  ],
+  "unitCoverageInventory": [
+    {
+      "batch": "D8.1 normalization and validation",
+      "path": "crates/modules/rustok-seo/src/services/sitemaps.rs",
+      "commandWhenCompilationAllowed": "cargo test -p rustok-seo normalize_sitemap_submission_endpoints_filters_invalid_and_deduplicates --lib --config profile.dev.debug=0",
+      "mustContain": [
+        "normalize_sitemap_submission_endpoints_filters_invalid_and_deduplicates",
+        "submit_sitemap_endpoints_passes_normalized_request_urls_to_adapter"
+      ],
+      "status": "source_locked_pending_execution"
+    },
+    {
+      "batch": "D8.1 replay transitions and idempotency",
+      "path": "crates/modules/rustok-seo/src/services/events.rs",
+      "commandWhenCompilationAllowed": "cargo test -p rustok-seo replay_mode_is_forward_only historical_replay_deduplicates_repeat_runs --lib --config profile.dev.debug=0",
+      "mustContain": [
+        "replay_mode_is_forward_only",
+        "historical_replay_deduplicates_repeat_runs",
+        "seo_index_delivery_remains_tenant_scoped_for_same_idempotency_key"
+      ],
+      "status": "source_locked_pending_execution"
+    },
+    {
+      "batch": "D8.1 GraphQL page-context contract",
+      "path": "crates/modules/rustok-seo/src/graphql/mod.rs",
+      "commandWhenCompilationAllowed": "cargo test -p rustok-seo graphql_seo_page_context_matches_redirect_service_contract --lib --config profile.dev.debug=0",
+      "mustContain": [
+        "graphql_seo_page_context_matches_redirect_service_contract",
+        "graphql_seo_sitemap_status_respects_disabled_settings_and_permissions"
+      ],
+      "status": "source_locked_pending_execution"
+    },
+    {
+      "batch": "D8.3 storefront locale normalization",
+      "path": "apps/storefront/src/lib.rs",
+      "commandWhenCompilationAllowed": "cargo test -p rustok-storefront normalizes_storefront_locale_tags --lib --config profile.dev.debug=0",
+      "mustContain": [
+        "normalizes_storefront_locale_tags",
+        "normalize_storefront_locale"
+      ],
+      "status": "source_locked_pending_execution"
+    }
+  ],
+  "integrationMatrixPlan": [
+    {
+      "surface": "backend_graphql_rest_parity",
+      "pendingCommand": "cargo test -p rustok-seo --lib graphql::tests controllers::tests --config profile.dev.debug=0",
+      "requiredArtifacts": [
+        "GraphQL response sample",
+        "REST response sample",
+        "matching errors[].extensions.code"
+      ],
+      "blocksCloseoutIf": [
+        "GraphQL/REST status or error-code drift",
+        "tenant permission bypass"
+      ]
+    },
+    {
+      "surface": "outbox_index_pipeline",
+      "pendingCommand": "cargo test -p rustok-seo seo_index_delivery --lib --config profile.dev.debug=0",
+      "requiredArtifacts": [
+        "before delivery counters",
+        "after delivery counters",
+        "idempotency key sample",
+        "cursor timeline sample"
+      ],
+      "blocksCloseoutIf": [
+        "duplicate idempotency transition",
+        "cursor mode moves backward"
+      ]
+    },
+    {
+      "surface": "next_frontend_runtime",
+      "pendingCommand": "npm --prefix apps/next-frontend run lint && npm --prefix apps/next-frontend run typecheck && live metadata smoke",
+      "requiredArtifacts": [
+        "robots runtime sample",
+        "sitemap runtime sample",
+        "product metadata sample",
+        "blog metadata sample"
+      ],
+      "blocksCloseoutIf": [
+        "host-local metadata used while backend is healthy",
+        "missing structuredDataBlocks JSON-LD script"
+      ]
+    },
+    {
+      "surface": "leptos_storefront_runtime",
+      "pendingCommand": "cargo test -p rustok-storefront seo_page_context --lib --config profile.dev.debug=0 && live SSR smoke",
+      "requiredArtifacts": [
+        "server-function success sample",
+        "GraphQL fallback sample",
+        "rendered head sample"
+      ],
+      "blocksCloseoutIf": [
+        "server locale mismatch",
+        "GraphQL fallback shape drift"
+      ]
+    },
+    {
+      "surface": "media_descriptor_fallback_smoke",
+      "pendingCommand": "live MediaAssetReadPort fallback smoke for SEO consumer",
+      "requiredArtifacts": [
+        "provider fallback smoke case",
+        "SEO consumer degraded-mode sample",
+        "missing alt/size diagnostics sample"
+      ],
+      "blocksCloseoutIf": [
+        "raw media blob bypass",
+        "missing provider fallback source link"
+      ]
+    }
+  ],
+  "liveArtifactManifestTemplate": {
+    "status": "template_only_pending_d8_runtime",
+    "captureRoot": "artifacts/seo/d8-runtime/<yyyy-mm-dd>/",
+    "requiredFiles": [
+      "backend-graphql-rest-parity.json",
+      "outbox-index-before-after-counters.json",
+      "next-runtime-robots-sitemap-metadata.json",
+      "leptos-storefront-page-context-smoke.json",
+      "media-descriptor-fallback-smoke.json",
+      "owner-signoff.md"
+    ],
+    "counterFields": [
+      "pending",
+      "sent",
+      "retry",
+      "failed",
+      "dead_letter",
+      "replay_mode",
+      "last_high_water_mark"
+    ],
+    "redactionPolicy": [
+      "remove auth tokens",
+      "remove tenant secrets",
+      "hash customer/user identifiers",
+      "preserve route/target_kind/status/error code fields"
+    ],
+    "closeoutRule": "All requiredFiles must be attached, counters must include before/after snapshots, and ownerSignoffChecklist rows may move to signed only after artifacts are reviewed.",
+    "templateDirectory": "apps/next-frontend/contracts/seo/live-evidence/templates"
+  },
+  "liveArtifactSchemaTemplate": {
+    "status": "template_only_pending_d8_runtime",
+    "requiredTopLevelFields": [
+      "captured_at",
+      "environment",
+      "surface",
+      "command_or_ci_job",
+      "before",
+      "after",
+      "samples",
+      "redactions_applied",
+      "result"
+    ],
+    "environmentFields": [
+      "git_sha",
+      "tenant_id_redacted",
+      "seo_flags",
+      "host_base_url_redacted",
+      "backend_base_url_redacted"
+    ],
+    "sampleFields": [
+      "route",
+      "target_kind",
+      "transport",
+      "status_code",
+      "semantic_error_code",
+      "fallback_reason",
+      "artifact_path"
+    ],
+    "resultFields": [
+      "passed",
+      "high_severity_defects",
+      "owner_review_required"
+    ],
+    "counterSnapshots": {
+      "before": [
+        "pending",
+        "sent",
+        "retry",
+        "failed",
+        "dead_letter",
+        "replay_mode"
+      ],
+      "after": [
+        "pending",
+        "sent",
+        "retry",
+        "failed",
+        "dead_letter",
+        "replay_mode"
+      ]
+    },
+    "redactionMustRemove": [
+      "auth tokens",
+      "cookies",
+      "tenant secrets",
+      "customer/user identifiers"
+    ],
+    "closeoutRule": "Every liveArtifactManifestTemplate.requiredFiles item must conform to this shape or document an explicit equivalent CI artifact URL."
+  },
+  "liveEvidenceArtifactTemplates": [
+    {
+      "file": "backend-graphql-rest-parity.json",
+      "surface": "backend_graphql_rest_parity",
+      "status": "template_only_pending_d8_runtime",
+      "mustCapture": [
+        "GraphQL seoPageContext success",
+        "REST /api/seo/page-context success",
+        "semantic error sample for BAD_USER_INPUT",
+        "semantic error sample for PERMISSION_DENIED",
+        "tenant/module disabled NOT_FOUND sample"
+      ],
+      "blocksCloseoutIf": [
+        "GraphQL and REST disagree on canonical document fields",
+        "error envelope lacks errors[].extensions.code",
+        "tenant/module gating does not fail closed"
+      ]
+    },
+    {
+      "file": "outbox-index-before-after-counters.json",
+      "surface": "outbox_index_pipeline",
+      "status": "template_only_pending_d8_runtime",
+      "mustCapture": [
+        "before counters pending/sent/retry/failed/dead_letter/replay_mode",
+        "after counters pending/sent/retry/failed/dead_letter/replay_mode",
+        "idempotency key duplicate replay sample",
+        "forward-only replay transition sample"
+      ],
+      "blocksCloseoutIf": [
+        "one idempotency key produces multiple state transitions",
+        "dead_letter grows without owner remediation",
+        "replay mode regresses to an earlier state"
+      ]
+    },
+    {
+      "file": "next-runtime-robots-sitemap-metadata.json",
+      "surface": "next_frontend_runtime",
+      "status": "template_only_pending_d8_runtime",
+      "mustCapture": [
+        "robots.ts runtime result plus fallback reason",
+        "sitemap.ts runtime result plus fallback reason",
+        "home metadata runtime sample",
+        "product metadata runtime sample",
+        "blog metadata runtime sample"
+      ],
+      "blocksCloseoutIf": [
+        "runtime adapter uses blanket catch",
+        "JSON-LD blocks are dropped",
+        "route/query normalization differs from fixture route ownership"
+      ]
+    },
+    {
+      "file": "leptos-storefront-page-context-smoke.json",
+      "surface": "leptos_storefront_runtime",
+      "status": "template_only_pending_d8_runtime",
+      "mustCapture": [
+        "server function page context success",
+        "GraphQL fallback page context success",
+        "host effective locale sample",
+        "rendered head canonical/robots/schema sample"
+      ],
+      "blocksCloseoutIf": [
+        "package-local locale fallback is introduced",
+        "SeoPageContext route+document shape changes",
+        "GraphQL fallback bypasses semantic errors"
+      ]
+    },
+    {
+      "file": "media-descriptor-fallback-smoke.json",
+      "surface": "media_descriptor_fallback_smoke",
+      "status": "template_only_pending_d8_runtime",
+      "mustCapture": [
+        "image-descriptor-in-process success",
+        "provider-unavailable omit_image_metadata",
+        "asset-unavailable keep_existing_seo_image",
+        "relative-url proxy fallback",
+        "diagnostics image quality before/after counters"
+      ],
+      "blocksCloseoutIf": [
+        "SEO reads media storage internals directly",
+        "fallback mode is not one of registered degraded modes",
+        "existing SEO image is erased on asset unavailable"
+      ]
+    },
+    {
+      "file": "owner-signoff.md",
+      "surface": "owner_signoff",
+      "status": "template_only_pending_d8_runtime",
+      "mustCapture": [
+        "Platform foundation signed row",
+        "Frontends signed row",
+        "Domain modules signed row",
+        "linked redacted artifacts",
+        "high-severity defect disposition"
+      ],
+      "blocksCloseoutIf": [
+        "any owner remains pending",
+        "required live artifact is missing",
+        "high-severity defect lacks remediation owner"
+      ]
+    }
+  ],
+  "liveEvidenceRunbookCrosswalk": [
+    {
+      "scenario": "seo_event_backlog_stuck",
+      "runbook": "crates/modules/rustok-seo/docs/operations-runbook.md",
+      "artifact": "outbox-index-before-after-counters.json",
+      "mustCapture": [
+        "delivery status before repair",
+        "operator action and replay mode",
+        "delivery status after repair",
+        "stop/rollback decision"
+      ],
+      "blocksCloseoutIf": [
+        "dead_letter count grows after repair",
+        "no replay cursor transition is captured",
+        "operator permission is not recorded"
+      ]
+    },
+    {
+      "scenario": "partial_indexing_failures",
+      "runbook": "crates/modules/rustok-seo/docs/operations-runbook.md",
+      "artifact": "backend-graphql-rest-parity.json",
+      "mustCapture": [
+        "failed target kind/id sample",
+        "GraphQL and REST status parity",
+        "bounded retry/dead-letter state",
+        "index trigger idempotency key"
+      ],
+      "blocksCloseoutIf": [
+        "GraphQL and REST disagree on failure classification",
+        "duplicate index events are emitted",
+        "tenant/module gate is bypassed"
+      ]
+    },
+    {
+      "scenario": "replay_reindex_drill",
+      "runbook": "crates/modules/rustok-seo/docs/replay-repair-runbook.md",
+      "artifact": "owner-signoff.md",
+      "mustCapture": [
+        "repair_only dry-run decision",
+        "repair+historical_replay approval",
+        "forward-only cursor timeline",
+        "owner acceptance note"
+      ],
+      "blocksCloseoutIf": [
+        "cursor moves backward",
+        "approval owner is missing",
+        "replay repeats already-sent deliveries without idempotency evidence"
+      ]
+    }
+  ],
+  "ciAttachmentManifestChecklist": [
+    {
+      "file": "backend-graphql-rest-parity.json",
+      "attachTo": "D8 backend integration job",
+      "requiredMetadata": [
+        "commit_sha",
+        "tenant_id_redacted",
+        "graphql_operation",
+        "rest_endpoint",
+        "result"
+      ],
+      "redaction": [
+        "authorization headers",
+        "cookies",
+        "tenant secrets"
+      ]
+    },
+    {
+      "file": "outbox-index-before-after-counters.json",
+      "attachTo": "D8 index pipeline job",
+      "requiredMetadata": [
+        "commit_sha",
+        "before",
+        "after",
+        "idempotency_keys_sample",
+        "result"
+      ],
+      "redaction": [
+        "outbox payload PII",
+        "operator token"
+      ]
+    },
+    {
+      "file": "next-runtime-robots-sitemap-metadata.json",
+      "attachTo": "D8 next-frontend host smoke",
+      "requiredMetadata": [
+        "commit_sha",
+        "base_url",
+        "robots_source",
+        "sitemap_source",
+        "metadata_routes",
+        "result"
+      ],
+      "redaction": [
+        "preview auth token",
+        "cookies"
+      ]
+    },
+    {
+      "file": "leptos-storefront-page-context-smoke.json",
+      "attachTo": "D8 storefront host smoke",
+      "requiredMetadata": [
+        "commit_sha",
+        "route",
+        "locale",
+        "channel",
+        "seo_page_context",
+        "result"
+      ],
+      "redaction": [
+        "session cookies",
+        "user identifiers"
+      ]
+    },
+    {
+      "file": "media-descriptor-fallback-smoke.json",
+      "attachTo": "D8 media consumer smoke",
+      "requiredMetadata": [
+        "commit_sha",
+        "descriptor_cases",
+        "diagnostics_before",
+        "diagnostics_after",
+        "result"
+      ],
+      "redaction": [
+        "storage credentials",
+        "raw asset URLs when private"
+      ]
+    },
+    {
+      "file": "owner-signoff.md",
+      "attachTo": "D9 closeout packet",
+      "requiredMetadata": [
+        "commit_sha",
+        "owner",
+        "scope",
+        "evidence_links",
+        "signed_state"
+      ],
+      "redaction": [
+        "personal access tokens"
+      ]
+    }
+  ],
+  "defectTriageMatrix": [
+    {
+      "severity": "blocker",
+      "appliesTo": [
+        "D8",
+        "D9"
+      ],
+      "examples": [
+        "public route returns missing canonical",
+        "robots/sitemap runtime throws without static fallback",
+        "index replay duplicates delivered events"
+      ],
+      "requiredAction": "stop closeout and fix before sign-off"
+    },
+    {
+      "severity": "high",
+      "appliesTo": [
+        "D8"
+      ],
+      "examples": [
+        "GraphQL/REST error codes diverge",
+        "media descriptor fallback mutates explicit SEO image",
+        "tenant/module gating parity fails"
+      ],
+      "requiredAction": "fix or attach owner-approved mitigation with repeat evidence"
+    },
+    {
+      "severity": "medium",
+      "appliesTo": [
+        "D8",
+        "D9"
+      ],
+      "examples": [
+        "non-semantic metadata whitespace diff outside allowlist",
+        "runbook sample misses before counter",
+        "owner note links fixture but not CI artifact"
+      ],
+      "requiredAction": "document and close before boundary_ready promotion"
+    },
+    {
+      "severity": "low",
+      "appliesTo": [
+        "D9"
+      ],
+      "examples": [
+        "artifact label typo",
+        "non-blocking docs wording drift"
+      ],
+      "requiredAction": "may defer only with owner note and tracked follow-up"
+    }
+  ],
+  "ownerSignoffStateMachine": {
+    "initialState": "pending_static_seed",
+    "allowedTransitions": [
+      {
+        "from": "pending_static_seed",
+        "to": "runtime_evidence_attached",
+        "requires": [
+          "all requiredFiles linked",
+          "redactions confirmed",
+          "no blocker/high defect open"
+        ]
+      },
+      {
+        "from": "runtime_evidence_attached",
+        "to": "owner_review",
+        "requires": [
+          "owner scope mapped",
+          "runbook crosswalk complete",
+          "artifact checklist complete"
+        ]
+      },
+      {
+        "from": "owner_review",
+        "to": "signed",
+        "requires": [
+          "owner acceptance recorded",
+          "defect disposition accepted",
+          "D8/D9 closeout blockers clear"
+        ]
+      }
+    ],
+    "forbiddenTransitions": [
+      "pending_static_seed->signed",
+      "runtime_evidence_attached->signed_without_owner_review",
+      "signed->pending_static_seed"
+    ]
+  }
+}

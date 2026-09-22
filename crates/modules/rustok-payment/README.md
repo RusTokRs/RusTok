@@ -1,0 +1,30 @@
+# rustok-payment
+
+## Purpose
+
+`rustok-payment` is the default payment submodule of the `Ecommerce` family.
+
+## Responsibilities
+
+- Own payment collection and payment-attempt storage.
+- Own refund record storage and basic refund lifecycle for the default manual flow.
+- Prepare a stable payment boundary for checkout orchestration.
+- Keep payment state transitions isolated from the ecommerce umbrella.
+- Provide a built-in manual/default payment flow for the current stage.
+- Expose a payment-owned provider SPI registry with external registration validation and side-effect-free runtime-mode guardrails before adapter invocation.
+
+## Interactions
+
+- Depends on `rustok-core` for module contracts and payment permission vocabulary.
+- Used by `rustok-commerce` as the default payment submodule of the ecommerce family.
+- Links to carts, orders, and customers by identifier without taking ownership of those domains.
+
+## Entry points
+
+- `PaymentModule`
+- `PaymentService`
+- `providers::*`
+- `dto::*`
+- `entities::*`
+
+See also `docs/README.md`.

@@ -1,0 +1,47 @@
+{
+  "id": "forum-reactions-storefront-browser-evidence",
+  "status": "source_ready_maintainer_execution_pending",
+  "owner": "storefront host browser evidence",
+  "producer": "rustok-forum",
+  "capability": "rustok-reactions",
+  "runner": "tests/e2e-rust/tests/leptos_storefront_forum_reactions.rs",
+  "environment": {
+    "RUSTOK_FORUM_TOPIC_REACTIONS_E2E_URL": "canonical Forum topic URL for a tenant with Reactions enabled",
+    "RUSTOK_FORUM_REPLY_REACTIONS_E2E_URL": "same canonical Forum topic route with one valid ?reply=<uuid> selection",
+    "PLAYWRIGHT_CHROMIUM_EXECUTABLE": "optional explicit Chromium executable"
+  },
+  "cases": [
+    {
+      "name": "selected topic",
+      "requires": "topic URL has no reply query selection",
+      "expects": [
+        "HTTP navigation status is below 400",
+        "DOM contains data-storefront-composition=forum-topic-reactions",
+        "DOM does not contain data-storefront-composition=forum-reply-reactions"
+      ]
+    },
+    {
+      "name": "selected reply",
+      "requires": "topic URL carries one valid reply query selection",
+      "expects": [
+        "HTTP navigation status is below 400",
+        "DOM contains data-storefront-composition=forum-reply-reactions",
+        "DOM does not contain data-storefront-composition=forum-topic-reactions"
+      ]
+    }
+  ],
+  "boundaries": [
+    "browser harness uses the existing Rust playwright-rs E2E crate",
+    "production Forum and Reactions source is unchanged",
+    "Forum remains free of Reactions owner or presentation dependencies",
+    "selected reply replaces the topic ReactionBar instead of adding a second control",
+    "the harness does not claim aggregate counts writes auth behavior or per-visible-reply network cardinality"
+  ],
+  "not_claimed": [
+    "browser execution",
+    "runtime evidence retention",
+    "event digest verification",
+    "database evidence",
+    "release readiness"
+  ]
+}

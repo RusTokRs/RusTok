@@ -1,0 +1,105 @@
+#[cfg(feature = "server")]
+mod authorization;
+#[cfg(feature = "server")]
+pub mod controllers;
+pub mod dto;
+#[cfg(feature = "server")]
+pub mod entities;
+#[cfg(feature = "server")]
+pub mod error;
+#[cfg(feature = "server")]
+pub mod graphql;
+#[cfg(feature = "server")]
+pub mod migrations;
+#[cfg(feature = "server")]
+pub mod services;
+
+#[cfg(feature = "server")]
+use async_trait::async_trait;
+#[cfg(feature = "server")]
+use rustok_api::Permission;
+#[cfg(feature = "server")]
+use rustok_core::{MigrationSource, RusToKModule};
+#[cfg(feature = "server")]
+use sea_orm_migration::MigrationTrait;
+
+#[cfg(feature = "server")]
+pub use authorization::SeoWorkerAuthorization;
+pub use dto::{
+    SeoAlternateLink, SeoBulkApplyInput, SeoBulkApplyMode, SeoBulkArtifactRecord,
+    SeoBulkBoolFieldPatch, SeoBulkExportInput, SeoBulkFieldPatchMode, SeoBulkImportInput,
+    SeoBulkItem, SeoBulkJobOperationKind, SeoBulkJobRecord, SeoBulkJobStatus,
+    SeoBulkJobStatusRecord, SeoBulkJsonFieldPatch, SeoBulkListInput, SeoBulkMetaPatchInput,
+    SeoBulkPage, SeoBulkSelectionInput, SeoBulkSelectionMode, SeoBulkSelectionPreviewRecord,
+    SeoBulkSource, SeoBulkStringFieldPatch, SeoCrossLinkSuggestionRecord, SeoDiagnosticCountRecord,
+    SeoDiagnosticIssueRecord, SeoDiagnosticSeverity, SeoDiagnosticsSummaryRecord, SeoDocument,
+    SeoDocumentEffectiveState, SeoFieldSource, SeoFieldState, SeoImageAsset, SeoIndexCursorRecord,
+    SeoIndexDeliveryStatusRecord, SeoIndexRepairReplayInput, SeoIndexRepairReplayResultRecord,
+    SeoIndexReplayMode, SeoLinkTag, SeoMetaInput, SeoMetaRecord, SeoMetaTag,
+    SeoMetaTranslationInput, SeoMetaTranslationRecord, SeoModuleSettings, SeoOpenGraph,
+    SeoPageContext, SeoPagination, SeoRedirectDecision, SeoRedirectInput, SeoRedirectMatchType,
+    SeoRedirectRecord, SeoRevisionRecord, SeoRobots, SeoRobotsPreviewRecord, SeoRouteContext,
+    SeoSchemaBlockKind, SeoSitemapFileRecord, SeoSitemapJobRecord, SeoSitemapStatusRecord,
+    SeoStructuredDataBlock, SeoTemplateRuleSet, SeoTwitterCard, SeoVerification,
+    SeoVerificationTag,
+};
+#[cfg(feature = "server")]
+pub use error::{SeoError, SeoFailure, SeoFailureClass, SeoResult};
+#[cfg(feature = "server")]
+pub use graphql::{SeoMutation, SeoQuery};
+#[cfg(feature = "server")]
+pub use rustok_seo_targets::SeoTargetRegistry;
+pub use rustok_seo_targets::{
+    SeoTargetCapabilities, SeoTargetCapabilityKind, SeoTargetRegistryEntry, SeoTargetSlug,
+    builtin_slug as seo_builtin_slug,
+};
+#[cfg(feature = "server")]
+pub use services::{
+    SeoApplicationServices, SeoBulkService, SeoMediaAssetReadProvider, SeoMetadataService,
+    SeoOperationsService, SeoRedirectService, SeoRoutingService, SeoSettingsService,
+    SeoSitemapService, SeoTranslationTargetProvider, register_seo_translation_target_provider,
+};
+
+#[cfg(feature = "server")]
+pub struct SeoModule;
+
+#[cfg(feature = "server")]
+#[async_trait]
+impl RusToKModule for SeoModule {
+    fn slug(&self) -> &'static str {
+        "seo"
+    }
+
+    fn name(&self) -> &'static str {
+        "SEO"
+    }
+
+    fn description(&self) -> &'static str {
+        "SEO metadata, routing resolution, redirects, sitemaps, and robots runtime"
+    }
+
+    fn version(&self) -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    fn dependencies(&self) -> &[&'static str] {
+        &["content"]
+    }
+
+    fn permissions(&self) -> Vec<Permission> {
+        vec![
+            Permission::SEO_READ,
+            Permission::SEO_UPDATE,
+            Permission::SEO_PUBLISH,
+            Permission::SEO_GENERATE,
+            Permission::SEO_MANAGE,
+        ]
+    }
+}
+
+#[cfg(feature = "server")]
+impl MigrationSource for SeoModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        migrations::migrations()
+    }
+}

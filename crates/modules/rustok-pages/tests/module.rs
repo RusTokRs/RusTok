@@ -1,0 +1,41 @@
+use rustok_api::{Action, Resource};
+use rustok_core::{MigrationSource, RusToKModule};
+use rustok_pages::PagesModule;
+
+#[test]
+fn module_metadata() {
+    let module = PagesModule;
+    assert_eq!(module.slug(), "pages");
+    assert_eq!(module.name(), "Pages");
+    assert_eq!(module.description(), "Pages, visual documents and published artifacts");
+    assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
+}
+
+#[test]
+fn module_permissions() {
+    let module = PagesModule;
+    let permissions = module.permissions();
+
+    // Check pages permissions exist
+    assert!(
+        permissions
+            .iter()
+            .any(|p| { p.resource == Resource::Pages && p.action == Action::Create })
+    );
+    assert!(
+        permissions
+            .iter()
+            .any(|p| { p.resource == Resource::Pages && p.action == Action::Publish })
+    );
+
+    assert!(
+        permissions.iter().all(|p| p.resource != Resource::Nodes),
+        "pages module should no longer publish node permissions"
+    );
+}
+
+#[test]
+fn module_has_migrations() {
+    let module = PagesModule;
+    assert!(!module.migrations().is_empty());
+}

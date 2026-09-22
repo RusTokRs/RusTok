@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-03",
+  "status": "payment_collection_admission_diagnostic_safety_source_unvalidated",
+  "scope": "PaymentCollectionPort policy and write-semantics admission diagnostics only",
+  "source_contract": {
+    "admission_mapper_bounded": true,
+    "complete_admission_port_error_logged": false,
+    "admission_internal_message_text_logged": false,
+    "admission_context_shape_only": true,
+    "admission_correlation_preserved": true,
+    "admission_owner_operations_preserved": true,
+    "admission_phases_preserved": true,
+    "admission_error_kind_closed": true,
+    "admission_severity_split_preserved": true,
+    "original_admission_port_error_returned": true,
+    "read_write_admission_order_preserved": true,
+    "tenant_parser_cleanup_out_of_scope": true,
+    "canonical_payment_error_mapper_cleanup_out_of_scope": true,
+    "execution_behavior_changed": false,
+    "public_port_error_changed": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "closed_error_kinds": [
+    "validation",
+    "not_found",
+    "conflict",
+    "forbidden",
+    "unavailable",
+    "timeout",
+    "invariant_violation"
+  ],
+  "suggested_execution": [
+    "node scripts/verify/verify-payment-collection-admission-context.mjs",
+    "node scripts/verify/verify-payment-collection-tenant-context.mjs",
+    "node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
+    "cargo check -p rustok-payment --lib"
+  ],
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifiers_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "runtime_proven": false
+  }
+}

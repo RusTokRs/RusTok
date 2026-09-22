@@ -1,0 +1,278 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(TaxonomyTerms::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(TaxonomyTerms::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(TaxonomyTerms::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(TaxonomyTerms::Kind)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(TaxonomyTerms::ScopeType)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(TaxonomyTerms::ScopeValue)
+                            .string_len(64)
+                            .not_null()
+                            .default(""),
+                    )
+                    .col(
+                        ColumnDef::new(TaxonomyTerms::CanonicalKey)
+                            .string_len(120)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(TaxonomyTerms::Status)
+                            .string_len(32)
+                            .not_null()
+                            .default("active"),
+                    )
+                    .col(
+                        ColumnDef::new(TaxonomyTerms::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(TaxonomyTerms::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_taxonomy_terms_tenant_kind_scope_key")
+                    .table(TaxonomyTerms::Table)
+                    .col(TaxonomyTerms::TenantId)
+                    .col(TaxonomyTerms::Kind)
+                    .col(TaxonomyTerms::ScopeType)
+                    .col(TaxonomyTerms::ScopeValue)
+                    .col(TaxonomyTerms::CanonicalKey)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(TaxonomyTermTranslations::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(TaxonomyTermTranslations::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(TaxonomyTermTranslations::TermId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(TaxonomyTermTranslations::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(TaxonomyTermTranslations::Locale)
+                            .string_len(16)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(TaxonomyTermTranslations::Name)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(TaxonomyTermTranslations::Slug)
+                            .string_len(120)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(TaxonomyTermTranslations::Description).text())
+                    .col(
+                        ColumnDef::new(TaxonomyTermTranslations::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(TaxonomyTermTranslations::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_taxonomy_term_translations_term")
+                            .from(
+                                TaxonomyTermTranslations::Table,
+                                TaxonomyTermTranslations::TermId,
+                            )
+                            .to(TaxonomyTerms::Table, TaxonomyTerms::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_taxonomy_term_translations_term_locale")
+                    .table(TaxonomyTermTranslations::Table)
+                    .col(TaxonomyTermTranslations::TermId)
+                    .col(TaxonomyTermTranslations::Locale)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(TaxonomyTermAliases::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(TaxonomyTermAliases::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(TaxonomyTermAliases::TermId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(TaxonomyTermAliases::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(TaxonomyTermAliases::Locale)
+                            .string_len(16)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(TaxonomyTermAliases::Name).text().not_null())
+                    .col(
+                        ColumnDef::new(TaxonomyTermAliases::Slug)
+                            .string_len(120)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(TaxonomyTermAliases::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_taxonomy_term_aliases_term")
+                            .from(TaxonomyTermAliases::Table, TaxonomyTermAliases::TermId)
+                            .to(TaxonomyTerms::Table, TaxonomyTerms::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_taxonomy_term_aliases_term_locale_slug")
+                    .table(TaxonomyTermAliases::Table)
+                    .col(TaxonomyTermAliases::TermId)
+                    .col(TaxonomyTermAliases::Locale)
+                    .col(TaxonomyTermAliases::Slug)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(TaxonomyTermAliases::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(TaxonomyTermTranslations::Table)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(Table::drop().table(TaxonomyTerms::Table).to_owned())
+            .await?;
+
+        Ok(())
+    }
+}
+
+#[derive(DeriveIden)]
+enum TaxonomyTerms {
+    Table,
+    Id,
+    TenantId,
+    Kind,
+    ScopeType,
+    ScopeValue,
+    CanonicalKey,
+    Status,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum TaxonomyTermTranslations {
+    Table,
+    Id,
+    TermId,
+    TenantId,
+    Locale,
+    Name,
+    Slug,
+    Description,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum TaxonomyTermAliases {
+    Table,
+    Id,
+    TermId,
+    TenantId,
+    Locale,
+    Name,
+    Slug,
+    CreatedAt,
+}

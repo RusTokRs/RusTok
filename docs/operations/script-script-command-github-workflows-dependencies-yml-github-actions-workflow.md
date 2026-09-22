@@ -1,0 +1,36 @@
+---
+id: doc://docs/operations/script-script-command-github-workflows-dependencies-yml-github-actions-workflow.md
+kind: operations_documentation
+language: en
+source_language: en
+entities:
+  - script-command://.github/workflows/dependencies.yml#github-actions:workflow
+last_verified_snapshot: snap_jsonl_00000021
+status: verified
+---
+
+# Script Command `GitHub Actions workflow Dependencies`
+
+## Purpose
+
+Document when this operational item is used, who owns it, and what successful execution or operation means.
+
+## Contract
+
+- Canonical entity: `script-command://.github/workflows/dependencies.yml#github-actions:workflow`
+- Entity kind: `script_command`
+- Source: `.github/workflows/dependencies.yml`:1
+
+## Procedure
+
+1. Review the source definition and confirm prerequisites.
+2. Execute or operate this item according to the project runbook.
+3. Record outcomes, rollback notes, and follow-up actions.
+
+## Evidence
+
+- `.github/workflows/dependencies.yml:1`
+
+## Notes
+
+Generated from diagnostic `diag_script_e5a981f9a7c40260`. Review this page before relying on it as operational documentation.
