@@ -585,19 +585,24 @@ fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView
                                 <p class="mt-2 text-sm text-muted-foreground">
                                     {post_card_view.excerpt}
                                 </p>
-                                {post.tags.is_empty().then_some(()).unwrap_or_else(|| view! {
-                                    <div class="mt-3 flex flex-wrap gap-1.5">
-                                        {post.tags
-                                            .iter()
-                                            .cloned()
-                                            .map(|tag| view! {
-                                                <span class="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                                                    {tag}
-                                                </span>
-                                            })
-                                            .collect_view()}
-                                    </div>
-                                })}
+                                {if post.tags.is_empty() {
+                                    ().into_any()
+                                } else {
+                                    view! {
+                                        <div class="mt-3 flex flex-wrap gap-1.5">
+                                            {post.tags
+                                                .iter()
+                                                .cloned()
+                                                .map(|tag| view! {
+                                                    <span class="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                                                        {tag}
+                                                    </span>
+                                                })
+                                                .collect_view()}
+                                        </div>
+                                    }
+                                    .into_any()
+                                }}
                                 {published_meta.map(|meta| view! {
                                     <div class="mt-3 text-xs text-muted-foreground">{meta}</div>
                                 })}
