@@ -169,6 +169,14 @@ impl VoteService {
         Ok(())
     }
 
+    async fn internal_voting_enabled_for_read(&self, tenant_id: Uuid) -> ForumResult<bool> {
+        match ForumEngagementMode::resolve(&self.settings, tenant_id).await {
+            Ok(mode) => Ok(mode.is_internal_voting()),
+            Err(ForumError::CapabilityUnavailable { .. }) => Ok(false),
+            Err(error) => Err(error),
+        }
+    }
+
     pub async fn topic_vote_summary(
         &self,
         tenant_id: Uuid,
@@ -192,11 +200,8 @@ impl VoteService {
             return Ok(HashMap::new());
         }
 
-        match ForumEngagementMode::resolve(&self.settings, tenant_id).await {
-            Ok(mode) if mode.is_internal_voting() => {}
-            Ok(_) => return Ok(HashMap::new()),
-            Err(ForumError::CapabilityUnavailable { .. }) => return Ok(HashMap::new()),
-            Err(error) => return Err(error),
+        if !self.internal_voting_enabled_for_read(tenant_id).await? {
+            return Ok(HashMap::new());
         }
 
         let votes = forum_topic_vote::Entity::find()
@@ -242,9 +247,8 @@ impl VoteService {
             return Ok(HashMap::new());
         }
 
-        match ForumEngagementMode::resolve(&self.settings, tenant_id).await? {
-            mode if mode.is_internal_voting() => {}
-            _ => return Ok(HashMap::new()),
+        if !self.internal_voting_enabled_for_read(tenant_id).await? {
+            return Ok(HashMap::new());
         }
 
         let votes = forum_reply_vote::Entity::find()
