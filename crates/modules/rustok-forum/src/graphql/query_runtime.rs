@@ -124,7 +124,7 @@ impl ForumContentQuery {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
-        let service = TopicService::new(db.clone(), event_bus.clone());
+        let service = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone());
         let requested_limit = pagination.requested_limit();
         let (offset, limit) = pagination.normalize()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
@@ -249,7 +249,7 @@ impl ForumContentQuery {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
-        let service = TopicService::new(db.clone(), event_bus.clone());
+        let service = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone());
         let topic = match service
             .get_with_locale_fallback(
                 tenant_id,
@@ -504,7 +504,7 @@ impl ForumContentQuery {
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
-        let service = TopicService::new(db.clone(), event_bus.clone());
+        let service = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone());
         let requested_limit = pagination.requested_limit();
         let (offset, limit) = pagination.normalize()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
@@ -582,7 +582,7 @@ impl ForumContentQuery {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
-        let service = TopicService::new(db.clone(), event_bus.clone());
+        let service = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone());
         let topic = match service
             .get_with_locale_fallback(
                 tenant_id,
