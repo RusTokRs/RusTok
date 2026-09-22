@@ -86,6 +86,7 @@ sameSet(
      'delete_before_create_stays_non_negative_and_replays_in_order',
     'missing_post_replay_commits_only_after_source_appears',
     'outbox_failure_rolls_back_counter_and_delivery_before_retry',
+    'update_and_status_events_advance_projection_cursor_without_count_change',
   ],
   'comments event projection PostgreSQL cases',
 );
