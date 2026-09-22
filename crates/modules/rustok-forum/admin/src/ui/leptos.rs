@@ -1300,8 +1300,6 @@ fn CategoriesPage(
     on_locale_switch: Callback<String>,
     on_edit: Callback<String>,
     on_delete: Callback<String>,
-    on_restore: Callback<String>,
-    on_restore_reply: Callback<String>,
     on_submit: impl Fn(SubmitEvent) + 'static,
     on_reset: Callback<()>,
 ) -> impl IntoView {
@@ -1722,6 +1720,8 @@ fn TopicsPage(
     on_locale_switch: Callback<String>,
     on_edit: Callback<String>,
     on_delete: Callback<String>,
+    on_restore: Callback<String>,
+    on_restore_reply: Callback<String>,
     on_submit: impl Fn(SubmitEvent) + 'static,
     on_submit_reply: Callback<SubmitEvent>,
     on_reset: Callback<()>,
