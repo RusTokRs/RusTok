@@ -59,6 +59,13 @@
 - the cart owner publishes `guest_access_http::resolve`; HTTP hosts compose this
   adapter instead of owning or duplicating guest-cart token parsing and emission.
 
+## Fulfillment capability gap
+
+Capability evidence must cover digital-only carts with no delivery group, physical
+carts with required Fulfillment, and mixed carts whose digital lines never receive a
+synthetic shipping selection. The target contract is defined in
+[`docs/architecture/settings.md`](../../../../docs/architecture/settings.md).
+
 ## Verification
 
 - `cargo xtask module validate cart`

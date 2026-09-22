@@ -37,6 +37,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [API and Surface Contracts](./architecture/api.md)
 - [Routing](./architecture/routing.md)
 - [Module Architecture](./architecture/modules.md)
+- [Settings and Configuration Architecture](./architecture/settings.md)
 - [Platform Glossary](./glossary.md)
 - [Module and Owner Map](./modules/registry.md)
 
@@ -162,6 +163,8 @@ from complete operation safety and retention through serving cutover.
 
 ## Architecture and Foundation
 
+- [Settings and Configuration Architecture](./architecture/settings.md) — canonical current-state inventory and accepted target for platform settings, module settings, lifecycle retention, update compatibility, minimal unconditional dependencies, tenant integrations, contextual capabilities, localization, secrets, activation, and verification.
+- [ADR: Platform and module settings architecture](../DECISIONS/2026-09-22-platform-module-settings-architecture.md) — owner-specific settings with normalized schema-bound documents, safe disable/re-enable/update semantics, real N/N+1 guards, optional-integration decisions, Fluent presentation metadata, and secret handles.
 - [ADR: Canonical native module source layout](../DECISIONS/2026-09-18-canonical-native-module-source-layout.md) — one responsibility-oriented physical vocabulary for native modules, with `rustok-blog` as the first strict reference implementation.
 - [ADR: Typed module command-context evidence](../DECISIONS/2026-08-22-module-command-context-evidence.md) — one UUID-backed command identity preserved by lifecycle, tenant/platform registry-staging and platform-composition receipts, and events.
 - [ADR: Static module lifecycle revision aggregate](../DECISIONS/2026-08-20-static-module-lifecycle-revision.md) — one durable revision and execution claim for static enablement, settings, and lifecycle recovery.

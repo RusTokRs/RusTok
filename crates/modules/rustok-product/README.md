@@ -178,6 +178,17 @@
   Product owner services directly in the embedded runtime and is not falsely
   declared as a Product read-port fallback consumer.
 
+## Fulfillment capability gap
+
+The catalog already admits `Digital` as a product-type value, but the current
+shipping-profile path does not yet carry one canonical typed fact that proves whether
+a product/variant requires physical fulfillment. The target must make that requirement
+explicit: digital products carry no shipping requirement or synthetic default profile;
+physical products carry the typed requirement and compatible profile snapshot consumed
+by Cart and Order. Fulfillment is therefore conditional on domain data, not a Product
+module dependency. See
+[`docs/architecture/settings.md`](../../../docs/architecture/settings.md).
+
 ## Entry points
 
 - `ProductModule`

@@ -51,6 +51,16 @@ framework-agnostic row view-model and renders it through the shared
 collapses moderation content to a plain-text node, does not own a direct HTML
 sink, and does not load the editor runtime for read-only moderation.
 
+## Accepted consumer-capability cutover
+
+The current static `blog -> comments` edge must be removed without moving comment
+storage or policy ownership into Blog. The owner port and lifecycle events remain the
+conditional integration boundary. Verification must cover Blog serving with Comments
+absent, disabled/read-only/open Blog surface policies, retained comment data, provider
+disable with other consumers, and re-enable after settings/schema compatibility
+checks. The canonical matrix is in
+[`docs/architecture/settings.md`](../../../../docs/architecture/settings.md).
+
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`

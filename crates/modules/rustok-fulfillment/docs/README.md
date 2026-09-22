@@ -38,6 +38,13 @@
 
 The admin package now uses framework-agnostic defaults `admin/src/core.rs`, a facade `admin/src/transport.rs` over GraphQL shipping-option transport and an explicit Leptos render adapter `admin/src/ui/leptos.rs`; the crate root only connects the module layers and re-exports `FulfillmentAdmin`.
 
+## Conditional capability boundary
+
+Verification must include rejection of digital lines in fulfillment creation, exact
+coverage of physical lines, mixed-order subset handling, and provider absence that
+does not break digital-only Commerce flows. The governing capability classification is
+in [`docs/architecture/settings.md`](../../../../docs/architecture/settings.md).
+
 ## Verification
 
 - cargo xtask module validate fulfillment

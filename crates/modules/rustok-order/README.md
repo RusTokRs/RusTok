@@ -55,6 +55,15 @@
 - `apps/admin` consumes `rustok-order-admin` through manifest-driven composition,
   while GraphQL/REST order transport remains in `rustok-commerce`.
 
+## Fulfillment capability gap
+
+Order snapshots currently carry shipping totals and profile facts for the
+shipping-aware checkout path. The target also records whether each line requires
+physical fulfillment. Digital lines remain valid order/payment items without shipment
+state; physical lines alone may be assigned to fulfillment items. An unavailable
+Fulfillment provider must not make digital-only order creation or reads unavailable.
+See [`docs/architecture/settings.md`](../../../docs/architecture/settings.md).
+
 ## Entry points
 
 - `OrderModule`

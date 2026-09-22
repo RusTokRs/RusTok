@@ -45,7 +45,9 @@
 - reads canonical routing substrate from `rustok-content`
 - reads page/blog/product/forum content from `rustok-pages`, `rustok-blog`, `rustok-product`, and `rustok-forum`
 - consumes media descriptors at runtime boundaries and maps them into the independent `rustok-seo-targets::SeoTargetImageRecord` DTO for OG/Twitter/schema fallback
-- consumes tenant/module settings from `rustok-tenant`
+- consumes typed `SeoModuleSettings`, while the current runtime/admin persistence
+  path still reads or writes `tenant_modules` directly and is therefore a settings
+  owner-boundary migration target
 - is mounted by `apps/server`, consumed by `apps/storefront`, and shared with `apps/next-frontend`
 - reuses host-provided `RequestContext.channel_slug` on REST/GraphQL/Leptos SSR paths so restricted forum topics only resolve SEO in the matching public channel
 - pairs with `rustok-seo-render` for Rust-host SSR head rendering without moving SEO resolution out of the module
@@ -53,6 +55,21 @@
 - is expected to integrate with owner-module admin surfaces in `rustok-pages`, `rustok-product`,
   `rustok-blog`, and `rustok-forum`; `rustok-seo/admin` is reserved for cross-cutting SEO
   infrastructure rather than long-term ownership of entity editors
+
+## Settings boundary
+
+SEO owns the semantics and typed normalization of its tenant settings. The current
+service and native admin adapter nevertheless access `tenant_modules` persistence
+directly. This is current executable truth, not the canonical owner contract; the
+cutover must route reads and writes through the static module settings owner with
+revision, schema-digest, and activation semantics.
+
+The manifest currently describes `template_defaults` and `template_overrides` with
+`shape` and `additional_properties`. The generic manifest parser recognizes
+`properties` and `items` instead and does not currently reject those unknown keywords,
+so the declared nested shape is not enforced by the generic editor/validator. The
+schema must be migrated to the single canonical vocabulary as part of the zero-legacy
+cutover. See [`docs/architecture/settings.md`](../../../docs/architecture/settings.md).
 
 ## Current execution wave (Phase D)
 

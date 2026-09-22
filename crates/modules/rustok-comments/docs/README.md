@@ -55,6 +55,13 @@
 - runtime transport adapters and host wiring remain in `apps/server`, while module-owned admin moderation UI goes through its own `admin/src/transport/` facade; domain logic and moderation contract belong to the module;
 - future integrations for page-like surfaces must be formalized as an explicit opt-in contract.
 
+The current static Blog dependency is not the target integration model. Blog core
+remains valid without Comments; a typed Blog-owned surface policy requests Comments
+only for comment operations. Comments enablement and retained data remain independent
+of that consumer policy. Provider absence fails the comment surface closed while Blog
+publication serving stays available. See the canonical state matrix in
+[`docs/architecture/settings.md`](../../../../docs/architecture/settings.md).
+
 ## Module-owned admin UI and transport rule
 
 - `rustok-comments-admin` is mounted in Leptos Admin as a module-owned UI at `/modules/comments`.
@@ -63,7 +70,7 @@
 - Selected-thread and locale route/query policy belongs to `admin/src/core.rs` and uses shared `UiRouteQueryUpdate`; the Leptos adapter only applies the ready host writer update.
 - Fast boundary guardrail: `npm run verify:comments:admin-boundary` checks the FFA split and documented native-only transport exception.
 - A separate GraphQL/REST fallback for this UI is not added: `rustok-comments` did not have its own legacy transport surface, and this is a documented exception from the general dual-path rule.
-- The existing integration `rustok-blog -> rustok-comments` is not changed by this.
+- The owner port and integration remain; they do not imply a Blog lifecycle dependency.
 
 ## Status contract
 

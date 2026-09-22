@@ -23,6 +23,16 @@ This folder contains the documentation for the umbrella module `crates/modules/r
 - module-owned UI packages are connected by host applications through manifest-driven composition;
 - any cross-domain contract changes must be synchronized with the local docs of split modules and the platform central docs.
 
+## Capability classification gap
+
+Current composition makes Fulfillment a static Commerce dependency. The accepted
+target distinguishes digital-only checkout from physical fulfillment: digital lines
+carry no shipping requirement, physical lines carry a typed requirement into
+cart/order snapshots, and mixed carts create delivery groups only for physical lines.
+Fulfillment availability therefore gates affected operations rather than the whole
+Commerce module. The required zero-legacy cutover is governed by
+[`docs/architecture/settings.md`](../../../../docs/architecture/settings.md).
+
 ## Verification
 
 Baseline verification gates for the current module state:

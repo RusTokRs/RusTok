@@ -59,6 +59,13 @@
 
 The admin package now uses framework-agnostic defaults `admin/src/core/`, a facade `admin/src/transport/mod.rs` with a GraphQL adapter `admin/src/transport/graphql_adapter.rs` and an explicit Leptos render adapter `admin/src/ui/leptos.rs`; the crate root only connects the module layers and re-exports `OrderAdmin`.
 
+## Fulfillment capability gap
+
+The capability matrix must prove digital-only orders without fulfillment rows,
+physical orders with exact fulfillment-item coverage, and mixed orders where only the
+physical subset is fulfillable. See the canonical target in
+[`docs/architecture/settings.md`](../../../../docs/architecture/settings.md).
+
 ## Verification
 
 - `cargo xtask module validate order`

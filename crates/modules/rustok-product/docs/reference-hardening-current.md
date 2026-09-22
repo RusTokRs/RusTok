@@ -85,6 +85,16 @@ prejudge their result:
 - event/idempotency semantics across Product, Variant, Index refresh, Translation and FBA;
 - complete public error semantics beyond the native context slice.
 
+## Accepted fulfillment-requirement cutover
+
+Product currently admits digital products but does not yet provide the complete typed
+contract needed to keep them out of shipping flows. Product must own an explicit
+digital/physical fulfillment requirement and publish the compatible physical profile
+snapshot needed by Cart/Order. A digital product or variant must have no synthetic
+default shipping profile and must remain purchasable in a digital-only Commerce
+composition with Fulfillment absent. The canonical cross-owner matrix is in
+[`docs/architecture/settings.md`](../../../../docs/architecture/settings.md).
+
 ## FBA status
 
 `ProductCatalogReadPort / product.catalog_read.v1` remains `boundary_ready`.

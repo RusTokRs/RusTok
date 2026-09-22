@@ -168,6 +168,29 @@ For tags, Taxonomy remains the shared dictionary owner and Blog retains
 `blog_post_tags` attachment ownership. For Comments, the execution-owned
 transport/restart/relay evidence remains separate from Category Taxonomy work.
 
+## Accepted Comments and Reactions capability cutover
+
+The current static `blog -> comments` lifecycle edge is an over-constraint, not
+canonical target architecture. Blog posts, categories, tags, and publication serving
+remain valid without Comments. The cutover must:
+
+1. remove Comments from the static dependency closure in every synchronized
+   declaration and server feature path;
+2. keep `CommentsThreadPort` and lifecycle-event projections as conditional owner
+   boundaries rather than converting them into Blog-owned storage;
+3. introduce a typed Blog-owned comment-surface policy whose disabled, read-only, and
+   open modes preserve Comments-owned data;
+4. prove Blog serving with Comments absent and fail only comment operations when an
+   enabled/required capability is unavailable;
+5. model Reactions the same way: Blog owns post-surface intent, Reactions owns reaction
+   state, and neither module toggles the other's lifecycle;
+6. retain explicit unavailable state and never manufacture empty comments or zero
+   reaction counts when a provider is unavailable.
+
+The canonical matrices and provider-disable rules are in
+[`docs/architecture/settings.md`](../../../../docs/architecture/settings.md). This
+cutover is source/runtime work and is not claimed complete by the documentation change.
+
 ## Remaining execution-owned results
 
 The retained maintainer/runtime evidence backlog is now limited to tracks whose

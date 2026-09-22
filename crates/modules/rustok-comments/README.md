@@ -66,6 +66,17 @@ are not claimed as executed.
 - `rustok-comments-admin` receives native DB access from `rustok_api::HostRuntimeContext`, not a host-wide `AppContext`.
 - `rustok-comments-admin` keeps selected-thread and locale route-query normalization/write policy in its framework-agnostic core using shared `UiRouteQueryUpdate`, while the Leptos adapter only applies the prepared host updates.
 
+## Consumer capability boundary
+
+Comments is an independently enabled owner, not a required part of Blog lifecycle.
+Blog may serve posts, categories, and tags with Comments absent. Blog owns whether its
+post surface hides comments, exposes retained comments read-only, or permits new
+writes; Comments owns threads, bodies, moderation, and retention. Disabling a Blog
+comment surface never disables Comments for another consumer and never deletes
+Comments-owned data. The current static `blog -> comments` edge is an accepted cutover
+gap governed by
+[`docs/architecture/settings.md`](../../../docs/architecture/settings.md).
+
 ## Entry points
 
 - `CommentsModule`

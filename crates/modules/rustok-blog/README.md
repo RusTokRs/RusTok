@@ -64,7 +64,9 @@ Run both `npm run verify:module-source-layout` and
   event bus.
 - Publish module-owned Leptos admin/storefront packages for installable UI
   surfaces.
-- Publish schema-driven tenant settings through `rustok-module.toml`.
+- Declare schema-driven tenant settings through `rustok-module.toml`; the current
+  `postsPerPage` and `showAuthor` declarations are persisted/editor-visible but
+  have no Blog runtime consumer and therefore remain a settings cutover gap.
 - Publish separate typed RBAC resources: `blog_posts:*`,
   `blog_categories:*`, and the Blog-owned `tags:*` permission surface.
 - Keep Blog Category commands synchronized with canonical Taxonomy Category
@@ -101,14 +103,22 @@ copy must use the canonical Taxonomy owner contract.
 - Depends on `rustok-channel` for channel-aware public Blog read gating.
 - Depends on `rustok-content` for shared content helpers and cross-domain
   orchestration primitives.
-- Depends on `rustok-comments` for comment threads, comment bodies, and generic
-  comment lifecycle.
+- Currently declares `rustok-comments` as a static dependency for comment threads,
+  bodies, and lifecycle. This is an over-constrained current graph, not the accepted
+  target: Blog publications, categories, and tags remain valid without Comments.
 - Blog comment writes consume `RichTextDocument`; moderation reads consume the
   Comments-owned `RichTextView` and plain-text projection.
 - Blog article writes accept the shared `RichTextDocument`; the owner applies
   the fixed `article` profile and persists canonical root JSON.
 - Routes comment reads, create/update/delete, and moderation through the public
   `CommentsThreadPort`; Blog does not call `CommentsService` directly.
+- The capability cutover must remove the static `blog -> comments` lifecycle edge.
+  Blog-owned comment policy may require the Comments capability for comment
+  operations, but provider absence must not disable Blog publication serving.
+- Reactions remains an optional integration. Blog owns whether its post surface
+  requests reactions; the Reactions owner controls reaction capabilities and state,
+  and effective availability must be resolved through an owner contract rather than
+  by reading another module's lifecycle row.
 - Depends on `rustok-taxonomy` for the shared tag dictionary and canonical Blog
   Category copy/hierarchy projection while keeping `blog_post_tags` Blog-owned.
 - Depends on `rustok-core` for module contracts, permissions, and

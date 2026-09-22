@@ -28,6 +28,16 @@ persisted values fail closed. Mounted commerce finalization and compensation use
 the same owner type for complete/release/replay decisions. Persisted and
 transport `status` fields remain strings for backward compatibility.
 
+## Accepted fulfillment-requirement cutover
+
+Cart must persist the Product-owned digital/physical requirement in its immutable line
+snapshot. Delivery groups, shipping selections, and shipping totals cover physical
+lines only. Digital-only carts have none of those records; mixed carts keep digital
+lines outside every delivery group. Provider absence may reject a physical checkout
+operation but must not make digital cart reads or checkout unavailable. The canonical
+matrix is in
+[`docs/architecture/settings.md`](../../../../docs/architecture/settings.md).
+
 ## FFA/FBA boundary
 
 - FFA status: `phase_b_ready`

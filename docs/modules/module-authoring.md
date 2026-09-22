@@ -462,9 +462,11 @@ If an agent or developer needs to make a quick decision, use this order:
 1. Is this a platform module or support/capability crate? (see [overview.md](./overview.md), [modules architecture](../architecture/modules.md))
 2. What is its backend contract: GraphQL, REST, `#[server]`, events, migrations? (see [manifest contract](./manifest.md))
 3. What data is language-agnostic and what is localized? (see [database schema](../architecture/database.md))
-4. Does the module have a module-owned UI surface? (see [overview.md](./overview.md))
-5. How does the host provide it with auth, locale, routing and tenant context? (see [modules architecture](../architecture/modules.md))
-6. Which docs and verification gates must change together with the code? (see [PR / Review Checklist](#pr--review-checklist))
+4. Does every valid consumer mode require each declared dependency? If not, model a tenant integration or contextual capability requirement instead of a static edge. (see [settings architecture](../architecture/settings.md))
+5. If the module declares settings, who consumes each key and what happens on disable, re-enable, update, rollback, localization, secret rotation, and runtime activation? (see [settings architecture](../architecture/settings.md))
+6. Does the module have a module-owned UI surface? (see [overview.md](./overview.md))
+7. How does the host provide it with auth, locale, routing and tenant context? (see [modules architecture](../architecture/modules.md))
+8. Which docs and verification gates must change together with the code? (see [PR / Review Checklist](#pr--review-checklist))
 
 ## PR / Review Checklist
 
@@ -483,6 +485,11 @@ This checklist is needed for any new module, major module refactor or module con
 9. Migrations, read-model and transport are updated consistently, without a half-migrated contract.
 10. Old internal ports, adapters, facades, aliases and call sites are removed; dual old/new path is absent.
 11. `cargo xtask module validate <slug>` and targeted `cargo check` / `cargo test` pass.
+12. Every declared setting has a runtime consumer, canonical owner, typed scope,
+    schema/update lifecycle, activation mode, localization classification, and
+    secret policy; consumer modules do not read another owner's settings rows.
+13. Every static dependency is required by every valid consumer mode; tenant-selected
+    and entity/operation-specific capabilities remain outside the static graph.
 
 ### UI checklist
 

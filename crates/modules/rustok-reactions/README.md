@@ -61,6 +61,14 @@ The module remains optional and outside `default_enabled`. When it is absent,
 producer owner commands remain available and reaction UI stays hidden.
 Existing Forum votes remain unchanged.
 
+This is the current composition fallback, not a tenant policy model. The accepted
+target lets each producer own a typed surface policy independently: Blog may hide or
+require reactions on posts without enabling/disabling Reactions itself, and Forum may
+choose differently. Reactions owns catalogs, actor state, aggregates, and retention.
+An unavailable provider must be represented explicitly or hide the entire surface by
+declared policy; consumers must not fabricate a zero count. See
+[`docs/architecture/settings.md`](../../../docs/architecture/settings.md).
+
 ## Entry points
 
 - `ReactionsModule`

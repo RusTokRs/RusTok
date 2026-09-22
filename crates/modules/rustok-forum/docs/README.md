@@ -35,6 +35,11 @@ notifications module, and cross-module release gates.
 - uses `rustok-taxonomy` as a shared dictionary for tag identity;
 - uses `rustok-profiles` for the author presentation contract;
 - uses `rustok-channel` for visibility and SEO gating;
+- the current `useReactions` engagement setting is persisted in static module
+  settings, but Forum reads Forum/Reactions lifecycle rows directly; the settings
+  cutover must use the canonical `use_reactions` name plus an owner-defined effective
+  integration decision from
+  [`docs/architecture/settings.md`](../../../../docs/architecture/settings.md);
 - selected merge reads resolve through the immutable receipt, while mutation commands keep exact identity semantics;
 - `mergeForumTopic` and `mergeForumTopicResolvingSolution` remain the only admin merge command contracts;
 - FORUM-21N composes those commands in Leptos and Next-admin without changing the owner, receipt or event schema;

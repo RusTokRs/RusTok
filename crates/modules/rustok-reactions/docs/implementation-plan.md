@@ -51,6 +51,16 @@ and reaction policy. Profiles owns actor presentation. Reputation and
 achievements consume semantic facts but do not mutate reaction state.
 Notifications may consume future events but are not part of command correctness.
 
+## Accepted producer-policy cutover
+
+The current optional composition profiles prove that Blog and Forum remain usable
+without Reactions, but they do not yet provide the complete tenant-owned surface
+policy. Add typed producer policies without adding static dependencies or allowing a
+producer to toggle the Reactions module. Evidence must cover disabled, hide-on-
+unavailable, and required/fail-closed behavior, independent Blog/Forum choices,
+retained Reactions data, and no fabricated zero aggregates. The canonical matrix is in
+[`docs/architecture/settings.md`](../../../../docs/architecture/settings.md).
+
 ## Persistence invariants
 
 - Every row is tenant-scoped.

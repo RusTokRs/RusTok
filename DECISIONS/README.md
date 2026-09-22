@@ -53,6 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-09-22](./2026-09-22-platform-module-settings-architecture.md) | Platform and module settings architecture | Accepted | In progress | Extends [Static module lifecycle revision aggregate](./2026-08-20-static-module-lifecycle-revision.md), [Module release rollback safety](./2026-08-06-module-release-rollback-safety.md), and [Multilingual DB storage](./2026-04-05-multilingual-db-storage-parallel-localized-records.md) |
 | [2026-09-18](./2026-09-18-unified-variant-axis-architecture.md) | Unified variant axis architecture | Accepted | Not started | Extends [Product category-bound attribute schemas](./2026-07-01-product-category-bound-attribute-schemas.md), [Product storage integrity](./2026-07-11-product-storage-integrity-and-request-trust.md), and [Channel binding policy](./2026-07-22-channel-binding-policy-boundary.md) |
 | [2026-09-18](./2026-09-18-canonical-native-module-source-layout.md) | Canonical native module source layout | Accepted | In progress | Extends [Categorized workspace layout for crates](./2026-09-06-crates-workspace-layout-split.md) |
 | [2026-09-06](./2026-09-06-crates-workspace-layout-split.md) | Categorized workspace layout for crates | Accepted | Not tracked | — |

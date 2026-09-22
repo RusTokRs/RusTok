@@ -31,6 +31,16 @@ Module registration initializes immediate and deferred
 tenant/source/kind/subject/revision and returns the bounded reaction catalog.
 Missing providers and unavailable subjects fail closed.
 
+## Producer settings boundary
+
+Composition availability is not producer intent. Blog and Forum each own their typed
+reaction-surface policy; Reactions owns reaction state and never toggles a producer
+module. Enabling Reactions for one producer does not opt another producer into the
+feature. Disabling a producer surface retains Reactions-owned data, and provider
+unavailability must not be projected as a false empty/zero state. The canonical policy
+matrix is in
+[`docs/architecture/settings.md`](../../../../docs/architecture/settings.md).
+
 ## Persistence boundary
 
 The owner schema contains:

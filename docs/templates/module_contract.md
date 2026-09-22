@@ -128,6 +128,28 @@ Additional sections are allowed if they are really needed for the module:
 
 But the minimum sections above should remain in place.
 
+If `rustok-module.toml` declares `[settings]`, `## Settings and configuration`
+is mandatory rather than optional. Use a compact owner matrix:
+
+```md
+## Settings and configuration
+
+| Key | Semantic owner | Scope | Default materialization | Runtime consumer | Activation | Localization | Sensitive/secret | Update compatibility |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `example_key` | `<module>` | tenant | first enable | `ExampleService` | immediate | not localized | no | additive |
+
+- Disable behavior: retained and dormant.
+- Re-enable behavior: active-schema validation before hooks.
+- Reset/purge behavior: explicit reset; no generic purge.
+- Derived state: caches/workers/events and their revision/invalidation contract.
+- Capability requirements: unconditional dependencies versus tenant integrations and
+  entity/operation-specific provider requirements.
+```
+
+Delete or implement any declared setting that has no runtime consumer. Link the
+module section to the canonical
+[Settings and Configuration Architecture](../architecture/settings.md).
+
 ## 4. Local `docs/implementation-plan.md`
 
 This file captures the live plan to bring the module to the target state, not a detailed work history.

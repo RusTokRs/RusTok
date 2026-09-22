@@ -201,6 +201,12 @@ registration. This determines:
 - Which path-modules must have `rustok-module.toml`
 - What scoped contract must pass `xtask`
 
+The dependency graph is the minimal unconditional runtime kernel, not the union of
+providers used by optional features or particular domain data. Tenant-selected
+integrations and entity/operation-specific capabilities follow the
+[Settings and Configuration Architecture](./settings.md). An enabled consumer alone
+must not force a provider when a valid provider-free mode exists.
+
 ### Schema Composition
 
 Schema composition in the current version is defined by the server `Migrator` in
@@ -219,6 +225,12 @@ assembled platform composition. It must not:
 - Break the dependency graph described in `modules.toml`
 - Delete or hide already applied module-owned schema artifacts
 
+Disable is not settings deletion. Static/native module settings and localized
+values remain retained, while effective serving is denied by module policy.
+Re-enable must validate the retained normalized document against the exact active
+settings schema before any lifecycle hook. The complete current/target matrix is
+defined by the [Settings and Configuration Architecture](./settings.md).
+
 ## Related Documents
 
 - [Module Platform Overview](../modules/overview.md)
@@ -229,6 +241,8 @@ assembled platform composition. It must not:
 - [Backend Module Architecture](../backend/module-backend-architecture.md)
 - [Backend Module Implementation Guide](../backend/module-backend-implementation.md)
 - [Module Documentation Template](../templates/module_contract.md)
+- [Settings and Configuration Architecture](./settings.md)
+- [Platform and module settings ADR](../../DECISIONS/2026-09-22-platform-module-settings-architecture.md)
 
 ## Runtime Control Plane and Lifecycle
 

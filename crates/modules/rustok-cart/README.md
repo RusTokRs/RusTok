@@ -56,6 +56,16 @@
   the product module as a lower-level shared layer.
 - `apps/storefront` mounts `rustok-cart/storefront` via manifest-driven composition.
 
+## Fulfillment capability gap
+
+Cart currently builds delivery groups from seller and shipping-profile snapshots. The
+target requires a typed per-line fulfillment requirement: digital lines participate in
+pricing/payment/order totals but not shipping selection or delivery groups; physical
+lines retain the exact profile/seller facts needed for Fulfillment. Missing
+Fulfillment must block only an operation containing physical lines, not Cart or a
+digital-only checkout. See
+[`docs/architecture/settings.md`](../../../docs/architecture/settings.md).
+
 ## Entry points
 
 - `CartModule`

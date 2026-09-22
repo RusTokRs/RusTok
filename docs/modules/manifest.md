@@ -47,6 +47,73 @@ The local manifest of a path module captures:
 
 For path modules from `modules.toml`, the presence of `rustok-module.toml` is mandatory.
 
+### Dependency classification
+
+`depends_on`, `[dependencies]`, and `RusToKModule::dependencies()` describe only
+unconditional runtime requirements. A provider belongs there only when the consumer
+has no valid enabled/core operating mode without it. Compile linkage, one optional
+feature, one UI contribution, or a provider required by only some domain entities does
+not make a lifecycle dependency.
+
+Tenant-selected integrations use a consumer-owned typed setting and effective
+capability binding. Entity- or operation-specific requirements use typed domain facts
+and snapshots. For example, Blog must serve publications without Comments, and a
+digital Commerce flow must not require Fulfillment merely because physical order
+lines do. The current `blog -> comments` and `commerce -> fulfillment` manifest edges
+are cutover gaps, not patterns to copy.
+
+The current manifest validator checks that declared static dependencies agree across
+the three representations; that mechanical synchronization does not prove the edge is
+semantically unconditional. The canonical classification and provider-disable rules
+are in the [Settings and Configuration Architecture](../architecture/settings.md).
+
+### Module settings contract
+
+`[settings]` declares the static package schema consumed by the canonical
+`rustok-modules` settings owner. The declaring module owns field meaning and
+runtime behavior; the server manifest adapter does not acquire those semantics.
+
+Current executable behavior validates supported scalar/object/array shapes,
+required/default values, bounds, options, and unknown keys on settings writes.
+Settings are persisted in `tenant_modules.settings` and serialized with static
+lifecycle writes through `module_static_tenant_lifecycle`.
+
+The current typed nested-schema vocabulary is `properties` and `items` (plus
+the simpler `object_keys` and `item_type` forms). Unknown TOML fields are not yet
+rejected. In particular, existing `shape` and `additional_properties`
+declarations are current drift: do not copy them as a second vocabulary. The
+accepted cutover makes unknown schema keywords invalid and migrates every live
+manifest to the one canonical representation.
+
+The accepted target additionally requires exact schema digest/state, normalized
+default materialization, dormant editing or atomic enable-with-settings,
+active-schema validation before re-enable hooks, real predecessor/candidate
+compatibility guards, Fluent presentation message IDs, and explicit
+localized/sensitive metadata. These gaps and their cutover order are canonical
+in the [Settings and Configuration Architecture](../architecture/settings.md).
+
+Do not add a manifest setting without an actual owner runtime consumer. A UI
+field and persisted JSON alone are decorative configuration, not implemented
+behavior. New internal keys use `snake_case`; current camelCase keys are
+cutover targets, not examples to copy.
+
+The currently supported localized-value metadata is separate from UI copy:
+
+```toml
+[settings_localization]
+localized_fields = { "checkout.title" = "checkout.title" }
+sensitive_paths = ["provider.secret_handle"]
+```
+
+The map key is a stable owner field ID and the value is a dot-separated schema
+path. Only declared string leaves without `options` may be localized; array
+items have no stable identity and are rejected. A sensitive path fences that
+node and all descendants. Localized values remain in parallel owner rows and
+do not enter `tenant_modules.settings`. No production module currently opts in,
+so this syntax is infrastructure capability rather than completed module
+coverage. Labels, help, and option copy require the separate target Fluent
+presentation metadata described by the settings architecture.
+
 ### `module.ui_classification`
 
 `module.ui_classification` is mandatory for every path module and must match the actual UI wiring.

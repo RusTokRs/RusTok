@@ -120,6 +120,20 @@
   against the effective locale/fallback chain instead of treating topic custom fields
   as a schema-only concern.
 
+## Settings status
+
+The manifest setting `useReactions` is current executable input for the Forum
+engagement mode, but its camelCase name is non-canonical and the service reads both
+Forum and Reactions `tenant_modules` rows directly. That is current-runtime drift, not
+the target owner boundary. The zero-legacy cutover must rename the key to
+`use_reactions` and replace direct persistence reads with a Forum-owned typed policy
+and a Modules/Reactions effective-availability port.
+
+Reactions remains optional because Forum has an internal voting mode. Stored Forum
+intent alone must never prove that Reactions is installed, enabled, registered, or
+ready. See the canonical settings contract in
+[`docs/architecture/settings.md`](../../../docs/architecture/settings.md).
+
 ## Entry points
 
 - `ForumModule`

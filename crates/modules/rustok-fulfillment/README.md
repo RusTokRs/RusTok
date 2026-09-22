@@ -38,6 +38,15 @@
 - `apps/admin` consumes `rustok-fulfillment-admin` through manifest-driven `build.rs` composition for shipping-option CRUD and lifecycle work.
 - `rustok-commerce-storefront` consumes `rustok-fulfillment-storefront` for delivery-group shipping selection UI while it still orchestrates cross-module checkout transport and delegates shipping-selection fallback policy to the fulfillment-owned transport facade.
 
+## Conditional capability boundary
+
+Fulfillment owns shipping options and shipment lifecycle only for lines carrying a
+typed physical-fulfillment requirement. It must not create shipment state for digital
+lines or require Commerce/Product to enable Fulfillment for digital-only operation.
+Historical fulfillment data remains Fulfillment-owned even when new capability use is
+disabled. See
+[`docs/architecture/settings.md`](../../../docs/architecture/settings.md).
+
 ## Entry points
 
 - `FulfillmentModule`

@@ -76,6 +76,22 @@ the explicit `rustok-marketplace-*` family and must never be folded into
   migrations, tenant isolation, contention, restart, mounted transports, remote
   profiles, and financial reconciliation evidence are retained.
 
+### Accepted fulfillment capability cutover
+
+The current static `commerce -> fulfillment` edge is an over-constraint. Commerce has
+a valid digital-only operating mode without shipping or Fulfillment. The source/runtime
+cutover remains open and must remove that edge atomically while adding typed
+digital/physical fulfillment requirements through Product, Cart, checkout-plan, and
+Order snapshots. Digital lines must never receive synthetic shipping profiles,
+delivery groups, shipping charges, fulfillment items, or fulfillment rows; mixed flows
+must invoke Fulfillment only for the physical subset. Existing in-flight physical
+work may block provider disable or require explicit reconciliation, while historical
+completed state remains readable under Fulfillment ownership.
+
+The canonical state matrix and disable rules are in
+[`docs/architecture/settings.md`](../../../../docs/architecture/settings.md). No
+current FFA/FBA status implies that this cutover is already implemented.
+
 ## Milestones
 
 ### Audit 2026-07-22: reopened P0 work

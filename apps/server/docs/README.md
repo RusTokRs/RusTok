@@ -93,6 +93,17 @@ crates above instead of accumulating in `apps/server` or expanding `rustok-api`.
 
 The tenant-toggle logic applies only to `Optional` modules. `Core` modules should not be treated as switchable by host configuration.
 
+The current generic `SettingsService` and `platform_settings` table are live
+migration-target surfaces, not a reference owner model. They mix tenant categories
+whose semantic consumers belong to Email, Auth, tenant locale policy, and platform
+runtime components; validation is partial, `schema_version` is not an effective
+migration contract, and the generic settings-change event is currently published
+after persistence rather than atomically. New owner settings must not extend this
+bag. Follow the accepted
+[Settings and Configuration Architecture](../../../docs/architecture/settings.md)
+for the owner cutover, secret handles, activation state, and transactional event
+requirements.
+
 Effective module policy remains owner-resolved in `rustok-modules`. When a
 request has a channel resolution, the server/channel adapter forwards a
 validated `ModuleEffectivePolicyChannelInput` to

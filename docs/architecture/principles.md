@@ -176,3 +176,4 @@ When changing architectural boundaries, the following must be updated simultaneo
 - [Platform Diagrams](./diagram.md)
 - [Module Platform Overview](../modules/overview.md)
 - [`rustok-module.toml` Contract](../modules/manifest.md)
+- [Settings and Configuration Architecture](./settings.md)

@@ -45,6 +45,22 @@ when later bounded migrations retire an earlier design.
 - canonical Taxonomy ownership for Blog Category localized copy, routes and
   Category projection.
 
+## Settings status
+
+The manifest currently declares `postsPerPage` and `showAuthor`. They are exposed by
+the generic settings schema and can be persisted, but no Blog runtime read path
+consumes them. They must either be cut over atomically to canonical `snake_case` keys
+with typed Blog-owned consumers or be deleted as decorative settings. They are not
+evidence of active Blog behavior.
+
+The current composition declares Comments as a Blog lifecycle dependency, but that
+edge is an accepted cutover gap: Blog must remain enableable and serve publications
+without Comments. Any Blog setting for comment visibility or write admission is a
+consumer-owned capability policy, not a static dependency or permission to mutate the
+Comments lifecycle. Reactions is optional; Blog-owned intent and Reactions-owned
+availability must be combined through the platform settings/policy owner contract in
+[`docs/architecture/settings.md`](../../../../docs/architecture/settings.md).
+
 ## Canonical source layout
 
 Blog is the first strict native-module source-layout reference. Physical placement
@@ -126,7 +142,9 @@ and post `blog_posts:*` permissions do not grant Blog Category access.
 
 - uses `rustok-taxonomy` as the shared tag dictionary and canonical Blog
   Category projection owner;
-- uses `rustok-comments` as the comment runtime contract;
+- currently uses `rustok-comments` as the comment runtime contract and declares a
+  static lifecycle edge; the accepted target retains the port but makes the capability
+  conditional so Blog core serving remains provider-free;
 - uses `rustok-profiles` for author presentation;
 - uses `rustok-channel` for module-level and publication-level public
   visibility;

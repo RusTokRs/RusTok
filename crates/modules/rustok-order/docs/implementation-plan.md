@@ -87,6 +87,15 @@ behavior preserved. Runtime evidence remains open and unvalidated. The supersede
 admin post-order GET functions remain compiled but unmounted until maintainer
 compile and mounted-parity validation permits their removal.
 
+## Accepted fulfillment-requirement cutover
+
+Order line snapshots must preserve whether fulfillment is required. Digital-only
+orders are valid without fulfillment rows; physical fulfillment items must cover the
+required quantity exactly; mixed orders expose only the physical subset to
+Fulfillment. Missing Fulfillment may block physical execution but must not block
+digital order creation or historical reads. The canonical matrix is in
+[`docs/architecture/settings.md`](../../../../docs/architecture/settings.md).
+
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`

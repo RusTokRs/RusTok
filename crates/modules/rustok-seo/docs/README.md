@@ -26,6 +26,21 @@ The purpose of the module is to give the platform a unified typed SEO runtime: o
 - support crates `rustok-seo-render` and `rustok-seo-admin-support`;
 - execution wave Phase D: typed SEO events/outbox/index seam, REST parity completion, admin/host integration parity, verification matrix and runbooks.
 
+## Settings boundary
+
+`rustok-seo` owns typed `SeoModuleSettings` semantics and normalization. Current
+runtime loads and native admin writes still access `tenant_modules` directly, so this
+is an explicit owner-boundary migration gap rather than the target persistence
+contract.
+
+The manifest's nested `template_defaults` and `template_overrides` declarations use
+`shape` and `additional_properties`, while the current generic parser understands
+`properties` and `items` and silently ignores unknown schema keywords. Until the
+zero-legacy cutover, the generic settings editor/validator therefore does not prove
+the nested SEO shape. The canonical target, migration, and verification requirements
+are defined in
+[`docs/architecture/settings.md`](../../../../docs/architecture/settings.md).
+
 ## Template-generated SEO
 
 Owner modules do not render SEO templates themselves. They only supply typed `SeoLoadedTargetRecord.template_fields` through `rustok-seo-targets`; the map allows SEO-safe fields such as `title`, `description`, `route`, `locale`, slug/handle/id.

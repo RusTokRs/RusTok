@@ -114,6 +114,16 @@ seller/profile filtering, owner delegation, severity, and public `PortError`
 envelopes are unchanged. Shipping-option projection and fulfillment lifecycle
 read diagnostic payloads remain separate open slices.
 
+## Accepted conditional capability cutover
+
+Fulfillment owns shipping and fulfillment state only for lines carrying the typed
+physical-fulfillment requirement. It must reject digital lines, accept exact physical
+coverage, and support the physical subset of mixed orders without manufacturing
+shipping state for digital items. Fulfillment absence must not disable digital-only
+Commerce. In-flight physical work and retained historical state follow the canonical
+disable/reconciliation matrix in
+[`docs/architecture/settings.md`](../../../../docs/architecture/settings.md).
+
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`

@@ -76,11 +76,24 @@ Foundation storage includes:
 - `sessions` and auth-related tables support the auth/session lifecycle
 - `install_sessions` and `install_step_receipts` capture resumable installer
   state, input checksums, outcomes and diagnostics; secrets are not stored there
-- `platform_settings` and `tenant_modules` store platform/module settings
+- `platform_settings` currently stores generic tenant platform categories, but it
+  is not a semantic owner. The accepted settings architecture requires every
+  surviving category to move behind its consuming owner with typed validation,
+  revision, activation, migration, and secret-handle semantics.
+- `tenant_modules` currently stores explicit static module enablement intent and
+  settings JSON. It participates in the `rustok-modules` owner aggregate with
+  `module_static_tenant_lifecycle`; disable retains the row. The accepted target
+  adds exact schema-digest/state semantics and active-schema validation before
+  re-enable hooks.
 - `sys_events` remains a transactional outbox table, not a generic audit dump
 - `owner_operation_receipts` is the shared durable ledger for owner-scoped
   idempotent operations. It contains request hashes and redacted terminal
   outcome evidence, not localized business data.
+
+See [Settings and Configuration Architecture](./settings.md) for the current
+storage inventory, known gaps, and target lifecycle/data model. Generic JSON
+storage does not authorize cross-owner reads of `platform_settings` or
+`tenant_modules`.
 
 ## Installer Storage
 

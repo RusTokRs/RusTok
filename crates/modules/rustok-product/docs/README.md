@@ -173,6 +173,14 @@ GraphQL and native admin/storefront boundaries share
 boundary, stable code, and correlation id; clients receive only the safe public
 descriptor.
 
+## Fulfillment capability gap
+
+The accepted capability cutover must add digital/physical/mixed evidence proving that
+digital products do not receive a synthetic shipping profile and that only products
+with a typed physical-fulfillment requirement enter Cart/Order delivery groups. This
+is governed by
+[`docs/architecture/settings.md`](../../../../docs/architecture/settings.md).
+
 ## Verification
 
 - `npm.cmd run verify:product:runtime-fallback-smoke`

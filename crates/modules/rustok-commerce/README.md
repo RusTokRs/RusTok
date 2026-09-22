@@ -71,6 +71,20 @@
   and `PostOrderOrchestrationService`) rather than host-owned logic.
 - Channel-aware price resolution is intentionally not part of the current storefront availability baseline and remains planned under Pricing 2.0.
 
+## Capability classification gap
+
+The current module graph declares Fulfillment as an unconditional Commerce dependency,
+and current checkout assumes delivery groups for the shipping-aware path. That is
+current executable truth, not the accepted target for all product kinds. Digital
+products and digital order lines require no shipping capability; Commerce must remain
+available for a digital-only flow when Fulfillment is absent.
+
+The cutover must preserve a typed fulfillment requirement in product/cart/order
+snapshots, form delivery groups only for physical lines, and require Fulfillment at
+the affected operation boundary. Mixed carts must not assign a synthetic shipping
+profile to digital lines. See
+[`docs/architecture/settings.md`](../../../docs/architecture/settings.md).
+
 ## Entry points
 
 - `CommerceModule`
