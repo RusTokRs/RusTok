@@ -1,8 +1,0 @@
-Canonical richtext
-
-One safe document with an internal link.
-
-- Validated
-- Rendered once
-
-<not-html />

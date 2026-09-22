@@ -190,6 +190,7 @@ mod contract_tests {
         let fulfillment = registry.get("fulfillment").expect("fulfillment module");
         let commerce = registry.get("commerce").expect("commerce module");
         let outbox = registry.get("outbox").expect("outbox module");
+        let blog = registry.get("blog").expect("blog module");
         let forum = registry.get("forum").expect("forum module");
         let pages = registry.get("pages").expect("pages module");
         let seo = registry.get("seo").expect("seo module");
@@ -225,6 +226,10 @@ mod contract_tests {
                 "payment",
                 "fulfillment"
             ]
+        );
+        assert_eq!(
+            blog.dependencies(),
+            &["content", "taxonomy", "outbox", "channel", "profiles"]
         );
         assert_eq!(forum.dependencies(), &["content", "taxonomy"]);
         assert_eq!(pages.dependencies(), &["content", "page_builder"]);

@@ -1,7 +1,0 @@
-[providers.core]
-namespace = "core"
-factory = "rustok_cli_platform::command_provider"
-
-[providers.seed]
-namespace = "seed"
-factory = "rustok_installer_cli::command_provider"
