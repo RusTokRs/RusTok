@@ -1,8 +1,12 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{HostRuntimeContext, PortActorKind, PortContext, PortError, PortErrorKind};
+use rustok_api::{
+    HostRuntimeContext, PortActorKind, PortContext, PortError, PortErrorKind,
+    SharedStaticModuleSettingsReader,
+};
 use rustok_core::SecurityContext;
+use serde::Deserialize;
 use rustok_reactions_api::{
     ReactionCatalog, ReactionKey, ReactionProviderError, ReactionProviderResult,
     ReactionSelectionPolicy, ReactionSourceSlug, ReactionSubjectAccess,
@@ -28,6 +32,14 @@ pub const FORUM_REACTION_SOURCE: &str = "forum";
 pub const FORUM_TOPIC_REACTION_KIND: &str = "topic";
 pub const FORUM_REPLY_REACTION_KIND: &str = "reply";
 pub const FORUM_REACTION_V1_KEY: &str = "like";
+#[cfg(test)]
+pub const FORUM_USE_REACTIONS_SETTING: &str = "use_reactions";
+
+#[derive(Debug, Deserialize, Default)]
+struct ForumReactionSettings {
+    #[serde(default)]
+    use_reactions: bool,
+}
 
 #[derive(Clone, Default)]
 pub struct ForumReactionSubjectProviderFactory;
@@ -45,6 +57,7 @@ impl ReactionSubjectProviderFactory for ForumReactionSubjectProviderFactory {
             host.db_clone(),
             host.shared_get::<SharedForumNotificationRecipientContextPort>(),
             host.shared_get::<SharedForumAudienceFactsPort>(),
+            host.shared_get::<SharedStaticModuleSettingsReader>(),
         )))
     }
 }
@@ -54,6 +67,7 @@ struct ForumReactionSubjectProvider {
     db: DatabaseConnection,
     recipient_context_port: Option<SharedForumNotificationRecipientContextPort>,
     facts_port: Option<SharedForumAudienceFactsPort>,
+    settings_reader: Option<SharedStaticModuleSettingsReader>,
 }
 
 impl ForumReactionSubjectProvider {
@@ -61,12 +75,49 @@ impl ForumReactionSubjectProvider {
         db: DatabaseConnection,
         recipient_context_port: Option<SharedForumNotificationRecipientContextPort>,
         facts_port: Option<SharedForumAudienceFactsPort>,
+        settings_reader: Option<SharedStaticModuleSettingsReader>,
     ) -> Self {
         Self {
             db,
             recipient_context_port,
             facts_port,
+            settings_reader,
         }
+    }
+
+    async fn ensure_reactions_enabled(
+        &self,
+        tenant_id: Uuid,
+    ) -> ReactionProviderResult<()> {
+        let Some(settings_reader) = self.settings_reader.as_ref() else {
+            return Err(ReactionProviderError::CapabilityUnavailable {
+                retryable: false,
+            });
+        };
+        let Some(snapshot) = settings_reader
+            .settings(tenant_id, crate::services::engagement_mode::FORUM_MODULE_SLUG)
+            .await
+            .map_err(|error| match error.kind {
+                PortErrorKind::Timeout | PortErrorKind::Unavailable => {
+                    ReactionProviderError::CapabilityUnavailable { retryable: true }
+                }
+                PortErrorKind::InvariantViolation => {
+                    ReactionProviderError::Internal { retryable: false }
+                }
+                _ => ReactionProviderError::InvalidRequest,
+            })?
+        else {
+            return Ok(());
+        };
+        if !snapshot.enabled {
+            return Ok(());
+        }
+        let settings = serde_json::from_value::<ForumReactionSettings>(snapshot.settings)
+            .map_err(|_| ReactionProviderError::Internal { retryable: false })?;
+        if !settings.use_reactions {
+            return Err(ReactionProviderError::Unavailable);
+        }
+        Ok(())
     }
 
     async fn authorize_topic(
@@ -76,6 +127,7 @@ impl ForumReactionSubjectProvider {
         actor_id: Option<Uuid>,
     ) -> ReactionProviderResult<ReactionSubjectAuthorization> {
         let subject = &request.subject;
+        self.ensure_reactions_enabled(subject.tenant_id()).await?;
         let viewer = self
             .resolve_viewer(context, subject.tenant_id(), actor_id)
             .await?;
@@ -115,6 +167,7 @@ impl ForumReactionSubjectProvider {
         actor_id: Option<Uuid>,
     ) -> ReactionProviderResult<ReactionSubjectAuthorization> {
         let subject = &request.subject;
+        self.ensure_reactions_enabled(subject.tenant_id()).await?;
         let Some(initial_reply) = self
             .load_active_reply(subject.tenant_id(), subject.subject_id())
             .await?
@@ -448,6 +501,11 @@ mod tests {
         assert_eq!(catalog.selection(), ReactionSelectionPolicy::Single);
         assert_eq!(catalog.keys().len(), 1);
         assert_eq!(catalog.keys()[0].as_str(), FORUM_REACTION_V1_KEY);
+    }
+
+    #[test]
+    fn forum_setting_uses_canonical_key() {
+        assert_eq!(FORUM_USE_REACTIONS_SETTING, "use_reactions");
     }
 
     #[test]
