@@ -40,9 +40,12 @@ impl PostService {
 
     pub(super) async fn load_translations(
         &self,
+        tenant_id: Uuid,
         post_id: Uuid,
     ) -> BlogResult<Vec<blog_post_translation::Model>> {
         blog_post_translation::Entity::find()
+            .inner_join(blog_post::Entity)
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
             .filter(blog_post_translation::Column::PostId.eq(post_id))
             .all(&self.db)
             .await
@@ -51,6 +54,7 @@ impl PostService {
 
     pub(super) async fn load_translations_map(
         &self,
+        tenant_id: Uuid,
         post_ids: &[Uuid],
     ) -> BlogResult<HashMap<Uuid, Vec<blog_post_translation::Model>>> {
         if post_ids.is_empty() {
@@ -58,6 +62,8 @@ impl PostService {
         }
 
         let translations = blog_post_translation::Entity::find()
+            .inner_join(blog_post::Entity)
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
             .filter(blog_post_translation::Column::PostId.is_in(post_ids.to_vec()))
             .all(&self.db)
             .await
@@ -179,6 +185,7 @@ impl PostService {
     pub(super) async fn upsert_translation_in_tx(
         &self,
         txn: &DatabaseTransaction,
+        tenant_id: Uuid,
         post_id: Uuid,
         locale: &str,
         input: PostTranslationUpsertInput,
@@ -193,6 +200,8 @@ impl PostService {
         } = input;
         let locale = normalize_locale(locale)?;
         let existing = blog_post_translation::Entity::find()
+            .inner_join(blog_post::Entity)
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
             .filter(blog_post_translation::Column::PostId.eq(post_id))
             .filter(blog_post_translation::Column::Locale.eq(locale.as_str()))
             .one(txn)
