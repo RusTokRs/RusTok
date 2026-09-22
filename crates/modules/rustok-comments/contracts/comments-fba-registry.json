@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "module": "comments",
   "role": "provider",
   "status": "boundary_ready",
@@ -118,6 +118,20 @@
       "projection_status": "implemented_static_only"
     },
     {
+      "type": "comment.updated",
+      "owner": "comments",
+      "publication": "rustok_outbox::TransactionalEventBus::publish_in_tx",
+      "consumer": "blog",
+      "projection_status": "implemented_static_only"
+    },
+    {
+      "type": "comment.status_changed",
+      "owner": "comments",
+      "publication": "rustok_outbox::TransactionalEventBus::publish_in_tx",
+      "consumer": "blog",
+      "projection_status": "implemented_static_only"
+    },
+    {
       "type": "comment.deleted",
       "owner": "comments",
       "publication": "rustok_outbox::TransactionalEventBus::publish_in_tx",
@@ -143,44 +157,81 @@
     "cases": [
       {
         "operation": "create_comment",
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile"],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required",
+          "typed_richtext_input",
+          "server_selected_comment_profile"
+        ],
         "runtime_evidence": "pending"
       },
       {
         "operation": "get_comment",
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "richtext_view_projection", "server_plain_text_projection"],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "richtext_view_projection",
+          "server_plain_text_projection"
+        ],
         "runtime_evidence": "pending"
       },
       {
         "operation": "list_comments_for_target",
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved"],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ],
         "runtime_evidence": "pending"
       },
       {
         "operation": "list_public_comments_for_target",
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "approved_only_projection"],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "approved_only_projection"
+        ],
         "runtime_evidence": "pending"
       },
       {
         "operation": "update_comment",
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile"],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required",
+          "typed_richtext_input",
+          "server_selected_comment_profile"
+        ],
         "runtime_evidence": "pending"
       },
       {
         "operation": "set_comment_status",
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required"
+        ],
         "runtime_evidence": "pending"
       },
       {
         "operation": "delete_comment",
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required"
+        ],
         "runtime_evidence": "pending"
       }
     ],
     "fallback_smoke": {
       "status": "planned",
-      "profiles": ["embedded_native"],
-      "degraded_modes": ["hide_comment_form", "show_cached_thread_snapshot"],
+      "profiles": [
+        "embedded_native"
+      ],
+      "degraded_modes": [
+        "hide_comment_form",
+        "show_cached_thread_snapshot"
+      ],
       "runtime_evidence": "pending"
     }
   }
