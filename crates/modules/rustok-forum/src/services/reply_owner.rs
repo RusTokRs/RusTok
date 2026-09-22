@@ -22,7 +22,6 @@ use crate::state_machine::{ReplyStatus, TopicStatus};
 
 use super::category::CategoryService;
 use super::category_lifecycle::{ensure_category_restore_target_is_active_in_tx, lock_category_tree_in_tx};
-use super::category_audience::lock_category_tree_in_tx;
 use super::reply_create_audience_authorization::ForumReplyCreateAudienceAuthorizationService;
 use super::topic_reply_create_audience::lock_topic_reply_create_audience_in_tx;
 use super::mention_relation::MentionRelationService;
