@@ -13,7 +13,10 @@ use rustok_notifications_api::{
     NotificationTargetRef, NotificationTargetRoute, NotificationTemplateData,
     NotificationTemplateKey, NotificationTypeKey, ResolveNotificationAudienceRequest,
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect, Statement,
+};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -394,23 +397,31 @@ impl ForumNotificationSourceProvider {
         tenant_id: Uuid,
         id: Uuid,
     ) -> NotificationProviderResult<bool> {
-        match table {
-            "forum_topics" => forum_topic::Entity::find()
-                .filter(forum_topic::Column::TenantId.eq(tenant_id))
-                .filter(forum_topic::Column::Id.eq(id))
-                .one(&self.db)
-                .await
-                .map(|row| row.is_some())
-                .map_err(retryable_database_error),
-            "forum_replies" => forum_reply::Entity::find()
-                .filter(forum_reply::Column::TenantId.eq(tenant_id))
-                .filter(forum_reply::Column::Id.eq(id))
-                .one(&self.db)
-                .await
-                .map(|row| row.is_some())
-                .map_err(retryable_database_error),
-            _ => Err(NotificationProviderError::InvalidEvent),
-        }
+        let statement = match self.db.get_database_backend() {
+            DatabaseBackend::Postgres => Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                format!(
+                    "SELECT 1 AS active FROM {table} \
+                     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL"
+                ),
+                vec![tenant_id.into(), id.into()],
+            ),
+            DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                format!(
+                    "SELECT 1 AS active FROM {table} \
+                     WHERE tenant_id = ?1 AND id = ?2 AND deleted_at IS NULL"
+                ),
+                vec![tenant_id.into(), id.into()],
+            ),
+            _ => return Err(NotificationProviderError::InvalidEvent),
+        };
+
+        self.db
+            .query_one_raw(statement)
+            .await
+            .map(|row| row.is_some())
+            .map_err(retryable_database_error)
     }
 
     fn parse_user_mention(
