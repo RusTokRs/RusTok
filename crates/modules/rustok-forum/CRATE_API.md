@@ -355,3 +355,4 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Missing or mismatched quoted relation revisions share `FORUM_QUOTE_TARGET_UNAVAILABLE` so quote validation does not expose a cross-tenant existence oracle.
 - Invalid, absent or foreign relation revision identities share `FORUM_RELATION_REVISION_UNAVAILABLE`.
 - A stale omitted-update quote snapshot returns retryable `FORUM_RELATION_REVISION_CONFLICT`; REST maps it to HTTP 409.
+- When the tenant `reactions` module is enabled, internal Forum voting writes are rejected with `FORUM_REACTIONS_ENABLED`; when it is disabled, the existing `VoteService` remains the active engagement path.
