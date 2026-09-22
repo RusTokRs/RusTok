@@ -377,6 +377,7 @@ impl PostService {
             })?;
             self.upsert_translation_in_tx(
                 &txn,
+                tenant_id,
                 post_id,
                 locale,
                 PostTranslationUpsertInput {
