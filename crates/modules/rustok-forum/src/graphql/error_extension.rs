@@ -341,6 +341,9 @@ fn contract_from_safe_message(message: &str) -> Option<ForumErrorContract> {
         "Topic is locked" => ("FORUM_TOPIC_LOCKED", Some(false)),
         "Topic is deleted" => ("FORUM_TOPIC_DELETED", Some(false)),
         "Reply is deleted" => ("FORUM_REPLY_DELETED", Some(false)),
+        "Forum reactions are enabled; internal voting is disabled" => {
+            ("FORUM_REACTIONS_ENABLED", Some(false))
+        }
         "Forum mention target is unavailable" => ("FORUM_MENTION_TARGET_UNAVAILABLE", Some(false)),
         "Forum quote target is unavailable" => ("FORUM_QUOTE_TARGET_UNAVAILABLE", Some(false)),
         "Forum relation revision is unavailable" => {
