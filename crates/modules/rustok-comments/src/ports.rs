@@ -268,12 +268,14 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         .await?
         {
             Admission::Run(lease) => lease,
-            Admission::Replay(value) => serde_json::from_value(value).map_err(|error| {
-                PortError::invariant_violation(
-                    "comments.operation_receipt_corrupt",
-                    error.to_string(),
-                )
-            })?,
+            Admission::Replay(value) => {
+                return serde_json::from_value(value).map_err(|error| {
+                    PortError::invariant_violation(
+                        "comments.operation_receipt_corrupt",
+                        error.to_string(),
+                    )
+                });
+            }
             Admission::ReplayError(error) => return Err(error),
         };
 
@@ -436,12 +438,14 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         .await?
         {
             Admission::Run(lease) => lease,
-            Admission::Replay(value) => serde_json::from_value(value).map_err(|error| {
-                PortError::invariant_violation(
-                    "comments.operation_receipt_corrupt",
-                    error.to_string(),
-                )
-            })?,
+            Admission::Replay(value) => {
+                return serde_json::from_value(value).map_err(|error| {
+                    PortError::invariant_violation(
+                        "comments.operation_receipt_corrupt",
+                        error.to_string(),
+                    )
+                });
+            }
             Admission::ReplayError(error) => return Err(error),
         };
 
