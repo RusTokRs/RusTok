@@ -459,7 +459,10 @@ mod tests {
     use super::SeoQuery;
     use async_graphql::{EmptyMutation, EmptySubscription, Request, Schema};
     use rustok_api::Permission;
-    use rustok_api::{AuthContext, RequestContext, TenantContext};
+    use rustok_api::{
+        AuthContext, PortError, RequestContext, SharedStaticModuleSettingsReader,
+        StaticModuleSettingsReader, StaticModuleSettingsSnapshot, TenantContext,
+    };
     use rustok_core::{MemoryTransport, ModuleRuntimeExtensions, RusToKModule};
     use rustok_forum::{
         CategoryService, CreateCategoryInput, CreateTopicInput, TopicService,
@@ -743,7 +746,58 @@ mod tests {
         TransactionalEventBus::new(Arc::new(MemoryTransport::new()))
     }
 
-    fn test_runtime_extensions() -> Arc<ModuleRuntimeExtensions> {
+    #[derive(Clone)]
+    struct TestStaticSettingsReader {
+        db: DatabaseConnection,
+    }
+
+    #[async_trait::async_trait]
+    impl StaticModuleSettingsReader for TestStaticSettingsReader {
+        async fn settings(
+            &self,
+            tenant_id: Uuid,
+            module_slug: &str,
+        ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+            let row = self
+                .db
+                .query_one_raw(Statement::from_sql_and_values(
+                    DbBackend::Sqlite,
+                    "SELECT enabled, settings FROM tenant_modules                      WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1",
+                    vec![tenant_id.into(), module_slug.into()],
+                ))
+                .await
+                .map_err(|_| {
+                    PortError::unavailable(
+                        "tests.static_settings_unavailable",
+                        "Static module settings test reader is unavailable",
+                    )
+                })?;
+            let Some(row) = row else {
+                return Ok(None);
+            };
+            let enabled: bool = row.try_get("", "enabled").map_err(|_| {
+                PortError::invariant_violation(
+                    "tests.static_settings_corrupt",
+                    "Static module settings test row is invalid",
+                )
+            })?;
+            let encoded: String = row.try_get("", "settings").map_err(|_| {
+                PortError::invariant_violation(
+                    "tests.static_settings_corrupt",
+                    "Static module settings test payload is invalid",
+                )
+            })?;
+            let settings = serde_json::from_str(&encoded).map_err(|_| {
+                PortError::invariant_violation(
+                    "tests.static_settings_corrupt",
+                    "Static module settings test JSON is invalid",
+                )
+            })?;
+            Ok(Some(StaticModuleSettingsSnapshot { enabled, settings }))
+        }
+    }
+
+    fn test_runtime_extensions(db: DatabaseConnection) -> Arc<ModuleRuntimeExtensions> {
         let mut extensions = ModuleRuntimeExtensions::default();
         rustok_pages::PagesModule
             .register_runtime_extensions(&mut extensions)
@@ -757,6 +811,9 @@ mod tests {
         rustok_forum::ForumModule
             .register_runtime_extensions(&mut extensions)
             .expect("register forum extensions");
+        extensions.insert(SharedStaticModuleSettingsReader(Arc::new(
+            TestStaticSettingsReader { db },
+        )));
         Arc::new(extensions)
     }
 
@@ -777,7 +834,7 @@ mod tests {
         insert_redirect(&db, tenant_id, "/legacy", "https://example.com/new", 308).await;
 
         let tenant = tenant_context(tenant_id);
-        let runtime_extensions = test_runtime_extensions();
+        let runtime_extensions = test_runtime_extensions(db.clone());
         let expected = SeoApplicationServices::from_runtime_extensions(
             db.clone(),
             event_bus(),
