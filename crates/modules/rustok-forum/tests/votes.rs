@@ -7,7 +7,10 @@ use rustok_forum::{
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectOptions, ConnectionTrait, Database,
+    DatabaseConnection, EntityTrait, QueryFilter,
+};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -293,15 +296,30 @@ async fn internal_votes_switch_by_forum_setting_independently_of_reactions_modul
 
     // The shared Reactions module may be enabled for other modules; Forum still
     // uses internal voting until its own setting explicitly selects Reactions.
-    db.execute_unprepared(&format!(
-        "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings)
-         VALUES ('{}', '{}', 'reactions', 1, '{{}}'),
-                ('{}', '{}', 'forum', 1, '{{\"useReactions\": false}}');",
-        Uuid::new_v4(),
-        tenant_id,
-        Uuid::new_v4(),
-        tenant_id
-    ))
+    let now = chrono::Utc::now();
+    rustok_tenant::entities::tenant_module::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        tenant_id: Set(tenant_id),
+        module_slug: Set("reactions".to_string()),
+        enabled: Set(true),
+        settings: Set(serde_json::json!({})),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+    }
+    .insert(&db)
+    .await
+    .expect("module settings should be created");
+
+    rustok_tenant::entities::tenant_module::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        tenant_id: Set(tenant_id),
+        module_slug: Set("forum".to_string()),
+        enabled: Set(true),
+        settings: Set(serde_json::json!({"useReactions": false})),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+    }
+    .insert(&db)
     .await
     .expect("module settings should be created");
 
@@ -314,22 +332,17 @@ async fn internal_votes_switch_by_forum_setting_independently_of_reactions_modul
         .await
         .expect("reply vote should be available while Forum uses internal voting");
 
-    db.execute_unprepared(&format!(
-        "UPDATE tenant_modules
-         SET settings = '{{\"useReactions\": true}}'
-         WHERE tenant_id = '{}' AND module_slug = 'forum';",
-        tenant_id
-    ))
-    .await
-    .expect("forum reactions setting should be enabled");
-
-    let all_modules = rustok_tenant::entities::tenant_module::Entity::find()
-        .all(&db)
-        .await
-        .expect("all modules");
-    eprintln!("ALL MODULES: {all_modules:?}");
-    let mode = rustok_forum::services::ForumEngagementMode::resolve(&db, tenant_id).await;
-    eprintln!("RESOLVED MODE: {mode:?}");
+    let mut forum_mod: rustok_tenant::entities::tenant_module::ActiveModel =
+        rustok_tenant::entities::tenant_module::Entity::find()
+            .filter(rustok_tenant::entities::tenant_module::Column::TenantId.eq(tenant_id))
+            .filter(rustok_tenant::entities::tenant_module::Column::ModuleSlug.eq("forum"))
+            .one(&db)
+            .await
+            .expect("load forum module")
+            .expect("forum module must exist")
+            .into();
+    forum_mod.settings = Set(serde_json::json!({"useReactions": true}));
+    forum_mod.update(&db).await.expect("forum reactions setting should be enabled");
 
     let topic_vote_when_reactions_selected = vote_service
         .set_topic_vote(tenant_id, topic.id, voter.clone(), -1)
@@ -381,14 +394,17 @@ async fn internal_votes_switch_by_forum_setting_independently_of_reactions_modul
     assert_eq!(reply_summary.score, 0);
     assert_eq!(reply_summary.current_user_vote, None);
 
-    db.execute_unprepared(&format!(
-        "UPDATE tenant_modules
-         SET settings = '{{\"useReactions\": false}}'
-         WHERE tenant_id = '{}' AND module_slug = 'forum';",
-        tenant_id
-    ))
-    .await
-    .expect("forum reactions setting should be disabled");
+    let mut forum_mod: rustok_tenant::entities::tenant_module::ActiveModel =
+        rustok_tenant::entities::tenant_module::Entity::find()
+            .filter(rustok_tenant::entities::tenant_module::Column::TenantId.eq(tenant_id))
+            .filter(rustok_tenant::entities::tenant_module::Column::ModuleSlug.eq("forum"))
+            .one(&db)
+            .await
+            .expect("load forum module")
+            .expect("forum module must exist")
+            .into();
+    forum_mod.settings = Set(serde_json::json!({"useReactions": false}));
+    forum_mod.update(&db).await.expect("forum reactions setting should be disabled");
 
     vote_service
         .set_topic_vote(tenant_id, topic.id, voter.clone(), -1)

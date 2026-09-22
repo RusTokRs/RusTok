@@ -1,4 +1,4 @@
-async fn lock_category_tree_in_tx(txn: &DatabaseTransaction, tenant_id: Uuid) -> ForumResult<()> {
+pub(super) async fn lock_category_tree_in_tx(txn: &DatabaseTransaction, tenant_id: Uuid) -> ForumResult<()> {
     match txn.get_database_backend() {
         DatabaseBackend::Postgres => {
             txn.execute_raw(Statement::from_sql_and_values(

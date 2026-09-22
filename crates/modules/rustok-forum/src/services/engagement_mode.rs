@@ -24,23 +24,32 @@ impl ForumEngagementMode {
         db: &DatabaseConnection,
         tenant_id: Uuid,
     ) -> ForumResult<Self> {
-        let forum_module = tenant_module::Entity::find()
+        let forum_module = match tenant_module::Entity::find()
             .filter(tenant_module::Column::TenantId.eq(tenant_id))
             .filter(tenant_module::Column::ModuleSlug.eq(FORUM_MODULE_SLUG))
             .one(db)
-            .await?;
+            .await
+        {
+            Ok(module) => module,
+            Err(err) if is_missing_tenant_modules_error(&err) => return Ok(Self::InternalVotes),
+            Err(err) => return Err(ForumError::Database(err)),
+        };
 
         if !forum_use_reactions(forum_module.as_ref().map(|module| &module.settings)) {
             return Ok(Self::InternalVotes);
         }
 
-        let reactions_enabled = tenant_module::Entity::find()
+        let reactions_enabled = match tenant_module::Entity::find()
             .filter(tenant_module::Column::TenantId.eq(tenant_id))
             .filter(tenant_module::Column::ModuleSlug.eq(FORUM_REACTIONS_MODULE_SLUG))
             .filter(tenant_module::Column::Enabled.eq(true))
             .one(db)
-            .await?
-            .is_some();
+            .await
+        {
+            Ok(module) => module.is_some(),
+            Err(err) if is_missing_tenant_modules_error(&err) => false,
+            Err(err) => return Err(ForumError::Database(err)),
+        };
 
         Self::from_parts(true, reactions_enabled)
     }
@@ -59,14 +68,32 @@ impl ForumEngagementMode {
             .filter(tenant_module::Column::Enabled.eq(true));
 
         let (forum_module, reactions_module) = match txn.get_database_backend() {
-            DbBackend::Sqlite => (
-                forum_query.one(txn).await?,
-                reaction_query.one(txn).await?,
-            ),
-            DbBackend::Postgres | DbBackend::MySql => (
-                forum_query.lock_shared().one(txn).await?,
-                reaction_query.lock_shared().one(txn).await?,
-            ),
+            DbBackend::Sqlite => {
+                let forum_module = match forum_query.one(txn).await {
+                    Ok(m) => m,
+                    Err(err) if is_missing_tenant_modules_error(&err) => return Ok(Self::InternalVotes),
+                    Err(err) => return Err(ForumError::Database(err)),
+                };
+                let reactions_module = match reaction_query.one(txn).await {
+                    Ok(m) => m,
+                    Err(err) if is_missing_tenant_modules_error(&err) => None,
+                    Err(err) => return Err(ForumError::Database(err)),
+                };
+                (forum_module, reactions_module)
+            }
+            DbBackend::Postgres | DbBackend::MySql => {
+                let forum_module = match forum_query.lock_shared().one(txn).await {
+                    Ok(m) => m,
+                    Err(err) if is_missing_tenant_modules_error(&err) => return Ok(Self::InternalVotes),
+                    Err(err) => return Err(ForumError::Database(err)),
+                };
+                let reactions_module = match reaction_query.lock_shared().one(txn).await {
+                    Ok(m) => m,
+                    Err(err) if is_missing_tenant_modules_error(&err) => None,
+                    Err(err) => return Err(ForumError::Database(err)),
+                };
+                (forum_module, reactions_module)
+            }
             backend => {
                 return Err(ForumError::Database(sea_orm::DbErr::Custom(format!(
                     "forum engagement mode locking is unsupported for {backend:?}"
@@ -131,6 +158,16 @@ fn forum_use_reactions(settings: Option<&Value>) -> bool {
     }
 }
 
+fn is_missing_tenant_modules_error(err: &sea_orm::DbErr) -> bool {
+    let msg = err.to_string().to_ascii_lowercase();
+    msg.contains("no such table: tenant_modules")
+        || msg.contains("relation \"tenant_modules\" does not exist")
+        || msg.contains("relation 'tenant_modules' does not exist")
+        || msg.contains("table 'tenant_modules' doesn't exist")
+        || msg.contains("no such column: tenant_modules.created_at")
+        || msg.contains("no such column: tenant_modules.updated_at")
+}
+
 #[cfg(test)]
 mod tests {
     use sea_orm::{ConnectionTrait, Database};
@@ -146,7 +183,9 @@ mod tests {
                 tenant_id TEXT NOT NULL,
                 module_slug TEXT NOT NULL,
                 enabled BOOLEAN NOT NULL,
-                settings TEXT NOT NULL
+                settings TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )",
         )
         .await
