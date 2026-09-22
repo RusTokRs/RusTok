@@ -98,10 +98,29 @@ impl BlogCommentProjectionHandler {
             .one(&txn)
             .await?
         else {
-            return Err(Error::Internal(format!(
-                "blog comment projection references missing post {} for tenant {}",
-                change.post_id, envelope.tenant_id
-            )));
+            // Blog post deletion is terminal and the Comments owner may deliver a
+            // previously committed lifecycle event after the post-delete transaction
+            // has already committed. The event is obsolete rather than a transient
+            // invariant failure; otherwise a valid delete could poison the delivery
+            // retry loop forever. Drop stale Blog-owned projection state as part of
+            // acknowledging the obsolete event.
+            blog_comment_projection_delivery::Entity::delete_many()
+                .filter(
+                    blog_comment_projection_delivery::Column::TenantId.eq(envelope.tenant_id),
+                )
+                .filter(
+                    blog_comment_projection_delivery::Column::PostId.eq(change.post_id),
+                )
+                .exec(&txn)
+                .await?;
+            txn.commit().await?;
+            tracing::debug!(
+                tenant_id = %envelope.tenant_id,
+                post_id = %change.post_id,
+                comment_id = %change.comment_id,
+                "ignoring Blog comment projection event for deleted post"
+            );
+            return Ok(());
         };
 
         // Event IDs are ULIDs encoded as UUIDs by EventEnvelope::new(), so UUID ordering
