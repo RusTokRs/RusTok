@@ -1,0 +1,35 @@
+name: Temporary event contract digest generator
+
+on:
+  push:
+    branches:
+      - agent/blog-comment-snapshot-invalidation-final-20260922
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    name: Generate canonical event contract digest
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+      - name: Generate canonical digest
+        run: |
+          set -euo pipefail
+          cargo run --locked -p rustok-events --example event_contract_digests -- --write
+          mkdir -p /tmp/event-contract-digest
+          cp crates/libs/rustok-events/contracts/event-contract-digests.json /tmp/event-contract-digest/generated.json
+      - name: Archive generated digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: tmp-event-contract-digest
+          path: /tmp/event-contract-digest/generated.json
+          if-no-files-found: error
+          retention-days: 1
