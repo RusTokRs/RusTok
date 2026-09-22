@@ -188,10 +188,6 @@
       "expected": "a processed comment.status_changed event advances the Blog lifecycle delivery cursor and changes count only when active/deleted state changes"
     },
     {
-      "name": "public_snapshot_cursor_invalidation",
-      "expected": "the latest processed lifecycle event id is part of the public snapshot identity so prior snapshot keys become unreachable after lifecycle processing"
-    },
-    {
       "name": "update_and_status_lifecycle_delivery",
       "expected": "comment.updated and comment.status_changed deliveries advance the durable tenant/post cursor without changing comment_count for an already active comment"
     },
