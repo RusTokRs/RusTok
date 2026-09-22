@@ -81,7 +81,8 @@
       "duplicate_delivery_updates_counter_and_outbox_once",
       "delete_before_create_stays_non_negative_and_replays_in_order",
       "missing_post_replay_commits_only_after_source_appears",
-      "outbox_failure_rolls_back_counter_and_delivery_before_retry"
+      "outbox_failure_rolls_back_counter_and_delivery_before_retry",
+      "update_and_status_events_advance_projection_cursor_without_count_change"
     ]
   },
   "restart_harness": {
@@ -190,6 +191,14 @@
     {
       "name": "public_snapshot_cursor_invalidation",
       "expected": "the latest processed lifecycle event id is part of the public snapshot identity so prior snapshot keys become unreachable after lifecycle processing"
+    },
+    {
+      "name": "update_and_status_lifecycle_delivery",
+      "expected": "comment.updated and comment.status_changed deliveries advance the durable tenant/post cursor without changing comment_count for an already active comment"
+    },
+    {
+      "name": "public_snapshot_cursor_invalidation",
+      "expected": "the processed tenant/post lifecycle cursor is part of the snapshot identity and therefore invalidates earlier snapshot keys without cache enumeration"
     }
   ],
   "runtime_promotion_requirements": [
