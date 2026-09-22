@@ -44,6 +44,11 @@ impl ForumHttpRuntime {
         self.event_bus.clone()
     }
 
+    fn read_model_service(&self) -> crate::ForumReadModelService {
+        crate::ForumReadModelService::new(self.db_clone())
+            .with_settings_providers(self.settings_providers.clone())
+    }
+
     fn topic_service(&self) -> crate::TopicService {
         let service = match self.audience_facts.clone() {
             Some(facts) => {
