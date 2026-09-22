@@ -84,6 +84,7 @@ mod settings_guard;
 pub mod source_object;
 mod static_package;
 mod static_settings_localization;
+mod static_settings_reader;
 mod static_settings_source_locale;
 pub mod static_settings_translation_read;
 mod transition_coordinator;
