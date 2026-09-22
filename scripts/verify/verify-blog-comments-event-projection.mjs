@@ -553,7 +553,7 @@ if (evidence) {
 }
 
 if (registry) {
-  if (registry.schema_version !== 14) failures.push(`${registryPath}: schema_version drift`);
+  if (registry.schema_version !== 15) failures.push(`${registryPath}: schema_version drift`);
   if (registry.evidence?.comments_event_projection !== evidencePath) {
     failures.push(`${registryPath}: comments event projection evidence path drift`);
   }
