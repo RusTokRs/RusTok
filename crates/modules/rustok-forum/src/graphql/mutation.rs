@@ -109,7 +109,7 @@ impl ForumContentMutation {
 
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        let service = TopicService::new(db.clone(), event_bus.clone());
+        let service = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone());
         let topic = service
             .update(
                 tenant_id,
@@ -157,7 +157,7 @@ impl ForumContentMutation {
 
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        let service = TopicService::new(db.clone(), event_bus.clone());
+        let service = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone());
         service
             .delete(
                 tenant_id,
@@ -189,7 +189,7 @@ impl ForumContentMutation {
 
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        TopicService::new(db.clone(), event_bus.clone())
+        super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone())
             .restore(
                 tenant_id,
                 id,
@@ -216,7 +216,7 @@ impl ForumContentMutation {
 
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        ReplyService::new(db.clone(), event_bus.clone())
+        super::forum_graphql_runtime(ctx).reply_service(db.clone(), event_bus.clone())
             .restore(
                 tenant_id,
                 id,
@@ -343,7 +343,7 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let topic = TopicService::new(db.clone(), event_bus.clone())
+        let topic = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
@@ -396,7 +396,7 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let topic = TopicService::new(db.clone(), event_bus.clone())
+        let topic = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
@@ -530,7 +530,7 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let topic = TopicService::new(db.clone(), event_bus.clone())
+        let topic = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
@@ -586,7 +586,7 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let topic = TopicService::new(db.clone(), event_bus.clone())
+        let topic = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
@@ -644,7 +644,7 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let reply = ReplyService::new(db.clone(), event_bus.clone())
+        let reply = super::forum_graphql_runtime(ctx).reply_service(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
@@ -718,7 +718,7 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let reply = ReplyService::new(db.clone(), event_bus.clone())
+        let reply = super::forum_graphql_runtime(ctx).reply_service(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
@@ -804,7 +804,7 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let topic = TopicService::new(db.clone(), event_bus.clone())
+        let topic = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
@@ -870,7 +870,7 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let topic = TopicService::new(db.clone(), event_bus.clone())
+        let topic = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
