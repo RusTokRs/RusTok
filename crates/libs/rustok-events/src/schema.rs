@@ -298,6 +298,14 @@ const COMMENT_FIELDS: &[FieldSchema] = &[
     field!("target_id", "uuid"),
     field!("author_id", "uuid"),
 ];
+const COMMENT_STATUS_CHANGED_FIELDS: &[FieldSchema] = &[
+    field!("comment_id", "uuid"),
+    field!("target_type", "string"),
+    field!("target_id", "uuid"),
+    field!("author_id", "uuid"),
+    field!("old_status", "string"),
+    field!("new_status", "string"),
+];
 
 const FORUM_TOPIC_CREATED_FIELDS: &[FieldSchema] = &[
     field!("topic_id", "uuid"),
@@ -1023,6 +1031,18 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         event_type: "comment.deleted",
         version: 1,
         description: "Comment deleted.",
+        fields: COMMENT_FIELDS,
+    },
+    EventSchema {
+        event_type: "comment.status_changed",
+        version: 1,
+        description: "Comment moderation status changed.",
+        fields: COMMENT_STATUS_CHANGED_FIELDS,
+    },
+    EventSchema {
+        event_type: "comment.updated",
+        version: 1,
+        description: "Comment localized content updated.",
         fields: COMMENT_FIELDS,
     },
     EventSchema {
