@@ -5,7 +5,7 @@ use std::{
 };
 
 use sea_orm::DatabaseConnection;
-use sea_orm::{ConnectionTrait, DbErr, Statement};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, DbErr, Statement};
 use uuid::Uuid;
 
 /// Returns whether an optional module is enabled for the tenant snapshot that
@@ -35,6 +35,53 @@ pub async fn is_tenant_module_enabled(
     ))
     .await
     .map(|row| row.is_some())
+}
+
+/// Returns the settings snapshot for one exact enabled tenant module while
+/// participating in a caller-owned transaction.
+///
+/// PostgreSQL and MySQL use a shared row lock so a domain transaction cannot
+/// decide on stale module intent while lifecycle state is being changed.
+pub async fn tenant_module_settings_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    module_slug: &str,
+) -> Result<Option<serde_json::Value>, DbErr> {
+    let backend = txn.get_database_backend();
+    let query = match backend {
+        sea_orm::DbBackend::Sqlite => {
+            "SELECT CAST(settings AS TEXT) AS settings_json FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 AND enabled = 1 LIMIT 1"
+        }
+        sea_orm::DbBackend::Postgres => {
+            "SELECT settings::text AS settings_json FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 AND enabled = true LIMIT 1 FOR SHARE"
+        }
+        sea_orm::DbBackend::MySql => {
+            "SELECT CAST(settings AS CHAR) AS settings_json FROM tenant_modules WHERE tenant_id = ? AND module_slug = ? AND enabled = true LIMIT 1 FOR SHARE"
+        }
+        _ => {
+            return Err(DbErr::Custom(format!(
+                "tenant module settings transaction read is unsupported for {backend:?}"
+            )))
+        }
+    };
+
+    let Some(row) = txn
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            query,
+            vec![tenant_id.into(), module_slug.into()],
+        ))
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    let encoded: String = row.try_get("", "settings_json")?;
+    serde_json::from_str(&encoded).map(Some).map_err(|error| {
+        DbErr::Custom(format!(
+            "tenant module `{module_slug}` settings are not valid JSON: {error}"
+        ))
+    })
 }
 
 /// Returns the settings snapshot for one exact enabled tenant module.
@@ -161,7 +208,7 @@ impl HostRuntimeContext {
 #[cfg(all(test, feature = "runtime"))]
 mod tests {
     use super::*;
-    use sea_orm::Database;
+    use sea_orm::{Database, TransactionTrait};
 
     async fn runtime_module_db() -> DatabaseConnection {
         let db = Database::connect("sqlite::memory:")
@@ -217,6 +264,44 @@ CREATE TABLE tenant_modules (
                 .await
                 .expect("missing module lookup should succeed")
         );
+    }
+
+    #[tokio::test]
+    async fn tenant_module_settings_in_tx_uses_the_exact_tenant_and_enabled_row() {
+        let db = runtime_module_db().await;
+        let tenant_id = Uuid::new_v4();
+        let foreign_tenant_id = Uuid::new_v4();
+        db.execute_unprepared(&format!(
+            r#"INSERT INTO tenant_modules (tenant_id, module_slug, enabled, settings) VALUES
+             ('{tenant_id}', 'forum', 1, '{{"use_reactions":true}}'),
+             ('{tenant_id}', 'forum-disabled', 0, '{{"use_reactions":true}}'),
+             ('{foreign_tenant_id}', 'forum', 1, '{{"use_reactions":false}}')"#
+        ))
+        .await
+        .expect("transaction settings evidence rows should insert");
+
+        let txn = db.begin().await.expect("transaction should begin");
+        assert_eq!(
+            tenant_module_settings_in_tx(&txn, tenant_id, "forum")
+                .await
+                .expect("transaction settings lookup should succeed")
+                .expect("enabled exact row should be visible")["use_reactions"],
+            true
+        );
+        assert!(
+            tenant_module_settings_in_tx(&txn, tenant_id, "forum-disabled")
+                .await
+                .expect("disabled settings lookup should succeed")
+                .is_none()
+        );
+        assert_eq!(
+            tenant_module_settings_in_tx(&txn, foreign_tenant_id, "forum")
+                .await
+                .expect("foreign tenant settings lookup should succeed")
+                .expect("foreign tenant row should be visible")["use_reactions"],
+            false
+        );
+        txn.rollback().await.expect("transaction rollback");
     }
 
     #[tokio::test]

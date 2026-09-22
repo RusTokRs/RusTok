@@ -47,8 +47,9 @@ when later bounded migrations retire an earlier design.
 
 ## Settings status
 
-Blog currently declares no module-owned static settings. Runtime behavior is not
-advertised through decorative manifest keys.
+Blog owns the `use_reactions` static setting as durable tenant intent for its post
+reaction surface. The reaction provider reads this setting through the tenant-module
+runtime API and fails closed when the setting is disabled or invalid.
 
 Comments is an optional capability provider. Blog owns its comment-surface policy;
 Comments owns threads, bodies, moderation, and retention. Provider absence affects only

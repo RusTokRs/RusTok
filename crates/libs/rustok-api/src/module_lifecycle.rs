@@ -1,3 +1,11 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+use serde_json::Value;
+use crate::ports::PortError;
+
 //! Browser-safe projections for static module lifecycle state and recovery.
 //!
 //! The module owner deliberately omits internal override and trace evidence
@@ -18,6 +26,43 @@ pub struct StaticTenantModuleView {
     /// Canonical JSON encoding of the owner-normalized settings object.
     pub settings: String,
     pub revision: i64,
+}
+
+/// Normalized static settings state for one exact tenant/module scope.
+///
+/// Settings remain readable while the module is disabled; `enabled` is lifecycle
+/// truth and must not be inferred from the presence of settings.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StaticModuleSettingsSnapshot {
+    pub enabled: bool,
+    pub settings: Value,
+}
+
+/// Owner port for reading static module settings.
+///
+/// The platform module-control-plane owns the persistence boundary; consumers receive
+/// only this typed seam and never read `tenant_modules` directly.
+#[async_trait]
+pub trait StaticModuleSettingsReader: Send + Sync {
+    async fn settings(
+        &self,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError>;
+}
+
+/// Shared owner-composed static settings reader published through the runtime extension registry.
+#[derive(Clone)]
+pub struct SharedStaticModuleSettingsReader(pub Arc<dyn StaticModuleSettingsReader>);
+
+impl SharedStaticModuleSettingsReader {
+    pub async fn settings(
+        &self,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+        self.0.settings(tenant_id, module_slug).await
+    }
 }
 
 /// Recovery facts for one tenant-scoped failed static-module operation.

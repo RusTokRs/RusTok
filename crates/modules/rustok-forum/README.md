@@ -122,16 +122,14 @@
 
 ## Settings status
 
-The manifest setting `useReactions` is current executable input for the Forum
-engagement mode, but its camelCase name is non-canonical and the service reads both
-Forum and Reactions `tenant_modules` rows directly. That is current-runtime drift, not
-the target owner boundary. The zero-legacy cutover must rename the key to
-`use_reactions` and replace direct persistence reads with a Forum-owned typed policy
-and a Modules/Reactions effective-availability port.
+The manifest setting `use_reactions` is the canonical Forum engagement intent.
+Forum resolves that intent through the tenant-module runtime API rather than importing
+the tenant persistence entity directly. When the setting is enabled, effective
+reaction mode still requires the Reactions module to be enabled; otherwise Forum stays
+on internal voting. Provider absence affects only the selected engagement feature and
+never disables Forum core behavior.
 
-Reactions remains optional because Forum has an internal voting mode. Stored Forum
-intent alone must never prove that Reactions is installed, enabled, registered, or
-ready. See the canonical settings contract in
+See the canonical settings contract in
 [`docs/architecture/settings.md`](../../../docs/architecture/settings.md).
 
 ## Entry points

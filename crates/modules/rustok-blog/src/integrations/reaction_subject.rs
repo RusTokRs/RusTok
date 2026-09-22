@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{HostRuntimeContext, PortContext};
+use rustok_api::{tenant_module_settings, HostRuntimeContext, PortContext};
 use rustok_reactions_api::{
     ReactionCatalog, ReactionKey, ReactionProviderError, ReactionProviderResult,
     ReactionSelectionPolicy, ReactionSourceSlug, ReactionSubjectAuthorization, ReactionSubjectKind,
     ReactionSubjectProvider, ReactionSubjectProviderFactory, ReactionSubjectRequest,
 };
 use sea_orm::DatabaseConnection;
+use serde::Deserialize;
 
 use crate::BlogPostStatus;
 use crate::services::{is_post_visible_for_channel, load_post_subject_snapshot};
@@ -15,6 +16,13 @@ use crate::services::{is_post_visible_for_channel, load_post_subject_snapshot};
 pub const BLOG_REACTION_SOURCE: &str = "blog";
 pub const BLOG_POST_REACTION_KIND: &str = "post";
 pub const BLOG_REACTION_V1_KEY: &str = "like";
+pub const BLOG_USE_REACTIONS_SETTING: &str = "use_reactions";
+
+#[derive(Debug, Deserialize, Default)]
+struct BlogReactionSettings {
+    #[serde(default)]
+    use_reactions: bool,
+}
 
 #[derive(Clone, Default)]
 pub struct BlogReactionSubjectProviderFactory;
@@ -48,6 +56,16 @@ impl BlogReactionSubjectProvider {
         request: &ReactionSubjectRequest,
     ) -> ReactionProviderResult<ReactionSubjectAuthorization> {
         let subject = &request.subject;
+        let settings = tenant_module_settings(&self.db, subject.tenant_id(), "blog")
+            .await
+            .map_err(|_| ReactionProviderError::Internal { retryable: true })?;
+        let settings = settings.ok_or(ReactionProviderError::Unavailable)?;
+        let settings = serde_json::from_value::<BlogReactionSettings>(settings)
+            .map_err(|_| ReactionProviderError::Internal { retryable: false })?;
+        if !settings.use_reactions {
+            return Ok(ReactionSubjectAuthorization::Unavailable);
+        }
+
         let Some(snapshot) =
             load_post_subject_snapshot(&self.db, subject.tenant_id(), subject.subject_id())
                 .await
@@ -156,6 +174,11 @@ fn owner_read_error(_error: crate::BlogError) -> ReactionProviderError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn blog_setting_uses_canonical_key() {
+        assert_eq!(BLOG_USE_REACTIONS_SETTING, "use_reactions");
+    }
 
     #[test]
     fn blog_catalog_is_single_like() {
