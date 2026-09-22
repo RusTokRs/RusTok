@@ -28,7 +28,7 @@ The hardened contract now requires:
 - derived Comments counters that preserve Blog business `version` and
   `updated_at` and publish locale-neutral reindex requests;
 - Comments lifecycle projections serialize on the tenant-scoped Blog post row lock, order delivery state per comment by envelope id, derive counter transitions from lifecycle state, record update/status-change events without changing `comment_count`, and never mutate Blog business `version` or `updated_at`;
-- public-comment snapshot keys include the latest processed Blog comment lifecycle event id; invalidation is revision-based and requires no cache-key enumeration or second invalidation index;
+- public-comment snapshot keys include the latest committed monotonic Blog comment projection revision per tenant/post; invalidation survives cross-comment out-of-order delivery and requires no cache-key enumeration or second invalidation index;
 - current-tenant authority on GraphQL reads and writes;
 - one redacted Blog public-error mapping boundary;
 - private persistence entities and integrations that consume owner service state;
@@ -57,7 +57,7 @@ The final source audit after #4072 is complete at the architecture/source level.
 Maintainer-owned compile/test/runtime evidence remains separate; this status does not
 promote Comments FBA beyond `boundary_ready`.
 
-Blog FBA registry schema v15 and Comments projection evidence schema v6 encode
+Blog FBA registry schema v16 and Comments projection evidence schema v7 encode
 the corrected derived-state contract. Runtime/remote evidence is still pending,
 so this hardening does not claim `transport_verified`.
 

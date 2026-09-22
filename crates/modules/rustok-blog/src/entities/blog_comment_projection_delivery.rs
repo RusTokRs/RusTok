@@ -12,6 +12,7 @@ pub struct Model {
     pub comment_id: Uuid,
     pub post_id: Uuid,
     pub delta: i32,
+    pub projection_revision: i64,
     pub processed_at: DateTimeWithTimeZone,
 }
 
