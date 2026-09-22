@@ -252,6 +252,8 @@ if (
 if (registry.verification_chain?.source_gates?.comments_event_projection?.unit_test !== projectionHandlerPath) fail('event projection source-gate unit test drift');
 if (registry.verification_chain?.source_gates?.comments_event_projection?.postgres_test !== projectionPostgresHarnessPath) fail('event projection source-gate PostgreSQL test drift');
 if (registry.verification_chain?.source_gates?.comments_event_projection?.restart_test !== projectionRestartHarnessPath) fail('event projection source-gate restart test drift');
+const snapshotInvalidation = projection.snapshot_invalidation ?? {};
+if (snapshotInvalidation.source !== 'blog_comment_projection_deliveries' || snapshotInvalidation.cursor !== 'latest processed lifecycle event_id for the tenant/post' || snapshotInvalidation.keying !== 'public snapshot identity includes projection_event_id' || snapshotInvalidation.redis_enumeration !== false) fail('snapshot_invalidation registry drift');
 const projectionSource = read(projectionHandlerPath);
 const snapshotSource = read('crates/modules/rustok-blog/src/integrations/public_comments_snapshot.rs');
 hasAll(projectionSource, [
@@ -262,6 +264,8 @@ hasAll(projectionSource, [
   'fn next_comment_count(comment_count: i32, delta: i32)',
   'fn classifies_blog_comment_lifecycle_events()',
   'fn ignores_non_blog_targets_and_unrelated_events()',
+  'DomainEvent::CommentUpdated',
+  'DomainEvent::CommentStatusChanged',
   'DomainEvent::CommentUpdated',
   'DomainEvent::CommentStatusChanged',
   'fn counter_transition_is_non_negative_and_does_not_touch_business_revision()',
@@ -285,6 +289,7 @@ hasAll(projectionPostgresHarness, [
   'async fn delete_before_create_stays_non_negative_and_replays_in_order()',
   'async fn missing_post_replay_commits_only_after_source_appears()',
   'async fn outbox_failure_rolls_back_counter_and_delivery_before_retry()',
+  'async fn update_and_status_events_advance_projection_cursor_without_count_change()',
   'DROP TABLE sys_events',
   'CREATE TABLE blog_comment_projection_deliveries',
   'CREATE TABLE sys_events',
