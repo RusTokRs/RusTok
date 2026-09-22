@@ -41,6 +41,16 @@ requireContains(
 );
 requireContains(
   composition,
+  "forum_reactions_enabled_for_tenant",
+  "Forum reply reaction composition must honor the Forum-specific Reactions setting",
+);
+requireContains(
+  composition,
+  "useReactions",
+  "Forum reply reaction composition must read the Forum useReactions setting",
+);
+requireContains(
+  composition,
   "explicit_forum_reply_id(&route, topic_id.as_ref())",
   "Reply selection must require an explicit Forum topic context",
 );
