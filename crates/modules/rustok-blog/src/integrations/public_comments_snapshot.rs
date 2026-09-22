@@ -43,6 +43,7 @@ struct PublicCommentsSnapshotIdentity {
     page: u64,
     per_page: u64,
     projection_event_id: Option<Uuid>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PublicCommentsSnapshotEnvelope {
