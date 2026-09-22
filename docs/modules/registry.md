@@ -433,7 +433,7 @@ Synchronization with `modules.toml`: updated per manifest composition as of 2026
 | `marketplace_payout` | `rustok-marketplace-payout` | `marketplace_ledger` | Marketplace seller payout scheduling and exclusive ledger-entry assignment; provider transfer execution and settlement recovery remain pending |
 | `marketplace` | `rustok-marketplace` | `marketplace_seller`, `marketplace_listing`, `marketplace_allocation`, `marketplace_commission`, `marketplace_ledger`, `marketplace_payout` | Marketplace Family orchestration root over seller, listing, allocation, commission, ledger, and payout owner ports; owns no marketplace persistence |
 | `moderation` | `rustok-moderation` | — | Moderation policies, review decisions, and owner enforcement workflows |
-| `blog` | `rustok-blog` | `content`, `comments`, `taxonomy`, `outbox` | Blog domain, posts, Category bindings, tags, transport/UI; canonical Category localized copy and Translation are Taxonomy-owned through the same-ID binding, while Blog retains Blog-specific membership/settings and post/editorial ownership |
+| `blog` | `rustok-blog` | `content`, `taxonomy`, `outbox`, `channel`, `profiles` | Blog domain, posts, Category bindings, tags, transport/UI; canonical Category localized copy and Translation are Taxonomy-owned through the same-ID binding, while Blog retains Blog-specific membership/settings and post/editorial ownership. Comments is an optional capability provider rather than a static module dependency. |
 | `forum` | `rustok-forum` | `content`, `taxonomy` | Forum domain, topics, replies, moderation, transport/UI and page-builder widget consumer fallback contract |
 | `notifications` | `rustok-notifications` | `outbox` | Notification preferences, delivery scheduling, and outbox-backed delivery lifecycle |
 | `comments` | `rustok-comments` | — | Generic comments domain |
@@ -451,7 +451,7 @@ Synchronization with `modules.toml`: updated per manifest composition as of 2026
 The dependency column above records current executable composition; it is not proof
 that every edge is canonical target architecture. The accepted
 [Settings and Configuration Architecture](../architecture/settings.md) identifies
-`blog -> comments` and `commerce -> fulfillment` as over-constrained current edges.
+`commerce -> fulfillment` as an over-constrained current edge. Blog-to-Comments is now modeled as an optional capability boundary.
 Blog must support publication without Comments, and digital-only Commerce must operate
 without Fulfillment. Those cutovers require typed capability policy/requirements and
 atomic updates to manifests, runtime registries, callers, tests, and UI rather than
