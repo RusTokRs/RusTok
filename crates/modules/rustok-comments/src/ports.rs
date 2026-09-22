@@ -107,6 +107,7 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         let tenant_id = parse_tenant_id(&context)?;
         let security = SecurityContext::try_from_port_context(&context)?;
         let idempotency_key = required_idempotency_key(&context)?;
+        let receipt_request = (comment_id, &request);
 
         let lease = match idempotency::admit(
             &self.db,
@@ -258,7 +259,7 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
             "comments",
             idempotency_key,
             "update_comment",
-            &request,
+            &receipt_request,
         )
         .await?
         {
@@ -418,6 +419,7 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         let tenant_id = parse_tenant_id(&context)?;
         let security = SecurityContext::try_from_port_context(&context)?;
         let idempotency_key = required_idempotency_key(&context)?;
+        let receipt_request = (comment_id, &request, &context.locale);
 
         let lease = match idempotency::admit(
             &self.db,
@@ -425,7 +427,7 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
             "comments",
             idempotency_key,
             "set_comment_status",
-            &request,
+            &receipt_request,
         )
         .await?
         {
