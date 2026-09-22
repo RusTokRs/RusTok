@@ -125,6 +125,7 @@ impl ReplyService {
                     author_id: reply.author_id,
                     content_preview: preview,
                     status: reply.status.to_string(),
+                    is_deleted: reply.deleted_at.is_some(),
                     vote_score: vote_summaries
                         .get(&reply.id)
                         .map(|summary| summary.score)
@@ -390,6 +391,7 @@ fn to_reply_response(
         content: content.view,
         content_plain_text: content.plain_text,
         status: reply.status.to_string(),
+        is_deleted: reply.deleted_at.is_some(),
         vote_score: vote_summary.score,
         current_user_vote: vote_summary.current_user_vote,
         is_solution: Some(reply.id) == solution_reply_id,
