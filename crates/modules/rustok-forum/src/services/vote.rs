@@ -183,6 +183,13 @@ impl VoteService {
             return Ok(HashMap::new());
         }
 
+        if !ForumEngagementMode::resolve(&self.db, tenant_id)
+            .await?
+            .is_internal_voting()
+        {
+            return Ok(HashMap::new());
+        }
+
         let votes = forum_topic_vote::Entity::find()
             .filter(forum_topic_vote::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_vote::Column::TopicId.is_in(topic_ids.to_vec()))
@@ -223,6 +230,13 @@ impl VoteService {
         user_id: Option<Uuid>,
     ) -> ForumResult<HashMap<Uuid, VoteSummary>> {
         if reply_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        if !ForumEngagementMode::resolve(&self.db, tenant_id)
+            .await?
+            .is_internal_voting()
+        {
             return Ok(HashMap::new());
         }
 
