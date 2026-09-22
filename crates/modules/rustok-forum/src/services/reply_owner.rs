@@ -268,7 +268,10 @@ impl ReplyService {
         }
         reply.status.validate_transition(&ReplyStatus::Deleted)?;
 
-        let topic = TopicService::find_topic_in_tx(txn, tenant_id, reply.topic_id).await?;
+        // Serialize reply deletion with topic deletion/restore. The topic row is the
+        // lifecycle boundary for the thread; without this lock a concurrent topic
+        // snapshot could observe a reply in the middle of its own delete mutation.
+        let topic = TopicService::find_topic_for_update_in_tx(txn, tenant_id, reply.topic_id).await?;
         let solution = forum_solution::Entity::find()
             .filter(forum_solution::Column::TenantId.eq(tenant_id))
             .filter(forum_solution::Column::TopicId.eq(reply.topic_id))
