@@ -101,9 +101,7 @@ impl ForumEngagementMode {
     pub fn require_internal_voting(self) -> ForumResult<()> {
         match self {
             Self::InternalVotes => Ok(()),
-            Self::Reactions => Err(ForumError::Validation(
-                "Forum internal voting is disabled while reactions are selected".to_string(),
-            )),
+            Self::Reactions => Err(ForumError::InternalVotingDisabled),
         }
     }
 
