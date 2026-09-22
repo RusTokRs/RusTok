@@ -24,6 +24,9 @@ use crate::{
     StaticDistributionTestEvidence,
 };
 
+mod evidence;
+use evidence::{build_cyclonedx_sbom, build_slsa_provenance};
+
 const PUBLISHER_CONFIG_CONTRACT: &str = "rustok.static_distribution.publisher_config";
 const ARTIFACT_CONFIG_CONTRACT: &str = "rustok.static_distribution.artifact";
 const PUBLISHER_REQUEST_CONTRACT: &str = "rustok.static_distribution.publisher_request";
@@ -190,6 +193,23 @@ async fn publish(
     paths: StaticDistributionPublisherPaths,
     config: StaticDistributionPublisherConfig,
 ) -> Result<(), StaticDistributionPublisherError> {
+    let inputs = load_and_validate_publisher_inputs(&paths)?;
+    let prepared = prepare_publication_artifact(&paths.workspace, &inputs.request, &config)?;
+    let evidence = publish_and_sign_artifacts(&inputs, &prepared, &config).await?;
+    write_publication_receipt(&paths, &inputs, &prepared, &evidence)
+}
+
+struct ValidatedPublisherInputs {
+    request: StaticDistributionPublisherRequest,
+    publisher_request_digest: String,
+    test_evidence_bytes: Vec<u8>,
+    test_evidence_digest: String,
+    lock_bytes: Vec<u8>,
+}
+
+fn load_and_validate_publisher_inputs(
+    paths: &StaticDistributionPublisherPaths,
+) -> Result<ValidatedPublisherInputs, StaticDistributionPublisherError> {
     let request_bytes = read_bounded_regular(&paths.request, MAX_REQUEST_BYTES)?;
     let request: StaticDistributionPublisherRequest = serde_json::from_slice(&request_bytes)
         .map_err(|error| {
@@ -199,19 +219,40 @@ async fn publish(
         })?;
     validate_request(&request)?;
     let publisher_request_digest = digest_bytes(&request_bytes);
+    let (test_evidence_bytes, test_evidence_digest) =
+        load_and_validate_test_evidence(&paths.test_evidence, &request)?;
+    let lock_bytes = load_and_validate_workspace_artifacts(&paths.workspace, &request)?;
+    Ok(ValidatedPublisherInputs {
+        request,
+        publisher_request_digest,
+        test_evidence_bytes,
+        test_evidence_digest,
+        lock_bytes,
+    })
+}
 
-    let test_evidence_bytes = read_bounded_regular(&paths.test_evidence, MAX_TEST_EVIDENCE_BYTES)?;
-    let test_evidence_digest = digest_bytes(&test_evidence_bytes);
-    let test_evidence: StaticDistributionTestEvidence =
-        serde_json::from_slice(&test_evidence_bytes).map_err(|error| {
+fn load_and_validate_test_evidence(
+    path: &Path,
+    request: &StaticDistributionPublisherRequest,
+) -> Result<(Vec<u8>, String), StaticDistributionPublisherError> {
+    let bytes = read_bounded_regular(path, MAX_TEST_EVIDENCE_BYTES)?;
+    let digest = digest_bytes(&bytes);
+    let evidence: StaticDistributionTestEvidence =
+        serde_json::from_slice(&bytes).map_err(|error| {
             StaticDistributionPublisherError::InvalidInput(format!(
                 "test evidence JSON is invalid: {error}"
             ))
         })?;
-    validate_test_evidence(&test_evidence, &request, &test_evidence_digest)?;
+    validate_test_evidence(&evidence, request, &digest)?;
+    Ok((bytes, digest))
+}
 
+fn load_and_validate_workspace_artifacts(
+    workspace: &Path,
+    request: &StaticDistributionPublisherRequest,
+) -> Result<Vec<u8>, StaticDistributionPublisherError> {
     let manifest_bytes = read_bounded_regular(
-        &paths.workspace.join(GENERATED_MANIFEST_PATH),
+        &workspace.join(GENERATED_MANIFEST_PATH),
         MAX_MANIFEST_BYTES,
     )?;
     let manifest: GeneratedStaticDistributionManifest = serde_json::from_slice(&manifest_bytes)
@@ -220,17 +261,32 @@ async fn publish(
                 "generated distribution manifest is invalid: {error}"
             ))
         })?;
-    validate_manifest(&manifest, &request)?;
+    validate_manifest(&manifest, request)?;
 
     let lock_bytes =
-        read_bounded_regular(&paths.workspace.join(WORKSPACE_LOCK_PATH), MAX_LOCK_BYTES)?;
+        read_bounded_regular(&workspace.join(WORKSPACE_LOCK_PATH), MAX_LOCK_BYTES)?;
     if digest_bytes(&lock_bytes) != request.resolved_lock_digest {
         return Err(StaticDistributionPublisherError::InvalidInput(
             "resolved workspace lock does not match the publisher request".to_string(),
         ));
     }
-    let artifact_path = paths
-        .workspace
+    Ok(lock_bytes)
+}
+
+struct PreparedArtifact {
+    artifact_bytes: Vec<u8>,
+    artifact_digest: String,
+    roles: Vec<ModuleStaticDistributionRoleArtifact>,
+    role_set_digest: String,
+    artifact_config_bytes: Vec<u8>,
+}
+
+fn prepare_publication_artifact(
+    workspace: &Path,
+    request: &StaticDistributionPublisherRequest,
+    config: &StaticDistributionPublisherConfig,
+) -> Result<PreparedArtifact, StaticDistributionPublisherError> {
+    let artifact_path = workspace
         .join(".rustok")
         .join("target")
         .join(&request.build_target)
@@ -241,6 +297,29 @@ async fn publish(
     let roles = canonical_role_artifacts(&artifact_digest);
     let role_set_digest = ModuleStaticDistributionBuildEvidence::role_set_digest(&roles)
         .map_err(|error| StaticDistributionPublisherError::InvalidInput(error.to_string()))?;
+    let artifact_config_bytes = serialize_artifact_config(
+        request,
+        &artifact_digest,
+        &role_set_digest,
+        &roles,
+        config.max_evidence_bytes,
+    )?;
+    Ok(PreparedArtifact {
+        artifact_bytes,
+        artifact_digest,
+        roles,
+        role_set_digest,
+        artifact_config_bytes,
+    })
+}
+
+fn serialize_artifact_config(
+    request: &StaticDistributionPublisherRequest,
+    artifact_digest: &str,
+    role_set_digest: &str,
+    roles: &[ModuleStaticDistributionRoleArtifact],
+    max_evidence_bytes: u64,
+) -> Result<Vec<u8>, StaticDistributionPublisherError> {
     let artifact_config = StaticDistributionArtifactConfig {
         contract: ARTIFACT_CONFIG_CONTRACT,
         distribution_build_id: request.distribution_build_id,
@@ -252,19 +331,116 @@ async fn publish(
         toolchain_digest: &request.toolchain_digest,
         build_target: &request.build_target,
         resolved_lock_digest: &request.resolved_lock_digest,
-        artifact_digest: &artifact_digest,
-        role_set_digest: &role_set_digest,
-        roles: &roles,
+        artifact_digest,
+        role_set_digest,
+        roles,
     };
-    let artifact_config_bytes = serde_json::to_vec_pretty(&artifact_config)
+    let bytes = serde_json::to_vec_pretty(&artifact_config)
         .map_err(|error| StaticDistributionPublisherError::Io(error.to_string()))?;
-    if artifact_config_bytes.len() as u64 > config.max_evidence_bytes {
+    if bytes.len() as u64 > max_evidence_bytes {
         return Err(StaticDistributionPublisherError::InvalidInput(
             "artifact config exceeds the evidence bound".to_string(),
         ));
     }
+    Ok(bytes)
+}
 
+struct PublishedArtifactEvidence {
+    artifact: rustok_modules::OciArtifactReference,
+    sbom: rustok_modules::OciArtifactReference,
+    provenance: rustok_modules::OciArtifactReference,
+    test_evidence_reference: rustok_modules::OciArtifactReference,
+    signature: rustok_modules::OciArtifactReference,
+}
+
+async fn publish_and_sign_artifacts(
+    inputs: &ValidatedPublisherInputs,
+    prepared: &PreparedArtifact,
+    config: &StaticDistributionPublisherConfig,
+) -> Result<PublishedArtifactEvidence, StaticDistributionPublisherError> {
     let target = config.publication_target();
+    let (publisher, signer, credentials) = setup_publisher_and_signer(config, &target).await?;
+    let artifact =
+        publish_primary_artifact(&publisher, &target, prepared, config.max_artifact_bytes).await?;
+    let (sbom, provenance, test_evidence_reference) =
+        publish_referrers(&publisher, &target, &artifact, inputs, config).await?;
+    let signature = sign_and_resolve_signature(
+        &publisher,
+        &signer,
+        &target,
+        &artifact,
+        &credentials,
+        config.publication_timeout(),
+    )
+    .await?;
+
+    Ok(PublishedArtifactEvidence {
+        artifact,
+        sbom,
+        provenance,
+        test_evidence_reference,
+        signature,
+    })
+}
+
+async fn publish_primary_artifact(
+    publisher: &OciDistributionArtifactPublisher,
+    target: &OciArtifactPublicationTarget,
+    prepared: &PreparedArtifact,
+    max_artifact_bytes: u64,
+) -> Result<rustok_modules::OciArtifactReference, StaticDistributionPublisherError> {
+    publisher
+        .publish_build_artifact(
+            target,
+            OciBuildPublicationArtifact {
+                config: publication_blob(
+                    ARTIFACT_CONFIG_MEDIA_TYPE,
+                    prepared.artifact_config_bytes.clone(),
+                ),
+                layer: OciBuildPublicationBlob {
+                    media_type: ARTIFACT_LAYER_MEDIA_TYPE.to_string(),
+                    digest: prepared.artifact_digest.clone(),
+                    bytes: prepared.artifact_bytes.clone(),
+                },
+            },
+            max_artifact_bytes,
+        )
+        .await
+        .map_err(|error| StaticDistributionPublisherError::Publication(error.to_string()))
+}
+
+async fn sign_and_resolve_signature(
+    publisher: &OciDistributionArtifactPublisher,
+    signer: &CosignArtifactSigner,
+    target: &OciArtifactPublicationTarget,
+    artifact: &rustok_modules::OciArtifactReference,
+    credentials: &rustok_build_publication::RegistryCredentialLease,
+    timeout: Duration,
+) -> Result<rustok_modules::OciArtifactReference, StaticDistributionPublisherError> {
+    credentials
+        .ensure_valid()
+        .map_err(|error| StaticDistributionPublisherError::Publication(error.to_string()))?;
+    signer
+        .sign(artifact, credentials, timeout)
+        .await
+        .map_err(|error| StaticDistributionPublisherError::Publication(error.to_string()))?;
+    publisher
+        .resolve_cosign_signature(target, artifact)
+        .await
+        .map_err(|error| StaticDistributionPublisherError::Publication(error.to_string()))
+}
+
+async fn setup_publisher_and_signer(
+    config: &StaticDistributionPublisherConfig,
+    target: &OciArtifactPublicationTarget,
+) -> Result<
+    (
+        OciDistributionArtifactPublisher,
+        CosignArtifactSigner,
+        rustok_build_publication::RegistryCredentialLease,
+    ),
+    StaticDistributionPublisherError,
+> {
     let credential_broker = CommandRegistryCredentialBroker::new(
         config.credential_broker_path.clone(),
         config.credential_broker_digest.clone(),
@@ -278,7 +454,7 @@ async fn publish(
     .map_err(StaticDistributionPublisherError::InvalidConfig)?;
     let credentials = credential_broker
         .acquire(
-            &target,
+            target,
             config
                 .publication_timeout()
                 .saturating_add(CREDENTIAL_SAFETY_MARGIN),
@@ -290,93 +466,147 @@ async fn publish(
         .map_err(|error| StaticDistributionPublisherError::Publication(error.to_string()))?;
     let publisher = OciDistributionArtifactPublisher::strict(credentials.registry_auth())
         .map_err(|error| StaticDistributionPublisherError::Publication(error.to_string()))?;
-    let artifact = publisher
-        .publish_build_artifact(
-            &target,
-            OciBuildPublicationArtifact {
-                config: publication_blob(ARTIFACT_CONFIG_MEDIA_TYPE, artifact_config_bytes),
-                layer: OciBuildPublicationBlob {
-                    media_type: ARTIFACT_LAYER_MEDIA_TYPE.to_string(),
-                    digest: artifact_digest,
-                    bytes: artifact_bytes,
-                },
-            },
-            config.max_artifact_bytes,
-        )
-        .await
-        .map_err(|error| StaticDistributionPublisherError::Publication(error.to_string()))?;
+    Ok((publisher, signer, credentials))
+}
 
-    let sbom_bytes = build_cyclonedx_sbom(&request, &lock_bytes, config.max_evidence_bytes)?;
-    let sbom = publisher
+type PublishedReferrers = (
+    rustok_modules::OciArtifactReference,
+    rustok_modules::OciArtifactReference,
+    rustok_modules::OciArtifactReference,
+);
+
+async fn publish_referrers(
+    publisher: &OciDistributionArtifactPublisher,
+    target: &OciArtifactPublicationTarget,
+    artifact: &rustok_modules::OciArtifactReference,
+    inputs: &ValidatedPublisherInputs,
+    config: &StaticDistributionPublisherConfig,
+) -> Result<PublishedReferrers, StaticDistributionPublisherError> {
+    let sbom = publish_sbom_referrer(
+        publisher,
+        target,
+        artifact,
+        &inputs.request,
+        &inputs.lock_bytes,
+        config.max_evidence_bytes,
+    )
+    .await?;
+    let provenance = publish_provenance_referrer(
+        publisher,
+        target,
+        artifact,
+        &inputs.request,
+        &inputs.publisher_request_digest,
+        config.max_evidence_bytes,
+    )
+    .await?;
+    let test_evidence = publish_test_evidence_referrer(
+        publisher,
+        target,
+        artifact,
+        inputs.test_evidence_digest.clone(),
+        inputs.test_evidence_bytes.clone(),
+        config.max_evidence_bytes,
+    )
+    .await?;
+    Ok((sbom, provenance, test_evidence))
+}
+
+async fn publish_sbom_referrer(
+    publisher: &OciDistributionArtifactPublisher,
+    target: &OciArtifactPublicationTarget,
+    artifact: &rustok_modules::OciArtifactReference,
+    request: &StaticDistributionPublisherRequest,
+    lock_bytes: &[u8],
+    max_evidence_bytes: u64,
+) -> Result<rustok_modules::OciArtifactReference, StaticDistributionPublisherError> {
+    let sbom_bytes = build_cyclonedx_sbom(request, lock_bytes, max_evidence_bytes)?;
+    publisher
         .publish_build_referrer(
-            &target,
-            &artifact,
+            target,
+            artifact,
             publication_blob(SBOM_MEDIA_TYPE, sbom_bytes),
-            config.max_evidence_bytes,
+            max_evidence_bytes,
         )
         .await
-        .map_err(|error| StaticDistributionPublisherError::Publication(error.to_string()))?;
-    let provenance_bytes = build_slsa_provenance(&request, &artifact, &publisher_request_digest)?;
-    if provenance_bytes.len() as u64 > config.max_evidence_bytes {
-        return Err(StaticDistributionPublisherError::InvalidInput(
-            "provenance exceeds the evidence bound".to_string(),
-        ));
-    }
-    let provenance = publisher
+        .map_err(|error| StaticDistributionPublisherError::Publication(error.to_string()))
+}
+
+async fn publish_test_evidence_referrer(
+    publisher: &OciDistributionArtifactPublisher,
+    target: &OciArtifactPublicationTarget,
+    artifact: &rustok_modules::OciArtifactReference,
+    test_evidence_digest: String,
+    test_evidence_bytes: Vec<u8>,
+    max_evidence_bytes: u64,
+) -> Result<rustok_modules::OciArtifactReference, StaticDistributionPublisherError> {
+    publisher
         .publish_build_referrer(
-            &target,
-            &artifact,
-            publication_blob(PROVENANCE_MEDIA_TYPE, provenance_bytes),
-            config.max_evidence_bytes,
-        )
-        .await
-        .map_err(|error| StaticDistributionPublisherError::Publication(error.to_string()))?;
-    let test_evidence_reference = publisher
-        .publish_build_referrer(
-            &target,
-            &artifact,
+            target,
+            artifact,
             OciBuildPublicationBlob {
                 media_type: TEST_EVIDENCE_MEDIA_TYPE.to_string(),
                 digest: test_evidence_digest,
                 bytes: test_evidence_bytes,
             },
-            config.max_evidence_bytes,
+            max_evidence_bytes,
         )
         .await
-        .map_err(|error| StaticDistributionPublisherError::Publication(error.to_string()))?;
-    credentials
-        .ensure_valid()
-        .map_err(|error| StaticDistributionPublisherError::Publication(error.to_string()))?;
-    signer
-        .sign(&artifact, &credentials, config.publication_timeout())
-        .await
-        .map_err(|error| StaticDistributionPublisherError::Publication(error.to_string()))?;
-    let signature = publisher
-        .resolve_cosign_signature(&target, &artifact)
-        .await
-        .map_err(|error| StaticDistributionPublisherError::Publication(error.to_string()))?;
+        .map_err(|error| StaticDistributionPublisherError::Publication(error.to_string()))
+}
 
+async fn publish_provenance_referrer(
+    publisher: &OciDistributionArtifactPublisher,
+    target: &OciArtifactPublicationTarget,
+    artifact: &rustok_modules::OciArtifactReference,
+    request: &StaticDistributionPublisherRequest,
+    publisher_request_digest: &str,
+    max_evidence_bytes: u64,
+) -> Result<rustok_modules::OciArtifactReference, StaticDistributionPublisherError> {
+    let provenance_bytes = build_slsa_provenance(request, artifact, publisher_request_digest)?;
+    if provenance_bytes.len() as u64 > max_evidence_bytes {
+        return Err(StaticDistributionPublisherError::InvalidInput(
+            "provenance exceeds the evidence bound".to_string(),
+        ));
+    }
+    publisher
+        .publish_build_referrer(
+            target,
+            artifact,
+            publication_blob(PROVENANCE_MEDIA_TYPE, provenance_bytes),
+            max_evidence_bytes,
+        )
+        .await
+        .map_err(|error| StaticDistributionPublisherError::Publication(error.to_string()))
+}
+
+fn write_publication_receipt(
+    paths: &StaticDistributionPublisherPaths,
+    inputs: &ValidatedPublisherInputs,
+    prepared: &PreparedArtifact,
+    evidence: &PublishedArtifactEvidence,
+) -> Result<(), StaticDistributionPublisherError> {
     let receipt = StaticDistributionPublicationReceipt {
         contract: PUBLICATION_RECEIPT_CONTRACT.to_string(),
-        publisher_request_digest,
-        job_request_digest: request.job_request_digest,
-        generated_output_digest: request.generated_output_digest,
-        composition_digest: request.composition_digest,
-        resolved_lock_digest: request.resolved_lock_digest,
-        test_evidence_payload_digest: request.test_evidence_digest,
+        publisher_request_digest: inputs.publisher_request_digest.clone(),
+        job_request_digest: inputs.request.job_request_digest.clone(),
+        generated_output_digest: inputs.request.generated_output_digest.clone(),
+        composition_digest: inputs.request.composition_digest.clone(),
+        resolved_lock_digest: inputs.request.resolved_lock_digest.clone(),
+        test_evidence_payload_digest: inputs.request.test_evidence_digest.clone(),
         evidence: ModuleStaticDistributionBuildEvidence {
-            bundle_reference: artifact.canonical(),
-            bundle_root_digest: artifact.digest,
-            role_set_digest,
-            roles,
-            sbom_reference: sbom.canonical(),
-            sbom_digest: sbom.digest,
-            provenance_reference: provenance.canonical(),
-            provenance_digest: provenance.digest,
-            signature_reference: signature.canonical(),
-            signature_digest: signature.digest,
-            test_evidence_reference: test_evidence_reference.canonical(),
-            test_evidence_digest: test_evidence_reference.digest,
+            bundle_reference: evidence.artifact.canonical(),
+            bundle_root_digest: evidence.artifact.digest.clone(),
+            role_set_digest: prepared.role_set_digest.clone(),
+            roles: prepared.roles.clone(),
+            sbom_reference: evidence.sbom.canonical(),
+            sbom_digest: evidence.sbom.digest.clone(),
+            provenance_reference: evidence.provenance.canonical(),
+            provenance_digest: evidence.provenance.digest.clone(),
+            signature_reference: evidence.signature.canonical(),
+            signature_digest: evidence.signature.digest.clone(),
+            test_evidence_reference: evidence.test_evidence_reference.canonical(),
+            test_evidence_digest: evidence.test_evidence_reference.digest.clone(),
         },
     };
     let receipt_bytes = serde_json::to_vec_pretty(&receipt)
@@ -470,147 +700,7 @@ fn validate_manifest(
     Ok(())
 }
 
-fn build_cyclonedx_sbom(
-    request: &StaticDistributionPublisherRequest,
-    lock_bytes: &[u8],
-    maximum_bytes: u64,
-) -> Result<Vec<u8>, StaticDistributionPublisherError> {
-    let lock_text = std::str::from_utf8(lock_bytes).map_err(|_| {
-        StaticDistributionPublisherError::InvalidInput(
-            "resolved Cargo.lock is not UTF-8".to_string(),
-        )
-    })?;
-    let lock = lock_text.parse::<toml::Table>().map_err(|error| {
-        StaticDistributionPublisherError::InvalidInput(format!(
-            "resolved Cargo.lock is invalid: {error}"
-        ))
-    })?;
-    let packages = lock
-        .get("package")
-        .and_then(toml::Value::as_array)
-        .ok_or_else(|| {
-            StaticDistributionPublisherError::InvalidInput(
-                "resolved Cargo.lock has no packages".to_string(),
-            )
-        })?;
-    let mut components = Vec::with_capacity(packages.len());
-    for package in packages {
-        let package = package.as_table().ok_or_else(|| {
-            StaticDistributionPublisherError::InvalidInput(
-                "resolved Cargo.lock package is invalid".to_string(),
-            )
-        })?;
-        let name = package
-            .get("name")
-            .and_then(toml::Value::as_str)
-            .ok_or_else(|| {
-                StaticDistributionPublisherError::InvalidInput(
-                    "resolved Cargo.lock package name is missing".to_string(),
-                )
-            })?;
-        let version = package
-            .get("version")
-            .and_then(toml::Value::as_str)
-            .ok_or_else(|| {
-                StaticDistributionPublisherError::InvalidInput(
-                    "resolved Cargo.lock package version is missing".to_string(),
-                )
-            })?;
-        let source = package
-            .get("source")
-            .and_then(toml::Value::as_str)
-            .unwrap_or("workspace");
-        let bom_ref = digest_bytes(format!("{name}\0{version}\0{source}").as_bytes());
-        let mut component = serde_json::json!({
-            "type": "library",
-            "bom-ref": bom_ref,
-            "name": name,
-            "version": version,
-            "properties": [{ "name": "rustok:cargo:source", "value": source }]
-        });
-        if let Some(checksum) = package.get("checksum").and_then(toml::Value::as_str)
-            && checksum.len() == 64
-            && checksum
-                .bytes()
-                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-        {
-            component["hashes"] = serde_json::json!([{ "alg": "SHA-256", "content": checksum }]);
-        }
-        components.push(component);
-    }
-    components.sort_by(|left, right| left["bom-ref"].as_str().cmp(&right["bom-ref"].as_str()));
-    let document = serde_json::json!({
-        "bomFormat": "CycloneDX",
-        "specVersion": "1.6",
-        "serialNumber": format!("urn:uuid:{}", request.distribution_build_id),
-        "version": 1,
-        "metadata": {
-            "component": {
-                "type": "application",
-                "bom-ref": request.composition_digest,
-                "name": "rustok-static-distribution",
-                "version": request.distribution_build_id.to_string()
-            },
-            "properties": [
-                { "name": "rustok:composition_digest", "value": request.composition_digest },
-                { "name": "rustok:resolved_lock_digest", "value": request.resolved_lock_digest }
-            ]
-        },
-        "components": components
-    });
-    let bytes = serde_json::to_vec_pretty(&document)
-        .map_err(|error| StaticDistributionPublisherError::Io(error.to_string()))?;
-    if bytes.len() as u64 > maximum_bytes {
-        return Err(StaticDistributionPublisherError::InvalidInput(
-            "generated SBOM exceeds the evidence bound".to_string(),
-        ));
-    }
-    Ok(bytes)
-}
 
-fn build_slsa_provenance(
-    request: &StaticDistributionPublisherRequest,
-    artifact: &rustok_modules::OciArtifactReference,
-    publisher_request_digest: &str,
-) -> Result<Vec<u8>, StaticDistributionPublisherError> {
-    let subject_digest = artifact.digest.strip_prefix("sha256:").ok_or_else(|| {
-        StaticDistributionPublisherError::InvalidInput(
-            "published artifact digest is invalid".to_string(),
-        )
-    })?;
-    let document = serde_json::json!({
-        "_type": "https://in-toto.io/Statement/v1",
-        "subject": [{
-            "name": artifact.canonical(),
-            "digest": { "sha256": subject_digest }
-        }],
-        "predicateType": "https://slsa.dev/provenance/v1",
-        "predicate": {
-            "buildDefinition": {
-                "buildType": "https://rustok.dev/build-types/static-distribution",
-                "externalParameters": {
-                    "distribution_build_id": request.distribution_build_id,
-                    "composition_digest": request.composition_digest,
-                    "generated_output_digest": request.generated_output_digest
-                },
-                "internalParameters": {
-                    "job_request_digest": request.job_request_digest,
-                    "publisher_request_digest": publisher_request_digest,
-                    "toolchain_digest": request.toolchain_digest,
-                    "build_target": request.build_target,
-                    "resolved_lock_digest": request.resolved_lock_digest
-                },
-                "resolvedDependencies": []
-            },
-            "runDetails": {
-                "builder": { "id": "https://rustok.dev/builders/static-distribution" },
-                "metadata": { "invocationId": request.claim_id }
-            }
-        }
-    });
-    serde_json::to_vec_pretty(&document)
-        .map_err(|error| StaticDistributionPublisherError::Io(error.to_string()))
-}
 
 fn publication_blob(media_type: &str, bytes: Vec<u8>) -> OciBuildPublicationBlob {
     OciBuildPublicationBlob {
@@ -660,19 +750,13 @@ fn fixed_build_command(target: &str) -> Vec<String> {
 fn validate_paths(
     paths: &StaticDistributionPublisherPaths,
 ) -> Result<(), StaticDistributionPublisherError> {
-    for path in [
+    validate_absolute_paths(&[
         &paths.request,
         &paths.workspace,
         &paths.test_evidence,
         &paths.config,
         &paths.receipt,
-    ] {
-        if !path.is_absolute() {
-            return Err(StaticDistributionPublisherError::InvalidInput(
-                "publisher paths must be absolute".to_string(),
-            ));
-        }
-    }
+    ])?;
     let metadata = fs::symlink_metadata(&paths.workspace).map_err(io_error)?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
         return Err(StaticDistributionPublisherError::InvalidInput(
@@ -684,25 +768,12 @@ fn validate_paths(
             "publisher config digest is invalid".to_string(),
         ));
     }
-    let workspace = fs::canonicalize(&paths.workspace).map_err(io_error)?;
-    let job_dir = workspace.parent().ok_or_else(|| {
-        StaticDistributionPublisherError::InvalidInput(
-            "publisher workspace has no attempt directory".to_string(),
-        )
-    })?;
-    for path in [&paths.request, &paths.test_evidence] {
-        let canonical = fs::canonicalize(path).map_err(io_error)?;
-        if canonical.parent() != Some(job_dir) {
-            return Err(StaticDistributionPublisherError::InvalidInput(
-                "publisher input escaped its attempt directory".to_string(),
-            ));
-        }
-    }
-    if paths.receipt.parent() != Some(job_dir) {
-        return Err(StaticDistributionPublisherError::InvalidInput(
-            "publisher receipt escaped its attempt directory".to_string(),
-        ));
-    }
+    validate_attempt_containment(
+        &paths.workspace,
+        &paths.request,
+        &paths.test_evidence,
+        &paths.receipt,
+    )?;
     match fs::symlink_metadata(&paths.receipt) {
         Ok(_) => Err(StaticDistributionPublisherError::InvalidInput(
             "publisher receipt already exists".to_string(),
@@ -710,6 +781,45 @@ fn validate_paths(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(io_error(error)),
     }
+}
+
+fn validate_absolute_paths(paths: &[&Path]) -> Result<(), StaticDistributionPublisherError> {
+    for path in paths {
+        if !path.is_absolute() {
+            return Err(StaticDistributionPublisherError::InvalidInput(
+                "publisher paths must be absolute".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_attempt_containment(
+    workspace: &Path,
+    request: &Path,
+    test_evidence: &Path,
+    receipt: &Path,
+) -> Result<(), StaticDistributionPublisherError> {
+    let canonical_ws = fs::canonicalize(workspace).map_err(io_error)?;
+    let job_dir = canonical_ws.parent().ok_or_else(|| {
+        StaticDistributionPublisherError::InvalidInput(
+            "publisher workspace has no attempt directory".to_string(),
+        )
+    })?;
+    for path in [request, test_evidence] {
+        let canonical = fs::canonicalize(path).map_err(io_error)?;
+        if canonical.parent() != Some(job_dir) {
+            return Err(StaticDistributionPublisherError::InvalidInput(
+                "publisher input escaped its attempt directory".to_string(),
+            ));
+        }
+    }
+    if receipt.parent() != Some(job_dir) {
+        return Err(StaticDistributionPublisherError::InvalidInput(
+            "publisher receipt escaped its attempt directory".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn read_bounded_regular(
@@ -752,7 +862,7 @@ fn write_new_file(path: &Path, bytes: &[u8]) -> Result<(), StaticDistributionPub
     file.sync_all().map_err(io_error)
 }
 
-fn digest_bytes(bytes: &[u8]) -> String {
+pub(super) fn digest_bytes(bytes: &[u8]) -> String {
     format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
 

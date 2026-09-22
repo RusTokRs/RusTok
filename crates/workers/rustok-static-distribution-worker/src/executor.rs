@@ -117,36 +117,20 @@ impl StaticDistributionWorker {
         build_target: String,
         execution_timeout: Duration,
     ) -> Result<Self, String> {
-        if !launcher_path.is_absolute()
-            || !job_config_path.is_absolute()
-            || !work_root.is_absolute()
-            || !valid_digest(&launcher_digest)
-            || !valid_digest(&job_config_digest)
-            || !valid_digest(&toolchain_digest)
-            || !valid_text(&build_target, 128)
-            || execution_timeout.is_zero()
-        {
-            return Err("static distribution worker configuration is invalid".to_string());
-        }
-        validate_regular_file(&launcher_path, "job launcher")?;
-        validate_regular_file(&job_config_path, "job config")?;
-        validate_directory(&work_root, "work root")?;
+        validate_config_inputs(
+            &launcher_path,
+            &launcher_digest,
+            &job_config_path,
+            &job_config_digest,
+            &work_root,
+            &toolchain_digest,
+            &build_target,
+            execution_timeout,
+        )?;
         let launcher_path = canonical_path(&launcher_path, "job launcher")?;
         let job_config_path = canonical_path(&job_config_path, "job config")?;
         let work_root = canonical_path(&work_root, "work root")?;
-        verify_file_digest(&launcher_path, &launcher_digest, "job launcher")?;
-        verify_file_digest(&job_config_path, &job_config_digest, "job config")?;
-        let job_config = StaticDistributionJobConfig::load(&job_config_path, &job_config_digest)
-            .map_err(|error| error.to_string())?;
-        if job_config.toolchain_digest != toolchain_digest
-            || job_config.build_target != build_target
-            || job_config.command_timeout() > execution_timeout
-        {
-            return Err(
-                "static distribution worker and job config execution identities differ".to_string(),
-            );
-        }
-        Ok(Self {
+        let worker = Self {
             launcher_path,
             launcher_digest,
             job_config_path,
@@ -156,7 +140,9 @@ impl StaticDistributionWorker {
             build_target,
             execution_timeout,
             active_jobs: Arc::new(Mutex::new(HashSet::new())),
-        })
+        };
+        worker.validate_runtime()?;
+        Ok(worker)
     }
 
     fn validate_runtime(&self) -> Result<(), String> {
@@ -179,11 +165,10 @@ impl StaticDistributionWorker {
         Ok(())
     }
 
-    async fn execute_inner(
+    fn validate_work_item(
         &self,
-        work_item: ModuleStaticDistributionWorkItem,
-    ) -> Result<ModuleStaticDistributionCompletionOutcome, ModuleStaticDistributionExecutorError>
-    {
+        work_item: &ModuleStaticDistributionWorkItem,
+    ) -> Result<(), ModuleStaticDistributionExecutorError> {
         work_item
             .validate()
             .map_err(|error| ModuleStaticDistributionExecutorError::Rejected(error.to_string()))?;
@@ -194,10 +179,64 @@ impl StaticDistributionWorker {
                 "work item does not match the deployment-pinned toolchain and target".to_string(),
             ));
         }
+        Ok(())
+    }
+
+    fn acquire_job_directory(
+        &self,
+        request: &StaticDistributionJobRequest,
+    ) -> Result<(PathBuf, ActiveJobGuard), ModuleStaticDistributionExecutorError> {
+        let job_dir = self.work_root.join(format!(
+            "{}-{}-{}",
+            request.distribution_build_id, request.attempt_number, request.claim_id
+        ));
+        prepare_job_directory(&self.work_root, &job_dir)
+            .map_err(ModuleStaticDistributionExecutorError::Transport)?;
+        let guard = ActiveJobGuard::acquire(self.active_jobs.clone(), job_dir.clone())
+            .map_err(ModuleStaticDistributionExecutorError::Transport)?;
+        Ok((job_dir, guard))
+    }
+
+    async fn execute_inner(
+        &self,
+        work_item: ModuleStaticDistributionWorkItem,
+    ) -> Result<ModuleStaticDistributionCompletionOutcome, ModuleStaticDistributionExecutorError>
+    {
+        self.validate_work_item(&work_item)?;
         self.validate_runtime()
             .map_err(ModuleStaticDistributionExecutorError::Transport)?;
         let generated = generate_static_distribution(&work_item)
             .map_err(|error| ModuleStaticDistributionExecutorError::Rejected(error.to_string()))?;
+        let (request, request_bytes) = self.build_job_request(&work_item, &generated)?;
+        let request_digest = digest_bytes(&request_bytes);
+        let (job_dir, _active_job) = self.acquire_job_directory(&request)?;
+        let paths = prepare_job_inputs(&job_dir, &request_bytes, &generated)?;
+
+        if !path_entry_exists(&paths.receipt_path)
+            .map_err(ModuleStaticDistributionExecutorError::Transport)?
+        {
+            run_launcher_command(
+                &self.launcher_path,
+                &self.job_config_path,
+                &job_dir,
+                &paths,
+                self.execution_timeout,
+            )
+            .await?;
+        }
+        load_and_validate_receipt(
+            &paths.receipt_path,
+            &request,
+            &request_digest,
+            &generated.manifest,
+        )
+    }
+
+    fn build_job_request(
+        &self,
+        work_item: &ModuleStaticDistributionWorkItem,
+        generated: &rustok_distribution::GeneratedStaticDistributionFiles,
+    ) -> Result<(StaticDistributionJobRequest, Vec<u8>), ModuleStaticDistributionExecutorError> {
         let request = StaticDistributionJobRequest {
             contract: "rustok.static_distribution.job".to_string(),
             distribution_build_id: work_item.build.distribution_build_id,
@@ -210,7 +249,7 @@ impl StaticDistributionWorker {
             job_config_digest: self.job_config_digest.clone(),
             toolchain_digest: self.toolchain_digest.clone(),
             build_target: self.build_target.clone(),
-            work_item,
+            work_item: work_item.clone(),
         };
         let request_bytes = serde_json::to_vec_pretty(&request).map_err(transport_error)?;
         if request_bytes.len() as u64 > MAX_JOB_INPUT_BYTES {
@@ -218,92 +257,128 @@ impl StaticDistributionWorker {
                 "static distribution job request exceeds the input bound".to_string(),
             ));
         }
-        let request_digest = digest_bytes(&request_bytes);
-        let job_dir = self.work_root.join(format!(
-            "{}-{}-{}",
-            request.distribution_build_id, request.attempt_number, request.claim_id
-        ));
-        prepare_job_directory(&self.work_root, &job_dir)
-            .map_err(ModuleStaticDistributionExecutorError::Transport)?;
-        let _active_job = ActiveJobGuard::acquire(self.active_jobs.clone(), job_dir.clone())
-            .map_err(ModuleStaticDistributionExecutorError::Transport)?;
-        let request_path = job_dir.join(JOB_REQUEST_FILE);
-        let generated_manifest_path = job_dir.join(GENERATED_MANIFEST_FILE);
-        let cargo_dependencies_path = job_dir.join(CARGO_DEPENDENCIES_FILE);
-        let registry_source_path = job_dir.join(REGISTRY_SOURCE_FILE);
-        let receipt_path = job_dir.join(JOB_RECEIPT_FILE);
-        write_new_or_verify(&request_path, &request_bytes, MAX_JOB_INPUT_BYTES)
-            .map_err(ModuleStaticDistributionExecutorError::Transport)?;
-        write_new_or_verify(
-            &generated_manifest_path,
-            &generated.manifest_json,
-            MAX_JOB_INPUT_BYTES,
-        )
-        .map_err(ModuleStaticDistributionExecutorError::Transport)?;
-        write_new_or_verify(
-            &cargo_dependencies_path,
-            generated.cargo_dependencies_toml.as_bytes(),
-            MAX_JOB_INPUT_BYTES,
-        )
-        .map_err(ModuleStaticDistributionExecutorError::Transport)?;
-        write_new_or_verify(
-            &registry_source_path,
-            generated.registry_source.as_bytes(),
-            MAX_JOB_INPUT_BYTES,
-        )
-        .map_err(ModuleStaticDistributionExecutorError::Transport)?;
-
-        if path_entry_exists(&receipt_path)
-            .map_err(ModuleStaticDistributionExecutorError::Transport)?
-        {
-            return load_and_validate_receipt(
-                &receipt_path,
-                &request,
-                &request_digest,
-                &generated.manifest,
-            );
-        }
-
-        let mut command = Command::new(&self.launcher_path);
-        command
-            .arg("--job-request")
-            .arg(&request_path)
-            .arg("--generated-manifest")
-            .arg(&generated_manifest_path)
-            .arg("--cargo-dependencies")
-            .arg(&cargo_dependencies_path)
-            .arg("--registry-source")
-            .arg(&registry_source_path)
-            .arg("--job-config")
-            .arg(&self.job_config_path)
-            .arg("--receipt")
-            .arg(&receipt_path)
-            .current_dir(&job_dir)
-            .env_clear()
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .kill_on_drop(true);
-        let status = timeout(self.execution_timeout, command.status())
-            .await
-            .map_err(|_| {
-                ModuleStaticDistributionExecutorError::Transport(
-                    "static distribution job launcher timed out".to_string(),
-                )
-            })?
-            .map_err(transport_error)?;
-        if !status.success() {
-            return Err(ModuleStaticDistributionExecutorError::Transport(format!(
-                "static distribution job launcher exited with status {status}"
-            )));
-        }
-        load_and_validate_receipt(
-            &receipt_path,
-            &request,
-            &request_digest,
-            &generated.manifest,
-        )
+        Ok((request, request_bytes))
     }
+}
+
+struct JobInputPaths {
+    request_path: PathBuf,
+    generated_manifest_path: PathBuf,
+    cargo_dependencies_path: PathBuf,
+    registry_source_path: PathBuf,
+    receipt_path: PathBuf,
+}
+
+fn prepare_job_inputs(
+    job_dir: &Path,
+    request_bytes: &[u8],
+    generated: &rustok_distribution::GeneratedStaticDistributionFiles,
+) -> Result<JobInputPaths, ModuleStaticDistributionExecutorError> {
+    let paths = JobInputPaths {
+        request_path: job_dir.join(JOB_REQUEST_FILE),
+        generated_manifest_path: job_dir.join(GENERATED_MANIFEST_FILE),
+        cargo_dependencies_path: job_dir.join(CARGO_DEPENDENCIES_FILE),
+        registry_source_path: job_dir.join(REGISTRY_SOURCE_FILE),
+        receipt_path: job_dir.join(JOB_RECEIPT_FILE),
+    };
+    write_new_or_verify(&paths.request_path, request_bytes, MAX_JOB_INPUT_BYTES)
+        .map_err(ModuleStaticDistributionExecutorError::Transport)?;
+    write_new_or_verify(
+        &paths.generated_manifest_path,
+        &generated.manifest_json,
+        MAX_JOB_INPUT_BYTES,
+    )
+    .map_err(ModuleStaticDistributionExecutorError::Transport)?;
+    write_new_or_verify(
+        &paths.cargo_dependencies_path,
+        generated.cargo_dependencies_toml.as_bytes(),
+        MAX_JOB_INPUT_BYTES,
+    )
+    .map_err(ModuleStaticDistributionExecutorError::Transport)?;
+    write_new_or_verify(
+        &paths.registry_source_path,
+        generated.registry_source.as_bytes(),
+        MAX_JOB_INPUT_BYTES,
+    )
+    .map_err(ModuleStaticDistributionExecutorError::Transport)?;
+    Ok(paths)
+}
+
+fn build_launcher_command(
+    launcher_path: &Path,
+    job_config_path: &Path,
+    job_dir: &Path,
+    paths: &JobInputPaths,
+) -> Command {
+    let mut command = Command::new(launcher_path);
+    command
+        .arg("--job-request")
+        .arg(&paths.request_path)
+        .arg("--generated-manifest")
+        .arg(&paths.generated_manifest_path)
+        .arg("--cargo-dependencies")
+        .arg(&paths.cargo_dependencies_path)
+        .arg("--registry-source")
+        .arg(&paths.registry_source_path)
+        .arg("--job-config")
+        .arg(job_config_path)
+        .arg("--receipt")
+        .arg(&paths.receipt_path)
+        .current_dir(job_dir)
+        .env_clear()
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    command
+}
+
+async fn run_launcher_command(
+    launcher_path: &Path,
+    job_config_path: &Path,
+    job_dir: &Path,
+    paths: &JobInputPaths,
+    execution_timeout: Duration,
+) -> Result<(), ModuleStaticDistributionExecutorError> {
+    let mut command = build_launcher_command(launcher_path, job_config_path, job_dir, paths);
+    let status = timeout(execution_timeout, command.status())
+        .await
+        .map_err(|_| {
+            ModuleStaticDistributionExecutorError::Transport(
+                "static distribution job launcher timed out".to_string(),
+            )
+        })?
+        .map_err(transport_error)?;
+    if !status.success() {
+        return Err(ModuleStaticDistributionExecutorError::Transport(format!(
+            "static distribution job launcher exited with status {status}"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_config_inputs(
+    launcher_path: &Path,
+    launcher_digest: &str,
+    job_config_path: &Path,
+    job_config_digest: &str,
+    work_root: &Path,
+    toolchain_digest: &str,
+    build_target: &str,
+    execution_timeout: Duration,
+) -> Result<(), String> {
+    if !launcher_path.is_absolute()
+        || !job_config_path.is_absolute()
+        || !work_root.is_absolute()
+        || !valid_digest(launcher_digest)
+        || !valid_digest(job_config_digest)
+        || !valid_digest(toolchain_digest)
+        || !valid_text(build_target, 128)
+        || execution_timeout.is_zero()
+    {
+        return Err("static distribution worker configuration is invalid".to_string());
+    }
+    Ok(())
 }
 
 struct ActiveJobGuard {

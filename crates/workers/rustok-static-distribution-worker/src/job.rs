@@ -1,13 +1,12 @@
 use std::{
     fs::{self, OpenOptions},
     io::{Read, Write},
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
     process::Stdio,
     time::Duration,
 };
 
 use rustok_build_source::{ArchiveLimits, CasArchiveError, CasArchiveReceipt, CasArchiveStore};
-use rustok_distribution::generate_static_distribution;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -17,10 +16,14 @@ use crate::{
     StaticDistributionJobReceipt, StaticDistributionJobRequest, executor::validate_evidence,
 };
 
+mod pipeline;
+mod workspace;
+use pipeline::{CargoPipelineEvidence, run_cargo_pipeline, validate_cargo_home};
+pub use workspace::materialize_static_distribution_workspace;
+
 const JOB_CONFIG_CONTRACT: &str = "rustok.static_distribution.job_config";
 const MAX_JOB_CONFIG_BYTES: u64 = 64 * 1024;
-const MAX_CARGO_MANIFEST_BYTES: u64 = 2 * 1024 * 1024;
-const MAX_CARGO_LOCK_BYTES: u64 = 32 * 1024 * 1024;
+pub(super) const MAX_CARGO_LOCK_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_COMMAND_TIMEOUT_SECONDS: u64 = 2 * 60 * 60;
 const MAX_JOB_REQUEST_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_GENERATED_FILE_BYTES: u64 = 2 * 1024 * 1024;
@@ -28,7 +31,7 @@ const MAX_PUBLICATION_RECEIPT_BYTES: u64 = 128 * 1024;
 const TEST_EVIDENCE_FILE: &str = "test-evidence.json";
 const PUBLISHER_REQUEST_FILE: &str = "publisher-request.json";
 const PUBLISHER_RECEIPT_FILE: &str = "publisher-receipt.json";
-const WORKSPACE_LOCK_FILE: &str = "Cargo.lock";
+pub(super) const WORKSPACE_LOCK_FILE: &str = "Cargo.lock";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -76,22 +79,7 @@ impl StaticDistributionJobConfig {
     }
 
     pub fn validate_runtime(&self) -> Result<(), StaticDistributionJobError> {
-        if self.contract != JOB_CONFIG_CONTRACT
-            || !valid_digest(&self.cargo_digest)
-            || !valid_digest(&self.rustc_digest)
-            || !valid_digest(&self.publisher_digest)
-            || !valid_digest(&self.publisher_config_digest)
-            || !valid_digest(&self.toolchain_digest)
-            || !valid_build_target(&self.build_target)
-            || !self.cargo_home.is_absolute()
-            || self.max_total_extracted_bytes < self.max_source_extracted_bytes
-            || self.command_timeout_seconds == 0
-            || self.command_timeout_seconds > MAX_COMMAND_TIMEOUT_SECONDS
-        {
-            return Err(StaticDistributionJobError::InvalidConfig(
-                "job config fields are invalid".to_string(),
-            ));
-        }
+        self.validate_fields()?;
         ArchiveLimits::new(
             self.max_archive_bytes,
             self.max_source_extracted_bytes,
@@ -116,6 +104,26 @@ impl StaticDistributionJobConfig {
             &self.publisher_config_digest,
         )
         .map_err(|error| StaticDistributionJobError::InvalidConfig(error.to_string()))?;
+        Ok(())
+    }
+
+    fn validate_fields(&self) -> Result<(), StaticDistributionJobError> {
+        if self.contract != JOB_CONFIG_CONTRACT
+            || !valid_digest(&self.cargo_digest)
+            || !valid_digest(&self.rustc_digest)
+            || !valid_digest(&self.publisher_digest)
+            || !valid_digest(&self.publisher_config_digest)
+            || !valid_digest(&self.toolchain_digest)
+            || !valid_build_target(&self.build_target)
+            || !self.cargo_home.is_absolute()
+            || self.max_total_extracted_bytes < self.max_source_extracted_bytes
+            || self.command_timeout_seconds == 0
+            || self.command_timeout_seconds > MAX_COMMAND_TIMEOUT_SECONDS
+        {
+            return Err(StaticDistributionJobError::InvalidConfig(
+                "job config fields are invalid".to_string(),
+            ));
+        }
         Ok(())
     }
 
@@ -204,10 +212,21 @@ pub enum StaticDistributionJobError {
     Command(String),
 }
 
-pub async fn run_static_distribution_job(
-    paths: StaticDistributionJobPaths,
-) -> Result<(), StaticDistributionJobError> {
-    let job_dir = validate_job_paths(&paths)?;
+struct LoadedJobInputs {
+    job_dir: PathBuf,
+    request: StaticDistributionJobRequest,
+    job_request_digest: String,
+    config: StaticDistributionJobConfig,
+    publisher_config: crate::publisher::StaticDistributionPublisherConfig,
+    generated_manifest_bytes: Vec<u8>,
+    cargo_dependencies_bytes: Vec<u8>,
+    registry_source_bytes: Vec<u8>,
+}
+
+fn load_job_inputs(
+    paths: &StaticDistributionJobPaths,
+) -> Result<LoadedJobInputs, StaticDistributionJobError> {
+    let job_dir = validate_job_paths(paths)?;
     let request_bytes = read_bounded_regular(&paths.job_request, MAX_JOB_REQUEST_BYTES)?;
     let request: StaticDistributionJobRequest =
         serde_json::from_slice(&request_bytes).map_err(|error| {
@@ -233,147 +252,125 @@ pub async fn run_static_distribution_job(
         read_bounded_regular(&paths.cargo_dependencies, MAX_GENERATED_FILE_BYTES)?;
     let registry_source_bytes =
         read_bounded_regular(&paths.registry_source, MAX_GENERATED_FILE_BYTES)?;
-    prepare_derived_workspace(&job_dir)?;
-    let prepared = match materialize_static_distribution_workspace(
-        &job_dir,
-        &request,
-        &generated_manifest_bytes,
-        &cargo_dependencies_bytes,
-        &registry_source_bytes,
-        &config,
+    Ok(LoadedJobInputs {
+        job_dir,
+        request,
+        job_request_digest,
+        config,
+        publisher_config,
+        generated_manifest_bytes,
+        cargo_dependencies_bytes,
+        registry_source_bytes,
+    })
+}
+
+fn prepare_and_materialize_workspace(
+    inputs: &LoadedJobInputs,
+    job_receipt: &Path,
+) -> Result<Option<PreparedStaticDistributionWorkspace>, StaticDistributionJobError> {
+    prepare_derived_workspace(&inputs.job_dir)?;
+    match materialize_static_distribution_workspace(
+        &inputs.job_dir,
+        &inputs.request,
+        &inputs.generated_manifest_bytes,
+        &inputs.cargo_dependencies_bytes,
+        &inputs.registry_source_bytes,
+        &inputs.config,
     ) {
-        Ok(prepared) => prepared,
+        Ok(prepared) => Ok(Some(prepared)),
         Err(error) if terminal_source_error(&error) => {
-            return write_terminal_receipt(
-                &paths.job_receipt,
-                &request,
-                &job_request_digest,
-                rustok_modules::ModuleStaticDistributionCompletionOutcome::Failed {
-                    failure_code: "static_source_invalid".to_string(),
-                    failure_detail: "static distribution source materialization was rejected"
-                        .to_string(),
-                },
-            );
+            write_terminal_receipt(
+                job_receipt,
+                &inputs.request,
+                &inputs.job_request_digest,
+                failed_outcome(
+                    "static_source_invalid",
+                    "static distribution source materialization was rejected",
+                ),
+            )?;
+            Ok(None)
         }
-        Err(error) => return Err(error),
+        Err(error) => Err(error),
+    }
+}
+
+async fn publish_and_write_success_receipt(
+    inputs: &LoadedJobInputs,
+    receipt_path: &Path,
+    workspace: &Path,
+    pipeline: &CargoPipelineEvidence,
+) -> Result<(), StaticDistributionJobError> {
+    let publication = run_publisher_and_receipt(
+        &inputs.job_dir,
+        workspace,
+        &inputs.config,
+        &inputs.publisher_config,
+        &inputs.request,
+        &inputs.job_request_digest,
+        pipeline,
+    )
+    .await?;
+
+    write_terminal_receipt(
+        receipt_path,
+        &inputs.request,
+        &inputs.job_request_digest,
+        rustok_modules::ModuleStaticDistributionCompletionOutcome::Succeeded {
+            evidence: Box::new(publication.evidence),
+        },
+    )
+}
+
+pub async fn run_static_distribution_job(
+    paths: StaticDistributionJobPaths,
+) -> Result<(), StaticDistributionJobError> {
+    let inputs = load_job_inputs(&paths)?;
+    let prepared = match prepare_and_materialize_workspace(&inputs, &paths.job_receipt)? {
+        Some(prepared) => prepared,
+        None => return Ok(()),
     };
 
-    let lock_command = cargo_lock_command();
-    match run_fixed_command(
-        &config.cargo_path,
-        &lock_command,
+    let Some(pipeline) = run_cargo_pipeline(
+        &inputs.config,
         &prepared.workspace,
-        &config,
+        &paths.job_receipt,
+        &inputs.request,
+        &inputs.job_request_digest,
     )
     .await?
-    {
-        FixedCommandOutcome::Succeeded => {}
-        FixedCommandOutcome::Failed => {
-            return write_terminal_receipt(
-                &paths.job_receipt,
-                &request,
-                &job_request_digest,
-                failed_outcome(
-                    "static_lock_resolution_failed",
-                    "static distribution dependency lock resolution failed",
-                ),
-            );
-        }
-        FixedCommandOutcome::TimedOut => {
-            return write_terminal_receipt(
-                &paths.job_receipt,
-                &request,
-                &job_request_digest,
-                failed_outcome(
-                    "static_lock_resolution_timed_out",
-                    "static distribution dependency lock resolution exceeded the command deadline",
-                ),
-            );
-        }
-    }
-    let resolved_lock_digest = digest_bounded_regular(
-        &prepared.workspace.join(WORKSPACE_LOCK_FILE),
-        MAX_CARGO_LOCK_BYTES,
-    )?;
+    else {
+        return Ok(());
+    };
 
-    let test_command = cargo_test_command(&config);
-    match run_fixed_command(
-        &config.cargo_path,
-        &test_command,
+    publish_and_write_success_receipt(
+        &inputs,
+        &paths.job_receipt,
         &prepared.workspace,
-        &config,
+        &pipeline,
     )
-    .await?
-    {
-        FixedCommandOutcome::Succeeded => {}
-        FixedCommandOutcome::Failed => {
-            return write_terminal_receipt(
-                &paths.job_receipt,
-                &request,
-                &job_request_digest,
-                failed_outcome("static_tests_failed", "static distribution tests failed"),
-            );
-        }
-        FixedCommandOutcome::TimedOut => {
-            return write_terminal_receipt(
-                &paths.job_receipt,
-                &request,
-                &job_request_digest,
-                failed_outcome(
-                    "static_tests_timed_out",
-                    "static distribution tests exceeded the command deadline",
-                ),
-            );
-        }
-    }
+    .await
+}
 
-    let build_command = cargo_build_command(&config);
-    match run_fixed_command(
-        &config.cargo_path,
-        &build_command,
-        &prepared.workspace,
-        &config,
-    )
-    .await?
-    {
-        FixedCommandOutcome::Succeeded => {}
-        FixedCommandOutcome::Failed => {
-            return write_terminal_receipt(
-                &paths.job_receipt,
-                &request,
-                &job_request_digest,
-                failed_outcome(
-                    "static_build_failed",
-                    "static distribution release build failed",
-                ),
-            );
-        }
-        FixedCommandOutcome::TimedOut => {
-            return write_terminal_receipt(
-                &paths.job_receipt,
-                &request,
-                &job_request_digest,
-                failed_outcome(
-                    "static_build_timed_out",
-                    "static distribution build exceeded the command deadline",
-                ),
-            );
-        }
-    }
-
+fn write_test_evidence(
+    job_dir: &Path,
+    config: &StaticDistributionJobConfig,
+    request: &StaticDistributionJobRequest,
+    job_request_digest: &str,
+    pipeline: &CargoPipelineEvidence,
+) -> Result<(PathBuf, String), StaticDistributionJobError> {
     let test_evidence = StaticDistributionTestEvidence {
         contract: "rustok.static_distribution.test_evidence".to_string(),
-        job_request_digest: job_request_digest.clone(),
+        job_request_digest: job_request_digest.to_string(),
         generated_output_digest: request.generated_output_digest.clone(),
         composition_digest: request.composition_digest.clone(),
         toolchain_digest: request.toolchain_digest.clone(),
         build_target: request.build_target.clone(),
         cargo_digest: config.cargo_digest.clone(),
         rustc_digest: config.rustc_digest.clone(),
-        lock_command: lock_command.clone(),
-        test_command: test_command.clone(),
-        build_command: build_command.clone(),
-        resolved_lock_digest: resolved_lock_digest.clone(),
+        lock_command: pipeline.lock_command.clone(),
+        test_command: pipeline.test_command.clone(),
+        build_command: pipeline.build_command.clone(),
+        resolved_lock_digest: pipeline.resolved_lock_digest.clone(),
         tests_passed: true,
         build_succeeded: true,
     };
@@ -382,343 +379,86 @@ pub async fn run_static_distribution_job(
     let test_evidence_path = job_dir.join(TEST_EVIDENCE_FILE);
     write_new_or_verify_file(&test_evidence_path, &test_evidence_bytes)?;
     let test_evidence_digest = digest_bytes(&test_evidence_bytes);
+    Ok((test_evidence_path, test_evidence_digest))
+}
+
+fn write_publisher_request(
+    job_dir: &Path,
+    request: &StaticDistributionJobRequest,
+    job_request_digest: &str,
+    pipeline: &CargoPipelineEvidence,
+    test_evidence_digest: &str,
+) -> Result<(StaticDistributionPublisherRequest, PathBuf, String), StaticDistributionJobError> {
     let publisher_request = StaticDistributionPublisherRequest {
         contract: "rustok.static_distribution.publisher_request".to_string(),
         distribution_build_id: request.distribution_build_id,
         claim_id: request.claim_id,
         attempt_number: request.attempt_number,
-        job_request_digest: job_request_digest.clone(),
+        job_request_digest: job_request_digest.to_string(),
         generated_output_digest: request.generated_output_digest.clone(),
         composition_digest: request.composition_digest.clone(),
         toolchain_digest: request.toolchain_digest.clone(),
         build_target: request.build_target.clone(),
-        resolved_lock_digest: resolved_lock_digest.clone(),
-        test_evidence_digest: test_evidence_digest.clone(),
+        resolved_lock_digest: pipeline.resolved_lock_digest.clone(),
+        test_evidence_digest: test_evidence_digest.to_string(),
     };
     let publisher_request_bytes = serde_json::to_vec_pretty(&publisher_request)
         .map_err(|error| StaticDistributionJobError::Io(error.to_string()))?;
     let publisher_request_path = job_dir.join(PUBLISHER_REQUEST_FILE);
     write_new_or_verify_file(&publisher_request_path, &publisher_request_bytes)?;
     let publisher_request_digest = digest_bytes(&publisher_request_bytes);
+    Ok((
+        publisher_request,
+        publisher_request_path,
+        publisher_request_digest,
+    ))
+}
+
+async fn run_publisher_and_receipt(
+    job_dir: &Path,
+    workspace: &Path,
+    config: &StaticDistributionJobConfig,
+    publisher_config: &crate::publisher::StaticDistributionPublisherConfig,
+    request: &StaticDistributionJobRequest,
+    job_request_digest: &str,
+    pipeline: &CargoPipelineEvidence,
+) -> Result<StaticDistributionPublicationReceipt, StaticDistributionJobError> {
+    let (test_evidence_path, test_evidence_digest) =
+        write_test_evidence(job_dir, config, request, job_request_digest, pipeline)?;
+    let (publisher_request, publisher_request_path, publisher_request_digest) =
+        write_publisher_request(
+            job_dir,
+            request,
+            job_request_digest,
+            pipeline,
+            &test_evidence_digest,
+        )?;
     let publisher_receipt_path = job_dir.join(PUBLISHER_RECEIPT_FILE);
     if !path_entry_exists(&publisher_receipt_path)? {
         run_publisher(
-            &config,
+            config,
             &publisher_request_path,
-            &prepared.workspace,
+            workspace,
             &test_evidence_path,
             &publisher_receipt_path,
         )
         .await?;
     }
-    let publication = load_publication_receipt(
+    load_publication_receipt(
         &publisher_receipt_path,
         &publisher_request,
         &publisher_request_digest,
         &test_evidence_digest,
-        &publisher_config,
-    )?;
-    write_terminal_receipt(
-        &paths.job_receipt,
-        &request,
-        &job_request_digest,
-        rustok_modules::ModuleStaticDistributionCompletionOutcome::Succeeded {
-            evidence: Box::new(publication.evidence),
-        },
+        publisher_config,
     )
 }
 
-pub fn materialize_static_distribution_workspace(
-    job_dir: &Path,
-    request: &StaticDistributionJobRequest,
-    generated_manifest_bytes: &[u8],
-    cargo_dependencies_bytes: &[u8],
-    registry_source_bytes: &[u8],
-    config: &StaticDistributionJobConfig,
-) -> Result<PreparedStaticDistributionWorkspace, StaticDistributionJobError> {
-    config.validate_runtime()?;
-    request.work_item.validate().map_err(|error| {
-        StaticDistributionJobError::InvalidInput(format!("work item is invalid: {error}"))
-    })?;
-    if request.toolchain_digest != config.toolchain_digest
-        || request.build_target != config.build_target
-    {
-        return Err(StaticDistributionJobError::InvalidInput(
-            "request does not match the job-config toolchain and target".to_string(),
-        ));
-    }
-    validate_directory(job_dir, "job directory")?;
-    let job_dir = fs::canonicalize(job_dir).map_err(io_error)?;
-    let generated = generate_static_distribution(&request.work_item).map_err(|error| {
-        StaticDistributionJobError::InvalidInput(format!(
-            "generated distribution is invalid: {error}"
-        ))
-    })?;
-    if generated.manifest.output_digest != request.generated_output_digest
-        || generated.manifest_json != generated_manifest_bytes
-        || generated.cargo_dependencies_toml.as_bytes() != cargo_dependencies_bytes
-        || generated.registry_source.as_bytes() != registry_source_bytes
-    {
-        return Err(StaticDistributionJobError::InvalidInput(
-            "generated files do not match the immutable request".to_string(),
-        ));
-    }
-
-    let workspace = job_dir.join("workspace");
-    let source_store = CasArchiveStore::new(config.cas_root.clone())?;
-    let limits = ArchiveLimits::new(
-        config.max_archive_bytes,
-        config.max_source_extracted_bytes,
-        config.max_archive_entries,
-    )?;
-    let result = materialize_sources_and_apply(
-        &source_store,
-        &workspace,
-        request,
-        &generated,
-        generated_manifest_bytes,
-        cargo_dependencies_bytes,
-        registry_source_bytes,
-        config,
-        limits,
-    );
-    if result.is_err() {
-        remove_owned_workspace(&job_dir, &workspace);
-    }
-    result
-}
-
-#[allow(clippy::too_many_arguments)]
-fn materialize_sources_and_apply(
-    source_store: &CasArchiveStore,
-    workspace: &Path,
-    request: &StaticDistributionJobRequest,
-    generated: &rustok_distribution::GeneratedStaticDistributionFiles,
-    generated_manifest_bytes: &[u8],
-    cargo_dependencies_bytes: &[u8],
-    registry_source_bytes: &[u8],
-    config: &StaticDistributionJobConfig,
-    limits: ArchiveLimits,
-) -> Result<PreparedStaticDistributionWorkspace, StaticDistributionJobError> {
-    let platform_source = source_store.materialize(
-        &request.work_item.build.platform_source_reference,
-        &request.work_item.build.platform_source_digest,
-        workspace,
-        limits,
-    )?;
-    let mut total_extracted_bytes = platform_source.extracted_bytes;
-    if total_extracted_bytes > config.max_total_extracted_bytes {
-        return Err(StaticDistributionJobError::Source(
-            CasArchiveError::ResourceLimit,
-        ));
-    }
-    let source_parent = workspace.join(".rustok").join("static-sources");
-    create_directory_path(&source_parent)?;
-    let mut promoted_sources = Vec::with_capacity(generated.manifest.sources.len());
-    for source in &generated.manifest.sources {
-        let relative = validated_relative_path(&source.materialization_path)?;
-        let destination = workspace.join(relative);
-        if destination.parent() != Some(source_parent.as_path()) {
-            return Err(StaticDistributionJobError::InvalidInput(
-                "generated source path escaped the fixed materialization root".to_string(),
-            ));
-        }
-        let receipt = source_store.materialize(
-            &source.source_reference,
-            &source.source_digest,
-            &destination,
-            limits,
-        )?;
-        total_extracted_bytes = total_extracted_bytes
-            .checked_add(receipt.extracted_bytes)
-            .ok_or(CasArchiveError::ResourceLimit)?;
-        if total_extracted_bytes > config.max_total_extracted_bytes {
-            return Err(StaticDistributionJobError::Source(
-                CasArchiveError::ResourceLimit,
-            ));
-        }
-        validate_promoted_package(&destination, source)?;
-        promoted_sources.push(receipt);
-    }
-    apply_cargo_dependencies(
-        workspace,
-        &generated.manifest.cargo_manifest_path,
-        cargo_dependencies_bytes,
-    )?;
-    replace_generated_file(
-        workspace,
-        &generated.manifest.registry_source_path,
-        registry_source_bytes,
-        false,
-    )?;
-    replace_generated_file(
-        workspace,
-        &generated.manifest.manifest_path,
-        generated_manifest_bytes,
-        true,
-    )?;
-    Ok(PreparedStaticDistributionWorkspace {
-        workspace: workspace.to_path_buf(),
-        platform_source,
-        promoted_sources,
-        total_extracted_bytes,
-    })
-}
-
-fn validate_promoted_package(
-    source_root: &Path,
-    source: &rustok_distribution::GeneratedStaticDistributionSource,
-) -> Result<(), StaticDistributionJobError> {
-    let manifest_path = source_root.join("Cargo.toml");
-    let manifest_bytes = read_bounded_regular(&manifest_path, MAX_CARGO_MANIFEST_BYTES)?;
-    let manifest_text = std::str::from_utf8(&manifest_bytes).map_err(|_| {
-        StaticDistributionJobError::InvalidInput("promoted Cargo manifest is not UTF-8".to_string())
-    })?;
-    let manifest = manifest_text.parse::<toml::Table>().map_err(|error| {
-        StaticDistributionJobError::InvalidInput(format!(
-            "promoted Cargo manifest is invalid: {error}"
-        ))
-    })?;
-    let package = manifest
-        .get("package")
-        .and_then(toml::Value::as_table)
-        .ok_or_else(|| {
-            StaticDistributionJobError::InvalidInput(
-                "promoted Cargo package table is missing".to_string(),
-            )
-        })?;
-    if package.get("name").and_then(toml::Value::as_str) != Some(source.cargo_package.as_str())
-        || package.get("version").and_then(toml::Value::as_str)
-            != Some(source.module_version.as_str())
-    {
-        return Err(StaticDistributionJobError::InvalidInput(
-            "promoted Cargo package identity does not match the reviewed release".to_string(),
-        ));
-    }
-    let lock_path = source_root.join("Cargo.lock");
-    let lock_bytes = read_bounded_regular(&lock_path, MAX_CARGO_LOCK_BYTES)?;
-    if digest_bytes(&lock_bytes) != source.dependency_lock_digest {
-        return Err(StaticDistributionJobError::InvalidInput(
-            "promoted Cargo.lock does not match the reviewed dependency graph".to_string(),
-        ));
-    }
-    Ok(())
-}
-
-fn apply_cargo_dependencies(
-    workspace: &Path,
-    relative_manifest_path: &str,
-    cargo_dependencies_bytes: &[u8],
-) -> Result<(), StaticDistributionJobError> {
-    let relative = validated_relative_path(relative_manifest_path)?;
-    let manifest_path = workspace.join(relative);
-    let manifest_bytes = read_bounded_regular(&manifest_path, MAX_CARGO_MANIFEST_BYTES)?;
-    let manifest_text = std::str::from_utf8(&manifest_bytes).map_err(|_| {
-        StaticDistributionJobError::InvalidInput(
-            "distribution Cargo manifest is not UTF-8".to_string(),
-        )
-    })?;
-    let mut manifest = manifest_text.parse::<toml::Table>().map_err(|error| {
-        StaticDistributionJobError::InvalidInput(format!(
-            "distribution Cargo manifest is invalid: {error}"
-        ))
-    })?;
-    let fragment_text = std::str::from_utf8(cargo_dependencies_bytes).map_err(|_| {
-        StaticDistributionJobError::InvalidInput(
-            "generated Cargo dependency fragment is not UTF-8".to_string(),
-        )
-    })?;
-    let fragment = format!("[dependencies]\n{fragment_text}")
-        .parse::<toml::Table>()
-        .map_err(|error| {
-            StaticDistributionJobError::InvalidInput(format!(
-                "generated Cargo dependency fragment is invalid: {error}"
-            ))
-        })?;
-    let generated_dependencies = fragment
-        .get("dependencies")
-        .and_then(toml::Value::as_table)
-        .ok_or_else(|| {
-            StaticDistributionJobError::InvalidInput(
-                "generated Cargo dependencies are missing".to_string(),
-            )
-        })?;
-    let dependencies = manifest
-        .entry("dependencies")
-        .or_insert_with(|| toml::Value::Table(toml::Table::new()))
-        .as_table_mut()
-        .ok_or_else(|| {
-            StaticDistributionJobError::InvalidInput(
-                "distribution dependencies are not a table".to_string(),
-            )
-        })?;
-    for (alias, dependency) in generated_dependencies {
-        if dependencies.contains_key(alias) {
-            return Err(StaticDistributionJobError::InvalidInput(format!(
-                "generated dependency alias already exists: {alias}"
-            )));
-        }
-        dependencies.insert(alias.clone(), dependency.clone());
-    }
-    let output = toml::to_string_pretty(&manifest).map_err(|error| {
-        StaticDistributionJobError::InvalidInput(format!(
-            "distribution Cargo manifest could not be serialized: {error}"
-        ))
-    })?;
-    overwrite_regular_file(&manifest_path, output.as_bytes())
-}
-
-fn replace_generated_file(
-    workspace: &Path,
-    relative_path: &str,
-    bytes: &[u8],
-    create_parent: bool,
-) -> Result<(), StaticDistributionJobError> {
-    let relative = validated_relative_path(relative_path)?;
-    let path = workspace.join(relative);
-    let parent = path.parent().ok_or_else(|| {
-        StaticDistributionJobError::InvalidInput("generated output path has no parent".to_string())
-    })?;
-    if create_parent {
-        create_directory_path(parent)?;
-    } else {
-        validate_directory(parent, "generated output parent")?;
-    }
-    match fs::symlink_metadata(&path) {
-        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
-            Err(StaticDistributionJobError::InvalidInput(
-                "generated output target is not a regular file".to_string(),
-            ))
-        }
-        Ok(_) => overwrite_regular_file(&path, bytes),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound && create_parent => {
-            write_new_file(&path, bytes)
-        }
-        Err(error) => Err(io_error(error)),
-    }
-}
-
-fn validated_relative_path(value: &str) -> Result<PathBuf, StaticDistributionJobError> {
-    let path = PathBuf::from(value);
-    if path.as_os_str().is_empty()
-        || path.is_absolute()
-        || !path
-            .components()
-            .all(|component| matches!(component, Component::Normal(_)))
-    {
-        return Err(StaticDistributionJobError::InvalidInput(
-            "generated output path is unsafe".to_string(),
-        ));
-    }
-    Ok(path)
-}
-
-fn create_directory_path(path: &Path) -> Result<(), StaticDistributionJobError> {
+pub(super) fn create_directory_path(path: &Path) -> Result<(), StaticDistributionJobError> {
     fs::create_dir_all(path).map_err(io_error)?;
     validate_directory(path, "generated directory")
 }
 
-fn validate_directory(path: &Path, label: &str) -> Result<(), StaticDistributionJobError> {
+pub(super) fn validate_directory(path: &Path, label: &str) -> Result<(), StaticDistributionJobError> {
     let metadata = fs::symlink_metadata(path).map_err(io_error)?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
         return Err(StaticDistributionJobError::InvalidInput(format!(
@@ -762,26 +502,13 @@ fn read_bounded_regular(
             "job file is not a bounded regular file".to_string(),
         ));
     }
-    fs::read(path).map_err(io_error)
+    let mut file = fs::File::open(path).map_err(io_error)?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).map_err(io_error)?;
+    Ok(bytes)
 }
 
-fn overwrite_regular_file(path: &Path, bytes: &[u8]) -> Result<(), StaticDistributionJobError> {
-    let metadata = fs::symlink_metadata(path).map_err(io_error)?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return Err(StaticDistributionJobError::InvalidInput(
-            "workspace output target is not a regular file".to_string(),
-        ));
-    }
-    let mut file = OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .open(path)
-        .map_err(io_error)?;
-    file.write_all(bytes).map_err(io_error)?;
-    file.sync_all().map_err(io_error)
-}
-
-fn write_new_file(path: &Path, bytes: &[u8]) -> Result<(), StaticDistributionJobError> {
+pub(super) fn write_new_file(path: &Path, bytes: &[u8]) -> Result<(), StaticDistributionJobError> {
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -808,7 +535,7 @@ fn write_new_or_verify_file(path: &Path, bytes: &[u8]) -> Result<(), StaticDistr
     }
 }
 
-fn digest_bounded_regular(
+pub(super) fn digest_bounded_regular(
     path: &Path,
     max_bytes: u64,
 ) -> Result<String, StaticDistributionJobError> {
@@ -830,7 +557,7 @@ fn digest_file(path: &Path) -> Result<String, StaticDistributionJobError> {
     Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
 }
 
-fn digest_bytes(bytes: &[u8]) -> String {
+pub(super) fn digest_bytes(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     format!("sha256:{}", hex::encode(hasher.finalize()))
@@ -858,13 +585,6 @@ fn valid_build_target(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
         && !value.starts_with('.')
         && !value.ends_with('.')
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum FixedCommandOutcome {
-    Succeeded,
-    Failed,
-    TimedOut,
 }
 
 fn validate_job_paths(
@@ -906,90 +626,6 @@ fn validate_job_paths(
     }
 }
 
-fn cargo_test_command(config: &StaticDistributionJobConfig) -> Vec<String> {
-    vec![
-        "test".to_string(),
-        "--locked".to_string(),
-        "--offline".to_string(),
-        "--workspace".to_string(),
-        "--all-targets".to_string(),
-        "--target".to_string(),
-        config.build_target.clone(),
-    ]
-}
-
-fn cargo_lock_command() -> Vec<String> {
-    vec!["generate-lockfile".to_string(), "--offline".to_string()]
-}
-
-fn cargo_build_command(config: &StaticDistributionJobConfig) -> Vec<String> {
-    vec![
-        "build".to_string(),
-        "--locked".to_string(),
-        "--offline".to_string(),
-        "--workspace".to_string(),
-        "--release".to_string(),
-        "--target".to_string(),
-        config.build_target.clone(),
-    ]
-}
-
-async fn run_fixed_command(
-    program: &Path,
-    arguments: &[String],
-    workspace: &Path,
-    config: &StaticDistributionJobConfig,
-) -> Result<FixedCommandOutcome, StaticDistributionJobError> {
-    config.validate_runtime()?;
-    validate_cargo_home(&config.cargo_home)?;
-    let target_dir = workspace.join(".rustok").join("target");
-    let home_dir = workspace.join(".rustok").join("home");
-    create_directory_path(&target_dir)?;
-    create_directory_path(&home_dir)?;
-    let mut command = Command::new(program);
-    command
-        .args(arguments)
-        .current_dir(workspace)
-        .env_clear()
-        .env("CARGO_HOME", &config.cargo_home)
-        .env("CARGO_NET_OFFLINE", "true")
-        .env("CARGO_TARGET_DIR", &target_dir)
-        .env("CARGO_TERM_COLOR", "never")
-        .env("HOME", &home_dir)
-        .env("RUSTC", &config.rustc_path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .kill_on_drop(true);
-    let status = match timeout(config.command_timeout(), command.status()).await {
-        Ok(status) => {
-            status.map_err(|error| StaticDistributionJobError::Command(error.to_string()))?
-        }
-        Err(_) => return Ok(FixedCommandOutcome::TimedOut),
-    };
-    if status.success() {
-        Ok(FixedCommandOutcome::Succeeded)
-    } else {
-        Ok(FixedCommandOutcome::Failed)
-    }
-}
-
-fn validate_cargo_home(path: &Path) -> Result<(), StaticDistributionJobError> {
-    validate_directory(path, "Cargo home")?;
-    for name in ["config", "config.toml", "credentials", "credentials.toml"] {
-        match fs::symlink_metadata(path.join(name)) {
-            Ok(_) => {
-                return Err(StaticDistributionJobError::InvalidConfig(
-                    "Cargo home must not contain config or credential files".to_string(),
-                ));
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(io_error(error)),
-        }
-    }
-    Ok(())
-}
-
 async fn run_publisher(
     config: &StaticDistributionJobConfig,
     publisher_request: &Path,
@@ -998,6 +634,36 @@ async fn run_publisher(
     publisher_receipt: &Path,
 ) -> Result<(), StaticDistributionJobError> {
     config.validate_runtime()?;
+    let mut command = build_publisher_command(
+        config,
+        publisher_request,
+        workspace,
+        test_evidence,
+        publisher_receipt,
+    );
+    let status = timeout(config.command_timeout(), command.status())
+        .await
+        .map_err(|_| {
+            StaticDistributionJobError::Command(
+                "evidence publisher exceeded the command deadline".to_string(),
+            )
+        })?
+        .map_err(|error| StaticDistributionJobError::Command(error.to_string()))?;
+    if !status.success() {
+        return Err(StaticDistributionJobError::Command(format!(
+            "evidence publisher exited with status {status}"
+        )));
+    }
+    Ok(())
+}
+
+fn build_publisher_command(
+    config: &StaticDistributionJobConfig,
+    publisher_request: &Path,
+    workspace: &Path,
+    test_evidence: &Path,
+    publisher_receipt: &Path,
+) -> Command {
     let mut command = Command::new(&config.publisher_path);
     command
         .arg("--request")
@@ -1018,20 +684,7 @@ async fn run_publisher(
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .kill_on_drop(true);
-    let status = timeout(config.command_timeout(), command.status())
-        .await
-        .map_err(|_| {
-            StaticDistributionJobError::Command(
-                "evidence publisher exceeded the command deadline".to_string(),
-            )
-        })?
-        .map_err(|error| StaticDistributionJobError::Command(error.to_string()))?;
-    if !status.success() {
-        return Err(StaticDistributionJobError::Command(format!(
-            "evidence publisher exited with status {status}"
-        )));
-    }
-    Ok(())
+    command
 }
 
 fn load_publication_receipt(
@@ -1114,7 +767,7 @@ fn path_entry_exists(path: &Path) -> Result<bool, StaticDistributionJobError> {
     }
 }
 
-fn write_terminal_receipt(
+pub(super) fn write_terminal_receipt(
     path: &Path,
     request: &StaticDistributionJobRequest,
     job_request_digest: &str,
@@ -1140,7 +793,7 @@ fn write_terminal_receipt(
     write_new_file(path, &bytes)
 }
 
-fn failed_outcome(
+pub(super) fn failed_outcome(
     code: &str,
     detail: &str,
 ) -> rustok_modules::ModuleStaticDistributionCompletionOutcome {
@@ -1162,7 +815,7 @@ fn terminal_source_error(error: &StaticDistributionJobError) -> bool {
     )
 }
 
-fn remove_owned_workspace(job_dir: &Path, workspace: &Path) {
+pub(super) fn remove_owned_workspace(job_dir: &Path, workspace: &Path) {
     if workspace.is_absolute()
         && workspace.parent() == Some(job_dir)
         && fs::symlink_metadata(workspace)
@@ -1172,6 +825,6 @@ fn remove_owned_workspace(job_dir: &Path, workspace: &Path) {
     }
 }
 
-fn io_error(error: impl std::fmt::Display) -> StaticDistributionJobError {
+pub(super) fn io_error(error: impl std::fmt::Display) -> StaticDistributionJobError {
     StaticDistributionJobError::Io(error.to_string())
 }
