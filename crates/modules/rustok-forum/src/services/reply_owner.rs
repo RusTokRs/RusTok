@@ -146,14 +146,21 @@ impl ReplyService {
     ) -> ForumResult<()> {
         enforce_scope(&security, Resource::ForumReplies, Action::Manage)?;
 
+        let initial_reply = self.inner.find_reply(tenant_id, reply_id).await?;
+        let initial_topic_id = initial_reply.topic_id;
+
         let txn = self.db.begin().await?;
         lock_category_tree_in_tx(&txn, tenant_id).await?;
-        let reply = reply::ReplyService::find_reply_in_tx(&txn, tenant_id, reply_id).await?;
+        let topic =
+            TopicService::find_topic_for_update_in_tx(&txn, tenant_id, initial_topic_id).await?;
+        let reply =
+            reply::ReplyService::find_reply_for_update_in_tx(&txn, tenant_id, reply_id).await?;
+        if reply.topic_id != initial_topic_id {
+            return Err(ForumError::TopicUpdateConflict(initial_topic_id));
+        }
         if reply.status != ReplyStatus::Deleted {
             return Err(ForumError::ReplyRestoreUnavailable(reply_id));
         }
-
-        let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, reply.topic_id).await?;
         if topic.status == TopicStatus::Archived
             && forum_topic_merge_operation::Entity::find()
                 .filter(forum_topic_merge_operation::Column::TenantId.eq(tenant_id))
@@ -282,17 +289,21 @@ impl ReplyService {
         // topic delete/restore and category archive/restore. This prevents a reply
         // counter mutation from racing a concurrent category lifecycle decision.
         lock_category_tree_in_tx(txn, tenant_id).await?;
-        claim_reply_delete_in_tx(txn, tenant_id, reply_id).await?;
-        let reply = reply::ReplyService::find_reply_in_tx(txn, tenant_id, reply_id).await?;
+        let initial_reply = reply::ReplyService::find_reply_in_tx(txn, tenant_id, reply_id).await?;
+        let initial_topic_id = initial_reply.topic_id;
+
+        // All reply-moving owners lock the topic before reply rows. Keep deletion in
+        // the same topic -> reply order so concurrent lifecycle mutations cannot
+        // deadlock on inverted row-lock acquisition.
+        let topic = TopicService::find_topic_for_update_in_tx(txn, tenant_id, initial_topic_id).await?;
+        let reply = reply::ReplyService::find_reply_for_update_in_tx(txn, tenant_id, reply_id).await?;
+        if reply.topic_id != initial_topic_id {
+            return Err(ForumError::TopicUpdateConflict(initial_topic_id));
+        }
         if reply.status == ReplyStatus::Deleted {
             return Err(ForumError::ReplyDeleted);
         }
-        reply.status.validate_transition(&ReplyStatus::Deleted)?;
-
-        // Serialize reply deletion with topic deletion/restore. The topic row is the
-        // lifecycle boundary for the thread; without this lock a concurrent topic
-        // snapshot could observe a reply in the middle of its own delete mutation.
-        let topic = TopicService::find_topic_for_update_in_tx(txn, tenant_id, reply.topic_id).await?;
+        reply.status.validate_transition(&ReplyStatus::Deleted);
         let solution = forum_solution::Entity::find()
             .filter(forum_solution::Column::TenantId.eq(tenant_id))
             .filter(forum_solution::Column::TopicId.eq(reply.topic_id))
@@ -651,29 +662,6 @@ async fn clear_reply_delete_snapshot_in_tx(
         }
     };
     txn.execute_raw(statement).await?;
-    Ok(())
-}
-
-async fn claim_reply_delete_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    reply_id: Uuid,
-) -> ForumResult<()> {
-    let statement = tenant_scoped_reply_statement(
-        txn.get_database_backend(),
-        "UPDATE forum_replies \
-         SET updated_at = updated_at \
-         WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL",
-        "UPDATE forum_replies \
-         SET updated_at = updated_at \
-         WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL",
-        tenant_id,
-        reply_id,
-    )?;
-    let result = txn.execute_raw(statement).await?;
-    if result.rows_affected() != 1 {
-        return Err(ForumError::ReplyDeleted);
-    }
     Ok(())
 }
 
