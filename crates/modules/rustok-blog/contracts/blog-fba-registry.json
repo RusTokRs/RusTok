@@ -191,7 +191,7 @@
     ],
     "handler": "BlogCommentProjectionHandler",
     "delivery_ledger": "blog_comment_projection_deliveries",
-    "publication": "ReindexRequested through rustok_outbox::TransactionalEventBus::publish_in_tx",
+    "publication": "Consumes transactional Comments lifecycle events; publishes ReindexRequested through rustok_outbox::TransactionalEventBus::publish_in_tx only when comment_count changes",
     "status": "implemented_static_only",
     "runtime_status": "pending",
     "source_harness": {
