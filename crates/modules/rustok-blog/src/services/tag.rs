@@ -165,16 +165,6 @@ impl TagService {
             BLOG_SCOPE_VALUE,
         )
         .await?;
-        // blog_tag_usage is an intentionally projection-only table without a
-        // foreign key to Taxonomy: shared/global terms may outlive this
-        // module's projection. A Blog-owned term must therefore remove its
-        // projection row explicitly in the same transaction as canonical
-        // deletion, otherwise list_tags would retain a dangling tag id.
-        blog_tag_usage::Entity::delete_many()
-            .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
-            .filter(blog_tag_usage::Column::TagId.eq(tag_id))
-            .exec(&txn)
-            .await?;
         publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
         txn.commit().await.map_err(BlogError::from)?;
         Ok(())
