@@ -39,7 +39,14 @@ Primary entry points:
 
 Blog Category localized names are bounded by the canonical Taxonomy Category owner contract: a name is at most 120 characters. The Blog DTO/OpenAPI schema and service validation use the same bound, so invalid names fail as Blog input validation before any Taxonomy mutation is attempted.
 
-Category route normalization is also delegated to the canonical Taxonomy normalization primitive. This keeps transliteration and routable Unicode handling identical between Blog's command boundary and Taxonomy's persisted route keys.
+Category route normalization is also delegated to the canonical Taxonomy normalization primitive. This keeps transliteration and routable Unicode handling identical between Blog's command boundary and Taxonomy's persisted route keys. The normalized route key is also bounded to Taxonomy's 120-character storage contract before the canonical mutation, so an oversized slug cannot fall through to a persistence-layer failure.
+
+## Tag owner contract
+
+Blog Tag localized names are intentionally bounded to 100 Unicode characters.
+The Blog Create/Update DTO schemas and service validation use the same
+character-count semantics as the canonical Taxonomy term validator; UTF-8 byte
+length is not used for this user-facing limit.
 
 ## Post owner contract
 

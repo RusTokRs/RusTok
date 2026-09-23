@@ -158,6 +158,18 @@ The fresh Taxonomy boundary audit found and closed one contract mismatch: Blog p
 
 The fresh Taxonomy boundary audit found a second concrete contract mismatch: Blog had its own ASCII-only slug normalizer, while canonical Taxonomy uses the shared routable route-key normalizer with transliteration. Blog could therefore reject localized Category names such as Cyrillic names without an explicit ASCII slug even though the canonical owner could represent them. Blog now delegates route normalization to Taxonomy and keeps a focused regression test for localized route generation.
 
+## Reference-v1 category route storage boundary
+
+## Reference-v1 Tag input validation boundary
+
+The fresh Taxonomy boundary audit found one concrete Blog/Taxonomy contract
+mismatch: Blog Tag name validation used UTF-8 byte length while the public DTO
+max_length contract and canonical Taxonomy name validation use Unicode
+character count. Blog now counts characters with chars().count() and keeps a
+focused non-ASCII regression test.
+
+A fresh Taxonomy migration audit found that canonical Category route keys are stored at 120 characters, while Blog previously exposed a 255-character slug schema and delegated oversized normalized keys to the persistence layer. Blog now validates the normalized route key at the command boundary and both Create/Update DTO schemas advertise the canonical 120-character limit.
+
 ## Other retained Blog source tracks
 
 The Category migration does not reopen unrelated source-complete tracks from the
