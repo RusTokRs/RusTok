@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-slim
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Verify Index storage JavaScript syntax
         shell: bash
         run: |
@@ -80,7 +80,7 @@ jobs:
     runs-on: ubuntu-slim
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Download validated 100k evidence
         uses: actions/download-artifact@v8.0.1

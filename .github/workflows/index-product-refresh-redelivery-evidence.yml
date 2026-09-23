@@ -35,7 +35,7 @@ jobs:
       RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_USERNAME: ${{ secrets.RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_USERNAME }}
       RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_PASSWORD: ${{ secrets.RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_PASSWORD }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       - name: Require explicit external evidence approval and endpoints
