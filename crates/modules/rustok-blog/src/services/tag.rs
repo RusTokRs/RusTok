@@ -734,7 +734,7 @@ fn validate_tag_name(name: &str) -> BlogResult<()> {
     if name.trim().is_empty() {
         return Err(BlogError::validation("Tag name cannot be empty"));
     }
-    if name.len() > 100 {
+    if name.chars().count() > 100 {
         return Err(BlogError::validation(
             "Tag name cannot exceed 100 characters",
         ));
@@ -790,7 +790,7 @@ fn to_tag_mutation_response(term: ModuleTermMutationResult, use_count: i32) -> T
 
 #[cfg(test)]
 mod pagination_tests {
-    use super::{MAX_TAGS_PER_PAGE, bounded_tag_page_size};
+    use super::{MAX_TAGS_PER_PAGE, bounded_tag_page_size, validate_tag_name};
 
     #[test]
     fn tag_page_size_is_bounded_by_owner_service() {
@@ -802,4 +802,12 @@ mod pagination_tests {
         );
     }
 
+    #[test]
+    fn tag_name_limit_counts_unicode_characters_not_utf8_bytes() {
+        let hundred_characters = "Ж".repeat(100);
+        let one_hundred_and_one_characters = "Ж".repeat(101);
+
+        assert!(validate_tag_name(&hundred_characters).is_ok());
+        assert!(validate_tag_name(&one_hundred_and_one_characters).is_err());
+    }
 }
