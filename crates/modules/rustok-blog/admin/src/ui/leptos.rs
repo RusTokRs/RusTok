@@ -10,8 +10,8 @@ use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use super::richtext::BlogRichTextEditor;
 use super::components::{
-    BlogEditBanner, BlogPostsTable, apply_post_to_form, blog_form_copy_view_model,
-    blog_form_view_model, reset_form,
+    BlogEditBanner, BlogPostFormSetters, BlogPostsTable, apply_post_to_form,
+    blog_form_copy_view_model, blog_form_view_model, reset_form,
 };
 use crate::i18n::t;
 use crate::{core, transport};
@@ -90,15 +90,17 @@ pub fn BlogAdmin() -> impl IntoView {
         let default_locale = default_locale.clone();
         move |_| {
             reset_form(
-                set_editing_post_id,
-                set_editing_version,
-                set_title,
-                set_slug,
-                set_excerpt,
-                set_content,
-                set_locale,
-                set_tags_input,
-                set_publish_now,
+                BlogPostFormSetters {
+                    editing_post_id: set_editing_post_id,
+                    editing_version: set_editing_version,
+                    title: set_title,
+                    slug: set_slug,
+                    excerpt: set_excerpt,
+                    content: set_content,
+                    locale: set_locale,
+                    tags_input: set_tags_input,
+                    publish_now: set_publish_now,
+                },
                 default_locale.as_str(),
             )
         }
@@ -184,17 +186,19 @@ pub fn BlogAdmin() -> impl IntoView {
                         (Ok(view_model), Some(post)) => {
                             if view_model.apply_returned_post_to_form {
                                 apply_post_to_form(
-                                    set_editing_post_id,
-                                    set_editing_version,
-                                    set_title,
-                                    set_slug,
-                                    set_excerpt,
-                                    set_content,
-                                    set_locale,
-                                    set_tags_input,
-                                    set_publish_now,
+                                    BlogPostFormSetters {
+                                        editing_post_id: set_editing_post_id,
+                                        editing_version: set_editing_version,
+                                        title: set_title,
+                                        slug: set_slug,
+                                        excerpt: set_excerpt,
+                                        content: set_content,
+                                        locale: set_locale,
+                                        tags_input: set_tags_input,
+                                        publish_now: set_publish_now,
+                                    },
                                     &post,
-                                );
+                                    );
                             }
                         }
                         (Ok(view_model), None) => {
@@ -298,17 +302,19 @@ pub fn BlogAdmin() -> impl IntoView {
                     let result_view = core::blog_post_save_result_view(post.id.as_str());
                     if result_view.apply_returned_post_to_form {
                         apply_post_to_form(
-                            set_editing_post_id,
-                            set_editing_version,
-                            set_title,
-                            set_slug,
-                            set_excerpt,
-                            set_content,
-                            set_locale,
-                            set_tags_input,
-                            set_publish_now,
+                            BlogPostFormSetters {
+                                editing_post_id: set_editing_post_id,
+                                editing_version: set_editing_version,
+                                title: set_title,
+                                slug: set_slug,
+                                excerpt: set_excerpt,
+                                content: set_content,
+                                locale: set_locale,
+                                tags_input: set_tags_input,
+                                publish_now: set_publish_now,
+                            },
                             &post,
-                        );
+                            );
                     }
                     if result_view.refresh_posts {
                         set_refresh_nonce.update(|value| *value += 1);
@@ -374,17 +380,19 @@ pub fn BlogAdmin() -> impl IntoView {
                         );
                         if result_view.apply_returned_post_to_form {
                             apply_post_to_form(
-                                set_editing_post_id,
-                                set_editing_version,
-                                set_title,
-                                set_slug,
-                                set_excerpt,
-                                set_content,
-                                set_locale,
-                                set_tags_input,
-                                set_publish_now,
+                                BlogPostFormSetters {
+                                    editing_post_id: set_editing_post_id,
+                                    editing_version: set_editing_version,
+                                    title: set_title,
+                                    slug: set_slug,
+                                    excerpt: set_excerpt,
+                                    content: set_content,
+                                    locale: set_locale,
+                                    tags_input: set_tags_input,
+                                    publish_now: set_publish_now,
+                                },
                                 &post,
-                            );
+                                );
                         }
                         if result_view.refresh_posts {
                             set_refresh_nonce.update(|value| *value += 1);
@@ -432,17 +440,19 @@ pub fn BlogAdmin() -> impl IntoView {
                     );
                     if result_view.apply_returned_post_to_form {
                         apply_post_to_form(
-                            set_editing_post_id,
-                            set_editing_version,
-                            set_title,
-                            set_slug,
-                            set_excerpt,
-                            set_content,
-                            set_locale,
-                            set_tags_input,
-                            set_publish_now,
+                            BlogPostFormSetters {
+                                editing_post_id: set_editing_post_id,
+                                editing_version: set_editing_version,
+                                title: set_title,
+                                slug: set_slug,
+                                excerpt: set_excerpt,
+                                content: set_content,
+                                locale: set_locale,
+                                tags_input: set_tags_input,
+                                publish_now: set_publish_now,
+                            },
                             &post,
-                        );
+                            );
                     }
                     if result_view.refresh_posts {
                         set_refresh_nonce.update(|value| *value += 1);
@@ -489,17 +499,19 @@ pub fn BlogAdmin() -> impl IntoView {
                     );
                     if result_view.apply_returned_post_to_form {
                         apply_post_to_form(
-                            set_editing_post_id,
-                            set_editing_version,
-                            set_title,
-                            set_slug,
-                            set_excerpt,
-                            set_content,
-                            set_locale,
-                            set_tags_input,
-                            set_publish_now,
+                            BlogPostFormSetters {
+                                editing_post_id: set_editing_post_id,
+                                editing_version: set_editing_version,
+                                title: set_title,
+                                slug: set_slug,
+                                excerpt: set_excerpt,
+                                content: set_content,
+                                locale: set_locale,
+                                tags_input: set_tags_input,
+                                publish_now: set_publish_now,
+                            },
                             &post,
-                        );
+                            );
                     }
                     if result_view.refresh_posts {
                         set_refresh_nonce.update(|value| *value += 1);
