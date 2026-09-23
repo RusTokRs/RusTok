@@ -1,4 +1,4 @@
-use async_graphql::{Context, ErrorExtensions, Object, Result, dataloader::DataLoader};
+use async_graphql::{Context, ErrorExtensions, Object, Result};
 use rustok_api::{
     AuthContext, RequestContext, TenantContext,
     graphql::{require_module_enabled, resolve_graphql_locale},
@@ -6,7 +6,7 @@ use rustok_api::{
 use rustok_channel::ChannelService;
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
-use rustok_profiles::{ProfileSummaryLoader, ProfileSummaryLoaderKey, graphql::GqlProfileSummary};
+use rustok_profiles_api::{GqlProfileSummary, ProfileSummaryAudience};
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
 use std::collections::{HashMap, HashSet};
@@ -16,6 +16,7 @@ use uuid::Uuid;
 use crate::services::is_post_visible_for_channel;
 use crate::{BlogError, PostService};
 
+use super::runtime_data::BlogGraphqlRuntimeData;
 use super::types::*;
 
 const MODULE_SLUG: &str = "blog";
@@ -384,28 +385,53 @@ where
         return Ok(HashMap::new());
     }
 
-    let Some(loader) = ctx.data_opt::<DataLoader<ProfileSummaryLoader>>() else {
+    let Some(runtime_data) = ctx.data_opt::<BlogGraphqlRuntimeData>() else {
         tracing::warn!(
             tenant_id = %tenant_id,
             author_count = user_ids.len(),
-            "Blog author profile enrichment is unavailable; returning posts without profile presentation"
+            "Blog author profile enrichment runtime data is unavailable; returning posts without profile presentation"
+        );
+        return Ok(HashMap::new());
+    };
+    let Some(reader) = runtime_data.profile_summary_reader() else {
+        tracing::warn!(
+            tenant_id = %tenant_id,
+            author_count = user_ids.len(),
+            "Blog author profile provider is unavailable; returning posts without profile presentation"
         );
         return Ok(HashMap::new());
     };
 
-    let keys = user_ids
-        .into_iter()
-        .map(|user_id| ProfileSummaryLoaderKey {
+    let audience = ctx
+        .data_opt::<ProfileSummaryAudience>()
+        .copied()
+        .unwrap_or(ProfileSummaryAudience::Anonymous);
+
+    let profiles = match reader
+        .find_profile_summaries(
             tenant_id,
-            user_id,
-            requested_locale: Some(requested_locale.to_string()),
-            tenant_default_locale: Some(tenant_default_locale.to_string()),
-        })
-        .collect::<Vec<_>>();
-    let profiles = loader.load_many(keys).await?;
+            &user_ids,
+            Some(requested_locale),
+            Some(tenant_default_locale),
+            audience,
+        )
+        .await
+    {
+        Ok(profiles) => profiles,
+        Err(error) => {
+            tracing::warn!(
+                tenant_id = %tenant_id,
+                author_count = user_ids.len(),
+                error_code = error.code(),
+                "Blog author profile provider is unavailable; returning posts without profile presentation"
+            );
+            return Ok(HashMap::new());
+        }
+    };
+
     Ok(profiles
         .into_iter()
-        .map(|(key, summary)| (key.user_id, summary.into()))
+        .map(|(user_id, summary)| (user_id, summary.into()))
         .collect())
 }
 

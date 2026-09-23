@@ -77,3 +77,29 @@ pub struct UpsertProfileInput {
     pub preferred_locale: Option<String>,
     pub visibility: ProfileVisibility,
 }
+
+
+impl From<ProfileVisibility> for rustok_profiles_api::ProfileSummaryVisibility {
+    fn from(value: ProfileVisibility) -> Self {
+        match value {
+            ProfileVisibility::Public => Self::Public,
+            ProfileVisibility::Authenticated => Self::Authenticated,
+            ProfileVisibility::FollowersOnly => Self::FollowersOnly,
+            ProfileVisibility::Private => Self::Private,
+        }
+    }
+}
+
+impl From<ProfileSummary> for rustok_profiles_api::ProfileSummary {
+    fn from(value: ProfileSummary) -> Self {
+        Self {
+            user_id: value.user_id,
+            handle: value.handle,
+            display_name: value.display_name,
+            tags: value.tags,
+            avatar_media_id: value.avatar_media_id,
+            preferred_locale: value.preferred_locale,
+            visibility: value.visibility.into(),
+        }
+    }
+}

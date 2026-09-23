@@ -6,7 +6,7 @@ use rustok_api::{
     graphql::GraphQLError, has_any_effective_permission,
 };
 use rustok_core::SecurityContext;
-use rustok_profiles::graphql::GqlProfileSummary;
+use rustok_profiles_api::GqlProfileSummary;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 

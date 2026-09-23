@@ -252,6 +252,7 @@ rustok-brand-admin = { path = "crates/modules/rustok-brand/admin" }
 rustok-product-bundles = { path = "crates/modules/rustok-product-bundles" }
 rustok-product-bundles-admin = { path = "crates/modules/rustok-product-bundles/admin" }
 rustok-profiles = { path = "crates/modules/rustok-profiles" }
+rustok-profiles-api = { path = "crates/modules/rustok-profiles-api" }
 rustok-social-graph = { path = "crates/modules/rustok-social-graph" }
 rustok-comments = { path = "crates/modules/rustok-comments", default-features = false }
 rustok-region = { path = "crates/modules/rustok-region" }

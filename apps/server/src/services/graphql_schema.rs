@@ -88,6 +88,12 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     } else {
         host_runtime
     };
+    #[cfg(feature = "mod-profiles")]
+    let host_runtime = host_runtime.with_shared_value(
+        Arc::new(rustok_profiles::ProfilePresentationService::new(ctx.db_clone()))
+            as Arc<dyn rustok_profiles::ProfileSummaryReader>,
+    );
+
     let graphql_runtime_inputs = rustok_api::graphql::GraphqlRuntimeInputs::new(host_runtime);
     let schema = Arc::new(build_schema(GraphqlSchemaDependencies {
         db: ctx.db_clone(),

@@ -2,6 +2,10 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use rustok_api::PortError;
+use rustok_profiles_api::{
+    ProfileSummary as ApiProfileSummary, ProfileSummaryAudience, ProfileSummaryReadError,
+    ProfileSummaryReader,
+};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
@@ -177,4 +181,42 @@ fn map_privacy_error(error: PortError) -> ProfileError {
         "Profile presentation privacy evaluation failed"
     );
     ProfileError::PresentationUnavailable
+}
+
+
+#[async_trait]
+impl ProfileSummaryReader for ProfilePresentationService {
+    async fn find_profile_summaries(
+        &self,
+        tenant_id: Uuid,
+        user_ids: &[Uuid],
+        requested_locale: Option<&str>,
+        tenant_default_locale: Option<&str>,
+        audience: ProfileSummaryAudience,
+    ) -> Result<HashMap<Uuid, ApiProfileSummary>, ProfileSummaryReadError> {
+        let reader = Self::for_audience(self.db.clone(), audience);
+        reader
+            .find_profile_summaries(
+                tenant_id,
+                user_ids,
+                requested_locale,
+                tenant_default_locale,
+            )
+            .await
+            .map(|summaries| {
+                summaries
+                    .into_iter()
+                    .map(|(user_id, summary)| (user_id, summary.into()))
+                    .collect()
+            })
+            .map_err(|error| {
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    requested_count = user_ids.len(),
+                    error = %error,
+                    "Profile summary presentation provider is unavailable"
+                );
+                ProfileSummaryReadError::Unavailable
+            })
+    }
 }

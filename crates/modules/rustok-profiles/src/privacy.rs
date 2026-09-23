@@ -32,28 +32,8 @@ pub enum ProfilePrivacyDecision {
     Restricted,
 }
 
-/// The caller class used to evaluate profile visibility without coupling the
-/// policy to GraphQL, notifications, or any other transport.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ProfileAccessAudience {
-    Anonymous,
-    Authenticated { actor_id: Uuid },
-    TrustedService { actor_id: Option<Uuid> },
-}
-
-impl ProfileAccessAudience {
-    fn actor_id(self) -> Option<Uuid> {
-        match self {
-            Self::Anonymous => None,
-            Self::Authenticated { actor_id } => Some(actor_id),
-            Self::TrustedService { actor_id } => actor_id,
-        }
-    }
-
-    fn is_authenticated(self) -> bool {
-        !matches!(self, Self::Anonymous)
-    }
-}
+/// Compatibility name for the neutral Profiles API presentation audience.
+pub use rustok_profiles_api::ProfileSummaryAudience as ProfileAccessAudience;
 
 /// Evaluate the canonical active-profile visibility matrix.
 ///

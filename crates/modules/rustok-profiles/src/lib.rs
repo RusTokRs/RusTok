@@ -40,6 +40,7 @@ pub use observability::{
     ProfileOperationTimer,
 };
 pub use presentation::ProfilePresentationService;
+pub use rustok_profiles_api::{ProfileSummaryAudience, ProfileSummaryReadError, ProfileSummaryReader};
 pub use privacy::{
     ProfileAccessAudience, ProfilePrivacyDecision, ProfilePrivacyReadPort,
     ProfilePrivacyReadRequest, ProfilePrivacyRuntime, ProfilePrivacyService,

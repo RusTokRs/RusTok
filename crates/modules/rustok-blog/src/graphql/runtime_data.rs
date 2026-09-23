@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use rustok_api::graphql::GraphqlRuntimeInputs;
 use rustok_comments::CommentsThreadPort;
+use rustok_profiles_api::ProfileSummaryReader;
 use sea_orm::DatabaseConnection;
 
 use crate::{CommentService, PublicCommentsSnapshotStore};
@@ -15,12 +16,14 @@ use crate::{CommentService, PublicCommentsSnapshotStore};
 pub struct BlogGraphqlRuntimeData {
     comments_thread_port: Option<Arc<dyn CommentsThreadPort>>,
     public_comments_snapshot_store: Option<Arc<dyn PublicCommentsSnapshotStore>>,
+    profile_summary_reader: Option<Arc<dyn ProfileSummaryReader>>,
 }
 
 pub fn attach_schema_data(inputs: &GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, String> {
     Ok(BlogGraphqlRuntimeData {
         comments_thread_port: inputs.shared_get::<Arc<dyn CommentsThreadPort>>(),
         public_comments_snapshot_store: inputs.shared_get::<Arc<dyn PublicCommentsSnapshotStore>>(),
+        profile_summary_reader: inputs.shared_get::<Arc<dyn ProfileSummaryReader>>(),
     })
 }
 
@@ -40,6 +43,10 @@ impl BlogGraphqlRuntimeData {
     ) -> Option<&Arc<dyn PublicCommentsSnapshotStore>> {
         self.public_comments_snapshot_store.as_ref()
     }
+
+    pub(crate) fn profile_summary_reader(&self) -> Option<&Arc<dyn ProfileSummaryReader>> {
+        self.profile_summary_reader.as_ref()
+    }
 }
 
 #[cfg(test)]
@@ -58,6 +65,10 @@ mod tests {
             &BlogGraphqlRuntimeData,
         ) -> Option<&Arc<dyn PublicCommentsSnapshotStore>> =
             BlogGraphqlRuntimeData::public_comments_snapshot_store;
-        let _ = (factory, selector, snapshot_selector);
+        let profile_selector: fn(
+            &BlogGraphqlRuntimeData,
+        ) -> Option<&Arc<dyn ProfileSummaryReader>> =
+            BlogGraphqlRuntimeData::profile_summary_reader;
+        let _ = (factory, selector, snapshot_selector, profile_selector);
     }
 }
