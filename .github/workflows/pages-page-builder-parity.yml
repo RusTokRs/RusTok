@@ -61,7 +61,7 @@ jobs:
     name: Source parity and accessibility guards
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Verify generic editor accessibility source
         run: node scripts/verify/verify-page-builder-admin-accessibility.mjs
       - name: Verify generic editor accessibility browser evidence harness

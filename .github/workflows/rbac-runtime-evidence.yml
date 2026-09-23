@@ -102,7 +102,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout exact evidence revision
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -151,7 +151,7 @@ jobs:
       RUSTOK_CACHE_REDIS_SERVER_BIN: /usr/bin/redis-server
     steps:
       - name: Checkout exact evidence revision
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false

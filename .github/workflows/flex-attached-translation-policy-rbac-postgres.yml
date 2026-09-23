@@ -86,7 +86,7 @@ jobs:
     env:
       RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ env.TARGET_SHA }}
           persist-credentials: false
