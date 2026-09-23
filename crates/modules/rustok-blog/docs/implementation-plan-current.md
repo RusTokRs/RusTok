@@ -166,8 +166,11 @@ The fresh Taxonomy boundary audit found one concrete Blog/Taxonomy contract
 mismatch: Blog Tag name validation used UTF-8 byte length while the public DTO
 max_length contract and canonical Taxonomy name validation use Unicode
 character count, and the Tag slug schema was not enforced by the owner service.
-Blog now validates both name and slug limits at the service boundary and keeps
-focused regression coverage for the Unicode name and slug limits.
+Blog now validates both name and slug limits at the service boundary. Post tag
+mutations also revalidate resolved Blog-owned module terms, so the stricter
+Blog Tag limit cannot be bypassed through post creation/update while shared
+global Taxonomy terms remain unaffected. Focused regression coverage remains
+for the Unicode name and slug limits.
 
 A fresh Taxonomy migration audit found that canonical Category route keys are stored at 120 characters, while Blog previously exposed a 255-character slug schema and delegated oversized normalized keys to the persistence layer. Blog now validates the normalized route key at the command boundary and both Create/Update DTO schemas advertise the canonical 120-character limit.
 
