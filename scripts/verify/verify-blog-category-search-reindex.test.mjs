@@ -37,6 +37,7 @@ function fixture({
   const platformRbacPath = "crates/libs/rustok-core/src/rbac.rs";
   const oauthPath = "crates/libs/rustok-api/src/context/auth.rs";
   const servicePath = "crates/modules/rustok-blog/src/services/category.rs";
+  const categoryOwnerPath = "crates/modules/rustok-blog/src/services/category_owner.rs";
   const rbacPath = "crates/modules/rustok-blog/src/services/rbac.rs";
   const modulePath = "crates/modules/rustok-blog/src/module.rs";
   const controllerPath = "crates/modules/rustok-blog/src/controllers/categories.rs";
@@ -95,12 +96,13 @@ function fixture({
     : "enforce_scope(&security, Resource::BlogCategories, Action::Update)?;";
   const deletePermission = "enforce_scope(&security, Resource::BlogCategories, Action::Delete)?;";
   const transaction = "let txn = self.db.begin().await;";
+  const deleteTaxonomy = "TaxonomyService::new";
   const updateOrdered = lookupBeforeAuthorization
     ? `${transaction}\n${updatePermission}`
     : `${updatePermission}\n${transaction}`;
   const deleteOrdered = lookupBeforeAuthorization
-    ? `${transaction}\n${deletePermission}`
-    : `${deletePermission}\n${transaction}`;
+    ? `${deleteTaxonomy}\n${deletePermission}`
+    : `${deletePermission}\n${deleteTaxonomy}`;
   const eventBusField = optionalEventBus
     ? "event_bus: Option<TransactionalEventBus>"
     : "event_bus: TransactionalEventBus";
@@ -121,10 +123,10 @@ function fixture({
       target_type: "blog".to_string()
       target_id: None
       txn.commit().await
-      blog_category_translation::Column::TenantId.eq(tenant_id)
+      blog_category::Column::TenantId.eq(tenant_id)
       Self::ensure_exists_in_tx(&txn, tenant_id, parent_id).await?
-      normalize_category_slug(input.slug.as_deref(), &input.name)?
-      ${missingSlugGuard ? "" : "Slug must contain at least one ASCII letter or digit"}
+      normalize_category_slug(input.slug.as_deref(), &name)?
+      ${missingSlugGuard ? "" : "Slug must contain at least one routable letter or digit"}
       enforce_scope(&security, Resource::BlogCategories, Action::Create)?;
       enforce_scope(&security, Resource::BlogCategories, Action::Read)?;
       ${ownedScopeRegression ? "enforce_owned_scope" : ""}
@@ -134,6 +136,14 @@ function fixture({
         ${updateOrdered}
       }
 
+      pub(crate) async fn ensure_exists_in_tx() {}
+    `,
+  );
+
+  write(
+    root,
+    categoryOwnerPath,
+    `
       pub async fn delete() {
         ${deleteOrdered}
       }
@@ -141,7 +151,6 @@ function fixture({
       pub async fn list() {
         enforce_scope(&security, Resource::BlogCategories, Action::List)?;
         ${unboundedServicePagination ? "let per_page = filter.per_page.max(1)" : "let per_page = filter.per_page.clamp(1, 100)"}
-        .paginate(&self.db, per_page)
       }
     `,
   );
@@ -176,8 +185,8 @@ function fixture({
     ? "Permission::new(Resource::Categories, action)"
     : "Permission::new(Resource::BlogCategories, action)";
   const serviceConstruction = dbOnlyControllerConstruction
-    ? "CategoryService::new(runtime.db_clone())"
-    : "CategoryService::new(runtime.db_clone(), runtime.event_bus())";
+    ? "// db_only"
+    : "category_service(&runtime)";
   write(
     root,
     controllerPath,
@@ -188,7 +197,7 @@ function fixture({
       ensure_category_permission
       ${httpPermission}
       has_effective_permission(&auth.permissions, &permission)
-      ${missingTypedErrors ? "" : "fn map_category_error BlogError::CategoryNotFound HttpError::not_found HttpError::internal"}
+      ${missingTypedErrors ? "" : "crate::error::public::to_http_error"}
     `,
   );
 
@@ -218,9 +227,10 @@ function fixture({
     root,
     projectorPath,
     `
-      'category_name', bct.name
-      'category_slug', bct.slug
-      LEFT JOIN blog_category_translations bct
+      'category_name', COALESCE(bct.name, bct_fallback.name, bct_term.canonical_key)
+      'category_slug', COALESCE(bct.slug, bct_fallback.slug, bct_term.canonical_key)
+      LEFT JOIN taxonomy_terms bct_term
+      LEFT JOIN taxonomy_term_translations bct
     `,
   );
   write(
@@ -329,14 +339,14 @@ test("rejects alternate category constructor", () => {
 test("rejects DB-only controller construction", () => {
   expectRejected(
     { dbOnlyControllerConstruction: true },
-    /missing CategoryService::new\(runtime\.db_clone\(\), runtime\.event_bus\(\)\)/,
+    /missing category_service\(&runtime\)/,
   );
 });
 
 test("rejects empty-slug regression", () => {
   expectRejected(
     { missingSlugGuard: true },
-    /missing Slug must contain at least one ASCII letter or digit/,
+    /missing Slug must contain at least one routable letter or digit/,
   );
 });
 
@@ -355,7 +365,7 @@ test("rejects unbounded HTTP pagination", () => {
 });
 
 test("rejects flattened HTTP errors", () => {
-  expectRejected({ missingTypedErrors: true }, /missing fn map_category_error/);
+  expectRejected({ missingTypedErrors: true }, /missing crate::error::public::to_http_error/);
 });
 
 test("rejects category UUID ownership checks", () => {

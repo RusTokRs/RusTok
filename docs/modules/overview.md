@@ -98,8 +98,8 @@ It is important to distinguish:
 | `marketplace_payout` | `rustok-marketplace-payout` | `marketplace_ledger` |
 | `marketplace` | `rustok-marketplace` | `marketplace_seller`, `marketplace_listing`, `marketplace_allocation`, `marketplace_commission`, `marketplace_ledger`, `marketplace_payout` |
 | `moderation` | `rustok-moderation` | — |
-| `blog` | `rustok-blog` | `content`, `comments`, `outbox`, `taxonomy` |
-| `forum` | `rustok-forum` | `content`, `taxonomy` |
+| `blog` | `rustok-blog` | `content`, `outbox`, `taxonomy`, `channel` |
+| `forum` | `rustok-forum` | `content`, `taxonomy`, `tenant` |
 | `notifications` | `rustok-notifications` | `outbox` |
 | `comments` | `rustok-comments` | — |
 | `pages` | `rustok-pages` | `content`, `outbox`, `page_builder` |

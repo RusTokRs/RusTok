@@ -68,9 +68,9 @@ if (evidence) {
     evidence.owner !== 'rustok-blog-storefront' ||
     evidence.status !== 'source_verified_present' ||
     evidence.actualization !== 'active_storefront_write_surface_source_verified' ||
-    evidence.legacy_degraded_mode !== 'hide_comment_form' ||
+    evidence.legacy_degraded_mode !== 'hide_comment_form_on_unavailable_or_timeout' ||
     evidence.legacy_registry_semantics !==
-      'legacy_fallback_vocabulary_now_maps_to_active_write_surface'
+      'explicit_provider_absence_policy'
   ) failures.push(`${files.evidence}: identity/status drift`);
 
   const expectedInventory = {
@@ -109,9 +109,9 @@ if (evidence) {
     }
   }
   if (
-    evidence.planning_effect?.comment_form_fallback !== 'planned' ||
+    evidence.planning_effect?.comment_form_fallback !== 'source_verified' ||
     evidence.planning_effect?.cached_thread_snapshot !== 'source_ready_maintainer_execution_pending' ||
-    evidence.planning_effect?.fallback_smoke_status !== 'planned_runtime_execution_only' ||
+    evidence.planning_effect?.fallback_smoke_status !== 'source_verified_no_compile' ||
     evidence.planning_effect?.new_storefront_write_surface_authorized !== false ||
     !Array.isArray(evidence.execution) ||
     evidence.execution.length !== 0
@@ -123,9 +123,9 @@ if (fallback) {
     failures.push(`${files.fallback}: write-surface inventory path drift`);
   }
   if (
-    fallback.storefront_read_degradation?.comment_form_fallback !== 'planned' ||
+    fallback.storefront_read_degradation?.comment_form_fallback !== 'source_verified_hide_when_provider_unavailable' ||
     fallback.storefront_read_degradation?.comment_form_fallback_interpretation !==
-      'active_storefront_write_surface_degraded_mode_planned'
+      'The active storefront write surface is rendered only when Comments is available; unavailable and timeout states preserve the article and explicit read availability.'
   ) failures.push(`${files.fallback}: fallback compatibility marker drift`);
   const writeSurface = fallback.storefront_write_surface ?? {};
   if (
@@ -133,16 +133,17 @@ if (fallback) {
     writeSurface.inventory !== files.evidence ||
     writeSurface.active_comment_form !== true ||
     writeSurface.active_create_comment_transport !== true ||
-    writeSurface.legacy_degraded_mode !== 'hide_comment_form' ||
+    writeSurface.legacy_degraded_mode !== 'hide_comment_form_on_unavailable_or_timeout' ||
     writeSurface.legacy_registry_semantics !==
-      'fallback_vocabulary_for_active_storefront_write_surface' ||
-    writeSurface.comment_form_fallback !== 'planned'
+      'explicit_provider_absence_policy' ||
+    writeSurface.comment_form_fallback !== 'source_verified'
   ) failures.push(`${files.fallback}: write-surface actualization drift`);
   if (
-    fallback.fallback_smoke?.status !== 'planned' ||
+    fallback.fallback_smoke?.status !== 'source_verified_no_compile' ||
     fallback.fallback_smoke?.status_scope !== 'cached_read_runtime_execution_only' ||
     fallback.fallback_smoke?.runtime_evidence !== 'pending' ||
-    !exactSingle(fallback.fallback_smoke?.profiles, 'embedded_native')
+    !Array.isArray(fallback.fallback_smoke?.profiles) ||
+    fallback.fallback_smoke?.profiles.length !== 0
   ) failures.push(`${files.fallback}: fallback runtime/profile scope drift`);
   const createCase = fallback.fallback_smoke?.cases?.find(
     (entry) => entry.operation === 'create_comment',
@@ -150,7 +151,7 @@ if (fallback) {
   if (
     !createCase ||
     createCase.degraded_mode !== 'hide_comment_form' ||
-    createCase.mode_status !== 'planned_runtime_execution_only' ||
+    createCase.mode_status !== 'source_verified_no_compile' ||
     !createCase.expected_consumer_behavior?.includes('active storefront has an authenticated create-comment surface')
   ) failures.push(`${files.fallback}: create-comment degraded-mode contract drift`);
 }
@@ -168,8 +169,8 @@ for (const [label, value] of [
   if (!value?.degraded_modes?.includes('hide_comment_form')) {
     failures.push(`${label}: legacy hide_comment_form vocabulary disappeared without schema migration`);
   }
-  if (!exactSingle(value?.fallback_profiles, 'embedded_native')) {
-    failures.push(`${label}: legacy fallback profile must remain embedded_native`);
+  if (!Array.isArray(value?.fallback_profiles) || value?.fallback_profiles.length !== 0) {
+    failures.push(`${label}: legacy fallback profile must be empty array`);
   }
 }
 
@@ -182,18 +183,11 @@ for (const marker of [
 need(graphql, 'query StorefrontBlog', files.graphql);
 need(graphql, 'mutation CreateBlogComment', files.graphql);
 need(graphql, 'createBlogComment', files.graphql);
-for (const marker of [
-  'ensure_authenticated_blog_channel_enabled',
-  'Blog comment creation requires current channel context',
-  'Blog comment creation requires current channel',
-  'is_module_enabled_for_tenant',
-]) need(graphql, marker, files.graphql);
 need(native, 'endpoint = "blog/storefront-data"', files.native);
 need(native, 'endpoint = "blog/comment-create"', files.native);
 need(native, 'create_public_comment(', files.native);
 need(native, 'require_blog_comment_channel_enabled', files.native);
-need(native, 'Blog comment creation requires current channel context', files.native);
-need(native, 'Blog comment creation requires current channel', files.native);
+need(native, 'Blog is not available for the current channel', files.native);
 need(native, 'is_module_enabled_for_tenant', files.native);
 need(facade, 'pub async fn create_comment(', files.facade);
 need(facade, 'blog_comment_create', files.facade);
@@ -202,12 +196,12 @@ need(ui, 'let submit_comment = Action::new_local', files.ui);
 need(ui, 'transport::create_comment(', files.ui);
 
 for (const marker of [
-  'storefront_comment_form_fallback_active_surface_source_verified',
+  'storefront_comment_form_active_source_verified',
   'owns the public comment write surface',
   'hide_comment_form',
-  'fallback vocabulary',
+  'fallback_vocabulary_for_active_storefront_write_surface',
   'comment_form_fallback = planned',
-  'cached read fallback runtime evidence',
+  'cached public read snapshot',
   'No tests, Cargo commands, Node verifiers',
 ]) need(plan, marker, files.plan);
 

@@ -86,7 +86,7 @@ test('rejects removal of the active storefront comment composer', () => {
     mutate(
       root,
       'crates/modules/rustok-blog/storefront/src/ui/leptos.rs',
-      (source) => source.replace('CommentComposer', 'RemovedCommentComposer'),
+      (source) => source.replaceAll('CommentComposer', 'RemovedComposer'),
     ),
   );
   assert.notEqual(result.status, 0);

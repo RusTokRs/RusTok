@@ -244,9 +244,10 @@ requireAll("crates/modules/rustok-blog/src/services/category_delete.rs", [
   "BlogError::CategoryNotFound(category_id) => TaxonomyError::TermNotFound(category_id)",
   "detach_category_from_posts_in_tx",
   "blog_post::Column::CategoryId.eq(category_id)",
-  "blog_post::Column::Version.eq(post.version)",
-  "checked_add(1)",
-  '"Blog post {} changed before category detachment could commit"',
+  "blog_post::Column::Version.gt(0)",
+  "blog_post::Column::Version.ne(i32::MAX)",
+  "sea_orm::sea_query::Expr::col(blog_post::Column::Version).add(1)",
+  '"Blog category {category_id} cannot be detached from {remaining} post(s) because their persisted version is invalid or exhausted"',
 ]);
 forbid("crates/modules/rustok-blog/src/services/category_delete.rs", [
   "taxonomy_category_hierarchy::",
@@ -282,10 +283,11 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
   "TaxonomyTermKind::Tag",
   "resolve_name_for_locale_chain",
   "lock_module_term_in_tx(",
-  "detach_tag_from_posts_in_tx",
-  "blog_post::Column::Version.eq(post.version)",
-  '"Blog post {} changed before Tag detachment could commit"',
-  "blog_post_tag::Entity::delete_many()",
+  "bump_posts_for_tag_relation_removal_in_tx",
+  "blog_post::Column::Version.gt(0)",
+  "blog_post::Column::Version.ne(i32::MAX)",
+  "Expr::col(blog_post::Column::Version).add(1)",
+  "updated.rows_affected as u64 != valid_relation_count",
   "blog_post_tag::Column::TenantId.eq(tenant_id)",
   "blog_post_tag::Column::PostId.eq(post_id)",
   "blog_post_tag::Column::TagId.eq(tag_id)",
@@ -324,15 +326,13 @@ requireAll("crates/libs/rustok-core/src/registry.rs", [
 ]);
 requireAll("crates/modules/rustok-blog/src/module.rs", [
   "fn dependencies(&self)",
-  '["content", "comments", "taxonomy", "outbox", "channel", "profiles"]',
+  '["content", "taxonomy", "outbox", "channel"]',
 ]);
 requireAll("crates/modules/rustok-blog/rustok-module.toml", [
   'content = { version_req = ">=0.1.0" }',
-  'comments = { version_req = ">=0.1.0" }',
   'outbox = { version_req = ">=0.1.0" }',
   'taxonomy = { version_req = ">=0.1.0" }',
   'channel = { version_req = ">=0.1.0" }',
-  'profiles = { version_req = ">=0.1.0" }',
 ]);
 requireAll("crates/modules/rustok-blog/src/module.rs", [
   "Resource::Tags",
@@ -349,7 +349,7 @@ requireAll("crates/modules/rustok-blog/src/module.rs", [
   'fn name(&self) ->',
   '"Blog"',
   'fn description(&self) ->',
-  '"Posts, Comments, Categories, Tags"',
+  '"Posts, Categories, Tags, and optional Comments integration"',
   "Permission::BLOG_POSTS_CREATE",
   "Permission::BLOG_POSTS_READ",
   "Permission::BLOG_POSTS_UPDATE",
@@ -617,6 +617,8 @@ for (const path of [
 forbid("crates/modules/rustok-blog/src/lib.rs", [
   "pub mod entities;",
   "pub use entities::",
+  "pub use self::entities",
+  "pub use crate::entities",
 ]);
 
 forbid("crates/modules/rustok-blog/src/services/category_command.rs", [
@@ -827,9 +829,8 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
   "enforce_scope(&security, Resource::Tags, Action::Update)?;",
   "enforce_scope(&security, Resource::Tags, Action::Delete)?;",
   "lock_module_term_in_tx(",
-  "if post.version <= 0",
-  ".checked_add(1)",
-  '.filter(|next| *next > 0)',
+  "bump_posts_for_tag_relation_removal_in_tx",
+  "Expr::col(blog_post::Column::Version).add(1)",
 ]);
 
 const allowedBlogPostMutationSources = new Set([
@@ -900,9 +901,9 @@ requireAll("crates/modules/rustok-blog/src/dto/post.rs", [
 ]);
 
 requireAll("crates/modules/rustok-blog/docs/implementation-plan-current.md", [
-  "comment_form_fallback = planned",
-  "active storefront has an authenticated create-comment surface",
-  "`hide_comment_form` remains a planned degraded mode",
+  "comment_form_policy = source_verified_hide_on_provider_absence",
+  "active storefront writes only when Comments is available",
+  "the active storefront hides the comment write surface",
 ]);
 
 if (failures.length > 0) {

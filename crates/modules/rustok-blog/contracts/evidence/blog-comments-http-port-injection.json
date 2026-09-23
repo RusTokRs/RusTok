@@ -27,8 +27,8 @@
     "shared_value": "Arc<dyn CommentsThreadPort>",
     "lookup": "HostRuntimeContext::shared_get",
     "selector": "BlogHttpRuntime::comment_service",
-    "injected_constructor": "CommentService::with_comments_thread_port",
-    "fallback_constructor": "CommentService::new",
+    "injected_constructor": "CommentService::from_optional_comments_thread_port",
+    "fallback_constructor": "CommentService::from_optional_comments_thread_port",
     "http_operation": "moderate_comment"
   },
   "harness": {

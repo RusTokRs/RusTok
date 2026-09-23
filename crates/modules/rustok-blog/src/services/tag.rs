@@ -849,7 +849,9 @@ fn to_tag_mutation_response(term: ModuleTermMutationResult, use_count: i32) -> T
 
 #[cfg(test)]
 mod pagination_tests {
-    use super::{MAX_TAGS_PER_PAGE, bounded_tag_page_size, validate_tag_name};
+    use super::{
+        bounded_tag_page_size, validate_optional_tag_slug, validate_tag_name, MAX_TAGS_PER_PAGE,
+    };
 
     #[test]
     fn tag_page_size_is_bounded_by_owner_service() {

@@ -222,6 +222,10 @@ async fn storefront_blog_native(
             return Err(public_internal_error());
         }
 
+        let is_authenticated = leptos_axum::extract::<rustok_api::AuthContext>()
+            .await
+            .is_ok();
+
         require_blog_channel_enabled(
             &runtime_ctx,
             tenant_id,
@@ -237,9 +241,6 @@ async fn storefront_blog_native(
             .map(ToOwned::to_owned)
             .or_else(|| request_context.as_ref().map(|ctx| ctx.locale.clone()))
             .unwrap_or_else(|| fallback_locale.clone());
-        let is_authenticated = leptos_axum::extract::<rustok_api::AuthContext>()
-            .await
-            .is_ok();
         let public_channel_slug = request_context
             .as_ref()
             .and_then(|ctx| normalize_channel_slug(ctx.channel_slug.as_deref()));

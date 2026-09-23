@@ -44,6 +44,7 @@ const permissionPath = "crates/libs/rustok-api/src/permissions.rs";
 const platformRbacPath = "crates/libs/rustok-core/src/rbac.rs";
 const oauthPath = "crates/libs/rustok-api/src/context/auth.rs";
 const servicePath = "crates/modules/rustok-blog/src/services/category.rs";
+const categoryOwnerPath = "crates/modules/rustok-blog/src/services/category_owner.rs";
 const rbacPath = "crates/modules/rustok-blog/src/services/rbac.rs";
 const modulePath = "crates/modules/rustok-blog/src/module.rs";
 const controllerPath = "crates/modules/rustok-blog/src/controllers/categories.rs";
@@ -58,7 +59,7 @@ const planPath = "crates/modules/rustok-blog/docs/implementation-plan.md";
 const permissionSource = read(permissionPath);
 const platformRbac = read(platformRbacPath);
 const oauth = read(oauthPath);
-const service = read(servicePath);
+const service = read(servicePath) + "\n" + read(categoryOwnerPath);
 const rbac = read(rbacPath);
 const moduleSource = read(modulePath);
 const controller = read(controllerPath);
@@ -125,12 +126,11 @@ for (const marker of [
   'target_type: "blog".to_string()',
   "target_id: None",
   "txn.commit().await",
-  "blog_category_translation::Column::TenantId.eq(tenant_id)",
+  "blog_category::Column::TenantId.eq(tenant_id)",
   "Self::ensure_exists_in_tx(&txn, tenant_id, parent_id).await?",
-  "normalize_category_slug(input.slug.as_deref(), &input.name)?",
-  "Slug must contain at least one ASCII letter or digit",
+  "normalize_category_slug(input.slug.as_deref(), &name)?",
+  "Slug must contain at least one routable letter or digit",
   "let per_page = filter.per_page.clamp(1, 100)",
-  ".paginate(&self.db, per_page)",
   "Resource::BlogCategories, Action::Create",
   "Resource::BlogCategories, Action::Read",
   "Resource::BlogCategories, Action::Update",
@@ -153,7 +153,7 @@ for (const marker of [
 requireBeforeWithin(
   service,
   "pub async fn update(",
-  "pub async fn delete(",
+  "pub(crate) async fn ensure_exists_in_tx(",
   "enforce_scope(",
   "let txn = self.db.begin().await",
   `${servicePath}: update authorization order`,
@@ -163,8 +163,8 @@ requireBeforeWithin(
   "pub async fn delete(",
   "pub async fn list(",
   "enforce_scope(",
-  "let txn = self.db.begin().await",
-  `${servicePath}: delete authorization order`,
+  "TaxonomyService::new",
+  `${categoryOwnerPath}: delete authorization order`,
 );
 
 requireMarker(rbac, "pub(crate) fn enforce_scope", rbacPath);
@@ -188,16 +188,13 @@ for (const marker of [
 rejectMarker(moduleSource, "Permission::new(Resource::Categories", modulePath);
 
 for (const marker of [
-  "CategoryService::new(runtime.db_clone(), runtime.event_bus())",
+  "category_service(&runtime)",
   "filter.page = filter.page.max(1)",
   "filter.per_page = filter.per_page.clamp(1, 100)",
   "ensure_category_permission",
   "Permission::new(Resource::BlogCategories, action)",
   "has_effective_permission(&auth.permissions, &permission)",
-  "fn map_category_error",
-  "BlogError::CategoryNotFound",
-  "HttpError::not_found",
-  "HttpError::internal",
+  "crate::error::public::to_http_error",
 ]) {
   requireMarker(controller, marker, controllerPath);
 }
@@ -233,9 +230,10 @@ for (const marker of [
 }
 
 for (const marker of [
-  "'category_name', bct.name",
-  "'category_slug', bct.slug",
-  "LEFT JOIN blog_category_translations bct",
+  "'category_name', COALESCE(bct.name, bct_fallback.name, bct_term.canonical_key)",
+  "'category_slug', COALESCE(bct.slug, bct_fallback.slug, bct_term.canonical_key)",
+  "LEFT JOIN taxonomy_terms bct_term",
+  "LEFT JOIN taxonomy_term_translations bct",
 ]) {
   requireMarker(projector, marker, projectorPath);
 }

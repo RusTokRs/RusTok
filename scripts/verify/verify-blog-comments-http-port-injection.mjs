@@ -90,8 +90,8 @@ if (evidence) {
     composition.shared_value !== 'Arc<dyn CommentsThreadPort>' ||
     composition.lookup !== 'HostRuntimeContext::shared_get' ||
     composition.selector !== 'BlogHttpRuntime::comment_service' ||
-    composition.injected_constructor !== 'CommentService::with_comments_thread_port' ||
-    composition.fallback_constructor !== 'CommentService::new' ||
+    composition.injected_constructor !== 'CommentService::from_optional_comments_thread_port' ||
+    composition.fallback_constructor !== 'CommentService::from_optional_comments_thread_port' ||
     composition.http_operation !== 'moderate_comment'
   ) failures.push(`${evidencePath}: composition drift`);
   const harness = evidence.harness ?? {};
@@ -116,9 +116,7 @@ for (const marker of [
   'use std::sync::Arc;',
   'comments_thread_port: Option<Arc<dyn CommentsThreadPort>>',
   'fn comment_service(&self) -> CommentService',
-  'if let Some(comments_thread_port) = self.comments_thread_port.clone()',
-  'CommentService::with_comments_thread_port(self.db_clone(), comments_thread_port)',
-  'CommentService::new(self.db_clone(), self.event_bus())',
+  'CommentService::from_optional_comments_thread_port(',
   'comments_thread_port: runtime.shared_get::<Arc<dyn CommentsThreadPort>>()',
   'mod tests',
   'fn blog_http_runtime_exposes_comments_port_selection()',

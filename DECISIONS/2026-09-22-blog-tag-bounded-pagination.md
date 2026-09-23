@@ -1,12 +1,12 @@
-# ADR: bounded Blog tag pagination through a derived usage projection
+# Bounded Blog tag pagination through a derived usage projection
 
-## Status
-
-Accepted
-
-## Date
-
-2026-09-22
+- Date: 2026-09-22
+- Decision status: Accepted
+- Implementation status: Implemented
+- Owners: rustok-blog
+- Extends: None
+- Supersedes: None
+- Superseded by: None
 
 ## Context
 
@@ -63,45 +63,67 @@ backfilled from `blog_post_tags` during its schema migration and is
 reconstructable from the same canonical attachment relation plus Taxonomy
 canonical identity.
 
+## Sources of truth and ownership
+
+- `blog_post_tags` owns post-to-tag attachment facts.
+- `rustok-taxonomy` owns canonical term identity, scope, and route keys.
+- `blog_tag_usage` is a pure read-side derived projection owned by `rustok-blog`.
+
 ## Invariants
 
-- tenant identity is `(tenant_id, tag_id)`;
-- `use_count >= 0`;
-- the projection row `canonical_key` equals the current Taxonomy canonical key;
-- Blog-local zero-use terms remain listed;
-- zero-use global terms are not listed;
-- all Blog-owned mutation paths that add/remove post-tag relations update the
-  projection in the same transaction;
-- Taxonomy-owned term deletion cascades the derived projection row;
-- the public ordering is total and deterministic.
+### Allowed states
 
-## Alternatives rejected
+- `use_count >= 0`.
+- Projection row `canonical_key` matches Taxonomy `canonical_key`.
+- Total ordering deterministically determined by `use_count DESC`, `canonical_key ASC`, `tag_id ASC`.
 
-### In-memory pagination
+### Forbidden states
 
-Rejected because it still performs an unbounded database read and materializes
-all terms/relations in the service process.
+- Unbounded queries or loading all terms into application memory.
+- Cross-module direct joins on Taxonomy private tables.
+- Negative `use_count`.
 
-### Cross-module SQL join
+## Non-goals
 
-Rejected because Blog would depend on Taxonomy private persistence tables and
-would bypass the owner boundary.
+- Does not transfer ownership of Taxonomy terms to Blog.
+- Does not change public API ordering.
 
-### Changing the public tie-break to UUID
+## Data, transaction, and concurrency boundary
 
-Rejected because it would silently change the documented/current tag-list
-ordering without solving the underlying bounded-read problem.
+- Attachment mutations and `blog_tag_usage` updates execute in the same transaction.
+- Post deletion decrements tag usage before deleting the post.
+- Foreign key constraints maintain tenant-level referential integrity.
+
+## Context dimensions
+
+- Isolated per `tenant_id`.
+
+## Events and projections
+
+- Invalidation and rebuild are deterministic from `blog_post_tags` and Taxonomy terms.
+- Reindex signals emitted on tag changes.
+
+## Failure semantics
+
+- Underflow in usage counts triggers an internal invariant failure and transaction abort.
+- Tag list pagination fails closed if the database query fails.
+
+## Migration and cutover
+
+- Migration creates `blog_tag_usage` and backfills rows from existing `blog_post_tags`.
+
+## Alternatives considered
+
+- In-memory pagination (rejected: unbounded memory and database read).
+- Cross-module SQL joins across private tables (rejected: violates ownership boundary).
+- Changing public tie-break to UUID (rejected: alters public ordering without bounding reads).
 
 ## Verification
 
-Source verification must confirm:
+- `cargo test -p rustok-blog --lib services::tag::pagination_tests`
+- `npm run verify:module-reference-contract`
 
-- `blog_tag_usage` migration, entity, and backfill exist;
-- TagService list path uses database pagination and never loads all usage rows;
-- post tag create/update/delete paths update the projection transactionally;
-- post deletion updates the projection before relation cascade;
-- Taxonomy delete remains the cascade owner for shared/global term removal;
-- no Blog query joins or reads Taxonomy private entities for tag listing.
+## Consequences
 
-Maintainer-owned runtime evidence remains a separate status and must not be
-promoted by source inspection alone.
+- Tag pagination executes in bounded database queries regardless of total catalog size.
+- Clean isolation between Blog attachment logic and Taxonomy canonical identity.

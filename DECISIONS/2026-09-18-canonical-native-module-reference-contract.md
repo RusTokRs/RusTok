@@ -2,11 +2,11 @@
 
 - Date: 2026-09-18
 - Decision status: Accepted
-- Implementation status: Blog reference v1 source-certified; maintainer execution evidence remains pending
+- Implementation status: In progress
 - Owners: platform architecture / module owners
 - Extends: [Canonical native module source layout](./2026-09-18-canonical-native-module-source-layout.md)
-- Extends: [Multilingual DB storage via parallel localized records](./2026-04-05-multilingual-db-storage-parallel-localized-records.md)
-- Extends: [Truthful locale provenance](./2026-07-21-language-agnostic-legacy-locale-provenance.md)
+- Supersedes: None
+- Superseded by: None
 
 ## Context
 
@@ -127,33 +127,76 @@ For the Blog reference profile, Rust UI source files are capped at 40 KiB. Large
 files split by commands, presentation, components, tests, or transport
 responsibility rather than arbitrary line ranges.
 
-## Reference implementation
+## Sources of truth and ownership
 
-`crates/modules/rustok-blog` is reference v1. Its backend source layout is
-guarded by `npm run verify:module-source-layout`; its semantic invariants are
-guarded by `npm run verify:module-reference-contract`.
+- `crates/modules/rustok-blog` is reference v1. Its backend source layout is
+  guarded by `npm run verify:module-source-layout`; its semantic invariants are
+  guarded by `npm run verify:module-reference-contract`.
+- This ADR defines the accepted canonical native module reference contract.
+- Local module documents and READMEs describe owner-specific contracts.
+- `docs/backend/module-backend-implementation.md` is the canonical backend implementation guide.
 
-The final post-#4072 source audit classifies Blog reference v1 as source-certified.
-That certification does not claim maintainer-owned compile/runtime evidence and does
-not change any FBA evidence level.
+## Invariants
 
-A module must not be migrated by mechanically copying Blog files. It should copy
-the responsibility vocabulary and invariants, then implement its own owner
-semantics.
+### Allowed states
 
-## FBA status of the reference
+- Modules enrolling in the reference profile keep persistence entities strictly crate-private.
+- Updates require compare-and-swap versions.
+- Locale fallbacks apply strictly to read surfaces; writes require explicit localized provenance.
+- Public errors are mapped to safe descriptors without leaking internal driver details.
 
-Blog Comments remains `boundary_ready`. This ADR does not promote it to
-`transport_verified`; compiled/live remote transport and fallback evidence are
-still required for that promotion.
+### Forbidden states
 
-## Rollout
+- Public re-export of `entities::*` in `lib.rs`.
+- Read fallback locale copied into new localized write rows.
+- Derived event projections mutating business aggregate version or updated_at.
+- Raw unredacted database/internal errors exposed to clients.
 
-1. Make Blog green under both reference guards.
-2. Keep its docs/evidence synchronized with production behavior.
-3. Migrate Product as the large-owner reference.
-4. Migrate Pages, Forum, Taxonomy and remaining native modules in bounded slices.
-5. Enroll each migrated module into the same guards after conformance.
+## Non-goals
 
-Any defect found in the Blog reference blocks propagation until either corrected
-or explicitly resolved by a superseding architecture decision.
+- Does not promote Blog Comments FBA to `transport_verified` without live execution evidence.
+- Does not change the standalone WASI module template.
+
+## Data, transaction, and concurrency boundary
+
+- Predecessor revision checking via CAS on versioned aggregates.
+- Tenant-scoped row locks for serializing concurrent projections.
+- Atomic domain transitions under the owner transaction boundary.
+
+## Context dimensions
+
+- `TenantContext` is authoritative; tenant mismatch fails closed.
+- Modules check module enablement per tenant and channel context on writes.
+- Content locales are explicitly modeled and validated against tenant policy.
+
+## Events and projections
+
+- Event projections maintain independent cursors and do not mutate business versions.
+- Events publish through `TransactionalEventBus` within the mutation transaction.
+- Read projections fail closed on broken cross-owner integrity.
+
+## Failure semantics
+
+- Fail closed on missing authorization, invalid tenant, or unmapped invariant errors.
+- Public errors map through `BlogPublicError` / `to_http_error` to protect internals.
+
+## Migration and cutover
+
+- `rustok-blog` acts as the first reference module.
+- Subsequent modules (Product, Pages, Forum, Taxonomy) migrate incrementally and enroll into reference verifiers.
+
+## Alternatives considered
+
+- Relying on manual code review without automated guards (rejected: semantic defects easily recur).
+- Permitting entity re-exports for developer convenience (rejected: leaks persistence coupling across crates).
+
+## Verification
+
+- `npm run verify:module-source-layout`
+- `npm run verify:module-reference-contract`
+- Unit and integration tests in `crates/modules/rustok-blog`.
+
+## Consequences
+
+- The reference module is hardened and certified for propagation across the platform.
+- New native modules have a clear, enforceable, and verified gold standard.

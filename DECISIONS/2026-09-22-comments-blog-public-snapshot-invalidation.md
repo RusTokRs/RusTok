@@ -1,12 +1,12 @@
 # Comments-to-Blog Public Snapshot Invalidation
 
-## Status
-
-Accepted
-
-## Date
-
-2026-09-22
+- Date: 2026-09-22
+- Decision status: Accepted
+- Implementation status: Implemented
+- Owners: rustok-blog / rustok-comments
+- Extends: [Comments-to-Blog Reply Count Projection](./2026-07-16-comments-blog-event-projection.md)
+- Supersedes: None
+- Superseded by: None
 
 ## Context
 
@@ -59,51 +59,69 @@ The snapshot schema/key namespace is bumped from
 `blog-public-comments-snapshot-v1` to `blog-public-comments-snapshot-v2`.
 No database migration is required.
 
+## Sources of truth and ownership
+
+- `rustok-comments` owns canonical comment lifecycle state.
+- `rustok-blog` owns the delivery ledger `blog_comment_projection_deliveries` and cached snapshot projection.
+- Derived counters and snapshot identity do not act as authoritative write models.
+
+## Invariants
+
+### Allowed states
+
+- Snapshot identity includes the latest committed projection cursor.
+- Out-of-order cross-comment delivery converges deterministically.
+- Comment count floors at 0 and saturates without altering business revision.
+
+### Forbidden states
+
+- Enumerating cache keys in external storage (e.g. Redis KEYS/SCAN).
+- Second invalidation index duplicating projection state.
+- Comment projection modifying `blog_posts.version` or `blog_posts.updated_at`.
+
+## Non-goals
+
+- Does not promote Blog Comments FBA to `transport_verified`.
+- Does not expose storage transactions across the port boundary.
+
+## Data, transaction, and concurrency boundary
+
+- Projection updates lock the tenant-scoped Blog post row exclusively.
+- Delivery ledger insert and neutral reindex outbox write commit atomically in the projection transaction.
+- Monotonic progression per comment enforced by UUID/ULID event ID ordering.
+
+## Context dimensions
+
+- Tenant, post, locale, channel, and pagination parameters form the composite cache identity.
+- Cross-tenant event projection is prohibited.
+
+## Events and projections
+
+- Emitted events: `comment.created`, `comment.updated`, `comment.status_changed`, `comment.deleted`.
+- Processed by `BlogCommentProjectionHandler` to maintain comment counts and projection cursor.
+
+## Failure semantics
+
+- Obsolete events for deleted posts are acknowledged and dropped.
+- Outbox write failures roll back both delivery ledger and counter transitions before retry.
+
+## Migration and cutover
+
+- Snapshot prefix bumped to `blog-public-comments-snapshot-v2`.
+- Previous cached keys expire naturally via TTL.
+
+## Alternatives considered
+
+- Redis key scanning/invalidation (rejected: violates bounded cache capability contract).
+- Secondary cache tag index (rejected: introduces dual write hazards).
+
+## Verification
+
+- `node scripts/verify/verify-blog-comments-event-projection.mjs`
+- `cargo test -p rustok-blog --lib services::comment_projection::tests`
+- PostgreSQL integration test `comment_projection_postgres_test.rs`.
+
 ## Consequences
 
-- Comment body edits no longer leave the previous public snapshot reachable after
-  the corresponding lifecycle event is processed.
-- Approval, spam, and trash transitions invalidate the prior snapshot after the
-  corresponding status-change event is processed.
-- Delete remains an ordinary lifecycle transition and continues to affect
-  `comment_count`.
-- `comment_count`, `blog_posts.version`, and `blog_posts.updated_at` retain
-  their existing ownership semantics.
-- Reindex publication still occurs only when the derived `comment_count` changes;
-  snapshot invalidation does not manufacture a locale-specific Blog update.
-- The new lifecycle event types are additive version-1 event contracts. Their
-  introduction therefore requires regeneration and review of the canonical
-  `rustok-events` contract digest artifact.
-- Runtime execution evidence remains maintainer-owned and is not promoted by this
-  source change.
-
-## Verification requirements
-
-Source/runtime verification must prove:
-
-1. an update with a real body mutation publishes exactly one
-   `comment.updated` event; a metadata-only/no-write command publishes none;
-2. an actual moderation status transition publishes exactly one
-   `comment.status_changed` event; a same-status no-op publishes none;
-3. Blog projection accepts all four lifecycle event types and preserves the
-   active/deleted counter transition semantics;
-4. update/status delivery commits the Blog delivery ledger even when
-   `comment_count` is unchanged;
-5. the processed lifecycle cursor advances to the newest event and is part of the
-   public snapshot identity;
-6. tenant, post, locale, channel, pagination, and cursor dimensions remain isolated;
-7. outbox publication, Blog projection delivery, rollback/retry, and degraded
-   snapshot reads preserve the existing ownership and transactional contracts.
-
-## Relation to existing decisions
-
-This decision extends
-[Comments-to-Blog Reply Count Projection](./2026-07-16-comments-blog-event-projection.md).
-It does not move ownership of `comment_count`, does not expose storage
-transactions through `CommentsThreadPort`, and does not promote the Comments FBA
-boundary.
-
-It follows
-[Event schema release discipline](./2026-07-23-event-schema-release-discipline.md):
-the two new lifecycle event types are additive version-1 contracts and the
-canonical digest artifact is regenerated from the repository-owned generator.
+- Comment edits and status transitions invalidate stale public snapshots without manual cache flushing.
+- Degraded mode continues serving valid cached data without consistency leakage.

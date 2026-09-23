@@ -154,7 +154,7 @@ if (
 const registry = readJson(registryPath);
 const gate = registry.verification_chain?.source_gates?.ai_richtext_boundary;
 if (
-  registry.schema_version !== 13 ||
+  registry.schema_version !== 16 ||
   gate?.package_script !== 'verify:blog:ai-richtext-boundary' ||
   gate?.test_package_script !== 'test:verify:blog:ai-richtext-boundary' ||
   gate?.verifier !== 'scripts/verify/verify-blog-ai-richtext-boundary.mjs' ||

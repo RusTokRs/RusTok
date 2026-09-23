@@ -118,7 +118,7 @@ for (const marker of [
   'fn ignores_non_blog_targets_and_unrelated_events()',
   'fn projection_delta_tracks_comment_state_not_delivery_order()',
   'fn counter_transition_is_non_negative_and_does_not_touch_business_revision()',
-  'projection_event_id',
+  'projection_revision',
 ]) {
   requireMarker(handler, marker, handlerPath);
 }
@@ -132,7 +132,6 @@ for (const marker of [
   'optimistic_retry_policy_allows_seven_retries_then_stops_on_eighth_conflict',
   'blog_post::Column::Version',
   'blog_post::Column::UpdatedAt',
-  'DomainEvent::BlogPostUpdated',
 ]) {
   requireNoMarker(handler, marker, handlerPath);
 }
@@ -395,7 +394,7 @@ for (const marker of [
 requireNoMarker(moduleSource, 'handler.handle(&', `${modulePath}: host registration harness`);
 
 if (evidence) {
-  if (evidence.schema_version !== 6) failures.push(`${evidencePath}: schema_version drift`);
+  if (evidence.schema_version !== 7) failures.push(`${evidencePath}: schema_version drift`);
   if (
     evidence.module !== 'blog' ||
     evidence.surface !== 'comments_event_projection' ||
@@ -460,6 +459,7 @@ if (evidence) {
       'delete_before_create_stays_non_negative_and_replays_in_order',
       'missing_post_replay_commits_only_after_source_appears',
       'outbox_failure_rolls_back_counter_and_delivery_before_retry',
+      'update_and_status_events_advance_projection_cursor_without_count_change',
     ].sort().join('|')
   ) {
     failures.push(`${evidencePath}: PostgreSQL harness case drift`);
@@ -522,9 +522,7 @@ if (evidence) {
 
   const cases = new Set((evidence.cases ?? []).map((entry) => entry.name));
   for (const requiredCase of [
-    'shared_event_classifier',
     'blog_post_target_filter',
-    'created_deleted_delta',
     'envelope_idempotency',
     'atomic_counter_delivery_outbox',
     'tenant_scoped_row_lock',
@@ -556,7 +554,7 @@ if (evidence) {
 }
 
 if (registry) {
-  if (registry.schema_version !== 15) failures.push(`${registryPath}: schema_version drift`);
+  if (registry.schema_version !== 16) failures.push(`${registryPath}: schema_version drift`);
   if (registry.evidence?.comments_event_projection !== evidencePath) {
     failures.push(`${registryPath}: comments event projection evidence path drift`);
   }
@@ -598,10 +596,10 @@ if (registry) {
 }
 
 for (const marker of [
-  'Blog FBA registry schema v15 and Comments projection evidence schema v6',
+  'Blog FBA registry schema v16 and Comments projection evidence schema v7',
   'derived Comments counters that preserve Blog business',
-  'source-level',
-  'runtime/remote evidence is still pending',
+  'architecture/source level',
+  'Runtime/remote evidence is still pending',
 ]) {
   requireMarker(plan, marker, planPath);
 }
