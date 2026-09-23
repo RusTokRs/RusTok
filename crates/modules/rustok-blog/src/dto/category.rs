@@ -8,7 +8,7 @@ pub struct CreateCategoryInput {
     pub locale: String,
     #[schema(max_length = 120)]
     pub name: String,
-    #[schema(max_length = 255)]
+    #[schema(max_length = 120)]
     pub slug: Option<String>,
     #[schema(max_length = 1000)]
     pub description: Option<String>,
