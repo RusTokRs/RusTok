@@ -469,6 +469,7 @@ pub(crate) async fn sync_post_tags_in_tx(
         )
         .await?;
 
+    validate_post_tag_terms_in_tx(txn, tenant_id, &term_ids, &normalized_locale).await?;
     increment_tag_usage_in_tx(txn, tenant_id, &term_ids).await?;
 
     let now = Utc::now();
@@ -481,6 +482,43 @@ pub(crate) async fn sync_post_tags_in_tx(
         }
         .insert(txn)
         .await?;
+    }
+
+    Ok(())
+}
+
+async fn validate_post_tag_terms_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    tag_ids: &[Uuid],
+    locale: &str,
+) -> BlogResult<()> {
+    if tag_ids.is_empty() {
+        return Ok(());
+    }
+
+    let terms = TaxonomyOwnerReader::load_terms_by_ids_in_tx(
+        txn,
+        tenant_id,
+        TaxonomyTermKind::Tag,
+        tag_ids,
+        locale,
+        Some(PLATFORM_FALLBACK_LOCALE),
+    )
+    .await?;
+
+    if terms.len() != tag_ids.iter().copied().collect::<HashSet<_>>().len() {
+        return Err(BlogError::invariant(
+            "Blog post tag mutation references missing or duplicate Taxonomy terms",
+        ));
+    }
+
+    for term in terms {
+        if term.scope_type == TaxonomyScopeType::Module
+            && term.scope_value.as_deref() == Some(BLOG_SCOPE_VALUE)
+        {
+            validate_tag_name(&term.name)?;
+        }
     }
 
     Ok(())
