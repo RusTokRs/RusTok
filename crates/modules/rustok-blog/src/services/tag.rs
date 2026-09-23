@@ -46,6 +46,7 @@ impl TagService {
     ) -> BlogResult<Uuid> {
         enforce_scope(&security, Resource::Tags, Action::Create)?;
         validate_tag_name(&input.name)?;
+        validate_optional_tag_slug(input.slug.as_deref())?;
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         let tag_id = TaxonomyService::new(self.db.clone())
@@ -110,6 +111,8 @@ impl TagService {
     ) -> BlogResult<TagResponse> {
         enforce_scope(&security, Resource::Tags, Action::Update)?;
         let locale = normalize_locale(&input.locale)?;
+        validate_tag_name_if_present(input.name.as_deref())?;
+        validate_optional_tag_slug(input.slug.as_deref())?;
         self.ensure_blog_owned_tag(tenant_id, tag_id, &locale).await?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         let term = update_module_term_in_tx(
@@ -758,6 +761,24 @@ fn normalize_tag_names(tag_names: &[String]) -> Vec<String> {
     normalized
 }
 
+fn validate_tag_name_if_present(name: Option<&str>) -> BlogResult<()> {
+    if let Some(name) = name {
+        validate_tag_name(name)?;
+    }
+    Ok(())
+}
+
+fn validate_optional_tag_slug(slug: Option<&str>) -> BlogResult<()> {
+    if let Some(slug) = slug
+        && slug.chars().count() > 100
+    {
+        return Err(BlogError::validation(
+            "Tag slug cannot exceed 100 characters",
+        ));
+    }
+    Ok(())
+}
+
 fn normalize_locale(locale: &str) -> BlogResult<String> {
     normalize_locale_code(locale).ok_or_else(|| BlogError::validation("Locale cannot be empty"))
 }
@@ -809,5 +830,12 @@ mod pagination_tests {
 
         assert!(validate_tag_name(&hundred_characters).is_ok());
         assert!(validate_tag_name(&one_hundred_and_one_characters).is_err());
+    }
+
+    #[test]
+    fn tag_slug_limit_is_enforced_at_the_owner_service_boundary() {
+        assert!(validate_optional_tag_slug(Some(&"a".repeat(100))).is_ok());
+        assert!(validate_optional_tag_slug(Some(&"a".repeat(101))).is_err());
+        assert!(validate_optional_tag_slug(None).is_ok());
     }
 }
