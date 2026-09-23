@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn persisted_invalid_term_locale_is_an_invariant_failure() {
         let error = normalize_persisted_term_locale(Uuid::nil(), "und").expect_err("invalid locale");
-        assert!(matches!(error, TaxonomyError::Invariant(_)));
+        assert!(matches!(error, TaxonomyError::Internal(_)));
     }
 
     #[test]
