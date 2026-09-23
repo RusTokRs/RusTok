@@ -313,6 +313,10 @@ fn snapshot_key(identity: &PublicCommentsSnapshotIdentity) -> Option<String> {
 }
 
 fn degraded_availability(error: &BlogError) -> Option<PublicCommentsAvailability> {
+    if matches!(error, BlogError::CommentsUnavailable) {
+        return Some(PublicCommentsAvailability::Unavailable);
+    }
+
     let BlogError::Rich(error) = error else {
         return None;
     };
@@ -353,6 +357,14 @@ mod tests {
             parent_comment_id: None,
             created_at: "2026-08-09T00:00:00Z".to_string(),
         }
+    }
+
+    #[test]
+    fn missing_comments_capability_is_a_degraded_unavailable_state() {
+        assert_eq!(
+            degraded_availability(&BlogError::CommentsUnavailable),
+            Some(PublicCommentsAvailability::Unavailable)
+        );
     }
 
     #[test]
