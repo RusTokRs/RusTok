@@ -46,7 +46,10 @@ Category route normalization is also delegated to the canonical Taxonomy normali
 Blog Tag localized names and caller-supplied slugs are bounded to 100 Unicode
 characters. The Blog Create/Update DTO schemas and service validation use the
 same character-count semantics as the canonical Taxonomy term validator; UTF-8
-byte length is not used for these user-facing limits.
+byte length is not used for these user-facing limits. Post tag mutations enforce
+the same 100-character bound for Blog-owned module:blog terms after Taxonomy
+resolves or creates them, while shared global Taxonomy tags remain attachable
+without inheriting Blog's local length policy.
 
 ## Post owner contract
 
