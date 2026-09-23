@@ -259,80 +259,41 @@ fn StatusBadge(status: String) -> impl IntoView {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn apply_post_to_form(
-    set_editing_post_id: WriteSignal<Option<String>>,
-    set_editing_version: WriteSignal<Option<i32>>,
-    set_title: WriteSignal<String>,
-    set_slug: WriteSignal<String>,
-    set_excerpt: WriteSignal<String>,
-    set_content: WriteSignal<RichTextDocument>,
-    set_locale: WriteSignal<String>,
-    set_tags_input: WriteSignal<String>,
-    set_publish_now: WriteSignal<bool>,
-    post: &BlogPostDetail,
-) {
+#[derive(Clone, Copy)]
+pub(super) struct BlogPostFormSetters {
+    pub(super) editing_post_id: WriteSignal<Option<String>>,
+    pub(super) editing_version: WriteSignal<Option<i32>>,
+    pub(super) title: WriteSignal<String>,
+    pub(super) slug: WriteSignal<String>,
+    pub(super) excerpt: WriteSignal<String>,
+    pub(super) content: WriteSignal<RichTextDocument>,
+    pub(super) locale: WriteSignal<String>,
+    pub(super) tags_input: WriteSignal<String>,
+    pub(super) publish_now: WriteSignal<bool>,
+}
+
+pub(super) fn apply_post_to_form(setters: BlogPostFormSetters, post: &BlogPostDetail) {
     apply_form_state(
-        set_editing_post_id,
-        set_editing_version,
-        set_title,
-        set_slug,
-        set_excerpt,
-        set_content,
-        set_locale,
-        set_tags_input,
-        set_publish_now,
+        setters,
         core::BlogPostEditorFormState::from_post(post),
     );
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn reset_form(
-    set_editing_post_id: WriteSignal<Option<String>>,
-    set_editing_version: WriteSignal<Option<i32>>,
-    set_title: WriteSignal<String>,
-    set_slug: WriteSignal<String>,
-    set_excerpt: WriteSignal<String>,
-    set_content: WriteSignal<RichTextDocument>,
-    set_locale: WriteSignal<String>,
-    set_tags_input: WriteSignal<String>,
-    set_publish_now: WriteSignal<bool>,
-    default_locale: &str,
-) {
+pub(super) fn reset_form(setters: BlogPostFormSetters, default_locale: &str) {
     apply_form_state(
-        set_editing_post_id,
-        set_editing_version,
-        set_title,
-        set_slug,
-        set_excerpt,
-        set_content,
-        set_locale,
-        set_tags_input,
-        set_publish_now,
+        setters,
         core::BlogPostEditorFormState::empty(default_locale),
     );
 }
 
-#[allow(clippy::too_many_arguments)]
-fn apply_form_state(
-    set_editing_post_id: WriteSignal<Option<String>>,
-    set_editing_version: WriteSignal<Option<i32>>,
-    set_title: WriteSignal<String>,
-    set_slug: WriteSignal<String>,
-    set_excerpt: WriteSignal<String>,
-    set_content: WriteSignal<RichTextDocument>,
-    set_locale: WriteSignal<String>,
-    set_tags_input: WriteSignal<String>,
-    set_publish_now: WriteSignal<bool>,
-    state: core::BlogPostEditorFormState,
-) {
-    set_editing_post_id.set(state.editing_post_id);
-    set_editing_version.set(state.version);
-    set_title.set(state.title);
-    set_slug.set(state.slug);
-    set_excerpt.set(state.excerpt);
-    set_content.set(state.content);
-    set_locale.set(state.locale);
-    set_tags_input.set(state.tags_input);
-    set_publish_now.set(state.publish_now);
+fn apply_form_state(setters: BlogPostFormSetters, state: core::BlogPostEditorFormState) {
+    setters.editing_post_id.set(state.editing_post_id);
+    setters.editing_version.set(state.version);
+    setters.title.set(state.title);
+    setters.slug.set(state.slug);
+    setters.excerpt.set(state.excerpt);
+    setters.content.set(state.content);
+    setters.locale.set(state.locale);
+    setters.tags_input.set(state.tags_input);
+    setters.publish_now.set(state.publish_now);
 }
