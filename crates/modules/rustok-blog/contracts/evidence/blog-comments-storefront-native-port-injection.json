@@ -29,8 +29,8 @@
     "facade_reexport": "pub use rustok_comments::CommentsThreadPort;",
     "lookup": "HostRuntimeContext::shared_get",
     "selector": "comment_service",
-    "injected_constructor": "CommentService::with_comments_thread_port",
-    "fallback_constructor": "CommentService::new",
+    "injected_constructor": "CommentService::from_optional_comments_thread_port",
+    "fallback_constructor": "CommentService::from_optional_comments_thread_port",
     "native_endpoint": "blog/storefront-data",
     "operation": "list_public_comments_for_target"
   },

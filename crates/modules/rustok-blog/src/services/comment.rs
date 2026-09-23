@@ -50,6 +50,7 @@ impl CommentService {
         Self::from_optional_comments_thread_port(db, Some(comments_thread_port))
     }
 
+    /// Returns the active CommentsThreadPort or fails with COMMENTS_PROVIDER_UNAVAILABLE.
     fn require_comments_thread_port(&self) -> BlogResult<&dyn CommentsThreadPort> {
         self.comments_thread_port
             .as_deref()

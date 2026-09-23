@@ -441,6 +441,24 @@ if (evidence) {
     failures.push(`${evidencePath}: source harness case drift`);
   }
 
+  const hostRegistration = evidence.host_registration_harness ?? {};
+  if (
+    hostRegistration.status !== 'executable_no_run' ||
+    hostRegistration.runtime_status !== 'not_run' ||
+    hostRegistration.path !== modulePath ||
+    hostRegistration.module !== 'module::tests' ||
+    hostRegistration.command !== hostRegistrationHarnessCommand ||
+    hostRegistration.scope !== 'module_registry_handler_identity_and_routing_only'
+  ) {
+    failures.push(`${evidencePath}: host registration harness drift`);
+  }
+  if (
+    [...(hostRegistration.cases ?? [])].join('|') !==
+    'module_registers_comment_projection_handler_with_host_routing'
+  ) {
+    failures.push(`${evidencePath}: host registration harness case drift`);
+  }
+
   const postgres = evidence.postgres_harness ?? {};
   if (
     postgres.status !== 'executable_no_run' ||

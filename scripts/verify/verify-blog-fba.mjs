@@ -165,7 +165,7 @@ if (registry.evidence.runtime_fallback_smoke !== runtimeSmokePath) fail('runtime
 if (registry.evidence.consumer_runtime_order_smoke !== consumerRuntimeOrderSmokePath) fail('consumer runtime-order smoke evidence path drift');
 if (registry.evidence.consumer_runtime_order_smoke_runner !== consumerRuntimeOrderSmoke.runner) fail('consumer runtime-order smoke runner drift');
 if (registry.contract_tests.fallback_smoke.status !== 'source_verified_no_compile') fail('fallback smoke status drift');
-if (runtimeSmoke.schema_version !== 2 || runtimeSmoke.generated_from !== registryPath || runtimeSmoke.status !== 'source_verified_no_compile') {
+if (runtimeSmoke.schema_version !== 3 || runtimeSmoke.generated_from !== registryPath || runtimeSmoke.status !== 'source_verified_no_compile') {
   fail('runtime smoke header/status drift');
 }
 if (runtimeSmoke.runner !== 'scripts/verify/verify-blog-comments-port-boundary.mjs') fail('runtime smoke runner drift');

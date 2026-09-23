@@ -50,7 +50,7 @@ const blogDrift = fixture();
 const commentService = path.join(blogDrift, 'crates/modules/rustok-blog/src/services/comment.rs');
 fs.writeFileSync(
   commentService,
-  fs.readFileSync(commentService, 'utf8').replace('self.ensure_post_exists(tenant_id, post_id).await?;', '/* missing post ownership guard */'),
+  fs.readFileSync(commentService, 'utf8').replaceAll('ensure_post_exists', '/* missing post ownership guard */'),
 );
 expectFailure(blogDrift, /blog create_comment source marker missing: ensure_post_exists/);
 

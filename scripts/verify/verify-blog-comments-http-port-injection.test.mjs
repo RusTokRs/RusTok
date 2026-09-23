@@ -43,12 +43,7 @@ use rustok_comments::CommentsThreadPort;
 use std::sync::Arc;
 comments_thread_port: Option<Arc<dyn CommentsThreadPort>>
 fn comment_service(&self) -> CommentService {
-${missingInjectedBranch ? '' : `
-if let Some(comments_thread_port) = self.comments_thread_port.clone() {
-CommentService::with_comments_thread_port(self.db_clone(), comments_thread_port)
-}
-`}
-${missingFallback ? '' : 'CommentService::new(self.db_clone(), self.event_bus())'}
+${missingInjectedBranch || missingFallback ? '' : 'CommentService::from_optional_comments_thread_port('}
 }
 ${missingSharedLookup ? '' : 'comments_thread_port: runtime.shared_get::<Arc<dyn CommentsThreadPort>>()'}
 ${missingHarness ? '' : `
@@ -120,8 +115,8 @@ comments_thread_port: Arc<dyn CommentsThreadPort>
         shared_value: 'Arc<dyn CommentsThreadPort>',
         lookup: 'HostRuntimeContext::shared_get',
         selector: 'BlogHttpRuntime::comment_service',
-        injected_constructor: 'CommentService::with_comments_thread_port',
-        fallback_constructor: 'CommentService::new',
+        injected_constructor: 'CommentService::from_optional_comments_thread_port',
+        fallback_constructor: 'CommentService::from_optional_comments_thread_port',
         http_operation: 'moderate_comment',
       },
       harness: {

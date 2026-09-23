@@ -119,19 +119,19 @@ test('rejects removal of the injected selector branch', () => {
     rejects(
       removeMarker(
         nativeAdapterPath,
-        'rustok_blog::CommentService::with_comments_thread_port(',
+        'rustok_blog::CommentService::from_optional_comments_thread_port(',
       ),
     ).status,
     0,
   );
 });
 
-test('rejects removal of the in-process fallback branch', () => {
+test('rejects removal of the selector constructor', () => {
   assert.notEqual(
     rejects(
       removeMarker(
         nativeAdapterPath,
-        'rustok_blog::CommentService::new(runtime_ctx.db_clone(), event_bus)',
+        'fn comment_service(',
       ),
     ).status,
     0,
@@ -152,7 +152,7 @@ test('rejects removal of the storefront selector handoff', () => {
     rejects(
       removeMarker(
         nativeAdapterPath,
-        'let comments = comment_service(&runtime_ctx, event_bus.clone());',
+        'let comments = comment_service(&runtime_ctx);',
       ),
     ).status,
     0,

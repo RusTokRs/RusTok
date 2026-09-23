@@ -306,7 +306,7 @@ for (const marker of [
   'store_snapshot_best_effort',
   'load_snapshot_best_effort',
   'stable_projection_revision',
-  'const stable_cursor_before = if snapshot_store.is_some()',
+  'let stable_cursor_before = if snapshot_store.is_some()',
   'projection_revision_after',
   'MAX_PUBLIC_COMMENTS_SNAPSHOT_BYTES: usize = 256 * 1024',
   'snapshot.schema_version == SNAPSHOT_SCHEMA_VERSION',
@@ -336,7 +336,7 @@ for (const marker of [
   'runtime.public_comments_snapshot_store()',
   'availability: read.availability.into()',
   'cached_snapshot: read.cached_snapshot',
-  '.map_err(|error| async_graphql::Error::new(error.to_string()))?',
+  '.map_err(crate::error::public::to_graphql_error)?;',
 ]) requireMarker(graphqlOwner, marker, graphqlOwnerPath);
 requireNoMarker(graphqlOwner, 'fn graphql_comments_read_availability(', graphqlOwnerPath);
 

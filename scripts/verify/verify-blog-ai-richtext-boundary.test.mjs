@@ -98,7 +98,7 @@ function fixture(options = {}) {
     root,
     'crates/modules/rustok-blog/contracts/blog-fba-registry.json',
     JSON.stringify({
-      schema_version: 13,
+      schema_version: 16,
       verification_chain: {
         source_gates: {
           ai_richtext_boundary: {

@@ -67,15 +67,14 @@ use std::sync::Arc;
 struct NativeContext {
 comments_thread_port: Option<Arc<dyn rustok_blog::CommentsThreadPort>>
 }
-let runtime = expect_context::<HostRuntimeContext>();
+let runtime = use_context::<HostRuntimeContext>();
 ${missingTenantBinding ? '' : 'if auth.tenant_id != tenant.id'}
 ${missingLookup ? '' : 'runtime.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>()'}
 fn comment_service(context: &NativeContext) -> rustok_blog::CommentService {
 context.comments_thread_port.clone()
-${missingInjected ? '' : 'rustok_blog::CommentService::with_comments_thread_port('}
-${missingFallback ? '' : 'rustok_blog::CommentService::new(context.db.clone(), context.event_bus.clone())'}
+${missingInjected || missingFallback ? '' : 'rustok_blog::CommentService::from_optional_comments_thread_port('}
 }
-${directConstruction ? 'rustok_blog::CommentService::new(context.db.clone(), context.event_bus.clone())' : ''}
+${directConstruction ? 'rustok_blog::CommentService::new(' : ''}
 fn require_manage_permission(
 &[rustok_api::Permission::BLOG_POSTS_MANAGE]
 "Permission denied: blog_posts:manage required"
@@ -84,11 +83,11 @@ ${listAuthorization}
 page: page.max(1)
 per_page: per_page.clamp(1, 100)
 .list_for_post_with_locale_fallback(
-${broadListFallback ? 'Err(_) => BlogModerationCommentList' : '.map_err(ServerFnError::new)?;'}
+${broadListFallback ? 'Err(_) => BlogModerationCommentList' : '.map_err(public_blog_error)?;'}
 #[server(prefix = "/api/fn", endpoint = "blog/admin/moderate-comment")]
 ${mutationAuthorization}
 .moderate_comment(
-${swallowedMutation ? 'unwrap_or_default()' : '.map_err(ServerFnError::new)?;'}
+${swallowedMutation ? 'unwrap_or_default()' : '.map_err(public_blog_error)?;'}
 #[cfg(feature = "ssr")]
 fn optional_text
 ${
@@ -161,8 +160,8 @@ PortErrorKind::Timeout => rustok_core::error::ErrorKind::Timeout
         shared_value: 'Arc<dyn rustok_blog::CommentsThreadPort>',
         lookup: 'HostRuntimeContext::shared_get',
         selector: 'comment_service',
-        injected_constructor: 'CommentService::with_comments_thread_port',
-        fallback_constructor: 'CommentService::new',
+        injected_constructor: 'CommentService::from_optional_comments_thread_port',
+        fallback_constructor: 'CommentService::from_optional_comments_thread_port',
         native_endpoints: [
           'blog/admin/moderation-comments',
           'blog/admin/moderate-comment',

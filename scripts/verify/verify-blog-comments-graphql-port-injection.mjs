@@ -127,8 +127,8 @@ if (evidence) {
     composition.shared_value !== 'Arc<dyn CommentsThreadPort>' ||
     composition.lookup !== 'GraphqlRuntimeInputs::shared_get' ||
     composition.selector !== 'BlogGraphqlRuntimeData::comment_service' ||
-    composition.injected_constructor !== 'CommentService::with_comments_thread_port' ||
-    composition.fallback_constructor !== 'CommentService::new' ||
+    composition.injected_constructor !== 'CommentService::from_optional_comments_thread_port' ||
+    composition.fallback_constructor !== 'CommentService::from_optional_comments_thread_port' ||
     !sameSet(composition.graphql_operations ?? [], expectedOperations)
   ) failures.push(`${evidencePath}: composition drift`);
 
@@ -177,10 +177,7 @@ for (const marker of [
   'pub fn attach_schema_data(',
   'inputs.shared_get::<Arc<dyn CommentsThreadPort>>()',
   'pub(crate) fn comment_service(',
-  'match self.comments_thread_port.clone()',
-  'Some(comments_thread_port)',
-  'CommentService::with_comments_thread_port(db, comments_thread_port)',
-  'None => CommentService::new(db, event_bus)',
+  'CommentService::from_optional_comments_thread_port(',
   'fn graphql_runtime_data_exposes_comments_port_selection()',
   'let factory: fn(&GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, String>',
   'BlogGraphqlRuntimeData::comment_service;',
@@ -190,12 +187,12 @@ for (const marker of [
   'use super::runtime_data::BlogGraphqlRuntimeData;',
   'async fn public_comments(',
   'async fn moderation_comments(',
-  'let service = runtime.comment_service(db.clone(), event_bus.clone());',
+  'let service = runtime.comment_service(db.clone());',
 ]) requireMarker(commentReads, marker, commentReadsPath);
 if (countMarker(commentReads, 'ctx.data::<BlogGraphqlRuntimeData>()?;') !== 2) {
   failures.push(`${commentReadsPath}: expected two GraphQL runtime-data lookups`);
 }
-if (countMarker(commentReads, 'runtime.comment_service(db.clone(), event_bus.clone())') !== 2) {
+if (countMarker(commentReads, 'runtime.comment_service(db.clone())') !== 2) {
   failures.push(`${commentReadsPath}: expected two runtime selector calls`);
 }
 
@@ -203,7 +200,7 @@ for (const marker of [
   'use super::runtime_data::BlogGraphqlRuntimeData;',
   'async fn moderate_comment(',
   'let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;',
-  '.comment_service(db.clone(), event_bus.clone())',
+  '.comment_service(db.clone())',
 ]) requireMarker(commentMutation, marker, commentMutationPath);
 
 for (const source of [commentReads, commentMutation]) {

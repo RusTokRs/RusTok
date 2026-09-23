@@ -117,8 +117,8 @@ if (evidence) {
     composition.facade_reexport !== 'pub use rustok_comments::CommentsThreadPort;' ||
     composition.lookup !== 'HostRuntimeContext::shared_get' ||
     composition.selector !== 'comment_service' ||
-    composition.injected_constructor !== 'CommentService::with_comments_thread_port' ||
-    composition.fallback_constructor !== 'CommentService::new' ||
+    composition.injected_constructor !== 'CommentService::from_optional_comments_thread_port' ||
+    composition.fallback_constructor !== 'CommentService::from_optional_comments_thread_port' ||
     composition.native_endpoint !== 'blog/storefront-data' ||
     composition.operation !== 'list_public_comments_for_target'
   ) failures.push(`${evidencePath}: composition drift`);
@@ -157,7 +157,7 @@ if (
 ) failures.push(`${consumerMatrixPath}: base consumer status drift`);
 
 if (
-  fallbackEvidence?.schema_version !== 2 ||
+  fallbackEvidence?.schema_version !== 3 ||
   fallbackEvidence?.status !== 'source_verified_no_compile' ||
   fallbackEvidence?.runtime_status !== 'not_run' ||
   fallbackEvidence?.storefront_read_degradation?.cached_thread_snapshot !==
@@ -179,13 +179,12 @@ requireMarker(facade, 'pub use rustok_comments::CommentsThreadPort;', facadePath
 for (const marker of [
   'use std::sync::Arc;',
   '#[server(prefix = "/api/fn", endpoint = "blog/storefront-data")]',
-  'let runtime_ctx = expect_context::<HostRuntimeContext>();',
+  'use_context::<HostRuntimeContext>()',
   'fn comment_service(',
   'runtime_ctx: &rustok_api::HostRuntimeContext,',
   'runtime_ctx.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>()',
-  'rustok_blog::CommentService::with_comments_thread_port(',
-  'rustok_blog::CommentService::new(runtime_ctx.db_clone(), event_bus)',
-  'let comments = comment_service(&runtime_ctx, event_bus.clone());',
+  'rustok_blog::CommentService::from_optional_comments_thread_port(',
+  'let comments = comment_service(&runtime_ctx);',
   'runtime_ctx.shared_get::<Arc<dyn PublicCommentsSnapshotStore>>()',
   'list_public_comments_with_snapshot(',
   'availability: map_comments_availability(public_comments.availability)',
@@ -199,15 +198,13 @@ for (const marker of [
   ') -> rustok_blog::CommentService = comment_service;',
 ]) requireMarker(nativeAdapter, marker, nativeAdapterPath);
 
-if (countMarker(nativeAdapter, 'rustok_blog::CommentService::with_comments_thread_port(') !== 1) {
-  failures.push(`${nativeAdapterPath}: expected one injected constructor branch`);
+if (countMarker(nativeAdapter, 'rustok_blog::CommentService::from_optional_comments_thread_port(') !== 1) {
+  failures.push(`${nativeAdapterPath}: expected one selector constructor branch`);
 }
-if (countMarker(nativeAdapter, 'rustok_blog::CommentService::new(') !== 1) {
-  failures.push(`${nativeAdapterPath}: expected one in-process fallback branch`);
+if (countMarker(nativeAdapter, 'comment_service(&runtime_ctx)') < 1) {
+  failures.push(`${nativeAdapterPath}: expected public-read selector handoff`);
 }
-if (countMarker(nativeAdapter, 'comment_service(&runtime_ctx, event_bus.clone())') !== 1) {
-  failures.push(`${nativeAdapterPath}: expected one public-read selector handoff`);
-}
+requireNoMarker(nativeAdapter, 'rustok_blog::CommentService::new(', nativeAdapterPath);
 requireNoMarker(nativeAdapter, 'rustok_comments::CommentsThreadPort', nativeAdapterPath);
 requireNoMarker(nativeAdapter, 'Err(_) => BlogCommentList', nativeAdapterPath);
 requireNoMarker(nativeAdapter, 'fn comments_read_availability(', nativeAdapterPath);
@@ -215,15 +212,12 @@ requireNoMarker(nativeAdapter, 'fn comments_read_availability(', nativeAdapterPa
 const lookupIndex = nativeAdapter.indexOf(
   'runtime_ctx.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>()',
 );
-const injectedIndex = nativeAdapter.indexOf(
-  'rustok_blog::CommentService::with_comments_thread_port(',
+const constructorIndex = nativeAdapter.indexOf(
+  'rustok_blog::CommentService::from_optional_comments_thread_port(',
 );
-const fallbackIndex = nativeAdapter.indexOf('rustok_blog::CommentService::new(');
-if (
-  lookupIndex < 0 ||
-  injectedIndex < lookupIndex ||
-  fallbackIndex < injectedIndex
-) failures.push(`${nativeAdapterPath}: selector branch order drift`);
+if (lookupIndex < 0 || constructorIndex < 0) {
+  failures.push(`${nativeAdapterPath}: selector constructor drift`);
+}
 
 for (const marker of [
   'pub fn with_comments_thread_port(',

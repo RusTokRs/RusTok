@@ -116,8 +116,8 @@ if (evidence) {
     composition.shared_value !== 'Arc<dyn rustok_blog::CommentsThreadPort>' ||
     composition.lookup !== 'HostRuntimeContext::shared_get' ||
     composition.selector !== 'comment_service' ||
-    composition.injected_constructor !== 'CommentService::with_comments_thread_port' ||
-    composition.fallback_constructor !== 'CommentService::new' ||
+    composition.injected_constructor !== 'CommentService::from_optional_comments_thread_port' ||
+    composition.fallback_constructor !== 'CommentService::from_optional_comments_thread_port' ||
     !sameSet(composition.native_endpoints ?? [], [
       'blog/admin/moderation-comments',
       'blog/admin/moderate-comment',
@@ -171,13 +171,12 @@ for (const marker of [
   'use std::sync::Arc;',
   'struct NativeContext {',
   'comments_thread_port: Option<Arc<dyn rustok_blog::CommentsThreadPort>>',
-  'let runtime = expect_context::<HostRuntimeContext>();',
+  'use_context::<HostRuntimeContext>()',
   'if auth.tenant_id != tenant.id',
   'runtime.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>()',
   'fn comment_service(context: &NativeContext) -> rustok_blog::CommentService',
   'context.comments_thread_port.clone()',
-  'rustok_blog::CommentService::with_comments_thread_port(',
-  'rustok_blog::CommentService::new(context.db.clone(), context.event_bus.clone())',
+  'rustok_blog::CommentService::from_optional_comments_thread_port(',
   '#[server(prefix = "/api/fn", endpoint = "blog/admin/moderation-comments")]',
   '#[server(prefix = "/api/fn", endpoint = "blog/admin/moderate-comment")]',
   'require_manage_permission(&context.auth)?;',
@@ -187,17 +186,15 @@ for (const marker of [
   'per_page: per_page.clamp(1, 100)',
   '.list_for_post_with_locale_fallback(',
   '.moderate_comment(',
-  '.map_err(ServerFnError::new)?;',
+  '.map_err(public_blog_error)?;',
   'fn admin_native_runtime_exposes_comments_port_selection()',
   'let selector: fn(&NativeContext) -> rustok_blog::CommentService = comment_service;',
 ]) requireMarker(adminAdapter, marker, adminAdapterPath);
 
-if (countMarker(adminAdapter, 'CommentService::with_comments_thread_port(') !== 1) {
-  failures.push(`${adminAdapterPath}: expected one injected constructor branch`);
+if (countMarker(adminAdapter, 'rustok_blog::CommentService::from_optional_comments_thread_port(') !== 1) {
+  failures.push(`${adminAdapterPath}: expected one selector constructor branch`);
 }
-if (countMarker(adminAdapter, 'CommentService::new(') !== 1) {
-  failures.push(`${adminAdapterPath}: expected one in-process fallback branch`);
-}
+requireNoMarker(adminAdapter, 'rustok_blog::CommentService::new(', adminAdapterPath);
 if (countMarker(adminAdapter, 'comment_service(&context)') !== 2) {
   failures.push(`${adminAdapterPath}: expected two moderation selector handoffs`);
 }
@@ -225,7 +222,7 @@ for (const [label, source] of [
   if (permissionIndex < 0 || selectorIndex < permissionIndex) {
     failures.push(`${adminAdapterPath}: ${label} authorization/selector order drift`);
   }
-  if (!source.includes('.map_err(ServerFnError::new)?;')) {
+  if (!source.includes('.map_err(public_blog_error)?;')) {
     failures.push(`${adminAdapterPath}: ${label} error propagation drift`);
   }
 }

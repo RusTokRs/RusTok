@@ -86,14 +86,7 @@ comments_thread_port: Option<Arc<dyn CommentsThreadPort>>
 pub fn attach_schema_data(
 ${missingHostLookup ? '' : 'inputs.shared_get::<Arc<dyn CommentsThreadPort>>()'}
 pub(crate) fn comment_service(
-match self.comments_thread_port.clone()
-Some(comments_thread_port)
-${
-  missingInjectedBranch
-    ? ''
-    : 'CommentService::with_comments_thread_port(db, comments_thread_port)'
-}
-${missingFallback ? '' : 'None => CommentService::new(db, event_bus)'}
+${missingInjectedBranch || missingFallback ? '' : 'CommentService::from_optional_comments_thread_port('}
 ${
   missingHarness
     ? ''
@@ -113,10 +106,10 @@ BlogGraphqlRuntimeData::comment_service;
 use super::runtime_data::BlogGraphqlRuntimeData;
 async fn public_comments(
 let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
-let service = runtime.comment_service(db.clone(), event_bus.clone());
+let service = runtime.comment_service(db.clone());
 async fn moderation_comments(
 let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
-let service = runtime.comment_service(db.clone(), event_bus.clone());
+let service = runtime.comment_service(db.clone());
 ${directReadConstruction ? 'CommentService::new(db.clone(), event_bus.clone())' : ''}
 `,
   );
@@ -127,7 +120,7 @@ ${directReadConstruction ? 'CommentService::new(db.clone(), event_bus.clone())' 
 use super::runtime_data::BlogGraphqlRuntimeData;
 async fn moderate_comment(
 let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
-runtime.comment_service(db.clone(), event_bus.clone())
+.comment_service(db.clone())
 ${
   directMutationConstruction
     ? 'CommentService::with_comments_thread_port(db.clone(), comments_thread_port)'
@@ -179,8 +172,8 @@ ${
         shared_value: 'Arc<dyn CommentsThreadPort>',
         lookup: 'GraphqlRuntimeInputs::shared_get',
         selector: 'BlogGraphqlRuntimeData::comment_service',
-        injected_constructor: 'CommentService::with_comments_thread_port',
-        fallback_constructor: 'CommentService::new',
+        injected_constructor: 'CommentService::from_optional_comments_thread_port',
+        fallback_constructor: 'CommentService::from_optional_comments_thread_port',
         graphql_operations: ['public_comments', 'moderation_comments', 'moderate_comment'],
       },
       harness: {

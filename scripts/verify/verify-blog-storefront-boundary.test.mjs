@@ -189,7 +189,7 @@ normalize_channel_slug
 is_visible_for_public_channel
 ctx.channel_slug
 Blog is not available for the current channel
-${options.missingComments ? "" : `CommentService::new
+${options.missingComments ? "" : `CommentService::from_optional_comments_thread_port
 list_public_comments_with_snapshot(
 SecurityContext::public_read()
 ${pagination ? "comments_page,\nCOMMENTS_PAGE_SIZE,\n" : ""}map_comment_list_item
@@ -211,7 +211,7 @@ ${pagination ? "bounded_comments_request_page(comments_page); comments_per_page:
     "crates/modules/rustok-blog/src/graphql/types.rs",
     options.missingComments
       ? "pub struct GqlPost;"
-      : `${options.nullableGraphqlRichtext ? "pub content: Option<RichTextView>; pub content_plain_text: Option<String>;" : "pub content: RichTextView; pub content_plain_text: String;"} #[graphql(complex)] pub struct GqlPost; async fn public_comments() { runtime.comment_service(db.clone(), event_bus.clone()); list_public_comments_with_snapshot(runtime.public_comments_snapshot_store()); GqlPublicCommentList; }`,
+      : `${options.nullableGraphqlRichtext ? "pub content: Option<RichTextView>; pub content_plain_text: Option<String>;" : "pub content: RichTextView; pub content_plain_text: String;"} #[graphql(complex)] pub struct GqlPost; async fn public_comments( { runtime.comment_service(db.clone()); list_public_comments_with_snapshot(runtime.public_comments_snapshot_store()); GqlPublicCommentList; }`,
   );
   if (options.legacyApi) {
     writeFixtureFile(root, "crates/modules/rustok-blog/storefront/src/api.rs", "legacy api");

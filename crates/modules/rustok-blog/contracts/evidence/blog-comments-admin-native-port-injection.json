@@ -27,8 +27,8 @@
     "shared_value": "Arc<dyn rustok_blog::CommentsThreadPort>",
     "lookup": "HostRuntimeContext::shared_get",
     "selector": "comment_service",
-    "injected_constructor": "CommentService::with_comments_thread_port",
-    "fallback_constructor": "CommentService::new",
+    "injected_constructor": "CommentService::from_optional_comments_thread_port",
+    "fallback_constructor": "CommentService::from_optional_comments_thread_port",
     "native_endpoints": [
       "blog/admin/moderation-comments",
       "blog/admin/moderate-comment"

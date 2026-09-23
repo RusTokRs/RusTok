@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -77,10 +77,12 @@ fn projection_applied_delta(previous_delta: Option<i32>, current_delta: i32) -> 
 fn next_comment_count(comment_count: i32, delta: i32)
 comment_count.saturating_add(delta).max(0)
 let Some(change) = comment_projection_change(&envelope.event) else
+Column::PostId.eq(change.post_id)
+Column::CommentId.eq(change.comment_id)
+async fn project(&self, envelope: &EventEnvelope) {
 let txn = self.db.begin().await?;
-${missingPostLock ? '' : 'let Some(post = blog_post::Entity::find_by_id(change.post_id)\n.filter(blog_post::Column::TenantId.eq(envelope.tenant_id))\n.lock_exclusive()'}
-${missingTenantScope ? '' : 'Column::TenantId.eq(envelope.tenant_id)'}
-${missingDeliveryOrdering ? '' : 'Column::PostId.eq(change.post_id)\nColumn::CommentId.eq(change.comment_id)\norder_by_desc(blog_comment_projection_delivery::Column::EventId)\ndelivery.event_id >= envelope.id'}
+${missingPostLock ? '' : `let Some(post) = blog_post::Entity::find_by_id(change.post_id)\n${missingTenantScope ? '' : '.filter(blog_post::Column::TenantId.eq(envelope.tenant_id))\n'}.lock_exclusive()`}
+${missingDeliveryOrdering ? '' : 'order_by_desc(blog_comment_projection_delivery::Column::EventId)\ndelivery.event_id >= envelope.id'}
 ${missingStateDelta ? '' : 'let applied_delta = projection_applied_delta(\nlet next_comment_count = next_comment_count(post.comment_count, applied_delta);\n'}
 let post_updated =
 ${missingTenantScope ? '' : 'Column::TenantId.eq(envelope.tenant_id)'}
@@ -91,11 +93,13 @@ OnConflict::column(blog_comment_projection_delivery::Column::EventId)
 .insert(&txn)
 ${missingOutbox ? '' : 'if post_updated {\nDomainEvent::ReindexRequested\n.publish_in_tx('}
 txn.commit().await?;
+}
 impl EventHandler for BlogCommentProjectionHandler
 fn handles(&self, event: &DomainEvent) -> bool {
   comment_projection_change(event).is_some()
 }
 async fn handle(&self, envelope: &EventEnvelope)
+projection_revision
 #[cfg(test)]
 fn classifies_blog_comment_lifecycle_events()
 fn ignores_non_blog_targets_and_unrelated_events()
@@ -119,7 +123,7 @@ retry_count: 0
 dispatcher.register_boxed(handler);
 assert_eq!(dispatcher.handler_count(), 1);
 let running = dispatcher.start();
-running.bus().publish_envelope(envelope.clone());
+running.bus().publish_envelope(envelope.clone())?;
 ${missingDispatcherWait ? '' : 'wait_for_dispatch_commit(&test_db.db, envelope.id).await?;'}
 running.stop();
 async fn wait_for_dispatch_commit(db: &DatabaseConnection, event_id: Uuid)
@@ -283,7 +287,7 @@ assert!(!handler.handles(&forum_created));
   ];
 
   const evidence = {
-    schema_version: 6,
+    schema_version: 7,
     module: 'blog',
     surface: 'comments_event_projection',
     status: statusDrift ? 'runtime_verified' : 'source_verified_no_compile',
@@ -349,6 +353,7 @@ assert!(!handler.handles(&forum_created));
         'delete_before_create_stays_non_negative_and_replays_in_order',
         'missing_post_replay_commits_only_after_source_appears',
         'outbox_failure_rolls_back_counter_and_delivery_before_retry',
+        'update_and_status_events_advance_projection_cursor_without_count_change',
       ],
     },
     restart_harness: {
@@ -400,7 +405,7 @@ assert!(!handler.handles(&forum_created));
   write(root, evidencePath, JSON.stringify(evidence, null, 2));
 
   write(root, registryPath, JSON.stringify({
-    schema_version: 15,
+    schema_version: 16,
     evidence: { comments_event_projection: evidencePath },
     verification_chain: {
       source_gates: {
@@ -429,28 +434,32 @@ assert!(!handler.handles(&forum_created));
         status: 'executable_no_run',
         command: harnessCommand,
       },
-      postgres_harness: {
-        path: postgresHarnessPath,
-        status: postgresStatusDrift ? 'executed' : 'executable_no_run',
-        runtime_status: postgresStatusDrift ? 'passed' : 'not_run',
-        environment: 'RUSTOK_BLOG_TEST_DATABASE_URL',
-        command: postgresHarnessCommand,
-      },
-      restart_harness: {
-        path: restartHarnessPath,
-        status: restartStatusDrift ? 'executed' : 'executable_no_run',
-        runtime_status: restartStatusDrift ? 'passed' : 'not_run',
-        environment: 'RUSTOK_BLOG_TEST_DATABASE_URL',
-        command: restartHarnessCommand,
-      },
+      postgres_harness: missingPostgresRegistration
+        ? undefined
+        : {
+            path: postgresHarnessPath,
+            status: postgresStatusDrift ? 'executed' : 'executable_no_run',
+            runtime_status: postgresStatusDrift ? 'passed' : 'not_run',
+            environment: 'RUSTOK_BLOG_TEST_DATABASE_URL',
+            command: postgresHarnessCommand,
+          },
+      restart_harness: missingRestartRegistration
+        ? undefined
+        : {
+            path: restartHarnessPath,
+            status: restartStatusDrift ? 'executed' : 'executable_no_run',
+            runtime_status: restartStatusDrift ? 'passed' : 'not_run',
+            environment: 'RUSTOK_BLOG_TEST_DATABASE_URL',
+            command: restartHarnessCommand,
+          },
     },
   }, null, 2));
 
   write(root, planPath(), [
-    'Blog FBA registry schema v15 and Comments projection evidence schema v6',
+    'Blog FBA registry schema v16 and Comments projection evidence schema v7',
     'derived Comments counters that preserve Blog business',
-    'source-level',
-    'runtime/remote evidence is still pending',
+    'architecture/source level',
+    'Runtime/remote evidence is still pending',
   ].join(' '));
 
   return root;
@@ -567,7 +576,7 @@ test('rejects PostgreSQL harnesses that can fall back to public tables', () => {
 });
 
 test('rejects a registry without the PostgreSQL target', () => {
-  expectRejected({ missingPostgresRegistration: true }, /PostgreSQL test path drift/);
+  expectRejected({ missingPostgresRegistration: true }, /event projection PostgreSQL harness drift/);
 });
 
 test('rejects a missing restart harness source', () => {
@@ -638,7 +647,7 @@ test('rejects stale optimistic projection artifacts in the evidence contract', (
   const root = fixture();
   try {
     const evidencePath = path.join(root, 'crates/modules/rustok-blog/contracts/evidence/blog-comments-event-projection.json');
-    const evidence = JSON.parse(readFile(root, evidencePath));
+    const evidence = readFile(root, evidencePath);
     evidence.cases.push({ name: 'bounded_optimistic_retry_policy' });
     writeFileSync(evidencePath, JSON.stringify(evidence, null, 2));
     const result = run(root);
