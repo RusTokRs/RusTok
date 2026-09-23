@@ -274,8 +274,7 @@ impl TaxonomyOwnerReader {
             let Some(term_names) = names.get_mut(&translation.term_id) else {
                 continue;
             };
-            let locale = normalize_term_locale(&translation.locale)
-                .unwrap_or_else(|| translation.locale.clone());
+            let locale = normalize_persisted_term_locale(translation.term_id, &translation.locale)?;
             term_names.names_by_locale.insert(locale, translation.name);
         }
 
@@ -345,6 +344,14 @@ where
             }
         })
         .collect())
+}
+
+fn normalize_persisted_term_locale(term_id: Uuid, locale: &str) -> TaxonomyResult<String> {
+    normalize_term_locale(locale).ok_or_else(|| {
+        TaxonomyError::invariant(format!(
+            "Taxonomy term {term_id} has an invalid persisted locale {locale:?}",
+        ))
+    })
 }
 
 fn normalize_requested_locale(locale: &str) -> TaxonomyResult<String> {
@@ -420,6 +427,12 @@ mod tests {
             normalize_term_locale(PLATFORM_FALLBACK_LOCALE),
             Some(PLATFORM_FALLBACK_LOCALE.to_owned())
         );
+    }
+
+    #[test]
+    fn persisted_invalid_term_locale_is_an_invariant_failure() {
+        let error = normalize_persisted_term_locale(Uuid::nil(), "und").expect_err("invalid locale");
+        assert!(matches!(error, TaxonomyError::Invariant(_)));
     }
 
     #[test]
