@@ -474,13 +474,12 @@ fn validate_slug(value: &str) -> Result<(), SeoTargetSlugError> {
     }
 
     let mut chars = value.chars();
-    let first = chars
-        .next()
-        .expect("validated SEO target slug must contain a first character");
-    let last = value
-        .chars()
-        .last()
-        .expect("validated SEO target slug must contain a last character");
+    let Some(first) = chars.next() else {
+        return Err(SeoTargetSlugError::Empty);
+    };
+    let Some(last) = value.chars().last() else {
+        return Err(SeoTargetSlugError::Empty);
+    };
     if !first.is_ascii_lowercase() && !first.is_ascii_digit() {
         return Err(SeoTargetSlugError::Boundary(value.to_string()));
     }
