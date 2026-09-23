@@ -39,7 +39,7 @@ jobs:
       created_epoch: ${{ steps.source.outputs.created_epoch }}
     steps:
       - name: Checkout tagged source
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.ref }}
           fetch-depth: 0
@@ -130,7 +130,7 @@ jobs:
         -C link-arg=-Wl,--build-id=none
     steps:
       - name: Checkout exact release commit
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
@@ -213,7 +213,7 @@ jobs:
         -C link-arg=-Wl,--build-id=none
     steps:
       - name: Checkout exact release commit
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
@@ -276,7 +276,7 @@ jobs:
       digest: ${{ steps.image-metadata.outputs.digest }}
     steps:
       - name: Checkout release image definition
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
@@ -431,7 +431,7 @@ jobs:
       artifact-metadata: write
     steps:
       - name: Checkout release scripts
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
@@ -492,7 +492,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout exact release notes
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1

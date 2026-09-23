@@ -59,7 +59,7 @@ jobs:
           test "$REVIEWED_DEPLOYMENT_IDENTITY" = "true"
 
       - name: Checkout exact reviewed source
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
