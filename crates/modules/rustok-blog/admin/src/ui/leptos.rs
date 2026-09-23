@@ -34,6 +34,30 @@ pub fn BlogAdmin() -> impl IntoView {
     let ui_locale = route_context.locale.clone();
     let seo_locale = ui_locale.clone();
     let host_locale_for_seo = ui_locale.clone().unwrap_or_default();
+    let seo_target_kind = match SeoTargetSlug::new(seo_builtin_slug::BLOG_POST) {
+        Ok(target_kind) => target_kind,
+        Err(_) => {
+            return view! {
+                <section class="m-6 rounded-2xl border border-destructive/30 bg-destructive/5 p-6">
+                    <h2 class="text-lg font-semibold text-destructive">
+                        {t(
+                            ui_locale.as_deref(),
+                            "blog.error.seoConfiguration",
+                            "Blog SEO configuration is unavailable",
+                        )}
+                    </h2>
+                    <p class="mt-2 text-sm text-muted-foreground">
+                        {t(
+                            ui_locale.as_deref(),
+                            "blog.error.seoTargetInvalid",
+                            "The Blog SEO target is invalid. Contact the platform administrator.",
+                        )}
+                    </p>
+                </section>
+            }
+            .into_any();
+        }
+    };
     let selected_post_query = use_route_query_value(AdminQueryKey::PostId.as_str());
     let query_writer = use_route_query_writer();
     let token = use_token();
@@ -805,8 +829,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     </section>
 
                     <SeoEntityPanel
-                        // INVARIANT: seo_builtin_slug::BLOG_POST is a compile-time static slug conforming to SeoTargetSlug format.
-                        target_kind=SeoTargetSlug::new(seo_builtin_slug::BLOG_POST).expect("builtin SEO target slug")
+                        target_kind=seo_target_kind
                         target_id=Signal::derive(move || editing_post_id.get())
                         locale=Signal::derive({
                             let host_locale_for_seo = host_locale_for_seo.clone();
@@ -829,4 +852,5 @@ pub fn BlogAdmin() -> impl IntoView {
                 </section>
             </div>
         }
+        .into_any()
 }
