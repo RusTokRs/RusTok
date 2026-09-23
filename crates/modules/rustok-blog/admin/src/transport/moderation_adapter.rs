@@ -84,10 +84,10 @@ pub async fn fetch_comments(
     )
     .await?;
 
-    Ok(response
+    response
         .post
         .map(|post| post.moderation_comments)
-        .unwrap_or_default())
+        .ok_or_else(|| GraphqlHttpError::Graphql("Blog post not found".into()))
 }
 
 pub async fn moderate_comment(
