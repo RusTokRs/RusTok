@@ -51,7 +51,12 @@ the same 100-character bound for Blog-owned module:blog terms after Taxonomy
 resolves or creates them, while shared global Taxonomy tags remain attachable
 without inheriting Blog's local length policy.
 
-## Post owner contract
+## Post input length semantics
+
+The Blog Post DTO length contracts use Unicode character counts for title,
+excerpt, SEO title, SEO description, and archive reason. The owner service uses
+the same character-count semantics. ASCII-normalized slug and channel-slug
+limits are byte-bounded by their storage/route contracts.\n\n## Post owner contract
 
 ### Create
 
