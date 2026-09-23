@@ -477,11 +477,17 @@ fn normalize_category_slug(input: Option<&str>, fallback_name: &str) -> BlogResu
 }
 
 fn normalize_non_empty_slug(slug: &str) -> BlogResult<String> {
-    rustok_taxonomy::normalize_term_route_key(slug).ok_or_else(|| {
+    let normalized = rustok_taxonomy::normalize_term_route_key(slug).ok_or_else(|| {
         BlogError::validation(
             "Slug must contain at least one routable letter or digit",
         )
-    })
+    })?;
+    if normalized.chars().count() > 120 {
+        return Err(BlogError::validation(
+            "Slug cannot exceed 120 characters after normalization",
+        ));
+    }
+    Ok(normalized)
 }
 
 #[cfg(test)]
