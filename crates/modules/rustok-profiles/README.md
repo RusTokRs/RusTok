@@ -27,6 +27,7 @@
 - Publish `ProfileUpdated` through the transactional outbox as part of active production profile-write transactions.
 - Emit stable owner-operation telemetry for self-service writes, event publication, and CLI backfill without logging profile copy, source email, generated handles, locale values, Media references, URLs, or provider/storage details.
 - Define reusable profile DTOs and reader contracts that groups, forum, blog, social, and commerce surfaces can consume.
+- Publish the neutral `rustok-profiles-api` presentation contract: downstream surfaces consume `ProfileSummaryReader` and `GqlProfileSummary` without linking the Profiles implementation crate. The host composes the owner implementation through `HostRuntimeContext`, preserving optional capability semantics and the shared GraphQL schema identity.
 
 ## Interactions
 

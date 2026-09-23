@@ -9,9 +9,11 @@ use crate::{CommentService, PublicCommentsSnapshotStore};
 
 /// Manifest-attached Blog GraphQL runtime capabilities.
 ///
-/// A host may publish transport-neutral Comments and public snapshot capabilities
-/// through `HostRuntimeContext`. Their absence is represented as an unavailable
-/// Comments capability; Blog never constructs a local provider fallback.
+/// A host may publish transport-neutral Comments, public snapshot, and optional
+/// profile-presentation capabilities through `HostRuntimeContext`. Missing owner
+/// capabilities are represented as unavailable integrations; Blog never constructs
+/// local provider fallbacks and keeps optional enrichment degraded rather than
+/// changing the primary post read contract.
 #[derive(Clone, Default)]
 pub struct BlogGraphqlRuntimeData {
     comments_thread_port: Option<Arc<dyn CommentsThreadPort>>,
