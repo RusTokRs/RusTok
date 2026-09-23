@@ -255,6 +255,7 @@ rustok-profiles = { path = "crates/modules/rustok-profiles" }
 rustok-profiles-api = { path = "crates/modules/rustok-profiles-api" }
 rustok-social-graph = { path = "crates/modules/rustok-social-graph" }
 rustok-comments = { path = "crates/modules/rustok-comments", default-features = false }
+rustok-comments-api = { path = "crates/modules/rustok-comments-api" }
 rustok-region = { path = "crates/modules/rustok-region" }
 rustok-pricing = { path = "crates/modules/rustok-pricing" }
 rustok-pricing-persistence = { path = "crates/modules/rustok-pricing-persistence" }

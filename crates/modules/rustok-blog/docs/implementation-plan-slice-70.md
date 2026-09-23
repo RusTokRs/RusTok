@@ -109,3 +109,8 @@ Runtime status: `not_run`.
   configuration must fail startup rather than silently fall back.
 - Source-only evidence remains explicit until the maintainer runs and records the
   corresponding execution targets.
+
+
+## 2026-09-23 Comments package boundary completion
+
+The optional Comments integration is now package-decoupled at source level. Blog imports only `rustok-comments-api::CommentsThreadPort`; the host composes the implementation provider and the Comments module owns persistence. The previous database/event-bus fallback path is not used by Blog when the provider is absent; the consumer degrades through its explicit unavailable state. Runtime/TCP evidence remains separately pending.

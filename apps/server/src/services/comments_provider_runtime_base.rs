@@ -13,12 +13,13 @@ use rustok_comments::{
     CommentsTcpAuthorityResolver, CommentsTcpBearerAuthorityResolver, CommentsTcpBearerToken,
     CommentsTcpChannelProtection, CommentsTcpClientChannelConnector,
     CommentsTcpDelegatingAuthorityResolver, CommentsTcpDelegationSecret,
-    CommentsTcpDelegationSigner, CommentsTcpServerChannelAcceptor, CommentsThreadPort,
+    CommentsTcpDelegationSigner, CommentsTcpServerChannelAcceptor,
     CommentsThreadTransport, DEFAULT_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY,
     DEFAULT_COMMENTS_TCP_DELEGATION_TTL_MS, MAX_COMMENTS_TCP_DELEGATION_TTL_MS,
     PlaintextLoopbackCommentsTcpChannel, TcpJsonCommentsServerAdapter, TcpJsonCommentsTransport,
     in_process_comments_thread_port, remote_comments_thread_port,
 };
+use rustok_comments_api::CommentsThreadPort;
 use rustok_core::ModuleRuntimeExtensions;
 use tokio::{
     net::TcpListener,

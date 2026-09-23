@@ -5,7 +5,7 @@ use rustok_api::{PortCallPolicy, PortContext, PortError};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{
+use rustok_comments_api::{
     CommentListItem, CommentRecord, CommentsThreadPort, CreateCommentInput, ListCommentsFilter,
     SetCommentStatusRequest, UpdateCommentInput,
 };

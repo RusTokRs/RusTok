@@ -2,7 +2,7 @@ import fs from 'node:fs';
 
 const evidencePath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-host-provider-selection.json';
 const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-70.md';
-const selectorPath = 'apps/server/src/services/comments_provider_runtime.rs';
+const selectorPath = 'apps/server/src/services/comments_provider_runtime_base.rs';
 const servicesPath = 'apps/server/src/services/mod.rs';
 const distributionPath = 'crates/modules/rustok-distribution/Cargo.toml';
 const graphqlConsumerPath = 'crates/modules/rustok-blog/src/graphql/runtime_data.rs';
@@ -77,7 +77,7 @@ if (
 ) fail('configuration evidence drift');
 
 if (
-  evidence.publication?.selected_value !== 'Arc<dyn rustok_comments::CommentsThreadPort>'
+  evidence.publication?.selected_value !== 'Arc<dyn rustok_comments_api::CommentsThreadPort>'
   || evidence.publication?.graphql !== true
   || evidence.publication?.axum_http !== true
   || evidence.publication?.server_functions !== true
@@ -95,6 +95,7 @@ hasAll(
     'TcpLoopback',
     'TcpProtectedLoopback',
     'pub struct SharedCommentsTcpClientChannelConnector(',
+    'use rustok_comments_api::CommentsThreadPort;',
     'extensions.contains::<Arc<dyn CommentsThreadPort>>()',
     '"in_process"',
     '"tcp"',
@@ -154,8 +155,7 @@ hasAll(
   graphqlConsumer,
   [
     'inputs.shared_get::<Arc<dyn CommentsThreadPort>>()',
-    'CommentService::with_comments_thread_port',
-    'None => CommentService::new(db, event_bus)',
+    'CommentService::from_optional_comments_thread_port(',
   ],
   'Blog GraphQL consumer',
 );
@@ -164,8 +164,7 @@ hasAll(
   httpConsumer,
   [
     'runtime.shared_get::<Arc<dyn CommentsThreadPort>>()',
-    'CommentService::with_comments_thread_port',
-    'CommentService::new(self.db_clone(), self.event_bus())',
+    'CommentService::from_optional_comments_thread_port(',
   ],
   'Blog HTTP consumer',
 );

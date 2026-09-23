@@ -13315,12 +13315,12 @@ dependencies = [
  "proptest",
  "rustok-api",
  "rustok-channel",
- "rustok-comments",
+ "rustok-comments-api",
  "rustok-content",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
- "rustok-profiles",
+ "rustok-profiles-api",
  "rustok-reactions-api",
  "rustok-seo-targets",
  "rustok-taxonomy",
@@ -13673,6 +13673,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "rustok-api",
+ "rustok-comments-api",
  "rustok-content",
  "rustok-core",
  "rustok-events",
@@ -13685,6 +13686,16 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-comments-api"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-api",
+ "serde",
  "uuid",
 ]
 
@@ -13996,6 +14007,7 @@ dependencies = [
  "rustok-cart",
  "rustok-channel",
  "rustok-comments",
+ "rustok-comments-api",
  "rustok-commerce",
  "rustok-content",
  "rustok-content-orchestration",
@@ -15862,6 +15874,7 @@ dependencies = [
  "rustok-events",
  "rustok-media",
  "rustok-outbox",
+ "rustok-profiles-api",
  "rustok-social-graph",
  "rustok-storage",
  "rustok-taxonomy",
@@ -15873,6 +15886,17 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-profiles-api"
+version = "0.1.0"
+dependencies = [
+ "async-graphql",
+ "async-trait",
+ "serde",
+ "thiserror 2.0.20",
  "uuid",
 ]
 

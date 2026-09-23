@@ -39,7 +39,7 @@ pub use integrations::reaction_subject::{
     BlogReactionSubjectProviderFactory,
 };
 pub use module::BlogModule;
-pub use rustok_comments::CommentsThreadPort;
+pub use rustok_comments_api::CommentsThreadPort;
 pub use services::{CategoryService, CommentService, PostService, TagService};
 pub use state_machine::{
     Archived, BlogPost, BlogPostStatus, CommentStatus, Draft, Published, ToBlogPostStatus,

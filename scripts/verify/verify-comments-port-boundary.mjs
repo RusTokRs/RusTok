@@ -47,6 +47,7 @@ const evidencePath =
   "crates/modules/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json";
 const sharedPolicyPath = "crates/libs/rustok-api/src/ports.rs";
 const providerPath = "crates/modules/rustok-comments/src/ports.rs";
+const providerApiPath = "crates/modules/rustok-comments-api/src/provider.rs";
 const publicReadPath = "crates/modules/rustok-comments/src/public_read.rs";
 const dtoPath = "crates/modules/rustok-comments/src/dto.rs";
 const richtextPath = "crates/modules/rustok-comments/src/richtext.rs";
@@ -81,6 +82,7 @@ const evidence = json(evidencePath);
 const packageJson = json(packagePath);
 const sharedPolicy = read(sharedPolicyPath);
 const provider = read(providerPath);
+const providerApi = read(providerApiPath);
 const publicRead = read(publicReadPath);
 const dto = read(dtoPath);
 const richtext = read(richtextPath);
@@ -101,6 +103,7 @@ if (evidence) {
   for (const [key, expected] of Object.entries({
     shared_port_policy: sharedPolicyPath,
     provider_port: providerPath,
+    provider_api: providerApiPath,
     public_projection: publicReadPath,
     dto: dtoPath,
     richtext: richtextPath,
@@ -186,7 +189,6 @@ for (const marker of [
 ]) requireMarker(sharedPolicy, marker, sharedPolicyPath);
 
 for (const marker of [
-  "pub trait CommentsThreadPort: Send + Sync",
   "struct InProcessCommentsThreadProvider",
   "pub fn in_process_comments_thread_port(",
   "CommentsService::with_event_bus(db.clone(), event_bus)",
@@ -201,6 +203,18 @@ for (const marker of [
   "PortErrorKind::Forbidden",
   "PortError::validation(\"comments.validation\"",
 ]) requireMarker(provider, marker, providerPath);
+
+for (const marker of [
+  "pub trait CommentsThreadPort: Send + Sync",
+  "async fn create_comment(",
+  "async fn get_comment(",
+  "async fn list_comments_for_target(",
+  "async fn list_public_comments_for_target(",
+  "async fn update_comment(",
+  "async fn set_comment_status(",
+  "async fn delete_comment(",
+  "use rustok_api::{PortContext, PortError};",
+]) requireMarker(providerApi, marker, providerApiPath);
 
 for (const operation of expectedOperations) {
   requireMarker(provider, `async fn ${operation}(`, `${providerPath}:${operation}`);
@@ -276,6 +290,11 @@ for (const marker of [
   "source_verified_no_compile",
   "remote adapter remains pending",
 ]) requireMarker(plan, marker, planPath);
+
+for (const forbidden of [
+  "let _ = rollback",
+  "let rollback = txn.rollback().await;",
+]) requireNoMarker(provider, forbidden, `${providerPath}:rollback handling`);
 
 if (failures.length > 0) {
   console.error("Comments provider port boundary verification failed:");

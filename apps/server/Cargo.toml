@@ -66,7 +66,7 @@ mod-product   = ["dep:rustok-product", "dep:rustok-product-transport", "mod-taxo
 mod-product_relations = ["dep:rustok-product-relations", "mod-product", "rustok-distribution/mod-product_relations"]
 mod-brand = ["dep:rustok-brand", "mod-product", "rustok-distribution/mod-brand"]
 mod-product_bundles = ["dep:rustok-product-bundles", "mod-product", "rustok-distribution/mod-product_bundles"]
-mod-profiles  = ["dep:rustok-profiles", "dep:rustok-media-transport", "mod-media", "mod-social_graph", "mod-taxonomy", "rustok-distribution/mod-profiles"]
+mod-profiles  = ["dep:rustok-profiles", "dep:rustok-profiles-api", "dep:rustok-media-transport", "mod-media", "mod-social_graph", "mod-taxonomy", "rustok-distribution/mod-profiles"]
 mod-social_graph = ["dep:rustok-social-graph", "rustok-social-graph/graphql", "rustok-social-graph/index-consumer"]
 mod-groups    = ["dep:rustok-groups", "rustok-groups/graphql", "rustok-distribution/mod-groups"]
 mod-region    = ["dep:rustok-region", "rustok-distribution/mod-region"]
@@ -91,7 +91,7 @@ mod-blog      = ["dep:rustok-blog", "dep:rustok-content", "dep:rustok-translatio
 mod-forum     = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "rustok-content-orchestration/mod-forum", "rustok-distribution/mod-forum"]
 mod-reactions = ["dep:rustok-reactions", "rustok-reactions/graphql", "rustok-distribution/mod-reactions"]
 mod-notifications = ["dep:rustok-notifications", "rustok-notifications/server", "rustok-distribution/mod-notifications"]
-mod-comments  = ["dep:rustok-comments", "rustok-comments/server", "rustok-content-orchestration/mod-comments", "rustok-distribution/mod-comments"]
+mod-comments  = ["dep:rustok-comments", "dep:rustok-comments-api", "rustok-comments/server", "rustok-content-orchestration/mod-comments", "rustok-distribution/mod-comments"]
 mod-pages     = ["dep:rustok-pages", "dep:rustok-translation-targets", "mod-content", "mod-page_builder", "rustok-distribution/mod-pages"]
 mod-navigation = ["dep:rustok-navigation", "dep:rustok-translation-targets", "rustok-distribution/mod-navigation"]
 mod-page_builder = ["dep:rustok-page-builder", "rustok-distribution/mod-page_builder"]
@@ -138,6 +138,7 @@ rustok-product-relations = { workspace = true, optional = true }
 rustok-brand = { workspace = true, optional = true }
 rustok-product-bundles = { workspace = true, optional = true }
 rustok-profiles  = { workspace = true, optional = true }
+rustok-profiles-api = { workspace = true, optional = true }
 rustok-social-graph = { path = "../../crates/modules/rustok-social-graph", optional = true }
 rustok-groups = { path = "../../crates/modules/rustok-groups", default-features = false, optional = true }
 rustok-region    = { workspace = true, optional = true }
@@ -158,6 +159,7 @@ rustok-marketplace = { workspace = true, optional = true }
 rustok-moderation = { workspace = true, optional = true }
 rustok-blog      = { workspace = true, optional = true }
 rustok-comments  = { workspace = true, optional = true }
+rustok-comments-api = { workspace = true, optional = true }
 rustok-content   = { workspace = true, optional = true }
 rustok-content-orchestration = { workspace = true }
 rustok-forum     = { workspace = true, optional = true }

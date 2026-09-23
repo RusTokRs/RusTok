@@ -12,6 +12,8 @@ use crate::services::commerce_provider_runtime::attach_commerce_provider_registr
 use crate::services::event_bus::{event_bus_from_context, transactional_event_bus_from_context};
 use crate::services::field_definition_cache::field_definition_cache_from_context;
 use crate::services::profile_media_public_image_runtime::attach_profile_media_public_image_provider;
+#[cfg(feature = "mod-profiles")]
+use rustok_profiles_api::ProfileSummaryReader;
 #[cfg(feature = "mod-seo")]
 use crate::services::seo_redirect_cache_reconciliation::start_seo_redirect_cache_reconciliation;
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -91,7 +93,7 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     #[cfg(feature = "mod-profiles")]
     let host_runtime = host_runtime.with_shared_value(
         Arc::new(rustok_profiles::ProfilePresentationService::new(ctx.db_clone()))
-            as Arc<dyn rustok_profiles::ProfileSummaryReader>,
+            as Arc<dyn ProfileSummaryReader>,
     );
 
     let graphql_runtime_inputs = rustok_api::graphql::GraphqlRuntimeInputs::new(host_runtime);

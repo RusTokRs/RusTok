@@ -54,6 +54,8 @@ sink, and does not load the editor runtime for read-only moderation.
 ## Accepted consumer-capability cutover
 
 The static `blog -> comments` edge is removed without moving comment storage into Blog.
+
+The source-level package boundary is also complete: `rustok-comments-api` owns the neutral `CommentsThreadPort` contract and wire-facing DTOs, while `rustok-comments` retains SeaORM-backed domain/persistence types and provides the in-process implementation. Explicit conversions keep persistence enums out of the consumer contract.
 The owner port and lifecycle events remain the conditional integration boundary. The
 remaining work is the Blog-owned `comments_mode = disabled/read_only/open` policy plus
 verification of Blog serving with Comments absent, retained comment data, provider

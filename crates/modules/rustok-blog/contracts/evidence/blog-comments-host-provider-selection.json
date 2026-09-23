@@ -16,7 +16,7 @@
     "graphql_host_snapshot": "apps/server/src/services/graphql_schema.rs",
     "native_http_host_snapshot": "apps/server/src/services/app_router.rs",
     "runtime_extensions": "rustok_core::ModuleRuntimeExtensions",
-    "port": "rustok_comments::CommentsThreadPort"
+    "port": "rustok_comments_api::CommentsThreadPort"
   },
   "configuration": {
     "mode_environment": "RUSTOK_COMMENTS_PROVIDER_MODE",
@@ -50,7 +50,7 @@
     }
   ],
   "publication": {
-    "selected_value": "Arc<dyn rustok_comments::CommentsThreadPort>",
+    "selected_value": "Arc<dyn rustok_comments_api::CommentsThreadPort>",
     "registry": "ModuleRuntimeExtensions",
     "registration_count": "once_during_host_provider_composition",
     "graphql": true,

@@ -30,6 +30,7 @@ rustok-core = { workspace = true, optional = true }
 rustok-events = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 rustok-api.workspace = true
+rustok-comments-api.workspace = true
 rustok-telemetry = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
 sea-orm-migration = { workspace = true, optional = true }

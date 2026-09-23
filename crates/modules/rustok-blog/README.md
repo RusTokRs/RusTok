@@ -3,7 +3,8 @@
 ## Purpose
 
 `rustok-blog` owns the Blog domain: posts, Blog Category membership/settings,
-Blog-owned post-term relations, and comment integration via `rustok-comments`.
+Blog-owned post-term relations, and comment integration through the neutral
+`rustok-comments-api` contract implemented by `rustok-comments`.
 Shared vocabulary and canonical Blog Category localized identity are provided by
 `rustok-taxonomy` through explicit owner boundaries.
 
@@ -108,8 +109,9 @@ copy must use the canonical Taxonomy owner contract.
   Comments-owned `RichTextView` and plain-text projection.
 - Blog article writes accept the shared `RichTextDocument`; the owner applies
   the fixed `article` profile and persists canonical root JSON.
-- Routes comment reads, create/update/delete, and moderation through the public
-  `CommentsThreadPort`; Blog does not call `CommentsService` directly.
+- Routes comment reads, create/update/delete, and moderation through the neutral
+  `CommentsThreadPort` contract from `rustok-comments-api`; Blog does not import
+  or call `CommentsService` directly.
 - The static `blog -> comments` lifecycle edge is removed. Blog owns comment-surface
   policy; Comments owns threads, bodies, moderation, and retention. Provider absence
   fails comment operations closed while Blog publication serving remains available.

@@ -13,6 +13,7 @@ const evidencePath =
   "crates/modules/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json";
 const sharedPolicyPath = "crates/libs/rustok-api/src/ports.rs";
 const providerPath = "crates/modules/rustok-comments/src/ports.rs";
+const providerApiPath = "crates/modules/rustok-comments-api/src/provider.rs";
 const publicReadPath = "crates/modules/rustok-comments/src/public_read.rs";
 const dtoPath = "crates/modules/rustok-comments/src/dto.rs";
 const richtextPath = "crates/modules/rustok-comments/src/richtext.rs";
@@ -83,6 +84,7 @@ function operationSource(operation, { missingWritePolicy, publicBypass } = {}) {
 
 function fixture({
   missingOperation = false,
+  missingApiOperation = false,
   missingWritePolicy = false,
   publicBypass = false,
   missingApprovedFilter = false,
@@ -92,6 +94,9 @@ function fixture({
 } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-comments-port-boundary-"));
   const fixtureOperations = missingOperation
+    ? operations.filter((operation) => operation !== "get_comment")
+    : operations;
+  const apiOperations = missingApiOperation
     ? operations.filter((operation) => operation !== "get_comment")
     : operations;
   const sourceProfiles = promoteRemoteProfile
@@ -115,11 +120,19 @@ function fixture({
 
   write(
     root,
-    providerPath,
+    providerApiPath,
     `
       pub trait CommentsThreadPort: Send + Sync {
-        ${fixtureOperations.map((operation) => `async fn ${operation}(&self);`).join("\n")}
+        ${apiOperations.map((operation) => `async fn ${operation}(&self);`).join("\n")}
       }
+      use rustok_api::{PortContext, PortError};
+    `,
+  );
+
+  write(
+    root,
+    providerPath,
+    `
       struct InProcessCommentsThreadProvider { db: DatabaseConnection, service: CommentsService }
       pub fn in_process_comments_thread_port() {
         CommentsService::with_event_bus(db.clone(), event_bus);
@@ -212,6 +225,7 @@ function fixture({
       source_contract: {
         shared_port_policy: sharedPolicyPath,
         provider_port: providerPath,
+        provider_api: providerApiPath,
         public_projection: publicReadPath,
         dto: dtoPath,
         richtext: richtextPath,
@@ -316,6 +330,11 @@ test("accepts the Comments in-process provider source boundary", () => {
 
 test("rejects a missing provider operation", () => {
   expectRejected({ missingOperation: true }, /missing async fn get_comment/);
+});
+
+
+test("rejects a missing API contract operation", () => {
+  expectRejected({ missingApiOperation: true }, /missing async fn get_comment/);
 });
 
 test("rejects a write operation without shared policy", () => {

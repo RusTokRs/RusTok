@@ -4,11 +4,12 @@ use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind};
-use rustok_comments::{
-    CommentListItem as DomainCommentListItem, CommentRecord as DomainCommentRecord,
-    CommentStatus as DomainCommentStatus, CommentsThreadPort,
-    CreateCommentInput as DomainCreateCommentInput, ListCommentsFilter as DomainListCommentsFilter,
-    SetCommentStatusRequest, UpdateCommentInput as DomainUpdateCommentInput,
+use rustok_comments_api::{
+    CommentListItem as ApiCommentListItem, CommentRecord as ApiCommentRecord,
+    CommentStatus as ApiCommentStatus, CommentsThreadPort,
+    CreateCommentInput as ApiCreateCommentInput, ListCommentsFilter as ApiListCommentsFilter,
+    ApiSetCommentStatusRequest as ApiApiSetCommentStatusRequest,
+    UpdateCommentInput as ApiUpdateCommentInput,
 };
 use rustok_core::{SecurityActorKind, SecurityContext};
 use std::sync::Arc;
@@ -105,13 +106,13 @@ impl CommentService {
                     post_id,
                     command_id,
                 )?,
-                DomainCreateCommentInput {
+                ApiCreateCommentInput {
                     target_type: TARGET_TYPE_BLOG_POST.to_string(),
                     target_id: post_id,
                     locale,
                     body: input.content,
                     parent_comment_id: input.parent_comment_id,
-                    status: DomainCommentStatus::Pending,
+                    status: ApiCommentStatus::Pending,
                 },
             )
             .await
@@ -226,7 +227,7 @@ impl CommentService {
         self.ensure_post_exists(tenant_id, post_id).await?;
 
         let locale = input.locale.clone();
-        let domain_input = DomainUpdateCommentInput {
+        let domain_input = ApiUpdateCommentInput {
             locale: locale.clone(),
             body: input.content,
         };
@@ -297,7 +298,7 @@ impl CommentService {
                     input.command_id,
                 )?,
                 comment_id,
-                SetCommentStatusRequest {
+                ApiSetCommentStatusRequest {
                     status: input.status.into(),
                     fallback_locale: fallback_locale.map(str::to_owned),
                 },
@@ -381,7 +382,7 @@ impl CommentService {
             .locale
             .clone()
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
-        let domain_filter = DomainListCommentsFilter {
+        let domain_filter = ApiListCommentsFilter {
             locale: locale.clone(),
             page: filter.page,
             per_page: filter.per_page,
@@ -503,14 +504,14 @@ impl CommentService {
         Ok(())
     }
 
-    fn ensure_blog_target(record: &DomainCommentRecord) -> BlogResult<Uuid> {
+    fn ensure_blog_target(record: &ApiCommentRecord) -> BlogResult<Uuid> {
         if record.target_type != TARGET_TYPE_BLOG_POST {
             return Err(BlogError::comment_not_found(record.id));
         }
         Ok(record.target_id)
     }
 
-    fn map_comment_record(record: DomainCommentRecord) -> BlogResult<CommentResponse> {
+    fn map_comment_record(record: ApiCommentRecord) -> BlogResult<CommentResponse> {
         let post_id = Self::ensure_blog_target(&record)?;
         let requested_locale = record.requested_locale.clone();
         let effective_locale = record.effective_locale.clone();
@@ -530,7 +531,7 @@ impl CommentService {
         })
     }
 
-    fn map_comment_list_item(item: DomainCommentListItem) -> CommentListItem {
+    fn map_comment_list_item(item: ApiCommentListItem) -> CommentListItem {
         CommentListItem {
             id: item.id,
             locale: item.requested_locale,
@@ -554,12 +555,12 @@ fn is_public_comment_target(
         && is_post_visible_for_channel(channel_slugs, public_channel_slug)
 }
 
-fn comment_status_label(status: DomainCommentStatus) -> &'static str {
+fn comment_status_label(status: ApiCommentStatus) -> &'static str {
     match status {
-        DomainCommentStatus::Pending => "pending",
-        DomainCommentStatus::Approved => "approved",
-        DomainCommentStatus::Spam => "spam",
-        DomainCommentStatus::Trash => "trash",
+        ApiCommentStatus::Pending => "pending",
+        ApiCommentStatus::Approved => "approved",
+        ApiCommentStatus::Spam => "spam",
+        ApiCommentStatus::Trash => "trash",
     }
 }
 
@@ -709,7 +710,7 @@ mod rich_content_tests {
                 html: "<p class=\"richtext-paragraph\">Hello</p>".into(),
             },
             body_text: "Hello".into(),
-            status: DomainCommentStatus::Pending,
+            status: ApiCommentStatus::Pending,
             position: 1,
             created_at: "2024-01-01T00:00:00Z".into(),
             updated_at: "2024-01-01T00:00:00Z".into(),

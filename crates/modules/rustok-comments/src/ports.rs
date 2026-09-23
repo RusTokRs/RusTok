@@ -8,71 +8,15 @@ use uuid::Uuid;
 
 use crate::{
     CommentListItem, CommentRecord, CommentsError, CommentsService, CreateCommentInput,
-    ListCommentsFilter, UpdateCommentInput,
+    ListCommentsFilter, SetCommentStatusRequest, UpdateCommentInput,
 };
-
-/// Transport-neutral owner boundary for generic comment threads.
-#[async_trait]
-pub trait CommentsThreadPort: Send + Sync {
-    async fn create_comment(
-        &self,
-        context: PortContext,
-        request: CreateCommentInput,
-    ) -> Result<CommentRecord, PortError>;
-
-    async fn get_comment(
-        &self,
-        context: PortContext,
-        comment_id: Uuid,
-        fallback_locale: Option<String>,
-    ) -> Result<CommentRecord, PortError>;
-
-    async fn list_comments_for_target(
-        &self,
-        context: PortContext,
-        target_type: String,
-        target_id: Uuid,
-        filter: ListCommentsFilter,
-        fallback_locale: Option<String>,
-    ) -> Result<(Vec<CommentListItem>, u64), PortError>;
-
-    /// Public read projection owned by Comments. Implementations must return only
-    /// comments that are safe for unauthenticated storefront consumption.
-    ///
-    /// The default is intentionally unavailable instead of delegating to the
-    /// authenticated list operation, which could expose pending or moderated data.
-    async fn list_public_comments_for_target(
-        &self,
-        context: PortContext,
-        target_type: String,
-        target_id: Uuid,
-        filter: ListCommentsFilter,
-        fallback_locale: Option<String>,
-    ) -> Result<(Vec<CommentListItem>, u64), PortError> {
-        let _ = (context, target_type, target_id, filter, fallback_locale);
-        Err(PortError::unavailable(
-            "comments.public_read_unavailable",
-            "comments provider does not implement the approved public projection",
-        ))
-    }
-
-    async fn update_comment(
-        &self,
-        context: PortContext,
-        comment_id: Uuid,
-        request: UpdateCommentInput,
-    ) -> Result<CommentRecord, PortError>;
-
-    async fn set_comment_status(
-        &self,
-        context: PortContext,
-        comment_id: Uuid,
-        request: SetCommentStatusRequest,
-    ) -> Result<CommentRecord, PortError>;
-
-    async fn delete_comment(&self, context: PortContext, comment_id: Uuid)
-    -> Result<(), PortError>;
-}
+use rustok_comments_api::{
+    CommentListItem as ApiCommentListItem, CommentRecord as ApiCommentRecord,
+    CommentsThreadPort, CreateCommentInput as ApiCreateCommentInput,
+    ListCommentsFilter as ApiListCommentsFilter,
+    SetCommentStatusRequest as ApiSetCommentStatusRequest,
+    UpdateCommentInput as ApiUpdateCommentInput,
+};
 
 struct InProcessCommentsThreadProvider {
     db: DatabaseConnection,
@@ -101,12 +45,13 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
     async fn create_comment(
         &self,
         context: PortContext,
-        request: CreateCommentInput,
-    ) -> Result<CommentRecord, PortError> {
+        request: ApiCreateCommentInput,
+    ) -> Result<ApiCommentRecord, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context)?;
         let security = SecurityContext::try_from_port_context(&context)?;
         let idempotency_key = required_idempotency_key(&context)?;
+        let domain_request: CreateCommentInput = request.clone().into();
 
         let lease = match idempotency::admit(
             &self.db,
@@ -120,12 +65,13 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         {
             Admission::Run(lease) => lease,
             Admission::Replay(value) => {
-                return serde_json::from_value(value).map_err(|error| {
+                let record: CommentRecord = serde_json::from_value(value).map_err(|error| {
                     PortError::invariant_violation(
                         "comments.operation_receipt_corrupt",
                         error.to_string(),
                     )
-                });
+                })?;
+                return Ok(record.into());
             }
             Admission::ReplayError(error) => return Err(error),
         };
@@ -142,19 +88,25 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
             }
         };
         let result = self.service
-            .create_comment_record_in_tx(&txn, tenant_id, security, request)
+            .create_comment_record_in_tx(&txn, tenant_id, security, domain_request)
             .await
             .map_err(comments_error_to_port_error);
 
         match result {
             Ok(record) => {
                 if let Err(error) = idempotency::complete(&txn, lease, &record).await {
-                    let rollback = txn.rollback().await;
+                    if let Err(rollback_error) = txn.rollback().await {
+                        tracing::error!(
+                            operation_id = %lease.operation_id,
+                            %error,
+                            %rollback_error,
+                            "Failed to rollback Comments transaction after receipt completion failure: Failed to complete durable Comments create receipt"
+                        );
+                    }
                     persist_idempotency_failure(&self.db, lease, &error).await;
                     tracing::error!(
                         operation_id = %lease.operation_id,
                         %error,
-                        ?rollback,
                         "Failed to complete durable Comments create receipt"
                     );
                     return Err(error);
@@ -169,12 +121,18 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
                     persist_idempotency_failure(&self.db, lease, &commit_error).await;
                     return Err(commit_error);
                 }
-                Ok(record)
+                Ok(record.into())
             }
             Err(error) => {
-                let rollback = txn.rollback().await;
+                if let Err(rollback_error) = txn.rollback().await {
+                    tracing::error!(
+                        operation_id = %lease.operation_id,
+                        %error,
+                        %rollback_error,
+                        "Failed to rollback Comments transaction after domain failure"
+                    );
+                }
                 persist_idempotency_failure(&self.db, lease, &error).await;
-                let _ = rollback;
                 Err(error)
             }
         }
@@ -185,7 +143,7 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         context: PortContext,
         comment_id: Uuid,
         fallback_locale: Option<String>,
-    ) -> Result<CommentRecord, PortError> {
+    ) -> Result<ApiCommentRecord, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context)?;
         self.service
@@ -198,6 +156,7 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
             )
             .await
             .map_err(comments_error_to_port_error)
+            .map(Into::into)
     }
 
     async fn list_comments_for_target(
@@ -205,22 +164,24 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         context: PortContext,
         target_type: String,
         target_id: Uuid,
-        filter: ListCommentsFilter,
+        filter: ApiListCommentsFilter,
         fallback_locale: Option<String>,
-    ) -> Result<(Vec<CommentListItem>, u64), PortError> {
+    ) -> Result<(Vec<ApiCommentListItem>, u64), PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context)?;
+        let domain_filter: ListCommentsFilter = filter.into();
         self.service
             .list_comments_for_target(
                 tenant_id,
                 SecurityContext::try_from_port_context(&context)?,
                 &target_type,
                 target_id,
-                filter,
+                domain_filter,
                 fallback_locale.as_deref(),
             )
             .await
             .map_err(comments_error_to_port_error)
+            .map(|(items, total)| (items.into_iter().map(Into::into).collect(), total))
     }
 
     async fn list_public_comments_for_target(
@@ -228,33 +189,36 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         context: PortContext,
         target_type: String,
         target_id: Uuid,
-        filter: ListCommentsFilter,
+        filter: ApiListCommentsFilter,
         fallback_locale: Option<String>,
-    ) -> Result<(Vec<CommentListItem>, u64), PortError> {
+    ) -> Result<(Vec<ApiCommentListItem>, u64), PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context)?;
+        let domain_filter: ListCommentsFilter = filter.into();
         crate::public_read::list_public_comments_for_target(
             &self.db,
             tenant_id,
             &target_type,
             target_id,
-            filter,
+            domain_filter,
             fallback_locale.as_deref(),
         )
         .await
         .map_err(comments_error_to_port_error)
+        .map(|(items, total)| (items.into_iter().map(Into::into).collect(), total))
     }
 
     async fn update_comment(
         &self,
         context: PortContext,
         comment_id: Uuid,
-        request: UpdateCommentInput,
-    ) -> Result<CommentRecord, PortError> {
+        request: ApiUpdateCommentInput,
+    ) -> Result<ApiCommentRecord, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context)?;
         let security = SecurityContext::try_from_port_context(&context)?;
         let idempotency_key = required_idempotency_key(&context)?;
+        let domain_request: UpdateCommentInput = request.clone().into();
         let receipt_request = (comment_id, &request);
 
         let lease = match idempotency::admit(
@@ -269,12 +233,13 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         {
             Admission::Run(lease) => lease,
             Admission::Replay(value) => {
-                return serde_json::from_value(value).map_err(|error| {
+                let record: CommentRecord = serde_json::from_value(value).map_err(|error| {
                     PortError::invariant_violation(
                         "comments.operation_receipt_corrupt",
                         error.to_string(),
                     )
-                });
+                })?;
+                return Ok(record.into());
             }
             Admission::ReplayError(error) => return Err(error),
         };
@@ -292,19 +257,25 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         };
         let result = self
             .service
-            .update_comment_in_tx(&txn, tenant_id, security, comment_id, request)
+            .update_comment_in_tx(&txn, tenant_id, security, comment_id, domain_request)
             .await
             .map_err(comments_error_to_port_error);
 
         match result {
             Ok(record) => {
                 if let Err(error) = idempotency::complete(&txn, lease, &record).await {
-                    let rollback = txn.rollback().await;
+                    if let Err(rollback_error) = txn.rollback().await {
+                        tracing::error!(
+                            operation_id = %lease.operation_id,
+                            %error,
+                            %rollback_error,
+                            "Failed to rollback Comments transaction after receipt completion failure: Failed to complete durable Comments update receipt"
+                        );
+                    }
                     persist_idempotency_failure(&self.db, lease, &error).await;
                     tracing::error!(
                         operation_id = %lease.operation_id,
                         %error,
-                        ?rollback,
                         "Failed to complete durable Comments update receipt"
                     );
                     return Err(error);
@@ -319,12 +290,18 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
                     persist_idempotency_failure(&self.db, lease, &commit_error).await;
                     return Err(commit_error);
                 }
-                Ok(record)
+                Ok(record.into())
             }
             Err(error) => {
-                let rollback = txn.rollback().await;
+                if let Err(rollback_error) = txn.rollback().await {
+                    tracing::error!(
+                        operation_id = %lease.operation_id,
+                        %error,
+                        %rollback_error,
+                        "Failed to rollback Comments transaction after domain failure"
+                    );
+                }
                 persist_idempotency_failure(&self.db, lease, &error).await;
-                let _ = rollback;
                 Err(error)
             }
         }
@@ -384,12 +361,18 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         match result {
             Ok(()) => {
                 if let Err(error) = idempotency::complete(&txn, lease, &()).await {
-                    let rollback = txn.rollback().await;
+                    if let Err(rollback_error) = txn.rollback().await {
+                        tracing::error!(
+                            operation_id = %lease.operation_id,
+                            %error,
+                            %rollback_error,
+                            "Failed to rollback Comments transaction after receipt completion failure: Failed to complete durable Comments delete receipt"
+                        );
+                    }
                     persist_idempotency_failure(&self.db, lease, &error).await;
                     tracing::error!(
                         operation_id = %lease.operation_id,
                         %error,
-                        ?rollback,
                         "Failed to complete durable Comments delete receipt"
                     );
                     return Err(error);
@@ -407,9 +390,15 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
                 Ok(())
             }
             Err(error) => {
-                let rollback = txn.rollback().await;
+                if let Err(rollback_error) = txn.rollback().await {
+                    tracing::error!(
+                        operation_id = %lease.operation_id,
+                        %error,
+                        %rollback_error,
+                        "Failed to rollback Comments transaction after domain failure"
+                    );
+                }
                 persist_idempotency_failure(&self.db, lease, &error).await;
-                let _ = rollback;
                 Err(error)
             }
         }
@@ -419,12 +408,13 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         &self,
         context: PortContext,
         comment_id: Uuid,
-        request: SetCommentStatusRequest,
-    ) -> Result<CommentRecord, PortError> {
+        request: ApiSetCommentStatusRequest,
+    ) -> Result<ApiCommentRecord, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context)?;
         let security = SecurityContext::try_from_port_context(&context)?;
         let idempotency_key = required_idempotency_key(&context)?;
+        let domain_request: SetCommentStatusRequest = request.clone().into();
         let receipt_request = (comment_id, &request, &context.locale);
 
         let lease = match idempotency::admit(
@@ -439,12 +429,13 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         {
             Admission::Run(lease) => lease,
             Admission::Replay(value) => {
-                return serde_json::from_value(value).map_err(|error| {
+                let record: CommentRecord = serde_json::from_value(value).map_err(|error| {
                     PortError::invariant_violation(
                         "comments.operation_receipt_corrupt",
                         error.to_string(),
                     )
-                });
+                })?;
+                return Ok(record.into());
             }
             Admission::ReplayError(error) => return Err(error),
         };
@@ -467,9 +458,9 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
                 tenant_id,
                 security,
                 comment_id,
-                request.status,
+                domain_request.status,
                 &context.locale,
-                request.fallback_locale.as_deref(),
+                domain_request.fallback_locale.as_deref(),
             )
             .await
             .map_err(comments_error_to_port_error);
@@ -477,12 +468,18 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         match result {
             Ok(record) => {
                 if let Err(error) = idempotency::complete(&txn, lease, &record).await {
-                    let rollback = txn.rollback().await;
+                    if let Err(rollback_error) = txn.rollback().await {
+                        tracing::error!(
+                            operation_id = %lease.operation_id,
+                            %error,
+                            %rollback_error,
+                            "Failed to rollback Comments transaction after receipt completion failure: Failed to complete durable Comments status receipt"
+                        );
+                    }
                     persist_idempotency_failure(&self.db, lease, &error).await;
                     tracing::error!(
                         operation_id = %lease.operation_id,
                         %error,
-                        ?rollback,
                         "Failed to complete durable Comments status receipt"
                     );
                     return Err(error);
@@ -497,12 +494,18 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
                     persist_idempotency_failure(&self.db, lease, &commit_error).await;
                     return Err(commit_error);
                 }
-                Ok(record)
+                Ok(record.into())
             }
             Err(error) => {
-                let rollback = txn.rollback().await;
+                if let Err(rollback_error) = txn.rollback().await {
+                    tracing::error!(
+                        operation_id = %lease.operation_id,
+                        %error,
+                        %rollback_error,
+                        "Failed to rollback Comments transaction after domain failure"
+                    );
+                }
                 persist_idempotency_failure(&self.db, lease, &error).await;
-                let _ = rollback;
                 Err(error)
             }
         }

@@ -29,7 +29,7 @@ pub enum ModerateCommentStatus {
     Trash,
 }
 
-impl From<ModerateCommentStatus> for rustok_comments::CommentStatus {
+impl From<ModerateCommentStatus> for rustok_comments_api::CommentStatus {
     fn from(value: ModerateCommentStatus) -> Self {
         match value {
             ModerateCommentStatus::Approved => Self::Approved,

@@ -9,7 +9,8 @@
 - Provide a dedicated storage boundary for classic comments outside the forum domain.
 - Serve as the canonical storage owner for Blog comments and other opt-in classic non-forum comments.
 - Keep `comments` separate from forum topics and forum replies.
-- Expose module metadata, permissions, migrations, and the `CommentsThreadPort` provider boundary.
+- Implement the `CommentsThreadPort` provider boundary defined by `rustok-comments-api`,
+  while keeping persistence and domain services private to Comments.
 - Publish the module-owned Leptos admin moderation UI crate `rustok-comments-admin`.
 - Accept only `rustok-api::RichTextDocument` for comment writes, enforce the
   server-selected `rustok-content::richtext` `comment` profile, and return

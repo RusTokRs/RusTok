@@ -77,9 +77,9 @@ Reviewed through `main@5c283707cef13da9a99c665e3cf1b3c2ebddba78`.
 | Blog comment selection | Optional `CommentsThreadPort`; no tenant comment-surface setting | Blog owns surface intent; Comments owns comment state | **Gap:** static dependency is removed, but tenant `disabled/read_only/open` policy is not implemented |
 | Email generic settings | `platform_settings.email` | Generic server path while Email runtime reads bootstrap config | **Gap:** saved value is not authoritative; historical secret material may exist |
 | Nested manifest schema vocabulary | Owner validator supports `properties`/`items`; current SEO manifest uses `shape`/`additional_properties` | Host manifest adapter | **Gap:** unknown TOML schema keywords are ignored, so the generic editor/validator does not enforce the declared nested shape |
-| Cross-module capability graph | `blog -> comments` lifecycle edge removed; `commerce -> fulfillment` remains tracked separately | Module composition | Blog comment access is optional at lifecycle/runtime composition; Blog still links the Comments implementation crate at build time |
+| Cross-module capability graph | `blog -> comments` lifecycle edge removed; `commerce -> fulfillment` remains tracked separately | Module composition | Blog comment access is optional at lifecycle/runtime composition; Blog consumes the neutral Comments/Profiles API contracts while hosts compose provider implementations |
 | Digital/physical fulfillment requirement | Product accepts `product_type = "Digital"`; Product/Cart/Commerce shipping paths normalize a missing profile to `default` | Product owns product kind; Cart/Order own snapshots; Fulfillment owns shipping execution | **Gap:** no canonical typed fulfillment requirement, so digital lines can be forced through synthetic shipping identity/grouping |
-| Blog dependency declarations | Root `modules.toml` and package/runtime metadata agree on `content`, `taxonomy`, `outbox`, and `channel` | Composition manifest, package manifest, runtime metadata | Comments and Profiles are optional lifecycle capabilities; their implementation crates remain compile-linked by Blog and require a later API/port packaging cutover for reduced-build independence |
+| Blog dependency declarations | Root `modules.toml` and package/runtime metadata agree on `content`, `taxonomy`, `outbox`, and `channel` | Composition manifest, package manifest, runtime metadata | Comments and Profiles are optional lifecycle capabilities; Blog links only `rustok-comments-api` and `rustok-profiles-api`, while implementation crates remain host/provider-owned |
 
 ### Current static settings data flow
 
@@ -434,7 +434,7 @@ Owners must document:
 | P1 | Static rows do not persist exact schema digest/state | Add digest and `not_applicable/ready/migration_required` semantics |
 | P1 | Module keys include camelCase internal names | Zero-legacy `snake_case` cutover with data transformation |
 | P1 | Blog has no tenant comment-surface policy after removing the Comments edge | Add Blog-owned `comments_mode = disabled/read_only/open`; preserve Comments data and derive effective availability separately |
-| P1 | Blog's optional Comments and Profiles capabilities still compile-link provider implementation crates | Move stable owner contracts/presentation DTOs behind API/port boundaries, then prove a reduced Blog build omits provider implementation crates |
+| P1 | Blog's reduced-build API/port boundary still lacks maintainer execution evidence | Run the reduced Blog build and static FBA chain without linking provider implementation crates; retain execution evidence |
 | P1 | Commerce/Fulfillment still uses an unconditional edge for data-specific capability | Add typed per-line fulfillment requirement, remove synthetic digital shipping state, then remove the static edge |
 | P2 | Settings UI labels/options are derived from keys/raw English descriptions | Fluent presentation metadata and bundle verification |
 | P2 | No real module opts into localized settings values | Select a justified pilot; prove exact locale, sensitivity, CAS, and Translation flow |
@@ -455,8 +455,8 @@ Owners must document:
 5. Replace the placeholder static rollout guard with durable real N/N+1 schema
    compatibility and maintenance migration.
 6. Complete the Blog comment policy over its lifecycle-optional Comments capability,
-   then cut optional Comments/Profiles contracts away from provider implementation
-   crates and verify reduced builds.
+   then execute reduced-build/runtime evidence for the already-extracted optional
+   Comments/Profiles API/port boundaries.
 7. Replace `commerce -> fulfillment` with typed operation-scoped requirements and keep
    digital-only Commerce executable.
 8. Move `platform_settings` categories and direct module readers to semantic owners.

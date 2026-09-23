@@ -10,6 +10,7 @@
   "source_contract": {
     "shared_port_policy": "crates/libs/rustok-api/src/ports.rs",
     "provider_port": "crates/modules/rustok-comments/src/ports.rs",
+    "provider_api": "crates/modules/rustok-comments-api/src/provider.rs",
     "public_projection": "crates/modules/rustok-comments/src/public_read.rs",
     "dto": "crates/modules/rustok-comments/src/dto.rs",
     "richtext": "crates/modules/rustok-comments/src/richtext.rs",

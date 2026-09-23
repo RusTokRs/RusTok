@@ -289,3 +289,8 @@ contract.
 ## 2026-09-23 Profile presentation boundary
 
 Completed the remaining source-level Blog/Profiles build-time coupling gap. Blog now depends on `rustok-profiles-api`, consumes the optional `ProfileSummaryReader` through manifest-attached GraphQL runtime data, and preserves the existing `ProfileSummary` GraphQL contract. `rustok-profiles` remains the sole implementation owner and the server host composes its audience-aware presentation provider through `HostRuntimeContext`. Provider absence/failure remains a presentation-only degradation. Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
+
+
+## 2026-09-23 Comments package boundary
+
+Completed the remaining source-level Blog/Comments build-time coupling gap. Blog now depends only on `rustok-comments-api`; Comments remains the sole owner of persistence and implements the neutral `CommentsThreadPort` through the host runtime capability graph. Persistence-facing `CommentStatus` and other SeaORM types remain inside Comments, with explicit contract conversions at the owner boundary. Blog publication serving continues to degrade safely when the optional provider is absent. Maintainer runtime evidence, build, gatekeeper, and automated tests remain unrun by the agent.

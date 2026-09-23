@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use rustok_api::graphql::GraphqlRuntimeInputs;
-use rustok_comments::CommentsThreadPort;
+use rustok_comments_api::CommentsThreadPort;
+use rustok_profiles_api::ProfileSummaryReader;
 use rustok_profiles_api::ProfileSummaryReader;
 use sea_orm::DatabaseConnection;
 
@@ -19,12 +20,14 @@ pub struct BlogGraphqlRuntimeData {
     comments_thread_port: Option<Arc<dyn CommentsThreadPort>>,
     public_comments_snapshot_store: Option<Arc<dyn PublicCommentsSnapshotStore>>,
     profile_summary_reader: Option<Arc<dyn ProfileSummaryReader>>,
+    profile_summary_reader: Option<Arc<dyn ProfileSummaryReader>>,
 }
 
 pub fn attach_schema_data(inputs: &GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, String> {
     Ok(BlogGraphqlRuntimeData {
         comments_thread_port: inputs.shared_get::<Arc<dyn CommentsThreadPort>>(),
         public_comments_snapshot_store: inputs.shared_get::<Arc<dyn PublicCommentsSnapshotStore>>(),
+        profile_summary_reader: inputs.shared_get::<Arc<dyn ProfileSummaryReader>>(),
         profile_summary_reader: inputs.shared_get::<Arc<dyn ProfileSummaryReader>>(),
     })
 }
@@ -44,6 +47,10 @@ impl BlogGraphqlRuntimeData {
         &self,
     ) -> Option<&Arc<dyn PublicCommentsSnapshotStore>> {
         self.public_comments_snapshot_store.as_ref()
+    }
+
+    pub(crate) fn profile_summary_reader(&self) -> Option<&Arc<dyn ProfileSummaryReader>> {
+        self.profile_summary_reader.as_ref()
     }
 
     pub(crate) fn profile_summary_reader(&self) -> Option<&Arc<dyn ProfileSummaryReader>> {
