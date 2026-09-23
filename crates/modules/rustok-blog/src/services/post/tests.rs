@@ -447,3 +447,13 @@ async fn public_visible_listing_filters_by_typed_channel_relation() {
     assert!(slugs.contains(&"global".to_string()));
     assert!(!slugs.contains(&"mobile-only".to_string()));
 }
+
+
+#[test]
+fn post_title_limit_counts_unicode_characters_not_utf8_bytes() {
+    let five_hundred_twelve_characters = "Ж".repeat(512);
+    let five_hundred_thirteen_characters = "Ж".repeat(513);
+
+    assert!(super::super::validate_title(&five_hundred_twelve_characters).is_ok());
+    assert!(super::super::validate_title(&five_hundred_thirteen_characters).is_err());
+}
