@@ -136,7 +136,7 @@ fn validate_title(title: &str) -> BlogResult<()> {
     if title.trim().is_empty() {
         return Err(BlogError::validation("Title cannot be empty"));
     }
-    if title.len() > 512 {
+    if title.chars().count() > 512 {
         return Err(BlogError::validation("Title cannot exceed 512 characters"));
     }
     Ok(())
