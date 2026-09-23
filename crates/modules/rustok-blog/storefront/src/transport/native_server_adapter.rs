@@ -356,6 +356,7 @@ async fn require_blog_comment_channel_enabled(
     }
 }
 
+#[cfg(feature = "ssr")]
 async fn require_blog_channel_enabled(
     runtime_ctx: &rustok_api::HostRuntimeContext,
     tenant_id: uuid::Uuid,

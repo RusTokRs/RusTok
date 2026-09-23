@@ -830,37 +830,6 @@ fn forum_owner_error(error: ForumError) -> NotificationProviderError {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn owner_capability_errors_preserve_retryability() {
-        assert_eq!(
-            forum_owner_error(ForumError::capability_unavailable("facts", "MISSING")),
-            NotificationProviderError::CapabilityUnavailable { retryable: false }
-        );
-        assert_eq!(
-            forum_owner_error(ForumError::capability_failure(
-                "facts",
-                "TIMEOUT",
-                "temporary",
-                true,
-            )),
-            NotificationProviderError::CapabilityUnavailable { retryable: true }
-        );
-        assert_eq!(
-            forum_owner_error(ForumError::capability_failure(
-                "facts",
-                "REJECTED",
-                "permanent",
-                false,
-            )),
-            NotificationProviderError::CapabilityUnavailable { retryable: false }
-        );
-    }
-}
-
 fn is_supported_event_type(event_type: &NotificationTypeKey) -> bool {
     event_type == &topic_created_type() || event_type == &user_mention_added_type()
 }
@@ -896,4 +865,35 @@ fn forum_topic_target_kind() -> NotificationTargetKind {
 fn forum_reply_target_kind() -> NotificationTargetKind {
     NotificationTargetKind::new(FORUM_REPLY_TARGET)
         .expect("forum reply notification target kind must stay valid")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn owner_capability_errors_preserve_retryability() {
+        assert_eq!(
+            forum_owner_error(ForumError::capability_unavailable("facts", "MISSING")),
+            NotificationProviderError::CapabilityUnavailable { retryable: false }
+        );
+        assert_eq!(
+            forum_owner_error(ForumError::capability_failure(
+                "facts",
+                "TIMEOUT",
+                "temporary",
+                true,
+            )),
+            NotificationProviderError::CapabilityUnavailable { retryable: true }
+        );
+        assert_eq!(
+            forum_owner_error(ForumError::capability_failure(
+                "facts",
+                "REJECTED",
+                "permanent",
+                false,
+            )),
+            NotificationProviderError::CapabilityUnavailable { retryable: false }
+        );
+    }
 }
