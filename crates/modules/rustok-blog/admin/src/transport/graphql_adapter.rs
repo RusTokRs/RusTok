@@ -329,7 +329,7 @@ pub async fn archive_post(
         ARCHIVE_POST_MUTATION,
         ArchivePostVariables {
             id: id.clone(),
-            reason: Some("Archived from module admin package".to_string()),
+            reason: None,
         },
         token.clone(),
         tenant_slug.clone(),
