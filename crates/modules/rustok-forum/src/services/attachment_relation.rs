@@ -85,6 +85,8 @@ impl ForumAttachmentRelationService {
         let target = batch.source().target();
         let locale = batch.source().locale().to_string();
 
+        ensure_forum_target_exists(&self.db, tenant_id, target).await?;
+
         let observed = self.load_head(&self.db, tenant_id, target, &locale).await?;
         if let Some(head) = observed {
             let current = self
@@ -420,6 +422,36 @@ impl ForumAttachmentRelationService {
             relation_revision,
             source_revision: Some(source_revision),
             attachments,
+        })
+    }
+}
+
+async fn ensure_forum_target_exists<C: ConnectionTrait>(
+    connection: &C,
+    tenant_id: Uuid,
+    target: ForumContentTarget,
+) -> ForumResult<()> {
+    let exists = match target.kind() {
+        ForumContentTargetKind::Topic => forum_topic::Entity::find()
+            .filter(forum_topic::Column::TenantId.eq(tenant_id))
+            .filter(forum_topic::Column::Id.eq(target.id()))
+            .one(connection)
+            .await?
+            .is_some(),
+        ForumContentTargetKind::Reply => forum_reply::Entity::find()
+            .filter(forum_reply::Column::TenantId.eq(tenant_id))
+            .filter(forum_reply::Column::Id.eq(target.id()))
+            .one(connection)
+            .await?
+            .is_some(),
+    };
+
+    if exists {
+        Ok(())
+    } else {
+        Err(match target.kind() {
+            ForumContentTargetKind::Topic => ForumError::TopicNotFound(target.id()),
+            ForumContentTargetKind::Reply => ForumError::ReplyNotFound(target.id()),
         })
     }
 }
