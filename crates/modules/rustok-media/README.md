@@ -31,6 +31,7 @@
 - Publish the module-local `rustok-media-cli` adapter with `media reconcile`, keeping CLI/runtime assembly outside the domain crate.
 - Expose `MediaImageDescriptor` as the typed cross-module image contract (`url/alt/size/mime` + derived helpers, delivery profile, and public URL policy) for SEO and other read-side consumers.
 - Publish `MediaAssetReadPort` / `media.asset_read.v1` source-locked FBA evidence, including deadline/context guards, typed `PortError` retryability mapping, and `MediaAssetSummary` kind/usage metadata for consumers.
+- Expose a bounded `MediaAssetReferenceListPage` owner-read operation for deterministic consumer-reference reconciliation; results are tenant-scoped and keyed by stable reference identity, without exposing Media storage details.
 - Publish `MediaAssetWritePort` / `media.asset_write.v1` for upload preparation/completion, deletion, translations, and tenant-scoped reconciliation. Binary bodies never enter generic write-port DTOs.
 - Publish `MediaPublicImageReadPort` for embedded public presentation. It returns the canonical `MediaItem` plus a Media-issued descriptor: direct-public URLs remain unchanged, storage-relative image paths become immutable capability URLs, and opaque references remain unavailable.
 - Serve capability URLs at `/api/media/public/images/{id}/{checksum_sha256}`. The handler verifies tenant, active asset/blob, ready state, image MIME, active-blob SHA-256, and object size before returning bytes with immutable cache headers and ETag.
@@ -65,6 +66,7 @@
 - `rustok-media-cli` (`media reconcile [--limit <count>]`)
 - `MediaAssetSummary` / `MediaAssetKind` / `MediaAssetUsageProfile`
 - `MediaAssetReadPort` / `MediaAssetWritePort`
+- `MediaAssetReferenceListRequest` / `MediaAssetReferenceListPage`
 - `MediaUploadRequest` / `MediaUploadTarget`
 - `rustok-media-transport::{GrpcMediaProvider, MediaGrpcService}`
 - `CreateRenditionInput` / `MediaRenditionItem` / `ImageWorker`
