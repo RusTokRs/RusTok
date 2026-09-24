@@ -20,8 +20,8 @@ pub use types::*;
 
 const SEARCH_INTERNAL_ERROR_MESSAGE: &str = "Search service is temporarily unavailable";
 
-pub(super) fn map_search_module_error(error: rustok_core::Error) -> async_graphql::FieldError {
-    match error {
+pub(super) fn map_search_module_error(error: impl Into<rustok_core::Error>) -> async_graphql::FieldError {
+    match error.into() {
         rustok_core::Error::Validation(message) => {
             <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::bad_user_input(
                 &message,
