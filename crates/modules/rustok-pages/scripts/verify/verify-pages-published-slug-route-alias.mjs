@@ -265,16 +265,22 @@ ordered(metadataWrite, [
 const aliasWriter = between(
   route,
   "pub(super) async fn record_published_slug_redirects_in_tx(",
-  "async fn record_redirect_alias_in_tx(",
+  "async fn record_gone_alias_in_tx(",
   "published rename writer",
 );
 ordered(aliasWriter, [
   "storage_to_status(page_status)? != ContentStatus::Published",
   "return Ok(())",
   "existing_by_locale",
-  "if old_slug == new_slug",
-  "record_redirect_alias_in_tx(",
+  "if pending.is_empty()",
+  "let aliases = page_route_alias::Entity::find()",
+  "let mut aliases_by_route = HashMap::new()",
+  "for (locale, old_slug) in pending",
+  "aliases_by_route.get(&key)",
 ], "published-only alias ordering");
+if ((aliasWriter.match(/\.all\(txn\)/g) || []).length > 2) {
+  failures.push("published rename writer: retained per-locale alias lookup pattern");
+}
 
 for (const marker of [
   'format!("/{locale}/modules/pages?slug={slug}")',
