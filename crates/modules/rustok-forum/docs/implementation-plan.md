@@ -376,6 +376,7 @@ capability. Media keeps lifecycle ownership. Forum never reads Media persistence
 - Removed Media references are released only after Forum commit; failures leave a conservative hold and do not roll back the already committed Forum state.
 - Stable Media reference IDs are deterministic across request retries and do not change when usage or caption changes.
 - Database constraints enforce tenant ownership, valid target kind, positive revisions, monotonic relation revisions, immutable relation rows, bounded positions and unique per-target ordering.
+- FORUM-33 now provides a read-only attachment-hold diagnostic that enumerates Media-owned `forum` holds through the public owner contract and flags orphan or Media-ID-mismatch state without reading Media persistence directly.
 
 ### `FORUM-15`/`FORUM-27`: Profiles
 
@@ -790,8 +791,7 @@ runtime observability evidence.
 FORUM-33 remains `in_progress`. Retain SQLite and PostgreSQL execution evidence
 for counter and accepted-solution clean/drift pages, independent multi-page
 cursor traversal, exhausted-one-side behavior and concurrent page-local snapshot
-semantics. The next source reconciliation slice is subscriptions, followed by
-mentions, attachments and permitted shared-owner projections. Add only
+semantics. The attachment reconciliation slice is now source-ready as a read-only owner diagnostic. It uses a bounded Media owner-reference keyset and compares each returned hold against Forum-owned relation rows; runtime PostgreSQL evidence remains open. Automatic repair stays blocked by the existing FORUM-33 write-repair gate. Add only
 non-duplicative operational metrics for moderation, notification/search lag,
 unread/activity, locale fallback and spam outcomes. Any write repair remains
 blocked until it has explicit operator RBAC, dry-run behavior, durable audit,
@@ -1108,8 +1108,7 @@ cursor traversal, exhausted-one-side behavior, target existence, merge redirect
 source subscription detection, muted preferences integrity, positive revision
 checks, child-source agreement, and projection fingerprint validation. Architectural
 cleanup removed `#![allow(dead_code)]` and wired `ugc_translation_apply` as a first-class
-service module. The remaining FORUM-33 scope includes PostgreSQL runtime evidence,
-attachment diagnostics after Forum-owned relation persistence, and permitted shared-owner projections. Do not add write
+service module. The remaining FORUM-33 scope includes PostgreSQL runtime evidence, attachment-hold execution evidence, and permitted shared-owner projections. Attachment diagnostics are page-local across the two owner boundaries and never release or retain Media references. Do not add write
 repair until operator RBAC, dry-run, durable audit, idempotent job/receipt state and
 bounded recovery are designed together. Add a Forum CLI adapter only with the
 synchronized workspace dependency and `Cargo.lock` update.
