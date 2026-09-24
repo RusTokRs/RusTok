@@ -42,7 +42,8 @@
     "owner_scope": "normalized owner_module=forum",
     "tenant_scope": "trusted PortContext tenant_id",
     "ordering": "reference_id ascending",
-    "binary_or_storage_details_exposed": false
+    "binary_or_storage_details_exposed": false,
+    "consumer_revalidates_tenant_and_owner": true
   },
   "forbidden_behavior": [
     "direct Media table access from Forum",
@@ -68,5 +69,10 @@
       "node scripts/verify/verify-forum-attachment-hold-reconciliation.mjs"
     ],
     "execution_status": "not_run_by_implementation_agent"
+  },
+  "composition": {
+    "foreign_tenant_media_reference_rejected": true,
+    "foreign_owner_media_reference_rejected": true,
+    "invalid_media_reference_identity_rejected": true
   }
 }
