@@ -67,6 +67,20 @@ test("search Blog projection verifier accepts canonical owner-tag source", () =>
   }
 });
 
+test("rejects an author join without the Blog tenant predicate", () => {
+  const result = rejects((root) => {
+    const relativePath = "crates/modules/rustok-search/src/blog_projector.rs";
+    const source = readFileSync(absolute(root, relativePath), "utf8");
+    write(
+      root,
+      relativePath,
+      source.replace("\n               AND u.tenant_id = p.tenant_id", ""),
+    );
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /u\.tenant_id = p\.tenant_id|tenant-scoped/);
+});
+
 test("rejects metadata tags as Search projection source", () => {
   const result = rejects((root) => {
     const relativePath = "crates/modules/rustok-search/src/blog_projector.rs";
