@@ -46,6 +46,7 @@ pub enum MediaGrpcOperation {
     GetAsset,
     GetAssetReferenceAdmission,
     ListAssetReferences,
+    LookupAssetReferences,
     ListAssets,
     GetImageDescriptor,
     GetPublicImageAsset,
@@ -151,6 +152,26 @@ where
         let value = self
             .provider
             .get_asset_reference_admission(context, parse_id(&request.id)?)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
+    async fn lookup_asset_references(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            MediaGrpcOperation::LookupAssetReferences,
+        )?;
+        let request = request.into_inner();
+        let input: rustok_media::MediaAssetReferenceLookupRequest =
+            decode_input(&request.input_json)?;
+        let value = self
+            .provider
+            .lookup_asset_references(context, input)
             .await
             .map_err(port_error_to_status)?;
         json_response(&value)
