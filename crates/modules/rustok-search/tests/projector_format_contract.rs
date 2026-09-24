@@ -1,6 +1,6 @@
 #[test]
 fn product_channel_json_path_is_escaped_for_format_macro() {
-    let source = include_str!("../src/projector_legacy.rs");
+    let source = include_str!("../src/projector_core.rs");
     let escaped_path = "p.metadata #> '{{channel_visibility,allowed_channel_slugs}}'";
 
     assert_eq!(

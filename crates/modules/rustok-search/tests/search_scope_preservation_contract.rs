@@ -1,19 +1,19 @@
 const SEARCH_LIB: &str = include_str!("../src/lib.rs");
 const ACTIVE_PROJECTOR: &str = include_str!("../src/projector.rs");
-const LEGACY_PROJECTOR: &str = include_str!("../src/projector_legacy.rs");
+const CORE_PROJECTOR: &str = include_str!("../src/projector_core.rs");
 const INGESTION: &str = include_str!("../src/ingestion.rs");
 const BLOG_PROJECTOR: &str = include_str!("../src/blog_projector.rs");
 const FORUM_PROJECTOR: &str = include_str!("../src/forum_projector.rs");
 
 #[test]
 fn active_tenant_rebuild_never_calls_the_destructive_legacy_tenant_rebuild() {
-    assert!(SEARCH_LIB.contains("mod projector_legacy;"));
-    assert!(!SEARCH_LIB.contains("pub mod projector_legacy;"));
-    assert!(ACTIVE_PROJECTOR.contains("self.legacy.rebuild_content_scope(tenant_id).await?"));
-    assert!(ACTIVE_PROJECTOR.contains("self.legacy.rebuild_product_scope(tenant_id).await"));
-    assert!(!ACTIVE_PROJECTOR.contains("self.legacy.rebuild_tenant"));
+    assert!(SEARCH_LIB.contains("mod projector_core;"));
+    assert!(!SEARCH_LIB.contains("pub mod projector_core;"));
+    assert!(ACTIVE_PROJECTOR.contains("self.core.rebuild_content_scope(tenant_id).await?"));
+    assert!(ACTIVE_PROJECTOR.contains("self.core.rebuild_product_scope(tenant_id).await"));
+    assert!(!ACTIVE_PROJECTOR.contains("self.core.rebuild_tenant"));
     assert!(!ACTIVE_PROJECTOR.contains("DELETE FROM search_documents WHERE tenant_id = $1\""));
-    assert!(LEGACY_PROJECTOR.contains("DELETE FROM search_documents WHERE tenant_id = $1\""));
+    assert!(CORE_PROJECTOR.contains("DELETE FROM search_documents WHERE tenant_id = $1\""));
 }
 
 #[test]

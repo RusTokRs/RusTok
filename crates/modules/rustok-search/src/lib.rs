@@ -30,9 +30,7 @@ pub mod presets;
 mod product_channel_reconciliation;
 pub mod projection_source;
 pub mod projector;
-#[allow(dead_code)]
-#[path = "projector_legacy.rs"]
-mod projector_legacy;
+mod projector_core;
 pub mod ranking;
 pub mod search_settings;
 pub mod storefront_category_scope;

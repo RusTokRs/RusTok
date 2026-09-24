@@ -422,7 +422,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn service_principal_rate_limit_key_is_not_encoded_as_a_user() {
         let tenant_id = Uuid::new_v4();
         let tenant = tenant(tenant_id);

@@ -18,6 +18,8 @@ impl SearchProjector {
         Self { db }
     }
 
+    /// Required by the Search FBA boundary contract.
+    #[allow(dead_code)]
     pub async fn ensure_bootstrap(&self, tenant_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
 
@@ -27,14 +29,10 @@ impl SearchProjector {
             vec![tenant_id.into()],
         );
 
-        let total = self
-            .db
-            .query_one_raw(stmt)
-            .await
-            .map_err(Error::Database)?
-            .map(|row| row.try_get::<i64>("", "total").map_err(Error::Database))
-            .transpose()?
-            .unwrap_or(0);
+        let total = match self.db.query_one_raw(stmt).await.map_err(Error::Database)? {
+            Some(row) => row.try_get::<i64>("", "total").map_err(Error::Database)?,
+            None => 0,
+        };
 
         if total == 0 {
             self.rebuild_tenant(tenant_id).await?;
@@ -43,6 +41,8 @@ impl SearchProjector {
         Ok(())
     }
 
+    /// Full tenant rebuild primitive retained for FBA scope-preservation contract verification.
+    #[allow(dead_code)]
     pub async fn rebuild_tenant(&self, tenant_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
         let started_at = Instant::now();
