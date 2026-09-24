@@ -84,6 +84,10 @@ BEGIN
         RAISE EXCEPTION 'forum attachment relation head identity is immutable';
     END IF;
 
+    IF TG_OP = 'UPDATE' AND NEW.relation_revision <= OLD.relation_revision THEN
+        RAISE EXCEPTION 'forum attachment relation revision must advance monotonically';
+    END IF;
+
     IF NEW.target_kind = 'topic' THEN
         IF NOT EXISTS (
             SELECT 1 FROM forum_topics topic
@@ -114,6 +118,18 @@ CREATE TRIGGER forum_attachment_relation_head_guard
 BEFORE INSERT OR UPDATE ON forum_attachment_relation_heads
 FOR EACH ROW
 EXECUTE FUNCTION forum_validate_attachment_relation_head();
+
+CREATE OR REPLACE FUNCTION forum_forbid_attachment_relation_update()
+RETURNS trigger AS $
+BEGIN
+    RAISE EXCEPTION 'forum attachment relation rows are immutable; replace the relation set';
+END;
+$ LANGUAGE plpgsql;
+
+CREATE TRIGGER forum_attachment_relation_update_guard
+BEFORE UPDATE ON forum_attachment_relations
+FOR EACH ROW
+EXECUTE FUNCTION forum_forbid_attachment_relation_update();
 "#,
     ).await?;
     Ok(())
@@ -122,6 +138,9 @@ EXECUTE FUNCTION forum_validate_attachment_relation_head();
 async fn down_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     manager.get_connection().execute_unprepared(
         r#"
+DROP TRIGGER IF EXISTS forum_attachment_relation_update_guard
+    ON forum_attachment_relations;
+DROP FUNCTION IF EXISTS forum_forbid_attachment_relation_update();
 DROP TRIGGER IF EXISTS forum_attachment_relation_head_guard
     ON forum_attachment_relation_heads;
 DROP FUNCTION IF EXISTS forum_validate_attachment_relation_head();
@@ -182,6 +201,13 @@ async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             BEGIN
                 SELECT RAISE(ABORT, 'forum attachment relation target does not exist');
             END"#,
+        r#"CREATE TRIGGER forum_attachment_relation_head_revision_guard
+            BEFORE UPDATE OF relation_revision ON forum_attachment_relation_heads
+            FOR EACH ROW
+            WHEN NEW.relation_revision <= OLD.relation_revision
+            BEGIN
+                SELECT RAISE(ABORT, 'forum attachment relation revision must advance monotonically');
+            END"#,
         r#"CREATE TRIGGER forum_attachment_relation_head_identity_guard
             BEFORE UPDATE ON forum_attachment_relation_heads
             FOR EACH ROW
@@ -191,6 +217,12 @@ async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
               OR NEW.locale IS NOT OLD.locale
             BEGIN
                 SELECT RAISE(ABORT, 'forum attachment relation head identity is immutable');
+            END"#,
+        r#"CREATE TRIGGER forum_attachment_relation_immutable_update_guard
+            BEFORE UPDATE ON forum_attachment_relations
+            FOR EACH ROW
+            BEGIN
+                SELECT RAISE(ABORT, 'forum attachment relation rows are immutable; replace the relation set');
             END"#,
         r#"CREATE TRIGGER forum_attachment_relation_head_update_target_guard
             BEFORE UPDATE ON forum_attachment_relation_heads
@@ -218,7 +250,9 @@ async fn down_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     for statement in [
         "DROP TRIGGER IF EXISTS forum_attachment_relation_head_update_target_guard",
+        "DROP TRIGGER IF EXISTS forum_attachment_relation_head_revision_guard",
         "DROP TRIGGER IF EXISTS forum_attachment_relation_head_identity_guard",
+        "DROP TRIGGER IF EXISTS forum_attachment_relation_immutable_update_guard",
         "DROP TRIGGER IF EXISTS forum_attachment_relation_head_insert_guard",
         "DROP INDEX IF EXISTS idx_forum_attachment_relations_media",
         "DROP INDEX IF EXISTS uq_forum_attachment_relations_target_position",

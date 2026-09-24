@@ -375,7 +375,7 @@ capability. Media keeps lifecycle ownership. Forum never reads Media persistence
 - Every new relation acquires a durable Media owner reference before the Forum relation transaction commits.
 - Removed Media references are released only after Forum commit; failures leave a conservative hold and do not roll back the already committed Forum state.
 - Stable Media reference IDs are deterministic across request retries and do not change when usage or caption changes.
-- Database constraints enforce tenant ownership, valid target kind, positive revisions, bounded positions and unique per-target ordering.
+- Database constraints enforce tenant ownership, valid target kind, positive revisions, monotonic relation revisions, immutable relation rows, bounded positions and unique per-target ordering.
 
 ### `FORUM-15`/`FORUM-27`: Profiles
 

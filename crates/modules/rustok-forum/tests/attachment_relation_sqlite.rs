@@ -145,6 +145,35 @@ async fn sqlite_attachment_relation_migration_enforces_owner_invariants() -> Tes
     assert!(
         db.execute_unprepared(&format!(
             r#"
+            UPDATE forum_attachment_relation_heads
+            SET relation_revision = 1
+            WHERE tenant_id = '{tenant_a}'
+              AND target_kind = 'topic'
+              AND target_id = '{topic_a}'
+              AND locale = 'en'
+            "#
+        ))
+        .await
+        .is_err(),
+        "attachment relation revision must increase monotonically"
+    );
+
+    assert!(
+        db.execute_unprepared(&format!(
+            r#"
+            UPDATE forum_attachment_relations
+            SET caption = 'tampered'
+            WHERE reference_id = '{reference_a}'
+            "#
+        ))
+        .await
+        .is_err(),
+        "attachment relation rows must be immutable"
+    );
+
+    assert!(
+        db.execute_unprepared(&format!(
+            r#"
             INSERT INTO forum_attachment_relations
                 (reference_id, tenant_id, target_kind, target_id, locale, position, media_id, usage)
             VALUES

@@ -186,13 +186,15 @@ impl ForumAttachmentRelationService {
             .map(|relation| (relation.reference_id, relation.media_id))
             .collect::<Vec<_>>();
 
-        update_head(
-            &txn,
-            &head,
-            next_revision,
-            batch.source().source_revision(),
-        )
-        .await?;
+        if !created_head {
+            update_head(
+                &txn,
+                &head,
+                next_revision,
+                batch.source().source_revision(),
+            )
+            .await?;
+        }
         delete_relations_for_head(&txn, &head).await?;
         insert_relations_for_head(
             &txn,
