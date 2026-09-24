@@ -49,7 +49,8 @@
     "blog_global_terms_are_not_mutable": true,
     "tag_usage_projection_table": "blog_tag_usage",
     "tag_list_database_pagination": true,
-    "tag_usage_projection_is_derived_state": true
+    "tag_usage_projection_is_derived_state": true,
+    "global_tag_search_invalidation_test": "crates/modules/rustok-taxonomy/src/translation_target_tests.rs"
   },
   "rollout_requirements": [
     "execute Blog tag read evidence against real owner tables",
@@ -63,7 +64,9 @@
     "required": [
       "execute Blog tag read/mutation scope evidence",
       "execute Search Blog projection PostgreSQL evidence",
-      "audit deployed metadata-only tag rows"
+      "audit deployed metadata-only tag rows",
+      "execute global Taxonomy Tag Search invalidation evidence",
+      "execute outbox-failure rollback coverage for global Taxonomy Tag mutation"
     ]
   },
   "execution": [],
