@@ -51,6 +51,10 @@ channel visibility and deterministic published artifacts.
   Navigation public contracts without owning its storage.
 - host applications connect module UI through generated manifest composition.
 
+## Route query boundedness
+
+Route resolution and immutable route-history recording batch tenant-scoped reads. The current published-route resolver uses one candidate-translation query plus one published-page `IN` query; publication snapshots and delete tombstones preload their existing route rows before per-row decision logic. Historical route semantics remain fail-closed on duplicate or conflicting rows.
+
 ## Verification
 
 - `cargo xtask module validate pages`
