@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
@@ -14,7 +12,7 @@ use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::dto::TopicResponse;
+use crate::dto::{ListTopicsFilter, TopicListItem, TopicResponse};
 use crate::entities::{forum_reply, forum_solution, forum_topic};
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::{ReplyStatus, TopicStatus};
@@ -39,8 +37,8 @@ const FORUM_TOPIC_DELETED_ROUTE_REASON: &str = "Topic deleted";
 /// Public owner service for topic commands.
 ///
 /// Explicit root-service lifecycle writes happen here. The wrapped persistence
-/// service remains a compatibility path, while database triggers provide the
-/// final consistency barrier for direct SQL and older deployments.
+/// implementation remains private to the owner, while database triggers provide
+/// the final consistency barrier for direct SQL and older deployments.
 pub struct TopicService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
@@ -59,6 +57,69 @@ impl TopicService {
     pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
         self.inner = self.inner.with_settings_providers(settings);
         self
+    }
+
+    pub async fn get(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        topic_id: Uuid,
+        locale: &str,
+    ) -> ForumResult<TopicResponse> {
+        self.inner.get(tenant_id, security, topic_id, locale).await
+    }
+
+    pub async fn get_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        topic_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> ForumResult<TopicResponse> {
+        self.inner
+            .get_with_locale_fallback(tenant_id, security, topic_id, locale, fallback_locale)
+            .await
+    }
+
+    pub(crate) async fn list_with_locale_fallback_and_hidden_categories(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        filter: ListTopicsFilter,
+        fallback_locale: Option<&str>,
+        hidden_category_ids: &[Uuid],
+    ) -> ForumResult<(Vec<TopicListItem>, u64)> {
+        self.inner
+            .list_with_locale_fallback_and_hidden_categories(
+                tenant_id,
+                security,
+                filter,
+                fallback_locale,
+                hidden_category_ids,
+            )
+            .await
+    }
+
+    pub(crate) async fn list_storefront_visible_with_locale_fallback_and_hidden_categories(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        filter: ListTopicsFilter,
+        fallback_locale: Option<&str>,
+        channel_slug: Option<&str>,
+        hidden_category_ids: &[Uuid],
+    ) -> ForumResult<(Vec<TopicListItem>, u64)> {
+        self.inner
+            .list_storefront_visible_with_locale_fallback_and_hidden_categories(
+                tenant_id,
+                security,
+                filter,
+                fallback_locale,
+                channel_slug,
+                hidden_category_ids,
+            )
+            .await
     }
 
     #[instrument(skip(self, security, input))]
@@ -470,14 +531,6 @@ impl TopicService {
         status: TopicStatus,
     ) -> ForumResult<()> {
         topic::TopicService::set_status_in_tx(txn, tenant_id, topic_id, status).await
-    }
-}
-
-impl Deref for TopicService {
-    type Target = topic::TopicService;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
     }
 }
 

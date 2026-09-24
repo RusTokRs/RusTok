@@ -19,6 +19,56 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 
 ---
 
+
+## 2026-09-24 Media public URL owner hardening
+
+A fresh Forum→Media boundary audit found that `MediaItem.public_url` previously fell back to `blob.object_key` when no public storage base URL was configured. That made an internal storage key look like a consumer-visible delivery URL and was inconsistent with the Media public-image capability contract.
+
+Media now centralizes `MediaItem` construction in one owner helper, never uses an object key as `public_url`, emits the checksum-bound Media public-image capability URL for ready image assets when no direct public base exists, and leaves non-image `public_url` empty until Media owns a matching delivery capability. Rendition public URLs also no longer fall back to object keys. Regression coverage and the Media public-image static verifier enforce the boundary.
+
+Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
+
+## 2026-09-24 Forum topic-list metadata batch hardening
+
+A read-path audit found a per-topic Flex attached-metadata lookup inside Forum topic-list hydration. The page itself was bounded, but custom-field resolution issued one database read per topic, creating an avoidable N+1 query pattern.
+
+Forum topic hydration now resolves the page's topic metadata through Flex's existing bounded attached-translation storage batch (maximum 200 entities), while singleton attached-payload resolution delegates to the same canonical implementation. Locale precedence and shared-versus-localized metadata semantics therefore have one owner implementation. A regression test covers exact locale/fallback behavior, and the Forum read-model verifier fails if per-topic metadata resolution is reintroduced.
+
+Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
+
+## 2026-09-24 Forum mention Profiles batch hardening
+
+Forum mention resolution previously performed one Profiles owner lookup per resolved handle. With the 32-target mention bound, a single revision could therefore create an avoidable per-handle database burst.
+
+Profiles now exposes a tenant-scoped bounded handle batch reader that reuses its existing batched translations and tag loading. Forum mention resolution calls that boundary once, then validates each returned ProfileRecord against the existing tenant, handle, active-status and visibility contract. Missing handles remain the established field-free mention-target failure. The mention integration verifier forbids the old per-handle reader call.
+
+Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
+
+## 2026-09-24 Forum Reply owner consolidation
+
+The Forum Reply owner still exposed a raw persistence service through `Deref`, while `bounded_compat.rs` added read methods outside the owner. That split the canonical Reply contract across an implicit dereference boundary and a compatibility module.
+
+Reply read operations are now explicit methods on `reply_owner::ReplyService`, including the bounded pagination contract. The owner no longer implements `Deref`; the obsolete `bounded_compat.rs` module is removed. The public `reply_facade::ReplyService` surface remains unchanged.
+
+Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
+Topic owner now also exposes its read/list compatibility methods explicitly, removing its `Deref` boundary without changing the public Topic facade. Raw `topic` and `reply` modules remain private persistence implementations and are accessed only explicitly by their owner modules.
+
+## 2026-09-24 Forum canonical owner consolidation
+
+A continuous-review audit found two Forum service owners still embedding explicit legacy implementations: the read-model owner delegated topic/reply projections through `read_model_legacy`, while the moderation owner delegated topic pin/status operations through `moderation_legacy` via `Deref`. That left two competing implementation authorities inside the module and made the canonical owner boundary misleading.
+
+Forum now contains the canonical category/topic/reply read-model implementation directly in `read_model_owner.rs`, and the canonical moderation owner directly owns pin/unpin plus close/reopen/archive lifecycle operations. The legacy source files, redundant public moderation forwarding layer, and stale module bindings were removed; the public `read_model` and `moderation` module paths remain unchanged.
+
+Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
+
+## 2026-09-24 Profiles handle batch bound hardening
+
+The Forum mention batch reader initially delegated its safety to the Forum's 32-target mention limit. That was too weak as a public ProfilesReader contract because other callers could submit an unbounded handle array.
+
+Profiles now enforces its own 64-handle batch limit before any database work. The owner still performs one tenant-scoped profile read plus the existing batched translations/tag resolution, and Forum remains responsible for completeness and mention visibility validation. Integration verification now requires the owner-level limit.
+
+Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
+
 ## Components Review Status
 
 | Status | Component | Category | Files | LOC | Last Audited | Notes |
@@ -89,7 +139,7 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 | [x] | [rustok-events-module](../../crates/modules/rustok-events-module) | `modules` | 14 | 847 | 2026-09-20 14:21 | Verified events runtime module adapter, zero suppressions/unwraps, test passed, clippy clean |
 | [x] | [admin](../../crates/modules/rustok-events-module/admin) | `modules` | 7 | 506 | 2026-09-20 14:21 | Verified leptos events admin surface, zero suppressions/unwraps, clippy clean |
 | [x] | [next-admin](../../crates/modules/rustok-events-module/next-admin) | `modules` | 6 | 278 | 2026-09-20 14:22 | Verified events next-admin UI package, typed status query and delivery configuration API |
-| [x] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 592 | 152,064 | 2026-09-22 20:08 | Continued FORUM-21 concurrency audit: reply update serialization was hardened in `ReplyService::update_with_inline_relations`, and reply delete/restore lifecycle paths now use the same `category → topic → reply` lock ordering as split/range-move owners. Delete no longer takes a reply row lock before the topic row, avoiding PostgreSQL lock-order inversion; restore locks and revalidates the reply after the topic lock, so a concurrent move cannot be overwritten by stale topic state. Concurrent relocation now fails closed through retryable `TopicUpdateConflict`. Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent. |
+| [x] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 590 | 152,064 | 2026-09-24 19:41 | Continued FORUM-21 concurrency audit: reply update serialization was hardened in `ReplyService::update_with_inline_relations`, and reply delete/restore lifecycle paths now use the same `category → topic → reply` lock ordering as split/range-move owners. Delete no longer takes a reply row lock before the topic row, avoiding PostgreSQL lock-order inversion; restore locks and revalidates the reply after the topic lock, so a concurrent move cannot be overwritten by stale topic state. Concurrent relocation now fails closed through retryable `TopicUpdateConflict`. Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent. | Canonical read-model and moderation legacy implementations were consolidated into their owner modules; obsolete legacy source files, forwarding facade, and bindings were removed.
 | [x] | [admin](../../crates/modules/rustok-forum/admin) | `modules` | 35 | 12,236 | 2026-09-20 16:30 | Verified forum admin package, zero suppressions/unwraps, all 87 tests passed, clippy clean |
 | [x] | [storefront](../../crates/modules/rustok-forum/storefront) | `modules` | 19 | 4,164 | 2026-09-20 16:30 | Re-exported public transport API in lib.rs, eliminated 6 allow(dead_code) suppressions, all tests passed, clippy clean |
 | [x] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 71 | 17,271 | 2026-09-20 16:54 | Eliminated 2 allow(too_many_arguments) suppressions via ShippingOptionReadRequestFacts and FulfillmentLifecycleReadRequestFacts, added change journal to test schema support, bounded provider journal migrations, all 43 tests passed, clippy clean |

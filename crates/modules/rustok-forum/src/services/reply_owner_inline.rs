@@ -1,8 +1,7 @@
 use crate::dto::{CreateReplyCommandInput, UpdateReplyCommandInput};
 
 impl ReplyService {
-    pub(crate) const MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS: usize =
-        reply::ReplyService::MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS;
+    pub(crate) const MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS: usize = 512;
 
     pub(crate) async fn available_locales_for_replies(
         &self,
@@ -168,7 +167,7 @@ impl ReplyService {
         }
 
         txn.commit().await?;
-        self.inner.get(tenant_id, security, reply_id, &locale).await
+        self.get(tenant_id, security, reply_id, &locale).await
     }
 
     #[instrument(skip(self, security, input))]
@@ -179,8 +178,7 @@ impl ReplyService {
         security: SecurityContext,
         input: UpdateReplyCommandInput,
     ) -> ForumResult<ReplyResponse> {
-        self.inner
-            .update_with_inline_relations(tenant_id, reply_id, security, input)
+        self.update_with_inline_relations(tenant_id, reply_id, security, input)
             .await
     }
 }

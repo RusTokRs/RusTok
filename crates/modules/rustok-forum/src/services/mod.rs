@@ -1,4 +1,3 @@
-mod bounded_compat;
 mod category {
     include!("category_import.rs");
     include!("category.rs");
@@ -53,12 +52,9 @@ mod mention_relation_tests {
     include!("mention_relation_tests.rs");
     include!("relation_quote_input_tests.rs");
 }
-#[path = "moderation.rs"]
-mod moderation_legacy;
 mod moderation_owner;
-mod moderation_public_owner;
 pub mod moderation {
-    pub use super::moderation_public_owner::ModerationService;
+    pub use super::moderation_owner::ModerationService;
 }
 mod moderation_audience_authorization;
 mod posting_policy;
@@ -71,8 +67,6 @@ pub(crate) mod projection_invalidation;
 mod public_discovery;
 mod quote_command;
 mod rbac;
-#[path = "read_model.rs"]
-mod read_model_legacy;
 mod read_model_owner;
 pub mod read_model {
     pub use super::read_model_owner::ForumReadModelService;

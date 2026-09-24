@@ -19,6 +19,7 @@ const MAX_HANDLE_LENGTH: usize = 32;
 const MAX_DISPLAY_NAME_LENGTH: usize = 255;
 const MAX_LOCALE_LENGTH: usize = 32;
 const MAX_HANDLE_SUFFIX_ATTEMPTS: usize = 100;
+pub const MAX_PROFILE_HANDLE_BATCH: usize = 64;
 const RESERVED_HANDLES: &[&str] = &["admin", "api", "me", "root", "support", "system"];
 
 impl ProfileService {
@@ -402,7 +403,73 @@ impl ProfileService {
         .ok_or(ProfileError::ProfileNotFound(user_id))
     }
 
-    pub async fn get_profile_by_handle(
+    pub async fn find_profile_records_by_handles(
+        &self,
+        tenant_id: Uuid,
+        handles: &[String],
+        requested_locale: Option<&str>,
+        tenant_default_locale: Option<&str>,
+    ) -> ProfileResult<HashMap<String, ProfileRecord>> {
+        if handles.len() > MAX_PROFILE_HANDLE_BATCH {
+            return Err(ProfileError::Validation(format!(
+                "profile handle batch exceeds {MAX_PROFILE_HANDLE_BATCH} handles"
+            )));
+        }
+
+        let mut normalized_handles = Vec::with_capacity(handles.len());
+        for handle in handles {
+            let normalized = Self::normalize_handle(handle)?;
+            if !normalized_handles.contains(&normalized) {
+                normalized_handles.push(normalized);
+            }
+        }
+        if normalized_handles.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let profiles = entities::profile::Entity::find()
+            .filter(entities::profile::Column::TenantId.eq(tenant_id))
+            .filter(entities::profile::Column::Handle.is_in(normalized_handles))
+            .all(&self.db)
+            .await?;
+
+        if profiles.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let translations = self
+            .load_translations_map(&profiles, requested_locale, tenant_default_locale)
+            .await?;
+        let tags = self
+            .load_profile_tag_map(
+                tenant_id,
+                &profiles,
+                requested_locale,
+                tenant_default_locale,
+            )
+            .await?;
+
+        profiles
+            .into_iter()
+            .map(|profile| {
+                let handle = profile.handle.clone();
+                let user_id = profile.user_id;
+                let translation = select_translation(
+                    &translations,
+                    &profile,
+                    requested_locale,
+                    tenant_default_locale,
+                )?;
+                let profile = map_profile(
+                    profile,
+                    translation,
+                    tags.get(&user_id).cloned().unwrap_or_default(),
+                )?;
+                Ok((handle, profile))
+            })
+            .collect()
+    }
+
         &self,
         tenant_id: Uuid,
         handle: &str,

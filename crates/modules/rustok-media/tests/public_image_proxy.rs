@@ -80,7 +80,26 @@ fn context(tenant_id: Uuid) -> PortContext {
 }
 
 #[tokio::test]
-async fn storage_relative_image_gets_owner_capability_url_and_immutable_body() {
+async fn non_image_without_public_base_has_no_public_url() {
+    let (database, storage, _directory, tenant_id) = setup().await;
+    let item = MediaService::new(database, storage)
+        .upload(UploadInput {
+            tenant_id,
+            uploaded_by: None,
+            original_name: "document.pdf".to_string(),
+            content_type: "application/pdf".to_string(),
+            data: Bytes::from_static(b"%PDF-1.7\n"),
+            owner_module: None,
+        })
+        .await
+        .expect("PDF upload should succeed");
+
+    assert!(item.public_url.is_empty());
+    assert_ne!(item.public_url, item.storage_path);
+}
+
+#[tokio::test]
+async fn missing_public_base_image_gets_owner_capability_url_and_immutable_body() {
     let (database, storage, directory, tenant_id) = setup().await;
     let expected = png_bytes();
     let item = MediaService::new(database.clone(), storage.clone())
@@ -94,7 +113,9 @@ async fn storage_relative_image_gets_owner_capability_url_and_immutable_body() {
         })
         .await
         .expect("image upload should succeed");
-    assert_eq!(item.public_url, item.storage_path);
+    let expected_item_prefix = format!("/api/media/public/images/{}/", item.id);
+    assert!(item.public_url.starts_with(&expected_item_prefix));
+    assert_ne!(item.public_url, item.storage_path);
 
     let service = MediaPublicImageService::new(database.clone(), storage);
     let public_asset = MediaPublicImageReadPort::get_public_image_asset(
@@ -110,6 +131,7 @@ async fn storage_relative_image_gets_owner_capability_url_and_immutable_body() {
         .expect("storage-relative image should receive a capability URL");
     let expected_prefix = format!("/api/media/public/images/{}/", item.id);
     assert!(descriptor.url.starts_with(&expected_prefix));
+    assert_eq!(descriptor.url, item.public_url);
     assert_ne!(descriptor.url, item.storage_path);
     assert_eq!(descriptor.mime_type.as_deref(), Some("image/png"));
     assert_eq!((descriptor.width, descriptor.height), (Some(24), Some(12)));

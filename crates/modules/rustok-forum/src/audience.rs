@@ -260,7 +260,9 @@ impl ForumAudienceFactsResolver {
             return Ok(ForumAudienceFacts::default());
         }
 
-        let user_id = user_id.expect("checked above");
+        let Some(user_id) = user_id else {
+            return Ok(ForumAudienceFacts::default());
+        };
         validate_port_context(&context, tenant_id, user_id)?;
         let request = ForumAudienceFactsRequest::for_constraints(tenant_id, user_id, &constraints)?;
         let Some(port) = &self.port else {

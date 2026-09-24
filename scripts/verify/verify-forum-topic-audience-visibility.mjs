@@ -154,6 +154,11 @@ for (const marker of [
 ]) {
   requireText(owner, marker, `exact richer topic visibility owner is missing ${marker}`);
 }
+rejectText(evaluator, "expect(", "audience facts resolver must not panic through expect()");
+rejectText(evaluator, "unwrap()", "audience facts resolver must not panic through unwrap()");
+rejectText(owner, "expect(", "exact richer topic visibility owner must not panic through expect()");
+rejectText(owner, "unwrap()", "exact richer topic visibility owner must not panic through unwrap()");
+
 for (const forbidden of [
   "crate::entities",
   "forum_category_audience_policy::",

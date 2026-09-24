@@ -64,9 +64,25 @@ const topicEntry = read(contract.source_entrypoints?.topic ?? "");
 const replyEntry = read(contract.source_entrypoints?.reply ?? "");
 const topicOwner = read(contract.owner_entrypoints?.topic_create?.owner ?? "");
 const replyOwner = read(contract.owner_entrypoints?.reply_create?.owner ?? "");
+const mentionSource = read("crates/modules/rustok-forum/src/mentions.rs");
+const profilesReader = read("crates/modules/rustok-profiles/src/reader.rs");
+const profileServices = read("crates/modules/rustok-profiles/src/services.rs");
 const mentionService = read("crates/modules/rustok-forum/src/services/mention_relation.rs");
 const b2Record = read("crates/modules/rustok-forum/docs/forum-12b2-owner-write-integration.md");
 
+requireText(profilesReader, "find_profile_records_by_handles", "ProfilesReader must expose bounded batch handle lookup");
+requireText(profileServices, "pub const MAX_PROFILE_HANDLE_BATCH: usize = 64", "Profiles owner must expose a hard batch bound");
+requireText(profileServices, "if handles.len() > MAX_PROFILE_HANDLE_BATCH", "Profiles batch lookup must reject over-limit requests");
+requireText(profileServices, "pub async fn find_profile_records_by_handles", "Profiles owner must implement bounded batch handle lookup");
+requireText(mentionSource, "find_profile_records_by_handles(", "Forum mention resolution must use bounded Profiles handle lookup");
+for (const forbidden of [
+  ".get_profile_by_handle(",
+  "for handle in candidates.handles",
+]) {
+  if (mentionSource.includes(forbidden)) {
+    failures.push(`crates/modules/rustok-forum/src/mentions.rs: mention resolution must not reintroduce per-handle Profiles reads: ${forbidden}`);
+  }
+}
 requireText(topicOwner, "create_with_relations", "topic owner must route relation-aware create");
 requireText(topicOwner, "update_with_relations", "topic owner must route relation-aware edit");
 requireText(replyOwner, "MentionRelationService", "reply owner must own relation composition");

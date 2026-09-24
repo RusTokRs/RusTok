@@ -17,4 +17,5 @@ test("forum read-model contract is self-consistent", () => {
     `verifier failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
   );
   assert.match(result.stdout, /3 bounded cursor models, max 100/);
+  assert.match(result.stdout, /topic custom-field hydration uses bounded Flex batch reads/);
 });

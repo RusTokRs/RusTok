@@ -23,6 +23,18 @@ pub trait ProfilesReader: Send + Sync {
         tenant_default_locale: Option<&str>,
     ) -> ProfileResult<HashMap<Uuid, ProfileSummary>>;
 
+    /// Resolve a bounded set of handles in one owner read.
+    ///
+    /// Missing handles are omitted; callers that require every handle must enforce
+    /// completeness themselves. Tenant scope and localized presentation remain owned by Profiles.
+    async fn find_profile_records_by_handles(
+        &self,
+        tenant_id: Uuid,
+        handles: &[String],
+        requested_locale: Option<&str>,
+        tenant_default_locale: Option<&str>,
+    ) -> ProfileResult<HashMap<String, ProfileRecord>>;
+
     async fn get_profile_by_handle(
         &self,
         tenant_id: Uuid,
@@ -66,6 +78,23 @@ impl ProfilesReader for ProfileService {
         self.find_profile_summaries_map(
             tenant_id,
             user_ids,
+            requested_locale,
+            tenant_default_locale,
+        )
+        .await
+    }
+
+    async fn find_profile_records_by_handles(
+        &self,
+        tenant_id: Uuid,
+        handles: &[String],
+        requested_locale: Option<&str>,
+        tenant_default_locale: Option<&str>,
+    ) -> ProfileResult<HashMap<String, ProfileRecord>> {
+        ProfileService::find_profile_records_by_handles(
+            self,
+            tenant_id,
+            handles,
             requested_locale,
             tenant_default_locale,
         )

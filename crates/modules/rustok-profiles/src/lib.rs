@@ -47,7 +47,7 @@ pub use privacy::{
     evaluate_profile_access,
 };
 pub use reader::ProfilesReader;
-pub use services::{ProfileBackfillResult, ProfileService};
+pub use services::{MAX_PROFILE_HANDLE_BATCH, ProfileBackfillResult, ProfileService};
 
 pub struct ProfilesModule;
 
