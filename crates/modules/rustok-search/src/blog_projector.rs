@@ -75,10 +75,9 @@ impl BlogSearchProjector {
         let started_at = Instant::now();
         let tx = self.begin_transaction().await?;
         let result = async {
+            self.ensure_blog_tables_available(&tx).await?;
             self.delete_tenant_documents_in(&tx, tenant_id).await?;
-            if self.blog_tables_available(&tx).await? {
-                self.upsert_documents_in(&tx, tenant_id, None).await?;
-            }
+            self.upsert_documents_in(&tx, tenant_id, None).await?;
             self.commit_transaction(tx).await
         }
         .await;
@@ -96,11 +95,10 @@ impl BlogSearchProjector {
         let started_at = Instant::now();
         let tx = self.begin_transaction().await?;
         let result = async {
+            self.ensure_blog_tables_available(&tx).await?;
             self.delete_post_in(&tx, tenant_id, post_id).await?;
-            if self.blog_tables_available(&tx).await? {
-                self.upsert_documents_in(&tx, tenant_id, Some(post_id))
-                    .await?;
-            }
+            self.upsert_documents_in(&tx, tenant_id, Some(post_id))
+                .await?;
             self.commit_transaction(tx).await
         }
         .await;
@@ -183,7 +181,7 @@ impl BlogSearchProjector {
         tx.commit().await.map_err(Error::Database)
     }
 
-    async fn blog_tables_available<C>(&self, conn: &C) -> Result<bool>
+    async fn ensure_blog_tables_available<C>(&self, conn: &C) -> Result<()>
     where
         C: ConnectionTrait,
     {
@@ -201,13 +199,26 @@ impl BlogSearchProjector {
             "#
             .to_string(),
         );
-        let available = conn
+        let row = conn
             .query_one_raw(stmt)
             .await
             .map_err(Error::Database)?
-            .and_then(|row| row.try_get::<bool>("", "available").ok())
-            .unwrap_or(false);
-        Ok(available)
+            .ok_or_else(|| {
+                Error::External(
+                    "Blog Search projection schema availability query returned no row"
+                        .to_string(),
+                )
+            })?;
+        let available = row
+            .try_get::<bool>("", "available")
+            .map_err(Error::Database)?;
+        if !available {
+            return Err(Error::External(
+                "Blog Search projection source tables are unavailable".to_string(),
+            ));
+        }
+
+        Ok(())
     }
 
     async fn delete_tenant_documents_in<C>(&self, conn: &C, tenant_id: Uuid) -> Result<()>
