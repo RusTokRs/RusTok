@@ -19,6 +19,15 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 
 ---
 
+
+## 2026-09-24 Media public URL owner hardening
+
+A fresh Forum→Media boundary audit found that `MediaItem.public_url` previously fell back to `blob.object_key` when no public storage base URL was configured. That made an internal storage key look like a consumer-visible delivery URL and was inconsistent with the Media public-image capability contract.
+
+Media now centralizes `MediaItem` construction in one owner helper, never uses an object key as `public_url`, emits the checksum-bound Media public-image capability URL for ready image assets when no direct public base exists, and leaves non-image `public_url` empty until Media owns a matching delivery capability. Rendition public URLs also no longer fall back to object keys. Regression coverage and the Media public-image static verifier enforce the boundary.
+
+Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
+
 ## Components Review Status
 
 | Status | Component | Category | Files | LOC | Last Audited | Notes |

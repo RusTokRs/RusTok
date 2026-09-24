@@ -51,7 +51,7 @@ The modular monolith uses those tables in the shared PostgreSQL deployment. Whol
 - Reconciliation prioritizes delete-pending rows, rotates ready rows through persisted progress, isolates missing rendition results, expires upload sessions, and removes only eligible staging objects.
 - Presigned S3 sessions persist tenant/actor, expected type/size, staging key, expiry, and completion.
 - Immutable recipes normalize orientation and apply bounded transforms/encoders through a bounded worker.
-- Media descriptors classify URLs as direct-public, proxy-required, or not-addressable.
+- Media descriptors classify URLs as direct-public, proxy-required, or not-addressable. `MediaItem.public_url` is never a storage object key: when a configured public base is absent, ready image assets use the Media-owned immutable public-image capability URL, while non-image assets expose no public URL until a Media-owned delivery capability exists.
 - `MediaPublicImageReadPort` returns one owner result containing the canonical `MediaItem` and the descriptor selected by Media delivery policy.
 - `MediaPublicImageService` preserves direct-public descriptors, replaces storage-relative image paths with `/api/media/public/images/{id}/{active_blob_sha256}`, and drops opaque references.
 - The public image handler verifies tenant, active asset/blob, ready state, image MIME, checksum, object metadata size, and body size. It returns checksum ETag, one-year immutable cache semantics, content type/length, and `nosniff`.
@@ -83,6 +83,7 @@ The modular monolith uses those tables in the shared PostgreSQL deployment. Whol
 - Changing the active blob changes the capability URL.
 - Deleting/failing the asset or active blob invalidates resolution.
 - The URL contains no object key, tenant id, uploader id, filename, or storage backend detail.
+- A missing storage public base never causes `MediaItem.public_url` to fall back to the internal object key; Media image items instead receive the same checksum-bound capability URL that `MediaPublicImageReadPort` returns.
 - Tenant is selected by host `TenantContext`, not accepted from the path.
 - The handler is unauthenticated because it serves an already approved public descriptor. It is not a private-download authorization mechanism.
 - Capability disclosure has the same cache/revocation model as direct-public immutable media. Consumers must not use this path for private binary content.
@@ -142,7 +143,7 @@ These commands are maintainer-run and were not executed while publishing this sl
 1. Media owns media metadata, lifecycle, public descriptor selection, and public byte delivery; `rustok-storage` owns none of those domain decisions.
 2. Never mutate an original or rendition object in place.
 3. Never query media by listing object-store folders.
-4. Never expose object keys through public capability paths or consumer DTOs.
+4. Never use an object key as a public URL or reconstruct a public delivery URL from storage internals outside Media; object keys remain owner-internal storage identity.
 5. Consumers may apply their own relation policy to the returned `MediaItem`, but may not reconstruct a public URL.
 6. Never add image bytes to generic gRPC DTOs; extracted deployments route the returned descriptor to Media-owned HTTP delivery.
 7. Do not claim production public-image remote parity until the extracted deployment owns a reachable public URL/byte endpoint with retained cache, authority, readiness, and rollback evidence.

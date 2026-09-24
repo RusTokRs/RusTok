@@ -39,6 +39,7 @@ function assertNotContains(text, pattern, description) {
 }
 
 const paths = {
+  mediaService: "crates/modules/rustok-media/src/service.rs",
   mediaPublic: "crates/modules/rustok-media/src/public_image.rs",
   mediaLib: "crates/modules/rustok-media/src/lib.rs",
   mediaController: "crates/modules/rustok-media/src/controllers/mod.rs",
@@ -54,6 +55,7 @@ const paths = {
 
 for (const value of Object.values(paths)) assertExists(value);
 
+const mediaService = readRepo(paths.mediaService);
 const mediaPublic = readRepo(paths.mediaPublic);
 const mediaLib = readRepo(paths.mediaLib);
 const mediaController = readRepo(paths.mediaController);
@@ -67,6 +69,9 @@ const profileGraphql = readRepo(paths.profileGraphql);
 const profileNative = readRepo(paths.profileNative);
 
 for (const marker of [
+  "pub(crate) fn media_item_from_storage(",
+  "crate::public_image::public_image_path(",
+  "blob.state == BlobState::Ready.as_str()",
   "pub trait MediaPublicImageReadPort",
   "pub struct MediaPublicImageService",
   "MediaImagePublicUrlPolicy::DirectPublic",
@@ -80,7 +85,22 @@ for (const marker of [
   assertContains(mediaPublic, marker, `${paths.mediaPublic}: missing owner marker ${marker}`);
 }
 assertContains(mediaLib, "pub mod public_image;", `${paths.mediaLib}: public image module not wired`);
-assertContains(mediaLib, "MediaPublicImageReadPort", `${paths.mediaLib}: public image port not exported`);
+assertContains(mediaLib, "MediaPublicImageReadPort", "media lib: public image port not exported");
+for (const marker of [
+  "pub(crate) fn media_item_from_storage(",
+  "crate::public_image::public_image_path(",
+  "unwrap_or_default()",
+]) {
+  assertContains(mediaService, marker, `${paths.mediaService}: missing canonical public URL marker ${marker}`);
+}
+for (const marker of [
+  ".unwrap_or_else(|| blob.object_key.clone())",
+  ".unwrap_or_else(|| object_key.clone())",
+]) {
+  assertNotContains(mediaService, marker, `${paths.mediaService}: public_url must never fall back to a storage object key`);
+  assertNotContains(mediaPublic, marker, `${paths.mediaPublic}: public_url must never fall back to a storage object key`);
+}
+
 
 for (const marker of [
   '"/api/media/public/images/{id}/{checksum_sha256}"',
@@ -182,11 +202,15 @@ for (const marker of [
 }
 
 for (const marker of [
-  "assert_eq!(item.public_url, item.storage_path)",
+  "missing_public_base_image_gets_owner_capability_url_and_immutable_body",
+  "assert!(item.public_url.starts_with(&expected_item_prefix))",
+  "assert_ne!(item.public_url, item.storage_path)",
+  "assert_eq!(descriptor.url, item.public_url)",
   "starts_with(&expected_prefix)",
   "wrong checksum must not expose the object",
   "cross-tenant capability must not expose the object",
   'direct.url.starts_with("/media/")',
+  "non_image_without_public_base_has_no_public_url",
 ]) {
   assertContains(mediaTest, marker, `${paths.mediaTest}: missing scenario ${marker}`);
 }

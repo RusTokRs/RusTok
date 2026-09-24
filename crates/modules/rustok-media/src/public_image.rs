@@ -133,33 +133,7 @@ impl MediaPublicImageService {
     }
 
     fn media_item(&self, asset: asset::Model, blob: blob::Model) -> MediaItem {
-        let path = Path::from(blob.object_key.as_str());
-        let public_url = self
-            .storage
-            .public_url(&path)
-            .unwrap_or_else(|| blob.object_key.clone());
-        let filename = std::path::Path::new(&blob.object_key)
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or(&blob.object_key)
-            .to_string();
-        MediaItem {
-            id: asset.id,
-            tenant_id: asset.tenant_id,
-            owner_module: asset.owner_module,
-            uploaded_by: asset.uploaded_by,
-            filename,
-            original_name: asset.original_name,
-            mime_type: blob.mime_type,
-            size: blob.size,
-            storage_path: blob.object_key,
-            storage_driver: self.storage.kind.as_str().to_string(),
-            public_url,
-            width: blob.width,
-            height: blob.height,
-            metadata: asset.metadata,
-            created_at: asset.created_at.with_timezone(&Utc),
-        }
+        crate::service::media_item_from_storage(&self.storage, asset, blob)
     }
 }
 
