@@ -17,4 +17,5 @@ The Comments implementation crate remains the sole owner of storage and implemen
 - Consumers never query Comments-owned tables.
 - Missing provider capability is represented as an unavailable optional integration.
 - Public comment reads use the explicitly safe public projection method.
+- Every `CommentsThreadPort` operation is mandatory; runtime provider absence is handled by capability composition, not by trait-level operation stubs.
 - PortContext remains authoritative for tenant, actor, authorization, correlation, deadline, channel, and idempotency semantics.

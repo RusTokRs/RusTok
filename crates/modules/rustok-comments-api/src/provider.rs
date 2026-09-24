@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use async_trait::async_trait;
 use rustok_api::{PortContext, PortError};
 use uuid::Uuid;
@@ -40,21 +38,17 @@ pub trait CommentsThreadPort: Send + Sync {
 
     /// Public read projection owned by Comments.
     ///
-    /// The default is intentionally unavailable rather than delegating to the
-    /// authenticated list operation.
+    /// This operation is mandatory on every provider. Provider availability is
+    /// selected at the runtime capability boundary; an implementation may not
+    /// silently downgrade the contract by inheriting an unavailable stub.
     async fn list_public_comments_for_target(
         &self,
-        _context: PortContext,
-        _target_type: String,
-        _target_id: Uuid,
-        _filter: ListCommentsFilter,
-        _fallback_locale: Option<String>,
-    ) -> Result<(Vec<CommentListItem>, u64), PortError> {
-        Err(PortError::unavailable(
-            "comments.public_read_unavailable",
-            "comments provider does not implement the approved public projection",
-        ))
-    }
+        context: PortContext,
+        target_type: String,
+        target_id: Uuid,
+        filter: ListCommentsFilter,
+        fallback_locale: Option<String>,
+    ) -> Result<(Vec<CommentListItem>, u64), PortError>;
 
     async fn update_comment(
         &self,

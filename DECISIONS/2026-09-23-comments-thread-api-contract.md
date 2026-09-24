@@ -18,14 +18,14 @@ The API crate owns the transport-neutral `CommentsThreadPort` and consumer-facin
 
 Blog depends only on `rustok-comments-api`. The host still owns provider selection and may publish either the in-process or remote implementation through `ModuleRuntimeExtensions`. Blog consumers resolve the optional provider from runtime data and degrade through `CommentsUnavailable` instead of constructing a database/event-bus fallback.
 
-The Comments owner implements the API trait. Its public projection stays a dedicated owner method and never delegates to the authenticated list operation.
+The Comments owner implements every API operation, including the explicit public projection. The public projection stays a dedicated owner method and never delegates to the authenticated list operation. Runtime provider absence is represented by the host capability boundary, not by a default trait stub.
 
 ## Invariants
 
 1. Blog has no build-time dependency on `rustok-comments`.
 2. Comments persistence enums and SeaORM entities remain owned by Comments.
 3. `PortContext` and `PortError` remain the shared policy/error boundary.
-4. Every provider operation retains the existing tenant, actor, deadline, policy, and idempotency semantics.
+4. Every provider operation is mandatory in the neutral trait and retains the existing tenant, actor, deadline, policy, and idempotency semantics.
 5. Public comments are served only through the explicit safe projection.
 6. Missing provider capability affects only comment integration; Blog post publication remains available.
 7. Remote transport remains an implementation detail of Comments; the consumer only sees the port.

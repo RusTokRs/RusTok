@@ -204,6 +204,17 @@ for (const marker of [
   "PortError::validation(\"comments.validation\"",
 ]) requireMarker(provider, marker, providerPath);
 
+requireNoMarker(
+  providerApi,
+  "The default is intentionally unavailable",
+  `${providerApiPath}: public projection must be mandatory`,
+);
+requireNoMarker(
+  providerApi,
+  "comments.public_read_unavailable",
+  `${providerApiPath}: public projection must not be a trait-level stub`,
+);
+
 for (const marker of [
   "pub trait CommentsThreadPort: Send + Sync",
   "async fn create_comment(",

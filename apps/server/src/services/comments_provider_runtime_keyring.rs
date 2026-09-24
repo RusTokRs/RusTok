@@ -171,7 +171,7 @@ pub(super) fn register_comments_provider_runtime(
             Some("in_process") => (
                 None,
                 base::CommentsProviderRuntimeSelection {
-                    profile: base::CommentsProviderProfile::InProcessFallback,
+                    profile: base::CommentsProviderProfile::InProcess,
                     endpoint: None,
                 },
             ),
