@@ -4,8 +4,7 @@ use rustok_api::{
     graphql::GraphqlRuntimeInputs, SharedStaticModuleSettingsReader,
     SharedStaticModuleSettingsTransactionReader,
 };
-use rustok_media::{MediaAssetReadPort, MediaService};
-use rustok_storage::StorageRuntime;
+use rustok_media::MediaAssetReadPort;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
@@ -42,14 +41,7 @@ pub fn attach_schema_data(
         _ => ForumSettingsProviders::default(),
     };
 
-    let attachment_hold_media = inputs
-        .shared_get::<Arc<dyn MediaAssetReadPort>>()
-        .or_else(|| {
-            inputs.shared_get::<StorageRuntime>().map(|storage| {
-                Arc::new(MediaService::new(inputs.db_clone(), storage))
-                    as Arc<dyn MediaAssetReadPort>
-            })
-        });
+    let attachment_hold_media = inputs.shared_get::<Arc<dyn MediaAssetReadPort>>();
 
     Ok(ForumGraphqlRuntimeData {
         audience_facts: inputs.shared_get::<SharedForumAudienceFactsPort>(),
@@ -221,17 +213,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn schema_factory_composes_embedded_media_reader_from_storage() {
+    async fn schema_factory_consumes_host_published_media_reader() {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("in-memory sqlite should connect");
         let storage = rustok_storage::StorageRuntime::local(&rustok_storage::LocalStorageConfig {
-            base_dir: std::env::temp_dir().display().to_string(),
+            base_dir: std::env::temp_dir()
+                .join(format!("rustok-forum-media-runtime-{}", uuid::Uuid::new_v4()))
+                .display()
+                .to_string(),
             base_url: String::new(),
             fsync: false,
         })
         .expect("local storage runtime should initialize");
-        let host = HostRuntimeContext::new(db).with_shared_value(storage);
+        let media: Arc<dyn MediaAssetReadPort> =
+            Arc::new(rustok_media::MediaService::new(db.clone(), storage));
+        let host = HostRuntimeContext::new(db).with_shared_value(media);
         let inputs = GraphqlRuntimeInputs::new(host);
 
         let runtime =
