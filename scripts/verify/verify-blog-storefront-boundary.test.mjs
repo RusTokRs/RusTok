@@ -183,6 +183,9 @@ graphql_adapter::fetch_blog(request);`,
 use_context::<HostRuntimeContext>()
 shared_get::<TransactionalEventBus>()
 runtime_ctx.db_clone()
+${options.missingTenantBinding ? "" : `let auth_context = leptos_axum::extract::<rustok_api::AuthContext>()
+ensure_storefront_tenant_binding(auth_context.as_ref(), tenant_id)?
+fn ensure_storefront_tenant_binding(`}
 ChannelService::new
 .is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)
 normalize_channel_slug
@@ -339,4 +342,10 @@ test("blog storefront boundary verifier rejects evidence false-contract drift", 
   const result = runFixture({ evidenceFalseContractDrift: true });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /storefront richtext contract drift/);
+});
+
+test("blog storefront boundary verifier rejects missing authenticated tenant binding", () => {
+  const result = runFixture({ missingTenantBinding: true });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /authenticated tenant identity|tenant binding/);
 });
