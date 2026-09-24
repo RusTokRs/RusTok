@@ -15,7 +15,8 @@
     "graphql_transport": "crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs",
     "native_transport": "crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs",
     "transport_facade": "crates/modules/rustok-blog/storefront/src/transport/mod.rs",
-    "model": "crates/modules/rustok-blog/storefront/src/model.rs"
+    "model": "crates/modules/rustok-blog/storefront/src/model.rs",
+    "comment_service": "crates/modules/rustok-blog/src/services/comment.rs"
   },
   "source_contract": {
     "storefront_responsibility_is_dual_path_read": true,
