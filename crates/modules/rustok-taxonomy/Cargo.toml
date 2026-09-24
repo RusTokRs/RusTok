@@ -11,6 +11,7 @@ async-trait.workspace = true
 chrono.workspace = true
 rustok-content.workspace = true
 rustok-core.workspace = true
+rustok-events.workspace = true
 rustok-outbox.workspace = true
 rustok-translation-targets.workspace = true
 sea-orm.workspace = true
