@@ -119,6 +119,26 @@ test('rejects removal of public-target compensation after visibility loss', () =
   assert.notEqual(result.status, 0);
 });
 
+test('rejects narrowing compensation to only target-loss failures', () => {
+  const result = rejects((root) =>
+    mutate(
+      root,
+      'crates/modules/rustok-blog/src/services/comment.rs',
+      (source) =>
+        source
+          .replace(
+            'Err(revalidation_error) => {',
+            'Err(BlogError::PostNotFound(_)) => {',
+          )
+          .replace(
+            'return Err(revalidation_error);',
+            'return Err(BlogError::post_not_found(post_id));',
+          ),
+    ),
+  );
+  assert.notEqual(result.status, 0);
+});
+
 test('rejects removal of the storefront native create-comment transport', () => {
   const result = rejects((root) =>
     mutate(
