@@ -44,6 +44,14 @@ Profiles now exposes a tenant-scoped bounded handle batch reader that reuses its
 
 Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
 
+## 2026-09-24 Forum canonical owner consolidation
+
+A continuous-review audit found two Forum service owners still embedding explicit legacy implementations: the read-model owner delegated topic/reply projections through `read_model_legacy`, while the moderation owner delegated topic pin/status operations through `moderation_legacy` via `Deref`. That left two competing implementation authorities inside the module and made the canonical owner boundary misleading.
+
+Forum now contains the canonical category/topic/reply read-model implementation directly in `read_model_owner.rs`, and the canonical moderation owner directly owns pin/unpin plus close/reopen/archive lifecycle operations. The legacy source files and stale module bindings were removed; the public `read_model` and `moderation` module surfaces remain unchanged.
+
+Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
+
 ## 2026-09-24 Profiles handle batch bound hardening
 
 The Forum mention batch reader initially delegated its safety to the Forum's 32-target mention limit. That was too weak as a public ProfilesReader contract because other callers could submit an unbounded handle array.
@@ -122,7 +130,7 @@ Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the ag
 | [x] | [rustok-events-module](../../crates/modules/rustok-events-module) | `modules` | 14 | 847 | 2026-09-20 14:21 | Verified events runtime module adapter, zero suppressions/unwraps, test passed, clippy clean |
 | [x] | [admin](../../crates/modules/rustok-events-module/admin) | `modules` | 7 | 506 | 2026-09-20 14:21 | Verified leptos events admin surface, zero suppressions/unwraps, clippy clean |
 | [x] | [next-admin](../../crates/modules/rustok-events-module/next-admin) | `modules` | 6 | 278 | 2026-09-20 14:22 | Verified events next-admin UI package, typed status query and delivery configuration API |
-| [x] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 592 | 152,064 | 2026-09-22 20:08 | Continued FORUM-21 concurrency audit: reply update serialization was hardened in `ReplyService::update_with_inline_relations`, and reply delete/restore lifecycle paths now use the same `category → topic → reply` lock ordering as split/range-move owners. Delete no longer takes a reply row lock before the topic row, avoiding PostgreSQL lock-order inversion; restore locks and revalidates the reply after the topic lock, so a concurrent move cannot be overwritten by stale topic state. Concurrent relocation now fails closed through retryable `TopicUpdateConflict`. Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent. |
+| [x] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 590 | 152,064 | 2026-09-24 19:41 | Continued FORUM-21 concurrency audit: reply update serialization was hardened in `ReplyService::update_with_inline_relations`, and reply delete/restore lifecycle paths now use the same `category → topic → reply` lock ordering as split/range-move owners. Delete no longer takes a reply row lock before the topic row, avoiding PostgreSQL lock-order inversion; restore locks and revalidates the reply after the topic lock, so a concurrent move cannot be overwritten by stale topic state. Concurrent relocation now fails closed through retryable `TopicUpdateConflict`. Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent. | Canonical read-model and moderation legacy implementations were consolidated into their owner modules; obsolete legacy source files and bindings were removed.
 | [x] | [admin](../../crates/modules/rustok-forum/admin) | `modules` | 35 | 12,236 | 2026-09-20 16:30 | Verified forum admin package, zero suppressions/unwraps, all 87 tests passed, clippy clean |
 | [x] | [storefront](../../crates/modules/rustok-forum/storefront) | `modules` | 19 | 4,164 | 2026-09-20 16:30 | Re-exported public transport API in lib.rs, eliminated 6 allow(dead_code) suppressions, all tests passed, clippy clean |
 | [x] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 71 | 17,271 | 2026-09-20 16:54 | Eliminated 2 allow(too_many_arguments) suppressions via ShippingOptionReadRequestFacts and FulfillmentLifecycleReadRequestFacts, added change journal to test schema support, bounded provider journal migrations, all 43 tests passed, clippy clean |

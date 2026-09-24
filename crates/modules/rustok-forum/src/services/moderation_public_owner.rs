@@ -8,8 +8,7 @@ use rustok_outbox::TransactionalEventBus;
 use crate::audience::SharedForumAudienceFactsPort;
 use crate::error::ForumResult;
 
-/// Public moderation facade that keeps legacy and transactional owner types
-/// private while preserving the established method surface.
+/// Public moderation facade that keeps the transactional owner private while preserving the established method surface.
 pub struct ModerationService {
     inner: super::moderation_owner::ModerationService,
 }
