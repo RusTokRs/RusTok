@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
+use rustok_api::{PortActor, PortCallPolicy, PortContext, PortError, PortErrorKind};
 use rustok_core::SecurityContext;
 use rustok_outbox::{idempotency::{self, Admission, OwnerOperationScope}, TransactionalEventBus};
 use sea_orm::{DatabaseConnection, TransactionTrait};
@@ -40,6 +40,24 @@ pub struct SetCommentStatusRequest {
     pub fallback_locale: Option<String>,
 }
 
+#[derive(serde::Serialize)]
+struct CommentsIdempotencyRequest<'a, T> {
+    /// The authenticated transport principal is part of the durable receipt identity.
+    /// This prevents a replay from crossing users or service actors inside one tenant.
+    actor: &'a PortActor,
+    request: &'a T,
+}
+
+fn bind_idempotency_actor<'a, T: serde::Serialize>(
+    context: &'a PortContext,
+    request: &'a T,
+) -> CommentsIdempotencyRequest<'a, T> {
+    CommentsIdempotencyRequest {
+        actor: &context.actor,
+        request,
+    }
+}
+
 #[async_trait]
 impl CommentsThreadPort for InProcessCommentsThreadProvider {
     async fn create_comment(
@@ -52,6 +70,7 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         let security = SecurityContext::try_from_port_context(&context)?;
         let idempotency_key = required_idempotency_key(&context)?;
         let domain_request: CreateCommentInput = request.clone().into();
+        let receipt_request = bind_idempotency_actor(&context, &request);
 
         let lease = match idempotency::admit(
             &self.db,
@@ -59,7 +78,7 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
             "comments",
             idempotency_key,
             "create_comment",
-            &request,
+            &receipt_request,
         )
         .await?
         {
@@ -219,7 +238,8 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         let security = SecurityContext::try_from_port_context(&context)?;
         let idempotency_key = required_idempotency_key(&context)?;
         let domain_request: UpdateCommentInput = request.clone().into();
-        let receipt_request = (comment_id, &request);
+        let target_request = (comment_id, &request);
+        let receipt_request = bind_idempotency_actor(&context, &target_request);
 
         let lease = match idempotency::admit(
             &self.db,
@@ -317,7 +337,8 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         let security = SecurityContext::try_from_port_context(&context)?;
         let idempotency_key = required_idempotency_key(&context)?;
 
-        let receipt_request = (comment_id,);
+        let target_request = (comment_id,);
+        let receipt_request = bind_idempotency_actor(&context, &target_request);
         let lease = match idempotency::admit(
             &self.db,
             OwnerOperationScope::Tenant(tenant_id),
@@ -415,7 +436,8 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         let security = SecurityContext::try_from_port_context(&context)?;
         let idempotency_key = required_idempotency_key(&context)?;
         let domain_request: SetCommentStatusRequest = request.clone().into();
-        let receipt_request = (comment_id, &request, &context.locale);
+        let target_request = (comment_id, &request, &context.locale);
+        let receipt_request = bind_idempotency_actor(&context, &target_request);
 
         let lease = match idempotency::admit(
             &self.db,

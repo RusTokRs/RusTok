@@ -40,6 +40,14 @@
         "get_comment",
         "list_comments_for_target",
         "list_public_comments_for_target"
+      ],
+      "idempotency_binding": [
+        "tenant_scope",
+        "owner",
+        "operation",
+        "idempotency_key",
+        "actor",
+        "request_payload"
       ]
     }
   ],

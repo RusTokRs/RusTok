@@ -25,6 +25,10 @@
 
 ## Thread write invariants
 
+## Durable port idempotency
+
+All write operations exposed through CommentsThreadPort use a durable owner-operation receipt. The receipt remains scoped to the tenant, Comments owner, operation and caller idempotency key, and its request identity additionally includes the authenticated PortContext.actor plus the exact request payload. A terminal replay therefore cannot cross users or service actors inside the same tenant, while retries from the same principal replay the original committed result.
+
 `comment::ActiveModelBehavior` is the position owner for transactional insert
 paths. It ignores a supplied position, serializes on the tenant thread row, and
 allocates the next checked position. Direct/bulk bypasses remain protected by the

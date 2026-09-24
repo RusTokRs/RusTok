@@ -332,3 +332,8 @@ Completed the remaining source-level Blog/Comments build-time coupling gap. Blog
 ## 2026-09-24 Server composition contract synchronization
 
 The active Blog dependency contract is `content + taxonomy + outbox + channel`. Profiles remains optional presentation enrichment through `rustok-profiles-api` and must not return as a runtime module dependency. The server module contract test now asserts the canonical dependency set used by the active `modules.toml` and Blog module contract, preventing a stale hard dependency from silently returning during future composition changes. Maintainer runtime evidence, gatekeeper, build, and automated tests remain unrun by the agent.
+
+
+## 2026-09-24 Comments principal-bound idempotency
+
+The Blog reference audit identified that durable Comments receipts were replayed before owner authorization and were keyed only by tenant/owner/operation/idempotency key/request. The Comments owner now binds every port write receipt to the authenticated PortContext.actor in addition to the existing durable request identity, preventing cross-principal replay inside a tenant without coupling Blog to Comments persistence. The owner contract and static matrix document this invariant. Maintainer runtime evidence, gatekeeper, build, and automated tests remain unrun by the agent.
