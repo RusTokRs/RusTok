@@ -85,6 +85,7 @@ hasAll(projectorFacade, ['use crate::projector_core;', 'core: projector_core::Se
 hasNone(projectorFacade, ['projector_legacy'], 'projector facade');
 hasAll(projectorCore, ['pub struct SearchProjector', 'pub async fn ensure_bootstrap'], 'projector core');
 hasNone(projectorCore, ['try_get::<i64>("", "total").ok())', 'unwrap_or(0)'], 'projector bootstrap count handling');
+hasNone(projectorFacade, ['try_get::<i64>("", "total").ok())'], 'projector facade bootstrap count handling');
 
 const lib = read('crates/modules/rustok-search/src/lib.rs');
 hasAll(lib, ['pub mod ports;', 'pub use ports::*;', 'canonical_search_result_url'], 'lib.rs');
