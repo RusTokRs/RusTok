@@ -81,11 +81,21 @@ const mediaPorts = read('crates/modules/rustok-media/src/ports.rs');
 hasAll(mediaPorts, [
   'pub struct MediaAssetReferenceListRequest',
   'pub struct MediaAssetReferenceListPage',
+  'pub struct MediaAssetReferenceLookupRequest',
+  'pub struct MediaAssetReferenceLookupResult',
   'async fn list_asset_references(',
+  'async fn lookup_asset_references(',
 ], 'Media read contract');
 
 const transportProto = read('crates/modules/rustok-media-transport/proto/rustok/media/media.proto');
-hasAll(transportProto, ['rpc ListAssetReferences(JsonRequest) returns (JsonResponse);'], 'Media gRPC contract');
+hasAll(
+  transportProto,
+  [
+    'rpc ListAssetReferences(JsonRequest) returns (JsonResponse);',
+    'rpc LookupAssetReferences(JsonRequest) returns (JsonResponse);',
+  ],
+  'Media gRPC contract'
+);
 
 const forumManifest = read('crates/modules/rustok-forum/rustok-module.toml');
 if (!forumManifest.includes('media = { version_req = ">=0.1.0" }')) fail('Forum manifest must depend on Media');
