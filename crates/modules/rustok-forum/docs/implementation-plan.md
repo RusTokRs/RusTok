@@ -758,7 +758,8 @@ forumSolutionReconciliationReport(
 
 forumAttachmentHoldReconciliationReport(
   limit: Int,
-  mediaAfter: UUID
+  mediaAfter: UUID,
+  relationAfter: UUID
 )
 ```
 
@@ -797,7 +798,7 @@ claim runtime observability evidence.
 FORUM-33 remains `in_progress`. Retain SQLite and PostgreSQL execution evidence
 for counter and accepted-solution clean/drift pages, independent multi-page
 cursor traversal, exhausted-one-side behavior and concurrent page-local snapshot
-semantics. The attachment reconciliation slice is now source-ready as a read-only owner diagnostic. It uses a bounded Media owner-reference keyset and compares each returned hold against Forum-owned relation rows; runtime PostgreSQL evidence remains open. Automatic repair stays blocked by the existing FORUM-33 write-repair gate.
+semantics. The attachment reconciliation slice is now source-ready as a read-only bidirectional owner diagnostic. It uses independent bounded keysets for Media-owned holds and Forum-owned relation rows, exact bulk Media lookup for the reverse relation page, and fails closed on tenant/owner/identity, ordering, cursor or response-bound violations. It reports orphan Media holds, missing Media holds and stable-reference Media-ID mismatches; runtime PostgreSQL evidence remains open. Automatic repair stays blocked by the existing FORUM-33 write-repair gate.
 The canonical machine-readable contract is `crates/modules/rustok-forum/contracts/forum-attachment-hold-reconciliation.json`, guarded by `scripts/verify/verify-forum-attachment-hold-reconciliation.mjs`. Add only
 non-duplicative operational metrics for moderation, notification/search lag,
 unread/activity, locale fallback and spam outcomes. Any write repair remains
