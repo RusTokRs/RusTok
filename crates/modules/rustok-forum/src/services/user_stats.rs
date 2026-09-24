@@ -173,73 +173,119 @@ impl UserStatsService {
         topic_author_id: Option<Uuid>,
         solution_author_id: Option<Uuid>,
     ) -> ForumResult<()> {
-        Self::adjust_topic_count_in_tx(txn, tenant_id, topic_author_id, -1).await?;
-
         let stmt = match txn.get_database_backend() {
             DatabaseBackend::Postgres => Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "UPDATE forum_user_stats \
-                 SET reply_count = CASE \
-                     WHEN reply_count > ( \
-                         SELECT COUNT(*) FROM forum_replies AS replies \
-                         WHERE replies.tenant_id = $1 \
-                           AND replies.topic_id = $2 \
-                           AND replies.author_id = forum_user_stats.user_id \
-                           AND replies.status = 'approved' \
-                     ) \
-                     THEN reply_count - ( \
-                         SELECT COUNT(*) FROM forum_replies AS replies \
-                         WHERE replies.tenant_id = $1 \
-                           AND replies.topic_id = $2 \
-                           AND replies.author_id = forum_user_stats.user_id \
-                           AND replies.status = 'approved' \
-                     ) \
-                     ELSE 0 \
-                 END, updated_at = CURRENT_TIMESTAMP \
+                 SET topic_count = ( \
+                     SELECT COUNT(*) \
+                     FROM forum_topics topic \
+                     WHERE topic.tenant_id = $1 \
+                       AND topic.author_id = forum_user_stats.user_id \
+                       AND topic.deleted_at IS NULL \
+                 )::integer, \
+                 reply_count = ( \
+                     SELECT COUNT(*) FROM forum_replies AS replies \
+                     JOIN forum_topics topic \
+                       ON topic.tenant_id = replies.tenant_id \
+                      AND topic.id = replies.topic_id \
+                     WHERE replies.tenant_id = $1 \
+                       AND replies.author_id = forum_user_stats.user_id \
+                       AND replies.status = 'approved' \
+                       AND replies.deleted_at IS NULL \
+                       AND topic.deleted_at IS NULL \
+                 )::integer, \
+                 solution_count = ( \
+                     SELECT COUNT(*) \
+                     FROM forum_solutions solution \
+                     JOIN forum_replies reply \
+                       ON reply.tenant_id = solution.tenant_id \
+                      AND reply.id = solution.reply_id \
+                     JOIN forum_topics topic \
+                       ON topic.tenant_id = solution.tenant_id \
+                      AND topic.id = solution.topic_id \
+                     WHERE solution.tenant_id = $1 \
+                       AND reply.author_id = forum_user_stats.user_id \
+                       AND reply.deleted_at IS NULL \
+                       AND topic.deleted_at IS NULL \
+                 )::integer, \
+                 updated_at = CURRENT_TIMESTAMP \
                  WHERE tenant_id = $1 \
-                   AND EXISTS ( \
-                       SELECT 1 FROM forum_replies AS replies \
-                       WHERE replies.tenant_id = $1 \
-                         AND replies.topic_id = $2 \
-                         AND replies.author_id = forum_user_stats.user_id \
-                         AND replies.status = 'approved' \
+                   AND user_id IN ( \
+                       SELECT CAST($2 AS UUID) WHERE $2 IS NOT NULL \
+                       UNION \
+                       SELECT CAST($3 AS UUID) WHERE $3 IS NOT NULL \
+                       UNION \
+                       SELECT author_id \
+                       FROM forum_replies \
+                       WHERE tenant_id = $1 \
+                         AND topic_id = $4 \
+                         AND author_id IS NOT NULL \
                    )",
-                vec![tenant_id.into(), topic_id.into()],
+                vec![
+                    tenant_id.into(),
+                    topic_author_id.into(),
+                    solution_author_id.into(),
+                    topic_id.into(),
+                ],
             ),
             _ => Statement::from_sql_and_values(
                 DatabaseBackend::Sqlite,
                 "UPDATE forum_user_stats \
-                 SET reply_count = CASE \
-                     WHEN reply_count > ( \
-                         SELECT COUNT(*) FROM forum_replies AS replies \
-                         WHERE replies.tenant_id = ?1 \
-                           AND replies.topic_id = ?2 \
-                           AND replies.author_id = forum_user_stats.user_id \
-                           AND replies.status = 'approved' \
-                     ) \
-                     THEN reply_count - ( \
-                         SELECT COUNT(*) FROM forum_replies AS replies \
-                         WHERE replies.tenant_id = ?1 \
-                           AND replies.topic_id = ?2 \
-                           AND replies.author_id = forum_user_stats.user_id \
-                           AND replies.status = 'approved' \
-                     ) \
-                     ELSE 0 \
-                 END, updated_at = CURRENT_TIMESTAMP \
+                 SET topic_count = ( \
+                     SELECT COUNT(*) \
+                     FROM forum_topics topic \
+                     WHERE topic.tenant_id = ?1 \
+                       AND topic.author_id = forum_user_stats.user_id \
+                       AND topic.deleted_at IS NULL \
+                 ), \
+                 reply_count = ( \
+                     SELECT COUNT(*) FROM forum_replies AS replies \
+                     JOIN forum_topics topic \
+                       ON topic.tenant_id = replies.tenant_id \
+                      AND topic.id = replies.topic_id \
+                     WHERE replies.tenant_id = ?1 \
+                       AND replies.author_id = forum_user_stats.user_id \
+                       AND replies.status = 'approved' \
+                       AND replies.deleted_at IS NULL \
+                       AND topic.deleted_at IS NULL \
+                 ), \
+                 solution_count = ( \
+                     SELECT COUNT(*) \
+                     FROM forum_solutions solution \
+                     JOIN forum_replies reply \
+                       ON reply.tenant_id = solution.tenant_id \
+                      AND reply.id = solution.reply_id \
+                     JOIN forum_topics topic \
+                       ON topic.tenant_id = solution.tenant_id \
+                      AND topic.id = solution.topic_id \
+                     WHERE solution.tenant_id = ?1 \
+                       AND reply.author_id = forum_user_stats.user_id \
+                       AND reply.deleted_at IS NULL \
+                       AND topic.deleted_at IS NULL \
+                 ), \
+                 updated_at = CURRENT_TIMESTAMP \
                  WHERE tenant_id = ?1 \
-                   AND EXISTS ( \
-                       SELECT 1 FROM forum_replies AS replies \
-                       WHERE replies.tenant_id = ?1 \
-                         AND replies.topic_id = ?2 \
-                         AND replies.author_id = forum_user_stats.user_id \
-                         AND replies.status = 'approved' \
+                   AND user_id IN ( \
+                       SELECT ?2 WHERE ?2 IS NOT NULL \
+                       UNION \
+                       SELECT ?3 WHERE ?3 IS NOT NULL \
+                       UNION \
+                       SELECT author_id \
+                       FROM forum_replies \
+                       WHERE tenant_id = ?1 \
+                         AND topic_id = ?4 \
+                         AND author_id IS NOT NULL \
                    )",
-                vec![tenant_id.into(), topic_id.into()],
+                vec![
+                    tenant_id.into(),
+                    topic_author_id.into(),
+                    solution_author_id.into(),
+                    topic_id.into(),
+                ],
             ),
         };
         txn.execute_raw(stmt).await?;
-
-        Self::adjust_solution_count_in_tx(txn, tenant_id, solution_author_id, -1).await?;
         Ok(())
     }
 }

@@ -231,6 +231,14 @@ impl TopicService {
         )
         .await?;
 
+        forum_solution::Entity::delete_many()
+            .filter(forum_solution::Column::TenantId.eq(tenant_id))
+            .filter(forum_solution::Column::TopicId.eq(topic_id))
+            .exec(&txn)
+            .await?;
+
+        mark_topic_thread_deleted_in_tx(&txn, tenant_id, topic_id).await?;
+
         UserStatsService::decrement_topic_thread_aggregated_in_tx(
             &txn,
             tenant_id,
@@ -239,14 +247,6 @@ impl TopicService {
             solution_author_id,
         )
         .await?;
-
-        forum_solution::Entity::delete_many()
-            .filter(forum_solution::Column::TenantId.eq(tenant_id))
-            .filter(forum_solution::Column::TopicId.eq(topic_id))
-            .exec(&txn)
-            .await?;
-
-        mark_topic_thread_deleted_in_tx(&txn, tenant_id, topic_id).await?;
 
         CategoryService::adjust_counters_in_tx(
             &txn,

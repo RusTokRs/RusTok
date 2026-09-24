@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use rustok_outbox::idempotency;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -150,6 +151,7 @@ impl MediaAssetReadPort for MediaService {
             .filter(asset::Column::TenantId.eq(tenant_id))
             .one(self.database())
             .await
+            .map_err(MediaError::from)
             .map_err(media_error_to_port_error)?
             .ok_or_else(|| PortError::not_found("media.not_found", "media asset not found"))?;
 
@@ -160,6 +162,7 @@ impl MediaAssetReadPort for MediaService {
                     .filter(blob::Column::AssetId.eq(media_id))
                     .one(self.database())
                     .await
+                    .map_err(MediaError::from)
                     .map_err(media_error_to_port_error)?
                     .ok_or_else(|| {
                         PortError::invariant_violation(
