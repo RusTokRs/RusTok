@@ -595,4 +595,13 @@ async fn module_owned_translation_requires_owner_and_runs_owner_side_effect_hook
         .expect("registered owner should authorize apply");
 
     assert_eq!(apply_calls.load(Ordering::SeqCst), 1);
+
+    let outbox_events = rustok_outbox::SysEvents::find()
+        .all(&database)
+        .await
+        .expect("module-owned Tag translation should not emit a global Search rebuild");
+    assert!(
+        outbox_events.is_empty(),
+        "module-owned Taxonomy changes must not over-invalidate the tenant Search scope"
+    );
 }
