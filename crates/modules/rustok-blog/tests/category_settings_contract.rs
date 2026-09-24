@@ -59,7 +59,6 @@ async fn create_category(db: &DatabaseConnection) -> Uuid {
         .create(Uuid::new_v4(), admin(), input("Settings contract"))
         .await
         .expect("category should be created")
-        .id
 }
 
 async fn write_settings(
