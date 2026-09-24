@@ -32,7 +32,8 @@ impl SearchProjector {
             .query_one_raw(stmt)
             .await
             .map_err(Error::Database)?
-            .and_then(|row| row.try_get::<i64>("", "total").ok())
+            .map(|row| row.try_get::<i64>("", "total").map_err(Error::Database))
+            .transpose()?
             .unwrap_or(0);
 
         if total == 0 {
