@@ -53,6 +53,29 @@ pub struct PreparedUploadSession {
     pub expires_at: chrono::DateTime<chrono::Utc>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaAssetReferenceAdmissionState {
+    Admitted,
+    DeletePending,
+    Deleted,
+    Failed,
+    NotReady,
+}
+
+impl MediaAssetReferenceAdmissionState {
+    pub const fn is_admitted(self) -> bool {
+        matches!(self, Self::Admitted)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct MediaAssetReferenceAdmission {
+    pub media_id: Uuid,
+    pub tenant_id: Uuid,
+    pub state: MediaAssetReferenceAdmissionState,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MediaItem {
     pub id: Uuid,

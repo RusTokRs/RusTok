@@ -2,8 +2,8 @@
 
 The transport is deliberately narrower than the Media HTTP/object interfaces.
 It carries asset metadata, owner-selected public image descriptors,
-translations, upload-session control, deletion commands, and reconciliation
-commands. Upload/download bytes never enter a JSON or protobuf envelope.
+reference-admission lifecycle facts, translations, upload-session control, deletion
+commands, and reconciliation commands. Upload/download bytes never enter a JSON or protobuf envelope.
 
 ## Contract ownership
 
@@ -28,8 +28,9 @@ explicitly call `with_public_image_provider(...)` to enable public descriptor
 selection. Calls without that attachment return typed unavailable semantics.
 
 The trusted server interceptor must separately allow
-`MediaGrpcOperation::GetPublicImageAsset`; a generic asset-read grant does not
-implicitly authorize public URL selection.
+`MediaGrpcOperation::GetPublicImageAsset` and
+`MediaGrpcOperation::GetAssetReferenceAdmission`. A generic asset-read grant does
+not implicitly authorize either specialized owner operation.
 
 ## Consumer connection policy
 
@@ -94,7 +95,7 @@ gates.
 ## Verification
 
 `cargo test -p rustok-media-transport` contains owner-port conformance and connection
-configuration source scenarios. Retained source covers public capability descriptor
+configuration source scenarios. Retained source covers reference-admission mapping, public capability descriptor
 selection, deadline propagation, typed deleted state, explicit trusted-operation
 authorization, HTTPS/loopback policy, bounded connection timeout, public-origin
 rebasing, and the rule that binary image bodies never cross gRPC.

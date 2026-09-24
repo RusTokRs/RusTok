@@ -43,6 +43,7 @@ pub struct TrustedMediaAuthority {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum MediaGrpcOperation {
     GetAsset,
+    GetAssetReferenceAdmission,
     ListAssets,
     GetImageDescriptor,
     GetPublicImageAsset,
@@ -128,6 +129,24 @@ where
         let value = self
             .provider
             .get_asset(context, parse_id(&request.id)?)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
+    async fn get_asset_reference_admission(
+        &self,
+        request: Request<IdRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            MediaGrpcOperation::GetAssetReferenceAdmission,
+        )?;
+        let request = request.into_inner();
+        let value = self
+            .provider
+            .get_asset_reference_admission(context, parse_id(&request.id)?)
             .await
             .map_err(port_error_to_status)?;
         json_response(&value)

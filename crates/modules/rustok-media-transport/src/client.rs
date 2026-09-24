@@ -3,7 +3,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use rustok_api::{PortContext, PortError, PortErrorKind};
 use rustok_media::{
-    MediaAssetReadPort, MediaAssetWritePort, MediaImageDescriptor, MediaItem,
+    MediaAssetReadPort, MediaAssetReferenceAdmission, MediaAssetWritePort, MediaImageDescriptor,
+    MediaItem,
     MediaPublicImageAsset, MediaPublicImageReadPort, MediaReconciliationReport,
     MediaReconciliationRequest, MediaTranslationItem, MediaUploadRequest, MediaUploadTarget,
     UpsertTranslationInput,
@@ -57,6 +58,25 @@ impl MediaAssetReadPort for GrpcMediaProvider {
             .client
             .clone()
             .get_asset(with_deadline(payload, &context))
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
+    async fn get_asset_reference_admission(
+        &self,
+        context: PortContext,
+        media_id: Uuid,
+    ) -> Result<MediaAssetReferenceAdmission, PortError> {
+        let payload = IdRequest {
+            context_json: encode(&context)?,
+            id: media_id.to_string(),
+        };
+        let response = self
+            .client
+            .clone()
+            .get_asset_reference_admission(with_deadline(payload, &context))
             .await
             .map_err(status_to_port_error)?
             .into_inner();

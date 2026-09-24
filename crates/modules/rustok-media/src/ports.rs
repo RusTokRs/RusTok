@@ -6,8 +6,11 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    DEFAULT_MAX_SIZE, MediaError, MediaImageDescriptor, MediaItem, MediaReconciliationReport,
-    MediaService, MediaTranslationItem, PrepareUploadSessionInput, UpsertTranslationInput,
+    DEFAULT_MAX_SIZE, MediaAssetReferenceAdmission, MediaAssetReferenceAdmissionState, MediaError,
+    MediaImageDescriptor, MediaItem, MediaReconciliationReport, MediaService, MediaTranslationItem,
+    PrepareUploadSessionInput, UpsertTranslationInput,
+    entities::{asset, blob},
+    lifecycle::{AssetState, BlobState},
 };
 
 const MAX_MEDIA_LIST_LIMIT: u64 = 100;
@@ -60,6 +63,12 @@ pub struct MediaReconciliationRequest {
 pub trait MediaAssetReadPort: Send + Sync {
     async fn get_asset(&self, context: PortContext, media_id: Uuid)
     -> Result<MediaItem, PortError>;
+
+    async fn get_asset_reference_admission(
+        &self,
+        context: PortContext,
+        media_id: Uuid,
+    ) -> Result<MediaAssetReferenceAdmission, PortError>;
 
     async fn list_assets(
         &self,
@@ -128,6 +137,50 @@ impl MediaAssetReadPort for MediaService {
         self.get(tenant_id, media_id)
             .await
             .map_err(media_error_to_port_error)
+    }
+
+    async fn get_asset_reference_admission(
+        &self,
+        context: PortContext,
+        media_id: Uuid,
+    ) -> Result<MediaAssetReferenceAdmission, PortError> {
+        require_media_read_policy(&context)?;
+        let tenant_id = parse_tenant_id(&context)?;
+        let asset = asset::Entity::find_by_id(media_id)
+            .filter(asset::Column::TenantId.eq(tenant_id))
+            .one(self.database())
+            .await
+            .map_err(media_error_to_port_error)?
+            .ok_or_else(|| PortError::not_found("media.not_found", "media asset not found"))?;
+
+        let active_blob = match asset.active_blob_id {
+            Some(active_blob_id) => Some(
+                blob::Entity::find_by_id(active_blob_id)
+                    .filter(blob::Column::TenantId.eq(tenant_id))
+                    .filter(blob::Column::AssetId.eq(media_id))
+                    .one(self.database())
+                    .await
+                    .map_err(media_error_to_port_error)?
+                    .ok_or_else(|| {
+                        PortError::invariant_violation(
+                            "media.active_blob_missing",
+                            "active media asset references a missing blob",
+                        )
+                    })?,
+            ),
+            None => None,
+        };
+
+        let state = media_asset_reference_admission_state(
+            asset.lifecycle_state.as_str(),
+            active_blob.as_ref().map(|blob| blob.state.as_str()),
+        )?;
+
+        Ok(MediaAssetReferenceAdmission {
+            media_id,
+            tenant_id: asset.tenant_id,
+            state,
+        })
     }
 
     async fn list_assets(
@@ -398,6 +451,27 @@ fn decode_replay<T: DeserializeOwned>(value: serde_json::Value) -> Result<T, Por
     })
 }
 
+fn media_asset_reference_admission_state(
+    asset_state: &str,
+    active_blob_state: Option<&str>,
+) -> Result<MediaAssetReferenceAdmissionState, PortError> {
+    match asset_state {
+        "active" => match active_blob_state {
+            Some(state) if state == BlobState::Ready.as_str() => {
+                Ok(MediaAssetReferenceAdmissionState::Admitted)
+            }
+            Some(_) | None => Ok(MediaAssetReferenceAdmissionState::NotReady),
+        },
+        "delete_pending" => Ok(MediaAssetReferenceAdmissionState::DeletePending),
+        "deleted" => Ok(MediaAssetReferenceAdmissionState::Deleted),
+        "failed" => Ok(MediaAssetReferenceAdmissionState::Failed),
+        other => Err(PortError::invariant_violation(
+            "media.lifecycle_state_invalid",
+            format!("unknown media asset lifecycle state: {other}"),
+        )),
+    }
+}
+
 fn validate_media_list_limit(limit: u64) -> Result<(), PortError> {
     if !(1..=MAX_MEDIA_LIST_LIMIT).contains(&limit) {
         return Err(PortError::validation(
@@ -562,8 +636,9 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        MEDIA_OWNER_STREAMING_UPLOAD_PATH, MediaReconciliationRequest, MediaUploadRequest,
-        MediaUploadTransport, media_error_to_port_error, parse_tenant_id,
+        MEDIA_OWNER_STREAMING_UPLOAD_PATH, MediaAssetReferenceAdmissionState,
+        MediaReconciliationRequest, MediaUploadRequest, MediaUploadTransport,
+        media_asset_reference_admission_state, media_error_to_port_error, parse_tenant_id,
         require_media_read_policy, require_media_write_policy, validate_reconciliation_request,
         validate_upload_request,
     };
@@ -577,6 +652,47 @@ mod tests {
             "corr-1",
         )
         .with_deadline(Duration::from_secs(1))
+    }
+
+    #[test]
+    fn reference_admission_requires_active_ready_blob() {
+        assert_eq!(
+            media_asset_reference_admission_state("active", Some("ready"))
+                .expect("active ready asset should be admissible"),
+            MediaAssetReferenceAdmissionState::Admitted
+        );
+        assert_eq!(
+            media_asset_reference_admission_state("active", Some("pending"))
+                .expect("pending blob should be rejected"),
+            MediaAssetReferenceAdmissionState::NotReady
+        );
+        assert_eq!(
+            media_asset_reference_admission_state("active", None)
+                .expect("missing active blob should be not-ready"),
+            MediaAssetReferenceAdmissionState::NotReady
+        );
+    }
+
+    #[test]
+    fn reference_admission_fails_closed_for_terminal_asset_states() {
+        assert_eq!(
+            media_asset_reference_admission_state("delete_pending", Some("ready"))
+                .expect("delete-pending asset should map"),
+            MediaAssetReferenceAdmissionState::DeletePending
+        );
+        assert_eq!(
+            media_asset_reference_admission_state("deleted", Some("ready"))
+                .expect("deleted asset should map"),
+            MediaAssetReferenceAdmissionState::Deleted
+        );
+        assert_eq!(
+            media_asset_reference_admission_state("failed", Some("ready"))
+                .expect("failed asset should map"),
+            MediaAssetReferenceAdmissionState::Failed
+        );
+        let error = media_asset_reference_admission_state("unknown", Some("ready"))
+            .expect_err("unknown lifecycle must fail closed");
+        assert_eq!(error.kind, PortErrorKind::InvariantViolation);
     }
 
     #[test]
