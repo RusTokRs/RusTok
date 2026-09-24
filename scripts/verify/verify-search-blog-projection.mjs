@@ -66,7 +66,7 @@ if (rebuildGuard < 0 || rebuildDelete < 0 || rebuildGuard > rebuildDelete) {
 if (targetedGuard < 0 || targetedDelete < 0 || targetedGuard > targetedDelete) {
   failures.push(`${projectorPath}: targeted Blog projection must validate source schema before destructive deletion`);
 }
-rejectMarker(projector, "blog_tables_available(&tx)", projectorPath);
+rejectMarker(projector, "if self.blog_tables_available(&tx).await?", projectorPath);
 rejectMarker(projector, ".and_then((row) => row.try_get::<bool>(\"\", \"available\").ok())", projectorPath);
 for (const table of [
   "blog_posts",
