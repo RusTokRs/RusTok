@@ -202,7 +202,10 @@ read by Blog, but shared global terms are mutated only by the Taxonomy owner;
 Blog tag mutations apply only to `module:blog` terms. The Blog-owned
 `blog_tag_usage` projection is derived from canonical attachments and Taxonomy
 `canonical_key`, is maintained in the same transactions as post/tag mutations,
-and provides the database-bounded tag-list read path. Zero-use Blog-local terms
+and provides the database-bounded tag-list read path. Global Taxonomy Tag updates,
+deletes, and exact-locale Translation-target applies also enqueue the existing
+tenant-scoped Search reindex event inside the Taxonomy transaction, keeping Blog
+Search projections fresh without a Blog-to-Taxonomy runtime dependency. Zero-use Blog-local terms
 remain in the projection; zero-use global terms are removed. For Comments, the execution-owned
 transport/restart/relay evidence remains separate from Category Taxonomy work.
 
