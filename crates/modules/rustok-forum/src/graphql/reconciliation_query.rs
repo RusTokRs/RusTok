@@ -126,12 +126,6 @@ impl ForumReconciliationQuery {
         Ok(map_report(report))
     }
 
-    /// Read-only FORUM-33 accepted-solution and solution-author-stat drift report.
-    ///
-    /// A solution is authoritative only when the exact same-tenant/topic reply still exists and is
-    /// `approved`. `forum_user_stats.solution_count` is reconciled as a projection of those approved
-    /// solution rows. `solution_after` and `solution_stat_after` are independent UUID keyset cursors.
-    /// `clean` is page-local and is not whole-tenant proof until both cursor chains are exhausted.
     /// Read-only FORUM-33 audit of Media durable holds retained for Forum attachments.
     ///
     /// The media_after cursor is a strict keyset cursor over Media reference IDs. The report is
@@ -182,6 +176,12 @@ impl ForumReconciliationQuery {
             .await?;
         Ok(map_attachment_hold_report(report))
     }
+    /// Read-only FORUM-33 accepted-solution and solution-author-stat drift report.
+    ///
+    /// A solution is authoritative only when the exact same-tenant/topic reply still exists and is
+    /// `approved`. `forum_user_stats.solution_count` is reconciled as a projection of those approved
+    /// solution rows. `solution_after` and `solution_stat_after` are independent UUID keyset cursors.
+    /// `clean` is page-local and is not whole-tenant proof until both cursor chains are exhausted.
     async fn forum_solution_reconciliation_report(
         &self,
         ctx: &Context<'_>,
