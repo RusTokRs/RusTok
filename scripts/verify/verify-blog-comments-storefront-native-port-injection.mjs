@@ -102,7 +102,7 @@ if (evidence) {
 
   if (
     !sameSet(evidence.profiles?.source_verified ?? [], [
-      'in_process_fallback',
+      'in_process',
       'host_injected_port_selection',
     ])
   ) failures.push(`${evidencePath}: source-verified profile drift`);
@@ -114,7 +114,7 @@ if (evidence) {
   if (
     composition.host_context !== 'rustok_api::HostRuntimeContext' ||
     composition.shared_value !== 'Arc<dyn rustok_blog::CommentsThreadPort>' ||
-    composition.facade_reexport !== 'pub use rustok_comments::CommentsThreadPort;' ||
+    composition.facade_reexport !== 'pub use rustok_comments_api::CommentsThreadPort;' ||
     composition.lookup !== 'HostRuntimeContext::shared_get' ||
     composition.selector !== 'comment_service' ||
     composition.injected_constructor !== 'CommentService::from_optional_comments_thread_port' ||
@@ -174,7 +174,7 @@ if (
     'all_other_blog_errors'
 ) failures.push(`${fallbackEvidencePath}: fallback evidence drift`);
 
-requireMarker(facade, 'pub use rustok_comments::CommentsThreadPort;', facadePath);
+requireMarker(facade, 'pub use rustok_comments_api::CommentsThreadPort;', facadePath);
 
 for (const marker of [
   'use std::sync::Arc;',
@@ -220,7 +220,7 @@ if (lookupIndex < 0 || constructorIndex < 0) {
 }
 
 for (const marker of [
-  'pub fn with_comments_thread_port(',
+  'pub fn from_optional_comments_thread_port(',
   '.list_public_comments_for_target(',
   'comments_public_read_port_context(',
   'PortActor::service(PUBLIC_COMMENTS_PORT_ACTOR)',
