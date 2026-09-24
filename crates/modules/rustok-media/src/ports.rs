@@ -59,6 +59,22 @@ pub struct MediaReconciliationRequest {
     pub limit: u64,
 }
 
+/// Bounded page request for durable consumer-owned Media reference holds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MediaAssetReferenceListRequest {
+    pub owner_module: String,
+    pub after_reference_id: Option<Uuid>,
+    pub limit: u64,
+}
+
+/// One bounded page of durable consumer-owned Media reference holds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MediaAssetReferenceListPage {
+    pub references: Vec<MediaAssetReference>,
+    pub next_reference_id: Option<Uuid>,
+    pub has_more: bool,
+}
+
 /// Transport-neutral read boundary for media asset metadata and SEO image descriptors.
 #[async_trait]
 pub trait MediaAssetReadPort: Send + Sync {
@@ -70,6 +86,12 @@ pub trait MediaAssetReadPort: Send + Sync {
         context: PortContext,
         media_id: Uuid,
     ) -> Result<MediaAssetReferenceAdmission, PortError>;
+
+    async fn list_asset_references(
+        &self,
+        context: PortContext,
+        request: MediaAssetReferenceListRequest,
+    ) -> Result<MediaAssetReferenceListPage, PortError>;
 
     async fn list_assets(
         &self,
@@ -198,6 +220,19 @@ impl MediaAssetReadPort for MediaService {
             tenant_id: asset.tenant_id,
             state,
         })
+    }
+
+    async fn list_asset_references(
+        &self,
+        context: PortContext,
+        request: MediaAssetReferenceListRequest,
+    ) -> Result<MediaAssetReferenceListPage, PortError> {
+        require_media_read_policy(&context)?;
+        let tenant_id = parse_tenant_id(&context)?;
+        validate_asset_reference_list_request(&request)?;
+        self.list_asset_references_page(tenant_id, request)
+            .await
+            .map_err(media_error_to_port_error)
     }
 
     async fn list_assets(
@@ -559,6 +594,29 @@ fn media_asset_reference_admission_state(
             format!("unknown media asset lifecycle state: {other}"),
         )),
     }
+}
+
+fn validate_asset_reference_list_request(
+    request: &MediaAssetReferenceListRequest,
+) -> Result<(), PortError> {
+    if !(1..=MAX_MEDIA_RECONCILIATION_LIMIT).contains(&request.limit) {
+        return Err(PortError::validation(
+            "media.asset_reference_list_limit_invalid",
+            format!(
+                "media asset reference list limit must be between 1 and {MAX_MEDIA_RECONCILIATION_LIMIT}"
+            ),
+        ));
+    }
+    if request
+        .after_reference_id
+        .is_some_and(|reference_id| reference_id.is_nil())
+    {
+        return Err(PortError::validation(
+            "media.asset_reference_list_cursor_invalid",
+            "media asset reference list cursor must be a non-nil UUID",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_media_list_limit(limit: u64) -> Result<(), PortError> {

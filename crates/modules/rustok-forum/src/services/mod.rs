@@ -1,4 +1,5 @@
 mod attachment_relation;
+mod attachment_hold_reconciliation;
 mod category {
     include!("category_import.rs");
     include!("category.rs");
@@ -154,6 +155,12 @@ pub mod widget_contract;
 mod widget_preview;
 
 pub use attachment_relation::ForumAttachmentRelationService;
+pub use attachment_hold_reconciliation::{
+    ForumAttachmentHoldDrift, ForumAttachmentHoldDriftKind,
+    ForumAttachmentHoldReconciliationReport, ForumAttachmentHoldReconciliationService,
+    DEFAULT_FORUM_ATTACHMENT_HOLD_RECONCILIATION_LIMIT,
+    MAX_FORUM_ATTACHMENT_HOLD_RECONCILIATION_LIMIT,
+};
 pub use category_audience::{
     ForumCategoryAudiencePolicy, ForumCategoryAudiencePolicyLayer,
     ForumCategoryAudiencePolicyOwnerService as ForumCategoryAudiencePolicyService,

@@ -84,6 +84,25 @@ impl MediaAssetReadPort for GrpcMediaProvider {
         decode(&response.output_json)
     }
 
+    async fn list_asset_references(
+        &self,
+        context: PortContext,
+        request: rustok_media::MediaAssetReferenceListRequest,
+    ) -> Result<rustok_media::MediaAssetReferenceListPage, PortError> {
+        let payload = JsonRequest {
+            context_json: encode(&context)?,
+            input_json: encode(&request)?,
+        };
+        let response = self
+            .client
+            .clone()
+            .list_asset_references(with_deadline(payload, &context))
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
     async fn list_assets(
         &self,
         context: PortContext,
