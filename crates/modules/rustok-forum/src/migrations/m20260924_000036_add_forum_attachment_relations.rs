@@ -123,7 +123,6 @@ CREATE OR REPLACE FUNCTION forum_forbid_attachment_relation_update()
 RETURNS trigger AS $
 BEGIN
     RAISE EXCEPTION 'forum attachment relation rows are immutable; replace the relation set';
-    RETURN NEW;
 END;
 $ LANGUAGE plpgsql;
 
