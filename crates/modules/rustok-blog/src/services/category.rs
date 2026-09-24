@@ -11,6 +11,7 @@ use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
+use crate::domain::BLOG_CATEGORY_SETTINGS_MAX_BYTES;
 use crate::dto::{CreateCategoryInput, MAX_BLOG_CATEGORY_TREE_NODES, UpdateCategoryInput};
 use crate::entities::blog_category;
 use crate::error::{BlogError, BlogResult};
@@ -422,8 +423,6 @@ async fn canonicalize_siblings_for_insert_in_tx(
     .map_err(BlogError::from)
 }
 
-const MAX_BLOG_CATEGORY_SETTINGS_BYTES: usize = 64 * 1024;
-
 fn normalize_category_settings(settings: serde_json::Value) -> BlogResult<serde_json::Value> {
     if !settings.is_object() {
         return Err(BlogError::validation(
@@ -432,9 +431,9 @@ fn normalize_category_settings(settings: serde_json::Value) -> BlogResult<serde_
     }
     let encoded = serde_json::to_vec(&settings)
         .map_err(|_| BlogError::validation("Category settings could not be serialized"))?;
-    if encoded.len() > MAX_BLOG_CATEGORY_SETTINGS_BYTES {
+    if encoded.len() > BLOG_CATEGORY_SETTINGS_MAX_BYTES {
         return Err(BlogError::validation(format!(
-            "Category settings cannot exceed {MAX_BLOG_CATEGORY_SETTINGS_BYTES} bytes",
+            "Category settings cannot exceed {BLOG_CATEGORY_SETTINGS_MAX_BYTES} bytes",
         )));
     }
     Ok(settings)
@@ -451,9 +450,9 @@ pub(super) fn validate_persisted_category_settings(
     let encoded = serde_json::to_vec(settings).map_err(|_| {
         BlogError::invariant("Persisted Blog category settings could not be serialized")
     })?;
-    if encoded.len() > MAX_BLOG_CATEGORY_SETTINGS_BYTES {
+    if encoded.len() > BLOG_CATEGORY_SETTINGS_MAX_BYTES {
         return Err(BlogError::invariant(format!(
-            "Persisted Blog category settings exceed {MAX_BLOG_CATEGORY_SETTINGS_BYTES} bytes",
+            "Persisted Blog category settings exceed {BLOG_CATEGORY_SETTINGS_MAX_BYTES} bytes",
         )));
     }
     Ok(())
@@ -526,7 +525,7 @@ fn normalize_non_empty_slug(slug: &str) -> BlogResult<String> {
 #[cfg(test)]
 mod category_settings_tests {
     use super::{
-        MAX_BLOG_CATEGORY_SETTINGS_BYTES, normalize_category_settings,
+        BLOG_CATEGORY_SETTINGS_MAX_BYTES, normalize_category_settings,
         validate_persisted_category_settings,
     };
 
@@ -541,7 +540,7 @@ mod category_settings_tests {
     #[test]
     fn category_settings_are_bounded_by_encoded_size() {
         let oversized = serde_json::json!({
-            "payload": "x".repeat(MAX_BLOG_CATEGORY_SETTINGS_BYTES),
+            "payload": "x".repeat(BLOG_CATEGORY_SETTINGS_MAX_BYTES),
         });
         assert!(normalize_category_settings(oversized).is_err());
     }
