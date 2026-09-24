@@ -5,7 +5,7 @@
 //! explicit contracts. Physical source placement follows the canonical native
 //! module layout; public compatibility is preserved through deliberate re-exports.
 
-mod domain;
+pub(crate) mod domain;
 mod integrations;
 mod module;
 
