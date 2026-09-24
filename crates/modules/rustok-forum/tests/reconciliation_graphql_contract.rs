@@ -104,6 +104,7 @@ fn graphql_reconciliation_adapters_enforce_security_scope_and_isolation() {
     assert!(COUNTER_AND_SOLUTION_GRAPHQL.contains("ForumSolutionReconciliationService::new(db)"));
     assert!(ATTACHMENT_HOLD_GRAPHQL.contains("ForumAttachmentHoldReconciliationService::new(db, media)"));
     assert!(ATTACHMENT_HOLD_GRAPHQL.contains("attachment_hold_reconciliation_media()"));
+    assert!(ATTACHMENT_HOLD_GRAPHQL.contains("FORUM_MEDIA_REFERENCE_LIST_CAPABILITY_UNAVAILABLE"));
     assert!(SUBSCRIPTION_GRAPHQL.contains("ForumSubscriptionReconciliationService::new(db)"));
     assert!(MENTION_GRAPHQL.contains("ForumMentionReconciliationService::new(db)"));
 }
