@@ -153,6 +153,26 @@ requireMarkers("crates/modules/rustok-blog/src/migrations/m20260916_000022_clean
   "Intentionally irreversible under Zero-Legacy Policy",
 ]);
 
+const settingsContract = requireMarkers("crates/modules/rustok-blog/src/migrations/m20260924_000029_enforce_blog_category_settings_contract.rs", [
+  "validate_existing_settings",
+  "jsonb_typeof(settings) = 'object'",
+  "octet_length(settings::text)",
+  "json_valid(settings)",
+  "blog_categories_settings_contract_insert",
+  "blog_categories_settings_contract_update",
+]);
+requireMarkers("crates/modules/rustok-blog/src/domain/mod.rs", [
+  "BLOG_CATEGORY_SETTINGS_MAX_BYTES: usize = 64 * 1024",
+]);
+requireMarkers("crates/modules/rustok-blog/src/migrations/mod.rs", [
+  "mod m20260924_000029_enforce_blog_category_settings_contract;",
+  "Box::new(m20260924_000029_enforce_blog_category_settings_contract::Migration)",
+  '"m20260924_000029_enforce_blog_category_settings_contract"',
+]);
+if (settingsContract.includes("pg_column_size(settings)")) {
+  failures.push("Blog Category settings contract must guard logical JSON size, not compressed PostgreSQL storage size");
+}
+
 requireMarkers("crates/modules/rustok-blog/src/controllers/categories.rs", [
   "CategoryCommandService::new(runtime.db_clone(), runtime.event_bus())",
   "path = "/api/blog/categories/{id}/move"",
