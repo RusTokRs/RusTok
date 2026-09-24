@@ -16,7 +16,7 @@
   },
   "profiles": {
     "source_verified": [
-      "in_process_fallback",
+      "in_process",
       "host_injected_port_selection"
     ],
     "pending": [
@@ -26,7 +26,7 @@
   "composition": {
     "host_context": "rustok_api::HostRuntimeContext",
     "shared_value": "Arc<dyn rustok_blog::CommentsThreadPort>",
-    "facade_reexport": "pub use rustok_comments::CommentsThreadPort;",
+    "facade_reexport": "pub use rustok_comments_api::CommentsThreadPort;",
     "lookup": "HostRuntimeContext::shared_get",
     "selector": "comment_service",
     "injected_constructor": "CommentService::from_optional_comments_thread_port",
