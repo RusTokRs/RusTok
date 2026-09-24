@@ -347,3 +347,8 @@ The Comments principal-bound durable receipt fix is now protected by the Comment
 ## 2026-09-24 Blog storefront authenticated tenant binding
 
 The storefront SSR transport now treats the authenticated AuthContext.tenant_id as an authoritative tenant boundary whenever authentication is present. A caller-supplied tenant_slug is resolved only for unauthenticated/public selection; an authenticated request must match the resolved tenant or the server returns the same generic internal error used for tenant-context mismatches. The boundary verifier and its self-test enforce the tenant-binding markers. Tests/build/CI remain unrun by the agent per maintainer instruction.
+
+
+## 2026-09-24 Blog GraphQL rate-limit principal identity
+
+A fresh Blog GraphQL rate-limit audit found that authenticated rate-limit keys collapsed every AuthContext into `user:<user_id>`, despite the canonical authentication boundary distinguishing human-user and client-credentials service principals. Blog now derives the limiter actor component from `AuthContext::port_actor()`, preserving principal kind and stable principal id. The source verifier requires the canonical actor binding and the verifier self-test rejects user-only keying. Tests/build/CI remain unrun by the agent per maintainer instruction.
