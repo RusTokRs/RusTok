@@ -229,8 +229,10 @@ source now requires:
 Category settings now have one owner-level persistence contract: they must be JSON objects and
 must not exceed 64 KiB when encoded. Create/update commands enforce input validation, while
 list/get revalidate persisted state as an internal invariant before exposing it through the
-Blog Category API. This bounds extension payloads and prevents malformed persisted settings
-from being returned as ordinary Category data.
+Blog Category API. Migration `m20260924_000029_enforce_blog_category_settings_contract` now
+adds the database backstop on PostgreSQL and SQLite and fails the upgrade before constraints are
+installed when pre-existing rows violate the contract. This prevents malformed persisted settings
+from being written or returned as ordinary Category data.
 
 ## Remaining execution-owned results
 
@@ -248,6 +250,9 @@ source still exists and whose result has not been superseded:
    implementation.
 5. Execute the Blog article richtext cutover/backfill/browser evidence already
    retained by the historical plan.
+6. Run Blog migration smoke against PostgreSQL and SQLite, including clean up-from-zero,
+   incremental upgrade, direct invalid settings rejection, oversized settings rejection,
+   and dirty-data preflight failure.
 
 There is **no** remaining execution item for the retired Blog Category
 Translation provider or its deleted PostgreSQL harness.
