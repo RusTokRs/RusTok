@@ -10,9 +10,10 @@ use crate::{
     CommentListItem, CommentRecord, CommentsError, CommentsService, CreateCommentInput,
     ListCommentsFilter, SetCommentStatusRequest, UpdateCommentInput,
 };
+pub use rustok_comments_api::CommentsThreadPort;
 use rustok_comments_api::{
     CommentListItem as ApiCommentListItem, CommentRecord as ApiCommentRecord,
-    CommentsThreadPort, CreateCommentInput as ApiCreateCommentInput,
+    CreateCommentInput as ApiCreateCommentInput,
     ListCommentsFilter as ApiListCommentsFilter,
     SetCommentStatusRequest as ApiSetCommentStatusRequest,
     UpdateCommentInput as ApiUpdateCommentInput,

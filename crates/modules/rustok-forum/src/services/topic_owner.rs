@@ -59,16 +59,6 @@ impl TopicService {
         self
     }
 
-    pub async fn get(
-        &self,
-        tenant_id: Uuid,
-        security: SecurityContext,
-        topic_id: Uuid,
-        locale: &str,
-    ) -> ForumResult<TopicResponse> {
-        self.inner.get(tenant_id, security, topic_id, locale).await
-    }
-
     pub async fn get_with_locale_fallback(
         &self,
         tenant_id: Uuid,

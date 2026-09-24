@@ -23,7 +23,7 @@ use rustok_translation_targets::{
     TranslationTargetChangesRequest, TranslationTargetProgressRequest, TranslationTargetProvider,
 };
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, Database, DbBackend, EntityTrait, QueryFilter, Statement,
+    ColumnTrait, ConnectionTrait, Database, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, Statement,
 };
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;

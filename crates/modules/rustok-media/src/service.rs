@@ -1529,6 +1529,15 @@ impl MediaService {
             });
         }
 
+        let asset = AssetEntity::find_by_id(media_id)
+            .filter(AssetCol::TenantId.eq(tenant_id))
+            .one(&transaction)
+            .await?
+            .ok_or(MediaError::NotFound(media_id))?;
+        if asset.lifecycle_state != AssetState::Active.as_str() {
+            return Err(MediaError::AssetReferenceNotAdmissible(media_id));
+        }
+
         let locked = AssetEntity::update_many()
             .col_expr(
                 AssetCol::UpdatedAt,
@@ -1540,15 +1549,6 @@ impl MediaService {
             .exec(&transaction)
             .await?;
         if locked.rows_affected != 1 {
-            return Err(MediaError::AssetReferenceNotAdmissible(media_id));
-        }
-
-        let asset = AssetEntity::find_by_id(media_id)
-            .filter(AssetCol::TenantId.eq(tenant_id))
-            .one(&transaction)
-            .await?
-            .ok_or(MediaError::NotFound(media_id))?;
-        if asset.lifecycle_state != AssetState::Active.as_str() {
             return Err(MediaError::AssetReferenceNotAdmissible(media_id));
         }
 

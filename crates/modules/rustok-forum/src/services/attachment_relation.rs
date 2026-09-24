@@ -548,7 +548,7 @@ async fn lock_forum_target<C: ConnectionTrait>(
             .filter(forum_topic::Column::Id.eq(target.id()))
             .exec(connection)
             .await?
-            .rows_affected(),
+            .rows_affected,
         ForumContentTargetKind::Reply => forum_reply::Entity::update_many()
             .col_expr(
                 forum_reply::Column::UpdatedAt,
@@ -558,7 +558,7 @@ async fn lock_forum_target<C: ConnectionTrait>(
             .filter(forum_reply::Column::Id.eq(target.id()))
             .exec(connection)
             .await?
-            .rows_affected(),
+            .rows_affected,
     };
 
     if rows != 1 {
@@ -738,7 +738,7 @@ fn parse_target_kind(value: &str) -> ForumResult<ForumContentTargetKind> {
     }
 }
 
-fn usage_value(usage: ForumAttachmentRelationUsage) -> &'static str {
+fn usage_value(usage: ForumAttachmentUsage) -> &'static str {
     match usage {
         ForumAttachmentUsage::Inline => "inline",
         ForumAttachmentUsage::Attachment => "attachment",

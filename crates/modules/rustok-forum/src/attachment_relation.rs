@@ -5,7 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::mentions::ForumContentTarget;
+pub use crate::mentions::{ForumContentTarget, ForumContentTargetKind};
 
 pub const MAX_FORUM_ATTACHMENTS_PER_SET: usize = 32;
 pub const MAX_FORUM_ATTACHMENT_CAPTION_BYTES: usize = 512;
