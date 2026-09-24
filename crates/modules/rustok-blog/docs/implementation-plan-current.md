@@ -391,3 +391,7 @@ The write path now revalidates the full `ensure_public_post_visible(tenant_id, p
 ## 2026-09-24 Public comment compensation on infrastructure failure
 
 The fresh saga audit found that the first TOCTOU fix only compensated `PostNotFound` after the external Comments write. A database, channel-service, or other infrastructure error during the final public-visibility revalidation could still return failure while the Comments record remained committed. The Blog write path now compensates on every revalidation failure, preserves the original error when cleanup succeeds, and fails closed with an invariant error when cleanup itself cannot be completed.
+
+## 2026-09-24 Public comment compensation authority
+
+A second saga audit found that the compensation delete inherited the caller's `SecurityContext`. Ordinary storefront customers have Comments create permission but delete is owner-scoped, so a compensation could itself be rejected by authorization. Blog compensation now uses a trusted `SecurityContext::system()` operation through the existing owner-managed Comments port, with a fresh idempotency key. The original user remains represented by the create-side event/audit context; compensation is explicitly a system-owned cleanup action. Source verification and a focused Rust unit regression enforce this boundary.
