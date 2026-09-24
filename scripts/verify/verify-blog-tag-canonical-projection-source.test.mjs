@@ -88,13 +88,13 @@ test('rejects metadata-backed Search projection', () => {
   assert.match(result.stderr, /forbidden|blog_post_tags/);
 });
 
-test('rejects premature atomic mutation claim', () => {
+test('rejects removal of global Taxonomy Tag Search invalidation proof', () => {
   const result = rejects((root) => {
     const file = 'crates/modules/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json';
     const value = JSON.parse(readFileSync(absolute(root, file), 'utf8'));
-    value.source_contract.tag_mutation_atomic_reindex_implemented = true;
+    value.source_contract.global_tag_search_invalidation_implemented = false;
     write(root, file, `${JSON.stringify(value, null, 2)}\n`);
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /source\/execution drift/);
+  assert.match(result.stderr, /source\\/execution drift/);
 });
