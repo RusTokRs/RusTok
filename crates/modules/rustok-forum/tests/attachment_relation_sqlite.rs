@@ -443,6 +443,11 @@ async fn sqlite_attachment_relation_service_coordinates_media_retention_and_cas(
         "Media deletion must be fenced by the committed Forum relation"
     );
 
+    db.execute_unprepared(&format!(
+        "INSERT INTO forum_topic_revisions (id, tenant_id, topic_id) VALUES (1, '{tenant_id}', '{topic_id}')"
+    ))
+    .await?;
+
     let current = forum
         .get_attachment_relations(tenant_id, ForumContentTarget::topic(topic_id), "en-US")
         .await?;
@@ -499,6 +504,12 @@ async fn create_minimal_fixture(db: &sea_orm::DatabaseConnection) -> TestResult<
             id TEXT PRIMARY KEY NOT NULL,
             tenant_id TEXT NOT NULL,
             updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE forum_topic_revisions (
+            id INTEGER PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            topic_id TEXT NOT NULL
         );
         "#,
     )
