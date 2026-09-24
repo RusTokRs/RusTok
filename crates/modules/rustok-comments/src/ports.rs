@@ -608,3 +608,49 @@ fn comments_error_to_port_error(error: CommentsError) -> PortError {
         CommentsError::Validation(message) => PortError::validation("comments.validation", message),
     }
 }
+
+
+#[cfg(test)]
+mod idempotency_tests {
+    use super::*;
+
+    #[test]
+    fn idempotency_request_binds_principal_identity() {
+        let request = serde_json::json!({
+            "target_id": Uuid::nil(),
+            "body": "same request",
+        });
+        let user_a = Uuid::new_v4();
+        let user_b = Uuid::new_v4();
+        let tenant_id = Uuid::new_v4().to_string();
+
+        let context_a = PortContext::new(
+            tenant_id.clone(),
+            PortActor::user(user_a.to_string()),
+            "en",
+            "corr-a",
+        );
+        let context_a_retry = PortContext::new(
+            tenant_id.clone(),
+            PortActor::user(user_a.to_string()),
+            "en",
+            "corr-b",
+        );
+        let context_b = PortContext::new(
+            tenant_id,
+            PortActor::user(user_b.to_string()),
+            "en",
+            "corr-c",
+        );
+
+        let first = serde_json::to_value(bind_idempotency_actor(&context_a, &request))
+            .expect("first receipt identity should serialize");
+        let retry = serde_json::to_value(bind_idempotency_actor(&context_a_retry, &request))
+            .expect("retry receipt identity should serialize");
+        let other = serde_json::to_value(bind_idempotency_actor(&context_b, &request))
+            .expect("other principal receipt identity should serialize");
+
+        assert_eq!(first, retry);
+        assert_ne!(first, other);
+    }
+}
