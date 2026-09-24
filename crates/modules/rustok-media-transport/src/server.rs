@@ -505,6 +505,25 @@ mod tests {
     }
 
     #[test]
+    fn remote_context_rejects_exact_reference_lookup_without_explicit_grant() {
+        let mut request = Request::new(());
+        request.extensions_mut().insert(
+            TrustedMediaAuthority::new("tenant-a", PortActor::service("verified-service"))
+                .allow_operation(MediaGrpcOperation::GetAssetReferenceAdmission),
+        );
+        let claimed = PortContext::new("tenant-a", PortActor::user("forged"), "en", "corr");
+
+        let error = trusted_context(
+            &request,
+            claimed,
+            MediaGrpcOperation::LookupAssetReferences,
+        )
+        .expect_err("exact owner-reference lookup requires an explicit trusted grant");
+
+        assert_eq!(error.code(), Code::PermissionDenied);
+    }
+
+    #[test]
     fn remote_context_replaces_untrusted_principal_fields() {
         let mut request = Request::new(());
         request.extensions_mut().insert(
