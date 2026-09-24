@@ -5,7 +5,8 @@ use chrono::Utc;
 use rustok_api::{PortContext, PortError};
 use rustok_media::{MediaAssetReferenceInput, MediaAssetWritePort};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection,
     EntityTrait, QueryFilter, QueryOrder, TransactionTrait,
 };
 use sha2::{Digest, Sha256};
@@ -51,7 +52,10 @@ impl ForumAttachmentRelationService {
         validate_context_target(tenant_id, target)?;
         let locale = normalize_locale(locale)?;
         let txn = self.db.begin().await?;
-        lock_forum_target(&txn, tenant_id, target).await?;
+        if txn.get_database_backend() == DatabaseBackend::Postgres {
+            txn.execute_unprepared("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+                .await?;
+        }
         let head = self.load_head(&txn, tenant_id, target, &locale).await?;
         let result = match head {
             Some(head) => self.load_relation_set_from_head(&txn, head).await,
