@@ -25,6 +25,7 @@ const files = [
   'crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs',
   'crates/modules/rustok-blog/storefront/src/transport/mod.rs',
   'crates/modules/rustok-blog/storefront/src/model.rs',
+  'crates/modules/rustok-blog/src/services/comment.rs',
   'crates/modules/rustok-blog/docs/implementation-plan-slice-100.md',
 ];
 
@@ -87,6 +88,32 @@ test('rejects removal of the active storefront comment composer', () => {
       root,
       'crates/modules/rustok-blog/storefront/src/ui/leptos.rs',
       (source) => source.replaceAll('CommentComposer', 'RemovedComposer'),
+    ),
+  );
+  assert.notEqual(result.status, 0);
+});
+
+test('rejects loss of post-create public visibility revalidation', () => {
+  const result = rejects((root) =>
+    mutate(
+      root,
+      'crates/modules/rustok-blog/src/services/comment.rs',
+      (source) =>
+        source.replace(
+          'match self\n            .ensure_public_post_visible(tenant_id, post_id, public_channel_slug)',
+          'match self\n            .ensure_post_exists(tenant_id, post_id)',
+        ),
+    ),
+  );
+  assert.notEqual(result.status, 0);
+});
+
+test('rejects removal of public-target compensation after visibility loss', () => {
+  const result = rejects((root) =>
+    mutate(
+      root,
+      'crates/modules/rustok-blog/src/services/comment.rs',
+      (source) => source.replaceAll('"delete-after-public-target-loss"', '"delete-after-target-loss"'),
     ),
   );
   assert.notEqual(result.status, 0);
