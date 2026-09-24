@@ -58,7 +58,8 @@ impl SearchProjector {
             .query_one_raw(statement)
             .await
             .map_err(Error::Database)?
-            .and_then(|row| row.try_get::<i64>("", "total").ok())
+            .map(|row| row.try_get::<i64>("", "total").map_err(Error::Database))
+            .transpose()?
             .unwrap_or(0);
         if total == 0 {
             self.rebuild_tenant(tenant_id).await?;
