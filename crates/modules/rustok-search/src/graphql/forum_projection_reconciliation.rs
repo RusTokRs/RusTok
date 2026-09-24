@@ -131,7 +131,7 @@ impl ForumSearchProjectionReconciliationQuery {
         let status = ForumSearchProjectionReconciliationStatusService::new(db, owner_source)
             .report(tenant.id)
             .await
-            .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?;
+            .map_err(super::map_search_module_error)?;
         Ok(map_status(status))
     }
 }
