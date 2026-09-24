@@ -163,6 +163,8 @@ processed public-comment lifecycle cursor into Blog. The projection:
   lifecycle change makes earlier cached snapshots unreachable without cache-key
   enumeration.
 
+- public comment creation performs the public post/channel boundary twice: before the external Comments create and again after it; if publication, channel visibility, channel activity/module binding, or terminal deletion changes during the race, the created comment is compensated with a fresh idempotent delete command before the caller receives success.
+
 ## Tenant authority
 
 `TenantContext` is authoritative in GraphQL/HTTP/native host adapters. Optional
