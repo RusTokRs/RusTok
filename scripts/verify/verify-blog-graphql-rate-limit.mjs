@@ -54,6 +54,8 @@ for (const marker of [
   "headers.insert(header::RETRY_AFTER, value)",
   ".http_headers(headers)",
   "BLOG_RATE_LIMIT_BACKEND_UNAVAILABLE",
+  "let actor = auth.port_actor()",
+  "PortActorKind::Service",
 ]) {
   requireMarker(policy, marker, policyPath);
 }
