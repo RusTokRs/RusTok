@@ -116,6 +116,8 @@ if (evidence) {
     ['channel_module_state_checked_for_create', true],
     ['missing_channel_context_fails_closed', true],
     ['disabled_channel_fails_closed', true],
+    ['post_create_public_visibility_revalidated', true],
+    ['visibility_loss_compensation_present', true],
     ['production_behavior_changed', false],
     ['runtime_execution_observed', false],
     ['browser_execution_observed', false],
