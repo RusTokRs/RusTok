@@ -427,7 +427,7 @@ fn attachment_migration() -> TestResult<Box<dyn MigrationTrait>> {
     ForumModule
         .migrations()
         .into_iter()
-        .last()
+        .find(|migration| migration.name() == "m20260924_000036_add_forum_attachment_relations")
         .ok_or_else(|| "Forum must expose the attachment relation migration".into())
 }
 
