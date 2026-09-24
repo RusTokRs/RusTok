@@ -264,6 +264,58 @@ async fn graphql_reconciliation_execution_rejects_unauthenticated_and_unauthoriz
 }
 
 #[tokio::test]
+async fn attachment_hold_reconciliation_execution_fails_closed_without_media_provider() {
+    let db = setup_test_db().await;
+    let tenant_id = Uuid::new_v4();
+    let tenant = test_tenant_context(tenant_id);
+
+    db.execute_unprepared(&format!(
+        "INSERT INTO tenant_modules (tenant_id, module_slug, enabled) VALUES ({}, 'forum', 1);",
+        sql_uuid(tenant_id)
+    ))
+    .await
+    .expect("tenant_modules seed should apply");
+
+    let schema = Schema::build(ForumQuery::default(), EmptyMutation, EmptySubscription)
+        .extension(ForumGraphqlErrorExtension)
+        .finish();
+
+    let auth = test_auth_context(
+        tenant_id,
+        vec![
+            Permission::new(Resource::ForumCategories, Action::Manage),
+            Permission::new(Resource::ForumTopics, Action::Manage),
+        ],
+    );
+
+    let query = r#"
+        query {
+            forumAttachmentHoldReconciliationReport(limit: 10) {
+                clean
+                driftCount
+                inspectedMediaHolds
+                inspectedForumRelations
+                hasMoreMediaHolds
+                hasMoreForumRelations
+            }
+        }
+    "#;
+
+    let req = Request::new(query)
+        .data(tenant)
+        .data(auth)
+        .data(db);
+    let res = schema.execute(req).await;
+    assert!(!res.errors.is_empty(), "missing Media provider must fail closed");
+    let error = res.errors[0].message.as_str();
+    assert!(
+        error.contains("FORUM_MEDIA_REFERENCE_LIST_CAPABILITY_UNAVAILABLE")
+            || error.contains("media.asset_reference_listing"),
+        "unexpected attachment reconciliation capability error: {error}"
+    );
+}
+
+#[tokio::test]
 async fn graphql_reconciliation_execution_succeeds_for_operator_on_clean_state() {
     let db = setup_test_db().await;
     let tenant_id = Uuid::new_v4();
