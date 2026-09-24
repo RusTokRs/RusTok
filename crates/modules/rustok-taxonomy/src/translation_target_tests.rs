@@ -10,12 +10,12 @@ use rustok_translation_targets::{
     TranslationFieldPatch, TranslationPatchRequest, TranslationTargetChangesRequest,
     TranslationTargetProgressRequest, TranslationTargetProvider,
 };
-use sea_orm::{DatabaseConnection, DatabaseTransaction, TransactionTrait};
+use sea_orm::{DatabaseConnection, DatabaseTransaction, EntityTrait, TransactionTrait};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
 use crate::{
-    CreateTaxonomyTermInput, ModuleTermCreateInput, TaxonomyModule,
+    CreateTaxonomyTermInput, ModuleTermCreateInput, TaxonomyModule, UpdateTaxonomyTermInput,
     TaxonomyModuleTermTranslationOwner, TaxonomyModuleTermTranslationOwnerRegistry,
     TaxonomyScopeType, TaxonomyService, TaxonomyTermKind, TaxonomyTranslationTargetProvider,
 };
@@ -276,6 +276,18 @@ async fn translation_target_applies_replays_and_tracks_an_exact_term_locale() {
         .expect("same Taxonomy idempotency request should replay");
     assert_eq!(replay, receipt);
 
+    let outbox_events = rustok_outbox::SysEvents::find()
+        .all(&database)
+        .await
+        .expect("global Taxonomy Tag translation should enqueue a Search reindex event");
+    assert_eq!(outbox_events.len(), 1);
+    assert_eq!(outbox_events[0].event_type, "index.reindex_requested");
+    assert_eq!(
+        outbox_events[0].payload["event"]["data"]["target_type"],
+        "search"
+    );
+    assert!(outbox_events[0].payload["event"]["data"]["target_id"].is_null());
+
     let mut conflicting_patch = patch;
     conflicting_patch.proposal_id = "taxonomy-proposal-2".to_string();
     let conflict = provider
@@ -376,6 +388,77 @@ async fn translation_target_applies_replays_and_tracks_an_exact_term_locale() {
     assert_eq!(unauthorized.kind, PortErrorKind::Forbidden);
 }
 
+
+#[tokio::test]
+async fn global_tag_update_and_delete_enqueue_search_reindex() {
+    let (database, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let term_id = service
+        .create_term(
+            tenant_id,
+            admin(),
+            CreateTaxonomyTermInput {
+                kind: TaxonomyTermKind::Tag,
+                scope_type: TaxonomyScopeType::Global,
+                scope_value: None,
+                locale: "en".to_string(),
+                name: "Systems".to_string(),
+                slug: Some("systems".to_string()),
+                canonical_key: None,
+                description: None,
+                aliases: Vec::new(),
+            },
+        )
+        .await
+        .expect("global Tag should be created");
+
+    service
+        .update_term(
+            tenant_id,
+            term_id,
+            admin(),
+            UpdateTaxonomyTermInput {
+                locale: "en".to_string(),
+                name: Some("Systems Updated".to_string()),
+                slug: None,
+                description: None,
+                aliases: None,
+            },
+        )
+        .await
+        .expect("global Tag update should succeed");
+
+    let events_after_update = rustok_outbox::SysEvents::find()
+        .all(&database)
+        .await
+        .expect("Search reindex event should be durable after global Tag update");
+    assert_eq!(events_after_update.len(), 1);
+    assert_eq!(
+        events_after_update[0].event_type,
+        "index.reindex_requested"
+    );
+    assert_eq!(
+        events_after_update[0].payload["event"]["data"]["target_type"],
+        "search"
+    );
+    assert!(events_after_update[0].payload["event"]["data"]["target_id"].is_null());
+
+    service
+        .delete_term(tenant_id, term_id, admin())
+        .await
+        .expect("global Tag delete should succeed");
+
+    let events_after_delete = rustok_outbox::SysEvents::find()
+        .all(&database)
+        .await
+        .expect("Search reindex event should be durable after global Tag delete");
+    assert_eq!(events_after_delete.len(), 2);
+    assert!(
+        events_after_delete
+            .iter()
+            .all(|event| event.event_type == "index.reindex_requested")
+    );
+}
 
 #[tokio::test]
 async fn module_owned_translation_requires_owner_and_runs_owner_side_effect_hook() {
