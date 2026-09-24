@@ -49,7 +49,9 @@ same character-count semantics as the canonical Taxonomy term validator; UTF-8
 byte length is not used for these user-facing limits. Post tag mutations enforce
 the same 100-character bound for Blog-owned module:blog terms after Taxonomy
 resolves or creates them, while shared global Taxonomy tags remain attachable
-without inheriting Blog's local length policy.
+without inheriting Blog's local length policy. Taxonomy invalidates tenant Search
+in the same transaction when a shared global Tag is updated or deleted, including
+exact-locale Translation-target applies.
 
 ## Post input length semantics
 
