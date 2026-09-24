@@ -131,9 +131,14 @@ impl ForumAttachmentRelationService {
         let txn = self.db.begin().await?;
         lock_forum_target(&txn, tenant_id, target).await?;
 
-        let (head, created_head) =
+        let (head, created_head, current) =
             match self.load_head(&txn, tenant_id, target, &locale).await? {
-                Some(head) => (head, false),
+                Some(head) => {
+                    let current = self
+                        .load_relation_set_from_head(&txn, head.clone())
+                        .await?;
+                    (head, false, current)
+                }
                 None if batch.expected_relation_revision().is_empty() => {
                     insert_head(
                         &txn,
@@ -144,12 +149,11 @@ impl ForumAttachmentRelationService {
                         batch.source().source_revision(),
                     )
                     .await?;
-                    (
-                        self.load_head(&txn, tenant_id, target, &locale)
-                            .await?
-                            .ok_or(ForumError::AttachmentRelationInvariant)?,
-                        true,
-                    )
+                    let head = self
+                        .load_head(&txn, tenant_id, target, &locale)
+                        .await?
+                        .ok_or(ForumError::AttachmentRelationInvariant)?;
+                    (head, true, empty_relation_set(tenant_id, target, locale.clone()))
                 }
                 None => {
                     txn.rollback().await?;
@@ -157,11 +161,7 @@ impl ForumAttachmentRelationService {
                 }
             };
 
-        let current = self
-            .load_relation_set_from_head(&txn, head.clone())
-            .await?;
-
-        if batch.expected_relation_revision() != current.relation_revision {
+        if !created_head && batch.expected_relation_revision() != current.relation_revision {
             if same_requested_state(&batch, &current) {
                 txn.rollback().await?;
                 self.ensure_media_holds(&context, &current.attachments).await?;
