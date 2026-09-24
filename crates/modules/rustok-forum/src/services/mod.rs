@@ -54,9 +54,8 @@ mod mention_relation_tests {
     include!("relation_quote_input_tests.rs");
 }
 mod moderation_owner;
-mod moderation_public_owner;
 pub mod moderation {
-    pub use super::moderation_public_owner::ModerationService;
+    pub use super::moderation_owner::ModerationService;
 }
 mod moderation_audience_authorization;
 mod posting_policy;
