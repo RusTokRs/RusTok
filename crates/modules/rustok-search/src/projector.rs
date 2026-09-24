@@ -1,21 +1,21 @@
 use std::time::Instant;
 
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use rustok_core::{Error, Result};
+use rustok_core::Result;
 use rustok_telemetry::metrics;
 
 use crate::projector_core;
 
-const CORE_SCOPE_COUNT_SQL: &str = r#"
+pub(crate) const CORE_SCOPE_COUNT_SQL: &str = r#"
 SELECT COUNT(*) AS total
 FROM search_documents
 WHERE tenant_id = $1
   AND entity_type IN ('node', 'product')
 "#;
 
-const PRODUCT_CHANNEL_VISIBILITY_LEGACY_COUNT_SQL: &str = r#"
+pub(crate) const PRODUCT_CHANNEL_VISIBILITY_LEGACY_COUNT_SQL: &str = r#"
 SELECT COUNT(*) AS total
 FROM search_documents
 WHERE tenant_id = $1
@@ -32,74 +32,27 @@ WHERE tenant_id = $1
 /// of a later source when that source subsequently fails.
 #[derive(Clone)]
 pub struct SearchProjector {
-    db: DatabaseConnection,
     core: projector_core::SearchProjector,
 }
 
 impl SearchProjector {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            core: projector_core::SearchProjector::new(db.clone()),
-            db,
+            core: projector_core::SearchProjector::new(db),
         }
     }
 
     /// Bootstraps the scopes owned by this projector even when an external source
     /// has already populated the shared Search document store.
     pub async fn ensure_bootstrap(&self, tenant_id: Uuid) -> Result<()> {
-        self.ensure_postgres()?;
-        let statement = Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            CORE_SCOPE_COUNT_SQL,
-            vec![tenant_id.into()],
-        );
-        let total = self
-            .db
-            .query_one_raw(statement)
-            .await
-            .map_err(Error::Database)?
-            .map(|row| row.try_get::<i64>("", "total").map_err(Error::Database))
-            .transpose()?
-            .unwrap_or(0);
-        if total == 0 {
-            self.rebuild_tenant(tenant_id).await?;
-            return Ok(());
-        }
-
-        let legacy_statement = Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            PRODUCT_CHANNEL_VISIBILITY_LEGACY_COUNT_SQL,
-            vec![tenant_id.into()],
-        );
-        let legacy_total = self
-            .db
-            .query_one_raw(legacy_statement)
-            .await
-            .map_err(Error::Database)?
-            .map(|row| row.try_get::<i64>("", "total").map_err(Error::Database))
-            .transpose()?
-            .unwrap_or(0);
-        if legacy_total > 0 {
-            self.rebuild_product_scope(tenant_id).await?;
-        }
-
-        Ok(())
+        self.core.ensure_bootstrap(tenant_id).await
     }
 
     /// Replaces the direct Search-owned scopes without deleting documents owned
     /// by Blog, Forum or future projection-source stages.
-    ///
-    /// Content and product retain their existing per-scope transactions. The
-    /// ingestion orchestrator remains sequential rather than globally atomic:
-    /// scopes that completed before a later failure may advance, while the failed
-    /// external scope keeps its previous committed value.
     pub async fn rebuild_tenant(&self, tenant_id: Uuid) -> Result<()> {
         let started_at = Instant::now();
-        let result = async {
-            self.core.rebuild_content_scope(tenant_id).await?;
-            self.core.rebuild_product_scope(tenant_id).await
-        }
-        .await;
+        let result = self.core.rebuild_tenant(tenant_id).await;
         record_scope_preserving_rebuild(tenant_id, &result, started_at);
         result
     }
@@ -152,15 +105,6 @@ impl SearchProjector {
 
     pub async fn delete_product(&self, tenant_id: Uuid, product_id: Uuid) -> Result<()> {
         self.core.delete_product(tenant_id, product_id).await
-    }
-
-    fn ensure_postgres(&self) -> Result<()> {
-        if self.db.get_database_backend() != DbBackend::Postgres {
-            return Err(Error::External(
-                "SearchProjector requires PostgreSQL backend".to_string(),
-            ));
-        }
-        Ok(())
     }
 }
 

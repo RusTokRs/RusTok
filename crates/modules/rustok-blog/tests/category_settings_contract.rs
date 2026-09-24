@@ -74,7 +74,7 @@ async fn write_settings(
         }
         other => panic!("unsupported test database backend: {other:?}"),
     };
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         backend,
         sql,
         [

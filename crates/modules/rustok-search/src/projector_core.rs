@@ -18,14 +18,14 @@ impl SearchProjector {
         Self { db }
     }
 
-    /// Required by the Search FBA boundary contract.
-    #[allow(dead_code)]
+    /// Bootstraps the scopes owned by this projector even when an external source
+    /// has already populated the shared Search document store.
     pub async fn ensure_bootstrap(&self, tenant_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
 
         let stmt = Statement::from_sql_and_values(
             DbBackend::Postgres,
-            "SELECT COUNT(*) AS total FROM search_documents WHERE tenant_id = $1",
+            crate::projector::CORE_SCOPE_COUNT_SQL,
             vec![tenant_id.into()],
         );
 
@@ -36,34 +36,37 @@ impl SearchProjector {
 
         if total == 0 {
             self.rebuild_tenant(tenant_id).await?;
+            return Ok(());
+        }
+
+        let legacy_stmt = Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            crate::projector::PRODUCT_CHANNEL_VISIBILITY_LEGACY_COUNT_SQL,
+            vec![tenant_id.into()],
+        );
+
+        let legacy_total = match self
+            .db
+            .query_one_raw(legacy_stmt)
+            .await
+            .map_err(Error::Database)?
+        {
+            Some(row) => row.try_get::<i64>("", "total").map_err(Error::Database)?,
+            None => 0,
+        };
+
+        if legacy_total > 0 {
+            self.rebuild_product_scope(tenant_id).await?;
         }
 
         Ok(())
     }
 
-    /// Full tenant rebuild primitive retained for FBA scope-preservation contract verification.
-    #[allow(dead_code)]
+    /// Scope-preserving tenant rebuild replacing content and product scopes
+    /// without deleting external projection scopes (Blog, Forum, etc.).
     pub async fn rebuild_tenant(&self, tenant_id: Uuid) -> Result<()> {
-        self.ensure_postgres()?;
-        let started_at = Instant::now();
-        let tx = self.begin_transaction().await?;
-        let result = async {
-            self.delete_tenant_documents_in(&tx, tenant_id).await?;
-            self.upsert_content_documents_in(&tx, tenant_id, None, None, None)
-                .await?;
-            self.upsert_product_documents_in(&tx, tenant_id, None)
-                .await?;
-            self.commit_transaction(tx).await
-        }
-        .await;
-        record_projector_operation(
-            "rebuild_tenant",
-            "tenant",
-            tenant_id,
-            &result,
-            started_at.elapsed(),
-        );
-        result
+        self.rebuild_content_scope(tenant_id).await?;
+        self.rebuild_product_scope(tenant_id).await
     }
 
     pub async fn rebuild_content_scope(&self, tenant_id: Uuid) -> Result<()> {
@@ -260,17 +263,7 @@ impl SearchProjector {
         tx.commit().await.map_err(Error::Database)
     }
 
-    async fn delete_tenant_documents_in<C>(&self, conn: &C, tenant_id: Uuid) -> Result<()>
-    where
-        C: ConnectionTrait,
-    {
-        self.delete_documents_in(
-            conn,
-            "DELETE FROM search_documents WHERE tenant_id = $1",
-            vec![tenant_id.into()],
-        )
-        .await
-    }
+
 
     async fn delete_node_in<C>(&self, conn: &C, tenant_id: Uuid, node_id: Uuid) -> Result<()>
     where

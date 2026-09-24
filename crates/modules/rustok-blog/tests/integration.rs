@@ -15,7 +15,7 @@ use rustok_blog::dto::{
 use rustok_blog::state_machine::{BlogPost, BlogPostStatus, CommentStatus, ToBlogPostStatus};
 use rustok_blog::{BlogError, BlogModule};
 use rustok_blog::{CategoryService, CommentService, PostService, TagService};
-use rustok_comments::{CommentsError, CommentsModule, in_process_comments_thread_port};
+use rustok_comments::{CommentsModule, in_process_comments_thread_port};
 use rustok_core::{
     DomainEvent, EventTransport, MemoryTransport, MigrationSource, ReliabilityLevel,
     SecurityContext, UserRole,

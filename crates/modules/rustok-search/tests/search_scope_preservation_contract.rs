@@ -6,14 +6,14 @@ const BLOG_PROJECTOR: &str = include_str!("../src/blog_projector.rs");
 const FORUM_PROJECTOR: &str = include_str!("../src/forum_projector.rs");
 
 #[test]
-fn active_tenant_rebuild_never_calls_the_destructive_legacy_tenant_rebuild() {
+fn active_tenant_rebuild_preserves_external_scopes_and_eliminates_destructive_deletes() {
     assert!(SEARCH_LIB.contains("mod projector_core;"));
     assert!(!SEARCH_LIB.contains("pub mod projector_core;"));
-    assert!(ACTIVE_PROJECTOR.contains("self.core.rebuild_content_scope(tenant_id).await?"));
-    assert!(ACTIVE_PROJECTOR.contains("self.core.rebuild_product_scope(tenant_id).await"));
-    assert!(!ACTIVE_PROJECTOR.contains("self.core.rebuild_tenant"));
+    assert!(ACTIVE_PROJECTOR.contains("self.core.rebuild_tenant(tenant_id).await"));
+    assert!(CORE_PROJECTOR.contains("self.rebuild_content_scope(tenant_id).await?"));
+    assert!(CORE_PROJECTOR.contains("self.rebuild_product_scope(tenant_id).await"));
     assert!(!ACTIVE_PROJECTOR.contains("DELETE FROM search_documents WHERE tenant_id = $1\""));
-    assert!(CORE_PROJECTOR.contains("DELETE FROM search_documents WHERE tenant_id = $1\""));
+    assert!(!CORE_PROJECTOR.contains("DELETE FROM search_documents WHERE tenant_id = $1\""));
 }
 
 #[test]

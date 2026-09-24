@@ -16683,6 +16683,7 @@ dependencies = [
  "rustok-api",
  "rustok-content",
  "rustok-core",
+ "rustok-events",
  "rustok-outbox",
  "rustok-test-utils",
  "rustok-translation-targets",
