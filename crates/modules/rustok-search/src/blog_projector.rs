@@ -533,11 +533,16 @@ impl BlogSearchProjector {
                 .map_err(Error::Database)?;
             }
 
-            cursor = rows
-                .last()
-                .and_then(|row| row.try_get::<String>("", "document_key").ok());
+            let last_row = rows.last().ok_or_else(|| {
+                Error::Internal("Blog Search body refresh returned an empty batch".to_string())
+            })?;
+            cursor = Some(
+                last_row
+                    .try_get::<String>("", "document_key")
+                    .map_err(Error::Database)?,
+            );
 
-            if rows.len() < BATCH_SIZE as usize || cursor.is_none() {
+            if rows.len() < BATCH_SIZE as usize {
                 break;
             }
         }

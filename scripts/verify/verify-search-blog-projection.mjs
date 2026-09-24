@@ -56,6 +56,13 @@ for (const marker of [
 ]) {
   requireMarker(projector, marker, projectorPath);
 }
+const cursorDecodeMarker = 'last_row\n                    .try_get::<String>("", "document_key")\n                    .map_err(Error::Database)?;';
+requireMarker(projector, cursorDecodeMarker, `${projectorPath}: Blog projection body cursor must propagate document-key decode failures`);
+rejectMarker(
+  projector,
+  '.and_then(|row| row.try_get::<String>("", "document_key").ok())',
+  `${projectorPath}: Blog projection body cursor must not silently truncate on decode failure`,
+);
 const rebuildGuard = projector.indexOf("self.ensure_blog_tables_available(&tx).await?;");
 const rebuildDelete = projector.indexOf("self.delete_tenant_documents_in(&tx, tenant_id).await?;");
 const targetedGuard = projector.indexOf("self.ensure_blog_tables_available(&tx).await?;", rebuildGuard + 1);

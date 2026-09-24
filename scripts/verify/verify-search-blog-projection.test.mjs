@@ -137,6 +137,23 @@ test("rejects Blog projection schema validation moved after deletion", () => {
   assert.match(result.stderr, /validate source schema before destructive deletion/);
 });
 
+test("rejects silent Blog search body cursor decode fallback", () => {
+  const result = rejects((root) => {
+    const relativePath = "crates/modules/rustok-search/src/blog_projector.rs";
+    const source = readFileSync(absolute(root, relativePath), "utf8");
+    write(
+      root,
+      relativePath,
+      source.replace(
+        'last_row\\n                    .try_get::<String>("", "document_key")\\n                    .map_err(Error::Database)?;',
+        'last_row\\n                    .try_get::<String>("", "document_key")\\n                    .ok().unwrap();',
+      ),
+    );
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /document-key decode failures|silently truncate/);
+});
+
 test("rejects silent Blog schema availability decode fallback", () => {
   const result = rejects((root) => {
     const relativePath = "crates/modules/rustok-search/src/blog_projector.rs";
