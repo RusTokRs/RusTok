@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-33-ATTACHMENT-HOLDS",
+  "scope": "Read-only reconciliation of Media durable reference holds owned by Forum attachments",
+  "owner": {
+    "relation_source": "crates/modules/rustok-forum/src/services/attachment_relation.rs",
+    "reconciliation_service": "crates/modules/rustok-forum/src/services/attachment_hold_reconciliation.rs",
+    "media_contract_source": "crates/modules/rustok-media/src/ports.rs",
+    "media_transport_proto": "crates/modules/rustok-media-transport/proto/rustok/media/media.proto"
+  },
+  "source_of_truth": {
+    "forum": "Forum attachment relation rows own relation existence, target, locale, usage, order, caption and stable reference identity.",
+    "media": "Media reference hold rows own retention state; Forum never reads Media persistence directly."
+  },
+  "operation": {
+    "name": "forum_attachment_hold_reconciliation_report",
+    "transport": "GraphQL",
+    "authorization": [
+      "forum module enabled",
+      "authenticated operator",
+      "tenant scope matches trusted TenantContext",
+      "forum_categories:manage",
+      "forum_topics:manage"
+    ],
+    "pagination": {
+      "input": "media_after",
+      "order": "strict reference_id ascending",
+      "default_limit": 100,
+      "max_limit": 500,
+      "page_local_clean": true
+    },
+    "drift_kinds": [
+      "orphan_media_hold",
+      "media_reference_mismatch"
+    ],
+    "repair": false
+  },
+  "media_read_contract": {
+    "operation": "list_asset_references",
+    "request": "MediaAssetReferenceListRequest",
+    "response": "MediaAssetReferenceListPage",
+    "owner_scope": "normalized owner_module=forum",
+    "tenant_scope": "trusted PortContext tenant_id",
+    "ordering": "reference_id ascending",
+    "binary_or_storage_details_exposed": false
+  },
+  "forbidden_behavior": [
+    "direct Media table access from Forum",
+    "automatic Media hold release",
+    "automatic Media hold retain",
+    "distributed transaction claim",
+    "whole-tenant serializable consistency claim"
+  ],
+  "runtime_composition": {
+    "host_composes_embedded_media_reader": true,
+    "forum_consumes_typed_port_only": true,
+    "precomposed_remote_reader_supported": true,
+    "missing_reader_behavior": "FORUM_MEDIA_REFERENCE_LIST_CAPABILITY_UNAVAILABLE"
+  },
+  "verification": {
+    "source_verifier": "scripts/verify/verify-forum-attachment-hold-reconciliation.mjs",
+    "contract_test": "crates/modules/rustok-forum/tests/reconciliation_graphql_contract.rs",
+    "maintainer_runtime_commands": [
+      "cargo test -p rustok-forum --test reconciliation_graphql_contract -- --nocapture",
+      "cargo test -p rustok-media-transport --test port_conformance -- --nocapture",
+      "cargo xtask module validate forum",
+      "cargo xtask module validate media",
+      "node scripts/verify/verify-forum-attachment-hold-reconciliation.mjs"
+    ],
+    "execution_status": "not_run_by_implementation_agent"
+  }
+}
