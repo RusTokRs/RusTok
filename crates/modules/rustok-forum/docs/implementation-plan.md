@@ -372,7 +372,7 @@ capability. Media keeps lifecycle ownership. Forum never reads Media persistence
 - Forum persists a tenant/target/locale attachment relation head separately from Forum content revisions.
 - The head advances with exact compare-and-swap semantics; an initial write creates revision 1 and a clear-all mutation still commits a new revision.
 - Relation rows are Forum-owned and store only relation identity, Media identity, usage, order and caption.
-- Every new relation acquires a durable Media owner reference before the Forum relation transaction commits.
+- The requested content provenance is validated before Media retention and revalidated after the Forum target row is locked inside the relation transaction.
 - Removed Media references are released only after Forum commit; failures leave a conservative hold and do not roll back the already committed Forum state.
 - Stable Media reference IDs are deterministic across request retries and do not change when usage or caption changes.
 - Database constraints enforce tenant ownership, valid target kind, positive revisions, monotonic relation revisions, immutable relation rows, bounded positions and unique per-target ordering.

@@ -24,7 +24,7 @@ The attachment relation revision is a dedicated CAS token. 0 means no head exist
 
 Each persisted relation receives a stable consumer-owned Media reference ID derived from the tenant, target kind/id, normalized locale, position and Media asset ID. Usage and caption are presentation attributes and do not change the Media reference identity.
 
-A mutation acquires Media durable references for every desired relation before committing the Forum transaction. The Forum transaction then locks the target, revalidates the CAS token, replaces the relation rows atomically and advances the head. Removed Media references are released only after Forum commit. An ambiguous commit result or failed post-commit release leaves the Media hold intact for later reconciliation.
+A mutation validates the requested content source revision before Media retention, acquires Media durable references for every desired relation, then the Forum transaction locks the target and revalidates that source revision and the attachment CAS token before it replaces the relation rows atomically and advances the head. Removed Media references are released only after Forum commit. An ambiguous commit result or failed post-commit release leaves the Media hold intact for later reconciliation.
 
 ## Sources of truth and ownership
 
