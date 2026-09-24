@@ -81,7 +81,7 @@ function fixture({
     runtimeDataPath,
     `
 use rustok_api::graphql::GraphqlRuntimeInputs;
-use rustok_comments::CommentsThreadPort;
+use rustok_comments_api::CommentsThreadPort;
 comments_thread_port: Option<Arc<dyn CommentsThreadPort>>
 pub fn attach_schema_data(
 ${missingHostLookup ? '' : 'inputs.shared_get::<Arc<dyn CommentsThreadPort>>()'}
@@ -123,7 +123,7 @@ let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
 .comment_service(db.clone())
 ${
   directMutationConstruction
-    ? 'CommentService::with_comments_thread_port(db.clone(), comments_thread_port)'
+    ? 'CommentService::from_optional_comments_thread_port(db.clone(), Some(comments_thread_port))'
     : ''
 }
 `,
@@ -131,7 +131,7 @@ ${
   write(
     root,
     servicePath,
-    'pub fn with_comments_thread_port(\ncomments_thread_port: Arc<dyn CommentsThreadPort>,',
+    'pub fn from_optional_comments_thread_port(\ncomments_thread_port: Option<Arc<dyn CommentsThreadPort>>,',
   );
   write(root, consumerMatrixPath, '{}');
 
@@ -160,8 +160,8 @@ ${
       },
       profiles: {
         source_verified: remotePromoted
-          ? ['in_process_fallback', 'host_injected_port_selection', 'remote_transport']
-          : ['in_process_fallback', 'host_injected_port_selection'],
+          ? ['in_process', 'host_injected_port_selection', 'remote_transport']
+          : ['in_process', 'host_injected_port_selection'],
         pending: remotePromoted ? [] : ['remote_transport_implementation'],
       },
       composition: {
