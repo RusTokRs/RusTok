@@ -40,6 +40,7 @@ hasAll(source, [
   'owner_module: FORUM_MEDIA_OWNER_MODULE.to_string()',
   'OrphanMediaHold',
   'MediaReferenceMismatch',
+  'validate_media_reference(',
   'enforce_scope(security, Resource::ForumCategories, Action::Manage)',
   'enforce_scope(security, Resource::ForumTopics, Action::Manage)',
 ], 'reconciliation source');
