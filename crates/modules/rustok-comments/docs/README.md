@@ -72,12 +72,11 @@ publication serving stays available. See the canonical state matrix in
 - A separate GraphQL/REST fallback for this UI is not added: `rustok-comments` did not have its own legacy transport surface, and this is a documented exception from the general dual-path rule.
 - The owner port and integration remain; they do not imply a Blog lifecycle dependency.
 
-## Status contract
-
 ## Durable port idempotency
 
 The CommentsThreadPort write contract is durable and principal-bound. Comments admits one owner receipt per tenant, operation and idempotency key, and binds its request identity to the authenticated PortContext.actor and request payload. Replay happens only within that principal identity; a different user or service actor cannot reuse another caller's completed receipt and bypass the owner authorization path.
 
+## Status contract
 
 - `comment_threads.status = open|closed` only controls the acceptance of new
   comments; a closed thread remains readable but does not accept new entries;
