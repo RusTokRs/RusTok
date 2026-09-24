@@ -10,7 +10,7 @@ use rustok_taxonomy::{
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
-use super::category::CategoryService as CategoryCommandCore;
+use super::category::{CategoryService as CategoryCommandCore, validate_persisted_category_settings};
 use super::category_delete::BlogCategoryDeleteCleanup;
 use super::rbac::enforce_scope;
 use crate::dto::{
@@ -189,6 +189,7 @@ impl CategoryService {
         let rows = categories
             .into_iter()
             .map(|category| {
+                validate_persisted_category_settings(&category.settings)?;
                 let canonical = canonical_by_id.get(&category.id).ok_or_else(|| {
                     BlogError::invariant(format!(
                         "Blog category {} Taxonomy projection is missing",
@@ -279,6 +280,7 @@ impl CategoryService {
             )));
         }
         let parent_id = canonical.parent_id;
+        validate_persisted_category_settings(&category.settings)?;
 
         Ok(CategoryResponse {
             id: category.id,

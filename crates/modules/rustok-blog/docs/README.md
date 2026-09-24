@@ -35,7 +35,7 @@ when later bounded migrations retire an earlier design.
   `HostRuntimeContext`;
 - category REST CRUD under `/api/blog/categories` requires
   `blog_categories:*`;
-- `CategoryService::new(db, event_bus)` is the Category service constructor;
+- `CategoryService::new(db, event_bus)` is the Category service constructor; Category settings are bounded owner extension state: JSON objects only, at most 64 KiB encoded, with the same invariant applied to writes and persisted-state reads;
 - category owner mutations and tenant Blog-scope Search reindex publication
   share one transaction;
 - moderation REST uses `blog_posts:manage`;

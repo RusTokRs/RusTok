@@ -14,6 +14,7 @@ pub struct CreateCategoryInput {
     pub description: Option<String>,
     pub parent_id: Option<Uuid>,
     pub position: Option<i32>,
+    /// Extension settings must be a JSON object no larger than 64 KiB when encoded.
     #[serde(default = "default_settings")]
     pub settings: serde_json::Value,
 }
@@ -27,6 +28,7 @@ pub struct UpdateCategoryInput {
     pub slug: Option<String>,
     #[schema(max_length = 1000)]
     pub description: Option<String>,
+    /// Extension settings must be a JSON object no larger than 64 KiB when encoded.
     pub settings: Option<serde_json::Value>,
 }
 

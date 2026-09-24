@@ -52,6 +52,7 @@ impl CategoryService {
         let locale = normalize_locale(&input.locale)?;
         let name = input.name;
         let slug = normalize_category_slug(input.slug.as_deref(), &name)?;
+        let settings = normalize_category_settings(input.settings)?;
         let description = input.description;
         let parent_id = input.parent_id;
         let now = Utc::now();
@@ -68,7 +69,7 @@ impl CategoryService {
         blog_category::ActiveModel {
             id: Set(id),
             tenant_id: Set(tenant_id),
-            settings: Set(input.settings),
+            settings: Set(settings),
             revision: Set(1),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
@@ -148,10 +149,11 @@ impl CategoryService {
 
         let next_resource_revision = next_category_revision(&category)?;
         let now = Utc::now().fixed_offset();
-        let settings = input
-            .settings
-            .clone()
-            .unwrap_or_else(|| category.settings.clone());
+        validate_persisted_category_settings(&category.settings)?;
+        let settings = match input.settings {
+            Some(settings) => normalize_category_settings(settings)?,
+            None => category.settings.clone(),
+        };
         let resource_updated = blog_category::Entity::update_many()
             .col_expr(blog_category::Column::Settings, Expr::value(settings))
             .col_expr(
@@ -420,6 +422,43 @@ async fn canonicalize_siblings_for_insert_in_tx(
     .map_err(BlogError::from)
 }
 
+const MAX_BLOG_CATEGORY_SETTINGS_BYTES: usize = 64 * 1024;
+
+fn normalize_category_settings(settings: serde_json::Value) -> BlogResult<serde_json::Value> {
+    if !settings.is_object() {
+        return Err(BlogError::validation(
+            "Category settings must be a JSON object",
+        ));
+    }
+    let encoded = serde_json::to_vec(&settings)
+        .map_err(|_| BlogError::validation("Category settings could not be serialized"))?;
+    if encoded.len() > MAX_BLOG_CATEGORY_SETTINGS_BYTES {
+        return Err(BlogError::validation(format!(
+            "Category settings cannot exceed {MAX_BLOG_CATEGORY_SETTINGS_BYTES} bytes",
+        )));
+    }
+    Ok(settings)
+}
+
+pub(super) fn validate_persisted_category_settings(
+    settings: &serde_json::Value,
+) -> BlogResult<()> {
+    if !settings.is_object() {
+        return Err(BlogError::invariant(
+            "Persisted Blog category settings are not a JSON object",
+        ));
+    }
+    let encoded = serde_json::to_vec(settings).map_err(|_| {
+        BlogError::invariant("Persisted Blog category settings could not be serialized")
+    })?;
+    if encoded.len() > MAX_BLOG_CATEGORY_SETTINGS_BYTES {
+        return Err(BlogError::invariant(format!(
+            "Persisted Blog category settings exceed {MAX_BLOG_CATEGORY_SETTINGS_BYTES} bytes",
+        )));
+    }
+    Ok(())
+}
+
 fn validate_category_name(name: &str) -> BlogResult<()> {
     if name.trim().is_empty() {
         return Err(BlogError::validation("Category name cannot be empty"));
@@ -482,6 +521,36 @@ fn normalize_non_empty_slug(slug: &str) -> BlogResult<String> {
         ));
     }
     Ok(normalized)
+}
+
+#[cfg(test)]
+mod category_settings_tests {
+    use super::{
+        MAX_BLOG_CATEGORY_SETTINGS_BYTES, normalize_category_settings,
+        validate_persisted_category_settings,
+    };
+
+    #[test]
+    fn category_settings_require_an_object() {
+        assert!(normalize_category_settings(serde_json::json!([])).is_err());
+        assert!(normalize_category_settings(serde_json::json!("settings")).is_err());
+        assert!(normalize_category_settings(serde_json::json!(null)).is_err());
+        assert!(normalize_category_settings(serde_json::json!({})).is_ok());
+    }
+
+    #[test]
+    fn category_settings_are_bounded_by_encoded_size() {
+        let oversized = serde_json::json!({
+            "payload": "x".repeat(MAX_BLOG_CATEGORY_SETTINGS_BYTES),
+        });
+        assert!(normalize_category_settings(oversized).is_err());
+    }
+
+    #[test]
+    fn persisted_category_settings_fail_closed_with_the_same_contract() {
+        assert!(validate_persisted_category_settings(&serde_json::json!({})).is_ok());
+        assert!(validate_persisted_category_settings(&serde_json::json!([])).is_err());
+    }
 }
 
 #[cfg(test)]
