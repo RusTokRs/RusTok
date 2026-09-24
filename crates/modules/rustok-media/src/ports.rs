@@ -87,21 +87,11 @@ pub trait MediaAssetReadPort: Send + Sync {
         media_id: Uuid,
     ) -> Result<MediaAssetReferenceAdmission, PortError>;
 
-    /// Enumerate durable owner references when the provider supports reference reconciliation.
-    ///
-    /// Providers that predate this capability fail closed so adding the read contract does not
-    /// make unrelated Media consumers uncompilable. Reconciliation callers must treat this as an
-    /// unavailable capability, never as an empty reference set.
     async fn list_asset_references(
         &self,
-        _context: PortContext,
-        _request: MediaAssetReferenceListRequest,
-    ) -> Result<MediaAssetReferenceListPage, PortError> {
-        Err(PortError::unavailable(
-            "media.asset_reference_listing_unavailable",
-            "media asset reference listing capability is unavailable",
-        ))
-    }
+        context: PortContext,
+        request: MediaAssetReferenceListRequest,
+    ) -> Result<MediaAssetReferenceListPage, PortError>;
 
     async fn list_assets(
         &self,
