@@ -234,6 +234,7 @@ impl ForumAttachmentHoldReconciliationService {
         };
 
         self.build_report(
+            tenant_id,
             requested_limit,
             effective_limit,
             media_page,
@@ -295,6 +296,7 @@ impl ForumAttachmentHoldReconciliationService {
 
     async fn build_report(
         &self,
+        tenant_id: Uuid,
         requested_limit: Option<u64>,
         effective_limit: u64,
         media_page: MediaAssetReferenceListPage,
