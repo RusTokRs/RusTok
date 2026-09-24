@@ -149,6 +149,7 @@ pub fn AdminCanvas(
     let scenario_matrix_runtime = runtime.clone();
     let publish_scenario_runtime = runtime.clone();
     let scenario_regression_runtime = runtime.clone();
+    let runtime_scenario_baseline = scenario_baseline.get_untracked();
     let dynamic_runtime = runtime.clone();
     let context_runtime = runtime.clone();
     let contract_tools_runtime = runtime.clone();
