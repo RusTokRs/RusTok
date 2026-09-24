@@ -21,6 +21,8 @@ The hardened contract now requires:
 
 - truthful locale write provenance: read fallback never supplies a write locale,
   and a new locale never copies localized text from another locale;
+- admin post slug generation mirrors the Unicode-aware Blog owner slug policy, so
+  localized titles without an explicit slug remain routable;
 - `rustok_api::Patch<T>` for nullable edit semantics;
 - mandatory predecessor `version` and compare-and-swap post updates;
 - production lifecycle commands using the domain transition table, including an
