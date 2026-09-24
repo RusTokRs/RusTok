@@ -105,7 +105,7 @@ let selector: fn(&NativeContext) -> rustok_blog::CommentService = comment_servic
     root,
     servicePath,
     `
-pub fn with_comments_thread_port(
+pub fn from_optional_comments_thread_port(
 .list_comments_for_target(
 .get_comment(
 .set_comment_status(
@@ -129,7 +129,7 @@ PortErrorKind::Timeout => rustok_core::error::ErrorKind::Timeout
     }),
   );
 
-  const sourceVerified = ['in_process_fallback', 'host_injected_port_selection'];
+  const sourceVerified = ['in_process', 'host_injected_port_selection'];
   const pending = ['remote_transport_implementation'];
   if (remotePromoted) {
     sourceVerified.push('remote_transport_implementation');
