@@ -20,6 +20,7 @@ use uuid::Uuid;
 
 const DATABASE_ENV: &str = "RUSTOK_TAXONOMY_TEST_DATABASE_URL";
 const REQUIRED_CANONICAL_TABLES: &[&str] = &[
+    "sys_events",
     "owner_operation_receipts",
     "taxonomy_terms",
     "taxonomy_term_translations",
