@@ -1,5 +1,14 @@
 # rustok-search implementation plan
 
+## 2026-09-24 Blog projection destructive-operation guard
+
+The Blog Search projector now validates the complete Blog/Taxonomy source-table contract before
+deleting any existing Blog search documents during full or targeted upsert. A missing source table,
+a missing availability row, or a database decode failure is an error, so the surrounding transaction
+rolls back instead of committing an empty replacement. This keeps temporary schema availability
+failures from destroying the last known-good Search projection. The Blog projection verifier and
+focused fixture enforce the guard ordering and reject silent availability decode fallbacks.
+
 ## FFA/FBA status
 
 - FFA status: `phase_b_ready`

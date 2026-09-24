@@ -101,6 +101,60 @@ test("rejects missing Taxonomy table availability gate", () => {
   assert.match(result.stderr, /taxonomy_term_translations/);
 });
 
+test("rejects destructive Blog projection before source schema validation", () => {
+  const result = rejects((root) => {
+    const relativePath = "crates/modules/rustok-search/src/blog_projector.rs";
+    const source = readFileSync(absolute(root, relativePath), "utf8");
+    write(
+      root,
+      relativePath,
+      source.replaceAll("self.ensure_blog_tables_available(&tx).await?;\n", ""),
+    );
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /validate source schema before destructive deletion|ensure_blog_tables_available/);
+});
+
+test("rejects Blog projection schema validation moved after deletion", () => {
+  const result = rejects((root) => {
+    const relativePath = "crates/modules/rustok-search/src/blog_projector.rs";
+    const source = readFileSync(absolute(root, relativePath), "utf8");
+    write(
+      root,
+      relativePath,
+      source
+        .replace(
+          "self.ensure_blog_tables_available(&tx).await?;\n            self.delete_tenant_documents_in",
+          "self.delete_tenant_documents_in",
+        )
+        .replace(
+          "self.delete_tenant_documents_in(&tx, tenant_id).await?;\n            self.upsert_documents_in",
+          "self.delete_tenant_documents_in(&tx, tenant_id).await?;\n            self.ensure_blog_tables_available(&tx).await?;\n            self.upsert_documents_in",
+        ),
+    );
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /validate source schema before destructive deletion/);
+});
+
+test("rejects silent Blog schema availability decode fallback", () => {
+  const result = rejects((root) => {
+    const relativePath = "crates/modules/rustok-search/src/blog_projector.rs";
+    const source = readFileSync(absolute(root, relativePath), "utf8");
+    write(
+      root,
+      relativePath,
+      source
+        .replace(
+          '.try_get::<bool>("", "available")\n            .map_err(Error::Database)?;',
+          '.try_get::<bool>("", "available").ok().unwrap_or(false);',
+        ),
+    );
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /\.map_err\(Error::Database\)\?/);
+});
+
 test("rejects stale evidence claiming metadata is canonical", () => {
   const result = rejects((root) => {
     const relativePath = "crates/modules/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json";
