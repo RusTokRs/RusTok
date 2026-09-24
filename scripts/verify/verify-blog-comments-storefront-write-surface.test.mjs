@@ -139,6 +139,21 @@ test('rejects narrowing compensation to only target-loss failures', () => {
   assert.notEqual(result.status, 0);
 });
 
+test('rejects caller-owned security context for compensation', () => {
+  const result = rejects((root) =>
+    mutate(
+      root,
+      'crates/modules/rustok-blog/src/services/comment.rs',
+      (source) =>
+        source.replace(
+          'let system_security = SecurityContext::system();',
+          'let system_security = security.clone();',
+        ),
+    ),
+  );
+  assert.notEqual(result.status, 0);
+});
+
 test('rejects removal of the storefront native create-comment transport', () => {
   const result = rejects((root) =>
     mutate(
