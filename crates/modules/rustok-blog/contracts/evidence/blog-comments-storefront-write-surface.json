@@ -33,7 +33,11 @@
     "channel_context_required_for_create": true,
     "channel_module_state_checked_for_create": true,
     "missing_channel_context_fails_closed": true,
-    "disabled_channel_fails_closed": true
+    "disabled_channel_fails_closed": true,
+    "post_create_public_visibility_revalidated": true,
+    "visibility_loss_compensation_present": true,
+    "visibility_revalidation_scope": "publication_status_channel_visibility_channel_activity_and_blog_binding",
+    "compensation_on_visibility_loss": "fresh_idempotent_comments_delete"
   },
   "planning_effect": {
     "comment_form_fallback": "source_verified",
