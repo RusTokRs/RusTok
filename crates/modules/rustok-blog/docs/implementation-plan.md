@@ -1431,3 +1431,12 @@ should run the relevant subset, including:
 ## 2026-09-24 GraphQL rate-limit principal identity
 
 Blog GraphQL rate-limit keys now use the canonical authenticated principal identity from AuthContext::port_actor(), including principal kind and stable principal id. Human users remain user-scoped; client-credentials service actors use the service namespace. This prevents principal-kind collapse in the rate-limit key while keeping tenant and operation surface binding. Tests, build and CI remain unrun by the agent.
+
+
+## 2026-09-24 Blog storefront tenant selection boundary
+
+A fresh storefront transport audit found that the native `blog/storefront-data` server function could resolve an arbitrary public tenant when `TenantContext` was unavailable, because its fallback `tenant_slug` was passed directly to `TenantService`. That violated the storefront host tenant-selection contract already enforced by canonical-route and SEO server functions and by the Pages storefront adapter.
+
+The Blog storefront native adapter now accepts a fallback tenant only when it exactly matches the configured host tenant. A direct server-function caller therefore cannot select another tenant by changing `tenant_slug`, while the middleware-resolved `TenantContext` remains authoritative when present. The existing storefront boundary verifier and self-test now require the owner-side fallback guard.
+
+Runtime, build, browser, gatekeeper, and automated tests remain maintainer-owned and unrun by the agent.
