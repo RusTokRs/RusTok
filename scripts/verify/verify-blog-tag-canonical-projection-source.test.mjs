@@ -14,6 +14,7 @@ const files = [
   'crates/modules/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json',
   'crates/modules/rustok-blog/src/services/tag.rs',
   'crates/modules/rustok-taxonomy/src/services.rs',
+  'crates/modules/rustok-taxonomy/src/owner_read.rs',
   'crates/modules/rustok-taxonomy/src/translation_target_tests.rs',
   'crates/modules/rustok-blog/tests/taxonomy_tags.rs',
   'crates/modules/rustok-search/src/blog_projector.rs',
@@ -98,5 +99,5 @@ test('rejects removal of global Taxonomy Tag Search invalidation proof', () => {
     write(root, file, `${JSON.stringify(value, null, 2)}\n`);
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /source\\/execution drift/);
+  assert.ok(result.stderr.includes('source/execution drift'));
 });
