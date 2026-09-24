@@ -270,6 +270,14 @@ Blog GraphQL Query reads now use the same
 authorization-code user grants retain user ownership; `client_credentials`
 service grants remain service principals with no user ownership identity.
 Focused source coverage asserts this service-principal preservation.
+## 2026-09-24 Blog dependency cleanup boundary
+
+The live Blog module no longer depends directly on `rustok-translation-targets`.
+That crate was left behind after the retired Blog Category Translation provider
+and is not referenced by the current Blog production source or runtime registration.
+Removing the orphan direct dependency keeps the pre-release zero-legacy boundary
+explicit: Translation control-plane ownership for Blog Category copy is now entirely
+the canonical Taxonomy owner contract.
 ## Canonical native-module layout baseline
 
 The Blog backend is the first strict reference implementation of the canonical
