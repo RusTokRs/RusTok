@@ -461,6 +461,64 @@ async fn global_tag_update_and_delete_enqueue_search_reindex() {
 }
 
 #[tokio::test]
+async fn global_tag_reindex_outbox_failure_rolls_back_taxonomy_update() {
+    let (database, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let term_id = service
+        .create_term(
+            tenant_id,
+            admin(),
+            CreateTaxonomyTermInput {
+                kind: TaxonomyTermKind::Tag,
+                scope_type: TaxonomyScopeType::Global,
+                scope_value: None,
+                locale: "en".to_string(),
+                name: "Systems".to_string(),
+                slug: Some("systems".to_string()),
+                canonical_key: None,
+                description: None,
+                aliases: Vec::new(),
+            },
+        )
+        .await
+        .expect("global Tag should be created");
+
+    database
+        .execute_unprepared("DROP TABLE sys_events")
+        .await
+        .expect("test must be able to disable the transactional outbox");
+
+    let error = service
+        .update_term(
+            tenant_id,
+            term_id,
+            admin(),
+            UpdateTaxonomyTermInput {
+                locale: "en".to_string(),
+                name: Some("Must Roll Back".to_string()),
+                slug: None,
+                description: None,
+                aliases: None,
+            },
+        )
+        .await
+        .expect_err("missing Search reindex outbox must abort the Taxonomy update");
+    assert!(matches!(error, crate::TaxonomyError::Internal(_)));
+
+    let persisted = service
+        .get_term(
+            tenant_id,
+            admin(),
+            term_id,
+            "en",
+            None,
+        )
+        .await
+        .expect("rolled-back Taxonomy term should remain readable");
+    assert_eq!(persisted.name, "Systems");
+}
+ 
+#[tokio::test]
 async fn module_owned_translation_requires_owner_and_runs_owner_side_effect_hook() {
     let (database, service) = setup().await;
     let tenant_id = Uuid::new_v4();
