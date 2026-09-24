@@ -324,9 +324,14 @@ impl ForumAttachmentHoldReconciliationService {
         let forum_cursor = forum_relations.last().map(|row| row.reference_id);
         let inspected_forum_relations = forum_relations.len() as u64;
 
+        validate_media_lookup(
+            &reverse_lookup,
+            &forum_relations,
+            tenant_id,
+        )?;
+
         let mut reverse_by_reference = HashMap::with_capacity(reverse_lookup.references.len());
         for reference in reverse_lookup.references {
-            validate_media_reference(&reference, tenant_id)?;
             reverse_by_reference.insert(reference.reference_id, reference);
         }
 
@@ -410,6 +415,49 @@ impl ForumAttachmentHoldReconciliationService {
 fn enforce_operations_scope(security: &SecurityContext) -> ForumResult<()> {
     enforce_scope(security, Resource::ForumCategories, Action::Manage)?;
     enforce_scope(security, Resource::ForumTopics, Action::Manage)
+}
+
+fn validate_media_lookup(
+    lookup: &MediaAssetReferenceLookupResult,
+    forum_relations: &[forum_attachment_relation::Model],
+    tenant_id: Uuid,
+) -> ForumResult<()> {
+    if lookup.references.len() > forum_relations.len() {
+        return Err(ForumError::capability_failure(
+            "media.asset_reference_reconciliation",
+            "MEDIA_REFERENCE_LOOKUP_TOO_MANY_RESULTS",
+            "Media returned more attachment holds than Forum requested",
+            false,
+        ));
+    }
+
+    let expected = forum_relations
+        .iter()
+        .map(|row| row.reference_id)
+        .collect::<std::collections::HashSet<_>>();
+    let mut seen = std::collections::HashSet::with_capacity(lookup.references.len());
+
+    for reference in &lookup.references {
+        validate_media_reference(reference, tenant_id)?;
+        if !expected.contains(&reference.reference_id) {
+            return Err(ForumError::capability_failure(
+                "media.asset_reference_reconciliation",
+                "MEDIA_REFERENCE_LOOKUP_UNREQUESTED_ID",
+                "Media returned an attachment hold outside the requested Forum relation set",
+                false,
+            ));
+        }
+        if !seen.insert(reference.reference_id) {
+            return Err(ForumError::capability_failure(
+                "media.asset_reference_reconciliation",
+                "MEDIA_REFERENCE_LOOKUP_DUPLICATE_ID",
+                "Media returned a duplicate attachment hold reference ID",
+                false,
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 fn validate_media_page(
