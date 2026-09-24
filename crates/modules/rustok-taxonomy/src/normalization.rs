@@ -21,7 +21,7 @@ pub fn normalize_term_locale(value: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_term_locale, normalize_term_route_key};
+    use super::{TAXONOMY_SCOPE_VALUE_MAX_CHARS, normalize_term_locale, normalize_term_route_key};
 
     #[test]
     fn route_key_normalization_matches_taxonomy_slug_contract() {

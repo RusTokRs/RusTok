@@ -13,8 +13,7 @@ use crate::{
         taxonomy_category_hierarchy, taxonomy_category_presentation, taxonomy_term,
         taxonomy_term_translation,
     },
-use crate::normalization::TAXONOMY_SCOPE_VALUE_MAX_CHARS;
-    normalize_term_locale,
+    normalization::{TAXONOMY_SCOPE_VALUE_MAX_CHARS, normalize_term_locale},
 };
 
 /// Canonical Category projection for a domain module that owns a typed relation
