@@ -18,6 +18,44 @@ pub use rate_limit::{
 };
 pub use types::*;
 
+const SEARCH_INTERNAL_ERROR_MESSAGE: &str = "Search service is temporarily unavailable";
+
+pub(super) fn map_search_module_error(error: rustok_core::Error) -> async_graphql::FieldError {
+    match error {
+        rustok_core::Error::Validation(message) => {
+            <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::bad_user_input(
+                &message,
+            )
+        }
+        rustok_core::Error::NotFound(message) => {
+            <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::not_found(&message)
+        }
+        rustok_core::Error::InvalidIdFormat(message) => {
+            <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::bad_user_input(
+                &message,
+            )
+        }
+        rustok_core::Error::Forbidden(_) => {
+            <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::permission_denied(
+                "Search operation is not permitted",
+            )
+        }
+        rustok_core::Error::Auth(_) => {
+            <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::unauthenticated()
+        }
+        rustok_core::Error::Database(_)
+        | rustok_core::Error::Serialization(_)
+        | rustok_core::Error::Cache(_)
+        | rustok_core::Error::Scripting(_)
+        | rustok_core::Error::Internal(_)
+        | rustok_core::Error::External(_) => {
+            <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::internal_error(
+                SEARCH_INTERNAL_ERROR_MESSAGE,
+            )
+        }
+    }
+}
+
 async fn ensure_search_admin_permission(
     ctx: &async_graphql::Context<'_>,
     permission: &rustok_api::Permission,
