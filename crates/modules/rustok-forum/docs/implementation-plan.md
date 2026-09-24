@@ -324,7 +324,7 @@ is deferred to the final production-validation phase.
 | `FORUM-30` | `planned` | Complete Forum admin by composing Forum and shared owners. |
 | `FORUM-31` | `planned` | Complete Forum storefront by composing Profiles, Media, Reactions, Notifications and Search. |
 | `FORUM-32` | `in_progress` | Generated Forum Fly blocks/renderers/property contracts, Forum-owned preview service/HTTP/native transport, provider-neutral Pages host composition and owner-backed schema/validation property editing are source-ready. Retained runtime/browser evidence and observed Page Builder Wave evidence remain. |
-| `FORUM-33` | `in_progress` | Bounded snapshot-consistent owner counter and accepted-solution reconciliation with independent keyset cursors, strict operator GraphQL/owner admission and baseline platform telemetry are source-ready, with mention and subscription reconciliation slices implemented. Retain SQLite/PostgreSQL execution evidence; write repair remains blocked on dry-run/audit/idempotent job state and CLI integration awaits a synchronized dependency/lock update. |
+| `FORUM-33` | `in_progress` | Bounded snapshot-consistent owner counter and accepted-solution reconciliation with independent keyset cursors, strict operator GraphQL/owner admission and baseline platform telemetry are source-ready, with mention, subscription and attachment-hold reconciliation slices implemented. Retain SQLite/PostgreSQL execution evidence; write repair remains blocked on dry-run/audit/idempotent job state and CLI integration awaits a synchronized dependency/lock update. |
 | `FORUM-34` | `in_progress` | Forum import/export adapter and NodeBB mapping; FORUM-34A through 34Q (export inventory/planner/reader/mapping, import inspection/relation-prep/resolution/tombstone/write) are source-ready, awaiting shared migration runner integration. |
 | `NOTIFY-00` | `in_progress` | Neutral API/runtime composition and Forum providers exist; executable distribution evidence remains. |
 | `NOTIFY-01` | `in_progress` | Persistence/source inbox exist; final commands, migrations, retention and reconciliation remain. |
@@ -1107,8 +1107,8 @@ pages (`solution_reconciliation_sqlite.rs`), subscription pages
 (`subscription_reconciliation_sqlite.rs`), and mention pages
 (`mention_reconciliation_sqlite.rs`). GraphQL schema SDL, RBAC authorization,
 tenant scope isolation, unauthenticated rejection, and operator execution evidence
-are retained and verified across all four reconciliation reports
-(`reconciliation_graphql_contract.rs`). This covers relation eligibility, missing
+are retained and verified across the Forum reconciliation reports
+(`reconciliation_graphql_contract.rs`), including attachment-hold owner isolation. This covers relation eligibility, missing
 solution-author stats, stale/mismatched `solution_count`, independent multi-page
 cursor traversal, exhausted-one-side behavior, target existence, merge redirect
 source subscription detection, muted preferences integrity, positive revision
