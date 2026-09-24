@@ -94,6 +94,21 @@ need(
   'public visibility could not be confirmed after comment creation',
   'comment service',
 );
+need(
+  commentService,
+  'let system_security = SecurityContext::system();',
+  'comment service',
+);
+need(
+  commentService,
+  'compensate_created_public_comment',
+  'comment service',
+);
+if (commentService.includes(
+  'compensate_created_public_comment(tenant_id, &security, record.id)',
+)) {
+  failures.push('comment service: compensation must not reuse the caller security context');
+}
 const plan = read(files.plan);
 
 if (evidence) {
@@ -139,6 +154,8 @@ if (evidence) {
     ['disabled_channel_fails_closed', true],
     ['post_create_public_visibility_revalidated', true],
     ['visibility_loss_compensation_present', true],
+    ['post_create_visibility_failure_compensation_present', true],
+    ['compensation_uses_trusted_system_actor', true],
     ['production_behavior_changed', false],
     ['runtime_execution_observed', false],
     ['browser_execution_observed', false],
