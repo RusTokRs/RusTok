@@ -222,11 +222,13 @@ impl ForumTopicAudienceVisibilityService {
         // Bind an empty local result to the exact viewer so a nonmatching local
         // selector evaluates to NoMatch instead of looking like foreign facts.
         if facts == ForumAudienceFacts::default() {
+            let Some(user_id) = viewer.security.user_id else {
+                return Err(ForumError::Validation(
+                    "Forum topic audience authenticated viewer lost its user identity".to_string(),
+                ));
+            };
             facts.tenant_id = tenant_id;
-            facts.user_id = viewer
-                .security
-                .user_id
-                .expect("authenticated viewer validated");
+            facts.user_id = user_id;
         }
 
         Ok(
