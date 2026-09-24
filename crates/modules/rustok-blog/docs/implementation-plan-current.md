@@ -160,6 +160,12 @@ The fresh Taxonomy boundary audit found a second concrete contract mismatch: Blo
 
 ## Reference-v1 category route storage boundary
 
+Taxonomy is the single canonical owner of localized Category route keys and
+historical aliases. Blog stores only Category membership/settings/revision; it
+does not persist Category slug, parent, position, or depth. Category command
+writes synchronize canonical Taxonomy route/placement state in the same owner
+transaction, while Blog reads project the canonical Taxonomy representation.
+
 ## Reference-v1 Tag input validation boundary
 
 The fresh Taxonomy boundary audit found one concrete Blog/Taxonomy contract

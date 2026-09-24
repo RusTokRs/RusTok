@@ -113,12 +113,6 @@ impl CategoryService {
         input: UpdateCategoryInput,
     ) -> BlogResult<()> {
         enforce_scope(&security, Resource::BlogCategories, Action::Update)?;
-        if input.position.is_some() {
-            return Err(BlogError::validation(
-                "Category position is structural; use the category move command",
-            ));
-        }
-
         let locale = normalize_locale(&input.locale)?;
         let requested_name = input.name.clone();
         let requested_slug = input.slug.clone();

@@ -125,7 +125,6 @@ async fn update_response_comes_from_taxonomy_without_requiring_read_permission()
                 name: Some("Help".to_string()),
                 slug: Some("help".to_string()),
                 description: Some("Help centre".to_string()),
-                position: None,
                 settings: Some(serde_json::json!({"layout": "updated"})),
             },
         )

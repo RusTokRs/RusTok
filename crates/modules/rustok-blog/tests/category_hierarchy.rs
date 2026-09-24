@@ -177,24 +177,24 @@ async fn move_reparents_subtree_and_failed_moves_leave_tree_unchanged() {
     assert_eq!(load_category(&db, tenant_id, child).await.depth, 1);
     assert_eq!(load_category(&db, tenant_id, grandchild).await.depth, 2);
 
-    let legacy_position_update = category_service
+    category_service
         .update(
             tenant_id,
             child,
             admin(),
             UpdateCategoryInput {
                 locale: "en".to_string(),
-                name: None,
-                slug: None,
+                name: Some("Child Renamed".to_string()),
+                slug: Some("child-renamed".to_string()),
                 description: None,
-                position: Some(7),
                 settings: None,
             },
         )
         .await
-        .expect_err("localized update must not be a second hierarchy placement write path");
-    assert!(matches!(legacy_position_update, BlogError::Validation(_)));
-    assert_eq!(load_category(&db, tenant_id, child).await.position, 0);
+        .expect("localized update should not be a hierarchy placement write path");
+    let unchanged = load_category(&db, tenant_id, child).await;
+    assert_eq!(unchanged.position, 0);
+    assert_eq!(unchanged.parent_id, Some(root_a));
 
     let moved = command_service
         .move_category(

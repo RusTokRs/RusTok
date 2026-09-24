@@ -10,8 +10,8 @@ There is no second Blog hierarchy table and no materialized Blog-owned
 ## Structural commands
 
 Localized Category updates own localized copy through Taxonomy plus Blog
-membership settings. `UpdateCategoryInput.position` is retained only for
-compatibility decoding and is rejected by `CategoryService::update`.
+membership settings. `UpdateCategoryInput` contains no hierarchy fields; structural
+placement is exposed only through `MoveCategoryInput`.
 
 Moving or reordering an existing category is the explicit command:
 
