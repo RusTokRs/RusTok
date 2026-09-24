@@ -97,7 +97,7 @@ test('accepts the canonical storefront native Comments composition boundary', ()
 
 test('rejects removal of the Blog facade port re-export', () => {
   assert.notEqual(
-    rejects(removeMarker(facadePath, 'pub use rustok_comments::CommentsThreadPort;')).status,
+    rejects(removeMarker(facadePath, 'pub use rustok_comments_api::CommentsThreadPort;')).status,
     0,
   );
 });
