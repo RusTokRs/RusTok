@@ -275,7 +275,7 @@ is deferred to the final production-validation phase.
 | `FORUM-11` | `done` | Subscription levels and participation policy. |
 | `FORUM-12` | `in_progress` | Mention/quote relations and notification source exist. Runtime execution, profile/block privacy, moderator audience and final Notifications evidence remain. |
 | `FORUM-13` | `in_progress` | Optional Media presentation policy exists. Add typed category-cover owner command, transports, UI and runtime evidence; Media keeps lifecycle ownership. |
-| `FORUM-14` | `in_progress` | Forum attachment relations over Media-owned sessions/assets; FORUM-14A content-revision relation admission is source-ready (`attachment_relation.rs`), while binary lifecycle remains Media-owned. |
+| `FORUM-14` | `in_progress` | Forum attachment relations over Media-owned sessions/assets; FORUM-14A content-revision relation admission is source-ready, and Media now publishes the bounded `MediaAssetReferenceAdmission` lifecycle fact required for safe owner persistence. The next slice must define current relation-set concurrency semantics separately from Forum content revisions before adding persistence. |
 | `FORUM-15` | `in_progress` | Profiles supplies `ProfilesReader`; FORUM-15A through 15E provide member-card owner service, user stats, GraphQL/native transport, and privacy-aware storefront UI composition. Retain live runtime evidence. |
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
@@ -787,7 +787,7 @@ Hosts register/mount packages and do not absorb policy.
 
 ### Track 3 — Profiles/Media and Forum product
 
-1. Category cover and attachment relations over Media.
+1. Category cover and attachment relations over Media; the lifecycle-admission prerequisite is now source-ready, while attachment relation persistence remains gated on a separate relation-set revision/concurrency contract.
 2. Batched Profiles member composition.
 3. Topic kinds, drafts/bookmarks, read-state bulk completion and trust enforcement.
 4. Full admin/storefront assembly and release integrations.
@@ -1068,7 +1068,7 @@ source subscription detection, muted preferences integrity, positive revision
 checks, child-source agreement, and projection fingerprint validation. Architectural
 cleanup removed `#![allow(dead_code)]` and wired `ugc_translation_apply` as a first-class
 service module. The remaining FORUM-33 scope includes PostgreSQL runtime evidence,
-attachment diagnostics, and permitted shared-owner projections. Do not add write
+attachment diagnostics after Forum-owned relation persistence, and permitted shared-owner projections. Do not add write
 repair until operator RBAC, dry-run, durable audit, idempotent job/receipt state and
 bounded recovery are designed together. Add a Forum CLI adapter only with the
 synchronized workspace dependency and `Cargo.lock` update.

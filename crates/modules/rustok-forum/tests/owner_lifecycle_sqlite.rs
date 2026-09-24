@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
-    CreateReplyInput, ForumError, ForumModule, ModerationService, ReplyService, TopicService,
+    CreateReplyInput, ForumError, ForumModule, ForumTopicMergeService, MergeForumTopicInput,
+    ModerationService, ReplyService, TopicService,
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
@@ -226,6 +227,71 @@ async fn owner_topic_restore_rehydrates_closed_locked_solution_thread() {
     assert_eq!(solution_count(&db, topic_id).await, 1);
     assert_eq!(topic_snapshot_count(&db, topic_id).await, 0);
     assert_eq!(reply_snapshot_count(&db, topic_id).await, 0);
+}
+
+#[tokio::test]
+async fn owner_topic_restore_rejects_merged_source_topic() {
+    let db = setup_db().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let category_id = Uuid::new_v4();
+    let target_topic_id = Uuid::new_v4();
+    let source_topic_id = Uuid::new_v4();
+    let operation_id = Uuid::new_v4();
+
+    seed_category(&db, tenant_id, category_id, false).await;
+    seed_topic(
+        &db,
+        tenant_id,
+        category_id,
+        target_topic_id,
+        actor_id,
+        false,
+    )
+    .await;
+    seed_topic(
+        &db,
+        tenant_id,
+        category_id,
+        source_topic_id,
+        actor_id,
+        false,
+    )
+    .await;
+
+    let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
+    ForumTopicMergeService::new(db.clone(), event_bus(db.clone()))
+        .merge_topic(
+            tenant_id,
+            target_topic_id,
+            admin.clone(),
+            MergeForumTopicInput {
+                operation_id,
+                source_topic_id,
+                reason: "Duplicate topic".to_string(),
+            },
+        )
+        .await
+        .expect("source topic should merge into target");
+
+    assert_eq!(topic_status(&db, source_topic_id).await, "archived");
+    assert!(!topic_deleted(&db, source_topic_id).await);
+
+    TopicService::new(db.clone(), event_bus(db.clone()))
+        .delete(tenant_id, source_topic_id, admin.clone())
+        .await
+        .expect("merged source topic should be explicitly soft-deletable");
+
+    let restore = TopicService::new(db.clone(), event_bus(db.clone()))
+        .restore(tenant_id, source_topic_id, admin)
+        .await
+        .expect_err("merged source topic must never be restored");
+
+    assert!(matches!(
+        restore,
+        ForumError::TopicRestoreUnavailable(id) if id == source_topic_id
+    ));
+    assert!(topic_deleted(&db, source_topic_id).await);
 }
 
 fn reply_input(content: &str) -> CreateReplyInput {

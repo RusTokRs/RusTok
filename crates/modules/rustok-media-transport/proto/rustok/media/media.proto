@@ -7,6 +7,7 @@ package rustok.media;
 // Binary media bodies intentionally never cross this service.
 service MediaService {
   rpc GetAsset(IdRequest) returns (JsonResponse);
+  rpc GetAssetReferenceAdmission(IdRequest) returns (JsonResponse);
   rpc ListAssets(ListRequest) returns (JsonResponse);
   rpc GetImageDescriptor(ImageDescriptorRequest) returns (JsonResponse);
   rpc GetPublicImageAsset(ImageDescriptorRequest) returns (JsonResponse);

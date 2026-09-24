@@ -13,7 +13,7 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{ListTopicsFilter, TopicListItem, TopicResponse};
-use crate::entities::{forum_reply, forum_solution, forum_topic};
+use crate::entities::{forum_reply, forum_solution, forum_topic, forum_topic_merge_operation};
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::{ReplyStatus, TopicStatus};
 use crate::services::engagement_mode::ForumSettingsProviders;
@@ -318,6 +318,15 @@ impl TopicService {
         .await?;
 
         let topic = topic::TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
+        if forum_topic_merge_operation::Entity::find()
+            .filter(forum_topic_merge_operation::Column::TenantId.eq(tenant_id))
+            .filter(forum_topic_merge_operation::Column::SourceTopicId.eq(topic_id))
+            .one(&txn)
+            .await?
+            .is_some()
+        {
+            return Err(ForumError::TopicRestoreUnavailable(topic_id));
+        }
         ensure_category_restore_target_is_active_in_tx(&txn, tenant_id, topic.category_id).await?;
         if !topic_is_deleted_in_tx(&txn, tenant_id, topic_id).await? {
             return Err(ForumError::TopicRestoreUnavailable(topic_id));

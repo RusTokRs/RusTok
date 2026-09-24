@@ -153,9 +153,9 @@ pub fn normalize_category_icon_key(value: &str) -> Option<String> {
 /// Validate Forum-specific category-cover constraints after the Media owner has
 /// already admitted the asset as an active, ready public image.
 ///
-/// Quarantine/deletion state is not currently published by the generic Media
-/// asset read port; category cover policy intentionally consumes the dedicated
-/// `MediaPublicImageReadPort` instead of duplicating those lifecycle rules.
+/// Media now publishes a bounded lifecycle admission fact through the generic asset
+/// read port; category covers still consume the dedicated public-image port because
+/// they additionally require Media-owned public descriptor and delivery policy.
 pub fn validate_category_cover_candidate(
     expected_tenant_id: Uuid,
     candidate: &CategoryCoverMediaCandidate,
