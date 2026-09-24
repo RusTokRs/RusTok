@@ -275,6 +275,45 @@ async fn sqlite_attachment_relation_service_coordinates_media_retention_and_cas(
     let media = Arc::new(MediaService::new(db.clone(), storage));
 
     let forum = ForumAttachmentRelationService::new(db.clone(), media.clone());
+
+    let missing_target_result = forum
+        .replace_attachment_relations(
+            PortContext::new(
+                tenant_id.to_string(),
+                PortActor::system(),
+                "en",
+                "forum-attachment-missing-target",
+            )
+            .with_deadline(Duration::from_secs(60))
+            .with_idempotency_key("forum-attachment-missing-target"),
+            ForumAttachmentRelationAdmissionRequest {
+                tenant_id,
+                target: ForumContentTarget::topic(Uuid::new_v4()),
+                source_revision: 1,
+                locale: "en".to_string(),
+                expected_relation_revision: ForumAttachmentRelationRevision::EMPTY,
+                attachments: vec![ForumAttachmentRelationInput {
+                    media_id,
+                    usage: ForumAttachmentUsage::Inline,
+                    position: 0,
+                    caption: None,
+                }],
+            },
+        )
+        .await;
+    assert!(
+        missing_target_result.is_err(),
+        "missing attachment target must fail before any Media hold is acquired"
+    );
+    assert_eq!(
+        asset_reference::Entity::find()
+            .filter(asset_reference::Column::TenantId.eq(tenant_id))
+            .count(&db)
+            .await?,
+        0,
+        "invalid attachment target must not leave a Media owner hold"
+    );
+
     let context = PortContext::new(
         tenant_id.to_string(),
         PortActor::system(),
