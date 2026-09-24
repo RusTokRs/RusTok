@@ -89,9 +89,7 @@ projection revisions.
   content revisions.
 - The immutable `forum_relation_revisions` stream remains dedicated to mentions/quotes;
   attachment state must not reuse it as a mutable head or CAS row.
-- The current source-ready API deliberately stops before persistence. A Media admission
-  result does not reserve an asset against deletion, so committing a Forum foreign reference
-  from that read fact alone would leave a cross-owner time-of-check/time-of-use race.
+- Attachment relation persistence now uses the Forum-owned CAS head and bounded relation rows. A Media admission result alone does not reserve an asset against deletion; the writer acquires durable Media owner references before the Forum commit and releases removed references only after commit. Ambiguous commits and failed post-commit releases intentionally preserve conservative holds for later reconciliation.
 
 Persistence now combines the owner-side CAS with Media durable reference retention. New Media
 holds are acquired before the Forum transaction commits; removed holds are released only after
@@ -836,7 +834,7 @@ Hosts register/mount packages and do not absorb policy.
 
 ### Track 3 — Profiles/Media and Forum product
 
-1. Category cover and attachment relations over Media; the lifecycle-admission prerequisite and independent attachment-set revision/CAS contract are source-ready, while attachment relation persistence remains gated on a Media owner reference-retention/control contract.
+1. Category cover and attachment relations over Media; attachment relation persistence, durable Media reference retention/control, and bidirectional orphan/missing-hold reconciliation are source-ready. Category-cover owner write semantics remain a separate product slice; attachment runtime evidence remains open.
 2. Batched Profiles member composition.
 3. Topic kinds, drafts/bookmarks, read-state bulk completion and trust enforcement.
 4. Full admin/storefront assembly and release integrations.
