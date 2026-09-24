@@ -48,6 +48,33 @@ try {
   failures.push(`${evidencePath}: invalid JSON: ${error.message}`);
 }
 
+for (const marker of [
+  "self.ensure_blog_tables_available(&tx).await?;",
+  "let row = conn",
+  ".try_get::<bool>(\"\", \"available\")",
+  ".map_err(Error::Database)?;",
+]) {
+  requireMarker(projector, marker, projectorPath);
+}
+const cursorDecodeMarker = 'last_row\n                    .try_get::<String>("", "document_key")\n                    .map_err(Error::Database)?;';
+requireMarker(projector, cursorDecodeMarker, `${projectorPath}: Blog projection body cursor must propagate document-key decode failures`);
+rejectMarker(
+  projector,
+  '.and_then(|row| row.try_get::<String>("", "document_key").ok())',
+  `${projectorPath}: Blog projection body cursor must not silently truncate on decode failure`,
+);
+const rebuildGuard = projector.indexOf("self.ensure_blog_tables_available(&tx).await?;");
+const rebuildDelete = projector.indexOf("self.delete_tenant_documents_in(&tx, tenant_id).await?;");
+const targetedGuard = projector.indexOf("self.ensure_blog_tables_available(&tx).await?;", rebuildGuard + 1);
+const targetedDelete = projector.indexOf("self.delete_post_in(&tx, tenant_id, post_id).await?;");
+if (rebuildGuard < 0 || rebuildDelete < 0 || rebuildGuard > rebuildDelete) {
+  failures.push(`${projectorPath}: Blog tenant rebuild must validate source schema before destructive deletion`);
+}
+if (targetedGuard < 0 || targetedDelete < 0 || targetedGuard > targetedDelete) {
+  failures.push(`${projectorPath}: targeted Blog projection must validate source schema before destructive deletion`);
+}
+rejectMarker(projector, "if self.blog_tables_available(&tx).await?", projectorPath);
+rejectMarker(projector, ".and_then((row) => row.try_get::<bool>(\"\", \"available\").ok())", projectorPath);
 for (const table of [
   "blog_posts",
   "blog_post_translations",

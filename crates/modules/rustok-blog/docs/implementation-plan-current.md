@@ -224,6 +224,14 @@ source now requires:
    profile and never blocks Blog publication reads or triggers direct Profiles storage
    access.
 
+## 2026-09-24 Blog Category settings boundary
+
+Category settings now have one owner-level persistence contract: they must be JSON objects and
+must not exceed 64 KiB when encoded. Create/update commands enforce input validation, while
+list/get revalidate persisted state as an internal invariant before exposing it through the
+Blog Category API. This bounds extension payloads and prevents malformed persisted settings
+from being returned as ordinary Category data.
+
 ## Remaining execution-owned results
 
 The retained maintainer/runtime evidence backlog is now limited to tracks whose
