@@ -56,7 +56,8 @@
     "host_composes_embedded_media_reader": true,
     "forum_consumes_typed_port_only": true,
     "precomposed_remote_reader_supported": true,
-    "missing_reader_behavior": "FORUM_MEDIA_REFERENCE_LIST_CAPABILITY_UNAVAILABLE"
+    "missing_reader_behavior": "FORUM_MEDIA_REFERENCE_LIST_CAPABILITY_UNAVAILABLE",
+    "precomposed_provider_precedence": "existing HostRuntimeContext provider wins before embedded provider construction"
   },
   "verification": {
     "source_verifier": "scripts/verify/verify-forum-attachment-hold-reconciliation.mjs",
