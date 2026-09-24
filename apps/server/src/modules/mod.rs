@@ -229,7 +229,7 @@ mod contract_tests {
         );
         assert_eq!(
             blog.dependencies(),
-            &["content", "taxonomy", "outbox", "channel", "profiles"]
+            &["content", "taxonomy", "outbox", "channel"]
         );
         assert_eq!(forum.dependencies(), &["content", "taxonomy"]);
         assert_eq!(pages.dependencies(), &["content", "page_builder"]);

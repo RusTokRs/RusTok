@@ -327,3 +327,8 @@ Completed the remaining source-level Blog/Profiles build-time coupling gap. Blog
 ## 2026-09-23 Comments package boundary
 
 Completed the remaining source-level Blog/Comments build-time coupling gap. Blog now depends only on `rustok-comments-api`; Comments remains the sole owner of persistence and implements the neutral `CommentsThreadPort` through the host runtime capability graph. Persistence-facing `CommentStatus` and other SeaORM types remain inside Comments, with explicit contract conversions at the owner boundary. Blog publication serving continues to degrade safely when the optional provider is absent. Maintainer runtime evidence, build, gatekeeper, and automated tests remain unrun by the agent.
+
+
+## 2026-09-24 Server composition contract synchronization
+
+The active Blog dependency contract is `content + taxonomy + outbox + channel`. Profiles remains optional presentation enrichment through `rustok-profiles-api` and must not return as a runtime module dependency. The server module contract test now asserts the canonical dependency set used by the active `modules.toml` and Blog module contract, preventing a stale hard dependency from silently returning during future composition changes. Maintainer runtime evidence, gatekeeper, build, and automated tests remain unrun by the agent.
