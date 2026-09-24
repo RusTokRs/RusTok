@@ -61,6 +61,7 @@ transport-local Blog route builder, or compatibility URL implementation.
 
 ## Entry points
 
+- `projector_core.rs` is the canonical implementation behind the public `SearchProjector` facade; no retired `legacy` projector source remains.
 - `SearchModule`
 - `SearchEngine` / `SearchEngineKind`
 - `SearchConnectorDescriptor`
