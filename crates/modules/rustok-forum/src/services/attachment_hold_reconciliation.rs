@@ -616,26 +616,39 @@ mod tests {
             media_id: Uuid::new_v4(),
             tenant_id,
             owner_module: "forum".to_string(),
-            reference_id: Uuid::new_v4(),
+            reference_id: Uuid::from_u128(1),
         };
-        let second = rustok_media::MediaAssetReference {
-            reference_id: Uuid::new_v4(),
+        let duplicate = rustok_media::MediaAssetReference {
+            reference_id: first.reference_id,
             ..first
+        };
+        let lower = rustok_media::MediaAssetReference {
+            media_id: Uuid::new_v4(),
+            tenant_id,
+            owner_module: "forum".to_string(),
+            reference_id: Uuid::from_u128(0),
         };
 
         let too_large = MediaAssetReferenceListPage {
             references: vec![first],
-            next_reference_id: None,
+            next_reference_id: Some(first.reference_id),
             has_more: false,
         };
         assert!(validate_media_page(&too_large, 0, tenant_id).is_err());
 
-        let duplicate = MediaAssetReferenceListPage {
-            references: vec![first, second],
-            next_reference_id: Some(second.reference_id),
+        let duplicate_page = MediaAssetReferenceListPage {
+            references: vec![first, duplicate],
+            next_reference_id: Some(first.reference_id),
             has_more: false,
         };
-        assert!(validate_media_page(&duplicate, 2, tenant_id).is_err());
+        assert!(validate_media_page(&duplicate_page, 2, tenant_id).is_err());
+
+        let unordered = MediaAssetReferenceListPage {
+            references: vec![first, lower],
+            next_reference_id: Some(lower.reference_id),
+            has_more: false,
+        };
+        assert!(validate_media_page(&unordered, 2, tenant_id).is_err());
 
         let missing_cursor = MediaAssetReferenceListPage {
             references: vec![first],
@@ -659,7 +672,6 @@ mod tests {
             position: 0,
             caption: None,
             created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
         };
 
         let unrequested = MediaAssetReferenceLookupResult {
@@ -709,6 +721,10 @@ mod tests {
         assert_eq!(
             ForumAttachmentHoldDriftKind::OrphanMediaHold.as_str(),
             "orphan_media_hold"
+        );
+        assert_eq!(
+            ForumAttachmentHoldDriftKind::MissingMediaHold.as_str(),
+            "missing_media_hold"
         );
         assert_eq!(
             ForumAttachmentHoldDriftKind::MediaReferenceMismatch.as_str(),
