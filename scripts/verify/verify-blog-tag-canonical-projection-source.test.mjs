@@ -13,6 +13,8 @@ const verifier = path.join(repositoryRoot, 'scripts/verify/verify-blog-tag-canon
 const files = [
   'crates/modules/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json',
   'crates/modules/rustok-blog/src/services/tag.rs',
+  'crates/modules/rustok-taxonomy/src/services.rs',
+  'crates/modules/rustok-taxonomy/src/translation_target_tests.rs',
   'crates/modules/rustok-blog/tests/taxonomy_tags.rs',
   'crates/modules/rustok-search/src/blog_projector.rs',
   'crates/modules/rustok-search/tests/blog_projection_postgres_test.rs',
