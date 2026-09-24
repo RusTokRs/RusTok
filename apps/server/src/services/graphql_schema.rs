@@ -67,6 +67,8 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
         };
     #[cfg(any(feature = "mod-media", feature = "mod-translation"))]
     let host_runtime = attach_storage_runtime(host_runtime, ctx);
+    #[cfg(all(feature = "mod-forum", feature = "mod-media"))]
+    let host_runtime = attach_forum_media_asset_read_provider(host_runtime, ctx);
     #[cfg(feature = "mod-alloy")]
     let host_runtime = if let Some(alloy_runtime) = ctx.shared_get::<alloy::SharedAlloyRuntime>() {
         let storage = ctx.shared_get::<rustok_storage::StorageRuntime>();
@@ -226,6 +228,32 @@ fn content_orchestration_from_ctx(
     );
     ctx.shared_insert(service.clone());
     service
+}
+
+#[cfg(all(feature = "mod-forum", feature = "mod-media"))]
+fn attach_forum_media_asset_read_provider(
+    host_runtime: rustok_api::HostRuntimeContext,
+    ctx: &ServerRuntimeContext,
+) -> rustok_api::HostRuntimeContext {
+    use rustok_media::{MediaAssetReadPort, MediaService};
+    use rustok_storage::StorageRuntime;
+
+    if let Some(provider) = ctx.shared_get::<Arc<dyn MediaAssetReadPort>>() {
+        return host_runtime.with_shared_value(provider);
+    }
+
+    let Some(storage) = ctx.shared_get::<StorageRuntime>() else {
+        tracing::warn!(
+            "Forum attachment reconciliation Media provider is unavailable; GraphQL entrypoint will fail closed"
+        );
+        return host_runtime;
+    };
+
+    let provider: Arc<dyn MediaAssetReadPort> =
+        Arc::new(MediaService::new(ctx.db_clone(), storage));
+    ctx.shared_insert(provider.clone());
+
+    host_runtime.with_shared_value(provider)
 }
 
 #[cfg(feature = "mod-media")]
