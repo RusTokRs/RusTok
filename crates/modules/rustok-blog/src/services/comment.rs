@@ -135,33 +135,52 @@ impl CommentService {
             .await
         {
             Ok(()) => {}
-            Err(BlogError::PostNotFound(_)) => {
-                let compensation_command_id = Uuid::new_v4();
-                self.require_comments_thread_port()?
-                    .delete_comment(
-                        comments_write_port_context(
-                            tenant_id,
-                            &security,
-                            PLATFORM_FALLBACK_LOCALE,
-                            "delete-after-public-target-loss",
-                            record.id,
-                            compensation_command_id,
-                        )?,
+            Err(revalidation_error) => {
+                // The Comments write already crossed an owner boundary. Any failure in
+                // the final Blog visibility check means the create command cannot report
+                // success without leaving a committed foreign-side effect behind.
+                if let Err(compensation_error) = self
+                    .compensate_created_public_comment(
+                        tenant_id,
+                        &security,
                         record.id,
                     )
                     .await
-                    .map_err(|error| {
-                        BlogError::invariant(format!(
-                            "Blog post {post_id} lost public visibility after comment creation and the compensating comment delete failed: {}",
-                            error.message
-                        ))
-                    })?;
-                return Err(BlogError::post_not_found(post_id));
+                {
+                    return Err(BlogError::invariant(format!(
+                        "Blog post {post_id} public visibility could not be confirmed after comment creation and the compensating comment delete failed: {compensation_error}"
+                    )));
+                }
+
+                return Err(revalidation_error);
             }
-            Err(error) => return Err(error),
         }
 
         Self::map_comment_record(record)
+    }
+
+    async fn compensate_created_public_comment(
+        &self,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+        comment_id: Uuid,
+    ) -> BlogResult<()> {
+        let compensation_command_id = Uuid::new_v4();
+        self.require_comments_thread_port()?
+            .delete_comment(
+                comments_write_port_context(
+                    tenant_id,
+                    security,
+                    PLATFORM_FALLBACK_LOCALE,
+                    "delete-after-public-target-loss",
+                    comment_id,
+                    compensation_command_id,
+                )?,
+                comment_id,
+            )
+            .await
+            .map_err(comments_port_error_to_blog_error)?;
+        Ok(())
     }
 
     #[instrument(skip(self, security))]
