@@ -316,10 +316,7 @@ impl ForumAttachmentHoldReconciliationService {
 
         let mut reverse_by_reference = HashMap::with_capacity(reverse_lookup.references.len());
         for reference in reverse_lookup.references {
-            validate_media_reference(&reference, relation_media_by_reference
-                .get(&reference.reference_id)
-                .map(|_| reference.tenant_id)
-                .unwrap_or_else(|| Uuid::nil()))?;
+            validate_media_reference(&reference, tenant_id)?;
             reverse_by_reference.insert(reference.reference_id, reference);
         }
 
@@ -397,8 +394,6 @@ impl ForumAttachmentHoldReconciliationService {
             forum_cursor,
             drifts,
         })
-    }
-
     }
 }
 
