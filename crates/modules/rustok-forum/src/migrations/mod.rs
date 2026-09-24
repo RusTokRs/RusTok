@@ -65,6 +65,7 @@ mod m20260916_000032_clean_forum_category_canonical_taxonomy;
 mod m20260920_000033_lock_topic_during_reply_creation;
 mod m20260921_000034_add_forum_topic_restore_snapshots;
 mod m20260921_000035_add_forum_reply_restore_snapshots;
+mod m20260924_000036_add_forum_attachment_relations;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -138,6 +139,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260920_000033_lock_topic_during_reply_creation::Migration),
         Box::new(m20260921_000034_add_forum_topic_restore_snapshots::Migration),
         Box::new(m20260921_000035_add_forum_reply_restore_snapshots::Migration),
+        Box::new(m20260924_000036_add_forum_attachment_relations::Migration),
     ]
 }
 

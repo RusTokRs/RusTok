@@ -153,6 +153,25 @@ pub struct ForumPreparedAttachmentRelation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ForumAttachmentRelationRecord {
+    pub reference_id: Uuid,
+    pub media_id: Uuid,
+    pub usage: ForumAttachmentUsage,
+    pub position: u16,
+    pub caption: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ForumAttachmentRelationSet {
+    pub tenant_id: Uuid,
+    pub target: ForumContentTarget,
+    pub locale: String,
+    pub relation_revision: ForumAttachmentRelationRevision,
+    pub source_revision: Option<u64>,
+    pub attachments: Vec<ForumAttachmentRelationRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ForumPreparedAttachmentRelationBatch {
     source: ForumAttachmentSourceRevision,
     expected_relation_revision: ForumAttachmentRelationRevision,
@@ -185,6 +204,8 @@ pub enum ForumAttachmentRelationAdmissionError {
     NilTarget,
     #[error("Forum attachment relation requires a positive source revision")]
     InvalidSourceRevision,
+    #[error("Forum attachment relation source revision exceeds the database range")]
+    SourceRevisionOutOfRange,
     #[error("Forum attachment relation requires a valid locale")]
     InvalidLocale,
     #[error("Forum attachment relation batch exceeds {max} records: {actual}")]
@@ -217,6 +238,9 @@ impl ForumAttachmentRelationPreparer {
         }
         if request.source_revision == 0 {
             return Err(ForumAttachmentRelationAdmissionError::InvalidSourceRevision);
+        }
+        if i64::try_from(request.source_revision).is_err() {
+            return Err(ForumAttachmentRelationAdmissionError::SourceRevisionOutOfRange);
         }
         let locale = normalize_locale_tag(&request.locale)
             .ok_or(ForumAttachmentRelationAdmissionError::InvalidLocale)?;
@@ -387,6 +411,17 @@ mod tests {
         assert_eq!(
             preparer.prepare(request).unwrap_err(),
             ForumAttachmentRelationAdmissionError::InvalidLocale
+        );
+    }
+
+    #[test]
+    fn preparer_rejects_source_revision_outside_database_range() {
+        let preparer = ForumAttachmentRelationPreparer;
+        let mut request = valid_request();
+        request.source_revision = u64::MAX;
+        assert_eq!(
+            preparer.prepare(request).unwrap_err(),
+            ForumAttachmentRelationAdmissionError::SourceRevisionOutOfRange
         );
     }
 

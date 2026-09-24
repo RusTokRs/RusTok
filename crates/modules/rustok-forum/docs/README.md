@@ -27,12 +27,14 @@ notifications module, and cross-module release gates.
 - transport surfaces: GraphQL, REST, Leptos admin/storefront packages and the module-owned Next-admin package;
 - Forum widget contract-freeze and Page Builder consumer evidence;
 - tag attachments via `forum_topic_tags` with shared vocabulary in `rustok-taxonomy`;
-- visibility, moderation and user-facing derived fields in Forum read/write contracts.
+- visibility, moderation and user-facing derived fields in Forum read/write contracts;
+- attachment relation heads/rows and Media owner-reference retention coordination.
 
 ## Integration
 
 - uses `rustok-content` only as a shared helper/orchestration dependency;
 - uses `rustok-taxonomy` as a shared dictionary for tag identity;
+- uses the Media owner port for attachment reference retention/release; Forum does not read Media tables.
 - uses `rustok-profiles` for the author presentation contract;
 - uses `rustok-channel` for visibility and SEO gating;
 - the canonical `use_reactions` engagement setting is persisted in static module

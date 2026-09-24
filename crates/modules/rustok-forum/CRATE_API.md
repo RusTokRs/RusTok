@@ -6,6 +6,9 @@
 ## Primary Public Types and Signatures
 - `pub struct ForumModule`
 - `pub struct CategoryService`, `TopicService`, `ReplyService`, `ModerationService`, `SubscriptionService`, `UserStatsService`, `VoteService`
+- `pub struct ForumAttachmentRelationService`
+- `ForumAttachmentRelationService::get_attachment_relations(tenant_id, target, locale) -> ForumAttachmentRelationSet`
+- `ForumAttachmentRelationService::replace_attachment_relations(context, ForumAttachmentRelationAdmissionRequest) -> ForumAttachmentRelationSet`
 - `pub struct ForumRelationReadService`
 - `ForumRelationReadService::get(tenant_id, security, ForumRelationSnapshotQuery) -> ForumRelationSnapshotResponse`
 - `pub struct ForumQuoteCommandService`
@@ -338,6 +341,12 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Quote replacement is exact-locale, owner-scoped, bounded to 32 references and materializes its response before commit.
 - Inline body edits preserve omitted quotes by expected relation revision and conflict rather than overwrite a concurrent replacement.
 - Quote relations retain target revision identity, reject source/target mismatches and cannot self-reference their own source revision.
+- Attachment relations use a dedicated per-target/locale CAS head; content source revisions remain provenance only.
+- Initial attachment persistence creates relation revision 1, including an explicit empty-set commit; later replacements require the exact current token.
+- Attachment order is bounded to 32 contiguous zero-based positions and is unique per target/locale.
+- Forum relation rows store only Media identity; durable Media owner references are retained before Forum commit and released after Forum commit.
+- Stable Media reference IDs include tenant, target, locale, position and media identity; usage/caption changes do not retarget the owner reference.
+- Ambiguous Forum commits and post-commit Media release failures preserve conservative holds rather than attempting unsafe compensation.
 - Public topic/reply access is restricted to explicit owner facades; persistence modules and owner implementations are not part of the external contract.
 
 ### Events / Outbox Side Effects
@@ -354,5 +363,7 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Missing or unauthorized mention targets share `FORUM_MENTION_TARGET_UNAVAILABLE` so the contract does not expose a profile-existence oracle.
 - Missing or mismatched quoted relation revisions share `FORUM_QUOTE_TARGET_UNAVAILABLE` so quote validation does not expose a cross-tenant existence oracle.
 - Invalid, absent or foreign relation revision identities share `FORUM_RELATION_REVISION_UNAVAILABLE`.
+- Attachment relation CAS conflicts return retryable `FORUM_RELATION_REVISION_CONFLICT`; persistence invariant violations return `FORUM_ATTACHMENT_RELATION_INVARIANT` and revision exhaustion returns `FORUM_ATTACHMENT_RELATION_REVISION_EXHAUSTED`.
+- Media retention/release provider failures remain `ForumError::CapabilityFailure` with the Media source code and retryability.
 - A stale omitted-update quote snapshot returns retryable `FORUM_RELATION_REVISION_CONFLICT`; REST maps it to HTTP 409.
 - Forum chooses its engagement mechanism through the tenant-scoped `forum.useReactions` setting. `false` keeps the internal `VoteService` active; `true` selects the shared Reactions module. The Reactions module may remain enabled for other modules without changing Forum behavior.

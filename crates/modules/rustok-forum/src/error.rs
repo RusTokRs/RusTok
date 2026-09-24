@@ -79,6 +79,12 @@ pub enum ForumError {
     #[error("Forum relation revision changed concurrently")]
     RelationRevisionConflict,
 
+    #[error("Forum attachment relation invariant was violated")]
+    AttachmentRelationInvariant,
+
+    #[error("Forum attachment relation revision counter is exhausted")]
+    AttachmentRelationRevisionExhausted,
+
     #[error("Forum topic changed concurrently: {0}")]
     TopicUpdateConflict(Uuid),
 
@@ -195,6 +201,8 @@ impl ForumError {
             Self::QuoteTargetUnavailable => "FORUM_QUOTE_TARGET_UNAVAILABLE",
             Self::RelationRevisionUnavailable => "FORUM_RELATION_REVISION_UNAVAILABLE",
             Self::RelationRevisionConflict => "FORUM_RELATION_REVISION_CONFLICT",
+            Self::AttachmentRelationInvariant => "FORUM_ATTACHMENT_RELATION_INVARIANT",
+            Self::AttachmentRelationRevisionExhausted => "FORUM_ATTACHMENT_RELATION_REVISION_EXHAUSTED",
             Self::TopicUpdateConflict(_) => "FORUM_TOPIC_UPDATE_CONFLICT",
             Self::TopicMoveOperationConflict(_) => "FORUM_TOPIC_MOVE_OPERATION_CONFLICT",
             Self::TopicMergeOperationConflict(_) => "FORUM_TOPIC_MERGE_OPERATION_CONFLICT",
@@ -255,6 +263,7 @@ impl ForumError {
         match self {
             Self::CapabilityFailure { retryable, .. } => *retryable,
             Self::Database(_) | Self::Internal(_) | Self::RelationRevisionConflict => true,
+            Self::AttachmentRelationInvariant | Self::AttachmentRelationRevisionExhausted => false,
             Self::TopicUpdateConflict(_) => true,
             _ => false,
         }
