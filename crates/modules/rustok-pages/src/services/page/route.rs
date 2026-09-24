@@ -332,7 +332,10 @@ pub(super) async fn record_delete_route_tombstones_in_tx(
         .await?;
     let mut aliases_by_route = HashMap::new();
     for alias in aliases {
-        aliases_by_route.insert((alias.locale.clone(), alias.slug.clone()), alias);
+        let key = (alias.locale.clone(), alias.slug.clone());
+        if aliases_by_route.insert(key, alias).is_some() {
+            return Err(page_route_resolution_conflict());
+        }
     }
 
     let mut inserted = 0_u32;
