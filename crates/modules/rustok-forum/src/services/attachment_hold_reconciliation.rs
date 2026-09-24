@@ -208,6 +208,9 @@ impl ForumAttachmentHoldReconciliationService {
         effective_limit: u64,
     ) -> ForumResult<ForumAttachmentHoldReconciliationReport> {
         let references = media_page.references;
+        for reference in &references {
+            validate_media_reference(reference, tenant_id)?;
+        }
         let inspected_media_holds = references.len() as u64;
         let reference_ids = references
             .iter()
@@ -263,6 +266,37 @@ impl ForumAttachmentHoldReconciliationService {
 fn enforce_operations_scope(security: &SecurityContext) -> ForumResult<()> {
     enforce_scope(security, Resource::ForumCategories, Action::Manage)?;
     enforce_scope(security, Resource::ForumTopics, Action::Manage)
+}
+
+fn validate_media_reference(
+    reference: &rustok_media::MediaAssetReference,
+    tenant_id: Uuid,
+) -> ForumResult<()> {
+    if reference.tenant_id != tenant_id {
+        return Err(ForumError::CapabilityFailure {
+            capability: "media.asset_reference_reconciliation",
+            source_code: "MEDIA_REFERENCE_TENANT_MISMATCH".to_string(),
+            message: "Media returned an owner reference outside the trusted Forum tenant".to_string(),
+            retryable: false,
+        });
+    }
+    if reference.owner_module != FORUM_MEDIA_OWNER_MODULE {
+        return Err(ForumError::CapabilityFailure {
+            capability: "media.asset_reference_reconciliation",
+            source_code: "MEDIA_REFERENCE_OWNER_MISMATCH".to_string(),
+            message: "Media returned a reference outside the Forum owner scope".to_string(),
+            retryable: false,
+        });
+    }
+    if reference.reference_id.is_nil() || reference.media_id.is_nil() {
+        return Err(ForumError::CapabilityFailure {
+            capability: "media.asset_reference_reconciliation",
+            source_code: "MEDIA_REFERENCE_IDENTITY_INVALID".to_string(),
+            message: "Media returned an invalid durable reference identity".to_string(),
+            retryable: false,
+        });
+    }
+    Ok(())
 }
 
 fn validate_cursor(cursor: Option<Uuid>) -> ForumResult<()> {
@@ -322,6 +356,26 @@ mod tests {
             "corr-1",
         );
         assert!(validate_media_context_tenant(&context, tenant_id).is_err());
+    }
+
+    #[test]
+    fn media_reference_boundary_rejects_foreign_tenant_and_owner() {
+        let tenant_id = Uuid::new_v4();
+        let foreign = rustok_media::MediaAssetReference {
+            media_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            owner_module: "forum".to_string(),
+            reference_id: Uuid::new_v4(),
+        };
+        assert!(validate_media_reference(&foreign, tenant_id).is_err());
+
+        let wrong_owner = rustok_media::MediaAssetReference {
+            media_id: Uuid::new_v4(),
+            tenant_id,
+            owner_module: "blog".to_string(),
+            reference_id: Uuid::new_v4(),
+        };
+        assert!(validate_media_reference(&wrong_owner, tenant_id).is_err());
     }
 
     #[test]
