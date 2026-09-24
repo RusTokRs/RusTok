@@ -91,6 +91,17 @@ for (const key of [
   }
 }
 for (const key of [
+  "route_history_reads_are_batched",
+  "current_route_resolution_avoids_per_translation_page_lookup",
+  "published_snapshot_recording_avoids_per_translation_snapshot_lookup",
+  "delete_tombstone_avoids_per_snapshot_alias_lookup",
+]) {
+  if (evidence.source_contract?.[key] !== true) {
+    failures.push(`source_contract.${key} must be true`);
+  }
+}
+
+for (const key of [
   "production_page_builder_behavior_changed",
   "page_body_schema_changed",
   "page_artifact_schema_changed",
@@ -138,6 +149,52 @@ for (const marker of [
 ]) need(entity, marker, "route alias entity");
 need(entities, "pub mod page_route_alias;", "entity registry");
 need(entities, "PageRouteAlias", "entity export");
+
+const routeBatch = between(
+  route,
+  "async fn load_current_published_routes(",
+  "fn page_route_path(",
+  "route query boundedness",
+);
+ordered(routeBatch, [
+  "if translations.is_empty()",
+  "let page_ids = translations",
+  "page::Entity::find()",
+  "page::Column::Id.is_in(page_ids)",
+  "published_page_ids.contains",
+], "current published route batching");
+
+const snapshotBatch = between(
+  route,
+  "pub(super) async fn record_published_route_snapshots_in_tx(",
+  "pub(super) async fn record_delete_route_tombstones_in_tx(",
+  "route snapshot batching",
+);
+ordered(snapshotBatch, [
+  "let existing_snapshots = page_route_publication::Entity::find()",
+  "let mut snapshots_by_route = HashMap::new()",
+  "for translation in translations",
+  "snapshots_by_route.get(&key)",
+], "published snapshot batching");
+if (snapshotBatch.includes("page_route_publication::Entity::find()") && (snapshotBatch.match(/\.all\(txn\)/g) || []).length > 1) {
+  failures.push("route snapshot batching: retained per-translation snapshot queries");
+}
+
+const tombstoneBatch = between(
+  route,
+  "pub(super) async fn record_delete_route_tombstones_in_tx(",
+  "pub(super) async fn record_published_slug_redirects_in_tx(",
+  "route tombstone batching",
+);
+ordered(tombstoneBatch, [
+  "let aliases = page_route_alias::Entity::find()",
+  "let mut aliases_by_route = HashMap::new()",
+  "for snapshot in snapshots",
+  "aliases_by_route.get(&key)",
+], "delete tombstone batching");
+if (tombstoneBatch.includes("page_route_alias::Entity::find()") && (tombstoneBatch.match(/\.all\(txn\)/g) || []).length > 1) {
+  failures.push("route tombstone batching: retained per-snapshot alias queries");
+}
 
 for (const marker of [
   'PAGE_ROUTE_NOT_FOUND: &str = "PAGE_ROUTE_NOT_FOUND"',
@@ -219,16 +276,22 @@ ordered(metadataWrite, [
 const aliasWriter = between(
   route,
   "pub(super) async fn record_published_slug_redirects_in_tx(",
-  "async fn record_redirect_alias_in_tx(",
+  "async fn record_gone_alias_in_tx(",
   "published rename writer",
 );
 ordered(aliasWriter, [
   "storage_to_status(page_status)? != ContentStatus::Published",
   "return Ok(())",
   "existing_by_locale",
-  "if old_slug == new_slug",
-  "record_redirect_alias_in_tx(",
+  "if pending.is_empty()",
+  "let aliases = page_route_alias::Entity::find()",
+  "let mut aliases_by_route = HashMap::new()",
+  "for (locale, old_slug) in pending",
+  "aliases_by_route.get(&key)",
 ], "published-only alias ordering");
+if ((aliasWriter.match(/\.all\(txn\)/g) || []).length > 2) {
+  failures.push("published rename writer: retained per-locale alias lookup pattern");
+}
 
 for (const marker of [
   'format!("/{locale}/modules/pages?slug={slug}")',

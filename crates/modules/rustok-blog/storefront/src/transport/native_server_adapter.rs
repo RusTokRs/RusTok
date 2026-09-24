@@ -203,13 +203,9 @@ async fn storefront_blog_native(
         let (tenant_id, fallback_locale) = if let Some(tenant) = tenant_context.as_ref() {
             (tenant.id, tenant.default_locale.clone())
         } else {
-            let slug = tenant_slug
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .ok_or_else(public_internal_error)?;
+            let slug = super::configured_fallback_tenant_slug(tenant_slug.as_deref())?;
             let tenant = TenantService::new(runtime_ctx.db_clone())
-                .get_tenant_by_slug(slug)
+                .get_tenant_by_slug(slug.as_str())
                 .await
                 .map_err(|_| public_internal_error())?;
             (tenant.id, tenant.default_locale)

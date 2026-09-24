@@ -15,6 +15,8 @@ use rustok_api::{
     AuthContext, Permission, RequestContext, TenantContext, graphql::GraphQLError,
     has_effective_permission,
 };
+
+use super::map_search_module_error;
 use rustok_telemetry::metrics;
 
 use super::types::{
@@ -149,7 +151,7 @@ impl SearchQueryRoot {
 
         let settings = SearchSettingsService::load_effective(db, tenant_id)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(map_search_module_error)?;
 
         Ok(settings.into())
     }
@@ -168,7 +170,7 @@ impl SearchQueryRoot {
 
         let snapshot = SearchDiagnosticsService::snapshot(db, tenant_id)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(map_search_module_error)?;
 
         Ok(snapshot.into())
     }
@@ -192,7 +194,7 @@ impl SearchQueryRoot {
             limit.unwrap_or(25).clamp(1, 100) as usize,
         )
         .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        .map_err(map_search_module_error)?;
 
         Ok(rows.into_iter().map(Into::into).collect())
     }
@@ -216,7 +218,7 @@ impl SearchQueryRoot {
             limit.unwrap_or(25).clamp(1, 100) as usize,
         )
         .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        .map_err(map_search_module_error)?;
 
         Ok(rows.into_iter().map(Into::into).collect())
     }
@@ -239,7 +241,7 @@ impl SearchQueryRoot {
 
         let snapshot = SearchAnalyticsService::snapshot(db, tenant_id, days, limit)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(map_search_module_error)?;
 
         Ok(snapshot.into())
     }
@@ -278,7 +280,7 @@ impl SearchQueryRoot {
         let surface = normalize_surface(&input.surface)?;
         let settings = SearchSettingsService::load_effective(db, Some(tenant_id))
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(map_search_module_error)?;
 
         Ok(SearchFilterPresetService::list(&settings.config, &surface)
             .into_iter()
@@ -307,7 +309,7 @@ impl SearchQueryRoot {
             .map_err(map_search_module_error)?;
         let settings = SearchSettingsService::load_effective(db, Some(tenant_id))
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(map_search_module_error)?;
         let resolved = resolve_preset_and_ranking(
             &settings.config,
             policy.surface,
@@ -372,7 +374,7 @@ impl SearchQueryRoot {
             .map_err(map_search_module_error)?;
         let settings = SearchSettingsService::load_effective(db, Some(tenant_id))
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(map_search_module_error)?;
         let resolved = resolve_preset_and_ranking(
             &settings.config,
             policy.surface,
@@ -440,7 +442,7 @@ impl SearchQueryRoot {
             .map_err(map_search_module_error)?;
         let settings = SearchSettingsService::load_effective(db, Some(tenant.id))
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(map_search_module_error)?;
         let resolved = resolve_preset_and_ranking(
             &settings.config,
             policy.surface,
@@ -539,7 +541,7 @@ impl SearchQueryRoot {
         let tenant = ctx.data::<TenantContext>()?;
         let settings = SearchSettingsService::load_effective(db, Some(tenant.id))
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(map_search_module_error)?;
 
         Ok(
             SearchFilterPresetService::list(&settings.config, STOREFRONT_SEARCH_SURFACE)
@@ -1053,9 +1055,7 @@ async fn finalize_search_result(
             )
             .await;
 
-            Err(<FieldError as GraphQLError>::internal_error(
-                &error.to_string(),
-            ))
+            Err(map_search_module_error(error))
         }
     }
 }
@@ -1138,14 +1138,6 @@ async fn record_search_query_log(
     }
 }
 
-fn map_search_module_error(error: rustok_core::Error) -> FieldError {
-    match error {
-        rustok_core::Error::Validation(message)
-        | rustok_core::Error::NotFound(message)
-        | rustok_core::Error::InvalidIdFormat(message) => FieldError::new(message),
-        other => <FieldError as GraphQLError>::internal_error(&other.to_string()),
-    }
-}
 
 #[cfg(test)]
 mod tests {

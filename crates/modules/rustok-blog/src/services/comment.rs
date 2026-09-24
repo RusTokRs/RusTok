@@ -135,33 +135,51 @@ impl CommentService {
             .await
         {
             Ok(()) => {}
-            Err(BlogError::PostNotFound(_)) => {
-                let compensation_command_id = Uuid::new_v4();
-                self.require_comments_thread_port()?
-                    .delete_comment(
-                        comments_write_port_context(
-                            tenant_id,
-                            &security,
-                            PLATFORM_FALLBACK_LOCALE,
-                            "delete-after-public-target-loss",
-                            record.id,
-                            compensation_command_id,
-                        )?,
+            Err(revalidation_error) => {
+                // The Comments write already crossed an owner boundary. Any failure in
+                // the final Blog visibility check means the create command cannot report
+                // success without leaving a committed foreign-side effect behind.
+                if let Err(compensation_error) = self
+                    .compensate_created_public_comment(
+                        tenant_id,
                         record.id,
                     )
                     .await
-                    .map_err(|error| {
-                        BlogError::invariant(format!(
-                            "Blog post {post_id} lost public visibility after comment creation and the compensating comment delete failed: {}",
-                            error.message
-                        ))
-                    })?;
-                return Err(BlogError::post_not_found(post_id));
+                {
+                    return Err(BlogError::invariant(format!(
+                        "Blog post {post_id} public visibility could not be confirmed after comment creation and the compensating comment delete failed: {compensation_error}"
+                    )));
+                }
+
+                return Err(revalidation_error);
             }
-            Err(error) => return Err(error),
         }
 
         Self::map_comment_record(record)
+    }
+
+    async fn compensate_created_public_comment(
+        &self,
+        tenant_id: Uuid,
+        comment_id: Uuid,
+    ) -> BlogResult<()> {
+        let compensation_command_id = Uuid::new_v4();
+        let system_security = SecurityContext::system();
+        self.require_comments_thread_port()?
+            .delete_comment(
+                comments_write_port_context(
+                    tenant_id,
+                    &system_security,
+                    PLATFORM_FALLBACK_LOCALE,
+                    "delete-after-public-target-loss",
+                    comment_id,
+                    compensation_command_id,
+                )?,
+                comment_id,
+            )
+            .await
+            .map_err(comments_port_error_to_blog_error)?;
+        Ok(())
     }
 
     #[instrument(skip(self, security))]
@@ -724,8 +742,10 @@ mod rich_content_tests {
 
 #[cfg(test)]
 mod public_target_tests {
-    use super::is_public_comment_target;
+    use super::{comments_write_port_context, is_public_comment_target};
     use crate::BlogPostStatus;
+    use rustok_api::PortActorKind;
+    use rustok_core::SecurityContext;
 
     #[test]
     fn public_comment_target_requires_a_published_post() {
@@ -742,6 +762,22 @@ mod public_target_tests {
     }
 
     #[test]
+    #[test]
+    fn compensation_write_context_uses_the_trusted_system_actor() {
+        let context = comments_write_port_context(
+            Uuid::new_v4(),
+            &SecurityContext::system(),
+            PLATFORM_FALLBACK_LOCALE,
+            "delete-after-public-target-loss",
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+        )
+        .expect("system compensation context should be valid");
+
+        assert_eq!(context.actor.kind, PortActorKind::System);
+        assert_eq!(context.actor.id, "system");
+    }
+
     fn public_comment_target_enforces_the_channel_allowlist() {
         let channels = vec!["web".to_string()];
         assert!(is_public_comment_target(

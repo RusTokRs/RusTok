@@ -53,6 +53,26 @@ fn selected_transport_path() -> UiTransportPath {
     }
 }
 
+#[cfg(feature = "ssr")]
+fn configured_fallback_tenant_slug(requested: Option<&str>) -> Result<String, ServerFnError> {
+    let configured = configured_tenant_slug().ok_or_else(|| {
+        ServerFnError::new(
+            "Blog storefront server function requires a configured tenant fallback",
+        )
+    })?;
+    let requested = requested
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if let Some(requested) = requested
+        && requested != configured
+    {
+        return Err(ServerFnError::new(
+            "Blog storefront tenant fallback does not match the configured host tenant",
+        ));
+    }
+    Ok(configured)
+}
+
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 pub(crate) fn configured_tenant_slug() -> Option<String> {
     [

@@ -231,6 +231,8 @@ assertContains(native, "runtime_ctx.db_clone()", `${files.native}: native adapte
 assertContains(native, "let auth_context = leptos_axum::extract::<rustok_api::AuthContext>()", `${files.native}: authenticated tenant identity must be available before tenant selection`);
 assertContains(native, "ensure_storefront_tenant_binding(auth_context.as_ref(), tenant_id)?", `${files.native}: authenticated storefront requests must bind to the selected tenant`);
 assertContains(native, "fn ensure_storefront_tenant_binding(", `${files.native}: tenant binding helper must remain owner-side`);
+assertContains(native, "fn configured_fallback_tenant_slug(requested: Option<&str>)", `${files.native}: public/native tenant fallback must be constrained by the configured host tenant`);
+assertContains(native, "super::configured_fallback_tenant_slug(tenant_slug.as_deref())?", `${files.native}: native storefront must validate the caller-provided tenant fallback`);
 assertContains(native, 'endpoint = "blog/comment-create"', `${files.native}: native adapter must expose the Blog-bound comment endpoint`);
 assertContains(native, ".create_public_comment(", `${files.native}: native command must validate the public Blog target before Comments writes`);
 

@@ -8,6 +8,8 @@ use crate::{
     SearchModule, SearchSettingsService,
 };
 use rustok_api::{AuthContext, Permission, TenantContext, graphql::GraphQLError};
+
+use super::map_search_module_error;
 use rustok_events::DomainEvent;
 use rustok_telemetry::metrics;
 
@@ -54,7 +56,7 @@ impl SearchMutationRoot {
             },
         )
         .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        .map_err(map_search_module_error)?;
 
         Ok(TrackSearchClickPayload {
             success: true,
@@ -227,7 +229,7 @@ impl SearchMutationRoot {
             config,
         )
         .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        .map_err(map_search_module_error)?;
 
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         if let Err(error) = event_bus
@@ -297,7 +299,7 @@ impl SearchMutationRoot {
                 },
             )
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(map_search_module_error)?;
 
         if let Err(error) = event_bus
             .publish(
@@ -382,11 +384,3 @@ fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid
     }
 }
 
-fn map_search_module_error(error: rustok_core::Error) -> FieldError {
-    match error {
-        rustok_core::Error::Validation(message)
-        | rustok_core::Error::NotFound(message)
-        | rustok_core::Error::InvalidIdFormat(message) => FieldError::new(message),
-        other => <FieldError as GraphQLError>::internal_error(&other.to_string()),
-    }
-}

@@ -186,6 +186,8 @@ runtime_ctx.db_clone()
 ${options.missingTenantBinding ? "" : `let auth_context = leptos_axum::extract::<rustok_api::AuthContext>()
 ensure_storefront_tenant_binding(auth_context.as_ref(), tenant_id)?
 fn ensure_storefront_tenant_binding(`}
+${options.missingTenantFallbackBinding ? "" : `fn configured_fallback_tenant_slug(requested: Option<&str>)
+super::configured_fallback_tenant_slug(tenant_slug.as_deref())?`}
 ChannelService::new
 .is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)
 normalize_channel_slug
@@ -348,4 +350,10 @@ test("blog storefront boundary verifier rejects missing authenticated tenant bin
   const result = runFixture({ missingTenantBinding: true });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /authenticated tenant identity|tenant binding/);
+});
+
+test("blog storefront boundary verifier rejects missing public tenant fallback binding", () => {
+  const result = runFixture({ missingTenantFallbackBinding: true });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /configured host tenant|tenant fallback/);
 });

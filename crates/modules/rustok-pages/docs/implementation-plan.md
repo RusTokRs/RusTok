@@ -1,3 +1,18 @@
+## 2026-09-24 Pages route-history query boundedness
+
+A fresh route-path audit found three sequential database-query patterns in the Pages route owner:
+current published-route resolution queried one Page row per matching translation; published route
+snapshot recording queried one snapshot set per translation; and delete tombstone generation queried
+aliases per retained snapshot.
+
+The route owner now batches those reads inside the same transaction/request boundary:
+- current published routes load candidate translations once and resolve published Page ids with one tenant-scoped IN query;
+- publish snapshots load all existing snapshots for the Page once and compare by `(locale, slug)`;
+- delete tombstones load all relevant aliases for the Page route set once and preserve fail-closed duplicate/conflict handling.
+
+No route semantics changed. Existing route claim uniqueness and immutable-history rules remain authoritative.
+Runtime/build/test evidence is maintainer-owned and remains unrun.
+
 # Implementation Plan for `rustok-pages`
 
 Date: 2026-08-08  

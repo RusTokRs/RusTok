@@ -477,3 +477,12 @@ The public `SearchProjector` facade delegates to the canonical `projector_core.r
 ## 2026-09-24 Search bootstrap failure boundary
 
 Both layers of the SearchProjector bootstrap path now propagate database count-row decoding errors. A missing count row yields no row and therefore zero; a present row that cannot be decoded is an infrastructure/schema error and must not be converted into an empty-index signal or trigger a destructive rebuild. The Search FBA verifier enforces this in the canonical projector core and facade.
+
+
+## 2026-09-24 Search GraphQL error-boundary hardening
+
+A fresh cross-surface error audit found that Search GraphQL adapters exposed `rustok_core::Error::to_string()` directly for database, external-service, serialization, cache, scripting, and internal failures. That leaked persistence/driver details through the GraphQL boundary and violated the module's own operational-error policy.
+
+The Search GraphQL surface now has one owner-local error adapter in `graphql/mod.rs`. Caller-safe validation, not-found, authentication, and permission failures retain typed GraphQL codes; infrastructure and internal failures are mapped to the generic `INTERNAL_ERROR` message while detailed errors remain in server-side telemetry/logging. Query, mutation, and Forum Search reconciliation paths use the same adapter, eliminating transport-specific error drift. Regression tests cover redaction and typed public codes.
+
+Runtime, build, gatekeeper, and automated tests remain maintainer-owned and unrun by the agent.
