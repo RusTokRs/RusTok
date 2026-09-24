@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use chrono::Utc;
 use sea_orm::{
@@ -243,35 +243,57 @@ pub(super) async fn record_published_route_snapshots_in_tx(
         .order_by_asc(page_translation::Column::Locale)
         .all(txn)
         .await?;
-    let mut inserted = 0_u32;
+    if translations.is_empty() {
+        return Ok(0);
+    }
 
+    let existing_snapshots = page_route_publication::Entity::find()
+        .filter(page_route_publication::Column::TenantId.eq(tenant_id))
+        .filter(page_route_publication::Column::PageId.eq(page_id))
+        .all(txn)
+        .await?;
+    let mut snapshots_by_route = HashMap::new();
+    for snapshot in existing_snapshots {
+        let key = (snapshot.locale.clone(), snapshot.slug.clone());
+        if snapshots_by_route.insert(key, snapshot).is_some() {
+            return Err(page_route_resolution_conflict());
+        }
+    }
+
+    let mut inserted = 0_u32;
     for translation in translations {
         let locale = normalize_locale(&translation.locale)?;
         let slug = normalize_slug(&translation.slug)?;
-        let snapshots = page_route_publication::Entity::find()
-            .filter(page_route_publication::Column::TenantId.eq(tenant_id))
-            .filter(page_route_publication::Column::Locale.eq(&locale))
-            .filter(page_route_publication::Column::Slug.eq(&slug))
-            .all(txn)
-            .await?;
-        match snapshots.as_slice() {
-            [] => {
+        let key = (locale.clone(), slug.clone());
+        match snapshots_by_route.get(&key) {
+            None => {
                 page_route_publication::ActiveModel {
                     id: Set(Uuid::new_v4()),
                     tenant_id: Set(tenant_id),
                     page_id: Set(page_id),
-                    locale: Set(locale),
-                    slug: Set(slug),
+                    locale: locale.clone(),
+                    slug: slug.clone(),
                     recorded_at: Set(Utc::now().into()),
                 }
                 .insert(txn)
                 .await?;
+                snapshots_by_route.insert(
+                    key,
+                    page_route_publication::Model {
+                        id: Uuid::new_v4(),
+                        tenant_id,
+                        page_id,
+                        locale,
+                        slug,
+                        recorded_at: Utc::now().into(),
+                    },
+                );
                 inserted = inserted
                     .checked_add(1)
                     .ok_or_else(page_route_resolution_conflict)?;
             }
-            [snapshot] if snapshot.page_id == page_id => {}
-            _ => return Err(page_route_resolution_conflict()),
+            Some(snapshot) if snapshot.page_id == page_id => {}
+            Some(_) => return Err(page_route_resolution_conflict()),
         }
     }
 
@@ -289,18 +311,35 @@ pub(super) async fn record_delete_route_tombstones_in_tx(
         .order_by_asc(page_route_publication::Column::RecordedAt)
         .all(txn)
         .await?;
+    if snapshots.is_empty() {
+        return Ok(0);
+    }
     let reason = normalize_alias_reason(PAGE_DELETED_ROUTE_REASON)?;
-    let mut inserted = 0_u32;
+    let snapshot_slugs = snapshots
+        .iter()
+        .map(|snapshot| snapshot.slug.clone())
+        .collect::<Vec<_>>();
+    let locales = snapshots
+        .iter()
+        .map(|snapshot| snapshot.locale.clone())
+        .collect::<Vec<_>>();
 
+    let aliases = page_route_alias::Entity::find()
+        .filter(page_route_alias::Column::TenantId.eq(tenant_id))
+        .filter(page_route_alias::Column::Locale.is_in(locales))
+        .filter(page_route_alias::Column::Slug.is_in(snapshot_slugs))
+        .all(txn)
+        .await?;
+    let mut aliases_by_route = HashMap::new();
+    for alias in aliases {
+        aliases_by_route.insert((alias.locale.clone(), alias.slug.clone()), alias);
+    }
+
+    let mut inserted = 0_u32;
     for snapshot in snapshots {
-        let aliases = page_route_alias::Entity::find()
-            .filter(page_route_alias::Column::TenantId.eq(tenant_id))
-            .filter(page_route_alias::Column::Locale.eq(&snapshot.locale))
-            .filter(page_route_alias::Column::Slug.eq(&snapshot.slug))
-            .all(txn)
-            .await?;
-        match aliases.as_slice() {
-            [] => {
+        let key = (snapshot.locale.clone(), snapshot.slug.clone());
+        match aliases_by_route.get(&key) {
+            None => {
                 record_gone_alias_in_tx(
                     txn,
                     tenant_id,
@@ -314,7 +353,7 @@ pub(super) async fn record_delete_route_tombstones_in_tx(
                     .checked_add(1)
                     .ok_or_else(page_route_resolution_conflict)?;
             }
-            [alias]
+            Some(alias)
                 if alias.page_id == page_id
                     && alias.disposition == ROUTE_DISPOSITION_REDIRECT
                     && alias.target_page_id.is_some()
@@ -498,21 +537,36 @@ async fn load_current_published_routes(
         .filter(page_translation::Column::Slug.eq(slug))
         .all(db)
         .await?;
-    let mut routes = Vec::new();
-    for translation in translations {
-        let page = page::Entity::find_by_id(translation.page_id)
-            .filter(page::Column::TenantId.eq(tenant_id))
-            .filter(page::Column::Status.eq(status_to_storage(&ContentStatus::Published)))
-            .one(db)
-            .await?;
-        if page.is_some() {
-            routes.push(CurrentPublishedRoute {
+    if translations.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let page_ids = translations
+        .iter()
+        .map(|translation| translation.page_id)
+        .collect::<Vec<_>>();
+    let published_page_ids = page::Entity::find()
+        .select_only()
+        .column(page::Column::Id)
+        .filter(page::Column::TenantId.eq(tenant_id))
+        .filter(page::Column::Status.eq(status_to_storage(&ContentStatus::Published)))
+        .filter(page::Column::Id.is_in(page_ids))
+        .into_tuple::<Uuid>()
+        .all(db)
+        .await?
+        .into_iter()
+        .collect::<std::collections::HashSet<_>>();
+
+    Ok(translations
+        .into_iter()
+        .filter(|translation| published_page_ids.contains(&translation.page_id))
+        .map(|translation| {
+            Ok(CurrentPublishedRoute {
                 page_id: translation.page_id,
                 slug: normalize_slug(&translation.slug)?,
-            });
-        }
-    }
-    Ok(routes)
+            })
+        })
+        .collect::<PagesResult<Vec<_>>>()?)
 }
 
 fn page_route_path(locale: &str, slug: &str) -> String {
