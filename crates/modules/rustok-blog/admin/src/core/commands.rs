@@ -28,13 +28,8 @@ pub fn parse_tags(raw: &str) -> Vec<String> {
 pub fn slugify(input: &str) -> String {
     input
         .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() {
-                ch.to_ascii_lowercase()
-            } else {
-                '-'
-            }
-        })
+        .flat_map(|ch| ch.to_lowercase())
+        .map(|ch| if ch.is_alphanumeric() { ch } else { '-' })
         .collect::<String>()
         .split('-')
         .filter(|segment| !segment.is_empty())
