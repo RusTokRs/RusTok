@@ -142,7 +142,6 @@ impl CommentService {
                 if let Err(compensation_error) = self
                     .compensate_created_public_comment(
                         tenant_id,
-                        &security,
                         record.id,
                     )
                     .await
@@ -162,15 +161,15 @@ impl CommentService {
     async fn compensate_created_public_comment(
         &self,
         tenant_id: Uuid,
-        security: &SecurityContext,
         comment_id: Uuid,
     ) -> BlogResult<()> {
         let compensation_command_id = Uuid::new_v4();
+        let system_security = SecurityContext::system();
         self.require_comments_thread_port()?
             .delete_comment(
                 comments_write_port_context(
                     tenant_id,
-                    security,
+                    &system_security,
                     PLATFORM_FALLBACK_LOCALE,
                     "delete-after-public-target-loss",
                     comment_id,
