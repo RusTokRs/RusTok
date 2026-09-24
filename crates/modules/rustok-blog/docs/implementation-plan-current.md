@@ -337,3 +337,8 @@ The active Blog dependency contract is `content + taxonomy + outbox + channel`. 
 ## 2026-09-24 Comments principal-bound idempotency
 
 The Blog reference audit identified that durable Comments receipts were replayed before owner authorization and were keyed only by tenant/owner/operation/idempotency key/request. The Comments owner now binds every port write receipt to the authenticated PortContext.actor in addition to the existing durable request identity, preventing cross-principal replay inside a tenant without coupling Blog to Comments persistence. The owner contract and static matrix document this invariant. Maintainer runtime evidence, gatekeeper, build, and automated tests remain unrun by the agent.
+
+
+## 2026-09-24 Comments idempotency source-gate hardening
+
+The Comments principal-bound durable receipt fix is now protected by the Comments port source verifier and its self-test: every write operation must bind the authenticated PortContext.actor, the registry declares the binding tuple, and the evidence matrix carries the idempotency_principal_bound assertion. A unit regression proves same-principal retries retain identity while a different principal does not. Tests, build and CI remain unrun by the agent per maintainer instruction.
