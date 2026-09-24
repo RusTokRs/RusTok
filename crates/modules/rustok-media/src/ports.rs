@@ -456,15 +456,21 @@ fn media_asset_reference_admission_state(
     active_blob_state: Option<&str>,
 ) -> Result<MediaAssetReferenceAdmissionState, PortError> {
     match asset_state {
-        "active" => match active_blob_state {
+        state if state == AssetState::Active.as_str() => match active_blob_state {
             Some(state) if state == BlobState::Ready.as_str() => {
                 Ok(MediaAssetReferenceAdmissionState::Admitted)
             }
             Some(_) | None => Ok(MediaAssetReferenceAdmissionState::NotReady),
         },
-        "delete_pending" => Ok(MediaAssetReferenceAdmissionState::DeletePending),
-        "deleted" => Ok(MediaAssetReferenceAdmissionState::Deleted),
-        "failed" => Ok(MediaAssetReferenceAdmissionState::Failed),
+        state if state == AssetState::DeletePending.as_str() => {
+            Ok(MediaAssetReferenceAdmissionState::DeletePending)
+        }
+        state if state == AssetState::Deleted.as_str() => {
+            Ok(MediaAssetReferenceAdmissionState::Deleted)
+        }
+        state if state == AssetState::Failed.as_str() => {
+            Ok(MediaAssetReferenceAdmissionState::Failed)
+        }
         other => Err(PortError::invariant_violation(
             "media.lifecycle_state_invalid",
             format!("unknown media asset lifecycle state: {other}"),
