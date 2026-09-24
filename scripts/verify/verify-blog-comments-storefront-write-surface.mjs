@@ -58,6 +58,22 @@ const graphql = read(files.graphql);
 const native = read(files.native);
 const facade = read(files.facade);
 const model = read(files.model);
+const commentService = read('crates/modules/rustok-blog/src/services/comment.rs');
+const publicVisibilityCheckCount =
+  (commentService.match(/ensure_public_post_visible\(tenant_id, post_id, public_channel_slug\)/g) ?? []).length;
+if (publicVisibilityCheckCount < 2) {
+  failures.push('comment service: public visibility must be revalidated after the external create');
+}
+need(
+  commentService,
+  '"delete-after-public-target-loss"',
+  'comment service',
+);
+need(
+  commentService,
+  'lost public visibility after comment creation',
+  'comment service',
+);
 const plan = read(files.plan);
 
 if (evidence) {
