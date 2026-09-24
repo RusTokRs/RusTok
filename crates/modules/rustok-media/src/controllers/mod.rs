@@ -105,6 +105,25 @@ fn media_error(error: MediaError) -> HttpError {
             "invalid_owner_module",
             format!("Invalid owner module: {module}"),
         ),
+        MediaError::AssetReferenceNotAdmissible(id) => HttpError::new(
+            StatusCode::CONFLICT,
+            "media_asset_reference_not_admissible",
+            format!("Media asset {id} cannot currently accept an owner reference"),
+        ),
+        MediaError::AssetReferenced(id) => HttpError::new(
+            StatusCode::CONFLICT,
+            "media_asset_referenced",
+            format!("Media asset {id} is still retained by an owner reference"),
+        ),
+        MediaError::InvalidAssetReferenceId => HttpError::bad_request(
+            "invalid_asset_reference_id",
+            "Media asset reference identity is invalid",
+        ),
+        MediaError::AssetReferenceConflict(id) => HttpError::new(
+            StatusCode::CONFLICT,
+            "media_asset_reference_conflict",
+            format!("Media asset reference identity {id} is already bound to another asset or owner"),
+        ),
         MediaError::RenditionInProgress(id) => HttpError::new(
             StatusCode::CONFLICT,
             "media_rendition_in_progress",

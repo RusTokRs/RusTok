@@ -1,4 +1,5 @@
 use sea_orm_migration::prelude::*;
+use sea_orm_migration::sea_orm::DatabaseBackend;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -35,8 +36,7 @@ impl MigrationTrait for Migration {
                             .name("fk_media_asset_reference_holds_tenant")
                             .from(ReferenceHolds::Table, ReferenceHolds::TenantId)
                             .to(Tenants::Table, Tenants::Id)
-                            .on_delete(ForeignKeyAction::Cascade)
-                            .to_owned(),
+                            .on_delete(ForeignKeyAction::Cascade),
                     )
                     .foreign_key(
                         ForeignKey::create()
@@ -47,8 +47,7 @@ impl MigrationTrait for Migration {
                             .to_tbl(Assets::Table)
                             .to_col(Assets::TenantId)
                             .to_col(Assets::Id)
-                            .on_delete(ForeignKeyAction::Restrict)
-                            .to_owned(),
+                            .on_delete(ForeignKeyAction::Restrict),
                     )
                     .to_owned(),
             )
