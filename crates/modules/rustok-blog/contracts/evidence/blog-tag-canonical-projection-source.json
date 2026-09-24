@@ -34,7 +34,9 @@
     "tag_aggregation_is_distinct_and_deterministic": true,
     "stale_metadata_tags_are_ignored_by_search_harness": true,
     "tag_mutation_semantics_changed": true,
-    "tag_mutation_atomic_reindex_implemented": false,
+    "tag_mutation_atomic_reindex_implemented": true,
+    "global_tag_search_invalidation_implemented": true,
+    "global_tag_search_reindex_target": "search/tenant",
     "production_behavior_changed": true,
     "database_schema_changed": true,
     "ffa_promoted": false,
@@ -72,7 +74,7 @@
     "no_postgresql_result",
     "no_legacy_data_audit_result",
     "no_legacy_backfill_result",
-    "no_tag_mutation_atomic_reindex_result",
+    "no_global_tag_search_invalidation_result",
     "no_runtime_result",
     "no_production_result"
   ]
