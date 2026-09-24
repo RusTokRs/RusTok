@@ -8,6 +8,7 @@ package rustok.media;
 service MediaService {
   rpc GetAsset(IdRequest) returns (JsonResponse);
   rpc GetAssetReferenceAdmission(IdRequest) returns (JsonResponse);
+  rpc ListAssetReferences(JsonRequest) returns (JsonResponse);
   rpc ListAssets(ListRequest) returns (JsonResponse);
   rpc GetImageDescriptor(ImageDescriptorRequest) returns (JsonResponse);
   rpc GetPublicImageAsset(ImageDescriptorRequest) returns (JsonResponse);
