@@ -7,7 +7,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_api::{Action, PortContext, Resource};
-use rustok_content::{normalize_locale_code, resolve_by_locale_with_fallback};
+use rustok_content::normalize_locale_code;
 use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
@@ -19,9 +19,7 @@ use crate::entities::{
 use crate::error::{ForumError, ForumResult};
 use crate::mentions::ForumContentTarget;
 use crate::state_machine::{ReplyStatus, TopicStatus};
-use crate::richtext::project_stored_discussion;
 use crate::services::engagement_mode::ForumSettingsProviders;
-use crate::services::vote::{VoteService, VoteSummary};
 
 use super::category::CategoryService;
 use super::category_lifecycle::{ensure_category_restore_target_is_active_in_tx, lock_category_tree_in_tx};
