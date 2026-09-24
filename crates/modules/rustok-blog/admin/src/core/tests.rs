@@ -406,8 +406,10 @@ fn sample_list_item(id: &str) -> BlogPostListItem {
     }
 
     #[test]
-    fn slugify_normalizes_text() {
+    fn slugify_matches_blog_post_route_normalization() {
         assert_eq!(slugify("Hello, Rustok UI!"), "hello-rustok-ui");
+        assert_eq!(slugify("Новости Rustok"), "новости-rustok");
+        assert_eq!(slugify("  Привет, мир!  "), "привет-мир");
     }
 
     #[test]
