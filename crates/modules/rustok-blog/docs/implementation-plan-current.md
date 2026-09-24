@@ -192,6 +192,7 @@ previous cursor. Their latest retained source states remain:
 - `tag_list_pagination = source_complete_maintainer_execution_pending`;
 - `tag_canonical_projection = source_complete_maintainer_execution_pending`;
 - `tag_mutation_atomic_reindex = source_complete_maintainer_execution_pending`;
+- `global_tag_search_invalidation = source_complete_maintainer_execution_pending`;
 - `post_category_name_projection = source_complete_canonical_taxonomy_read`.
 - `comment_target_lifecycle_guard = source_complete`; comment reads and mutations that begin from a Comments record revalidate canonical Blog post existence, so asynchronously stale Comments threads cannot remain operable after terminal post deletion.
 - `comment_create_target_race_compensation = source_complete`; comment creation revalidates the canonical Blog post after the external Comments write and compensates a comment created after terminal post deletion, while preserving the durable `TargetDeleted` cleanup backstop.
@@ -237,6 +238,14 @@ adds the database backstop on PostgreSQL and SQLite and fails the upgrade before
 installed when pre-existing rows violate the contract. This prevents malformed persisted settings
 from being written or returned as ordinary Category data.
 
+## 2026-09-24 Shared global Tag Search invalidation
+
+The fresh cross-owner Blog Search audit found that canonical Search documents resolve global Taxonomy Tag labels directly from Taxonomy tables. A Taxonomy-owned global Tag update, delete, or exact-locale Translation-target apply could therefore change source truth without invalidating Search. Slice 105 closes this gap by writing the existing tenant-scoped `index.reindex_requested` event from inside the Taxonomy transaction. Module-owned Tags are excluded from this global rebuild because their owning modules retain narrow invalidation ownership.
+
+`global_tag_search_invalidation = source_complete_maintainer_execution_pending`
+
+The Search module already consumes the generic reindex event, so no Blog↔Taxonomy runtime dependency and no new event type are introduced. Runtime/build/gatekeeper/tests remain maintainer-owned and unrun.
+
 ## Remaining execution-owned results
 
 The retained maintainer/runtime evidence backlog is now limited to tracks whose
@@ -246,14 +255,17 @@ source still exists and whose result has not been superseded:
    canonical relay and cached-snapshot evidence at an exact revision.
 2. Execute the retained canonical tag projection and tag
    mutation/outbox rollback/delete-cascade evidence before runtime promotion.
-3. Audit deployed data for metadata-only legacy tag rows before canonical tag
+3. Execute global Taxonomy Tag Search invalidation evidence, including direct
+   update/delete, exact-locale Translation-target apply, module-owned negative
+   coverage, and transactional outbox rollback.
+4. Audit deployed data for metadata-only legacy tag rows before canonical tag
    projection rollout; backfill owner relations if such rows exist.
-4. Execute category CRUD/Search refresh/canonical navigation/mounted rate-limit
+5. Execute category CRUD/Search refresh/canonical navigation/mounted rate-limit
    evidence that remains applicable to the current Taxonomy-backed Category
    implementation.
-5. Execute the Blog article richtext cutover/backfill/browser evidence already
+6. Execute the Blog article richtext cutover/backfill/browser evidence already
    retained by the historical plan.
-6. Run Blog migration smoke against PostgreSQL and SQLite, including clean up-from-zero,
+7. Run Blog migration smoke against PostgreSQL and SQLite, including clean up-from-zero,
    incremental upgrade, direct invalid settings rejection, oversized settings rejection,
    and dirty-data preflight failure.
 
