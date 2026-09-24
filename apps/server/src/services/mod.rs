@@ -131,7 +131,7 @@ pub mod module_event_dispatcher {
         let base = super::module_event_dispatcher_base::build_shared_runtime_extensions_with_host_providers(
             registry,
             settings,
-            runtime_ctx,
+            runtime_ctx.clone(),
             auth_config,
         )?;
         let mut extensions = Arc::try_unwrap(base).map_err(|_| {
