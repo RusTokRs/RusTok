@@ -48,7 +48,7 @@ function write(root, relativePath, content) {
   writeFileSync(target, content);
 }
 
-function operationSource(operation, { missingWritePolicy, publicBypass } = {}) {
+function operationSource(operation, { missingWritePolicy, publicBypass, missingPrincipalBinding } = {}) {
   const writeOperation = writeOperations.includes(operation);
   const policy = writeOperation
     ? missingWritePolicy && operation === "create_comment"
@@ -77,6 +77,7 @@ function operationSource(operation, { missingWritePolicy, publicBypass } = {}) {
   return `
     async fn ${operation}(&self, context: PortContext) -> Result<CommentRecord, PortError> {
       ${policy}
+      ${writeOperation && !missingPrincipalBinding ? "bind_idempotency_actor(&context, &request);" : ""}
       self.service.${operation}().await.map_err(comments_error_to_port_error)
     }
   `;
@@ -89,6 +90,7 @@ function fixture({
   publicBypass = false,
   missingApprovedFilter = false,
   missingErrorMapping = false,
+  missingPrincipalBinding = false,
   promoteRemoteProfile = false,
   promoteRuntime = false,
 } = {}) {
@@ -134,13 +136,16 @@ function fixture({
     providerPath,
     `
       struct InProcessCommentsThreadProvider { db: DatabaseConnection, service: CommentsService }
+      use rustok_api::PortActor;
+      struct CommentsIdempotencyRequest<'a, T> { actor: &'a PortActor, request: &'a T }
+      fn bind_idempotency_actor<'a, T: serde::Serialize>(context: &'a PortContext, request: &'a T) -> CommentsIdempotencyRequest<'a, T> { CommentsIdempotencyRequest { actor: &context.actor, request } }
       pub fn in_process_comments_thread_port() {
         CommentsService::with_event_bus(db.clone(), event_bus);
       }
       impl CommentsThreadPort for InProcessCommentsThreadProvider {
         ${fixtureOperations
           .map((operation) =>
-            operationSource(operation, { missingWritePolicy, publicBypass }),
+            operationSource(operation, { missingWritePolicy, publicBypass, missingPrincipalBinding }),
           )
           .join("\n")}
       }
@@ -200,7 +205,7 @@ function fixture({
 
   const cases = operations.map((operation) => ({
     operation,
-    assertions: ["typed_port_error_mapping", "context_deadline_preserved"],
+    assertions: ["typed_port_error_mapping", "context_deadline_preserved", ...(writeOperations.includes(operation) ? ["idempotency_principal_bound"] : [])],
     runtime_evidence: "pending",
   }));
   const fallbackSmoke = {
@@ -255,6 +260,7 @@ function fixture({
           operations,
           write_operations: writeOperations,
           read_operations: readOperations,
+          idempotency_binding: ["tenant_scope", "owner", "operation", "idempotency_key", "actor", "request_payload"],
         },
       ],
       verification_chain: {
@@ -339,6 +345,10 @@ test("rejects a missing API contract operation", () => {
 
 test("rejects a write operation without shared policy", () => {
   expectRejected({ missingWritePolicy: true }, /create_comment.*missing context\.require_policy/);
+});
+
+test("rejects a write operation without principal-bound idempotency", () => {
+  expectRejected({ missingPrincipalBinding: true }, /principal binding.*missing bind_idempotency_actor/);
 });
 
 test("rejects public reads that delegate to the authenticated list", () => {
