@@ -51,7 +51,11 @@
     "event_schema_changed": false,
     "optional_event_infrastructure_changed": false,
     "ffa_promoted": false,
-    "fba_promoted": false
+    "fba_promoted": false,
+    "route_history_reads_are_batched": true,
+    "current_route_resolution_avoids_per_translation_page_lookup": true,
+    "published_snapshot_recording_avoids_per_translation_snapshot_lookup": true,
+    "delete_tombstone_avoids_per_snapshot_alias_lookup": true
   },
   "regression": {
     "path": "crates/modules/rustok-pages/tests/page_published_slug_route_alias_sqlite.rs",
