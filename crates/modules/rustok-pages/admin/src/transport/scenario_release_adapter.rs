@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::PageBuilderScenarioReleaseStatus;
 
-const PAGE_BUILDER_SCENARIO_RELEASE_STATUS_QUERY: &str = "query PageBuilderScenarioReleaseStatus($pageId: UUID!) { pageBuilderScenarioReleaseStatus(pageId: $pageId) { pageId baselinePresent allowed status baselineId baselineHash visualChanges breakingChanges diagnostics } }";
+const PAGE_BUILDER_SCENARIO_RELEASE_STATUS_QUERY: &str = "query PageBuilderScenarioReleaseStatus($pageId: UUID!) { pageBuilderScenarioReleaseStatus(pageId: $pageId) { pageId baselinePresent allowed status baselineId baselineHash previousBaselineHash promotedBy promotionNote promotedAt visualChanges breakingChanges diagnostics } }";
 
 #[derive(Debug, Serialize)]
 struct Variables {

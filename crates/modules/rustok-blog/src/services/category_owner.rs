@@ -368,6 +368,12 @@ fn hierarchical_category_order(
     Ok(ordered)
 }
 
+fn normalize_locale(locale: &str) -> BlogResult<String> {
+    TenantLocale::new(locale)
+        .map(TenantLocale::into_inner)
+        .map_err(|_| BlogError::validation("Invalid locale"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::hierarchical_category_order;
@@ -417,9 +423,4 @@ mod tests {
 
         assert!(hierarchical_category_order(&hierarchy).is_err());
     }
-}
-fn normalize_locale(locale: &str) -> BlogResult<String> {
-    TenantLocale::new(locale)
-        .map(TenantLocale::into_inner)
-        .map_err(|_| BlogError::validation("Invalid locale"))
 }

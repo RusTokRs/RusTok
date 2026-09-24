@@ -127,7 +127,6 @@ async fn category_commands_use_taxonomy_after_legacy_storage_retirement() {
                 name: Some("Help".to_string()),
                 slug: Some("help".to_string()),
                 description: Some("Help centre".to_string()),
-                position: None,
                 settings: None,
             },
         )
@@ -172,7 +171,6 @@ async fn category_commands_use_taxonomy_after_legacy_storage_retirement() {
                 name: None,
                 slug: None,
                 description: None,
-                position: None,
                 settings: Some(serde_json::json!({"layout": "canonical-only"})),
             },
         )

@@ -38,6 +38,7 @@ uuid.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+rustok-comments = { workspace = true, features = ["server"] }
 rustok-test-utils.workspace = true
 tokio.workspace = true
 

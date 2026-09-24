@@ -169,6 +169,14 @@ pub struct PageBuilderScenarioReleaseStatus {
     pub baseline_id: Option<String>,
     #[serde(rename = "baselineHash")]
     pub baseline_hash: Option<String>,
+    #[serde(rename = "previousBaselineHash")]
+    pub previous_baseline_hash: Option<String>,
+    #[serde(rename = "promotedBy")]
+    pub promoted_by: Option<String>,
+    #[serde(rename = "promotionNote")]
+    pub promotion_note: Option<String>,
+    #[serde(rename = "promotedAt")]
+    pub promoted_at: Option<String>,
     #[serde(rename = "visualChanges")]
     pub visual_changes: i32,
     #[serde(rename = "breakingChanges")]

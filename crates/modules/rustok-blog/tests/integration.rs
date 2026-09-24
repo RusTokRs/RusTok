@@ -784,9 +784,9 @@ async fn test_create_comment_succeeds_with_required_translation() -> TestResult<
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
 
     let post_service = PostService::new(db.clone(), event_bus.clone());
-    let comment_service = CommentService::with_comments_thread_port(
+    let comment_service = CommentService::from_optional_comments_thread_port(
         db.clone(),
-        in_process_comments_thread_port(db.clone(), event_bus),
+        Some(in_process_comments_thread_port(db.clone(), event_bus)),
     );
 
     let tenant_id = Uuid::new_v4();
@@ -863,9 +863,9 @@ async fn test_public_comment_create_rejects_draft_and_hidden_channel() -> TestRe
     let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
     let post_service = PostService::new(db.clone(), event_bus.clone());
-    let comment_service = CommentService::with_comments_thread_port(
+    let comment_service = CommentService::from_optional_comments_thread_port(
         db.clone(),
-        in_process_comments_thread_port(db.clone(), event_bus),
+        Some(in_process_comments_thread_port(db.clone(), event_bus)),
     );
     let tenant_id = Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;
@@ -935,9 +935,9 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
 
     let post_service = PostService::new(db.clone(), event_bus.clone());
-    let comment_service = CommentService::with_comments_thread_port(
+    let comment_service = CommentService::from_optional_comments_thread_port(
         db.clone(),
-        in_process_comments_thread_port(db.clone(), event_bus.clone()),
+        Some(in_process_comments_thread_port(db.clone(), event_bus.clone())),
     );
 
     let tenant_id = Uuid::new_v4();
@@ -1038,9 +1038,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
         .expect_err("customer should not update чужой комментарий");
     assert!(matches!(
         forbidden,
-        BlogError::Comments(CommentsError::Forbidden(_))
-            | BlogError::Forbidden(_)
-            | BlogError::Rich(_)
+        BlogError::Forbidden(_) | BlogError::Rich(_)
     ));
 
     let not_found_update = comment_service
@@ -1058,9 +1056,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
         .expect_err("must return not found");
     assert!(matches!(
         not_found_update,
-        BlogError::Comments(CommentsError::CommentNotFound(_))
-            | BlogError::CommentNotFound(_)
-            | BlogError::Rich(_)
+        BlogError::CommentNotFound(_) | BlogError::Rich(_)
     ));
 
     comment_service
@@ -1073,9 +1069,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
         .expect_err("must return not found on delete");
     assert!(matches!(
         not_found_delete,
-        BlogError::Comments(CommentsError::CommentNotFound(_))
-            | BlogError::CommentNotFound(_)
-            | BlogError::Rich(_)
+        BlogError::CommentNotFound(_) | BlogError::Rich(_)
     ));
 
     let (page_one, total) = comment_service
@@ -1132,9 +1126,9 @@ async fn test_moderate_comment_with_blog_manage_permission() -> TestResult<()> {
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
 
     let post_service = PostService::new(db.clone(), event_bus.clone());
-    let comment_service = CommentService::with_comments_thread_port(
+    let comment_service = CommentService::from_optional_comments_thread_port(
         db.clone(),
-        in_process_comments_thread_port(db.clone(), event_bus),
+        Some(in_process_comments_thread_port(db.clone(), event_bus)),
     );
 
     let tenant_id = Uuid::new_v4();

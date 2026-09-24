@@ -12,7 +12,10 @@ use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::{PageBuilderScenarioBaselineService, SaveIfCurrentScenarioBaselineRequest};
+use crate::{
+    PageBuilderScenarioBaselineRecord, PageBuilderScenarioBaselineService,
+    SaveIfCurrentScenarioBaselineRequest,
+};
 
 const MODULE_SLUG: &str = "pages";
 
@@ -47,6 +50,10 @@ pub struct GqlPageBuilderScenarioReleaseStatus {
     pub status: String,
     pub baseline_id: Option<String>,
     pub baseline_hash: Option<String>,
+    pub previous_baseline_hash: Option<String>,
+    pub promoted_by: Option<Uuid>,
+    pub promotion_note: Option<String>,
+    pub promoted_at: Option<String>,
     pub visual_changes: i32,
     pub breaking_changes: i32,
     pub diagnostics: Value,
@@ -61,6 +68,10 @@ impl GqlPageBuilderScenarioReleaseStatus {
             status: "not_configured".to_string(),
             baseline_id: None,
             baseline_hash: None,
+            previous_baseline_hash: None,
+            promoted_by: None,
+            promotion_note: None,
+            promoted_at: None,
             visual_changes: 0,
             breaking_changes: 0,
             diagnostics: Value::Array(Vec::new()),
@@ -70,6 +81,7 @@ impl GqlPageBuilderScenarioReleaseStatus {
     fn from_evaluation(
         page_id: Uuid,
         evaluation: RuntimeScenarioReleaseEvaluation,
+        record: Option<PageBuilderScenarioBaselineRecord>,
     ) -> Result<Self> {
         let visual_changes = evaluation
             .diff
@@ -93,6 +105,15 @@ impl GqlPageBuilderScenarioReleaseStatus {
             .unwrap_or_default();
         let diagnostics = serde_json::to_value(&evaluation.diagnostics)
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        let (previous_baseline_hash, promoted_by, promotion_note, promoted_at) = match record {
+            Some(rec) => (
+                rec.previous_baseline_hash,
+                rec.promoted_by,
+                rec.promotion_note,
+                rec.promoted_at.map(|timestamp| timestamp.to_rfc3339()),
+            ),
+            None => (None, None, None, None),
+        };
         Ok(Self {
             page_id,
             baseline_present: evaluation.baseline_id.is_some(),
@@ -100,6 +121,10 @@ impl GqlPageBuilderScenarioReleaseStatus {
             status: release_status_label(evaluation.status).to_string(),
             baseline_id: evaluation.baseline_id,
             baseline_hash: evaluation.baseline_hash,
+            previous_baseline_hash,
+            promoted_by,
+            promotion_note,
+            promoted_at,
             visual_changes: i32::try_from(visual_changes).unwrap_or(i32::MAX),
             breaking_changes: i32::try_from(breaking_changes).unwrap_or(i32::MAX),
             diagnostics,
@@ -151,11 +176,11 @@ impl PageBuilderScenarioBaselineQuery {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = current_tenant_id(tenant, &auth, tenant_id)?;
         let service = PageBuilderScenarioBaselineService::new(db.clone());
-        let baseline = service
-            .get(tenant_id, page_security(&auth), page_id)
+        let record = service
+            .get_record(tenant_id, page_security(&auth), page_id)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-        if baseline.is_none() {
+        if record.is_none() {
             return Ok(GqlPageBuilderScenarioReleaseStatus::not_configured(page_id));
         }
         let evaluation = service
@@ -163,7 +188,7 @@ impl PageBuilderScenarioBaselineQuery {
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?
             .ok_or_else(|| async_graphql::Error::new("Scenario baseline disappeared"))?;
-        GqlPageBuilderScenarioReleaseStatus::from_evaluation(page_id, evaluation)
+        GqlPageBuilderScenarioReleaseStatus::from_evaluation(page_id, evaluation, record)
     }
 }
 
@@ -199,7 +224,7 @@ impl PageBuilderScenarioBaselineMutation {
                 baseline,
                 expected_baseline_hash: input.expected_baseline_hash,
                 promoted_by: auth.user_id,
-                promotion_note: input.promotion_note,
+                promotion_note: input.promotion_note.as_deref().map(str::to_string),
             })
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;

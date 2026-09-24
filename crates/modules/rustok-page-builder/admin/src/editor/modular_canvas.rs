@@ -234,7 +234,7 @@ pub fn AdminCanvas(
                     />
                     <RuntimeScenarioRegressionPanel
                         runtime=scenario_regression_runtime
-                        initial_baseline=scenario_baseline.get_untracked()
+                        initial_baseline=runtime_scenario_baseline
                         on_baseline_change=Some(on_baseline_change)
                     />
                     <DynamicRuntimePanel runtime=dynamic_runtime />

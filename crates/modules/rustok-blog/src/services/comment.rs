@@ -67,7 +67,7 @@ impl CommentService {
         self.ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
             .await?;
 
-        self.create_comment(tenant_id, security, post_id, input)
+        self.create_comment_internal(tenant_id, security, post_id, public_channel_slug, input)
             .await
     }
 
@@ -77,6 +77,18 @@ impl CommentService {
         tenant_id: Uuid,
         security: SecurityContext,
         post_id: Uuid,
+        input: CreateCommentInput,
+    ) -> BlogResult<CommentResponse> {
+        self.create_comment_internal(tenant_id, security, post_id, None, input)
+            .await
+    }
+
+    async fn create_comment_internal(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        post_id: Uuid,
+        public_channel_slug: Option<&str>,
         input: CreateCommentInput,
     ) -> BlogResult<CommentResponse> {
         enforce_scope(&security, Resource::Comments, Action::Create)?;

@@ -696,15 +696,13 @@ fn PagesFlyBuilder(
             let baseline_tenant = tenant;
             let on_baseline = Callback::new(
                 move |change: PageBuilderScenarioBaselineChange| {
-                    let PageBuilderScenarioBaselineChange {
-                        baseline,
-                        promotion_note,
-                    } = change;
                     let page_id = baseline_page_id.clone();
                     let token = baseline_token.get_untracked();
                     let tenant = baseline_tenant.get_untracked();
                     let expected_baseline_hash =
                         server_status.get_untracked().baseline_hash.clone();
+                    let baseline = change.baseline;
+                    let promotion_note = change.promotion_note;
                     spawn_local(async move {
                         let write_result = match baseline {
                             Some(baseline) => transport::save_page_builder_scenario_baseline(

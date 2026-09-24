@@ -20,7 +20,7 @@ const contract = JSON.parse(serviceContract);
 const required = [
   [
     cargo,
-    'fly = { path = "../fly" }',
+    'fly = { path = "../../ui/fly" }',
     "rustok-page-builder must depend on Fly",
   ],
   [
@@ -130,7 +130,8 @@ const failures = required
 
 const currentSources = [adapters, service, browserHost, browserRuntime];
 for (const forbidden of contract.forbidden_symbols ?? []) {
-  if (currentSources.some((source) => source.includes(forbidden))) {
+  const pattern = new RegExp(`\\b${forbidden}\\b`);
+  if (currentSources.some((source) => pattern.test(source))) {
     failures.push(`obsolete runtime symbol '${forbidden}' is present`);
   }
 }

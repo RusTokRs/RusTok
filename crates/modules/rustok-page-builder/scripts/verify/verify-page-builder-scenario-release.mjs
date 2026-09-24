@@ -43,7 +43,7 @@ const required = [
   [adminHost, 'on_runtime_scenario_baseline', 'admin host cannot persist baseline changes'],
   [adminCanvas, 'initial_baseline=runtime_scenario_baseline', 'admin baseline is not mounted'],
   [regressionPanel, 'RuntimeScenarioReleaseBaseline::capture', 'admin does not capture release baselines'],
-  [regressionPanel, 'callback.run(Some(release_baseline))', 'admin does not emit baseline persistence changes'],
+  [regressionPanel, 'callback.run(PageBuilderScenarioBaselineChange::save', 'admin does not emit baseline persistence changes'],
   [serviceTests, 'broken_regression_blocks_before_project_write', 'blocked-write regression test is missing'],
   [serviceTests, 'assert_eq!(writes.load(Ordering::SeqCst), 0)', 'blocked publish does not assert zero writes'],
 ];

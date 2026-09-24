@@ -37,5 +37,6 @@ pub use page::{
 };
 pub use page_builder_artifact::{PageBuilderArtifactService, PublishedLandingArtifact};
 pub use scenario_baseline::{
-    PageBuilderScenarioBaselineService, SaveIfCurrentScenarioBaselineRequest,
+    PageBuilderScenarioBaselineRecord, PageBuilderScenarioBaselineService,
+    SaveIfCurrentScenarioBaselineRequest,
 };

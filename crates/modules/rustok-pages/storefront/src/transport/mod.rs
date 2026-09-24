@@ -70,6 +70,7 @@ pub async fn fetch_pages(
     .await
 }
 
+#[cfg(feature = "ssr")]
 fn configured_fallback_tenant_slug(requested: Option<&str>) -> Result<String, ServerFnError> {
     let configured = configured_tenant_slug().ok_or_else(|| {
         ServerFnError::new(

@@ -70,9 +70,6 @@ pub enum BlogError {
     #[error("Comments capability is unavailable")]
     CommentsUnavailable,
 
-    #[error("Comments error: {0}")]
-    Comments(#[from] rustok_comments::CommentsError),
-
     #[error("Rich error: {0}")]
     Rich(#[from] Box<RichError>),
 
@@ -175,55 +172,6 @@ impl From<BlogError> for RichError {
             )
             .with_user_message("Comments are temporarily unavailable")
             .with_error_code("COMMENTS_PROVIDER_UNAVAILABLE"),
-            BlogError::Comments(err) => match err {
-                rustok_comments::CommentsError::Database(db_err) => {
-                    RichError::new(ErrorKind::Database, "Database operation failed")
-                        .with_user_message("Unable to access comment data")
-                        .with_source(db_err)
-                }
-                rustok_comments::CommentsError::EventPublication(message) => {
-                    RichError::new(ErrorKind::ExternalService, message)
-                        .with_user_message("Unable to publish the comment lifecycle update")
-                        .with_error_code("COMMENT_EVENT_PUBLICATION_FAILED")
-                }
-                rustok_comments::CommentsError::CommentNotFound(id) => {
-                    RichError::new(ErrorKind::NotFound, format!("Comment {} not found", id))
-                        .with_user_message("The requested comment does not exist")
-                        .with_field("comment_id", id.to_string())
-                        .with_error_code("COMMENT_NOT_FOUND")
-                }
-                rustok_comments::CommentsError::CommentThreadNotFound {
-                    target_type,
-                    target_id,
-                } => RichError::new(
-                    ErrorKind::NotFound,
-                    format!("Comment thread for {}:{} not found", target_type, target_id),
-                )
-                .with_user_message("The requested comment thread does not exist")
-                .with_field("target_type", target_type)
-                .with_field("target_id", target_id.to_string())
-                .with_error_code("COMMENT_THREAD_NOT_FOUND"),
-                rustok_comments::CommentsError::CommentThreadClosed {
-                    target_type,
-                    target_id,
-                } => RichError::new(
-                    ErrorKind::Conflict,
-                    format!("Comment thread for {}:{} is closed", target_type, target_id),
-                )
-                .with_user_message("Comments are closed for this thread")
-                .with_field("target_type", target_type)
-                .with_field("target_id", target_id.to_string())
-                .with_error_code("COMMENT_THREAD_CLOSED"),
-                rustok_comments::CommentsError::Forbidden(message) => {
-                    RichError::new(ErrorKind::Forbidden, message).with_user_message(
-                        "You do not have permission to perform this comment action",
-                    )
-                }
-                rustok_comments::CommentsError::Validation(message) => {
-                    RichError::new(ErrorKind::Validation, message)
-                        .with_user_message("Invalid comment data")
-                }
-            },
             BlogError::Rich(rich) => *rich,
             BlogError::Core(core) => core.into(),
         }

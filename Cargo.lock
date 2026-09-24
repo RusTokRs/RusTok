@@ -13315,6 +13315,7 @@ dependencies = [
  "proptest",
  "rustok-api",
  "rustok-channel",
+ "rustok-comments",
  "rustok-comments-api",
  "rustok-content",
  "rustok-core",

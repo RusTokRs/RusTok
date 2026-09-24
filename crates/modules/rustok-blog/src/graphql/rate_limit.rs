@@ -445,6 +445,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn raw_forwarded_headers_do_not_define_the_actor_key() {
         let tenant_id = Uuid::new_v4();
         let tenant = tenant(tenant_id);
