@@ -121,6 +121,15 @@ if (evidence) {
     failures.push(`${evidencePath}: operation set drift`);
   }
   for (const entry of evidence.cases ?? []) {
+    if (
+      writeOperations.includes(entry.operation) &&
+      !(entry.assertions ?? []).includes("idempotency_principal_bound")
+    ) {
+      failures.push(`${evidencePath}: ${entry.operation} missing idempotency_principal_bound assertion`);
+    }
+  }
+
+  for (const entry of evidence.cases ?? []) {
     if (entry.runtime_evidence !== "pending") {
       failures.push(`${evidencePath}: ${entry.operation} runtime status drift`);
     }
@@ -148,6 +157,18 @@ if (registry) {
   if (!sameSet(port?.read_operations ?? [], readOperations)) {
     failures.push(`${registryPath}: read operation drift`);
   }
+  const expectedIdempotencyBinding = [
+    "tenant_scope",
+    "owner",
+    "operation",
+    "idempotency_key",
+    "actor",
+    "request_payload",
+  ];
+  if (!sameSet(port?.idempotency_binding ?? [], expectedIdempotencyBinding)) {
+    failures.push(`${registryPath}: idempotency binding drift`);
+  }
+
   const contractTests = registry.contract_tests ?? {};
   if (
     contractTests.status !== "source_verified_no_compile" ||
@@ -163,6 +184,15 @@ if (registry) {
   if (!sameSet((contractTests.cases ?? []).map((entry) => entry.operation), expectedOperations)) {
     failures.push(`${registryPath}: contract-test operation drift`);
   }
+  for (const entry of registry.contract_tests.cases ?? []) {
+    if (
+      writeOperations.includes(entry.operation) &&
+      !(entry.assertions ?? []).includes("idempotency_principal_bound")
+    ) {
+      failures.push(`${registryPath}: ${entry.operation} missing idempotency_principal_bound assertion`);
+    }
+  }
+
   const gate = registry.verification_chain?.source_gates?.comments_port_boundary;
   if (
     gate?.package_script !== "verify:comments:port-boundary" ||
@@ -198,6 +228,9 @@ for (const marker of [
   "CommentsError::Database(source)",
   "PortError::unavailable(\"comments.database\"",
   "CommentsError::EventPublication(message)",
+  "struct CommentsIdempotencyRequest<'a, T>",
+  "actor: &'a PortActor",
+  "fn bind_idempotency_actor(",
   "PortErrorKind::NotFound",
   "PortErrorKind::Conflict",
   "PortErrorKind::Forbidden",
@@ -242,6 +275,7 @@ if (implStart === -1) {
     const body = implementation.slice(start, next === -1 ? implementation.length : next);
     requireMarker(body, "context.require_policy(PortCallPolicy::write())?", `${providerPath}:${operation}`);
     requireMarker(body, ".map_err(comments_error_to_port_error)", `${providerPath}:${operation}`);
+    requireMarker(body, "bind_idempotency_actor(&context,", `${providerPath}:${operation}: principal binding`);
   }
   for (const operation of readOperations) {
     const start = implementation.indexOf(`async fn ${operation}(`);
