@@ -35,6 +35,7 @@ fn attachment_hold_reconciliation_stays_within_media_owner_boundary() {
         "owner_module: FORUM_MEDIA_OWNER_MODULE.to_string()",
         "MediaReferenceMismatch",
         "OrphanMediaHold",
+        "validate_media_reference(",
     ] {
         assert!(
             source.contains(required),
