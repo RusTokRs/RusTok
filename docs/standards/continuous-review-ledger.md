@@ -44,6 +44,14 @@ Profiles now exposes a tenant-scoped bounded handle batch reader that reuses its
 
 Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
 
+## 2026-09-24 Profiles handle batch bound hardening
+
+The Forum mention batch reader initially delegated its safety to the Forum's 32-target mention limit. That was too weak as a public ProfilesReader contract because other callers could submit an unbounded handle array.
+
+Profiles now enforces its own 64-handle batch limit before any database work. The owner still performs one tenant-scoped profile read plus the existing batched translations/tag resolution, and Forum remains responsible for completeness and mention visibility validation. Integration verification now requires the owner-level limit.
+
+Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
+
 ## Components Review Status
 
 | Status | Component | Category | Files | LOC | Last Audited | Notes |

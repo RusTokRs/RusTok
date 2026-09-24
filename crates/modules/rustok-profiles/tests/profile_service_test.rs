@@ -134,6 +134,33 @@ async fn get_profile_by_handle_normalizes_lookup() {
 }
 
 #[tokio::test]
+async fn batched_handle_reader_rejects_unbounded_requests() {
+    let (_db, service, _event_bus) = setup_context().await;
+    let tenant_id = Uuid::new_v4();
+    let handles = (0..=rustok_profiles::MAX_PROFILE_HANDLE_BATCH)
+        .map(|index| format!("user-{index:03}"))
+        .collect::<Vec<_>>();
+
+    let error = service
+        .find_profile_records_by_handles(tenant_id, &handles, Some("en"), Some("en"))
+        .await
+        .unwrap_err();
+
+    assert_eq!(
+        error.code(),
+        "profiles.validation_failed",
+        "unbounded profile-handle batches must fail as validation"
+    );
+    assert_eq!(
+        error.to_string(),
+        format!(
+            "profile validation failed: profile handle batch exceeds {} handles",
+            rustok_profiles::MAX_PROFILE_HANDLE_BATCH
+        )
+    );
+}
+
+#[tokio::test]
 async fn batched_handle_reader_uses_one_owner_lookup_contract() {
     let (db, service, event_bus) = setup_context().await;
     let mutations = ProfileMutationService::new(&db, &event_bus);

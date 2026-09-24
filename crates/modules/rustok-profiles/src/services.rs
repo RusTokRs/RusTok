@@ -19,6 +19,7 @@ const MAX_HANDLE_LENGTH: usize = 32;
 const MAX_DISPLAY_NAME_LENGTH: usize = 255;
 const MAX_LOCALE_LENGTH: usize = 32;
 const MAX_HANDLE_SUFFIX_ATTEMPTS: usize = 100;
+pub const MAX_PROFILE_HANDLE_BATCH: usize = 64;
 const RESERVED_HANDLES: &[&str] = &["admin", "api", "me", "root", "support", "system"];
 
 impl ProfileService {
@@ -409,6 +410,12 @@ impl ProfileService {
         requested_locale: Option<&str>,
         tenant_default_locale: Option<&str>,
     ) -> ProfileResult<HashMap<String, ProfileRecord>> {
+        if handles.len() > MAX_PROFILE_HANDLE_BATCH {
+            return Err(ProfileError::Validation(format!(
+                "profile handle batch exceeds {MAX_PROFILE_HANDLE_BATCH} handles"
+            )));
+        }
+
         let mut normalized_handles = Vec::with_capacity(handles.len());
         for handle in handles {
             let normalized = Self::normalize_handle(handle)?;

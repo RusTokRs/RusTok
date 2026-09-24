@@ -71,6 +71,8 @@ const mentionService = read("crates/modules/rustok-forum/src/services/mention_re
 const b2Record = read("crates/modules/rustok-forum/docs/forum-12b2-owner-write-integration.md");
 
 requireText(profilesReader, "find_profile_records_by_handles", "ProfilesReader must expose bounded batch handle lookup");
+requireText(profileServices, "pub const MAX_PROFILE_HANDLE_BATCH: usize = 64", "Profiles owner must expose a hard batch bound");
+requireText(profileServices, "if handles.len() > MAX_PROFILE_HANDLE_BATCH", "Profiles batch lookup must reject over-limit requests");
 requireText(profileServices, "pub async fn find_profile_records_by_handles", "Profiles owner must implement bounded batch handle lookup");
 requireText(mentionSource, "find_profile_records_by_handles(", "Forum mention resolution must use bounded Profiles handle lookup");
 for (const forbidden of [
