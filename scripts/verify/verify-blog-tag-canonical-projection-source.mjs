@@ -71,7 +71,9 @@ if (evidence) {
     evidence.source_contract?.taxonomy_joins_are_tenant_constrained !== true ||
     evidence.source_contract?.stale_metadata_tags_are_ignored_by_search_harness !== true ||
     evidence.source_contract?.tag_mutation_semantics_changed !== false ||
-    evidence.source_contract?.tag_mutation_atomic_reindex_implemented !== false ||
+    evidence.source_contract?.tag_mutation_atomic_reindex_implemented !== true ||
+    evidence.source_contract?.global_tag_search_invalidation_implemented !== true ||
+    evidence.source_contract?.global_tag_search_reindex_target !== "search/tenant" ||
     !Array.isArray(evidence.execution) || evidence.execution.length !== 0
   ) failures.push(`${files.evidence}: source/execution drift`);
   if (evidence.next_source_gap?.status !== "maintainer_execution_pending") failures.push(`${files.evidence}: next source gap drift`);
@@ -98,9 +100,9 @@ for (const marker of [
 ]) need(taxonomyService, marker, files.taxonomyService);
 
 for (const marker of [
-  'global_tag_search_reindex',
+  'global Taxonomy Tag translation should enqueue a Search reindex event',
   'index.reindex_requested',
-  'global Taxonomy Tag',
+  'global Taxonomy Tag update and delete enqueue search reindex',
 ]) need(taxonomyTranslationTests, marker, files.taxonomyTranslationTests);
 
 for (const marker of [
