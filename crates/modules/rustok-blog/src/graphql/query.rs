@@ -260,13 +260,16 @@ fn query_tenant_id(
 
 fn request_security_context(ctx: &Context<'_>) -> SecurityContext {
     ctx.data_opt::<AuthContext>()
-        .map(|auth| {
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            )
-        })
+        .map(security_context_from_auth)
         .unwrap_or_else(SecurityContext::public_read)
+}
+
+fn security_context_from_auth(auth: &AuthContext) -> SecurityContext {
+    rustok_core::security_context_from_access_token(
+        auth.user_id,
+        &auth.grant_type,
+        &auth.permissions,
+    )
 }
 
 fn is_public_request(ctx: &Context<'_>) -> bool {
@@ -524,7 +527,12 @@ pub(super) async fn ensure_public_blog_channel_enabled(
 
 #[cfg(test)]
 mod tests {
-    use super::{ensure_public_blog_channel_enabled, is_post_visible_for_request};
+    use super::{
+        ensure_public_blog_channel_enabled, is_post_visible_for_request,
+        security_context_from_auth,
+    };
+    use rustok_api::AuthContext;
+    use rustok_core::SecurityActorKind;
     use rustok_api::{RequestContext, context::ChannelResolutionSource};
     use rustok_channel::{BindChannelModuleInput, ChannelService, CreateChannelInput, migrations};
     use rustok_test_utils::setup_test_db;
@@ -532,6 +540,22 @@ mod tests {
     use sea_orm_migration::SchemaManager;
     use uuid::Uuid;
 
+    #[test]
+    fn graphql_query_security_preserves_service_principal_identity() {
+        let auth = AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::nil(),
+            tenant_id: Uuid::new_v4(),
+            permissions: vec![rustok_api::Permission::BLOG_POSTS_READ],
+            client_id: Some(Uuid::new_v4()),
+            scopes: vec!["content:read".to_string()],
+            grant_type: "client_credentials".to_string(),
+        };
+
+        let security = security_context_from_auth(&auth);
+        assert_eq!(security.actor_kind, SecurityActorKind::Service);
+        assert_eq!(security.user_id, None);
+    }
     async fn setup_channel_db() -> DatabaseConnection {
         let db = setup_test_db().await;
         db.execute_raw(Statement::from_string(

@@ -258,6 +258,18 @@ live claim discovered outside these owner-scoped surfaces is a new independent
 documentation gap and must be handled from a fresh `main` under the owning
 module's boundary.
 
+## 2026-09-24 GraphQL principal preservation boundary
+
+A fresh Blog GraphQL audit found that authenticated Query reads reconstructed
+the domain `SecurityContext` through `from_permission_snapshot`, which always represented
+the principal as a user even though the GraphQL transport already validates and
+passes `AuthPrincipalContext` and preserves the original grant type.
+
+Blog GraphQL Query reads now use the same
+`security_context_from_access_token` bridge as Blog mutations. Direct and
+authorization-code user grants retain user ownership; `client_credentials`
+service grants remain service principals with no user ownership identity.
+Focused source coverage asserts this service-principal preservation.
 ## Canonical native-module layout baseline
 
 The Blog backend is the first strict reference implementation of the canonical
