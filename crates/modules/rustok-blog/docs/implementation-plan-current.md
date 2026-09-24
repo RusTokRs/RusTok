@@ -342,3 +342,8 @@ The Blog reference audit identified that durable Comments receipts were replayed
 ## 2026-09-24 Comments idempotency source-gate hardening
 
 The Comments principal-bound durable receipt fix is now protected by the Comments port source verifier and its self-test: every write operation must bind the authenticated PortContext.actor, the registry declares the binding tuple, and the evidence matrix carries the idempotency_principal_bound assertion. A unit regression proves same-principal retries retain identity while a different principal does not. Tests, build and CI remain unrun by the agent per maintainer instruction.
+
+
+## 2026-09-24 Blog storefront authenticated tenant binding
+
+The storefront SSR transport now treats the authenticated AuthContext.tenant_id as an authoritative tenant boundary whenever authentication is present. A caller-supplied tenant_slug is resolved only for unauthenticated/public selection; an authenticated request must match the resolved tenant or the server returns the same generic internal error used for tenant-context mismatches. The boundary verifier and its self-test enforce the tenant-binding markers. Tests/build/CI remain unrun by the agent per maintainer instruction.
