@@ -27,13 +27,17 @@
       "order": "strict reference_id ascending",
       "default_limit": 100,
       "max_limit": 500,
-      "page_local_clean": true
+      "page_local_clean": true,
+      "forum_relation_after": "strict reference_id keyset over Forum relation rows",
+      "media_after": "strict reference_id keyset over Media owner holds"
     },
     "drift_kinds": [
       "orphan_media_hold",
+      "missing_media_hold",
       "media_reference_mismatch"
     ],
-    "repair": false
+    "repair": false,
+    "reverse_scan": true
   },
   "media_read_contract": {
     "operation": "list_asset_references",
@@ -43,14 +47,24 @@
     "tenant_scope": "trusted PortContext tenant_id",
     "ordering": "reference_id ascending",
     "binary_or_storage_details_exposed": false,
-    "consumer_revalidates_tenant_and_owner": true
+    "consumer_revalidates_tenant_and_owner": true,
+    "exact_lookup": {
+      "operation": "lookup_asset_references",
+      "request": "MediaAssetReferenceLookupRequest",
+      "response": "MediaAssetReferenceLookupResult",
+      "bounded_ids": true,
+      "max_ids": 1000,
+      "owner_scope": "normalized owner_module=forum",
+      "tenant_scope": "trusted PortContext tenant_id"
+    }
   },
   "forbidden_behavior": [
     "direct Media table access from Forum",
     "automatic Media hold release",
     "automatic Media hold retain",
     "distributed transaction claim",
-    "whole-tenant serializable consistency claim"
+    "whole-tenant serializable consistency claim",
+    "holding Forum DB transactions open during remote Media calls"
   ],
   "runtime_composition": {
     "host_composes_embedded_media_reader": true,
