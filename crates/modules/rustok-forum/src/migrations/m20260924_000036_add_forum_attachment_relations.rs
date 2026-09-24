@@ -120,11 +120,11 @@ FOR EACH ROW
 EXECUTE FUNCTION forum_validate_attachment_relation_head();
 
 CREATE OR REPLACE FUNCTION forum_forbid_attachment_relation_update()
-RETURNS trigger AS $
+RETURNS trigger AS $$
 BEGIN
     RAISE EXCEPTION 'forum attachment relation rows are immutable; replace the relation set';
 END;
-$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;
 
 CREATE TRIGGER forum_attachment_relation_update_guard
 BEFORE UPDATE ON forum_attachment_relations
