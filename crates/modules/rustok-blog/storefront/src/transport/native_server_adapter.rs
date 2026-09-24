@@ -222,9 +222,11 @@ async fn storefront_blog_native(
             return Err(public_internal_error());
         }
 
-        let is_authenticated = leptos_axum::extract::<rustok_api::AuthContext>()
+        let auth_context = leptos_axum::extract::<rustok_api::AuthContext>()
             .await
-            .is_ok();
+            .ok();
+        ensure_storefront_tenant_binding(auth_context.as_ref(), tenant_id)?;
+        let is_authenticated = auth_context.is_some();
 
         require_blog_channel_enabled(
             &runtime_ctx,
@@ -364,6 +366,17 @@ async fn require_blog_comment_channel_enabled(
             "Blog is not available for the current channel",
         ))
     }
+}
+
+#[cfg(feature = "ssr")]
+fn ensure_storefront_tenant_binding(
+    auth_context: Option<&rustok_api::AuthContext>,
+    tenant_id: uuid::Uuid,
+) -> Result<(), ServerFnError> {
+    if auth_context.is_some_and(|auth| auth.tenant_id != tenant_id) {
+        return Err(public_internal_error());
+    }
+    Ok(())
 }
 
 #[cfg(feature = "ssr")]
@@ -510,6 +523,27 @@ fn map_post_list_item(post: rustok_blog::PostSummary) -> BlogPostListItem {
         tags: post.tags,
         featured_image_url: post.featured_image_url,
     }
+}
+
+#[cfg(feature = "ssr")]
+
+#[test]
+fn storefront_tenant_binding_rejects_cross_tenant_authenticated_context() {
+    let tenant_id = uuid::Uuid::new_v4();
+    let other_tenant_id = uuid::Uuid::new_v4();
+    let auth = rustok_api::AuthContext {
+        user_id: uuid::Uuid::new_v4(),
+        session_id: uuid::Uuid::new_v4(),
+        tenant_id: other_tenant_id,
+        permissions: Vec::new(),
+        client_id: None,
+        scopes: Vec::new(),
+        grant_type: "direct".to_string(),
+    };
+
+    assert!(ensure_storefront_tenant_binding(Some(&auth), tenant_id).is_err());
+    assert!(ensure_storefront_tenant_binding(Some(&auth), other_tenant_id).is_ok());
+    assert!(ensure_storefront_tenant_binding(None, tenant_id).is_ok());
 }
 
 #[cfg(all(test, feature = "ssr"))]
