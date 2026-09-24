@@ -458,3 +458,8 @@ should run the relevant subset, including:
 ## Blog projection tenant and ownership boundary
 
 The Blog Search projector binds every owner relation to the source post tenant, including author enrichment: `users.id = blog_posts.author_id` is insufficient by itself, so the projection also requires `users.tenant_id = blog_posts.tenant_id`. This keeps the read model aligned with the platform tenant invariant even when malformed cross-tenant owner references exist. The PostgreSQL projection harness includes a negative cross-tenant author case, while runtime execution remains maintainer-owned.
+
+
+## Search projector source-of-truth boundary
+
+The public `SearchProjector` facade delegates to the canonical `projector_core.rs` implementation. The previous `projector_legacy.rs` filename was retired because this code is current implementation, not compatibility or legacy behavior. `ensure_bootstrap` also fails closed when the database count row cannot be decoded: a missing row is the only condition that yields zero and can trigger bootstrap rebuild; database/schema decoding errors propagate instead of being converted into an empty index signal.
