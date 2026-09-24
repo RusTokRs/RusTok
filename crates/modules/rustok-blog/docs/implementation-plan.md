@@ -34,6 +34,8 @@ through the same-ID binding. Blog consumes `rustok-comments` through
 `CommentsThreadPort`; native `#[server]` and GraphQL remain parallel transports
 over the same owner services.
 
+Category settings are extension state rather than a second domain model: the owner service enforces a JSON-object payload with a 64 KiB logical JSON ceiling, and migration `m20260924_000029_enforce_blog_category_settings_contract` mirrors that invariant at the database boundary with preflight rejection of existing invalid rows.
+
 Tag ownership is module-local: Blog authorizes `tags:*` mutations and delegates
 canonical term storage to the Taxonomy owner primitives. Generic Taxonomy
 mutation APIs must not be used to bypass Blog Tag authorization.
