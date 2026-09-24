@@ -87,6 +87,16 @@ hasAll(mediaPorts, [
   'async fn lookup_asset_references(',
 ], 'Media read contract');
 
+const transportServer = read('crates/modules/rustok-media-transport/src/server.rs');
+hasAll(
+  transportServer,
+  [
+    'MediaGrpcOperation::ListAssetReferences',
+    'MediaGrpcOperation::LookupAssetReferences',
+  ],
+  'Media gRPC trusted operations'
+);
+
 const transportProto = read('crates/modules/rustok-media-transport/proto/rustok/media/media.proto');
 hasAll(
   transportProto,
