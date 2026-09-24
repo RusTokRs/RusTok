@@ -352,3 +352,10 @@ The storefront SSR transport now treats the authenticated AuthContext.tenant_id 
 ## 2026-09-24 Blog GraphQL rate-limit principal identity
 
 A fresh Blog GraphQL rate-limit audit found that authenticated rate-limit keys collapsed every AuthContext into `user:<user_id>`, despite the canonical authentication boundary distinguishing human-user and client-credentials service principals. Blog now derives the limiter actor component from `AuthContext::port_actor()`, preserving principal kind and stable principal id. The source verifier requires the canonical actor binding and the verifier self-test rejects user-only keying. Tests/build/CI remain unrun by the agent per maintainer instruction.
+
+
+## 2026-09-24 Public comment visibility race compensation
+
+A fresh source audit found a TOCTOU gap in `CommentService::create_public_comment`: the public Blog post/channel boundary was validated before the external Comments create, but the post-create revalidation checked only target existence. A concurrent unpublish, channel-visibility change, inactive channel, or Blog channel disable could therefore leave a comment successfully created after the target stopped being publicly commentable.
+
+The write path now revalidates the full `ensure_public_post_visible(tenant_id, post_id, public_channel_slug)` boundary after the external create. Any post-create `PostNotFound` outcome triggers a fresh idempotent Comments delete compensation and returns post-not-found; non-target infrastructure failures propagate unchanged. The source verifier requires both visibility checks and the compensation marker, while runtime/browser evidence remains maintainer-owned and unclaimed.
