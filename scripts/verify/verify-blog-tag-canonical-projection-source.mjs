@@ -70,7 +70,7 @@ if (evidence) {
     evidence.source_contract?.search_requires_taxonomy_term_translations !== true ||
     evidence.source_contract?.taxonomy_joins_are_tenant_constrained !== true ||
     evidence.source_contract?.stale_metadata_tags_are_ignored_by_search_harness !== true ||
-    evidence.source_contract?.tag_mutation_semantics_changed !== false ||
+    evidence.source_contract?.tag_mutation_semantics_changed !== true ||
     evidence.source_contract?.tag_mutation_atomic_reindex_implemented !== true ||
     evidence.source_contract?.global_tag_search_invalidation_implemented !== true ||
     evidence.source_contract?.global_tag_search_reindex_target !== "search/tenant" ||
