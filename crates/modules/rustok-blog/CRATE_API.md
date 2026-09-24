@@ -39,7 +39,7 @@ Primary entry points:
 
 Blog Category localized names are bounded by the canonical Taxonomy Category owner contract: a name is at most 120 characters. The Blog DTO/OpenAPI schema and service validation use the same bound, so invalid names fail as Blog input validation before any Taxonomy mutation is attempted.
 
-Category route normalization is also delegated to the canonical Taxonomy normalization primitive. Blog Category settings are extension state rather than a second domain model: they must be JSON objects and are bounded to 64 KiB when encoded. The same invariant is enforced on create/update input and revalidated for persisted state before owner responses are returned. This keeps transliteration and routable Unicode handling identical between Blog's command boundary and Taxonomy's persisted route keys. The normalized route key is also bounded to Taxonomy's 120-character storage contract before the canonical mutation, so an oversized slug cannot fall through to a persistence-layer failure.
+Category route normalization is also delegated to the canonical Taxonomy normalization primitive. Blog Category settings are extension state rather than a second domain model: they must be JSON objects and are bounded to 64 KiB when encoded. The owner service validates this contract on writes and reads, and migration `m20260924_000029_enforce_blog_category_settings_contract` adds a database backstop that rejects non-object or oversized persisted JSON on PostgreSQL and SQLite. This keeps transliteration and routable Unicode handling identical between Blog's command boundary and Taxonomy's persisted route keys. The normalized route key is also bounded to Taxonomy's 120-character storage contract before the canonical mutation, so an oversized slug cannot fall through to a persistence-layer failure.
 
 ## Tag owner contract
 
@@ -49,7 +49,9 @@ same character-count semantics as the canonical Taxonomy term validator; UTF-8
 byte length is not used for these user-facing limits. Post tag mutations enforce
 the same 100-character bound for Blog-owned module:blog terms after Taxonomy
 resolves or creates them, while shared global Taxonomy tags remain attachable
-without inheriting Blog's local length policy.
+without inheriting Blog's local length policy. Taxonomy invalidates tenant Search
+in the same transaction when a shared global Tag is updated or deleted, including
+exact-locale Translation-target applies.
 
 ## Post input length semantics
 

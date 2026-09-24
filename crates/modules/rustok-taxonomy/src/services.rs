@@ -14,6 +14,8 @@ use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };
 use rustok_core::{PermissionScope, SecurityContext};
+use rustok_events::DomainEvent;
+use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
     ApplyExactTaxonomyTranslationInput, CreateTaxonomyTermInput, ListTaxonomyTermsFilter,
@@ -389,6 +391,14 @@ impl TaxonomyService {
         )
         .await?;
 
+        self.publish_global_tag_search_reindex_in_tx(
+            &txn,
+            tenant_id,
+            term.kind,
+            term.scope_type,
+        )
+        .await?;
+
         txn.commit().await?;
         self.get_term(
             tenant_id,
@@ -460,6 +470,14 @@ impl TaxonomyService {
                 "taxonomy term changed before deletion could commit",
             ));
         }
+        self.publish_global_tag_search_reindex_in_tx(
+            &txn,
+            tenant_id,
+            term.kind,
+            term.scope_type,
+        )
+        .await?;
+
         txn.commit().await?;
         Ok(())
     }
@@ -1164,9 +1182,44 @@ impl TaxonomyService {
         let resource_revision = self
             .update_term_revision_in_tx(txn, &term, Utc::now())
             .await?;
+        self.publish_global_tag_search_reindex_in_tx(
+            txn,
+            tenant_id,
+            term.kind,
+            term.scope_type,
+        )
+        .await?;
         Ok(TaxonomyTranslationApplyResult {
             resource_revision,
             target_revision,
+        })
+    }
+
+    pub(crate) async fn publish_global_tag_search_reindex_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        scope_type: TaxonomyScopeType,
+    ) -> TaxonomyResult<()> {
+        if kind != TaxonomyTermKind::Tag || scope_type != TaxonomyScopeType::Global {
+            return Ok(());
+        }
+
+        TransactionalEventBus::publish_root_in_tx(
+            txn,
+            tenant_id,
+            None,
+            DomainEvent::ReindexRequested {
+                target_type: "search".to_string(),
+                target_id: None,
+            },
+        )
+        .await
+        .map_err(|_| {
+            TaxonomyError::internal(
+                "failed to enqueue Search reindex after global Tag mutation",
+            )
         })
     }
 

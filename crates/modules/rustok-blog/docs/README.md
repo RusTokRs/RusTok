@@ -35,7 +35,7 @@ when later bounded migrations retire an earlier design.
   `HostRuntimeContext`;
 - category REST CRUD under `/api/blog/categories` requires
   `blog_categories:*`;
-- `CategoryService::new(db, event_bus)` is the Category service constructor; Category settings are bounded owner extension state: JSON objects only, at most 64 KiB encoded, with the same invariant applied to writes and persisted-state reads;
+- `CategoryService::new(db, event_bus)` is the Category service constructor; Category settings are bounded owner extension state: JSON objects only, at most 64 KiB encoded, with the same invariant applied to writes and persisted-state reads; migration `m20260924_000029_enforce_blog_category_settings_contract` also enforces the shape and logical JSON-size ceiling at the database boundary;
 - category owner mutations and tenant Blog-scope Search reindex publication
   share one transaction;
 - moderation REST uses `blog_posts:manage`;
@@ -156,7 +156,7 @@ Current focused contracts cover, among other Blog behavior:
 - channel visibility;
 - tag/Taxonomy dictionary ownership;
 - RBAC enforcement for distinct post/category resources;
-- Blog Category create/update/move/delete invariants;
+- Blog Category create/update/move/delete invariants, including the database-enforced settings shape and logical JSON-size ceiling;
 - canonical Taxonomy Category reads and mutation responses;
 - Category hierarchy synchronization;
 - Category Translation provider retirement;

@@ -19,6 +19,9 @@
 - Use the generic Outbox receipt ledger under owner slug `taxonomy` for
   Translation-target apply while retaining Taxonomy authorization, validation,
   and business-write ownership.
+- Mutations of global Tags publish a tenant-scoped `ReindexRequested` search event
+  inside the same transaction, so downstream projections such as Blog Search cannot
+  retain stale names or slugs after a shared Taxonomy Tag changes.
 
 ## Interactions
 
