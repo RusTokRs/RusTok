@@ -797,7 +797,8 @@ claim runtime observability evidence.
 FORUM-33 remains `in_progress`. Retain SQLite and PostgreSQL execution evidence
 for counter and accepted-solution clean/drift pages, independent multi-page
 cursor traversal, exhausted-one-side behavior and concurrent page-local snapshot
-semantics. The attachment reconciliation slice is now source-ready as a read-only owner diagnostic. It uses a bounded Media owner-reference keyset and compares each returned hold against Forum-owned relation rows; runtime PostgreSQL evidence remains open. Automatic repair stays blocked by the existing FORUM-33 write-repair gate. Add only
+semantics. The attachment reconciliation slice is now source-ready as a read-only owner diagnostic. It uses a bounded Media owner-reference keyset and compares each returned hold against Forum-owned relation rows; runtime PostgreSQL evidence remains open. Automatic repair stays blocked by the existing FORUM-33 write-repair gate.
+The canonical machine-readable contract is `crates/modules/rustok-forum/contracts/forum-attachment-hold-reconciliation.json`, guarded by `scripts/verify/verify-forum-attachment-hold-reconciliation.mjs`. Add only
 non-duplicative operational metrics for moderation, notification/search lag,
 unread/activity, locale fallback and spam outcomes. Any write repair remains
 blocked until it has explicit operator RBAC, dry-run behavior, durable audit,
