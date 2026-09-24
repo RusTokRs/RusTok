@@ -1,4 +1,4 @@
-use std::{fs, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use rustok_api::{PortActor, PortContext};
 use rustok_core::MigrationSource;
@@ -14,7 +14,7 @@ use rustok_media::{
     MediaError, MediaService,
 };
 use rustok_outbox::SysEventsMigration;
-use rustok_storage::{LocalStorageConfig, StorageRuntime};
+use rustok_storage::StorageRuntime;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, Database, EntityTrait, PaginatorTrait,
     QueryFilter,
@@ -271,13 +271,7 @@ async fn sqlite_attachment_relation_service_coordinates_media_retention_and_cas(
     .await?;
     seed_ready_media(&db, tenant_id, media_id, blob_id).await?;
 
-    let temp_path = std::env::temp_dir().join(format!("rustok-forum-attachment-{}", Uuid::new_v4()));
-    fs::create_dir_all(&temp_path)?;
-    let storage = StorageRuntime::local(&LocalStorageConfig {
-        base_dir: temp_path.display().to_string(),
-        base_url: "/media".to_string(),
-        fsync: false,
-    })?;
+    let storage = StorageRuntime::in_memory();
     let media = Arc::new(MediaService::new(db.clone(), storage));
 
     let forum = ForumAttachmentRelationService::new(db.clone(), media.clone());
@@ -398,7 +392,6 @@ async fn sqlite_attachment_relation_service_coordinates_media_retention_and_cas(
         "clear must release removed Media holds after Forum commit"
     );
 
-    fs::remove_dir_all(temp_path)?;
     Ok(())
 }
 
