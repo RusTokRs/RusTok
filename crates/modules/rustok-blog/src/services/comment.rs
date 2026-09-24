@@ -8,7 +8,7 @@ use rustok_comments_api::{
     CommentListItem as ApiCommentListItem, CommentRecord as ApiCommentRecord,
     CommentStatus as ApiCommentStatus, CommentsThreadPort,
     CreateCommentInput as ApiCreateCommentInput, ListCommentsFilter as ApiListCommentsFilter,
-    ApiSetCommentStatusRequest as ApiApiSetCommentStatusRequest,
+    SetCommentStatusRequest as ApiSetCommentStatusRequest,
     UpdateCommentInput as ApiUpdateCommentInput,
 };
 use rustok_core::{SecurityActorKind, SecurityContext};
@@ -684,7 +684,7 @@ mod port_injection_tests {
 mod rich_content_tests {
     use super::*;
     use rustok_api::{RichTextDocument, RichTextView};
-    use rustok_comments::CommentRecord;
+    use rustok_comments_api::CommentRecord;
 
     #[test]
     fn map_comment_record_preserves_the_typed_projection() {

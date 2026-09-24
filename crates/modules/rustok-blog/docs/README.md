@@ -137,9 +137,9 @@ and post `blog_posts:*` permissions do not grant Blog Category access.
 
 - uses `rustok-taxonomy` as the shared tag dictionary and canonical Blog
   Category projection owner;
-- currently uses `rustok-comments` as the comment runtime contract and declares a
-  static lifecycle edge; the accepted target retains the port but makes the capability
-  conditional so Blog core serving remains provider-free;
+- uses the neutral `rustok-comments-api` contract for optional comment integration;
+  the `rustok-comments` implementation is host-composed and Blog publication serving
+  remains independent of Comments availability;
 - uses `rustok-profiles` only as optional author presentation enrichment; Blog
   publication reads remain valid without the Profiles module;
 - uses `rustok-channel` for module-level and publication-level public
