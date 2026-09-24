@@ -43,7 +43,6 @@ sea-orm-migration.workspace = true
 url = "2.5"
 
 [dev-dependencies]
-rustok-storage.workspace = true
 rustok-notifications.workspace = true
 rustok-tenant.workspace = true
 tokio.workspace = true
