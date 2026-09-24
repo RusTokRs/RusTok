@@ -10,7 +10,7 @@ use rustok_translation_targets::{
     TranslationFieldPatch, TranslationPatchRequest, TranslationTargetChangesRequest,
     TranslationTargetProgressRequest, TranslationTargetProvider,
 };
-use sea_orm::{DatabaseConnection, DatabaseTransaction, EntityTrait, TransactionTrait};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, TransactionTrait};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
