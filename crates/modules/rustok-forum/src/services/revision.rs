@@ -1,4 +1,7 @@
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect,
+};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -29,6 +32,24 @@ impl RevisionService {
         tenant_id: Uuid,
         topic_id: Uuid,
     ) -> ForumResult<u64> {
+        Self::current_topic_revision_in(&self.db, tenant_id, topic_id).await
+    }
+
+    /// Return the exact current Forum-owned reply revision. Authorization stays
+    /// with the caller because this service owns revision state, not visibility.
+    pub async fn current_reply_revision(
+        &self,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+    ) -> ForumResult<u64> {
+        Self::current_reply_revision_in(&self.db, tenant_id, reply_id).await
+    }
+
+    pub async fn current_topic_revision_in<C: ConnectionTrait>(
+        connection: &C,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+    ) -> ForumResult<u64> {
         let latest = forum_topic_revision::Entity::find()
             .select_only()
             .column(forum_topic_revision::Column::Id)
@@ -36,15 +57,13 @@ impl RevisionService {
             .filter(forum_topic_revision::Column::TopicId.eq(topic_id))
             .order_by_desc(forum_topic_revision::Column::Id)
             .into_tuple::<i64>()
-            .one(&self.db)
+            .one(connection)
             .await?;
         current_revision_after(latest)
     }
 
-    /// Return the exact current Forum-owned reply revision. Authorization stays
-    /// with the caller because this service owns revision state, not visibility.
-    pub async fn current_reply_revision(
-        &self,
+    pub async fn current_reply_revision_in<C: ConnectionTrait>(
+        connection: &C,
         tenant_id: Uuid,
         reply_id: Uuid,
     ) -> ForumResult<u64> {
@@ -55,7 +74,7 @@ impl RevisionService {
             .filter(forum_reply_revision::Column::ReplyId.eq(reply_id))
             .order_by_desc(forum_reply_revision::Column::Id)
             .into_tuple::<i64>()
-            .one(&self.db)
+            .one(connection)
             .await?;
         current_revision_after(latest)
     }

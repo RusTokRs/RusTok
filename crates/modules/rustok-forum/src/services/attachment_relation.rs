@@ -143,6 +143,14 @@ impl ForumAttachmentRelationService {
         let txn = self.db.begin().await?;
         lock_forum_target(&txn, tenant_id, target).await?;
 
+        self.ensure_source_revision_current_in(
+            &txn,
+            tenant_id,
+            target,
+            batch.source().source_revision(),
+        )
+        .await?;
+
         let (head, created_head, current) =
             match self.load_head(&txn, tenant_id, target, &locale).await? {
                 Some(head) => {
@@ -333,6 +341,39 @@ impl ForumAttachmentRelationService {
                 crate::services::revision::RevisionService::new(self.db.clone())
                     .current_reply_revision(tenant_id, target.id())
                     .await?
+            }
+        };
+
+        if current == expected {
+            Ok(())
+        } else {
+            Err(ForumError::AttachmentSourceRevisionConflict { expected, current })
+        }
+    }
+
+    async fn ensure_source_revision_current_in<C: ConnectionTrait>(
+        &self,
+        connection: &C,
+        tenant_id: Uuid,
+        target: ForumContentTarget,
+        expected: u64,
+    ) -> ForumResult<()> {
+        let current = match target.kind() {
+            ForumContentTargetKind::Topic => {
+                crate::services::revision::RevisionService::current_topic_revision_in(
+                    connection,
+                    tenant_id,
+                    target.id(),
+                )
+                .await?
+            }
+            ForumContentTargetKind::Reply => {
+                crate::services::revision::RevisionService::current_reply_revision_in(
+                    connection,
+                    tenant_id,
+                    target.id(),
+                )
+                .await?
             }
         };
 
