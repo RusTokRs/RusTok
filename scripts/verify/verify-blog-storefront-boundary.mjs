@@ -228,6 +228,9 @@ assertContains(native, "#[server(prefix = \"/api/fn\", endpoint = \"blog/storefr
 assertContains(native, "use_context::<HostRuntimeContext>()", `${files.native}: native adapter must use the host runtime context`);
 assertContains(native, "shared_get::<TransactionalEventBus>()", `${files.native}: native adapter must receive the event bus through the host runtime context`);
 assertContains(native, "runtime_ctx.db_clone()", `${files.native}: native adapter must receive DB through the host runtime context`);
+assertContains(native, "let auth_context = leptos_axum::extract::<rustok_api::AuthContext>()", `${files.native}: authenticated tenant identity must be available before tenant selection`);
+assertContains(native, "ensure_storefront_tenant_binding(auth_context.as_ref(), tenant_id)?", `${files.native}: authenticated storefront requests must bind to the selected tenant`);
+assertContains(native, "fn ensure_storefront_tenant_binding(", `${files.native}: tenant binding helper must remain owner-side`);
 assertContains(native, 'endpoint = "blog/comment-create"', `${files.native}: native adapter must expose the Blog-bound comment endpoint`);
 assertContains(native, ".create_public_comment(", `${files.native}: native command must validate the public Blog target before Comments writes`);
 
