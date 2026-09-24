@@ -1498,6 +1498,42 @@ impl MediaService {
         ))
     }
 
+    async fn list_asset_references_page(
+        &self,
+        tenant_id: Uuid,
+        request: crate::MediaAssetReferenceListRequest,
+    ) -> Result<crate::MediaAssetReferenceListPage> {
+        let owner_module = normalize_owner_module(Some(&request.owner_module))?;
+        let mut query = AssetReferenceEntity::find()
+            .filter(AssetReferenceCol::TenantId.eq(tenant_id))
+            .filter(AssetReferenceCol::OwnerModule.eq(&owner_module))
+            .order_by_asc(AssetReferenceCol::ReferenceId)
+            .limit(request.limit.saturating_add(1));
+
+        if let Some(after_reference_id) = request.after_reference_id {
+            query = query.filter(AssetReferenceCol::ReferenceId.gt(after_reference_id));
+        }
+
+        let rows = query.all(&self.db).await?;
+        let has_more = rows.len() > request.limit as usize;
+        let references = rows
+            .into_iter()
+            .take(request.limit as usize)
+            .map(|row| MediaAssetReference {
+                media_id: row.media_id,
+                tenant_id: row.tenant_id,
+                owner_module: row.owner_module,
+                reference_id: row.reference_id,
+            })
+            .collect::<Vec<_>>();
+
+        Ok(crate::MediaAssetReferenceListPage {
+            next_reference_id: references.last().map(|reference| reference.reference_id),
+            references,
+            has_more,
+        })
+    }
+
     pub async fn retain_asset_reference(
         &self,
         tenant_id: Uuid,
