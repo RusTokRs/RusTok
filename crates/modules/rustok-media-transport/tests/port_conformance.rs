@@ -144,6 +144,20 @@ async fn exercise_provider(
         MediaAssetReferenceAdmissionState::Admitted
     );
 
+    let reference_page = read
+        .list_asset_references(
+            read_context(tenant_id),
+            rustok_media::MediaAssetReferenceListRequest {
+                owner_module: "conformance".to_string(),
+                after_reference_id: None,
+                limit: 25,
+            },
+        )
+        .await
+        .expect("list_asset_references should expose a bounded owner-reference page");
+    assert!(reference_page.references.is_empty());
+    assert!(!reference_page.has_more);
+
     let descriptor = read
         .get_image_descriptor(
             read_context(tenant_id),
@@ -387,6 +401,7 @@ async fn embedded_and_loopback_grpc_providers_pass_the_same_port_suite() {
     .allow_operations([
         MediaGrpcOperation::GetAsset,
         MediaGrpcOperation::GetAssetReferenceAdmission,
+        MediaGrpcOperation::ListAssetReferences,
         MediaGrpcOperation::ListAssets,
         MediaGrpcOperation::GetImageDescriptor,
         MediaGrpcOperation::GetPublicImageAsset,
