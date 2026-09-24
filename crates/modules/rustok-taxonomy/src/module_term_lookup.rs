@@ -8,6 +8,7 @@ use crate::{
     dto::{TaxonomyScopeType, TaxonomyTermKind},
     entities::{taxonomy_term_alias, taxonomy_term_route_key, taxonomy_term_translation},
     error::{TaxonomyError, TaxonomyResult},
+    normalization::TAXONOMY_SCOPE_VALUE_MAX_CHARS,
     services::TaxonomyService,
 };
 

@@ -13326,7 +13326,6 @@ dependencies = [
  "rustok-taxonomy",
  "rustok-telemetry",
  "rustok-test-utils",
- "rustok-translation-targets",
  "rustok-web",
  "sea-orm",
  "sea-orm-migration",
@@ -13690,16 +13689,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustok-comments-api"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "rustok-api",
- "serde",
- "uuid",
-]
-
-[[package]]
 name = "rustok-comments-admin"
 version = "0.1.0"
 dependencies = [
@@ -13715,6 +13704,16 @@ dependencies = [
  "rustok-ui-i18n",
  "serde",
  "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-comments-api"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-api",
+ "serde",
  "uuid",
 ]
 
@@ -14007,7 +14006,6 @@ dependencies = [
  "rustok-cart",
  "rustok-channel",
  "rustok-comments",
- "rustok-comments-api",
  "rustok-commerce",
  "rustok-content",
  "rustok-content-orchestration",
@@ -16427,6 +16425,7 @@ dependencies = [
  "rustok-cart",
  "rustok-channel",
  "rustok-comments",
+ "rustok-comments-api",
  "rustok-commerce",
  "rustok-content",
  "rustok-content-orchestration",
@@ -16472,6 +16471,7 @@ dependencies = [
  "rustok-product-relations",
  "rustok-product-transport",
  "rustok-profiles",
+ "rustok-profiles-api",
  "rustok-rbac",
  "rustok-reactions",
  "rustok-region",

@@ -34,10 +34,107 @@ pub fn in_process_comments_thread_port(
     })
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-pub struct SetCommentStatusRequest {
-    pub status: crate::CommentStatus,
-    pub fallback_locale: Option<String>,
+impl From<ApiCreateCommentInput> for CreateCommentInput {
+    fn from(value: ApiCreateCommentInput) -> Self {
+        Self {
+            target_type: value.target_type,
+            target_id: value.target_id,
+            locale: value.locale,
+            body: value.body,
+            parent_comment_id: value.parent_comment_id,
+            status: value.status.into(),
+        }
+    }
+}
+
+impl From<ApiUpdateCommentInput> for UpdateCommentInput {
+    fn from(value: ApiUpdateCommentInput) -> Self {
+        Self {
+            locale: value.locale,
+            body: value.body,
+        }
+    }
+}
+
+impl From<ApiListCommentsFilter> for ListCommentsFilter {
+    fn from(value: ApiListCommentsFilter) -> Self {
+        Self {
+            locale: value.locale,
+            page: value.page,
+            per_page: value.per_page,
+        }
+    }
+}
+
+impl From<ApiSetCommentStatusRequest> for SetCommentStatusRequest {
+    fn from(value: ApiSetCommentStatusRequest) -> Self {
+        Self {
+            status: value.status.into(),
+            fallback_locale: value.fallback_locale,
+        }
+    }
+}
+
+impl From<rustok_comments_api::CommentStatus> for crate::CommentStatus {
+    fn from(value: rustok_comments_api::CommentStatus) -> Self {
+        match value {
+            rustok_comments_api::CommentStatus::Pending => Self::Pending,
+            rustok_comments_api::CommentStatus::Approved => Self::Approved,
+            rustok_comments_api::CommentStatus::Spam => Self::Spam,
+            rustok_comments_api::CommentStatus::Trash => Self::Trash,
+        }
+    }
+}
+
+impl From<crate::CommentStatus> for rustok_comments_api::CommentStatus {
+    fn from(value: crate::CommentStatus) -> Self {
+        match value {
+            crate::CommentStatus::Pending => Self::Pending,
+            crate::CommentStatus::Approved => Self::Approved,
+            crate::CommentStatus::Spam => Self::Spam,
+            crate::CommentStatus::Trash => Self::Trash,
+        }
+    }
+}
+
+impl From<CommentRecord> for ApiCommentRecord {
+    fn from(value: CommentRecord) -> Self {
+        Self {
+            id: value.id,
+            thread_id: value.thread_id,
+            target_type: value.target_type,
+            target_id: value.target_id,
+            requested_locale: value.requested_locale,
+            effective_locale: value.effective_locale,
+            author_id: value.author_id,
+            parent_comment_id: value.parent_comment_id,
+            body: value.body,
+            body_text: value.body_text,
+            status: value.status.into(),
+            position: value.position,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+impl From<CommentListItem> for ApiCommentListItem {
+    fn from(value: CommentListItem) -> Self {
+        Self {
+            id: value.id,
+            thread_id: value.thread_id,
+            target_type: value.target_type,
+            target_id: value.target_id,
+            requested_locale: value.requested_locale,
+            effective_locale: value.effective_locale,
+            author_id: value.author_id,
+            parent_comment_id: value.parent_comment_id,
+            body_preview: value.body_preview,
+            status: value.status.into(),
+            position: value.position,
+            created_at: value.created_at,
+        }
+    }
 }
 
 #[derive(serde::Serialize)]

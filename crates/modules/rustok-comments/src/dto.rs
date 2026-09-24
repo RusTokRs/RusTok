@@ -61,6 +61,12 @@ pub struct ListCommentsFilter {
     pub per_page: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SetCommentStatusRequest {
+    pub status: CommentStatus,
+    pub fallback_locale: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ListThreadsFilter {
     pub page: u64,
