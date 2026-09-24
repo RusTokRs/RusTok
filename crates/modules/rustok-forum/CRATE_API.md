@@ -62,7 +62,7 @@
 - `CreateTopicCommandInput`, `UpdateTopicCommandInput`, `CreateReplyCommandInput`, `UpdateReplyCommandInput`
 - `ForumRelationSnapshotQuery`, `ForumRelationSnapshotResponse`, `ForumRelationQuoteResponse`
 - `pub mod graphql` -> `ForumQuery`, `ForumMutation`
-- GraphQL reconciliation entry point: `forumAttachmentHoldReconciliationReport(limit, mediaAfter)`; operator-only, page-local, read-only Media hold audit
+- GraphQL reconciliation entry point: `forumAttachmentHoldReconciliationReport(limit, mediaAfter, relationAfter)`; operator-only, page-local, bidirectional read-only Media hold/relation audit
 - `pub mod controllers` -> `routes()`
 - Public DTOs/constants from `dto::*` and `constants::*`
 - `pub enum ForumError`, `pub type ForumResult<T>`
