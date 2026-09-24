@@ -210,6 +210,11 @@ for (const source of [commentReads, commentMutation]) {
     'CommentService::with_comments_thread_port(',
     'GraphQL resolver source',
   );
+  requireNoMarker(
+    source,
+    'CommentService::from_optional_comments_thread_port(',
+    'GraphQL resolver source',
+  );
 }
 
 requireMarker(service, 'pub fn from_optional_comments_thread_port(', servicePath);
