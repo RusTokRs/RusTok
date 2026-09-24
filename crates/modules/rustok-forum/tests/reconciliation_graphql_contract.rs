@@ -79,8 +79,7 @@ fn graphql_reconciliation_adapters_enforce_security_scope_and_isolation() {
             "Permission::FORUM_TOPICS_MANAGE",
             "auth.tenant_id != tenant.id",
             "Permission denied: tenant scope mismatch",
-            "SecurityContext::from_permission_snapshot"
-        ],
+            "SecurityContext::from_permission_snapshot",
         ] {
             assert!(
                 source.contains(marker),
