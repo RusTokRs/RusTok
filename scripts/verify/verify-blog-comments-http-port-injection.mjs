@@ -78,7 +78,7 @@ if (evidence) {
     evidence.source_contract?.consumer_matrix !== matrixPath
   ) failures.push(`${evidencePath}: source path drift`);
   if (!sameSet(evidence.profiles?.source_verified ?? [], [
-    'in_process_fallback',
+    'in_process',
     'host_injected_port_selection',
   ])) failures.push(`${evidencePath}: source-verified profile drift`);
   if (!sameSet(evidence.profiles?.pending ?? [], ['remote_transport_implementation'])) {
@@ -112,7 +112,7 @@ if (
 ) failures.push(`${matrixPath}: base injection seam drift`);
 
 for (const marker of [
-  'use rustok_comments::CommentsThreadPort;',
+  'use rustok_comments_api::CommentsThreadPort;',
   'use std::sync::Arc;',
   'comments_thread_port: Option<Arc<dyn CommentsThreadPort>>',
   'fn comment_service(&self) -> CommentService',
@@ -128,8 +128,8 @@ requireNoMarker(controller, 'CommentService::new(', controllerPath);
 requireNoMarker(controller, 'CommentService::with_comments_thread_port(', controllerPath);
 
 for (const marker of [
-  'pub fn with_comments_thread_port(',
-  'comments_thread_port: Arc<dyn CommentsThreadPort>',
+  'pub fn from_optional_comments_thread_port(',
+  'comments_thread_port: Option<Arc<dyn CommentsThreadPort>>',
 ]) requireMarker(service, marker, servicePath);
 
 for (const marker of [
