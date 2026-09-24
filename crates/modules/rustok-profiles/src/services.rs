@@ -453,6 +453,7 @@ impl ProfileService {
             .into_iter()
             .map(|profile| {
                 let handle = profile.handle.clone();
+                let user_id = profile.user_id;
                 let translation = select_translation(
                     &translations,
                     &profile,
@@ -462,7 +463,7 @@ impl ProfileService {
                 let profile = map_profile(
                     profile,
                     translation,
-                    tags.get(&profile.user_id).cloned().unwrap_or_default(),
+                    tags.get(&user_id).cloned().unwrap_or_default(),
                 )?;
                 Ok((handle, profile))
             })
