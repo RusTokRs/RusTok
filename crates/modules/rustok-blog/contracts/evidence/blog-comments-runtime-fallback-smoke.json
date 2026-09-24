@@ -112,7 +112,7 @@
         "operation": "create_comment",
         "source_markers": [
           "ensure_post_exists",
-          "DomainCreateCommentInput",
+          "ApiCreateCommentInput",
           "comments_thread_port",
           "comments_write_port_context",
           "require_comments_thread_port"

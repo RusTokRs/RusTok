@@ -1603,7 +1603,6 @@ mod tests {
     use rustok_blog::{
         CommentService as BlogCommentService, CreateCommentInput as BlogCreateCommentInput,
         CreatePostInput, PostService,
-        entities::{blog_post, blog_post_tag, blog_post_translation},
     };
     use rustok_comments::{
         CommentsModule, CommentsService, ListCommentsFilter,
@@ -2033,7 +2032,13 @@ mod tests {
             .await
             .expect("blog post should be created");
 
-        let blog_comment_service = BlogCommentService::new(db.clone(), events.clone());
+        let blog_comment_service = BlogCommentService::from_optional_comments_thread_port(
+            db.clone(),
+            Some(rustok_comments::in_process_comments_thread_port(
+                db.clone(),
+                events.clone(),
+            )),
+        );
         blog_comment_service
             .create_public_comment(
                 tenant_id,

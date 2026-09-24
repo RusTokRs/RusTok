@@ -1025,9 +1025,9 @@ mod tests {
         insert_enabled_seo_module(&db, tenant_id, json!({})).await;
 
         let schema = Schema::build(SeoQuery, EmptyMutation, EmptySubscription)
-            .data(db)
+            .data(db.clone())
             .data(event_bus())
-            .data(test_runtime_extensions(db.clone()))
+            .data(test_runtime_extensions(db))
             .data(tenant_context(tenant_id))
             .finish();
 

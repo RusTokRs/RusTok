@@ -156,7 +156,7 @@ fn field_patch(
 
 #[tokio::test]
 async fn translation_target_applies_replays_and_tracks_an_exact_term_locale() {
-    let (_database, service) = setup().await;
+    let (database, service) = setup().await;
     let tenant_id = Uuid::new_v4();
     let term_id = service
         .create_term(

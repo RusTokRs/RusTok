@@ -15,6 +15,7 @@ mod entities;
 pub mod error;
 pub mod graphql;
 pub mod migrations;
+pub mod ports;
 pub mod services;
 
 pub use controllers::openapi;
@@ -39,6 +40,7 @@ pub use integrations::reaction_subject::{
     BlogReactionSubjectProviderFactory,
 };
 pub use module::BlogModule;
+pub use ports::{blog_category, blog_post, blog_post_tag, blog_post_translation};
 pub use rustok_comments_api::CommentsThreadPort;
 pub use services::{CategoryService, CommentService, PostService, TagService};
 pub use state_machine::{

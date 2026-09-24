@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, QueryFilter, QueryOrder,
+    EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -58,15 +58,7 @@ struct CurrentPublishedRoute {
     slug: String,
 }
 
-struct RedirectAliasRequest<'a> {
-    tenant_id: Uuid,
-    page_id: Uuid,
-    locale: &'a str,
-    slug: &'a str,
-    target_page_id: Uuid,
-    target_locale: &'a str,
-    reason: &'a str,
-}
+
 
 pub struct PageRouteService {
     db: DatabaseConnection,
@@ -271,8 +263,8 @@ pub(super) async fn record_published_route_snapshots_in_tx(
                     id: Set(Uuid::new_v4()),
                     tenant_id: Set(tenant_id),
                     page_id: Set(page_id),
-                    locale: locale.clone(),
-                    slug: slug.clone(),
+                    locale: Set(locale.clone()),
+                    slug: Set(slug.clone()),
                     recorded_at: Set(Utc::now().into()),
                 }
                 .insert(txn)
