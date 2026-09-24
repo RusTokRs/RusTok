@@ -156,10 +156,11 @@ impl ForumAttachmentHoldReconciliationService {
             .unwrap_or(DEFAULT_FORUM_ATTACHMENT_HOLD_RECONCILIATION_LIMIT)
             .clamp(1, MAX_FORUM_ATTACHMENT_HOLD_RECONCILIATION_LIMIT);
 
+        let media_context_for_lookup = media_context.clone();
         let media_page = self
             .media
             .list_asset_references(
-                media_context.clone(),
+                media_context,
                 MediaAssetReferenceListRequest {
                     owner_module: FORUM_MEDIA_OWNER_MODULE.to_string(),
                     after_reference_id: media_reference_after,
@@ -187,79 +188,29 @@ impl ForumAttachmentHoldReconciliationService {
             }
         };
 
-        let report = self
-            .report_media_page_in_transaction(
+        let (relation_media_by_reference, forum_relations) = self
+            .load_forum_relation_page_in_transaction(
                 &transaction,
                 tenant_id,
-                media_page,
-                requested_limit,
-                effective_limit,
+                &media_page,
                 forum_relation_after,
+                effective_limit,
             )
             .await;
 
-        match report {
-            Ok(report) => {
+        let (relation_media_by_reference, forum_relations) = match (
+            relation_media_by_reference,
+            forum_relations,
+        ) {
+            (Ok(media_refs), Ok(forum_relations)) => {
                 transaction.commit().await?;
-                Ok(report)
+                (media_refs, forum_relations)
             }
-            Err(error) => {
+            (Err(error), _) | (_, Err(error)) => {
                 let _ = transaction.rollback().await;
-                Err(error)
+                return Err(error);
             }
-        }
-    }
-
-    async fn report_media_page_in_transaction(
-        &self,
-        transaction: &sea_orm::DatabaseTransaction,
-        tenant_id: Uuid,
-        media_page: MediaAssetReferenceListPage,
-        requested_limit: Option<u64>,
-        effective_limit: u64,
-        forum_relation_after: Option<Uuid>,
-    ) -> ForumResult<ForumAttachmentHoldReconciliationReport> {
-        let references = media_page.references;
-        let inspected_media_holds = references.len() as u64;
-        let reference_ids = references
-            .iter()
-            .map(|reference| reference.reference_id)
-            .collect::<Vec<_>>();
-
-        let mut relation_media_by_reference = HashMap::with_capacity(reference_ids.len());
-        if !reference_ids.is_empty() {
-            let rows = forum_attachment_relation::Entity::find()
-                .filter(forum_attachment_relation::Column::TenantId.eq(tenant_id))
-                .filter(forum_attachment_relation::Column::ReferenceId.is_in(reference_ids.clone()))
-                .all(transaction)
-                .await?;
-
-            relation_media_by_reference.extend(
-                rows.into_iter()
-                    .map(|row| (row.reference_id, row.media_id)),
-            );
-        }
-
-        let mut relation_query =
-            forum_attachment_relation::Entity::find()
-                .filter(forum_attachment_relation::Column::TenantId.eq(tenant_id))
-                .order_by_asc(forum_attachment_relation::Column::ReferenceId)
-                .limit(effective_limit.saturating_add(1));
-
-        if let Some(after_reference_id) = forum_relation_after {
-            relation_query =
-                relation_query.filter(forum_attachment_relation::Column::ReferenceId.gt(
-                    after_reference_id,
-                ));
-        }
-
-        let relation_rows = relation_query.all(transaction).await?;
-        let has_more_forum_relations = relation_rows.len() > effective_limit as usize;
-        let forum_relations = relation_rows
-            .into_iter()
-            .take(effective_limit as usize)
-            .collect::<Vec<_>>();
-        let forum_cursor = forum_relations.last().map(|row| row.reference_id);
+        };
 
         let reverse_reference_ids = forum_relations
             .iter()
@@ -272,16 +223,7 @@ impl ForumAttachmentHoldReconciliationService {
         } else {
             self.media
                 .lookup_asset_references(
-                    // A read-only bulk lookup inherits the original deadline/correlation metadata.
-                    // This call is intentionally outside Forum's write paths and never mutates Media.
-                    // The transaction is already read-only, so its lifetime remains bounded by the page.
-                    PortContext::new(
-                        tenant_id.to_string(),
-                        rustok_api::PortActor::service("forum-attachment-reconciliation"),
-                        "en",
-                        Uuid::new_v4().to_string(),
-                    )
-                    .with_deadline(std::time::Duration::from_secs(5)),
+                    media_context_for_lookup,
                     MediaAssetReferenceLookupRequest {
                         owner_module: FORUM_MEDIA_OWNER_MODULE.to_string(),
                         reference_ids: reverse_reference_ids,
@@ -291,18 +233,101 @@ impl ForumAttachmentHoldReconciliationService {
                 .map_err(media_port_error)?
         };
 
+        self.build_report(
+            requested_limit,
+            effective_limit,
+            media_page,
+            relation_media_by_reference,
+            forum_relations,
+            reverse_lookup,
+        )
+    }
+
+    async fn load_forum_relation_page_in_transaction(
+        &self,
+        transaction: &sea_orm::DatabaseTransaction,
+        tenant_id: Uuid,
+        media_page: &MediaAssetReferenceListPage,
+        forum_relation_after: Option<Uuid>,
+        effective_limit: u64,
+    ) -> (
+        ForumResult<HashMap<Uuid, Uuid>>,
+        ForumResult<Vec<forum_attachment_relation::Model>>,
+    ) {
+        let media_reference_ids = media_page
+            .references
+            .iter()
+            .map(|reference| reference.reference_id)
+            .collect::<Vec<_>>();
+        let mut relation_media_by_reference = HashMap::with_capacity(media_reference_ids.len());
+        if !media_reference_ids.is_empty() {
+            let result = forum_attachment_relation::Entity::find()
+                .filter(forum_attachment_relation::Column::TenantId.eq(tenant_id))
+                .filter(forum_attachment_relation::Column::ReferenceId.is_in(media_reference_ids))
+                .all(transaction)
+                .await
+                .map(|rows| {
+                    relation_media_by_reference.extend(
+                        rows.into_iter()
+                            .map(|row| (row.reference_id, row.media_id)),
+                    );
+                    relation_media_by_reference
+                })
+                .map_err(ForumError::from);
+            if result.is_err() {
+                return (result, Ok(Vec::new()));
+            }
+        }
+
+        let mut query = forum_attachment_relation::Entity::find()
+            .filter(forum_attachment_relation::Column::TenantId.eq(tenant_id))
+            .order_by_asc(forum_attachment_relation::Column::ReferenceId)
+            .limit(effective_limit.saturating_add(1));
+        if let Some(after_reference_id) = forum_relation_after {
+            query = query.filter(
+                forum_attachment_relation::Column::ReferenceId.gt(after_reference_id),
+            );
+        }
+
+        let result = query.all(transaction).await.map_err(ForumError::from);
+        (Ok(relation_media_by_reference), result)
+    }
+
+    async fn build_report(
+        &self,
+        requested_limit: Option<u64>,
+        effective_limit: u64,
+        media_page: MediaAssetReferenceListPage,
+        relation_media_by_reference: HashMap<Uuid, Uuid>,
+        relation_rows: Vec<forum_attachment_relation::Model>,
+        reverse_lookup: MediaAssetReferenceLookupResult,
+    ) -> ForumResult<ForumAttachmentHoldReconciliationReport> {
+        let inspected_media_holds = media_page.references.len().min(effective_limit as usize) as u64;
+        let has_more_media_holds = media_page.has_more;
+        let media_cursor = media_page.next_reference_id;
+
+        let has_more_forum_relations = relation_rows.len() > effective_limit as usize;
+        let forum_relations = relation_rows
+            .into_iter()
+            .take(effective_limit as usize)
+            .collect::<Vec<_>>();
+        let forum_cursor = forum_relations.last().map(|row| row.reference_id);
+        let inspected_forum_relations = forum_relations.len() as u64;
+
         let mut reverse_by_reference = HashMap::with_capacity(reverse_lookup.references.len());
-        reverse_by_reference.extend(
-            reverse_lookup
-                .references
-                .into_iter()
-                .map(|reference| (reference.reference_id, reference)),
-        );
+        for reference in reverse_lookup.references {
+            validate_media_reference(&reference, relation_media_by_reference
+                .get(&reference.reference_id)
+                .map(|_| reference.tenant_id)
+                .unwrap_or_else(|| Uuid::nil()))?;
+            reverse_by_reference.insert(reference.reference_id, reference);
+        }
 
         let mut seen_drifts = std::collections::HashSet::new();
         let mut drifts = Vec::new();
 
-        for reference in &references {
+        for reference in &media_page.references {
+            validate_media_reference(reference, reference.tenant_id)?;
             match relation_media_by_reference.get(&reference.reference_id) {
                 None => {
                     seen_drifts.insert((
@@ -333,13 +358,23 @@ impl ForumAttachmentHoldReconciliationService {
         }
 
         for relation in &forum_relations {
-            if let Some(reference) = reverse_by_reference.get(&relation.reference_id) {
-                if reference.media_id != relation.media_id
+            match reverse_by_reference.get(&relation.reference_id) {
+                None if seen_drifts.insert((
+                    ForumAttachmentHoldDriftKind::MissingMediaHold,
+                    relation.reference_id,
+                )) => {
+                    drifts.push(ForumAttachmentHoldDrift {
+                        kind: ForumAttachmentHoldDriftKind::MissingMediaHold,
+                        reference_id: relation.reference_id,
+                        media_id: relation.media_id,
+                        relation_media_id: None,
+                    });
+                }
+                Some(reference) if reference.media_id != relation.media_id
                     && seen_drifts.insert((
                         ForumAttachmentHoldDriftKind::MediaReferenceMismatch,
                         relation.reference_id,
-                    ))
-                {
+                    )) => {
                     drifts.push(ForumAttachmentHoldDrift {
                         kind: ForumAttachmentHoldDriftKind::MediaReferenceMismatch,
                         reference_id: relation.reference_id,
@@ -347,16 +382,7 @@ impl ForumAttachmentHoldReconciliationService {
                         relation_media_id: Some(relation.media_id),
                     });
                 }
-            } else if seen_drifts.insert((
-                ForumAttachmentHoldDriftKind::MissingMediaHold,
-                relation.reference_id,
-            )) {
-                drifts.push(ForumAttachmentHoldDrift {
-                    kind: ForumAttachmentHoldDriftKind::MissingMediaHold,
-                    reference_id: relation.reference_id,
-                    media_id: relation.media_id,
-                    relation_media_id: None,
-                });
+                _ => {}
             }
         }
 
@@ -364,13 +390,15 @@ impl ForumAttachmentHoldReconciliationService {
             requested_limit,
             effective_limit,
             inspected_media_holds,
-            has_more_media_holds: media_page.has_more,
-            media_cursor: media_page.next_reference_id,
-            inspected_forum_relations: forum_relations.len() as u64,
+            has_more_media_holds,
+            media_cursor,
+            inspected_forum_relations,
             has_more_forum_relations,
             forum_cursor,
             drifts,
         })
+    }
+
     }
 }
 
