@@ -76,7 +76,7 @@ This persistence slice publishes no new cross-module domain event. Attachment re
 
 Validation and CAS conflicts fail closed. Media provider failures preserve the owner error code and retryability through ForumError::CapabilityFailure.
 
-If Forum fails before commit, newly retained Media holds remain conservatively retained. If the Forum commit outcome is ambiguous, holds are never released automatically. If an old hold cannot be released after a successful Forum commit, the committed Forum state remains authoritative and the hold is treated as conservative orphan state for reconciliation.
+If Forum fails before commit, newly retained Media holds remain conservatively retained. If the Forum commit outcome is ambiguous, holds are never released automatically. If an old hold cannot be released after a successful Forum commit, the committed Forum state remains authoritative and the hold is treated as conservative orphan state for reconciliation. FORUM-33 audits that state through a public Media owner-reference listing contract and reports it without automatic release.
 
 ## Migration and cutover
 
@@ -97,3 +97,19 @@ Required evidence includes SQLite and PostgreSQL migration execution, CAS create
 ## Consequences
 
 The relation model is explicit and owner-correct, at the cost of an asynchronous orphan-hold reconciliation problem. That trade-off is intentional: a conservative Media hold can delay physical cleanup, while a premature release could permit deletion of a still-referenced asset.
+
+
+## Reconciliation diagnostic
+
+After relation persistence, Forum audits the conservative-hold failure mode through the public
+owner boundary rather than querying Media persistence. Media exposes a bounded
+`MediaAssetReferenceListRequest/Page` for one normalized owner module with a strict
+`reference_id` keyset. Forum scans only `owner_module = "forum"` and checks each returned hold
+against the Forum-owned `forum_attachment_relations.reference_id` identity in the same tenant.
+
+The diagnostic distinguishes an `orphan_media_hold` when no Forum relation exists and a
+`media_reference_mismatch` when the same reference identity is bound to a different Media asset.
+The two owners cannot provide one distributed snapshot in remote deployments, so each page is
+explicitly page-local and diagnostic. No reconciliation path releases or retains a Media hold;
+automatic repair remains subject to the existing FORUM-33 operator RBAC, dry-run, audit,
+idempotent job-state and bounded-recovery requirements.
