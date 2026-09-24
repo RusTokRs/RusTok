@@ -305,7 +305,7 @@ is deferred to the final production-validation phase.
 | `FORUM-11` | `done` | Subscription levels and participation policy. |
 | `FORUM-12` | `in_progress` | Mention/quote relations and notification source exist. Runtime execution, profile/block privacy, moderator audience and final Notifications evidence remain. |
 | `FORUM-13` | `in_progress` | Optional Media presentation policy exists. Add typed category-cover owner command, transports, UI and runtime evidence; Media keeps lifecycle ownership. |
-| `FORUM-14` | `in_progress` | Forum attachment relations over Media-owned sessions/assets; FORUM-14A content-revision relation admission and the independent attachment-set revision/CAS contract are source-ready. Forum-owned attachment relation persistence now uses a dedicated CAS head plus bounded ordered rows and durable Media owner reference retention. `source_revision` is content provenance only; attachment-only changes do not advance Forum content revisions. Runtime integration/reconciliation evidence remains open. |
+| `FORUM-14` | `in_progress` | Forum attachment relations over Media-owned assets are implemented through a dedicated CAS head, bounded ordered rows and durable Media owner reference retention. `source_revision` is content provenance only; attachment-only changes do not advance Forum content revisions. Runtime integration/reconciliation evidence remains open; FORUM-33 now audits conservative orphan holds through the public Media owner-reference listing contract. |
 | `FORUM-15` | `in_progress` | Profiles supplies `ProfilesReader`; FORUM-15A through 15E provide member-card owner service, user stats, GraphQL/native transport, and privacy-aware storefront UI composition. Retain live runtime evidence. |
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
@@ -741,7 +741,7 @@ These commands remain maintainer-run in this source slice.
 
 FORUM-33A/B provide the read-only `ForumCounterReconciliationService`; FORUM-33C
 adds a sibling read-only `ForumSolutionReconciliationService`. Both are exposed
-through the same operator GraphQL query object:
+through the same operator GraphQL query object, alongside subscription, mention and attachment-hold diagnostics:
 
 ```text
 forumCounterReconciliationReport(
@@ -754,6 +754,11 @@ forumSolutionReconciliationReport(
   limit: Int,
   solutionAfter: UUID,
   solutionStatAfter: UUID
+)
+
+forumAttachmentHoldReconciliationReport(
+  limit: Int,
+  mediaAfter: UUID
 )
 ```
 
@@ -785,8 +790,9 @@ serializable repair fence. `clean` is page-local; whole-tenant clean requires
 exhausting every relevant cursor chain with every page clean.
 
 The services reuse platform module-entrypoint/span/error metrics rather than
-adding duplicate Forum metric families. Source-ready reporting does not claim
-runtime observability evidence.
+adding duplicate Forum metric families. Attachment-hold reporting records the same
+entrypoint/span/error classes and remains read-only. Source-ready reporting does not
+claim runtime observability evidence.
 
 FORUM-33 remains `in_progress`. Retain SQLite and PostgreSQL execution evidence
 for counter and accepted-solution clean/drift pages, independent multi-page
