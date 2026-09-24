@@ -807,14 +807,38 @@ fn validate_tag_name_if_present(name: Option<&str>) -> BlogResult<()> {
 }
 
 fn validate_optional_tag_slug(slug: Option<&str>) -> BlogResult<()> {
-    if let Some(slug) = slug
-        && slug.chars().count() > 100
-    {
+    let Some(slug) = slug else {
+        return Ok(());
+    };
+    if slug.chars().count() > 100 {
         return Err(BlogError::validation(
             "Tag slug cannot exceed 100 characters",
         ));
     }
+    if let Some(normalized) = rustok_taxonomy::normalize_term_route_key(slug)
+        && normalized.chars().count() > 120
+    {
+        return Err(BlogError::validation(
+            "Tag slug cannot exceed 120 characters after normalization",
+        ));
+    }
     Ok(())
+}
+
+#[cfg(test)]
+mod slug_validation_tests {
+    use super::validate_optional_tag_slug;
+
+    #[test]
+    fn normalized_tag_slug_respects_taxonomy_storage_limit() {
+        let unicode_slug = "北".repeat(100);
+        assert!(validate_optional_tag_slug(Some(unicode_slug.as_str())).is_err());
+    }
+
+    #[test]
+    fn ordinary_tag_slug_stays_valid() {
+        assert!(validate_optional_tag_slug(Some("summer-sale")).is_ok());
+    }
 }
 
 fn normalize_locale(locale: &str) -> BlogResult<String> {

@@ -278,6 +278,13 @@ and is not referenced by the current Blog production source or runtime registrat
 Removing the orphan direct dependency keeps the pre-release zero-legacy boundary
 explicit: Translation control-plane ownership for Blog Category copy is now entirely
 the canonical Taxonomy owner contract.
+## 2026-09-24 Tag route-key length boundary
+
+Blog Tag input validation now checks both the user-facing raw slug limit (100
+characters) and the canonical Taxonomy route-key limit (120 characters) after
+Unicode normalization. This prevents a valid-length Unicode input from expanding
+past the 120-character `taxonomy_terms.canonical_key` / localized slug storage
+boundary and failing later as a database error.
 ## Canonical native-module layout baseline
 
 The Blog backend is the first strict reference implementation of the canonical
