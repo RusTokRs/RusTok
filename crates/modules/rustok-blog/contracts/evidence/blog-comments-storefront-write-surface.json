@@ -38,6 +38,7 @@
     "post_create_public_visibility_revalidated": true,
     "visibility_loss_compensation_present": true,
     "post_create_visibility_failure_compensation_present": true,
+    "compensation_uses_trusted_system_actor": true,
     "visibility_revalidation_scope": "publication_status_channel_visibility_channel_activity_and_blog_binding",
     "compensation_on_visibility_loss": "fresh_idempotent_comments_delete",
     "compensation_on_visibility_revalidation_failure": "fresh_idempotent_comments_delete"
