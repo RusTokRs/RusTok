@@ -51,6 +51,7 @@ The Forum Reply owner still exposed a raw persistence service through `Deref`, w
 Reply read operations are now explicit methods on `reply_owner::ReplyService`, including the bounded pagination contract. The owner no longer implements `Deref`; the obsolete `bounded_compat.rs` module is removed. The public `reply_facade::ReplyService` surface remains unchanged.
 
 Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
+Topic owner now also exposes its read/list compatibility methods explicitly, removing its `Deref` boundary without changing the public Topic facade. Raw `topic` and `reply` modules remain private persistence implementations and are accessed only explicitly by their owner modules.
 
 ## 2026-09-24 Forum canonical owner consolidation
 
