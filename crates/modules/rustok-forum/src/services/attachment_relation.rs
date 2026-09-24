@@ -15,7 +15,7 @@ use uuid::Uuid;
 use crate::attachment_relation::{
     ForumAttachmentRelationAdmissionError, ForumAttachmentRelationAdmissionRequest,
     ForumAttachmentRelationPreparer, ForumAttachmentRelationRecord,
-    ForumAttachmentRelationRevision, ForumAttachmentRelationSet, ForumAttachmentRelationUsage,
+    ForumAttachmentRelationRevision, ForumAttachmentRelationSet, ForumAttachmentUsage,
     ForumContentTarget, ForumContentTargetKind,
 };
 use crate::entities::{
@@ -386,8 +386,8 @@ impl ForumAttachmentRelationService {
                 return Err(ForumError::AttachmentRelationInvariant);
             }
             let usage = match row.usage.as_str() {
-                "inline" => ForumAttachmentRelationUsage::Inline,
-                "attachment" => ForumAttachmentRelationUsage::Attachment,
+                "inline" => ForumAttachmentUsage::Inline,
+                "attachment" => ForumAttachmentUsage::Attachment,
                 _ => return Err(ForumError::AttachmentRelationInvariant),
             };
             if row.caption.as_deref().is_some_and(|caption| {
@@ -629,8 +629,8 @@ fn parse_target_kind(value: &str) -> ForumResult<ForumContentTargetKind> {
 
 fn usage_value(usage: ForumAttachmentRelationUsage) -> &'static str {
     match usage {
-        ForumAttachmentRelationUsage::Inline => "inline",
-        ForumAttachmentRelationUsage::Attachment => "attachment",
+        ForumAttachmentUsage::Inline => "inline",
+        ForumAttachmentUsage::Attachment => "attachment",
     }
 }
 
