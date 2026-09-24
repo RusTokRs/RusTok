@@ -34,7 +34,7 @@
     {
       "name": "authorized_write",
       "layer": "module_policy",
-      "expected": "write limiter key uses authenticated user identity and operation surface and an exceeded result carries Retry-After"
+      "expected": "write limiter key uses the canonical authenticated principal kind and id plus operation surface, and an exceeded result carries Retry-After"
     },
     {
       "name": "unauthorized_write",

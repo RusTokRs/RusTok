@@ -75,6 +75,18 @@ const manifest = read('crates/modules/rustok-search/rustok-module.toml');
 hasAll(manifest, ['[fba.provider]', 'registry = "contracts/search-fba-registry.json"', 'contract_version = "search.query.v1"'], 'manifest');
 const cargo = read('crates/modules/rustok-search/Cargo.toml');
 hasAll(cargo, ['rustok-api'], 'Cargo.toml');
+const projectorCorePath = 'crates/modules/rustok-search/src/projector_core.rs';
+const projectorLegacyPath = 'crates/modules/rustok-search/src/projector_legacy.rs';
+if (!fs.existsSync(projectorCorePath)) fail('canonical Search projector implementation is missing projector_core.rs');
+if (fs.existsSync(projectorLegacyPath)) fail('retired Search projector legacy source must be deleted');
+const projectorFacade = read('crates/modules/rustok-search/src/projector.rs');
+const projectorCore = read(projectorCorePath);
+hasAll(projectorFacade, ['use crate::projector_core;', 'core: projector_core::SearchProjector'], 'projector facade');
+hasNone(projectorFacade, ['projector_legacy'], 'projector facade');
+hasAll(projectorCore, ['pub struct SearchProjector', 'pub async fn ensure_bootstrap'], 'projector core');
+hasNone(projectorCore, ['try_get::<i64>("", "total").ok())', 'unwrap_or(0)'], 'projector bootstrap count handling');
+hasNone(projectorFacade, ['try_get::<i64>("", "total").ok())'], 'projector facade bootstrap count handling');
+
 const lib = read('crates/modules/rustok-search/src/lib.rs');
 hasAll(lib, ['pub mod ports;', 'pub use ports::*;', 'canonical_search_result_url'], 'lib.rs');
 const source = read('crates/modules/rustok-search/src/ports.rs');

@@ -30,6 +30,7 @@ or host-specific UI wiring.
 
 ## Projection correctness
 
+- The public `SearchProjector` facade is backed by the canonical `projector_core.rs` implementation; repository filenames must not preserve retired `legacy` naming for current code.
 - Search projector operations are tenant-scoped: ingestion always takes `tenant_id` from `EventEnvelope`, and `PgSearchEngine` requires `SearchQuery.tenant_id`.
 - Re-delivery of events must not corrupt the read model: the projector performs a scoped delete + rebuild/upsert in a transaction, and materialized rows are written via stable `document_key`.
 - Blog tag projection resolves only canonical Taxonomy attachments from `blog_post_tags`, accepting `global` and `module:blog` term scopes; legacy `blog_posts.metadata.tags` is never a search source.

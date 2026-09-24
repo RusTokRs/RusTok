@@ -2,7 +2,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -32,6 +32,8 @@ function fixture({
       ${missingRetryHeader ? "" : "headers.insert(header::RETRY_AFTER, value)"}
       .http_headers(headers)
       BLOG_RATE_LIMIT_BACKEND_UNAVAILABLE
+      let actor = auth.port_actor()
+      PortActorKind::Service
     `,
   );
   write(
@@ -157,6 +159,22 @@ test("Blog GraphQL rate-limit verifier rejects Retry-After on backend failure", 
       result.stderr,
       /missing assert_eq!\(retry_after\(&response\), None\)|forbidden Some\(\"/,
     );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Blog GraphQL rate-limit verifier rejects user-only actor keying", () => {
+  const root = fixture();
+  try {
+    const policyPath = path.join(root, "crates/modules/rustok-blog/src/graphql/rate_limit.rs");
+    const source = readFileSync(policyPath, "utf8")
+      .replace("let actor = auth.port_actor()", "let actor = auth.map(|auth| format!(\"user:{}\", auth.user_id))")
+      .replace("PortActorKind::Service", "");
+    write(root, "crates/modules/rustok-blog/src/graphql/rate_limit.rs", source);
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /auth\.port_actor\(\)|PortActorKind::Service/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

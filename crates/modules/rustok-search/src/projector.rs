@@ -6,7 +6,7 @@ use uuid::Uuid;
 use rustok_core::{Error, Result};
 use rustok_telemetry::metrics;
 
-use crate::projector_legacy;
+use crate::projector_core;
 
 const CORE_SCOPE_COUNT_SQL: &str = r#"
 SELECT COUNT(*) AS total
@@ -33,13 +33,13 @@ WHERE tenant_id = $1
 #[derive(Clone)]
 pub struct SearchProjector {
     db: DatabaseConnection,
-    legacy: projector_legacy::SearchProjector,
+    core: projector_core::SearchProjector,
 }
 
 impl SearchProjector {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            legacy: projector_legacy::SearchProjector::new(db.clone()),
+            core: projector_core::SearchProjector::new(db.clone()),
             db,
         }
     }
@@ -58,7 +58,8 @@ impl SearchProjector {
             .query_one_raw(statement)
             .await
             .map_err(Error::Database)?
-            .and_then(|row| row.try_get::<i64>("", "total").ok())
+            .map(|row| row.try_get::<i64>("", "total").map_err(Error::Database))
+            .transpose()?
             .unwrap_or(0);
         if total == 0 {
             self.rebuild_tenant(tenant_id).await?;
@@ -75,7 +76,8 @@ impl SearchProjector {
             .query_one_raw(legacy_statement)
             .await
             .map_err(Error::Database)?
-            .and_then(|row| row.try_get::<i64>("", "total").ok())
+            .map(|row| row.try_get::<i64>("", "total").map_err(Error::Database))
+            .transpose()?
             .unwrap_or(0);
         if legacy_total > 0 {
             self.rebuild_product_scope(tenant_id).await?;
@@ -94,8 +96,8 @@ impl SearchProjector {
     pub async fn rebuild_tenant(&self, tenant_id: Uuid) -> Result<()> {
         let started_at = Instant::now();
         let result = async {
-            self.legacy.rebuild_content_scope(tenant_id).await?;
-            self.legacy.rebuild_product_scope(tenant_id).await
+            self.core.rebuild_content_scope(tenant_id).await?;
+            self.core.rebuild_product_scope(tenant_id).await
         }
         .await;
         record_scope_preserving_rebuild(tenant_id, &result, started_at);
@@ -103,15 +105,15 @@ impl SearchProjector {
     }
 
     pub async fn rebuild_content_scope(&self, tenant_id: Uuid) -> Result<()> {
-        self.legacy.rebuild_content_scope(tenant_id).await
+        self.core.rebuild_content_scope(tenant_id).await
     }
 
     pub async fn rebuild_product_scope(&self, tenant_id: Uuid) -> Result<()> {
-        self.legacy.rebuild_product_scope(tenant_id).await
+        self.core.rebuild_product_scope(tenant_id).await
     }
 
     pub async fn upsert_node(&self, tenant_id: Uuid, node_id: Uuid) -> Result<()> {
-        self.legacy.upsert_node(tenant_id, node_id).await
+        self.core.upsert_node(tenant_id, node_id).await
     }
 
     pub async fn upsert_node_locale(
@@ -120,13 +122,13 @@ impl SearchProjector {
         node_id: Uuid,
         locale: &str,
     ) -> Result<()> {
-        self.legacy
+        self.core
             .upsert_node_locale(tenant_id, node_id, locale)
             .await
     }
 
     pub async fn delete_node(&self, tenant_id: Uuid, node_id: Uuid) -> Result<()> {
-        self.legacy.delete_node(tenant_id, node_id).await
+        self.core.delete_node(tenant_id, node_id).await
     }
 
     pub async fn delete_node_locale(
@@ -135,21 +137,21 @@ impl SearchProjector {
         node_id: Uuid,
         locale: &str,
     ) -> Result<()> {
-        self.legacy
+        self.core
             .delete_node_locale(tenant_id, node_id, locale)
             .await
     }
 
     pub async fn reindex_category(&self, tenant_id: Uuid, category_id: Uuid) -> Result<()> {
-        self.legacy.reindex_category(tenant_id, category_id).await
+        self.core.reindex_category(tenant_id, category_id).await
     }
 
     pub async fn upsert_product(&self, tenant_id: Uuid, product_id: Uuid) -> Result<()> {
-        self.legacy.upsert_product(tenant_id, product_id).await
+        self.core.upsert_product(tenant_id, product_id).await
     }
 
     pub async fn delete_product(&self, tenant_id: Uuid, product_id: Uuid) -> Result<()> {
-        self.legacy.delete_product(tenant_id, product_id).await
+        self.core.delete_product(tenant_id, product_id).await
     }
 
     fn ensure_postgres(&self) -> Result<()> {

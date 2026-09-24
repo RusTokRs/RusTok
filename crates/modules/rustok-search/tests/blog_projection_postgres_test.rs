@@ -371,6 +371,64 @@ async fn full_blog_reindex_replaces_only_current_tenant_blog_documents() -> Test
     test_db.cleanup().await
 }
 
+
+#[tokio::test]
+async fn blog_projection_does_not_join_author_from_another_tenant() -> TestResult<()> {
+    let Some(test_db) = PostgresSearchTestDb::setup("blog_author_tenant").await? else {
+        return Ok(());
+    };
+
+    let tenant_id = Uuid::new_v4();
+    let other_tenant_id = Uuid::new_v4();
+    let post_id = Uuid::new_v4();
+    let author_id = Uuid::new_v4();
+
+    insert_blog_post(
+        &test_db.db,
+        tenant_id,
+        post_id,
+        author_id,
+        "published",
+        "cross-tenant-author",
+        "Cross tenant author",
+    )
+    .await?;
+
+    test_db
+        .db
+        .execute_unprepared(&format!(
+            "UPDATE users SET tenant_id = '{other_tenant_id}' WHERE id = '{author_id}'"
+        ))
+        .await?;
+
+    let handler = SearchIngestionHandler::new(test_db.db.clone());
+    handler
+        .handle(&envelope(
+            tenant_id,
+            Some(author_id),
+            DomainEvent::BlogPostCreated {
+                post_id,
+                author_id: Some(author_id),
+                locale: "en".to_string(),
+            },
+        )?)
+        .await?;
+
+    let projected = load_blog_document(&test_db.db, tenant_id, post_id)
+        .await?
+        .expect("Blog post should still be projected");
+    assert!(projected.payload["author_name"].is_null());
+    assert!(
+        !projected
+            .payload
+            .get("author_name")
+            .and_then(JsonValue::as_str)
+            .is_some_and(|name| name == "Search Author")
+    );
+
+    test_db.cleanup().await
+}
+
 #[tokio::test]
 async fn blog_module_disable_cleans_scope_and_enable_rebuilds_it() -> TestResult<()> {
     let Some(test_db) = PostgresSearchTestDb::setup("blog_module_toggle").await? else {
@@ -508,6 +566,7 @@ async fn create_blog_projection_source_tables(
         r#"
         CREATE TABLE users (
             id UUID PRIMARY KEY,
+            tenant_id UUID NOT NULL,
             name TEXT NOT NULL
         );
 
@@ -594,8 +653,8 @@ async fn insert_blog_post(
     let cms_translation_id = Uuid::new_v4();
     db.execute_unprepared(&format!(
         r#"
-        INSERT INTO users (id, name)
-        VALUES ('{author_id}', 'Search Author')
+        INSERT INTO users (id, tenant_id, name)
+        VALUES ('{author_id}', '{tenant_id}', 'Search Author')
         ON CONFLICT (id) DO NOTHING;
 
         INSERT INTO blog_posts (

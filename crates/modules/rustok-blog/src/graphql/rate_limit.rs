@@ -189,7 +189,15 @@ fn build_rate_limit_key(
     surface: BlogGraphqlSurface,
 ) -> String {
     let actor = auth
-        .map(|auth| format!("user:{}", auth.user_id))
+        .map(|auth| {
+            let actor = auth.port_actor();
+            let kind = match actor.kind {
+                rustok_api::PortActorKind::User => "user",
+                rustok_api::PortActorKind::Service => "service",
+                rustok_api::PortActorKind::System => "system",
+            };
+            format!("{kind}:{}", actor.id)
+        })
         .or_else(|| extract_client_ip(headers).map(|ip| format!("ip:{ip}")))
         .unwrap_or_else(|| "anonymous".to_string());
 
@@ -414,6 +422,30 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn service_principal_rate_limit_key_is_not_encoded_as_a_user() {
+        let tenant_id = Uuid::new_v4();
+        let tenant = tenant(tenant_id);
+        let client_id = Uuid::new_v4();
+        let auth = AuthContext {
+            user_id: client_id,
+            session_id: Uuid::nil(),
+            tenant_id,
+            permissions: vec![Permission::BLOG_POSTS_READ],
+            client_id: Some(client_id),
+            scopes: vec![],
+            grant_type: "client_credentials".to_string(),
+        };
+
+        let key =
+            build_rate_limit_key(&tenant, Some(&auth), None, BlogGraphqlSurface::Posts);
+
+        assert_eq!(
+            key,
+            format!("tenant:{tenant_id}:blog:graphql:read:posts:service:{client_id}")
+        );
+    }
+
     fn raw_forwarded_headers_do_not_define_the_actor_key() {
         let tenant_id = Uuid::new_v4();
         let tenant = tenant(tenant_id);

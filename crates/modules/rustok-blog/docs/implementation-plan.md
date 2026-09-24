@@ -1424,3 +1424,8 @@ should run the relevant subset, including:
 - [Blog documentation](./README.md)
 - [Comments consumer registry](../contracts/blog-fba-registry.json)
 - [Richtext implementation plan](../../../../docs/modules/rich-text-implementation-plan.md)
+
+
+## 2026-09-24 GraphQL rate-limit principal identity
+
+Blog GraphQL rate-limit keys now use the canonical authenticated principal identity from AuthContext::port_actor(), including principal kind and stable principal id. Human users remain user-scoped; client-credentials service actors use the service namespace. This prevents principal-kind collapse in the rate-limit key while keeping tenant and operation surface binding. Tests, build and CI remain unrun by the agent.
