@@ -95,43 +95,33 @@ async fn ensure_search_admin_permission(
 
 #[cfg(test)]
 mod tests {
+    use async_graphql::{ErrorExtensions, FieldError};
     use super::map_search_module_error;
-    use rustok_api::graphql::GraphQLError;
+
+    fn error_code(error: &FieldError) -> Option<String> {
+        error
+            .extensions
+            .as_ref()
+            .and_then(|extensions| extensions.get("code"))
+            .and_then(|value| value.clone().into_json().ok())
+            .and_then(|value| value.as_str().map(ToOwned::to_owned))
+    }
 
     #[test]
     fn internal_search_errors_are_redacted_at_graphql_boundary() {
-        let database = map_search_module_error(rustok_core::Error::Internal(
+        let internal = map_search_module_error(rustok_core::Error::Internal(
             "password=super-secret database connection details".to_string(),
         ));
-        let external = map_search_module_error(rustok_core::Error::Database(
-            sea_orm::DbErr::Custom("driver secret".to_string()),
+        let external = map_search_module_error(rustok_core::Error::External(
+            "upstream secret=driver-details".to_string(),
         ));
 
-        assert_eq!(database.message, "Search service is temporarily unavailable");
+        assert_eq!(internal.message, "Search service is temporarily unavailable");
         assert_eq!(external.message, "Search service is temporarily unavailable");
-        assert!(!database.message.contains("super-secret"));
-        assert!(!external.message.contains("driver secret"));
-
-        let database_code = database
-            .extensions
-            .as_ref()
-            .and_then(|extensions| extensions.get("code"));
-        let external_code = external
-            .extensions
-            .as_ref()
-            .and_then(|extensions| extensions.get("code"));
-        assert_eq!(
-            database_code
-                .and_then(|value| value.as_str())
-                .or_else(|| database_code.and_then(|value| value.clone().into_json().ok().and_then(|value| value.as_str().map(str::to_string)).as_deref())),
-            Some("INTERNAL_ERROR")
-        );
-        assert_eq!(
-            external_code
-                .and_then(|value| value.as_str())
-                .or_else(|| external_code.and_then(|value| value.clone().into_json().ok().and_then(|value| value.as_str().map(str::to_string)).as_deref())),
-            Some("INTERNAL_ERROR")
-        );
+        assert_eq!(error_code(&internal).as_deref(), Some("INTERNAL_ERROR"));
+        assert_eq!(error_code(&external).as_deref(), Some("INTERNAL_ERROR"));
+        assert!(!internal.message.contains("super-secret"));
+        assert!(!external.message.contains("driver-details"));
     }
 
     #[test]
@@ -144,25 +134,7 @@ mod tests {
 
         assert_eq!(validation.message, "query is invalid");
         assert_eq!(not_found.message, "document missing");
-        assert_eq!(
-            validation
-                .extensions
-                .as_ref()
-                .and_then(|extensions| extensions.get("code"))
-                .and_then(|value| value.clone().into_json().ok())
-                .and_then(|value| value.as_str().map(ToOwned::to_owned))
-                .as_deref(),
-            Some("BAD_USER_INPUT")
-        );
-        assert_eq!(
-            not_found
-                .extensions
-                .as_ref()
-                .and_then(|extensions| extensions.get("code"))
-                .and_then(|value| value.clone().into_json().ok())
-                .and_then(|value| value.as_str().map(ToOwned::to_owned))
-                .as_deref(),
-            Some("NOT_FOUND")
-        );
+        assert_eq!(error_code(&validation).as_deref(), Some("BAD_USER_INPUT"));
+        assert_eq!(error_code(&not_found).as_deref(), Some("NOT_FOUND"));
     }
 }
