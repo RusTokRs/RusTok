@@ -48,7 +48,6 @@ pub struct GqlForumCounterReconciliationReport {
 }
 
 #[derive(Debug, Clone, SimpleObject)]
-#[derive(Debug, Clone, SimpleObject)]
 pub struct GqlForumAttachmentHoldDrift {
     pub kind: String,
     pub reference_id: Uuid,
@@ -68,6 +67,8 @@ pub struct GqlForumAttachmentHoldReconciliationReport {
     pub clean: bool,
     pub drifts: Vec<GqlForumAttachmentHoldDrift>,
 }
+
+#[derive(Debug, Clone, SimpleObject)]
 pub struct GqlForumSolutionDrift {
     pub kind: String,
     pub subject_id: Uuid,
