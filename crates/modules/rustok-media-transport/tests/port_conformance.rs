@@ -3,7 +3,8 @@ use std::{sync::Arc, time::Duration};
 use bytes::Bytes;
 use rustok_api::{PortActor, PortContext, PortErrorKind};
 use rustok_media::{
-    MediaAssetReadPort, MediaAssetWritePort, MediaPublicImageReadPort, MediaPublicImageService,
+    MediaAssetReadPort, MediaAssetReferenceInput, MediaAssetReferenceAdmissionState,
+    MediaAssetWritePort, MediaPublicImageReadPort, MediaPublicImageService,
     MediaReconciliationRequest, MediaService, MediaUploadRequest, MediaUploadTransport,
     UploadInput, UpsertTranslationInput, migrations,
 };
@@ -132,6 +133,17 @@ async fn exercise_provider(
     assert!(total >= 1);
     assert!(items.iter().any(|candidate| candidate.id == asset_id));
 
+    let admission = read
+        .get_asset_reference_admission(read_context(tenant_id), asset_id)
+        .await
+        .expect("get_asset_reference_admission should preserve the lifecycle admission contract");
+    assert_eq!(admission.media_id, asset_id);
+    assert_eq!(admission.tenant_id, tenant_id);
+    assert_eq!(
+        admission.state,
+        MediaAssetReferenceAdmissionState::Admitted
+    );
+
     let descriptor = read
         .get_image_descriptor(
             read_context(tenant_id),
@@ -147,7 +159,7 @@ async fn exercise_provider(
         (item.width, item.height)
     );
     assert_eq!(descriptor.url, item.public_url);
-    assert_eq!(item.public_url, item.storage_path);
+    assert_ne!(item.public_url, item.storage_path);
 
     let public_asset = public_images
         .get_public_image_asset(
@@ -277,6 +289,52 @@ async fn exercise_provider(
     assert_eq!(public_policy_error.kind, PortErrorKind::Timeout);
     assert_eq!(public_policy_error.code, "port.deadline_required");
 
+    let reference = MediaAssetReferenceInput {
+        owner_module: "conformance".to_string(),
+        reference_id: Uuid::new_v4(),
+    };
+    let retain_context = write_context(tenant_id, "retain-reference");
+    let retained = write
+        .retain_asset_reference(
+            retain_context.clone(),
+            asset_id,
+            reference.clone(),
+        )
+        .await
+        .expect("retain_asset_reference should persist a durable owner hold");
+    let retained_replay = write
+        .retain_asset_reference(retain_context, asset_id, reference.clone())
+        .await
+        .expect("same retain idempotency key should replay the original hold");
+    assert_eq!(retained_replay, retained);
+
+    let delete_while_retained = write
+        .delete_asset(write_context(tenant_id, "delete-retained"), asset_id)
+        .await
+        .expect_err("retained media must reject deletion");
+    assert_eq!(delete_while_retained.kind, PortErrorKind::Conflict);
+    assert_eq!(
+        delete_while_retained.code,
+        "media.asset_referenced"
+    );
+
+    write
+        .release_asset_reference(
+            write_context(tenant_id, "release-reference"),
+            asset_id,
+            reference.clone(),
+        )
+        .await
+        .expect("release_asset_reference should remove the durable owner hold");
+    write
+        .release_asset_reference(
+            write_context(tenant_id, "release-reference-repeat"),
+            asset_id,
+            reference,
+        )
+        .await
+        .expect("releasing an already absent reference should remain idempotent");
+
     write
         .delete_asset(write_context(tenant_id, "delete"), asset_id)
         .await
@@ -328,6 +386,7 @@ async fn embedded_and_loopback_grpc_providers_pass_the_same_port_suite() {
     )
     .allow_operations([
         MediaGrpcOperation::GetAsset,
+        MediaGrpcOperation::GetAssetReferenceAdmission,
         MediaGrpcOperation::ListAssets,
         MediaGrpcOperation::GetImageDescriptor,
         MediaGrpcOperation::GetPublicImageAsset,
@@ -335,6 +394,8 @@ async fn embedded_and_loopback_grpc_providers_pass_the_same_port_suite() {
         MediaGrpcOperation::PrepareUpload,
         MediaGrpcOperation::CompleteUpload,
         MediaGrpcOperation::DeleteAsset,
+        MediaGrpcOperation::RetainAssetReference,
+        MediaGrpcOperation::ReleaseAssetReference,
         MediaGrpcOperation::UpsertTranslation,
         MediaGrpcOperation::ReconcileStorage,
     ]);

@@ -305,5 +305,13 @@ control contract is required before Forum attachment rows become authoritative.
 
 Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
 
+## 2026-09-24 Media durable reference-retention control
+
+A Forum-to-Media boundary review identified the remaining deletion time-of-check/time-of-use gap in lifecycle admission. Media now owns durable `media_asset_reference_holds` keyed by a consumer-owned stable `reference_id`, with tenant-composite foreign-key integrity and database lifecycle guards: only active assets with ready active blobs can accept a hold, while lifecycle transitions into `delete_pending` or `deleted` fail closed whenever a hold exists. The Media write-port acquire/release operations use the existing trusted deadline/idempotency path; same-reference replay is idempotent and retargeting is rejected. Media deletion and finalization recheck reference holds.
+
+The control intentionally does not claim distributed transactionality with consumer-owned databases. An owner crash after acquiring a hold before its own relation commit can leave a conservative orphan hold; consumer-side bounded reconciliation must release only provably stale identities. This is the required safety primitive before Forum attachment relations become authoritative.
+
+Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
+
 ## Completed Rounds Archive
 _No completed rounds yet. Round 1 is currently in progress._

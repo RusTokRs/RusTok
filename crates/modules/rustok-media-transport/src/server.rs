@@ -3,7 +3,8 @@ use std::{collections::HashSet, sync::Arc};
 use bytes::Bytes;
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use rustok_media::{
-    MediaAssetReadPort, MediaAssetWritePort, MediaPublicImageReadPort, MediaReconciliationRequest,
+    MediaAssetReadPort, MediaAssetReferenceInput, MediaAssetWritePort, MediaPublicImageReadPort,
+    MediaReconciliationRequest,
     MediaUploadRequest, UpsertTranslationInput,
 };
 use serde::{Serialize, de::DeserializeOwned};
@@ -51,6 +52,8 @@ pub enum MediaGrpcOperation {
     PrepareUpload,
     CompleteUpload,
     DeleteAsset,
+    RetainAssetReference,
+    ReleaseAssetReference,
     UpsertTranslation,
     ReconcileStorage,
 }
@@ -278,6 +281,43 @@ where
         let request = request.into_inner();
         self.provider
             .delete_asset(context, parse_id(&request.id)?)
+            .await
+            .map_err(port_error_to_status)?;
+        Ok(Response::new(EmptyResponse {}))
+    }
+
+    async fn retain_asset_reference(
+        &self,
+        request: Request<IdJsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            MediaGrpcOperation::RetainAssetReference,
+        )?;
+        let request = request.into_inner();
+        let input: MediaAssetReferenceInput = decode_input(&request.input_json)?;
+        let value = self
+            .provider
+            .retain_asset_reference(context, parse_id(&request.id)?, input)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
+    async fn release_asset_reference(
+        &self,
+        request: Request<IdJsonRequest>,
+    ) -> Result<Response<EmptyResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            MediaGrpcOperation::ReleaseAssetReference,
+        )?;
+        let request = request.into_inner();
+        let input: MediaAssetReferenceInput = decode_input(&request.input_json)?;
+        self.provider
+            .release_asset_reference(context, parse_id(&request.id)?, input)
             .await
             .map_err(port_error_to_status)?;
         Ok(Response::new(EmptyResponse {}))

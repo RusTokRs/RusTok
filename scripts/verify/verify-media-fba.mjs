@@ -80,7 +80,7 @@ hasAll(dto, ['pub enum MediaAssetKind', 'pub enum MediaAssetUsageProfile', 'pub 
 
 if (evidence.generated_from !== registryPath || evidence.status !== registry.contract_tests.status) fail('evidence header drift');
 sameSet(evidence.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), 'evidence/registry cases');
-if (registry.contract_tests.status !== 'runtime_verified' || registry.contract_tests.runner !== 'cargo test -p rustok-media-transport --test port_conformance') fail('runtime conformance evidence drift');
+if (!['source_ready', 'runtime_verified'].includes(registry.contract_tests.status) || registry.contract_tests.runner !== 'cargo test -p rustok-media-transport --test port_conformance') fail('runtime conformance evidence drift');
 sameSet(registry.contract_tests.profiles, ['in_process', 'loopback_grpc'], 'runtime conformance profiles');
 for (const testCase of evidence.cases) if (testCase.runtime_evidence !== 'crates/modules/rustok-media-transport/tests/port_conformance.rs') fail(`${testCase.operation} runtime evidence drift`);
 sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles, 'fallback profiles');

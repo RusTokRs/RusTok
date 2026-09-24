@@ -13,8 +13,9 @@
 - `MediaService`, media entities/DTOs, and translation update normalization;
 - REST upload/list/get/delete/translation handlers on a narrow `MediaHttpRuntime` with explicit DB/storage handles;
 - typed cross-module image contract `MediaImageDescriptor`, delivery profile, and direct-public/proxy-required/not-addressable URL policy;
-- `MediaAssetReadPort` and `MediaAssetWritePort` metadata/control contracts;
+- `MediaAssetReadPort` and `MediaAssetWritePort` metadata/control contracts, including durable reference retain/release;
 - the owner-only `MediaAssetReferenceAdmission` read fact, which exposes tenant identity plus typed lifecycle/reference eligibility without storage paths or delivery URLs;
+- the durable `MediaAssetReference` retention control, which stores stable consumer-owned holds and blocks Media lifecycle deletion while retained;
 - `MediaPublicImageReadPort`, which returns one owner result containing the canonical `MediaItem` and the public descriptor selected by Media policy;
 - `MediaPublicImageService`, which turns only storage-relative image descriptors into `/api/media/public/images/{id}/{checksum_sha256}` capability URLs;
 - an unauthenticated Media-owned capability GET that derives tenant authority from `TenantContext`, verifies the active ready image blob and checksum, reads the object, and returns immutable bytes with ETag, content length/type, and `nosniff`;

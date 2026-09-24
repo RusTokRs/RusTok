@@ -14,12 +14,17 @@ use rustok_storage::{ObjectKey, ObjectScope, ObjectZone, StorageRuntime};
 
 use crate::{
     dto::{
-        ApplyExactMediaTranslationInput, CreateRenditionInput, DEFAULT_MAX_SIZE, MediaAssetSummary,
-        MediaItem, MediaRenditionItem, MediaTranslationItem, PrepareUploadSessionInput,
+        ApplyExactMediaTranslationInput, CreateRenditionInput, DEFAULT_MAX_SIZE,
+        MediaAssetReference, MediaAssetReferenceInput, MediaAssetSummary, MediaItem,
+        MediaRenditionItem, MediaTranslationItem, PrepareUploadSessionInput,
         PreparedUploadSession, UploadInput, UpsertTranslationInput,
     },
     entities::{
         asset::{ActiveModel as AssetActiveModel, Column as AssetCol, Entity as AssetEntity},
+        asset_reference::{
+            ActiveModel as AssetReferenceActiveModel, Column as AssetReferenceCol,
+            Entity as AssetReferenceEntity,
+        },
         blob::{self, ActiveModel as BlobActiveModel, Column as BlobCol, Entity as BlobEntity},
         media_translation::{
             ActiveModel as TranslationActiveModel, Column as TransCol, Entity as TransEntity,
@@ -43,6 +48,17 @@ pub struct MediaService {
     storage: StorageRuntime,
     image_worker: ImageWorker,
     translation_event_bus: TransactionalEventBus,
+}
+
+fn map_asset_reference_delete_error(error: sea_orm::DbErr, media_id: Uuid) -> MediaError {
+    if error
+        .to_string()
+        .contains("media asset has retained references")
+    {
+        MediaError::AssetReferenced(media_id)
+    } else {
+        MediaError::Db(error)
+    }
 }
 
 fn next_translation_revision(media_id: Uuid, locale: &str, revision: i64) -> Result<i64> {
@@ -1482,6 +1498,144 @@ impl MediaService {
         ))
     }
 
+    pub async fn retain_asset_reference(
+        &self,
+        tenant_id: Uuid,
+        media_id: Uuid,
+        input: MediaAssetReferenceInput,
+    ) -> Result<MediaAssetReference> {
+        let owner_module = normalize_owner_module(Some(&input.owner_module))?;
+        if input.reference_id.is_nil() {
+            return Err(MediaError::InvalidAssetReferenceId);
+        }
+
+        let transaction = self.db.begin().await?;
+        if let Some(existing) = AssetReferenceEntity::find_by_id(input.reference_id)
+            .one(&transaction)
+            .await?
+        {
+            if existing.tenant_id != tenant_id
+                || existing.media_id != media_id
+                || existing.owner_module != owner_module
+            {
+                return Err(MediaError::AssetReferenceConflict(input.reference_id));
+            }
+            transaction.commit().await?;
+            return Ok(MediaAssetReference {
+                media_id: existing.media_id,
+                tenant_id: existing.tenant_id,
+                owner_module: existing.owner_module,
+                reference_id: existing.reference_id,
+            });
+        }
+
+        let locked = AssetEntity::update_many()
+            .col_expr(
+                AssetCol::UpdatedAt,
+                sea_orm::sea_query::Expr::col(AssetCol::UpdatedAt),
+            )
+            .filter(AssetCol::TenantId.eq(tenant_id))
+            .filter(AssetCol::Id.eq(media_id))
+            .filter(AssetCol::LifecycleState.eq(AssetState::Active.as_str()))
+            .exec(&transaction)
+            .await?;
+        if locked.rows_affected != 1 {
+            return Err(MediaError::AssetReferenceNotAdmissible(media_id));
+        }
+
+        let asset = AssetEntity::find_by_id(media_id)
+            .filter(AssetCol::TenantId.eq(tenant_id))
+            .one(&transaction)
+            .await?
+            .ok_or(MediaError::NotFound(media_id))?;
+        if asset.lifecycle_state != AssetState::Active.as_str() {
+            return Err(MediaError::AssetReferenceNotAdmissible(media_id));
+        }
+
+        let active_blob_id = asset
+            .active_blob_id
+            .ok_or(MediaError::AssetReferenceNotAdmissible(media_id))?;
+        let active_blob = BlobEntity::find_by_id(active_blob_id)
+            .filter(BlobCol::TenantId.eq(tenant_id))
+            .filter(BlobCol::AssetId.eq(media_id))
+            .one(&transaction)
+            .await?
+            .ok_or(MediaError::AssetReferenceNotAdmissible(media_id))?;
+        if active_blob.state != BlobState::Ready.as_str() {
+            return Err(MediaError::AssetReferenceNotAdmissible(media_id));
+        }
+
+        AssetReferenceEntity::insert(AssetReferenceActiveModel {
+            reference_id: Set(input.reference_id),
+            tenant_id: Set(tenant_id),
+            media_id: Set(media_id),
+            owner_module: Set(owner_module.clone()),
+            created_at: Set(Utc::now().fixed_offset()),
+        })
+        .on_conflict(
+            sea_orm::sea_query::OnConflict::column(AssetReferenceCol::ReferenceId)
+                .do_nothing()
+                .to_owned(),
+        )
+        .exec(&transaction)
+        .await?;
+
+        let existing = AssetReferenceEntity::find_by_id(input.reference_id)
+            .one(&transaction)
+            .await?
+            .ok_or_else(|| {
+                MediaError::Db(sea_orm::DbErr::Custom(
+                    "media asset reference insert did not produce a durable hold".to_string(),
+                ))
+            })?;
+        if existing.tenant_id != tenant_id
+            || existing.media_id != media_id
+            || existing.owner_module != owner_module
+        {
+            return Err(MediaError::AssetReferenceConflict(input.reference_id));
+        }
+
+        transaction.commit().await?;
+        Ok(MediaAssetReference {
+            media_id: existing.media_id,
+            tenant_id: existing.tenant_id,
+            owner_module: existing.owner_module,
+            reference_id: existing.reference_id,
+        })
+    }
+
+    pub async fn release_asset_reference(
+        &self,
+        tenant_id: Uuid,
+        media_id: Uuid,
+        input: MediaAssetReferenceInput,
+    ) -> Result<()> {
+        let owner_module = normalize_owner_module(Some(&input.owner_module))?;
+        if input.reference_id.is_nil() {
+            return Err(MediaError::InvalidAssetReferenceId);
+        }
+
+        let transaction = self.db.begin().await?;
+        let Some(existing) = AssetReferenceEntity::find_by_id(input.reference_id)
+            .one(&transaction)
+            .await?
+        else {
+            transaction.commit().await?;
+            return Ok(());
+        };
+        if existing.tenant_id != tenant_id
+            || existing.media_id != media_id
+            || existing.owner_module != owner_module
+        {
+            return Err(MediaError::AssetReferenceConflict(input.reference_id));
+        }
+        AssetReferenceEntity::delete_by_id(input.reference_id)
+            .exec(&transaction)
+            .await?;
+        transaction.commit().await?;
+        Ok(())
+    }
+
     pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> Result<()> {
         let asset = AssetEntity::find_by_id(id)
             .filter(AssetCol::TenantId.eq(tenant_id))
@@ -1490,6 +1644,14 @@ impl MediaService {
             .ok_or(MediaError::NotFound(id))?;
         if asset.lifecycle_state == AssetState::Deleted.as_str() {
             return Ok(());
+        }
+        let retained = AssetReferenceEntity::find()
+            .filter(AssetReferenceCol::TenantId.eq(tenant_id))
+            .filter(AssetReferenceCol::MediaId.eq(id))
+            .count(&self.db)
+            .await?;
+        if retained > 0 {
+            return Err(MediaError::AssetReferenced(id));
         }
         if asset.lifecycle_state == AssetState::DeletePending.as_str() {
             self.reconcile_asset_deletion(tenant_id, id).await?;
@@ -1507,7 +1669,10 @@ impl MediaService {
         active.active_blob_id = Set(None);
         active.updated_at = Set(now);
         active.delete_requested_at = Set(Some(now));
-        let updated_asset = active.update(&transaction).await?;
+        let updated_asset = active
+            .update(&transaction)
+            .await
+            .map_err(|error| map_asset_reference_delete_error(error, id))?;
         BlobEntity::update_many()
             .col_expr(
                 BlobCol::State,
@@ -2083,6 +2248,14 @@ impl MediaService {
     }
 
     async fn finalize_asset_deletion(&self, tenant_id: Uuid, asset_id: Uuid) -> Result<()> {
+        let retained = AssetReferenceEntity::find()
+            .filter(AssetReferenceCol::TenantId.eq(tenant_id))
+            .filter(AssetReferenceCol::MediaId.eq(asset_id))
+            .count(&self.db)
+            .await?;
+        if retained > 0 {
+            return Ok(());
+        }
         let remaining = BlobEntity::find()
             .filter(BlobCol::TenantId.eq(tenant_id))
             .filter(BlobCol::AssetId.eq(asset_id))

@@ -19,7 +19,8 @@ use sea_orm_migration::MigrationTrait;
 
 pub use dto::{
     ALLOWED_MIME_PREFIXES, ApplyExactMediaTranslationInput, CreateRenditionInput, DEFAULT_MAX_SIZE,
-    MediaAssetReferenceAdmission, MediaAssetReferenceAdmissionState, MediaImageDeliveryProfile,
+    MediaAssetReference, MediaAssetReferenceAdmission, MediaAssetReferenceAdmissionState,
+    MediaAssetReferenceInput, MediaImageDeliveryProfile,
     MediaImageDescriptor, MediaItem, MediaRenditionItem,
     MediaTranslationItem, NormalizedTranslationInput, PrepareUploadSessionInput,
     PreparedUploadSession, UploadInput, UpsertTranslationInput,

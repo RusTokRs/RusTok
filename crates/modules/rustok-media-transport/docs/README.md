@@ -2,8 +2,8 @@
 
 The transport is deliberately narrower than the Media HTTP/object interfaces.
 It carries asset metadata, owner-selected public image descriptors,
-reference-admission lifecycle facts, translations, upload-session control, deletion
-commands, and reconciliation commands. Upload/download bytes never enter a JSON or protobuf envelope.
+reference-admission lifecycle facts, durable owner-reference retention/release controls,
+translations, upload-session control, deletion commands, and reconciliation commands. Upload/download bytes never enter a JSON or protobuf envelope.
 
 ## Contract ownership
 
@@ -28,8 +28,8 @@ explicitly call `with_public_image_provider(...)` to enable public descriptor
 selection. Calls without that attachment return typed unavailable semantics.
 
 The trusted server interceptor must separately allow
-`MediaGrpcOperation::GetPublicImageAsset` and
-`MediaGrpcOperation::GetAssetReferenceAdmission`. A generic asset-read grant does
+`MediaGrpcOperation::GetPublicImageAsset`, `MediaGrpcOperation::GetAssetReferenceAdmission`,
+`MediaGrpcOperation::RetainAssetReference`, and `MediaGrpcOperation::ReleaseAssetReference`. A generic asset-read grant does
 not implicitly authorize either specialized owner operation.
 
 ## Consumer connection policy
