@@ -71,6 +71,19 @@ notifications module, and cross-module release gates.
 - FORUM-24R adds an executable PostgreSQL harness for the FORUM-24Q reindex handoff, exercising real owner writes, the durable Forum inbox, staged tenant replacement, canonical Search URL acceptance and cross-tenant isolation without changing runtime code.
 - FORUM-24S adds executable SQLite evidence that the native category and topic route decisions resolve through registered Axum/Leptos server-function endpoints with trusted host and tenant context, owner-created aliases and fail-closed missing results.
 
+## Attachment relation concurrency
+
+Forum attachment relations use an independent monotonic attachment-set revision for
+lost-update detection. `expected_relation_revision` is the CAS token: `0` represents
+the absence of any committed relation set, while every committed replacement advances
+the token. `source_revision` is only Forum content provenance and does not advance for
+attachment-only changes. The immutable mention/quote relation revision stream is not
+reused for attachment state.
+
+Attachment persistence remains gated on a Media owner reference-retention/control
+contract because Media lifecycle admission is a read fact and does not reserve an
+asset against deletion.
+
 ## Verification
 
 - `cargo xtask module validate forum`

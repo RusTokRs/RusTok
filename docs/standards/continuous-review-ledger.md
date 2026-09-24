@@ -286,5 +286,24 @@ Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the ag
 
 ---
 
+## 2026-09-24 Forum attachment relation CAS contract
+
+A Forum-14 boundary review separated attachment-set concurrency from the existing
+immutable mention/quote relation revision stream. `ForumAttachmentRelationRevision` now
+provides a bounded monotonic CAS token: `0` means no committed set, the initial write
+uses `0 -> 1`, every later replace requires an exact current token, and clearing all
+attachments still commits a new revision rather than deleting the concurrency identity.
+The pre-existing `source_revision` remains content provenance only and attachment-only
+changes do not consume Forum content revisions. The batch-size constant is now named
+`MAX_FORUM_ATTACHMENTS_PER_SET` to reflect the actual invariant.
+
+Attachment persistence is intentionally not added in this slice. Media's
+`MediaAssetReferenceAdmission` proves lifecycle admissibility at read time but does not
+reserve an asset against deletion, so persisting a Forum reference on that fact alone
+would retain a cross-owner time-of-check/time-of-use race. A Media reference-retention/
+control contract is required before Forum attachment rows become authoritative.
+
+Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
+
 ## Completed Rounds Archive
 _No completed rounds yet. Round 1 is currently in progress._
