@@ -46,6 +46,12 @@ pub struct AttachedEntityRef<'a> {
     pub entity_id: Uuid,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct AttachedPayloadResolutionInput<'a> {
+    pub entity_id: Uuid,
+    pub shared_metadata: &'a Value,
+}
+
 pub fn prepare_attached_values_create(
     schema: CustomFieldsSchema,
     payload: Option<Value>,
@@ -209,6 +215,101 @@ where
     Ok(prepared)
 }
 
+/// Resolve attached Flex payloads for a bounded owner batch.
+///
+/// The batch storage query is owned by Flex and reuses the existing bounded
+/// Translation storage loader. Singleton resolution delegates to this function
+/// so locale precedence and shared/localized metadata semantics cannot drift.
+pub async fn resolve_attached_payloads<C>(
+    db: &C,
+    tenant_id: Uuid,
+    entity_type: &str,
+    schema: CustomFieldsSchema,
+    inputs: &[AttachedPayloadResolutionInput<'_>],
+    preferred_locale: &str,
+    tenant_default_locale: &str,
+) -> Result<BTreeMap<Uuid, Option<Value>>, FlexError>
+where
+    C: ConnectionTrait,
+{
+    const MAX_BATCH: usize =
+        crate::attached_translation_storage::MAX_ATTACHED_TRANSLATION_STORAGE_BATCH;
+
+    if inputs.len() > MAX_BATCH {
+        return Err(FlexError::Database(format!(
+            "attached payload resolution batch exceeds {MAX_BATCH} entities"
+        )));
+    }
+
+    let mut seen = HashSet::with_capacity(inputs.len());
+    for input in inputs {
+        if input.entity_id.is_nil() {
+            return Err(FlexError::Database(
+                "attached payload resolution entity id must not be nil".to_string(),
+            ));
+        }
+        if !seen.insert(input.entity_id) {
+            return Err(FlexError::Database(format!(
+                "duplicate attached payload resolution entity {}",
+                input.entity_id
+            )));
+        }
+    }
+
+    let mut resolved = BTreeMap::new();
+    if inputs.is_empty() {
+        return Ok(resolved);
+    }
+
+    if schema.active_definitions().is_empty() {
+        for input in inputs {
+            resolved.insert(input.entity_id, normalize_owner_payload(input.shared_metadata)?);
+        }
+        return Ok(resolved);
+    }
+
+    let entity_ids = inputs.iter().map(|input| input.entity_id).collect::<Vec<_>>();
+    let localized_by_entity =
+        crate::attached_translation_storage::load_attached_translation_localized_values(
+            db,
+            tenant_id,
+            entity_type,
+            &entity_ids,
+        )
+        .await?;
+
+    let (_, localized_keys) = split_definitions(&schema);
+    let candidates = build_locale_candidates(
+        [
+            Some(preferred_locale),
+            Some(tenant_default_locale),
+            Some(PLATFORM_FALLBACK_LOCALE),
+        ],
+        true,
+    );
+
+    for input in inputs {
+        let (mut shared_values, _) =
+            split_existing_metadata(input.shared_metadata, &localized_keys);
+        let resolved_localized = localized_by_entity
+            .get(&input.entity_id)
+            .and_then(|localized_by_locale| {
+                resolve_localized_values(localized_by_locale, &candidates)
+            });
+
+        if let Some(localized) = resolved_localized {
+            for (key, value) in localized {
+                shared_values.insert(key, value);
+            }
+        }
+
+        let payload = (!shared_values.is_empty()).then(|| Value::Object(shared_values));
+        resolved.insert(input.entity_id, payload);
+    }
+
+    Ok(resolved)
+}
+
 pub async fn resolve_attached_payload<C>(
     db: &C,
     entity: AttachedEntityRef<'_>,
@@ -220,47 +321,21 @@ pub async fn resolve_attached_payload<C>(
 where
     C: ConnectionTrait,
 {
-    if schema.active_definitions().is_empty() {
-        return normalize_owner_payload(shared_metadata);
-    }
+    let resolved = resolve_attached_payloads(
+        db,
+        entity.tenant_id,
+        entity.entity_type,
+        schema,
+        &[AttachedPayloadResolutionInput {
+            entity_id: entity.entity_id,
+            shared_metadata,
+        }],
+        preferred_locale,
+        tenant_default_locale,
+    )
+    .await?;
 
-    let (_, localized_keys) = split_definitions(&schema);
-    let (shared_values, _) = split_existing_metadata(shared_metadata, &localized_keys);
-    let localized_by_locale =
-        load_localized_values_by_locale(db, entity.tenant_id, entity.entity_type, entity.entity_id)
-            .await?;
-
-    let candidates = build_locale_candidates(
-        [
-            Some(preferred_locale),
-            Some(tenant_default_locale),
-            Some(PLATFORM_FALLBACK_LOCALE),
-        ],
-        true,
-    );
-
-    let resolved_localized = candidates
-        .iter()
-        .find_map(|candidate| {
-            localized_by_locale
-                .iter()
-                .find(|(locale, _)| locale_tags_match(locale, candidate))
-                .map(|(_, values)| values.clone())
-        })
-        .or_else(|| localized_by_locale.values().next().cloned());
-
-    let mut merged = shared_values;
-    if let Some(localized) = resolved_localized {
-        for (key, value) in localized {
-            merged.insert(key, value);
-        }
-    }
-
-    if merged.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(Value::Object(merged)))
-    }
+    Ok(resolved.into_values().next().flatten())
 }
 
 pub async fn persist_localized_values<C>(
@@ -418,6 +493,21 @@ where
     }
 
     Ok(localized_by_locale)
+}
+
+fn resolve_localized_values(
+    localized_by_locale: &BTreeMap<String, Map<String, Value>>,
+    candidates: &[String],
+) -> Option<Map<String, Value>> {
+    candidates
+        .iter()
+        .find_map(|candidate| {
+            localized_by_locale
+                .iter()
+                .find(|(locale, _)| locale_tags_match(locale, candidate))
+                .map(|(_, values)| values.clone())
+        })
+        .or_else(|| localized_by_locale.values().next().cloned())
 }
 
 fn prepare_write(
@@ -578,10 +668,12 @@ mod tests {
     use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, FlexError};
 
     use super::{
-        ActiveModel, AttachedEntityRef, Entity, delete_attached_localized_values,
-        merge_reserved_donor_metadata, prepare_attached_values_create,
+        ActiveModel, AttachedEntityRef, AttachedPayloadResolutionInput, Entity,
+        delete_attached_localized_values, merge_reserved_donor_metadata,
+        prepare_attached_values_create,
         prepare_attached_values_update, prepare_donor_attached_values_create,
-        prepare_donor_attached_values_update, split_donor_metadata, split_existing_metadata,
+        prepare_donor_attached_values_update, resolve_attached_payloads, split_donor_metadata,
+        split_existing_metadata,
     };
 
     fn definition(field_key: &str, is_localized: bool) -> FieldDefinition {
@@ -890,6 +982,71 @@ mod tests {
         .expect("table should be created");
 
         db
+    }
+
+    #[tokio::test]
+    async fn resolve_attached_payloads_resolves_bounded_batch_with_locale_fallback() {
+        let db = setup_attached_test_db().await;
+        let tenant_id = Uuid::new_v4();
+        let first_id = Uuid::new_v4();
+        let second_id = Uuid::new_v4();
+        let first_metadata = json!({"nickname": "neo"});
+        let second_metadata = json!({"nickname": "trinity"});
+
+        for (entity_id, locale, value) in [
+            (first_id, "fr", "French bio"),
+            (first_id, "en", "English bio"),
+            (second_id, "en", "Second English bio"),
+        ] {
+            ActiveModel {
+                id: Set(Uuid::new_v4()),
+                tenant_id: Set(tenant_id),
+                entity_type: Set("topic".to_string()),
+                entity_id: Set(entity_id),
+                field_key: Set("bio".to_string()),
+                locale: Set(locale.to_string()),
+                value: Set(json!(value)),
+                created_at: sea_orm::ActiveValue::NotSet,
+                updated_at: sea_orm::ActiveValue::NotSet,
+            }
+            .insert(&db)
+            .await
+            .expect("localized row should insert");
+        }
+
+        let schema =
+            CustomFieldsSchema::new(vec![definition("nickname", false), definition("bio", true)]);
+        let inputs = vec![
+            AttachedPayloadResolutionInput {
+                entity_id: first_id,
+                shared_metadata: &first_metadata,
+            },
+            AttachedPayloadResolutionInput {
+                entity_id: second_id,
+                shared_metadata: &second_metadata,
+            },
+        ];
+
+        let resolved = resolve_attached_payloads(
+            &db,
+            tenant_id,
+            "topic",
+            schema,
+            &inputs,
+            "fr",
+            "en",
+        )
+        .await
+        .expect("batch attached payload resolution should succeed");
+
+        assert_eq!(
+            resolved.get(&first_id),
+            Some(&Some(json!({"nickname": "neo", "bio": "French bio"})))
+        );
+        assert_eq!(
+            resolved.get(&second_id),
+            Some(&Some(json!({"nickname": "trinity", "bio": "Second English bio"})))
+        );
     }
 
     #[tokio::test]

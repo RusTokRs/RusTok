@@ -28,6 +28,14 @@ Media now centralizes `MediaItem` construction in one owner helper, never uses a
 
 Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
 
+## 2026-09-24 Forum topic-list metadata batch hardening
+
+A read-path audit found a per-topic Flex attached-metadata lookup inside Forum topic-list hydration. The page itself was bounded, but custom-field resolution issued one database read per topic, creating an avoidable N+1 query pattern.
+
+Forum topic hydration now resolves the page's topic metadata through Flex's existing bounded attached-translation storage batch (maximum 200 entities), while singleton attached-payload resolution delegates to the same canonical implementation. Locale precedence and shared-versus-localized metadata semantics therefore have one owner implementation. A regression test covers exact locale/fallback behavior, and the Forum read-model verifier fails if per-topic metadata resolution is reintroduced.
+
+Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
+
 ## Components Review Status
 
 | Status | Component | Category | Files | LOC | Last Audited | Notes |

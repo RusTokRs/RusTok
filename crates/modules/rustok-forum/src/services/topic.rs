@@ -19,7 +19,8 @@ use chrono::Utc;
 use flex::{
     field_definition_from_source, impl_field_definition_source, merge_reserved_donor_metadata,
     persist_localized_values, prepare_attached_values_create, prepare_attached_values_update,
-    resolve_attached_payload, split_donor_metadata,
+    resolve_attached_payload, resolve_attached_payloads, AttachedPayloadResolutionInput,
+    split_donor_metadata,
 };
 use sea_orm::{
     ActiveModelTrait,
@@ -697,6 +698,24 @@ impl TopicService {
             .load_deleted_topic_ids(tenant_id, &topic_ids)
             .await?;
         let schema = load_topic_custom_fields_schema(&self.db, tenant_id).await?;
+        let metadata_inputs = topics
+            .iter()
+            .map(|topic| AttachedPayloadResolutionInput {
+                entity_id: topic.id,
+                shared_metadata: &topic.metadata,
+            })
+            .collect::<Vec<_>>();
+        let metadata_by_topic_id = resolve_attached_payloads(
+            &self.db,
+            tenant_id,
+            "topic",
+            schema,
+            &metadata_inputs,
+            locale,
+            fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE),
+        )
+        .await
+        .map_err(|error| ForumError::Validation(error.to_string()))?;
         let vote_summaries = VoteService::new(self.db.clone()).with_settings_providers(self.settings.clone())
             .topic_vote_summaries(tenant_id, &topic_ids, viewer_user_id)
             .await?;
@@ -716,16 +735,11 @@ impl TopicService {
                 fallback_locale,
                 |translation| translation.locale.as_str(),
             );
-            let metadata = self
-                .resolve_topic_metadata_with_schema(
-                    tenant_id,
-                    topic.id,
-                    &topic.metadata,
-                    locale,
-                    fallback_locale,
-                    &schema,
-                )
-                .await?;
+            let metadata = metadata_by_topic_id
+                .get(&topic.id)
+                .cloned()
+                .flatten()
+                .unwrap_or_else(|| serde_json::json!({}));
 
             items.push(TopicListItem {
                 id: topic.id,

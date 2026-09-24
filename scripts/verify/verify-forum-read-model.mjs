@@ -22,6 +22,9 @@ for (const arg of args) {
 
 const paths = {
   dto: "crates/modules/rustok-forum/src/dto/read_model.rs",
+  flexAttached: "crates/modules/flex/src/attached.rs",
+  flexLib: "crates/modules/flex/src/lib.rs",
+  topicService: "crates/modules/rustok-forum/src/services/topic.rs",
   service: "crates/modules/rustok-forum/src/services/read_model.rs",
   serviceOwner: "crates/modules/rustok-forum/src/services/read_model_owner.rs",
   compatibility: "crates/modules/rustok-forum/src/services/bounded_compat.rs",
@@ -48,6 +51,9 @@ function text(path) {
 
 function verifyStatic() {
   const dto = text(paths.dto);
+  const flexAttached = text(paths.flexAttached);
+  const flexLib = text(paths.flexLib);
+  const topicService = text(paths.topicService);
   const service = `${text(paths.service)}\n${text(paths.serviceOwner)}`;
   const compatibility = text(paths.compatibility);
   const categoryOwner = text(paths.categoryOwner);
@@ -100,6 +106,35 @@ function verifyStatic() {
     if (!migration.includes(token)) fail(`${paths.migration}: missing index ${token}`);
   }
 
+  for (const token of [
+    "AttachedPayloadResolutionInput",
+    "resolve_attached_payloads",
+    "MAX_ATTACHED_TRANSLATION_STORAGE_BATCH",
+    "load_attached_translation_localized_values",
+  ]) {
+    if (!flexAttached.includes(token)) fail(`${paths.flexAttached}: missing token ${token}`);
+  }
+
+  for (const token of [
+    "AttachedPayloadResolutionInput",
+    "resolve_attached_payloads",
+  ]) {
+    if (!flexLib.includes(token)) fail(`${paths.flexLib}: missing public batch export ${token}`);
+  }
+
+  const hydrateStart = topicService.indexOf("async fn hydrate_topic_list_items");
+  const hydrateEnd = topicService.indexOf("async fn upsert_translation_in_tx", hydrateStart);
+  if (hydrateStart < 0 || hydrateEnd < 0 || hydrateEnd <= hydrateStart) {
+    fail(`${paths.topicService}: hydrate_topic_list_items boundaries are not stable`);
+  }
+  const hydrate = topicService.slice(hydrateStart, hydrateEnd);
+  if (!hydrate.includes("resolve_attached_payloads(")) {
+    fail(`${paths.topicService}: topic list hydration does not use Flex batch resolution`);
+  }
+  if (hydrate.includes("resolve_topic_metadata_with_schema(")) {
+    fail(`${paths.topicService}: topic list hydration still performs per-topic Flex metadata reads`);
+  }
+
   if (!compatibility.includes("bounded_forum_read_limit")) {
     fail(`${paths.compatibility}: topic/reply compatibility APIs are not capped`);
   }
@@ -131,7 +166,9 @@ function verifyStatic() {
     }
   }
 
-  console.log("forum read-model static verification passed (3 bounded cursor models, max 100)");
+  console.log(
+    "forum read-model static verification passed (3 bounded cursor models, max 100; topic custom-field hydration uses bounded Flex batch reads)",
+  );
 }
 
 function run(label, command, commandArgs) {
