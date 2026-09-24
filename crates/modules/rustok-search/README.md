@@ -92,7 +92,9 @@ transport-local Blog route builder, or compatibility URL implementation.
 - Admin/control-plane surfaces require authenticated tenant-scoped authority.
 - Public storefront surfaces remain read-only.
 - Storage and connector failures are operational failures, not caller validation
-  errors.
+  errors. GraphQL maps them to a generic `INTERNAL_ERROR` response while retaining
+  detailed diagnostics only in server-side telemetry/logging; validation, not-found,
+  authentication and permission failures keep their typed public codes.
 - Ranking profiles use stable identifiers: `balanced`, `exact`, `fresh`,
   `catalog`, and `content`.
 - Filter/preset keys use bounded normalized ASCII identifiers.
