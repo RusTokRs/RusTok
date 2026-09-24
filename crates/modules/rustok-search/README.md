@@ -125,7 +125,9 @@ transport-local Blog route builder, or compatibility URL implementation.
   events and handles targeted/full rebuilds and module toggles.
 - Rebuilds are transactional so consumers do not observe partial tenant indexes.
 - Blog projection follows the active PostgreSQL `search_path` and removes stale
-  documents before source lookup.
+  documents before source lookup; author enrichment is tenant-scoped by both user
+  identity and source-post tenant, so malformed cross-tenant author references do
+  not populate Search metadata.
 - Product filters use normalized category, channel, and attribute projections.
 - Exact Forum category filtering reuses `category_ids`: category documents match
   their document identifier and topic/reply documents match the public
