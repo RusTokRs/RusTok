@@ -24,7 +24,7 @@ const FORUM_MEDIA_OWNER_MODULE: &str = "forum";
 const FORUM_ATTACHMENT_HOLD_RECONCILIATION_OPERATION: &str =
     "forum.attachment_hold_reconciliation_report";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ForumAttachmentHoldDriftKind {
     OrphanMediaHold,
