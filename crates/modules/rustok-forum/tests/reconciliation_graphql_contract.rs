@@ -15,6 +15,8 @@ const COUNTER_AND_SOLUTION_GRAPHQL: &str = include_str!("../src/graphql/reconcil
 const SUBSCRIPTION_GRAPHQL: &str =
     include_str!("../src/graphql/subscription_reconciliation_query.rs");
 const MENTION_GRAPHQL: &str = include_str!("../src/graphql/mention_reconciliation_query.rs");
+const ATTACHMENT_HOLD_GRAPHQL: &str =
+    include_str!("../src/graphql/reconciliation_query.rs");
 
 #[test]
 fn graphql_schema_exposes_all_reconciliation_reports() {
@@ -37,6 +39,9 @@ fn graphql_schema_exposes_all_reconciliation_reports() {
         "GqlForumSubscriptionCursor",
         "GqlForumMentionReconciliationReport",
         "GqlForumMentionDrift",
+        "GqlForumAttachmentHoldReconciliationReport",
+        "GqlForumAttachmentHoldDrift",
+        "forumAttachmentHoldReconciliationReport",
         "inspectedTopics",
         "inspectedCategories",
         "topicCursor",
@@ -66,6 +71,7 @@ fn graphql_reconciliation_adapters_enforce_security_scope_and_isolation() {
         ("counter/solution", COUNTER_AND_SOLUTION_GRAPHQL),
         ("subscription", SUBSCRIPTION_GRAPHQL),
         ("mention", MENTION_GRAPHQL),
+        ("attachment-hold", ATTACHMENT_HOLD_GRAPHQL),
     ] {
         for marker in [
             "require_module_enabled(ctx, MODULE_SLUG).await?",
@@ -73,7 +79,8 @@ fn graphql_reconciliation_adapters_enforce_security_scope_and_isolation() {
             "Permission::FORUM_TOPICS_MANAGE",
             "auth.tenant_id != tenant.id",
             "Permission denied: tenant scope mismatch",
-            "SecurityContext::from_permission_snapshot",
+            "SecurityContext::from_permission_snapshot"
+        ],
         ] {
             assert!(
                 source.contains(marker),
@@ -96,6 +103,8 @@ fn graphql_reconciliation_adapters_enforce_security_scope_and_isolation() {
 
     assert!(COUNTER_AND_SOLUTION_GRAPHQL.contains("ForumCounterReconciliationService::new(db)"));
     assert!(COUNTER_AND_SOLUTION_GRAPHQL.contains("ForumSolutionReconciliationService::new(db)"));
+    assert!(ATTACHMENT_HOLD_GRAPHQL.contains("ForumAttachmentHoldReconciliationService::new(db, media)"));
+    assert!(ATTACHMENT_HOLD_GRAPHQL.contains("attachment_hold_reconciliation_media()"));
     assert!(SUBSCRIPTION_GRAPHQL.contains("ForumSubscriptionReconciliationService::new(db)"));
     assert!(MENTION_GRAPHQL.contains("ForumMentionReconciliationService::new(db)"));
 }
