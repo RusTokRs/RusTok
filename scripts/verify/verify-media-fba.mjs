@@ -29,7 +29,7 @@ if (registry.evidence?.runtime_fallback_smoke !== fallbackSmokePath) fail('runti
 if (registry.evidence?.port_error_matrix !== portErrorMatrixPath) fail('port error matrix evidence drift');
 const port = registry.ports?.find((candidate) => candidate.name === 'MediaAssetReadPort');
 if (!port) fail('read port name drift');
-sameSet(port.operations, ['get_asset', 'get_asset_reference_admission', 'list_asset_references', 'list_assets', 'get_image_descriptor', 'get_translations'], 'port operations');
+sameSet(port.operations, ['get_asset', 'get_asset_reference_admission', 'list_asset_references', 'lookup_asset_references', 'list_assets', 'get_image_descriptor', 'get_translations'], 'port operations');
 sameSet(port.read_operations, port.operations, 'read operations');
 if ((port.write_operations ?? []).length !== 0 || port.idempotency_required !== false) fail('media read port unexpectedly declares write semantics');
 if (port.context !== 'rustok_api::ports::PortContext' || port.error !== 'rustok_api::ports::PortError') fail('port context/error drift');
