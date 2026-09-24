@@ -17,6 +17,7 @@ fn module_manifest_declares_optional_forum_widget_catalog_contract() {
         .and_then(toml::Value::as_table)
         .expect("forum manifest dependencies table is required");
     assert!(dependencies.contains_key("content"));
+    assert!(dependencies.contains_key("media"));
     assert!(dependencies.contains_key("taxonomy"));
     assert!(
         !dependencies.contains_key("page_builder"),

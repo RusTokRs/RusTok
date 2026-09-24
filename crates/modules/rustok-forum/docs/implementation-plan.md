@@ -5,7 +5,7 @@ language: en
 status: active
 owners:
   - rustok-forum
-last_reviewed: 2026-08-28
+last_reviewed: 2026-09-24
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -70,6 +70,36 @@ dependency path, outside the richtext renderer.
   native Forum admin check, SSR/hydrate checks, and the focused Forum admin
   locale-switch contract cover this slice. Owner-copy i18n and full mounted
   save/reload/browser parity evidence remain open.
+
+## Attachment relation concurrency contract
+
+Forum attachment relations have a current-state relation set whose concurrency identity is
+separate from Forum content revisions and from the immutable mention/quote relation
+projection revisions.
+
+- `expected_relation_revision` is the compare-and-swap token supplied by the caller.
+- `0` means that no attachment relation set has ever been committed for the target.
+- A write is accepted only when the expected token exactly matches the current committed
+  token; `0 -> 1` is the initial set creation and every later replace advances monotonically.
+- Replacing the set with zero attachments is still a committed revision. This preserves
+  an explicit tombstone for the empty current set and prevents a stale writer from
+  recreating attachments after a clear-all operation.
+- `source_revision` remains the Forum topic/reply content revision captured as provenance
+  for the relation mutation. Attachment-only mutations must not manufacture or consume
+  content revisions.
+- The immutable `forum_relation_revisions` stream remains dedicated to mentions/quotes;
+  attachment state must not reuse it as a mutable head or CAS row.
+- The current source-ready API deliberately stops before persistence. A Media admission
+  result does not reserve an asset against deletion, so committing a Forum foreign reference
+  from that read fact alone would leave a cross-owner time-of-check/time-of-use race.
+
+Persistence now combines the owner-side CAS with Media durable reference retention. New Media
+holds are acquired before the Forum transaction commits; removed holds are released only after
+a successful Forum commit. Stable consumer-owned reference IDs are derived from tenant, target,
+locale, position and media identity, while usage/caption changes retain the same reference.
+Ambiguous commits and failed post-commit releases intentionally preserve conservative holds for
+later owner reconciliation. Exact-state retries re-establish Media holds before returning the
+already committed set.
 
 ## Product model
 
@@ -275,7 +305,7 @@ is deferred to the final production-validation phase.
 | `FORUM-11` | `done` | Subscription levels and participation policy. |
 | `FORUM-12` | `in_progress` | Mention/quote relations and notification source exist. Runtime execution, profile/block privacy, moderator audience and final Notifications evidence remain. |
 | `FORUM-13` | `in_progress` | Optional Media presentation policy exists. Add typed category-cover owner command, transports, UI and runtime evidence; Media keeps lifecycle ownership. |
-| `FORUM-14` | `in_progress` | Forum attachment relations over Media-owned sessions/assets; FORUM-14A content-revision relation admission is source-ready, and Media now publishes the bounded `MediaAssetReferenceAdmission` lifecycle fact required for safe owner persistence. The next slice must define current relation-set concurrency semantics separately from Forum content revisions before adding persistence. |
+| `FORUM-14` | `in_progress` | Forum attachment relations over Media-owned sessions/assets; FORUM-14A content-revision relation admission and the independent attachment-set revision/CAS contract are source-ready. Forum-owned attachment relation persistence now uses a dedicated CAS head plus bounded ordered rows and durable Media owner reference retention. `source_revision` is content provenance only; attachment-only changes do not advance Forum content revisions. Runtime integration/reconciliation evidence remains open. |
 | `FORUM-15` | `in_progress` | Profiles supplies `ProfilesReader`; FORUM-15A through 15E provide member-card owner service, user stats, GraphQL/native transport, and privacy-aware storefront UI composition. Retain live runtime evidence. |
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
@@ -319,7 +349,8 @@ is deferred to the final production-validation phase.
 Media owns upload, blobs, MIME, dimensions, renditions, quarantine, deletion,
 delivery and reconciliation. Forum stores only typed tenant-scoped relations,
 Forum usage/order/caption and source revision. Text-only Forum remains available
-when Media is disabled. Media keeps lifecycle ownership.
+when Media is disabled. Attachment mutations require the Media owner reference-retention
+capability. Media keeps lifecycle ownership. Forum never reads Media persistence directly.
 
 #### Delivered in `FORUM-13A`
 
@@ -335,6 +366,16 @@ when Media is disabled. Media keeps lifecycle ownership.
 - `hydrate_category_cover_for_read` degrades to an absent descriptor only in the explicit Media-disabled profile.
 - Not-found, timeout, storage and other Media provider failures remain typed `ForumError::CapabilityFailure` values with source code and retryability.
 - Media keeps lifecycle ownership.
+
+#### Delivered in `FORUM-14B`
+
+- Forum persists a tenant/target/locale attachment relation head separately from Forum content revisions.
+- The head advances with exact compare-and-swap semantics; an initial write creates revision 1 and a clear-all mutation still commits a new revision.
+- Relation rows are Forum-owned and store only relation identity, Media identity, usage, order and caption.
+- The requested content provenance is validated before Media retention and revalidated after the Forum target row is locked inside the relation transaction.
+- Removed Media references are released only after Forum commit; failures leave a conservative hold and do not roll back the already committed Forum state.
+- Stable Media reference IDs are deterministic across request retries and do not change when usage or caption changes.
+- Database constraints enforce tenant ownership, valid target kind, positive revisions, monotonic relation revisions, immutable relation rows, bounded positions and unique per-target ordering.
 
 ### `FORUM-15`/`FORUM-27`: Profiles
 
@@ -787,7 +828,7 @@ Hosts register/mount packages and do not absorb policy.
 
 ### Track 3 — Profiles/Media and Forum product
 
-1. Category cover and attachment relations over Media; the lifecycle-admission prerequisite is now source-ready, while attachment relation persistence remains gated on a separate relation-set revision/concurrency contract.
+1. Category cover and attachment relations over Media; the lifecycle-admission prerequisite and independent attachment-set revision/CAS contract are source-ready, while attachment relation persistence remains gated on a Media owner reference-retention/control contract.
 2. Batched Profiles member composition.
 3. Topic kinds, drafts/bookmarks, read-state bulk completion and trust enforcement.
 4. Full admin/storefront assembly and release integrations.

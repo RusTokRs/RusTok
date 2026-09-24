@@ -53,6 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-09-24](./2026-09-24-forum-attachment-relations.md) | Forum attachment relations use a Forum-owned CAS set and Media durable reference retention | Accepted | In progress | Extends [Direct object-store runtime and owner-local lifecycle](./2026-07-22-direct-object-store-runtime-owner-local-lifecycle.md) |
 | [2026-09-22](./2026-09-22-platform-module-settings-architecture.md) | Platform and module settings architecture | Accepted | In progress | Extends [Static module lifecycle revision aggregate](./2026-08-20-static-module-lifecycle-revision.md), [Module release rollback safety](./2026-08-06-module-release-rollback-safety.md), and [Multilingual DB storage](./2026-04-05-multilingual-db-storage-parallel-localized-records.md) |
 | [2026-09-22](./2026-09-22-comments-blog-public-snapshot-invalidation.md) | Comments-to-Blog Public Snapshot Invalidation | Accepted | Implemented | Extends [Comments-to-Blog Reply Count Projection](./2026-07-16-comments-blog-event-projection.md) |
 | [2026-09-22](./2026-09-22-comments-blog-monotonic-snapshot-cursor.md) | Comments-to-Blog Monotonic Snapshot Cursor | Accepted | Implemented | Extends [Comments-to-Blog Public Snapshot Invalidation](./2026-09-22-comments-blog-public-snapshot-invalidation.md) |

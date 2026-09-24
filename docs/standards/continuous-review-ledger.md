@@ -286,5 +286,39 @@ Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the ag
 
 ---
 
+## 2026-09-24 Forum attachment relation CAS contract
+
+A Forum-14 boundary review separated attachment-set concurrency from the existing
+immutable mention/quote relation revision stream. `ForumAttachmentRelationRevision` now
+provides a bounded monotonic CAS token: `0` means no committed set, the initial write
+uses `0 -> 1`, every later replace requires an exact current token, and clearing all
+attachments still commits a new revision rather than deleting the concurrency identity.
+The pre-existing `source_revision` remains content provenance only and attachment-only
+changes do not consume Forum content revisions. The batch-size constant is now named
+`MAX_FORUM_ATTACHMENTS_PER_SET` to reflect the actual invariant.
+
+Attachment persistence is intentionally not added in this slice. Media's
+`MediaAssetReferenceAdmission` proves lifecycle admissibility at read time but does not
+reserve an asset against deletion, so persisting a Forum reference on that fact alone
+would retain a cross-owner time-of-check/time-of-use race. A Media reference-retention/
+control contract is required before Forum attachment rows become authoritative.
+
+Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
+
+## 2026-09-24 Forum attachment relation persistence
+
+FORUM-14 now has a concrete owner-owned persistence path after the Media reference-retention control landed. Forum stores a per-tenant/target/locale CAS head plus bounded ordered relation rows; the mutable attachment head is deliberately separate from Forum content revisions and the immutable mention/quote relation stream.
+
+New Media references are retained before Forum relation commit using stable consumer-owned identities derived from tenant, target, locale, position and media identity. Removed holds are released only after a successful Forum commit. Ambiguous commits and post-commit release failures preserve conservative holds instead of unsafe compensation. Database constraints enforce target-kind validity, tenant scope, positive revisions, bounded positions and unique ordering.
+
+Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
+## 2026-09-24 Media durable reference-retention control
+
+A Forum-to-Media boundary review identified the remaining deletion time-of-check/time-of-use gap in lifecycle admission. Media now owns durable `media_asset_reference_holds` keyed by a consumer-owned stable `reference_id`, with tenant cascading plus composite asset foreign-key integrity and database lifecycle guards: only active assets with ready active blobs can accept a hold, while lifecycle transitions into `delete_pending` or `deleted` fail closed whenever a hold exists. The Media write-port acquire/release operations use the existing trusted deadline/idempotency path; same-reference replay is idempotent and retargeting is rejected. Media deletion and finalization recheck reference holds.
+
+The control intentionally does not claim distributed transactionality with consumer-owned databases. An owner crash after acquiring a hold before its own relation commit can leave a conservative orphan hold; consumer-side bounded reconciliation must release only provably stale identities. This is the required safety primitive before Forum attachment relations become authoritative.
+
+Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
+
 ## Completed Rounds Archive
 _No completed rounds yet. Round 1 is currently in progress._

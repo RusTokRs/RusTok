@@ -15,6 +15,8 @@ service MediaService {
   rpc PrepareUpload(JsonRequest) returns (JsonResponse);
   rpc CompleteUpload(IdRequest) returns (JsonResponse);
   rpc DeleteAsset(IdRequest) returns (EmptyResponse);
+  rpc RetainAssetReference(IdJsonRequest) returns (JsonResponse);
+  rpc ReleaseAssetReference(IdJsonRequest) returns (EmptyResponse);
   rpc UpsertTranslation(IdJsonRequest) returns (JsonResponse);
   rpc ReconcileStorage(JsonRequest) returns (JsonResponse);
 }

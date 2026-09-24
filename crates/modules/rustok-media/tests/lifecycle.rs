@@ -8,10 +8,11 @@ use rustok_api::{
 };
 use rustok_media::{
     ApplyExactMediaTranslationInput, AssetState, BlobState, CreateRenditionInput, ImageBackground,
-    ImageOutputFormat, ImageRecipe, MediaError, MediaService, MediaTranslationTargetProvider,
+    ImageOutputFormat, ImageRecipe, MediaAssetReferenceInput, MediaError, MediaService,
+    MediaTranslationTargetProvider,
     PrepareUploadSessionInput, QuarterTurn, RenditionState, UploadInput, UploadState,
     UpsertTranslationInput,
-    entities::{asset, blob, media_translation, rendition, translation_change, upload_session},
+    entities::{asset, asset_reference, blob, media_translation, rendition, translation_change, upload_session},
     migrations,
 };
 use rustok_outbox::{SysEvents, SysEventsMigration};
@@ -194,6 +195,117 @@ async fn upload_persists_asset_and_immutable_blob_then_deletes_through_tombstone
         service.get(tenant_id, item.id).await,
         Err(MediaError::NotFound(_))
     ));
+}
+
+#[tokio::test]
+async fn retained_reference_blocks_delete_until_released() {
+    let (database, storage, _directory) = test_runtime().await;
+    let tenant_id = Uuid::new_v4();
+    let other_tenant_id = Uuid::new_v4();
+    seed_tenant(&database, tenant_id).await;
+    seed_tenant(&database, other_tenant_id).await;
+    let service = MediaService::new(database.clone(), storage.clone());
+
+    let item = service
+        .upload(png_upload(tenant_id))
+        .await
+        .expect("upload should succeed");
+    let other_item = service
+        .upload(png_upload(tenant_id))
+        .await
+        .expect("second upload should succeed");
+    let reference_id = Uuid::new_v4();
+    let input = MediaAssetReferenceInput {
+        owner_module: "forum".to_string(),
+        reference_id,
+    };
+
+    let retained = service
+        .retain_asset_reference(tenant_id, item.id, input.clone())
+        .await
+        .expect("active ready media should accept an owner reference");
+    assert_eq!(retained.media_id, item.id);
+    assert_eq!(retained.tenant_id, tenant_id);
+    assert_eq!(retained.owner_module, "forum");
+    assert_eq!(retained.reference_id, reference_id);
+
+    let repeated = service
+        .retain_asset_reference(tenant_id, item.id, input.clone())
+        .await
+        .expect("repeating the same owner reference should be idempotent");
+    assert_eq!(repeated, retained);
+    assert_eq!(
+        asset_reference::Entity::find()
+            .filter(asset_reference::Column::TenantId.eq(tenant_id))
+            .filter(asset_reference::Column::MediaId.eq(item.id))
+            .count(&database)
+            .await
+            .expect("reference count should query"),
+        1
+    );
+
+    let retarget = service
+        .retain_asset_reference(tenant_id, other_item.id, input.clone())
+        .await
+        .expect_err("one reference identity must never be retargetable");
+    assert!(matches!(
+        retarget,
+        MediaError::AssetReferenceConflict(id) if id == reference_id
+    ));
+
+    let delete = service
+        .delete(tenant_id, item.id)
+        .await
+        .expect_err("referenced media must not enter deletion");
+    assert!(matches!(delete, MediaError::AssetReferenced(id) if id == item.id));
+
+    let direct_delete = database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE media_assets SET lifecycle_state = 'delete_pending' WHERE id = ?",
+            [item.id.into()],
+        ))
+        .await
+        .expect_err("database lifecycle guard must reject referenced media deletion");
+    assert!(direct_delete.to_string().contains("media asset has retained references"));
+
+    let active = asset::Entity::find_by_id(item.id)
+        .one(&database)
+        .await
+        .expect("asset query should succeed")
+        .expect("asset should still exist");
+    assert_eq!(active.lifecycle_state, AssetState::Active.as_str());
+
+    let cross_tenant = service
+        .retain_asset_reference(
+            other_tenant_id,
+            item.id,
+            MediaAssetReferenceInput {
+                owner_module: "forum".to_string(),
+                reference_id: Uuid::new_v4(),
+            },
+        )
+        .await
+        .expect_err("cross-tenant media references must not be admitted");
+    assert!(matches!(cross_tenant, MediaError::NotFound(_)));
+
+    service
+        .release_asset_reference(tenant_id, item.id, input.clone())
+        .await
+        .expect("reference release should succeed");
+    service
+        .release_asset_reference(tenant_id, item.id, input)
+        .await
+        .expect("releasing an already absent reference should be idempotent");
+
+    service
+        .delete(tenant_id, item.id)
+        .await
+        .expect("media should be deletable after the last reference is released");
+    service
+        .delete(tenant_id, other_item.id)
+        .await
+        .expect("unreferenced media should remain independently deletable");
 }
 
 #[tokio::test]

@@ -97,7 +97,7 @@ pub use services::{
     ForkForumReplyBranchInput, ForumApprovedPostsFactPort, ForumCategoryAudiencePage,
     ForumCategoryAudiencePolicy, ForumCategoryAudiencePolicyLayer,
     ForumCategoryAudiencePolicyService, ForumCategoryAudienceReadService,
-    ForumCategoryAudienceViewer, ForumCategoryAudienceVisibilityService,
+    ForumAttachmentRelationService, ForumCategoryAudienceViewer, ForumCategoryAudienceVisibilityService,
     ForumCategoryModerationAudiencePolicy, ForumCategoryModerationAudiencePolicyLayer,
     ForumCategoryModerationAudiencePolicyService, ForumCategoryReplyCreateAudiencePolicy,
     ForumCategoryReplyCreateAudiencePolicyLayer, ForumCategoryReplyCreateAudiencePolicyService,
@@ -210,7 +210,7 @@ impl RusToKModule for ForumModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["content", "taxonomy", "tenant"]
+        &["content", "media", "taxonomy", "tenant"]
     }
 
     fn permissions(&self) -> Vec<Permission> {

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    DEFAULT_MAX_SIZE, MediaAssetReferenceAdmission, MediaAssetReferenceAdmissionState, MediaError,
+    DEFAULT_MAX_SIZE, MediaAssetReference, MediaAssetReferenceAdmission, MediaAssetReferenceAdmissionState, MediaAssetReferenceInput, MediaError,
     MediaImageDescriptor, MediaItem, MediaReconciliationReport, MediaService, MediaTranslationItem,
     PrepareUploadSessionInput, UpsertTranslationInput,
     entities::{asset, blob},
@@ -111,6 +111,20 @@ pub trait MediaAssetWritePort: Send + Sync {
     ) -> Result<MediaItem, PortError>;
 
     async fn delete_asset(&self, context: PortContext, media_id: Uuid) -> Result<(), PortError>;
+
+    async fn retain_asset_reference(
+        &self,
+        context: PortContext,
+        media_id: Uuid,
+        input: MediaAssetReferenceInput,
+    ) -> Result<MediaAssetReference, PortError>;
+
+    async fn release_asset_reference(
+        &self,
+        context: PortContext,
+        media_id: Uuid,
+        input: MediaAssetReferenceInput,
+    ) -> Result<(), PortError>;
 
     async fn upsert_translation(
         &self,
@@ -338,6 +352,72 @@ impl MediaAssetWritePort for MediaService {
         finish_write(self, lease, result).await
     }
 
+    async fn retain_asset_reference(
+        &self,
+        context: PortContext,
+        media_id: Uuid,
+        input: MediaAssetReferenceInput,
+    ) -> Result<MediaAssetReference, PortError> {
+        require_media_write_policy(&context)?;
+        let tenant_id = parse_tenant_id(&context)?;
+        validate_asset_reference_input(&input)?;
+        let lease = match admit_write(
+            self,
+            &context,
+            tenant_id,
+            "retain_asset_reference",
+            &serde_json::json!({
+                "actor": &context.actor,
+                "media_id": media_id,
+                "input": &input
+            }),
+        )
+        .await?
+        {
+            WriteAdmission::Run(lease) => lease,
+            WriteAdmission::Replay(value) => return decode_replay(value),
+            WriteAdmission::ReplayError(error) => return Err(error),
+        };
+        let result = self
+            .retain_asset_reference(tenant_id, media_id, input)
+            .await
+            .map_err(media_error_to_port_error);
+        finish_write(self, lease, result).await
+    }
+
+    async fn release_asset_reference(
+        &self,
+        context: PortContext,
+        media_id: Uuid,
+        input: MediaAssetReferenceInput,
+    ) -> Result<(), PortError> {
+        require_media_write_policy(&context)?;
+        let tenant_id = parse_tenant_id(&context)?;
+        validate_asset_reference_input(&input)?;
+        let lease = match admit_write(
+            self,
+            &context,
+            tenant_id,
+            "release_asset_reference",
+            &serde_json::json!({
+                "actor": &context.actor,
+                "media_id": media_id,
+                "input": &input
+            }),
+        )
+        .await?
+        {
+            WriteAdmission::Run(lease) => lease,
+            WriteAdmission::Replay(value) => return decode_replay(value),
+            WriteAdmission::ReplayError(error) => return Err(error),
+        };
+        let result = self
+            .release_asset_reference(tenant_id, media_id, input)
+            .await
+            .map_err(media_error_to_port_error);
+        finish_write(self, lease, result).await
+    }
+
     async fn upsert_translation(
         &self,
         context: PortContext,
@@ -530,6 +610,16 @@ fn validate_upload_request(request: &MediaUploadRequest) -> Result<(), PortError
     Ok(())
 }
 
+fn validate_asset_reference_input(input: &MediaAssetReferenceInput) -> Result<(), PortError> {
+    if input.reference_id.is_nil() {
+        return Err(PortError::validation(
+            "media.invalid_asset_reference_id",
+            "media asset reference_id must be a non-nil UUID",
+        ));
+    }
+    Ok(())
+}
+
 fn validate_reconciliation_request(request: &MediaReconciliationRequest) -> Result<(), PortError> {
     if !(1..=MAX_MEDIA_RECONCILIATION_LIMIT).contains(&request.limit) {
         return Err(PortError::validation(
@@ -610,6 +700,22 @@ pub(crate) fn media_error_to_port_error(error: MediaError) -> PortError {
         MediaError::InvalidOwnerModule(module) => PortError::validation(
             "media.invalid_owner_module",
             format!("invalid owner module: {module}"),
+        ),
+        MediaError::AssetReferenceNotAdmissible(id) => PortError::conflict(
+            "media.asset_reference_not_admissible",
+            format!("media asset {id} is not currently admissible for an owner reference"),
+        ),
+        MediaError::AssetReferenced(id) => PortError::conflict(
+            "media.asset_referenced",
+            format!("media asset {id} is still retained by an owner reference"),
+        ),
+        MediaError::InvalidAssetReferenceId => PortError::validation(
+            "media.invalid_asset_reference_id",
+            "media asset reference_id must be a non-nil UUID",
+        ),
+        MediaError::AssetReferenceConflict(id) => PortError::conflict(
+            "media.asset_reference_conflict",
+            format!("media asset reference identity {id} is already bound elsewhere"),
         ),
         MediaError::RenditionInProgress(id) => PortError::conflict(
             "media.rendition_in_progress",

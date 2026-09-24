@@ -3,7 +3,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use rustok_api::{PortContext, PortError, PortErrorKind};
 use rustok_media::{
-    MediaAssetReadPort, MediaAssetReferenceAdmission, MediaAssetWritePort, MediaImageDescriptor,
+    MediaAssetReadPort, MediaAssetReference, MediaAssetReferenceAdmission, MediaAssetReferenceInput,
+    MediaAssetWritePort, MediaImageDescriptor,
     MediaItem,
     MediaPublicImageAsset, MediaPublicImageReadPort, MediaReconciliationReport,
     MediaReconciliationRequest, MediaTranslationItem, MediaUploadRequest, MediaUploadTarget,
@@ -217,6 +218,46 @@ impl MediaAssetWritePort for GrpcMediaProvider {
         self.client
             .clone()
             .delete_asset(with_deadline(payload, &context))
+            .await
+            .map_err(status_to_port_error)?;
+        Ok(())
+    }
+
+    async fn retain_asset_reference(
+        &self,
+        context: PortContext,
+        media_id: Uuid,
+        input: MediaAssetReferenceInput,
+    ) -> Result<MediaAssetReference, PortError> {
+        let payload = IdJsonRequest {
+            context_json: encode(&context)?,
+            id: media_id.to_string(),
+            input_json: encode(&input)?,
+        };
+        let response = self
+            .client
+            .clone()
+            .retain_asset_reference(with_deadline(payload, &context))
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
+    async fn release_asset_reference(
+        &self,
+        context: PortContext,
+        media_id: Uuid,
+        input: MediaAssetReferenceInput,
+    ) -> Result<(), PortError> {
+        let payload = IdJsonRequest {
+            context_json: encode(&context)?,
+            id: media_id.to_string(),
+            input_json: encode(&input)?,
+        };
+        self.client
+            .clone()
+            .release_asset_reference(with_deadline(payload, &context))
             .await
             .map_err(status_to_port_error)?;
         Ok(())

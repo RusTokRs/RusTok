@@ -76,6 +76,20 @@ pub struct MediaAssetReferenceAdmission {
     pub state: MediaAssetReferenceAdmissionState,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct MediaAssetReferenceInput {
+    pub owner_module: String,
+    pub reference_id: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct MediaAssetReference {
+    pub media_id: Uuid,
+    pub tenant_id: Uuid,
+    pub owner_module: String,
+    pub reference_id: Uuid,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MediaItem {
     pub id: Uuid,

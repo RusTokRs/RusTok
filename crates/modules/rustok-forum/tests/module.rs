@@ -11,7 +11,7 @@ fn module_metadata() {
         "Forum categories, topics, replies, and moderation workflows"
     );
     assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
-    assert_eq!(module.dependencies(), &["content", "taxonomy", "tenant"]);
+    assert_eq!(module.dependencies(), &["content", "media", "taxonomy", "tenant"]);
 }
 
 #[test]

@@ -45,6 +45,18 @@ pub enum MediaError {
     #[error("Invalid owner module: {0}")]
     InvalidOwnerModule(String),
 
+    #[error("Media asset {0} cannot currently accept an owner reference")]
+    AssetReferenceNotAdmissible(Uuid),
+
+    #[error("Media asset {0} is still retained by an owner reference")]
+    AssetReferenced(Uuid),
+
+    #[error("Media asset reference identity is invalid")]
+    InvalidAssetReferenceId,
+
+    #[error("Media asset reference identity {0} is already bound to another asset or owner")]
+    AssetReferenceConflict(Uuid),
+
     #[error("Rendition is already being processed: {0}")]
     RenditionInProgress(Uuid),
 

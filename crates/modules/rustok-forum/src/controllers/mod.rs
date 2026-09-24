@@ -125,10 +125,11 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
             HttpError::not_found(code, "The requested forum resource was not found")
         }
         ForumError::Forbidden(_) => HttpError::forbidden(code, "Permission denied"),
-        ForumError::RelationRevisionConflict => HttpError::new(
+        ForumError::RelationRevisionConflict
+        | ForumError::AttachmentSourceRevisionConflict { .. } => HttpError::new(
             StatusCode::CONFLICT,
             code,
-            "Forum relation revision changed concurrently",
+            "Forum attachment/content revision changed concurrently",
         ),
         ForumError::TopicClosed
         | ForumError::TopicArchived

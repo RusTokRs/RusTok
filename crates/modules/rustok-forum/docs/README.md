@@ -27,12 +27,14 @@ notifications module, and cross-module release gates.
 - transport surfaces: GraphQL, REST, Leptos admin/storefront packages and the module-owned Next-admin package;
 - Forum widget contract-freeze and Page Builder consumer evidence;
 - tag attachments via `forum_topic_tags` with shared vocabulary in `rustok-taxonomy`;
-- visibility, moderation and user-facing derived fields in Forum read/write contracts.
+- visibility, moderation and user-facing derived fields in Forum read/write contracts;
+- attachment relation heads/rows and Media owner-reference retention coordination.
 
 ## Integration
 
 - uses `rustok-content` only as a shared helper/orchestration dependency;
 - uses `rustok-taxonomy` as a shared dictionary for tag identity;
+- uses the Media owner port for attachment reference retention/release; Forum does not read Media tables.
 - uses `rustok-profiles` for the author presentation contract;
 - uses `rustok-channel` for visibility and SEO gating;
 - the canonical `use_reactions` engagement setting is persisted in static module
@@ -70,6 +72,19 @@ notifications module, and cross-module release gates.
 - FORUM-24Q cuts Forum Search navigation over to exact owner-projected localized category/topic routes, validates route envelopes centrally in Search, and leaves stale UUID route documents non-navigable until reindex without adding a compatibility fallback.
 - FORUM-24R adds an executable PostgreSQL harness for the FORUM-24Q reindex handoff, exercising real owner writes, the durable Forum inbox, staged tenant replacement, canonical Search URL acceptance and cross-tenant isolation without changing runtime code.
 - FORUM-24S adds executable SQLite evidence that the native category and topic route decisions resolve through registered Axum/Leptos server-function endpoints with trusted host and tenant context, owner-created aliases and fail-closed missing results.
+
+## Attachment relation concurrency
+
+Forum attachment relations use an independent monotonic attachment-set revision for
+lost-update detection. `expected_relation_revision` is the CAS token: `0` represents
+the absence of any committed relation set, while every committed replacement advances
+the token. `source_revision` is only Forum content provenance and does not advance for
+attachment-only changes. The immutable mention/quote relation revision stream is not
+reused for attachment state.
+
+Attachment persistence remains gated on a Media owner reference-retention/control
+contract because Media lifecycle admission is a read fact and does not reserve an
+asset against deletion.
 
 ## Verification
 

@@ -1,14 +1,91 @@
 use std::collections::BTreeSet;
 
 use rustok_api::normalize_locale_tag;
-use serde::Serialize;
+use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::mentions::ForumContentTarget;
 
-pub const MAX_FORUM_ATTACHMENTS_PER_REVISION: usize = 32;
+pub const MAX_FORUM_ATTACHMENTS_PER_SET: usize = 32;
 pub const MAX_FORUM_ATTACHMENT_CAPTION_BYTES: usize = 512;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(transparent)]
+pub struct ForumAttachmentRelationRevision(i64);
+
+impl ForumAttachmentRelationRevision {
+    pub const EMPTY: Self = Self(0);
+    pub const FIRST: Self = Self(1);
+
+    pub fn new(value: i64) -> Result<Self, ForumAttachmentRelationRevisionError> {
+        if value < 0 {
+            return Err(ForumAttachmentRelationRevisionError::Negative { value });
+        }
+        Ok(Self(value))
+    }
+
+    pub const fn value(self) -> i64 {
+        self.0
+    }
+
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    pub fn next(self) -> Result<Self, ForumAttachmentRelationRevisionError> {
+        self.0
+            .checked_add(1)
+            .map(Self)
+            .ok_or(ForumAttachmentRelationRevisionError::Exhausted)
+    }
+
+    pub fn check_expected(
+        self,
+        current: Option<Self>,
+    ) -> Result<ForumAttachmentRelationWriteKind, ForumAttachmentRelationRevisionError> {
+        let current = current.unwrap_or(Self::EMPTY);
+        if self != current {
+            return Err(ForumAttachmentRelationRevisionError::Conflict {
+                expected: self.value(),
+                current: current.value(),
+            });
+        }
+        if current.is_empty() {
+            Ok(ForumAttachmentRelationWriteKind::Create)
+        } else {
+            Ok(ForumAttachmentRelationWriteKind::Replace)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ForumAttachmentRelationRevision {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = i64::deserialize(deserializer)?;
+        Self::new(value).map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForumAttachmentRelationWriteKind {
+    Create,
+    Replace,
+}
+
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+pub enum ForumAttachmentRelationRevisionError {
+    #[error("Forum attachment relation revision cannot be negative: {value}")]
+    Negative { value: i64 },
+    #[error("Forum attachment relation revision counter is exhausted")]
+    Exhausted,
+    #[error(
+        "Forum attachment relation revision conflict: expected {expected}, current {current}"
+    )]
+    Conflict { expected: i64, current: i64 },
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -30,9 +107,14 @@ pub struct ForumAttachmentRelationAdmissionRequest {
     pub tenant_id: Uuid,
     pub target: ForumContentTarget,
     /// Logical Forum owner content revision. Initial content is revision 1;
-    /// captured topic/reply revisions advance this value monotonically.
+    /// captured topic/reply revisions advance this value monotonically. This is
+    /// provenance only and is intentionally independent from the attachment-set
+    /// concurrency token below.
     pub source_revision: u64,
     pub locale: String,
+    /// Last committed attachment-set revision observed by the command caller.
+    /// `0` means that no attachment set has been committed yet.
+    pub expected_relation_revision: ForumAttachmentRelationRevision,
     pub attachments: Vec<ForumAttachmentRelationInput>,
 }
 
@@ -71,14 +153,38 @@ pub struct ForumPreparedAttachmentRelation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ForumAttachmentRelationRecord {
+    pub reference_id: Uuid,
+    pub media_id: Uuid,
+    pub usage: ForumAttachmentUsage,
+    pub position: u16,
+    pub caption: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ForumAttachmentRelationSet {
+    pub tenant_id: Uuid,
+    pub target: ForumContentTarget,
+    pub locale: String,
+    pub relation_revision: ForumAttachmentRelationRevision,
+    pub source_revision: Option<u64>,
+    pub attachments: Vec<ForumAttachmentRelationRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ForumPreparedAttachmentRelationBatch {
     source: ForumAttachmentSourceRevision,
+    expected_relation_revision: ForumAttachmentRelationRevision,
     attachments: Vec<ForumPreparedAttachmentRelation>,
 }
 
 impl ForumPreparedAttachmentRelationBatch {
     pub fn source(&self) -> &ForumAttachmentSourceRevision {
         &self.source
+    }
+
+    pub fn expected_relation_revision(&self) -> ForumAttachmentRelationRevision {
+        self.expected_relation_revision
     }
 
     pub fn attachments(&self) -> &[ForumPreparedAttachmentRelation] {
@@ -98,6 +204,8 @@ pub enum ForumAttachmentRelationAdmissionError {
     NilTarget,
     #[error("Forum attachment relation requires a positive source revision")]
     InvalidSourceRevision,
+    #[error("Forum attachment relation source revision exceeds the database range")]
+    SourceRevisionOutOfRange,
     #[error("Forum attachment relation requires a valid locale")]
     InvalidLocale,
     #[error("Forum attachment relation batch exceeds {max} records: {actual}")]
@@ -131,11 +239,14 @@ impl ForumAttachmentRelationPreparer {
         if request.source_revision == 0 {
             return Err(ForumAttachmentRelationAdmissionError::InvalidSourceRevision);
         }
+        if i64::try_from(request.source_revision).is_err() {
+            return Err(ForumAttachmentRelationAdmissionError::SourceRevisionOutOfRange);
+        }
         let locale = normalize_locale_tag(&request.locale)
             .ok_or(ForumAttachmentRelationAdmissionError::InvalidLocale)?;
-        if request.attachments.len() > MAX_FORUM_ATTACHMENTS_PER_REVISION {
+        if request.attachments.len() > MAX_FORUM_ATTACHMENTS_PER_SET {
             return Err(ForumAttachmentRelationAdmissionError::BatchTooLarge {
-                max: MAX_FORUM_ATTACHMENTS_PER_REVISION,
+                max: MAX_FORUM_ATTACHMENTS_PER_SET,
                 actual: request.attachments.len(),
             });
         }
@@ -179,6 +290,7 @@ impl ForumAttachmentRelationPreparer {
                 source_revision: request.source_revision,
                 locale,
             },
+            expected_relation_revision: request.expected_relation_revision,
             attachments,
         })
     }
@@ -217,6 +329,7 @@ mod tests {
             target: ForumContentTarget::topic(Uuid::new_v4()),
             source_revision: 1,
             locale: "en".to_string(),
+            expected_relation_revision: ForumAttachmentRelationRevision::EMPTY,
             attachments: vec![
                 ForumAttachmentRelationInput {
                     media_id: Uuid::new_v4(),
@@ -241,6 +354,10 @@ mod tests {
         let batch = preparer.prepare(request).expect("batch should be admitted");
 
         assert_eq!(batch.attachments().len(), 2);
+        assert_eq!(
+            batch.expected_relation_revision(),
+            ForumAttachmentRelationRevision::EMPTY
+        );
         assert_eq!(batch.source().source_revision(), 1);
         assert_eq!(batch.source().locale(), "en");
         assert_eq!(batch.attachments()[0].position, 0);
@@ -298,6 +415,17 @@ mod tests {
     }
 
     #[test]
+    fn preparer_rejects_source_revision_outside_database_range() {
+        let preparer = ForumAttachmentRelationPreparer;
+        let mut request = valid_request();
+        request.source_revision = u64::MAX;
+        assert_eq!(
+            preparer.prepare(request).unwrap_err(),
+            ForumAttachmentRelationAdmissionError::SourceRevisionOutOfRange
+        );
+    }
+
+    #[test]
     fn preparer_rejects_nil_media_id() {
         let preparer = ForumAttachmentRelationPreparer;
         let mut request = valid_request();
@@ -345,7 +473,7 @@ mod tests {
     fn preparer_rejects_batch_exceeding_maximum() {
         let preparer = ForumAttachmentRelationPreparer;
         let mut request = valid_request();
-        request.attachments = (0..=MAX_FORUM_ATTACHMENTS_PER_REVISION)
+        request.attachments = (0..=MAX_FORUM_ATTACHMENTS_PER_SET)
             .map(|i| ForumAttachmentRelationInput {
                 media_id: Uuid::new_v4(),
                 usage: ForumAttachmentUsage::Attachment,
@@ -357,5 +485,93 @@ mod tests {
             preparer.prepare(request).unwrap_err(),
             ForumAttachmentRelationAdmissionError::BatchTooLarge { .. }
         ));
+    }
+}
+
+#[cfg(test)]
+mod revision_tests {
+    use super::{
+        ForumAttachmentRelationRevision, ForumAttachmentRelationRevisionError,
+        ForumAttachmentRelationWriteKind,
+    };
+
+    #[test]
+    fn attachment_relation_revision_uses_zero_for_an_empty_stream() {
+        assert!(ForumAttachmentRelationRevision::EMPTY.is_empty());
+        assert_eq!(
+            ForumAttachmentRelationRevision::EMPTY.next().unwrap(),
+            ForumAttachmentRelationRevision::FIRST
+        );
+    }
+
+    #[test]
+    fn attachment_relation_revision_requires_exact_current_token() {
+        assert_eq!(
+            ForumAttachmentRelationRevision::EMPTY
+                .check_expected(None)
+                .unwrap(),
+            ForumAttachmentRelationWriteKind::Create
+        );
+        assert_eq!(
+            ForumAttachmentRelationRevision::FIRST
+                .check_expected(Some(ForumAttachmentRelationRevision::FIRST))
+                .unwrap(),
+            ForumAttachmentRelationWriteKind::Replace
+        );
+        assert_eq!(
+            ForumAttachmentRelationRevision::FIRST
+                .check_expected(None)
+                .unwrap_err(),
+            ForumAttachmentRelationRevisionError::Conflict {
+                expected: 1,
+                current: 0
+            }
+        );
+        assert_eq!(
+            ForumAttachmentRelationRevision::EMPTY
+                .check_expected(Some(ForumAttachmentRelationRevision::FIRST))
+                .unwrap_err(),
+            ForumAttachmentRelationRevisionError::Conflict {
+                expected: 0,
+                current: 1
+            }
+        );
+    }
+
+    #[test]
+    fn attachment_relation_revision_rejects_stale_updates() {
+        let current = ForumAttachmentRelationRevision::new(3).unwrap();
+        assert_eq!(
+            ForumAttachmentRelationRevision::new(2)
+                .unwrap()
+                .check_expected(Some(current))
+                .unwrap_err(),
+            ForumAttachmentRelationRevisionError::Conflict {
+                expected: 2,
+                current: 3
+            }
+        );
+    }
+
+    #[test]
+    fn attachment_relation_revision_advances_monotonically() {
+        let current = ForumAttachmentRelationRevision::new(3).unwrap();
+        assert_eq!(current.next().unwrap().value(), 4);
+    }
+
+    #[test]
+    fn attachment_relation_revision_rejects_negative_values_on_deserialize() {
+        let error = serde_json::from_str::<ForumAttachmentRelationRevision>("-1")
+            .expect_err("negative attachment revisions must fail closed");
+        assert!(!error.to_string().is_empty());
+    }
+
+    #[test]
+    fn attachment_relation_revision_detects_counter_exhaustion() {
+        let max = ForumAttachmentRelationRevision::new(i64::MAX).unwrap();
+        assert_eq!(
+            max.next().unwrap_err(),
+            ForumAttachmentRelationRevisionError::Exhausted
+        );
     }
 }

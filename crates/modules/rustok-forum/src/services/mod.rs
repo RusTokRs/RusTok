@@ -1,3 +1,4 @@
+mod attachment_relation;
 mod category {
     include!("category_import.rs");
     include!("category.rs");
@@ -152,6 +153,7 @@ pub mod vote;
 pub mod widget_contract;
 mod widget_preview;
 
+pub use attachment_relation::ForumAttachmentRelationService;
 pub use category_audience::{
     ForumCategoryAudiencePolicy, ForumCategoryAudiencePolicyLayer,
     ForumCategoryAudiencePolicyOwnerService as ForumCategoryAudiencePolicyService,
