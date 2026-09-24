@@ -207,7 +207,13 @@ impl ForumAttachmentHoldReconciliationService {
                 (media_refs, forum_relations)
             }
             (Err(error), _) | (_, Err(error)) => {
-                let _ = transaction.rollback().await;
+                if let Err(rollback_error) = transaction.rollback().await {
+                    tracing::warn!(
+                        operation = FORUM_ATTACHMENT_HOLD_RECONCILIATION_OPERATION,
+                        error = %rollback_error,
+                        "failed to rollback Forum attachment hold reconciliation transaction"
+                    );
+                }
                 return Err(error);
             }
         };
