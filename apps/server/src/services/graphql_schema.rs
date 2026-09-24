@@ -238,6 +238,11 @@ fn attach_forum_media_asset_read_provider(
     use rustok_media::{MediaAssetReadPort, MediaService};
     use rustok_storage::StorageRuntime;
 
+    if let Some(provider) = host_runtime.shared_get::<Arc<dyn MediaAssetReadPort>>() {
+        ctx.shared_insert(provider);
+        return host_runtime;
+    }
+
     if let Some(provider) = ctx.shared_get::<Arc<dyn MediaAssetReadPort>>() {
         return host_runtime.with_shared_value(provider);
     }
@@ -254,6 +259,48 @@ fn attach_forum_media_asset_read_provider(
     ctx.shared_insert(provider.clone());
 
     host_runtime.with_shared_value(provider)
+}
+
+#[cfg(all(test, feature = "mod-forum", feature = "mod-media"))]
+mod forum_media_provider_composition_tests {
+    use super::attach_forum_media_asset_read_provider;
+    use crate::common::settings::RustokSettings;
+    use crate::services::server_runtime_context::ServerRuntimeContext;
+    use rustok_api::HostRuntimeContext;
+    use rustok_core::ModuleRuntimeExtensions;
+    use rustok_media::{MediaAssetReadPort, MediaService};
+    use rustok_storage::{LocalStorageConfig, StorageRuntime};
+    use sea_orm::Database;
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn host_published_media_provider_wins_over_embedded_construction() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite should connect");
+        let ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+        let storage = StorageRuntime::local(&LocalStorageConfig {
+            base_dir: std::env::temp_dir()
+                .join(format!("rustok-forum-media-provider-{}", uuid::Uuid::new_v4()))
+                .display()
+                .to_string(),
+            base_url: String::new(),
+            fsync: false,
+        })
+        .expect("local storage should initialize");
+        let remote_like: Arc<dyn MediaAssetReadPort> =
+            Arc::new(MediaService::new(db.clone(), storage));
+        let mut extensions = ModuleRuntimeExtensions::default();
+        extensions.insert(remote_like.clone());
+
+        let host = extensions.apply_to_host_runtime(HostRuntimeContext::new(db));
+        let resolved = attach_forum_media_asset_read_provider(&host, &ctx);
+        let selected = resolved
+            .shared_get::<Arc<dyn MediaAssetReadPort>>()
+            .expect("host-published provider should remain selected");
+
+        assert!(Arc::ptr_eq(&remote_like, &selected));
+    }
 }
 
 #[cfg(feature = "mod-media")]
