@@ -110,7 +110,7 @@ if (evidence) {
 
   if (
     !sameSet(evidence.profiles?.source_verified ?? [], [
-      'in_process_fallback',
+      'in_process',
       'host_injected_port_selection',
     ])
   ) failures.push(`${evidencePath}: source-verified profile drift`);
@@ -212,10 +212,10 @@ for (const source of [commentReads, commentMutation]) {
   );
 }
 
-requireMarker(service, 'pub fn with_comments_thread_port(', servicePath);
+requireMarker(service, 'pub fn from_optional_comments_thread_port(', servicePath);
 requireMarker(
   service,
-  'comments_thread_port: Arc<dyn CommentsThreadPort>,',
+  'comments_thread_port: Option<Arc<dyn CommentsThreadPort>>',
   servicePath,
 );
 
