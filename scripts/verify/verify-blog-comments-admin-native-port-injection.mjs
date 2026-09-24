@@ -101,7 +101,7 @@ if (evidence) {
 
   if (
     !sameSet(evidence.profiles?.source_verified ?? [], [
-      'in_process_fallback',
+      'in_process',
       'host_injected_port_selection',
     ])
   ) failures.push(`${evidencePath}: source-verified profile drift`);
@@ -228,7 +228,7 @@ for (const [label, source] of [
 }
 
 for (const marker of [
-  'pub fn with_comments_thread_port(',
+  'pub fn from_optional_comments_thread_port(',
   '.list_comments_for_target(',
   '.get_comment(',
   '.set_comment_status(',
