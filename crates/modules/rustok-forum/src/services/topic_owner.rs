@@ -37,8 +37,8 @@ const FORUM_TOPIC_DELETED_ROUTE_REASON: &str = "Topic deleted";
 /// Public owner service for topic commands.
 ///
 /// Explicit root-service lifecycle writes happen here. The wrapped persistence
-/// service remains a compatibility path, while database triggers provide the
-/// final consistency barrier for direct SQL and older deployments.
+/// implementation remains private to the owner, while database triggers provide
+/// the final consistency barrier for direct SQL and older deployments.
 pub struct TopicService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
