@@ -610,6 +610,81 @@ mod tests {
     }
 
     #[test]
+    fn media_page_validation_rejects_unbounded_duplicate_or_invalid_cursor() {
+        let tenant_id = Uuid::new_v4();
+        let first = rustok_media::MediaAssetReference {
+            media_id: Uuid::new_v4(),
+            tenant_id,
+            owner_module: "forum".to_string(),
+            reference_id: Uuid::new_v4(),
+        };
+        let second = rustok_media::MediaAssetReference {
+            reference_id: Uuid::new_v4(),
+            ..first
+        };
+
+        let too_large = MediaAssetReferenceListPage {
+            references: vec![first],
+            next_reference_id: None,
+            has_more: false,
+        };
+        assert!(validate_media_page(&too_large, 0, tenant_id).is_err());
+
+        let duplicate = MediaAssetReferenceListPage {
+            references: vec![first, second],
+            next_reference_id: Some(second.reference_id),
+            has_more: false,
+        };
+        assert!(validate_media_page(&duplicate, 2, tenant_id).is_err());
+
+        let missing_cursor = MediaAssetReferenceListPage {
+            references: vec![first],
+            next_reference_id: None,
+            has_more: true,
+        };
+        assert!(validate_media_page(&missing_cursor, 1, tenant_id).is_err());
+    }
+
+    #[test]
+    fn media_lookup_validation_rejects_unrequested_or_duplicate_results() {
+        let tenant_id = Uuid::new_v4();
+        let relation = forum_attachment_relation::Model {
+            tenant_id,
+            reference_id: Uuid::new_v4(),
+            media_id: Uuid::new_v4(),
+            target_kind: "topic".to_string(),
+            target_id: Uuid::new_v4(),
+            locale: "en".to_string(),
+            usage: "attachment".to_string(),
+            position: 0,
+            caption: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        let unrequested = MediaAssetReferenceLookupResult {
+            references: vec![rustok_media::MediaAssetReference {
+                media_id: Uuid::new_v4(),
+                tenant_id,
+                owner_module: "forum".to_string(),
+                reference_id: Uuid::new_v4(),
+            }],
+        };
+        assert!(validate_media_lookup(&unrequested, &[relation.clone()], tenant_id).is_err());
+
+        let duplicate = MediaAssetReference {
+            media_id: relation.media_id,
+            tenant_id,
+            owner_module: "forum".to_string(),
+            reference_id: relation.reference_id,
+        };
+        let duplicate_result = MediaAssetReferenceLookupResult {
+            references: vec![duplicate, duplicate],
+        };
+        assert!(validate_media_lookup(&duplicate_result, &[relation], tenant_id).is_err());
+    }
+
+    #[test]
     fn media_reference_boundary_rejects_foreign_tenant_and_owner() {
         let tenant_id = Uuid::new_v4();
         let foreign = rustok_media::MediaAssetReference {
