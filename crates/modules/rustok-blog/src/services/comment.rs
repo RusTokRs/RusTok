@@ -44,13 +44,6 @@ impl CommentService {
         }
     }
 
-    pub fn with_comments_thread_port(
-        db: DatabaseConnection,
-        comments_thread_port: Arc<dyn CommentsThreadPort>,
-    ) -> Self {
-        Self::from_optional_comments_thread_port(db, Some(comments_thread_port))
-    }
-
     /// Returns the active CommentsThreadPort or fails with COMMENTS_PROVIDER_UNAVAILABLE.
     fn require_comments_thread_port(&self) -> BlogResult<&dyn CommentsThreadPort> {
         self.comments_thread_port
@@ -666,18 +659,6 @@ fn comments_port_error_to_blog_error(error: PortError) -> BlogError {
     BlogError::Rich(Box::new(
         rustok_core::error::RichError::new(kind, error.message).with_error_code(error.code),
     ))
-}
-
-#[cfg(test)]
-mod port_injection_tests {
-    use super::*;
-
-    #[test]
-    fn comment_service_accepts_an_injected_comments_thread_port() {
-        let constructor: fn(DatabaseConnection, Arc<dyn CommentsThreadPort>) -> CommentService =
-            CommentService::with_comments_thread_port;
-        let _ = constructor;
-    }
 }
 
 #[cfg(test)]
