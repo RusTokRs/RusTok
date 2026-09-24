@@ -36,6 +36,14 @@ Forum topic hydration now resolves the page's topic metadata through Flex's exis
 
 Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
 
+## 2026-09-24 Forum mention Profiles batch hardening
+
+Forum mention resolution previously performed one Profiles owner lookup per resolved handle. With the 32-target mention bound, a single revision could therefore create an avoidable per-handle database burst.
+
+Profiles now exposes a tenant-scoped bounded handle batch reader that reuses its existing batched translations and tag loading. Forum mention resolution calls that boundary once, then validates each returned ProfileRecord against the existing tenant, handle, active-status and visibility contract. Missing handles remain the established field-free mention-target failure. The mention integration verifier forbids the old per-handle reader call.
+
+Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
+
 ## Components Review Status
 
 | Status | Component | Category | Files | LOC | Last Audited | Notes |

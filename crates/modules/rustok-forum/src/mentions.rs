@@ -346,18 +346,28 @@ pub async fn resolve_forum_mentions(
         candidates.target_count(),
         FORUM_MAX_MENTION_TARGETS_PER_REVISION,
     )?;
+    let handles = candidates.handles.into_iter().collect::<Vec<_>>();
+    let profiles_by_handle = profiles
+        .find_profile_records_by_handles(
+            tenant_id,
+            &handles,
+            requested_locale,
+            tenant_default_locale,
+        )
+        .await
+        .map_err(map_profile_mention_error)?;
+
     let mut users = BTreeMap::new();
-    for handle in candidates.handles {
-        let profile = profiles
-            .get_profile_by_handle(tenant_id, &handle, requested_locale, tenant_default_locale)
-            .await
-            .map_err(map_profile_mention_error)?;
-        validate_resolved_profile(tenant_id, &handle, &profile)?;
+    for handle in handles {
+        let profile = profiles_by_handle
+            .get(&handle)
+            .ok_or_else(ForumError::mention_target_unavailable)?;
+        validate_resolved_profile(tenant_id, &handle, profile)?;
         users.insert(
             profile.user_id,
             ResolvedForumMention {
                 user_id: profile.user_id,
-                handle: profile.handle,
+                handle: profile.handle.clone(),
             },
         );
     }

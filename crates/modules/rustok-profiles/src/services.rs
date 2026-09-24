@@ -402,7 +402,66 @@ impl ProfileService {
         .ok_or(ProfileError::ProfileNotFound(user_id))
     }
 
-    pub async fn get_profile_by_handle(
+    pub async fn find_profile_records_by_handles(
+        &self,
+        tenant_id: Uuid,
+        handles: &[String],
+        requested_locale: Option<&str>,
+        tenant_default_locale: Option<&str>,
+    ) -> ProfileResult<HashMap<String, ProfileRecord>> {
+        let mut normalized_handles = Vec::with_capacity(handles.len());
+        for handle in handles {
+            let normalized = Self::normalize_handle(handle)?;
+            if !normalized_handles.contains(&normalized) {
+                normalized_handles.push(normalized);
+            }
+        }
+        if normalized_handles.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let profiles = entities::profile::Entity::find()
+            .filter(entities::profile::Column::TenantId.eq(tenant_id))
+            .filter(entities::profile::Column::Handle.is_in(normalized_handles))
+            .all(&self.db)
+            .await?;
+
+        if profiles.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let translations = self
+            .load_translations_map(&profiles, requested_locale, tenant_default_locale)
+            .await?;
+        let tags = self
+            .load_profile_tag_map(
+                tenant_id,
+                &profiles,
+                requested_locale,
+                tenant_default_locale,
+            )
+            .await?;
+
+        profiles
+            .into_iter()
+            .map(|profile| {
+                let handle = profile.handle.clone();
+                let translation = select_translation(
+                    &translations,
+                    &profile,
+                    requested_locale,
+                    tenant_default_locale,
+                )?;
+                let profile = map_profile(
+                    profile,
+                    translation,
+                    tags.get(&profile.user_id).cloned().unwrap_or_default(),
+                )?;
+                Ok((handle, profile))
+            })
+            .collect()
+    }
+
         &self,
         tenant_id: Uuid,
         handle: &str,
