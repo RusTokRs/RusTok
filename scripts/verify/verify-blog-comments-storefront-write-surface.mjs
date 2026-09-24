@@ -96,6 +96,7 @@ if (evidence) {
     native_transport: files.native,
     transport_facade: files.facade,
     model: files.model,
+    comment_service: 'crates/modules/rustok-blog/src/services/comment.rs',
   };
   for (const [key, expected] of Object.entries(expectedInventory)) {
     if (evidence.source_inventory?.[key] !== expected) {
