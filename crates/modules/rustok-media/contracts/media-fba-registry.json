@@ -22,6 +22,7 @@
       "operations": [
         "get_asset",
         "get_asset_reference_admission",
+        "list_asset_references",
         "list_assets",
         "get_image_descriptor",
         "get_translations"
@@ -34,6 +35,7 @@
       "read_operations": [
         "get_asset",
         "get_asset_reference_admission",
+        "list_asset_references",
         "list_assets",
         "get_image_descriptor",
         "get_translations"
@@ -143,6 +145,20 @@
           "typed_port_error_mapping",
           "context_deadline_preserved"
         ]
+      },
+      {
+        "operation": "list_asset_references",
+        "profiles": [
+          "in_process",
+          "loopback_grpc"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "owner_scope_preserved",
+          "bounded_keyset_pagination"
+        ],
+        "runtime_evidence": "crates/modules/rustok-media-transport/tests/port_conformance.rs"
       },
       {
         "operation": "get_image_descriptor",
