@@ -367,6 +367,7 @@ impl BlogSearchProjector {
                AND bct_term.id IS NOT NULL
             LEFT JOIN users u
                 ON u.id = p.author_id
+               AND u.tenant_id = p.tenant_id
             LEFT JOIN LATERAL (
                 SELECT
                     COUNT(*)::bigint AS tag_count,
