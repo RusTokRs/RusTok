@@ -91,6 +91,17 @@ for (const key of [
   }
 }
 for (const key of [
+  "route_history_reads_are_batched",
+  "current_route_resolution_avoids_per_translation_page_lookup",
+  "published_snapshot_recording_avoids_per_translation_snapshot_lookup",
+  "delete_tombstone_avoids_per_snapshot_alias_lookup",
+]) {
+  if (evidence.source_contract?.[key] !== true) {
+    failures.push(`source_contract.${key} must be true`);
+  }
+}
+
+for (const key of [
   "production_page_builder_behavior_changed",
   "page_body_schema_changed",
   "page_artifact_schema_changed",
