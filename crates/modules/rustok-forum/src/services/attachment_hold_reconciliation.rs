@@ -324,7 +324,7 @@ impl ForumAttachmentHoldReconciliationService {
         let mut drifts = Vec::new();
 
         for reference in &media_page.references {
-            validate_media_reference(reference, reference.tenant_id)?;
+            validate_media_reference(reference, tenant_id)?;
             match relation_media_by_reference.get(&reference.reference_id) {
                 None => {
                     seen_drifts.insert((
