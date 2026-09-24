@@ -1,6 +1,9 @@
 /// Maximum persisted length for canonical and localized Taxonomy route keys.
 pub const TAXONOMY_ROUTE_KEY_MAX_CHARS: usize = 120;
 
+/// Maximum persisted length for a module scope value in Taxonomy.
+pub const TAXONOMY_SCOPE_VALUE_MAX_CHARS: usize = 64;
+
 /// Normalize a human-facing Taxonomy label or localized route value into the
 /// canonical route-key representation used by Taxonomy storage and lookup.
 ///
@@ -40,6 +43,11 @@ mod tests {
     #[test]
     fn route_key_storage_limit_is_explicitly_120_characters() {
         assert_eq!(TAXONOMY_ROUTE_KEY_MAX_CHARS, 120);
+    }
+
+    #[test]
+    fn scope_value_storage_limit_is_explicitly_64_characters() {
+        assert_eq!(TAXONOMY_SCOPE_VALUE_MAX_CHARS, 64);
     }
 
     #[test]

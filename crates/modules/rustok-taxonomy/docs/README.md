@@ -19,6 +19,14 @@ architecture.
 - provide domain modules with shared taxonomy identities without reverting to polymorphic shared product storage;
 - expose Taxonomy entities such as `taxonomy.category` to the platform Flex capability when runtime custom fields are explicitly enabled.
 
+## Storage length boundaries
+
+Taxonomy normalizes route and scope inputs before persistence. Canonical/localized
+route keys and aliases are bounded to 120 characters after normalization, while
+module `scope_value` is bounded to 64 characters after normalization. Mutation
+and owner-read adapters reject values beyond these storage boundaries with typed
+validation errors instead of leaking database failures or silently producing
+unresolvable scope selectors.
 ## Scope
 
 Current implemented scope:

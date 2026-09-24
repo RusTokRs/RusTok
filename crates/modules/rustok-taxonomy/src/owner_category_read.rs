@@ -13,6 +13,7 @@ use crate::{
         taxonomy_category_hierarchy, taxonomy_category_presentation, taxonomy_term,
         taxonomy_term_translation,
     },
+use crate::normalization::TAXONOMY_SCOPE_VALUE_MAX_CHARS;
     normalize_term_locale,
 };
 
@@ -414,6 +415,11 @@ fn normalize_scope_value(
                 return Err(TaxonomyError::validation(
                     "Module scope requires a non-empty scope_value",
                 ));
+            }
+            if value.chars().count() > TAXONOMY_SCOPE_VALUE_MAX_CHARS {
+                return Err(TaxonomyError::validation(format!(
+                    "Module scope value cannot exceed {TAXONOMY_SCOPE_VALUE_MAX_CHARS} characters after normalization",
+                )));
             }
             Ok(value)
         }

@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::dto::{TaxonomyScopeType, TaxonomyTermKind};
 use crate::entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation};
 use crate::error::{TaxonomyError, TaxonomyResult};
-use crate::normalization::TAXONOMY_ROUTE_KEY_MAX_CHARS;
+use crate::normalization::{TAXONOMY_ROUTE_KEY_MAX_CHARS, TAXONOMY_SCOPE_VALUE_MAX_CHARS};
 use crate::route_key_registry::ensure_route_key_available_in_tx;
 use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
 
@@ -344,6 +344,11 @@ fn normalize_module_scope(module_slug: &str) -> TaxonomyResult<String> {
         return Err(TaxonomyError::validation(
             "Module scope requires a non-empty scope_value",
         ));
+    }
+    if value.chars().count() > TAXONOMY_SCOPE_VALUE_MAX_CHARS {
+        return Err(TaxonomyError::validation(format!(
+            "Module scope value cannot exceed {TAXONOMY_SCOPE_VALUE_MAX_CHARS} characters after normalization",
+        )));
     }
     Ok(value)
 }

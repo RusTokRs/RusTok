@@ -197,6 +197,11 @@ fn normalize_module_scope(module_slug: &str) -> TaxonomyResult<String> {
             "Module scope requires a non-empty scope_value",
         ));
     }
+    if value.chars().count() > TAXONOMY_SCOPE_VALUE_MAX_CHARS {
+        return Err(TaxonomyError::validation(format!(
+            "Module scope value cannot exceed {TAXONOMY_SCOPE_VALUE_MAX_CHARS} characters after normalization",
+        )));
+    }
     Ok(value)
 }
 
