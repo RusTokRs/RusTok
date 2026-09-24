@@ -638,6 +638,41 @@ fn validate_asset_reference_list_request(
     Ok(())
 }
 
+fn validate_asset_reference_lookup_request(
+    request: &MediaAssetReferenceLookupRequest,
+) -> Result<(), PortError> {
+    if request.reference_ids.is_empty() {
+        return Err(PortError::validation(
+            "media.asset_reference_lookup_ids_empty",
+            "media asset reference lookup requires at least one reference ID",
+        ));
+    }
+    if request.reference_ids.len() > MAX_MEDIA_RECONCILIATION_LIMIT as usize {
+        return Err(PortError::validation(
+            "media.asset_reference_lookup_ids_too_large",
+            format!(
+                "media asset reference lookup is limited to {MAX_MEDIA_RECONCILIATION_LIMIT} reference IDs"
+            ),
+        ));
+    }
+    let mut seen = std::collections::HashSet::with_capacity(request.reference_ids.len());
+    for reference_id in &request.reference_ids {
+        if reference_id.is_nil() {
+            return Err(PortError::validation(
+                "media.asset_reference_lookup_id_invalid",
+                "media asset reference lookup IDs must be non-nil UUIDs",
+            ));
+        }
+        if !seen.insert(*reference_id) {
+            return Err(PortError::validation(
+                "media.asset_reference_lookup_duplicate_id",
+                "media asset reference lookup IDs must be unique",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn validate_media_list_limit(limit: u64) -> Result<(), PortError> {
     if !(1..=MAX_MEDIA_LIST_LIMIT).contains(&limit) {
         return Err(PortError::validation(
