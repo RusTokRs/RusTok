@@ -85,6 +85,11 @@ pub enum ForumError {
     #[error("Forum attachment relation revision counter is exhausted")]
     AttachmentRelationRevisionExhausted,
 
+    #[error(
+        "Forum attachment source revision conflict: expected {expected}, current {current}"
+    )]
+    AttachmentSourceRevisionConflict { expected: u64, current: u64 },
+
     #[error("Forum topic changed concurrently: {0}")]
     TopicUpdateConflict(Uuid),
 
@@ -203,6 +208,9 @@ impl ForumError {
             Self::RelationRevisionConflict => "FORUM_RELATION_REVISION_CONFLICT",
             Self::AttachmentRelationInvariant => "FORUM_ATTACHMENT_RELATION_INVARIANT",
             Self::AttachmentRelationRevisionExhausted => "FORUM_ATTACHMENT_RELATION_REVISION_EXHAUSTED",
+            Self::AttachmentSourceRevisionConflict { .. } => {
+                "FORUM_ATTACHMENT_SOURCE_REVISION_CONFLICT"
+            },
             Self::TopicUpdateConflict(_) => "FORUM_TOPIC_UPDATE_CONFLICT",
             Self::TopicMoveOperationConflict(_) => "FORUM_TOPIC_MOVE_OPERATION_CONFLICT",
             Self::TopicMergeOperationConflict(_) => "FORUM_TOPIC_MERGE_OPERATION_CONFLICT",
@@ -264,6 +272,7 @@ impl ForumError {
             Self::CapabilityFailure { retryable, .. } => *retryable,
             Self::Database(_) | Self::Internal(_) | Self::RelationRevisionConflict => true,
             Self::AttachmentRelationInvariant | Self::AttachmentRelationRevisionExhausted => false,
+            Self::AttachmentSourceRevisionConflict { .. } => true,
             Self::TopicUpdateConflict(_) => true,
             _ => false,
         }

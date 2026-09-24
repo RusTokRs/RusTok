@@ -90,6 +90,12 @@ impl ForumAttachmentRelationService {
         let locale = batch.source().locale().to_string();
 
         ensure_forum_target_exists(&self.db, tenant_id, target).await?;
+        self.ensure_source_revision_current(
+            tenant_id,
+            target,
+            batch.source().source_revision(),
+        )
+        .await?;
 
         let observed = self.load_head(&self.db, tenant_id, target, &locale).await?;
         if let Some(head) = observed {
@@ -309,6 +315,32 @@ impl ForumAttachmentRelationService {
             )
             .await
             .map_err(media_port_error)
+    }
+
+    async fn ensure_source_revision_current(
+        &self,
+        tenant_id: Uuid,
+        target: ForumContentTarget,
+        expected: u64,
+    ) -> ForumResult<()> {
+        let current = match target.kind() {
+            ForumContentTargetKind::Topic => {
+                crate::services::revision::RevisionService::new(self.db.clone())
+                    .current_topic_revision(tenant_id, target.id())
+                    .await?
+            }
+            ForumContentTargetKind::Reply => {
+                crate::services::revision::RevisionService::new(self.db.clone())
+                    .current_reply_revision(tenant_id, target.id())
+                    .await?
+            }
+        };
+
+        if current == expected {
+            Ok(())
+        } else {
+            Err(ForumError::AttachmentSourceRevisionConflict { expected, current })
+        }
     }
 
     async fn ensure_media_holds(

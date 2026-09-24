@@ -363,7 +363,7 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Missing or unauthorized mention targets share `FORUM_MENTION_TARGET_UNAVAILABLE` so the contract does not expose a profile-existence oracle.
 - Missing or mismatched quoted relation revisions share `FORUM_QUOTE_TARGET_UNAVAILABLE` so quote validation does not expose a cross-tenant existence oracle.
 - Invalid, absent or foreign relation revision identities share `FORUM_RELATION_REVISION_UNAVAILABLE`.
-- Attachment relation CAS conflicts return retryable `FORUM_RELATION_REVISION_CONFLICT`; persistence invariant violations return `FORUM_ATTACHMENT_RELATION_INVARIANT` and revision exhaustion returns `FORUM_ATTACHMENT_RELATION_REVISION_EXHAUSTED`.
+- Attachment relation CAS conflicts return retryable `FORUM_RELATION_REVISION_CONFLICT`; stale content provenance returns retryable `FORUM_ATTACHMENT_SOURCE_REVISION_CONFLICT`; persistence invariant violations return `FORUM_ATTACHMENT_RELATION_INVARIANT` and revision exhaustion returns `FORUM_ATTACHMENT_RELATION_REVISION_EXHAUSTED`.
 - Media retention/release provider failures remain `ForumError::CapabilityFailure` with the Media source code and retryability.
 - A stale omitted-update quote snapshot returns retryable `FORUM_RELATION_REVISION_CONFLICT`; REST maps it to HTTP 409.
 - Forum chooses its engagement mechanism through the tenant-scoped `forum.useReactions` setting. `false` keeps the internal `VoteService` active; `true` selects the shared Reactions module. The Reactions module may remain enabled for other modules without changing Forum behavior.

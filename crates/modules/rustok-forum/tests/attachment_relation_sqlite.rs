@@ -393,6 +393,50 @@ async fn sqlite_attachment_relation_service_coordinates_media_retention_and_cas(
     );
     assert_eq!(exact_retry.attachments, first.attachments);
 
+    let stale_source = forum
+        .replace_attachment_relations(
+            context
+                .clone()
+                .with_idempotency_key("forum-attachment-stale-source"),
+            ForumAttachmentRelationAdmissionRequest {
+                tenant_id,
+                target: ForumContentTarget::topic(topic_id),
+                source_revision: 2,
+                locale: "en-US".to_string(),
+                expected_relation_revision: ForumAttachmentRelationRevision::FIRST,
+                attachments: first
+                    .attachments
+                    .iter()
+                    .map(|relation| ForumAttachmentRelationInput {
+                        media_id: relation.media_id,
+                        usage: relation.usage,
+                        position: relation.position,
+                        caption: relation.caption.clone(),
+                    })
+                    .collect(),
+            },
+        )
+        .await;
+    assert!(
+        matches!(
+            stale_source,
+            Err(rustok_forum::ForumError::AttachmentSourceRevisionConflict {
+                expected: 2,
+                current: 1
+            })
+        ),
+        "attachment writes must reject stale content provenance"
+    );
+    assert_eq!(
+        asset_reference::Entity::find()
+            .filter(asset_reference::Column::TenantId.eq(tenant_id))
+            .filter(asset_reference::Column::MediaId.eq(media_id))
+            .count(&db)
+            .await?,
+        1,
+        "stale source revision must not add or remove the committed Media hold"
+    );
+
     let blocked = media.delete(tenant_id, media_id).await;
     assert!(
         matches!(blocked, Err(MediaError::AssetReferenced(id)) if id == media_id),
