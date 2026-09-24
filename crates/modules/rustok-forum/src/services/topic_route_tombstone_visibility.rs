@@ -99,50 +99,6 @@ impl ForumTopicRouteTombstoneVisibilityService {
         Ok(())
     }
 
-    /// Clears the immutable delete-time visibility snapshot when the topic is restored.
-    ///
-    /// A restored topic may change its category/audience/channel visibility before being deleted
-    /// again, so the next delete must capture a fresh snapshot instead of conflicting with the
-    /// previous deleted incarnation.
-    pub(crate) async fn clear_delete_snapshot_in_tx(
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        topic_id: Uuid,
-    ) -> ForumResult<()> {
-        let statements = match txn.get_database_backend() {
-            DatabaseBackend::Postgres => vec![
-                Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    "DELETE FROM forum_topic_route_tombstone_channels WHERE tenant_id = $1 AND topic_id = $2",
-                    vec![tenant_id.into(), topic_id.into()],
-                ),
-                Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    "DELETE FROM forum_topic_route_tombstone_visibility WHERE tenant_id = $1 AND topic_id = $2",
-                    vec![tenant_id.into(), topic_id.into()],
-                ),
-            ],
-            DatabaseBackend::Sqlite => vec![
-                Statement::from_sql_and_values(
-                    DatabaseBackend::Sqlite,
-                    "DELETE FROM forum_topic_route_tombstone_channels WHERE tenant_id = ? AND topic_id = ?",
-                    vec![tenant_id.into(), topic_id.into()],
-                ),
-                Statement::from_sql_and_values(
-                    DatabaseBackend::Sqlite,
-                    "DELETE FROM forum_topic_route_tombstone_visibility WHERE tenant_id = ? AND topic_id = ?",
-                    vec![tenant_id.into(), topic_id.into()],
-                ),
-            ],
-            backend => return Err(unsupported_backend(backend)),
-        };
-
-        for statement in statements {
-            txn.execute_raw(statement).await?;
-        }
-        Ok(())
-    }
-
     /// Returns whether a stored gone route may be disclosed to one anonymous routed channel.
     /// Missing snapshots, private snapshots and nonmatching channel scopes all return `false`.
     pub async fn can_disclose_public_gone(

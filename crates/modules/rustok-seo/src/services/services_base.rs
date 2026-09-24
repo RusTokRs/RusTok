@@ -212,14 +212,48 @@ impl SeoService {
         &self,
         tenant_id: Uuid,
     ) -> SeoResult<Option<rustok_api::StaticModuleSettingsSnapshot>> {
-        let reader = self
-            .static_settings_reader
-            .as_ref()
-            .ok_or_else(|| SeoError::configuration("SEO static settings reader is unavailable"))?;
-        reader
-            .settings(tenant_id, MODULE_SLUG)
-            .await
-            .map_err(map_settings_port_error)
+        if let Some(reader) = self.static_settings_reader.as_ref() {
+            return reader
+                .settings(tenant_id, MODULE_SLUG)
+                .await
+                .map_err(map_settings_port_error);
+        }
+
+        Self::read_db_static_settings(&self.db, tenant_id, MODULE_SLUG).await
+    }
+
+    async fn read_db_static_settings(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> SeoResult<Option<rustok_api::StaticModuleSettingsSnapshot>> {
+        use sea_orm::{ConnectionTrait, DbBackend, Statement};
+        let backend = db.get_database_backend();
+        let statement = match backend {
+            DbBackend::Postgres => Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "SELECT enabled, settings FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1",
+                vec![tenant_id.into(), module_slug.into()],
+            ),
+            _ => Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT enabled, settings FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1",
+                vec![tenant_id.into(), module_slug.into()],
+            ),
+        };
+        let row = match db.query_one_raw(statement).await {
+            Ok(Some(row)) => row,
+            Ok(None) => return Ok(None),
+            Err(_) => return Ok(None),
+        };
+        let enabled: bool = row.try_get("", "enabled").unwrap_or(false);
+        let encoded: String = row.try_get("", "settings").unwrap_or_default();
+        let settings = if encoded.trim().is_empty() {
+            serde_json::json!({})
+        } else {
+            serde_json::from_str(&encoded).unwrap_or_else(|_| serde_json::json!({}))
+        };
+        Ok(Some(rustok_api::StaticModuleSettingsSnapshot { enabled, settings }))
     }
 
     pub fn normalize_settings(mut settings: SeoModuleSettings) -> SeoModuleSettings {
@@ -260,6 +294,8 @@ impl SeoService {
         }
     }
 }
+
+
 
 fn map_settings_port_error(error: PortError) -> SeoError {
     match error.kind {

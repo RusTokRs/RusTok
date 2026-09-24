@@ -1,11 +1,11 @@
 use chrono::Utc;
-use rustok_core::{MigrationSource, SecurityContext, UserRole};
+use rustok_core::MigrationSource;
 use rustok_profiles::{ProfileStatus, ProfileVisibility, ProfilesModule, entities};
 use rustok_taxonomy::{
-    CreateTaxonomyTermInput, TaxonomyModule, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
+    ModuleTermCreateInput, TaxonomyModule, TaxonomyService, TaxonomyTermKind,
 };
 use rustok_test_utils::db::setup_test_db;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, TransactionTrait};
 use sea_orm_migration::prelude::SchemaManager;
 use uuid::Uuid;
 
@@ -28,10 +28,6 @@ async fn setup() -> (DatabaseConnection, TaxonomyService) {
     (db, taxonomy)
 }
 
-fn admin() -> SecurityContext {
-    SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()))
-}
-
 async fn create_profile(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) {
     let now = Utc::now();
     entities::profile::ActiveModel {
@@ -51,26 +47,25 @@ async fn create_profile(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid)
     .expect("profile should be inserted");
 }
 
-async fn create_tag(taxonomy: &TaxonomyService, tenant_id: Uuid, name: &str) -> Uuid {
+async fn create_tag(db: &DatabaseConnection, taxonomy: &TaxonomyService, tenant_id: Uuid, name: &str) -> Uuid {
     let route_key = name.to_ascii_lowercase();
-    taxonomy
-        .create_term(
+    let txn = db.begin().await.expect("transaction should start");
+    let term_id = taxonomy
+        .create_module_term_in_tx(
+            &txn,
             tenant_id,
-            admin(),
-            CreateTaxonomyTermInput {
-                kind: TaxonomyTermKind::Tag,
-                scope_type: TaxonomyScopeType::Module,
-                scope_value: Some("profiles".to_string()),
+            TaxonomyTermKind::Tag,
+            "profiles",
+            ModuleTermCreateInput {
                 locale: "en".to_string(),
                 name: name.to_string(),
-                slug: Some(route_key.clone()),
-                canonical_key: Some(route_key),
-                description: None,
-                aliases: Vec::new(),
+                slug: Some(route_key),
             },
         )
         .await
-        .expect("profile tag should be created")
+        .expect("profile tag should be created");
+    txn.commit().await.expect("transaction should commit");
+    term_id
 }
 
 #[tokio::test]
@@ -81,8 +76,8 @@ async fn storage_rejects_cross_tenant_profile_tag_attachment() {
     let user_id = Uuid::new_v4();
     create_profile(&db, profile_tenant, user_id).await;
 
-    let local_term = create_tag(&taxonomy, profile_tenant, "Local").await;
-    let foreign_term = create_tag(&taxonomy, foreign_tenant, "Foreign").await;
+    let local_term = create_tag(&db, &taxonomy, profile_tenant, "Local").await;
+    let foreign_term = create_tag(&db, &taxonomy, foreign_tenant, "Foreign").await;
     let now = Utc::now();
 
     entities::profile_tag::ActiveModel {

@@ -817,9 +817,12 @@ mod tests {
         Arc::new(extensions)
     }
 
-    fn empty_seo_registry_runtime_extensions() -> Arc<ModuleRuntimeExtensions> {
+    fn empty_seo_registry_runtime_extensions(db: DatabaseConnection) -> Arc<ModuleRuntimeExtensions> {
         let mut extensions = ModuleRuntimeExtensions::default();
         extensions.insert(Arc::new(crate::SeoTargetRegistry::default()));
+        extensions.insert(SharedStaticModuleSettingsReader(Arc::new(
+            TestStaticSettingsReader { db },
+        )));
         Arc::new(extensions)
     }
 
@@ -1083,9 +1086,9 @@ mod tests {
         insert_enabled_seo_module(&db, tenant_id, json!({})).await;
 
         let schema = Schema::build(SeoQuery, EmptyMutation, EmptySubscription)
-            .data(db)
+            .data(db.clone())
             .data(event_bus())
-            .data(empty_seo_registry_runtime_extensions())
+            .data(empty_seo_registry_runtime_extensions(db))
             .data(tenant_context(tenant_id))
             .finish();
 

@@ -178,7 +178,8 @@ impl ReplyService {
         security: SecurityContext,
         input: UpdateReplyCommandInput,
     ) -> ForumResult<ReplyResponse> {
-        self.update_with_inline_relations(tenant_id, reply_id, security, input)
+        self.inner
+            .update_with_inline_relations(tenant_id, reply_id, security, input)
             .await
     }
 }

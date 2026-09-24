@@ -54,6 +54,26 @@ impl ProfilesReader for FakeProfilesReader {
             .cloned()
             .ok_or_else(|| ProfileError::ProfileByHandleNotFound(handle.to_string()))
     }
+
+    async fn find_profile_records_by_handles(
+        &self,
+        tenant_id: Uuid,
+        handles: &[String],
+        _requested_locale: Option<&str>,
+        _tenant_default_locale: Option<&str>,
+    ) -> ProfileResult<HashMap<String, ProfileRecord>> {
+        let mut result = HashMap::new();
+        for handle in handles {
+            if let Some(record) = self
+                .records
+                .get(handle.as_str())
+                .filter(|record| record.tenant_id == tenant_id)
+            {
+                result.insert(handle.clone(), record.clone());
+            }
+        }
+        Ok(result)
+    }
 }
 
 fn profile(

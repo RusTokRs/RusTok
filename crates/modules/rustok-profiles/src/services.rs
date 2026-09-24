@@ -470,6 +470,7 @@ impl ProfileService {
             .collect()
     }
 
+    pub async fn get_profile_by_handle(
         &self,
         tenant_id: Uuid,
         handle: &str,

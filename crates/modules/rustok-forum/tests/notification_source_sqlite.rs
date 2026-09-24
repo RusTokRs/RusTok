@@ -205,9 +205,31 @@ async fn forum_topic_and_user_mention_sources_support_notifications_profiles() {
         NotificationOpenAuthorization::Unavailable => panic!("open topic should be available"),
     }
 
+    let deleted_topic = TopicService::new(db.clone(), event_bus.clone())
+        .create(
+            tenant_id,
+            admin.clone(),
+            CreateTopicInput {
+                locale: "en".into(),
+                category_id: category.id,
+                title: "Deleted topic proof".into(),
+                slug: Some("deleted-topic-proof".into()),
+                body: rustok_api::RichTextDocument::single_paragraph("Deleted topic target"),
+                metadata: serde_json::json!({}),
+                tags: Vec::new(),
+                channel_slugs: None,
+            },
+        )
+        .await
+        .expect("topic for soft-delete test should be created");
+    let deleted_target = NotificationTargetRef {
+        owner: NotificationSourceSlug::new("forum").expect("source slug"),
+        kind: NotificationTargetKind::new("forum.topic").expect("topic target kind"),
+        id: deleted_topic.id,
+    };
     db.execute_unprepared(&format!(
-        "UPDATE forum_topics SET deleted_at = CURRENT_TIMESTAMP WHERE tenant_id = '{}' AND id = '{}'",
-        tenant_id, topic.id
+        "UPDATE forum_topics SET deleted_at = CURRENT_TIMESTAMP WHERE lower(hex(tenant_id)) = replace('{}', '-', '') AND lower(hex(id)) = replace('{}', '-', '')",
+        tenant_id, deleted_topic.id
     ))
     .await
     .expect("soft-delete marker should be writable in regression setup");
@@ -215,7 +237,7 @@ async fn forum_topic_and_user_mention_sources_support_notifications_profiles() {
         .authorize_target_open(AuthorizeNotificationTargetRequest {
             tenant_id,
             recipient_id: first_recipient,
-            target: descriptor.target.clone(),
+            target: deleted_target,
         })
         .await
         .expect("soft-deleted target authorization should complete");

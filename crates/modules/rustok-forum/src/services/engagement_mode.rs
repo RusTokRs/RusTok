@@ -37,26 +37,6 @@ impl ForumSettingsProviders {
         self.transactional_reader = Some(transactional_reader);
         self
     }
-
-    fn require_static_reader(&self) -> ForumResult<&SharedStaticModuleSettingsReader> {
-        self.static_reader.as_ref().ok_or_else(|| {
-            ForumError::capability_unavailable(
-                "static_module_settings",
-                "FORUM_STATIC_SETTINGS_CAPABILITY_UNAVAILABLE",
-            )
-        })
-    }
-
-    fn require_transactional_reader(
-        &self,
-    ) -> ForumResult<&SharedStaticModuleSettingsTransactionReader> {
-        self.transactional_reader.as_ref().ok_or_else(|| {
-            ForumError::capability_unavailable(
-                "static_module_settings",
-                "FORUM_STATIC_SETTINGS_TRANSACTION_CAPABILITY_UNAVAILABLE",
-            )
-        })
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -70,7 +50,9 @@ impl ForumEngagementMode {
         providers: &ForumSettingsProviders,
         tenant_id: Uuid,
     ) -> ForumResult<Self> {
-        let reader = providers.require_static_reader()?;
+        let Some(reader) = providers.static_reader.as_ref() else {
+            return Ok(Self::InternalVotes);
+        };
 
         let forum_snapshot = reader
             .settings(tenant_id, FORUM_MODULE_SLUG)
@@ -106,7 +88,9 @@ impl ForumEngagementMode {
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
     ) -> ForumResult<Self> {
-        let reader = providers.require_transactional_reader()?;
+        let Some(reader) = providers.transactional_reader.as_ref() else {
+            return Ok(Self::InternalVotes);
+        };
 
         let forum_snapshot = reader
             .settings_in_tx(txn, tenant_id, FORUM_MODULE_SLUG)

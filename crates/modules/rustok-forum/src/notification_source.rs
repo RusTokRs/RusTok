@@ -29,7 +29,7 @@ use crate::notification_recipient::{
     ForumNotificationRecipientContextResolver, SharedForumNotificationRecipientContextPort,
 };
 use crate::services::{ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService};
-use crate::state_machine::ReplyStatus;
+use crate::state_machine::{ReplyStatus, TopicStatus};
 use crate::subscription::ForumSubscriptionLevel;
 
 const FORUM_SOURCE: &str = "forum";
@@ -207,10 +207,16 @@ impl ForumNotificationSourceProvider {
         tenant_id: Uuid,
         topic_id: Uuid,
     ) -> NotificationProviderResult<Option<forum_topic::Model>> {
-        // Event descriptions are not recipient-specific. Keep the descriptor
-        // on the same public visibility contract regardless of which richer
-        // recipient capabilities the host happens to publish.
-        self.load_public_topic(tenant_id, topic_id).await
+        if self.recipient_context_port.is_none() {
+            return self.load_public_topic(tenant_id, topic_id).await;
+        }
+        let Some(topic) = self.load_active_topic(tenant_id, topic_id).await? else {
+            return Ok(None);
+        };
+        if topic.status != TopicStatus::Open {
+            return Ok(None);
+        }
+        Ok(Some(topic))
     }
 
     async fn load_topic_for_subscription_audience(
@@ -218,7 +224,13 @@ impl ForumNotificationSourceProvider {
         tenant_id: Uuid,
         topic_id: Uuid,
     ) -> NotificationProviderResult<Option<forum_topic::Model>> {
-        self.load_active_topic(tenant_id, topic_id).await
+        let Some(topic) = self.load_active_topic(tenant_id, topic_id).await? else {
+            return Ok(None);
+        };
+        if topic.status != TopicStatus::Open {
+            return Ok(None);
+        }
+        Ok(Some(topic))
     }
 
     async fn load_target_for_viewer(

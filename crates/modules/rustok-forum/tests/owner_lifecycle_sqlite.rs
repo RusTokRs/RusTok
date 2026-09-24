@@ -296,12 +296,23 @@ async fn seed_category(
     moderated: bool,
 ) {
     db.execute_unprepared(&format!(
-        "INSERT INTO forum_categories \
+        "INSERT INTO taxonomy_terms \
+         (id, tenant_id, kind, scope_type, scope_value, canonical_key, revision) \
+         VALUES ({}, {}, 'category', 'module', 'forum', 'category-{}', 1); \
+         INSERT INTO forum_categories \
          (id, tenant_id, moderated, topic_count, reply_count) \
-         VALUES ({}, {}, {}, 0, 0)",
+         VALUES ({}, {}, {}, 0, 0); \
+         INSERT INTO taxonomy_category_hierarchy \
+         (tenant_id, term_id, parent_term_id, position) \
+         VALUES ({}, {}, NULL, 0)",
         sql_uuid(category_id),
         sql_uuid(tenant_id),
-        if moderated { 1 } else { 0 }
+        category_id,
+        sql_uuid(category_id),
+        sql_uuid(tenant_id),
+        if moderated { 1 } else { 0 },
+        sql_uuid(tenant_id),
+        sql_uuid(category_id)
     ))
     .await
     .expect("category seed should succeed");

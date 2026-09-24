@@ -5,8 +5,8 @@ use rustok_profiles::entities;
 use rustok_profiles::{
     ProfileMutationContext, ProfileMutationService, ProfileService, ProfilesReader,
 };
-use rustok_taxonomy::{TaxonomyService, UpdateTaxonomyTermInput};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use rustok_taxonomy::{ModuleTermUpdateInput, TaxonomyTermKind, update_module_term_in_tx};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -62,21 +62,23 @@ async fn add_term_translation(
     name: &str,
     slug: &str,
 ) {
-    TaxonomyService::new(db.clone())
-        .update_term(
-            tenant_id,
-            term_id,
-            SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4())),
-            UpdateTaxonomyTermInput {
-                locale: locale.to_string(),
-                name: Some(name.to_string()),
-                slug: Some(slug.to_string()),
-                description: None,
-                aliases: None,
-            },
-        )
-        .await
-        .expect("taxonomy translation fixture should apply through the owner service");
+    let txn = db.begin().await.expect("transaction should start");
+    update_module_term_in_tx(
+        &txn,
+        tenant_id,
+        term_id,
+        &SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4())),
+        TaxonomyTermKind::Tag,
+        "profiles",
+        ModuleTermUpdateInput {
+            locale: locale.to_string(),
+            name: Some(name.to_string()),
+            slug: Some(slug.to_string()),
+        },
+    )
+    .await
+    .expect("taxonomy translation fixture should apply through the owner service");
+    txn.commit().await.expect("transaction should commit");
 }
 
 #[tokio::test]

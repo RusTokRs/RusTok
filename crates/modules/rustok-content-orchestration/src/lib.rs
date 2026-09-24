@@ -1611,13 +1611,13 @@ mod tests {
     use rustok_content::{
         CanonicalUrlService, ContentModule, DemotePostToTopicInput, PromoteTopicToPostInput,
     };
-    use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
+    use rustok_core::{MigrationSource, SecurityContext, UserRole};
     use rustok_forum::{
         CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumModule,
         ListRepliesFilter, ReplyService, ReplyStatus, TopicService,
         entities::{forum_reply, forum_reply_body, forum_topic, forum_topic_translation},
     };
-    use rustok_outbox::{SysEventsMigration, TransactionalEventBus};
+    use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
     use rustok_taxonomy::{
         TaxonomyModule, TaxonomyScopeType,
         entities::{taxonomy_term, taxonomy_term_translation},
@@ -1719,9 +1719,7 @@ mod tests {
         let db = setup_conversion_test_db().await;
         ensure_conversion_schema(&db).await;
 
-        let transport = MemoryTransport::new();
-        let _receiver = transport.subscribe();
-        let events = TransactionalEventBus::new(Arc::new(transport));
+        let events = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
         let security = admin_security();
         let tenant_id = Uuid::new_v4();
         insert_test_actor(&db, tenant_id, &security).await;
@@ -1983,9 +1981,7 @@ mod tests {
         let db = setup_conversion_test_db().await;
         ensure_conversion_schema(&db).await;
 
-        let transport = MemoryTransport::new();
-        let _receiver = transport.subscribe();
-        let events = TransactionalEventBus::new(Arc::new(transport));
+        let events = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
         let security = admin_security();
         let tenant_id = Uuid::new_v4();
         insert_test_actor(&db, tenant_id, &security).await;

@@ -6,6 +6,18 @@ pub mod route_tombstone_visibility;
 use crate::dto::{CreateTopicCommandInput, UpdateTopicCommandInput};
 
 impl TopicService {
+    pub(crate) async fn available_locales_for_topics(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        topic_ids: &[Uuid],
+    ) -> ForumResult<Vec<(Uuid, Vec<String>)>> {
+        enforce_scope(&security, Resource::ForumTopics, Action::Manage)?;
+        self.inner
+            .available_locales_for_topics(tenant_id, security, topic_ids)
+            .await
+    }
+
     #[instrument(skip(self, security, input))]
     pub async fn create_command(
         &self,

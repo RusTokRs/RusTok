@@ -78,8 +78,8 @@ fn page_builder_is_an_optional_forum_capability() {
     let module = include_str!("../src/lib.rs");
     let manifest = include_str!("../rustok-module.toml");
 
-    assert!(module.contains("&[\"content\", \"taxonomy\"]"));
-    assert!(!module.contains("&[\"content\", \"taxonomy\", \"page_builder\"]"));
+    assert!(module.contains("&[\"content\", \"taxonomy\", \"tenant\"]"));
+    assert!(!module.contains("page_builder"));
     assert!(!manifest.contains("[dependencies.page_builder]"));
     assert!(manifest.contains("[fba.builder_consumer]"));
     assert!(manifest.contains("builder_disabled"));

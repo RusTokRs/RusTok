@@ -448,7 +448,7 @@ impl ReplyService {
         reply_id: Uuid,
         status: ReplyStatus,
     ) -> ForumResult<forum_reply::Model> {
-        Self::set_status_in_tx(txn, tenant_id, reply_id, status).await
+        reply::ReplyService::set_status_in_tx(txn, tenant_id, reply_id, status).await
     }
 }
 

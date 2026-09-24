@@ -461,12 +461,6 @@ impl TopicService {
         )
         .await?;
 
-        ForumTopicRouteTombstoneVisibilityService::clear_delete_snapshot_in_tx(
-            &txn,
-            tenant_id,
-            topic_id,
-        )
-        .await?;
         clear_topic_delete_snapshots_in_tx(&txn, tenant_id, topic_id).await?;
 
         txn.commit().await?;

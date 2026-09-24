@@ -118,6 +118,37 @@ impl ProfilePresentationService {
             )
             .await
     }
+
+    pub async fn find_profile_records_by_handles(
+        &self,
+        tenant_id: Uuid,
+        handles: &[String],
+        requested_locale: Option<&str>,
+        tenant_default_locale: Option<&str>,
+    ) -> ProfileResult<HashMap<String, ProfileRecord>> {
+        let records = ProfileService::new(self.db.clone())
+            .find_profile_records_by_handles(
+                tenant_id,
+                handles,
+                requested_locale,
+                tenant_default_locale,
+            )
+            .await?;
+        if records.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let user_ids = records.values().map(|r| r.user_id).collect::<Vec<_>>();
+        let decisions = ProfilePrivacyService::new(self.db.clone())
+            .evaluate_access_batch(tenant_id, &user_ids, self.audience)
+            .await
+            .map_err(map_privacy_error)?;
+
+        Ok(records
+            .into_iter()
+            .filter(|(_, r)| decisions.get(&r.user_id) == Some(&ProfilePrivacyDecision::Allow))
+            .collect())
+    }
 }
 
 #[async_trait]
@@ -150,6 +181,23 @@ impl ProfilesReader for ProfilePresentationService {
             self,
             tenant_id,
             user_ids,
+            requested_locale,
+            tenant_default_locale,
+        )
+        .await
+    }
+
+    async fn find_profile_records_by_handles(
+        &self,
+        tenant_id: Uuid,
+        handles: &[String],
+        requested_locale: Option<&str>,
+        tenant_default_locale: Option<&str>,
+    ) -> ProfileResult<HashMap<String, ProfileRecord>> {
+        ProfilePresentationService::find_profile_records_by_handles(
+            self,
+            tenant_id,
+            handles,
             requested_locale,
             tenant_default_locale,
         )
