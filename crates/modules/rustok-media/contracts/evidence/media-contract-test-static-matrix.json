@@ -42,6 +42,20 @@
       "runtime_evidence": "crates/modules/rustok-media-transport/tests/port_conformance.rs"
     },
     {
+      "operation": "lookup_asset_references",
+      "profiles": [
+        "in_process",
+        "loopback_grpc"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "owner_scope_preserved",
+        "bounded_bulk_identity_lookup"
+      ],
+      "runtime_evidence": "crates/modules/rustok-media-transport/tests/port_conformance.rs"
+    },
+    {
       "operation": "get_image_descriptor",
       "profiles": [
         "in_process",
