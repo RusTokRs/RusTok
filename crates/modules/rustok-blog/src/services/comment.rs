@@ -112,35 +112,41 @@ impl CommentService {
             .map_err(comments_port_error_to_blog_error)?;
 
         // Blog and Comments are separate owner boundaries, so the pre-create target
-        // check cannot be atomic with the external port call. Revalidate the canonical
-        // target before reporting success. If terminal deletion won the race, compensate
-        // the already-created comment using a fresh idempotent delete command; the
-        // terminal TargetDeleted event remains the durable cross-owner cleanup backstop.
-        if matches!(
-            self.ensure_post_exists(tenant_id, post_id).await,
-            Err(BlogError::PostNotFound(_))
-        ) {
-            let compensation_command_id = Uuid::new_v4();
-            self.require_comments_thread_port()?
-                .delete_comment(
-                    comments_write_port_context(
-                        tenant_id,
-                        &security,
-                        PLATFORM_FALLBACK_LOCALE,
-                        "delete-after-target-loss",
+        // check cannot be atomic with the external port call. Revalidate the full public
+        // publication/channel boundary before reporting success. If the target became
+        // unpublished, inactive, hidden from the current channel, or deleted while the
+        // external write was in flight, compensate the already-created comment with a
+        // fresh idempotent delete command. The terminal TargetDeleted event remains the
+        // durable cross-owner cleanup backstop for the deletion case.
+        match self
+            .ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
+            .await
+        {
+            Ok(()) => {}
+            Err(BlogError::PostNotFound(_)) => {
+                let compensation_command_id = Uuid::new_v4();
+                self.require_comments_thread_port()?
+                    .delete_comment(
+                        comments_write_port_context(
+                            tenant_id,
+                            &security,
+                            PLATFORM_FALLBACK_LOCALE,
+                            "delete-after-public-target-loss",
+                            record.id,
+                            compensation_command_id,
+                        )?,
                         record.id,
-                        compensation_command_id,
-                    )?,
-                    record.id,
-                )
-                .await
-                .map_err(|error| {
-                    BlogError::invariant(format!(
-                        "Blog post {post_id} disappeared after comment creation and the compensating comment delete failed: {}",
-                        error.message
-                    ))
-                })?;
-            return Err(BlogError::post_not_found(post_id));
+                    )
+                    .await
+                    .map_err(|error| {
+                        BlogError::invariant(format!(
+                            "Blog post {post_id} lost public visibility after comment creation and the compensating comment delete failed: {}",
+                            error.message
+                        ))
+                    })?;
+                return Err(BlogError::post_not_found(post_id));
+            }
+            Err(error) => return Err(error),
         }
 
         Self::map_comment_record(record)
