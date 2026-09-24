@@ -16,6 +16,7 @@
 - `MediaAssetReadPort` and `MediaAssetWritePort` metadata/control contracts, including durable reference retain/release;
 - the owner-only `MediaAssetReferenceAdmission` read fact, which exposes tenant identity plus typed lifecycle/reference eligibility without storage paths or delivery URLs;
 - the bounded `MediaAssetReferenceListPage` read contract, which enumerates durable consumer-owned holds for one normalized owner module using a strict reference-ID keyset;
+- the bounded `MediaAssetReferenceLookupResult` exact lookup, which resolves up to 1,000 unique stable consumer reference IDs under the trusted tenant and normalized owner scope;
 - the durable `MediaAssetReference` retention control, which stores stable consumer-owned holds and blocks Media lifecycle deletion while retained;
 - `MediaPublicImageReadPort`, which returns one owner result containing the canonical `MediaItem` and the public descriptor selected by Media policy;
 - `MediaPublicImageService`, which turns only storage-relative image descriptors into `/api/media/public/images/{id}/{checksum_sha256}` capability URLs;
