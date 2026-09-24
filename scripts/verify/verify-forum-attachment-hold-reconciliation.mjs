@@ -74,6 +74,7 @@ hasAll(host, [
   'attach_forum_media_asset_read_provider',
   'Arc<dyn MediaAssetReadPort>',
   'MediaService::new(ctx.db_clone(), storage)',
+  'host_runtime.shared_get::<Arc<dyn MediaAssetReadPort>>()',
 ], 'server host composition');
 
 const mediaPorts = read('crates/modules/rustok-media/src/ports.rs');
