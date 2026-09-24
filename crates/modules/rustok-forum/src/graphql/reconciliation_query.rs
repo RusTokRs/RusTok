@@ -62,6 +62,9 @@ pub struct GqlForumAttachmentHoldReconciliationReport {
     pub inspected_media_holds: i32,
     pub has_more_media_holds: bool,
     pub media_cursor: Option<Uuid>,
+    pub inspected_forum_relations: i32,
+    pub has_more_forum_relations: bool,
+    pub forum_cursor: Option<Uuid>,
     pub drift_count: i32,
     /// True only for this bounded Media-owner page.
     pub clean: bool,
@@ -136,6 +139,7 @@ impl ForumReconciliationQuery {
         ctx: &Context<'_>,
         limit: Option<i32>,
         media_after: Option<Uuid>,
+        relation_after: Option<Uuid>,
     ) -> Result<GqlForumAttachmentHoldReconciliationReport> {
         let (tenant_id, security, requested_limit, db) =
             reconciliation_context(ctx, limit).await?;
@@ -173,6 +177,7 @@ impl ForumReconciliationQuery {
                 media_context,
                 requested_limit,
                 media_after,
+                relation_after,
             )
             .await?;
         Ok(map_attachment_hold_report(report))
@@ -284,6 +289,9 @@ fn map_attachment_hold_report(
         inspected_media_holds: saturating_i32(report.inspected_media_holds),
         has_more_media_holds: report.has_more_media_holds,
         media_cursor: report.media_cursor,
+        inspected_forum_relations: saturating_i32(report.inspected_forum_relations),
+        has_more_forum_relations: report.has_more_forum_relations,
+        forum_cursor: report.forum_cursor,
         drift_count: saturating_i32(report.drift_count() as u64),
         clean: report.is_clean(),
         drifts: report.drifts.into_iter().map(map_attachment_hold_drift).collect(),
