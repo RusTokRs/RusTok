@@ -300,7 +300,7 @@ impl ForumAttachmentHoldReconciliationService {
         (Ok(relation_media_by_reference), result)
     }
 
-    async fn build_report(
+    fn build_report(
         &self,
         tenant_id: Uuid,
         requested_limit: Option<u64>,
