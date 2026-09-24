@@ -400,9 +400,13 @@ pub(super) async fn record_published_slug_redirects_in_tx(
         .await?;
     let mut existing_by_locale = BTreeMap::new();
     for translation in existing {
-        existing_by_locale.insert(normalize_locale(&translation.locale)?, translation);
+        let locale = normalize_locale(&translation.locale)?;
+        if existing_by_locale.insert(locale, translation).is_some() {
+            return Err(page_route_resolution_conflict());
+        }
     }
 
+    let mut pending = Vec::<(String, String)>::new();
     for translation in translations {
         let locale = normalize_locale(&translation.locale)?;
         let new_slug = normalize_slug(
@@ -415,72 +419,71 @@ pub(super) async fn record_published_slug_redirects_in_tx(
             continue;
         };
         let old_slug = normalize_slug(&existing.slug)?;
-        if old_slug == new_slug {
-            continue;
+        if old_slug != new_slug {
+            pending.push((locale, old_slug));
         }
-        record_redirect_alias_in_tx(
-            txn,
-            RedirectAliasRequest {
-                tenant_id,
-                page_id,
-                locale: &locale,
-                slug: &old_slug,
-                target_page_id: page_id,
-                target_locale: &locale,
-                reason: PUBLISHED_SLUG_CHANGE_REASON,
-            },
-        )
+    }
+    if pending.is_empty() {
+        return Ok(());
+    }
+
+    let locales = pending
+        .iter()
+        .map(|(locale, _)| locale.clone())
+        .collect::<Vec<_>>();
+    let slugs = pending
+        .iter()
+        .map(|(_, slug)| slug.clone())
+        .collect::<Vec<_>>();
+    let aliases = page_route_alias::Entity::find()
+        .filter(page_route_alias::Column::TenantId.eq(tenant_id))
+        .filter(page_route_alias::Column::Locale.is_in(locales))
+        .filter(page_route_alias::Column::Slug.is_in(slugs))
+        .all(txn)
         .await?;
+    let mut aliases_by_route = HashMap::new();
+    for alias in aliases {
+        let key = (alias.locale.clone(), alias.slug.clone());
+        if aliases_by_route.insert(key, alias).is_some() {
+            return Err(page_route_resolution_conflict());
+        }
+    }
+
+    let reason = normalize_alias_reason(PUBLISHED_SLUG_CHANGE_REASON)?;
+    for (locale, old_slug) in pending {
+        let key = (locale.clone(), old_slug.clone());
+        match aliases_by_route.get(&key) {
+            None => {
+                let alias_id = Uuid::new_v4();
+                page_route_alias::ActiveModel {
+                    id: Set(alias_id),
+                    tenant_id: Set(tenant_id),
+                    page_id: Set(page_id),
+                    locale: Set(locale),
+                    slug: Set(old_slug),
+                    disposition: Set(ROUTE_DISPOSITION_REDIRECT.to_string()),
+                    target_page_id: Set(Some(page_id)),
+                    target_locale: Set(Some(key.0.clone())),
+                    reason: Set(reason.clone()),
+                    created_at: Set(Utc::now().into()),
+                }
+                .insert(txn)
+                .await?;
+            }
+            Some(alias)
+                if alias.page_id == page_id
+                    && alias.disposition == ROUTE_DISPOSITION_REDIRECT
+                    && alias.target_page_id == Some(page_id)
+                    && alias.target_locale.as_deref() == Some(key.0.as_str())
+                    && alias.reason == reason =>
+            {
+                // Exact replay is idempotent.
+            }
+            Some(_) => return Err(page_route_resolution_conflict()),
+        }
     }
 
     Ok(())
-}
-
-async fn record_redirect_alias_in_tx(
-    txn: &DatabaseTransaction,
-    request: RedirectAliasRequest<'_>,
-) -> PagesResult<Uuid> {
-    let locale = normalize_locale(request.locale)?;
-    let slug = normalize_slug(request.slug)?;
-    let target_locale = normalize_locale(request.target_locale)?;
-    let reason = normalize_alias_reason(request.reason)?;
-    let aliases = page_route_alias::Entity::find()
-        .filter(page_route_alias::Column::TenantId.eq(request.tenant_id))
-        .filter(page_route_alias::Column::Locale.eq(&locale))
-        .filter(page_route_alias::Column::Slug.eq(&slug))
-        .all(txn)
-        .await?;
-
-    match aliases.as_slice() {
-        [] => {
-            let alias_id = Uuid::new_v4();
-            page_route_alias::ActiveModel {
-                id: Set(alias_id),
-                tenant_id: Set(request.tenant_id),
-                page_id: Set(request.page_id),
-                locale: Set(locale),
-                slug: Set(slug),
-                disposition: Set(ROUTE_DISPOSITION_REDIRECT.to_string()),
-                target_page_id: Set(Some(request.target_page_id)),
-                target_locale: Set(Some(target_locale)),
-                reason: Set(reason),
-                created_at: Set(Utc::now().into()),
-            }
-            .insert(txn)
-            .await?;
-            Ok(alias_id)
-        }
-        [alias]
-            if alias.page_id == request.page_id
-                && alias.disposition == ROUTE_DISPOSITION_REDIRECT
-                && alias.target_page_id == Some(request.target_page_id)
-                && alias.target_locale.as_deref() == Some(target_locale.as_str())
-                && alias.reason == reason =>
-        {
-            Ok(alias.id)
-        }
-        _ => Err(page_route_resolution_conflict()),
-    }
 }
 
 async fn record_gone_alias_in_tx(
