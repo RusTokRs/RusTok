@@ -66,10 +66,23 @@ async fn write_settings(
     category_id: Uuid,
     settings: serde_json::Value,
 ) -> Result<(), sea_orm::DbErr> {
+    let backend = db.get_database_backend();
+    let sql = match backend {
+        DatabaseBackend::Sqlite => "UPDATE blog_categories SET settings = ? WHERE id = ?",
+        DatabaseBackend::Postgres => {
+            "UPDATE blog_categories SET settings = CAST($1 AS jsonb) WHERE id = $2"
+        }
+        other => panic!("unsupported test database backend: {other:?}"),
+    };
     db.execute(Statement::from_sql_and_values(
-        DatabaseBackend::Sqlite,
-        "UPDATE blog_categories SET settings = ? WHERE id = ?",
-        [serde_json::to_string(&settings).expect("settings JSON should serialize").into(), category_id.into()],
+        backend,
+        sql,
+        [
+            serde_json::to_string(&settings)
+                .expect("settings JSON should serialize")
+                .into(),
+            category_id.into(),
+        ],
     ))
     .await
     .map(|_| ())
