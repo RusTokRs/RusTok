@@ -59,6 +59,7 @@ pub use quote_commands::{
 };
 pub use read_state::*;
 pub use reconciliation_query::{
+    GqlForumAttachmentHoldDrift, GqlForumAttachmentHoldReconciliationReport,
     GqlForumCounterDrift, GqlForumCounterReconciliationReport, GqlForumSolutionDrift,
     GqlForumSolutionReconciliationReport,
 };
