@@ -310,7 +310,9 @@ impl ForumAttachmentHoldReconciliationService {
         relation_rows: Vec<forum_attachment_relation::Model>,
         reverse_lookup: MediaAssetReferenceLookupResult,
     ) -> ForumResult<ForumAttachmentHoldReconciliationReport> {
-        let inspected_media_holds = media_page.references.len().min(effective_limit as usize) as u64;
+        validate_media_page(&media_page, effective_limit, tenant_id)?;
+
+        let inspected_media_holds = media_page.references.len() as u64;
         let has_more_media_holds = media_page.has_more;
         let media_cursor = media_page.next_reference_id;
 
@@ -408,6 +410,65 @@ impl ForumAttachmentHoldReconciliationService {
 fn enforce_operations_scope(security: &SecurityContext) -> ForumResult<()> {
     enforce_scope(security, Resource::ForumCategories, Action::Manage)?;
     enforce_scope(security, Resource::ForumTopics, Action::Manage)
+}
+
+fn validate_media_page(
+    page: &MediaAssetReferenceListPage,
+    effective_limit: u64,
+    tenant_id: Uuid,
+) -> ForumResult<()> {
+    if page.references.len() > effective_limit as usize {
+        return Err(ForumError::capability_failure(
+            "media.asset_reference_reconciliation",
+            "MEDIA_REFERENCE_PAGE_TOO_LARGE",
+            "Media returned more attachment holds than the requested reconciliation bound",
+            false,
+        ));
+    }
+    if page.has_more && page.next_reference_id.is_none() {
+        return Err(ForumError::capability_failure(
+            "media.asset_reference_reconciliation",
+            "MEDIA_REFERENCE_PAGE_CURSOR_MISSING",
+            "Media indicated more attachment holds without returning a continuation cursor",
+            false,
+        ));
+    }
+
+    let mut previous = None;
+    let mut seen = std::collections::HashSet::with_capacity(page.references.len());
+    for reference in &page.references {
+        validate_media_reference(reference, tenant_id)?;
+        if !seen.insert(reference.reference_id) {
+            return Err(ForumError::capability_failure(
+                "media.asset_reference_reconciliation",
+                "MEDIA_REFERENCE_PAGE_DUPLICATE_ID",
+                "Media returned a duplicate attachment hold reference ID",
+                false,
+            ));
+        }
+        if let Some(previous_id) = previous
+            && reference.reference_id <= previous_id
+        {
+            return Err(ForumError::capability_failure(
+                "media.asset_reference_reconciliation",
+                "MEDIA_REFERENCE_PAGE_ORDER_INVALID",
+                "Media attachment hold reference page is not strictly ordered",
+                false,
+            ));
+        }
+        previous = Some(reference.reference_id);
+    }
+
+    if page.next_reference_id != page.references.last().map(|reference| reference.reference_id) {
+        return Err(ForumError::capability_failure(
+            "media.asset_reference_reconciliation",
+            "MEDIA_REFERENCE_PAGE_CURSOR_INVALID",
+            "Media attachment hold page cursor does not match the last returned reference",
+            false,
+        ));
+    }
+
+    Ok(())
 }
 
 fn validate_media_reference(
