@@ -61,7 +61,7 @@ static COMMENTS_TCP_LISTENER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CommentsProviderProfile {
-    InProcessFallback,
+    InProcess,
     Preconfigured,
     TcpLoopback,
     TcpProtectedLoopback,
@@ -187,10 +187,11 @@ struct CommentsTcpListenerLifecycleReservation;
 
 /// Publishes the host-selected Comments provider through `ModuleRuntimeExtensions`.
 ///
-/// The default `in_process` mode intentionally inserts no port. Blog therefore
-/// retains its existing database/event-bus fallback. `tcp` requires an explicit
-/// loopback endpoint and bearer credential. Signed user delegation is enabled
-/// only when a separate delegation secret is configured. A host-injected
+/// The default `in_process` mode selects the owner-managed in-process provider;
+/// the final host-composition facade publishes its `CommentsThreadPort` using
+/// the canonical database and transactional event bus. `tcp` requires an
+/// explicit loopback endpoint and bearer credential. Signed user delegation is
+/// enabled only when a separate delegation secret is configured. A host-injected
 /// authenticated encrypted connector is supported, but non-loopback publication
 /// remains disabled until retained runtime evidence exists.
 pub fn register_comments_provider_runtime(
@@ -212,7 +213,7 @@ pub fn register_comments_provider_runtime(
     match mode.as_str() {
         "in_process" => {
             extensions.insert(CommentsProviderRuntimeSelection {
-                profile: CommentsProviderProfile::InProcessFallback,
+                profile: CommentsProviderProfile::InProcess,
                 endpoint: None,
             });
             Ok(())

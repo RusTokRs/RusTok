@@ -148,8 +148,30 @@ pub mod module_event_dispatcher {
         );
 
         #[cfg(feature = "mod-comments")]
-        super::comments_provider_runtime::register_comments_provider_runtime(&mut extensions)
-            .map_err(Error::BadRequest)?;
+        {
+            super::comments_provider_runtime::register_comments_provider_runtime(&mut extensions)
+                .map_err(Error::BadRequest)?;
+
+            let selection = extensions
+                .get::<super::comments_provider_runtime::CommentsProviderRuntimeSelection>()
+                .cloned();
+
+            if selection.is_some_and(|selection| {
+                selection.profile
+                    == super::comments_provider_runtime::CommentsProviderProfile::InProcess
+            }) && extensions
+                .get::<Arc<dyn rustok_comments_api::CommentsThreadPort>>()
+                .is_none()
+            {
+                let provider = rustok_comments::in_process_comments_thread_port(
+                    db.clone(),
+                    crate::services::event_bus::transactional_event_bus_from_context(
+                        &runtime_ctx,
+                    ),
+                );
+                extensions.insert(provider);
+            }
+        }
 
         #[cfg(feature = "mod-forum")]
         {

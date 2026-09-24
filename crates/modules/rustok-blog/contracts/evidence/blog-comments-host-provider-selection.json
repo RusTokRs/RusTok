@@ -33,9 +33,9 @@
   },
   "profiles": [
     {
-      "name": "InProcessFallback",
-      "port_published": false,
-      "consumer_behavior": "existing_database_event_bus_fallback"
+      "name": "InProcess",
+      "port_published": true,
+      "consumer_behavior": "owner_managed_in_process_provider"
     },
     {
       "name": "Preconfigured",
@@ -77,8 +77,8 @@
     "connection_idle_timeout",
     "bounded_concurrency_and_shutdown",
     "retry_backoff",
-    "in_process_tcp_runtime_parity",
-    "runtime_execution"
+    "runtime_execution",
+    "in_process_tcp_runtime_parity"
   ],
   "explicit_non_claims": [
     "no_compile_result",
