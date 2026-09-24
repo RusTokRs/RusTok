@@ -71,7 +71,27 @@ need(
 );
 need(
   commentService,
-  'lost public visibility after comment creation',
+  'compensate_created_public_comment(',
+  'comment service',
+);
+need(
+  commentService,
+  'if let Err(compensation_error) = self',
+  'comment service',
+);
+need(
+  commentService,
+  'Err(revalidation_error) => {',
+  'comment service',
+);
+need(
+  commentService,
+  'return Err(revalidation_error);',
+  'comment service',
+);
+need(
+  commentService,
+  'public visibility could not be confirmed after comment creation',
   'comment service',
 );
 const plan = read(files.plan);
