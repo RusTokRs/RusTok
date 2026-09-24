@@ -358,6 +358,43 @@ async fn exercise_provider(
     assert!(empty_after_cursor.references.is_empty());
     assert!(!empty_after_cursor.has_more);
 
+    let lookup = read
+        .lookup_asset_references(
+            read_context(tenant_id),
+            rustok_media::MediaAssetReferenceLookupRequest {
+                owner_module: "conformance".to_string(),
+                reference_ids: vec![retained.reference_id],
+            },
+        )
+        .await
+        .expect("exact owner reference lookup should return retained hold");
+    assert_eq!(lookup.references.len(), 1);
+    assert_eq!(lookup.references[0], retained);
+
+    let foreign_owner_lookup = read
+        .lookup_asset_references(
+            read_context(tenant_id),
+            rustok_media::MediaAssetReferenceLookupRequest {
+                owner_module: "other-module".to_string(),
+                reference_ids: vec![retained.reference_id],
+            },
+        )
+        .await
+        .expect("foreign owner lookup should be an empty result");
+    assert!(foreign_owner_lookup.references.is_empty());
+
+    let unknown_lookup = read
+        .lookup_asset_references(
+            read_context(tenant_id),
+            rustok_media::MediaAssetReferenceLookupRequest {
+                owner_module: "conformance".to_string(),
+                reference_ids: vec![Uuid::new_v4()],
+            },
+        )
+        .await
+        .expect("unknown reference lookup should remain successful");
+    assert!(unknown_lookup.references.is_empty());
+
     let delete_while_retained = write
         .delete_asset(write_context(tenant_id, "delete-retained"), asset_id)
         .await
