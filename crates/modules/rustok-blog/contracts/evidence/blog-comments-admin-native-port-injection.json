@@ -14,7 +14,7 @@
   },
   "profiles": {
     "source_verified": [
-      "in_process_fallback",
+      "in_process",
       "host_injected_port_selection"
     ],
     "pending": [
