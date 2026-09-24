@@ -21,6 +21,7 @@ Leptos storefront UI package for the `rustok-blog` module.
 - Native Leptos `#[server]` calls are isolated in `transport/native_server_adapter.rs`, with GraphQL kept as the required parallel selected path in `transport/graphql_adapter.rs` behind the build-profile-selected facade.
 - Both write transports require authenticated `comments:create`, exact tenant scope, an enabled Blog channel, and a published post visible in the current channel before calling the Comments port.
 - Native SSR transport receives DB and `TransactionalEventBus` through `HostRuntimeContext`; this package does not depend on host-framework runtime context.
+- The native `blog/storefront-data` endpoint treats the middleware-resolved `TenantContext` as authoritative; only when that context is absent may a tenant fallback be supplied, and that fallback must exactly match the configured host tenant.
 
 ## Entry Points
 
