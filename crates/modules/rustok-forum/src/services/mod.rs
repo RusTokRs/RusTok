@@ -68,7 +68,6 @@ pub(crate) mod projection_invalidation;
 mod public_discovery;
 mod quote_command;
 mod rbac;
-#[path = "read_model.rs"]
 mod read_model_owner;
 pub mod read_model {
     pub use super::read_model_owner::ForumReadModelService;
