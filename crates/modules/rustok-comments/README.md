@@ -23,11 +23,11 @@
 - Keep status-only and metadata-only thread updates out of the counter write path.
 - Repair historical counters and positions through append-only PostgreSQL/SQLite migrations and enforce unique `(thread_id, position)` storage.
 
-## Thread write invariants
-
 ## Durable port idempotency
 
 All write operations exposed through CommentsThreadPort use a durable owner-operation receipt. The receipt remains scoped to the tenant, Comments owner, operation and caller idempotency key, and its request identity additionally includes the authenticated PortContext.actor plus the exact request payload. A terminal replay therefore cannot cross users or service actors inside the same tenant, while retries from the same principal replay the original committed result.
+
+## Thread write invariants
 
 `comment::ActiveModelBehavior` is the position owner for transactional insert
 paths. It ignores a supplied position, serializes on the tenant thread row, and
