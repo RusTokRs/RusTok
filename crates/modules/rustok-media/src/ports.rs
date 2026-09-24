@@ -67,6 +67,19 @@ pub struct MediaAssetReferenceListRequest {
     pub limit: u64,
 }
 
+/// Bounded exact lookup for durable consumer-owned Media reference holds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MediaAssetReferenceLookupRequest {
+    pub owner_module: String,
+    pub reference_ids: Vec<Uuid>,
+}
+
+/// Result of a bounded exact lookup. Missing references are intentionally omitted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MediaAssetReferenceLookupResult {
+    pub references: Vec<MediaAssetReference>,
+}
+
 /// One bounded page of durable consumer-owned Media reference holds.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MediaAssetReferenceListPage {
@@ -92,6 +105,12 @@ pub trait MediaAssetReadPort: Send + Sync {
         context: PortContext,
         request: MediaAssetReferenceListRequest,
     ) -> Result<MediaAssetReferenceListPage, PortError>;
+
+    async fn lookup_asset_references(
+        &self,
+        context: PortContext,
+        request: MediaAssetReferenceLookupRequest,
+    ) -> Result<MediaAssetReferenceLookupResult, PortError>;
 
     async fn list_assets(
         &self,
