@@ -59,8 +59,6 @@ pub use error::{CommentsError, CommentsResult};
 #[cfg(feature = "server")]
 pub use ports::*;
 #[cfg(feature = "server")]
-pub use rustok_comments_api::CommentsThreadPort;
-#[cfg(feature = "server")]
 pub use remote::*;
 #[cfg(feature = "server")]
 pub use services::CommentsService;
