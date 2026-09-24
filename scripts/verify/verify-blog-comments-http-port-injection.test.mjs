@@ -39,7 +39,7 @@ function fixture({
     root,
     runtimePath,
     `
-use rustok_comments::CommentsThreadPort;
+use rustok_comments_api::CommentsThreadPort;
 use std::sync::Arc;
 comments_thread_port: Option<Arc<dyn CommentsThreadPort>>
 fn comment_service(&self) -> CommentService {
@@ -66,8 +66,8 @@ let selector: fn(&BlogHttpRuntime) -> CommentService = BlogHttpRuntime::comment_
     root,
     servicePath,
     `
-pub fn with_comments_thread_port(
-comments_thread_port: Arc<dyn CommentsThreadPort>
+pub fn from_optional_comments_thread_port(
+comments_thread_port: Option<Arc<dyn CommentsThreadPort>>
 `,
   );
 
@@ -77,7 +77,7 @@ comments_thread_port: Arc<dyn CommentsThreadPort>
     JSON.stringify({
       schema_version: 3,
       adapter_injection: {
-        constructor: 'CommentService::with_comments_thread_port',
+        constructor: 'CommentService::from_optional_comments_thread_port',
         runtime_status: 'not_run',
         remote_transport_implementation: 'pending',
       },
@@ -104,7 +104,7 @@ comments_thread_port: Arc<dyn CommentsThreadPort>
       },
       profiles: {
         source_verified: [
-          'in_process_fallback',
+          'in_process',
           'host_injected_port_selection',
           ...(remotePromoted ? ['remote_transport_implementation'] : []),
         ],
