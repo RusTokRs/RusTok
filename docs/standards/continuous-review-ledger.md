@@ -44,6 +44,14 @@ Profiles now exposes a tenant-scoped bounded handle batch reader that reuses its
 
 Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
 
+## 2026-09-24 Forum Reply owner consolidation
+
+The Forum Reply owner still exposed a raw persistence service through `Deref`, while `bounded_compat.rs` added read methods outside the owner. That split the canonical Reply contract across an implicit dereference boundary and a compatibility module.
+
+Reply read operations are now explicit methods on `reply_owner::ReplyService`, including the bounded pagination contract. The owner no longer implements `Deref`; the obsolete `bounded_compat.rs` module is removed. The public `reply_facade::ReplyService` surface remains unchanged.
+
+Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
+
 ## 2026-09-24 Forum canonical owner consolidation
 
 A continuous-review audit found two Forum service owners still embedding explicit legacy implementations: the read-model owner delegated topic/reply projections through `read_model_legacy`, while the moderation owner delegated topic pin/status operations through `moderation_legacy` via `Deref`. That left two competing implementation authorities inside the module and made the canonical owner boundary misleading.

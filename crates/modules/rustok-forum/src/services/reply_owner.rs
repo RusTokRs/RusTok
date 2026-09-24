@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
@@ -9,19 +7,21 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_api::{Action, PortContext, Resource};
-use rustok_content::normalize_locale_code;
+use rustok_content::{normalize_locale_code, resolve_by_locale_with_fallback};
 use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::dto::ReplyResponse;
+use crate::dto::{ListRepliesFilter, ReplyListItem, ReplyResponse, bounded_forum_read_limit};
 use crate::entities::{
     forum_reply, forum_reply_body, forum_solution, forum_topic_merge_operation,
 };
 use crate::error::{ForumError, ForumResult};
 use crate::mentions::ForumContentTarget;
 use crate::state_machine::{ReplyStatus, TopicStatus};
+use crate::richtext::project_stored_discussion;
 use crate::services::engagement_mode::ForumSettingsProviders;
+use crate::services::vote::{VoteService, VoteSummary};
 
 use super::category::CategoryService;
 use super::category_lifecycle::{ensure_category_restore_target_is_active_in_tx, lock_category_tree_in_tx};
@@ -77,13 +77,83 @@ impl ReplyService {
     }
 
     #[instrument(skip(self, security))]
+    pub async fn get(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        reply_id: Uuid,
+        locale: &str,
+    ) -> ForumResult<ReplyResponse> {
+        self.get_with_locale_fallback(tenant_id, security, reply_id, locale, None)
+            .await
+    }
+
+    #[instrument(skip(self, security))]
+    pub async fn get_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        reply_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> ForumResult<ReplyResponse> {
+        self.inner
+            .get_with_locale_fallback(tenant_id, security, reply_id, locale, fallback_locale)
+            .await
+    }
+
+    #[instrument(skip(self, security))]
+    pub async fn list_for_topic_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        topic_id: Uuid,
+        mut filter: ListRepliesFilter,
+        fallback_locale: Option<&str>,
+    ) -> ForumResult<(Vec<ReplyListItem>, u64)> {
+        filter.per_page = bounded_forum_read_limit(Some(filter.per_page));
+        self.inner
+            .list_for_topic_with_locale_fallback(
+                tenant_id,
+                security,
+                topic_id,
+                filter,
+                fallback_locale,
+            )
+            .await
+    }
+
+    #[instrument(skip(self, security))]
+    pub async fn list_response_for_topic_by_statuses_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        topic_id: Uuid,
+        mut filter: ListRepliesFilter,
+        fallback_locale: Option<&str>,
+        statuses: Option<&[ReplyStatus]>,
+    ) -> ForumResult<(Vec<ReplyResponse>, u64)> {
+        filter.per_page = bounded_forum_read_limit(Some(filter.per_page));
+        self.inner
+            .list_response_for_topic_by_statuses_with_locale_fallback(
+                tenant_id,
+                security,
+                topic_id,
+                filter,
+                fallback_locale,
+                statuses,
+            )
+            .await
+    }
+
+    #[instrument(skip(self, security))]
     pub async fn delete(
         &self,
         tenant_id: Uuid,
         reply_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
-        let existing = self.inner.find_reply(tenant_id, reply_id).await?;
+        let existing = self.find_reply(tenant_id, reply_id).await?;
         enforce_owned_scope(
             &security,
             Resource::ForumReplies,
@@ -154,7 +224,7 @@ impl ReplyService {
         let topic =
             TopicService::find_topic_for_update_in_tx(&txn, tenant_id, initial_topic_id).await?;
         let reply =
-            reply::ReplyService::find_reply_for_update_in_tx(&txn, tenant_id, reply_id).await?;
+            Self::find_reply_for_update_in_tx(&txn, tenant_id, reply_id).await?;
         if reply.topic_id != initial_topic_id {
             return Err(ForumError::TopicUpdateConflict(initial_topic_id));
         }
@@ -289,7 +359,7 @@ impl ReplyService {
         // topic delete/restore and category archive/restore. This prevents a reply
         // counter mutation from racing a concurrent category lifecycle decision.
         lock_category_tree_in_tx(txn, tenant_id).await?;
-        let initial_reply = reply::ReplyService::find_reply_in_tx(txn, tenant_id, reply_id).await?;
+        let initial_reply = Self::find_reply_in_tx(txn, tenant_id, reply_id).await?;
         let initial_topic_id = initial_reply.topic_id;
 
         // All reply-moving owners lock the topic before reply rows. Keep deletion in
@@ -380,15 +450,7 @@ impl ReplyService {
         reply_id: Uuid,
         status: ReplyStatus,
     ) -> ForumResult<forum_reply::Model> {
-        reply::ReplyService::set_status_in_tx(txn, tenant_id, reply_id, status).await
-    }
-}
-
-impl Deref for ReplyService {
-    type Target = reply::ReplyService;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
+        Self::set_status_in_tx(txn, tenant_id, reply_id, status).await
     }
 }
 

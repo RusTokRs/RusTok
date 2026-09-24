@@ -1,4 +1,3 @@
-mod bounded_compat;
 mod category {
     include!("category_import.rs");
     include!("category.rs");
