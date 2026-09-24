@@ -48,6 +48,8 @@ Structural create, move, and delete:
 - keep the tree bounded to a maximum of 512 nodes / Blog memberships;
 - write canonical placement only in
   `taxonomy_category_hierarchy`;
+- return Category lists in deterministic canonical hierarchy preorder (parent before descendants); siblings are ordered by `position` and then category id;
+- apply pagination only after the complete hierarchy preorder is constructed, because `position` is a sibling-local index;
 - recompute response `depth` from the canonical Taxonomy parent map; depth is
   not duplicated in Blog persistence;
 - keep localized copy and structural placement separate.

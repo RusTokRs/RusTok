@@ -186,7 +186,7 @@ impl CategoryService {
             ));
         }
 
-        let mut rows = categories
+        let rows = categories
             .into_iter()
             .map(|category| {
                 let canonical = canonical_by_id.get(&category.id).ok_or_else(|| {
@@ -195,15 +195,30 @@ impl CategoryService {
                         category.id
                     ))
                 })?;
-                let parent_id = canonical.parent_id;
-                Ok((category, canonical.clone(), parent_id))
+                Ok((category, canonical.clone()))
             })
             .collect::<BlogResult<Vec<_>>>()?;
-        rows.sort_by(|(left_blog, left, _), (right_blog, right, _)| {
-            left.position
-                .cmp(&right.position)
-                .then_with(|| left_blog.id.cmp(&right_blog.id))
-        });
+
+        let hierarchy = rows
+            .iter()
+            .map(|(category, canonical)| (category.id, (canonical.parent_id, canonical.position)))
+            .collect::<HashMap<_, _>>();
+        let ordered_ids = hierarchical_category_order(&hierarchy)?;
+
+        let mut rows_by_id = rows
+            .into_iter()
+            .map(|(category, canonical)| (category.id, (category, canonical)))
+            .collect::<HashMap<_, _>>();
+        let rows = ordered_ids
+            .into_iter()
+            .map(|category_id| {
+                rows_by_id.remove(&category_id).ok_or_else(|| {
+                    BlogError::invariant(format!(
+                        "Blog category {category_id} disappeared while ordering the category projection"
+                    ))
+                })
+            })
+            .collect::<BlogResult<Vec<_>>>()?;
 
         let total = rows.len() as u64;
         let offset = page.saturating_sub(1).saturating_mul(per_page);
@@ -212,13 +227,13 @@ impl CategoryService {
             .into_iter()
             .skip(offset)
             .take(per_page as usize)
-            .map(|(category, canonical, parent_id)| CategoryListItem {
+            .map(|(category, canonical)| CategoryListItem {
                 id: category.id,
                 locale: canonical.requested_locale,
                 effective_locale: canonical.effective_locale,
                 name: canonical.name,
                 slug: canonical.slug,
-                parent_id,
+                parent_id: canonical.parent_id,
                 position: canonical.position,
                 settings: category.settings,
                 created_at: category.created_at.into(),
@@ -283,6 +298,124 @@ impl CategoryService {
     }
 }
 
+fn hierarchical_category_order(
+    hierarchy: &HashMap<Uuid, (Option<Uuid>, i32)>,
+) -> BlogResult<Vec<Uuid>> {
+    if hierarchy.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut children_by_parent = HashMap::<Option<Uuid>, Vec<Uuid>>::new();
+    for (&category_id, &(parent_id, position)) in hierarchy {
+        if position < 0 {
+            return Err(BlogError::invariant(format!(
+                "Blog category {category_id} has a negative canonical position {position}",
+            )));
+        }
+        if let Some(parent_id) = parent_id
+            && !hierarchy.contains_key(&parent_id)
+        {
+            return Err(BlogError::invariant(format!(
+                "Blog category {category_id} references missing parent {parent_id}",
+            )));
+        }
+        children_by_parent
+            .entry(parent_id)
+            .or_default()
+            .push(category_id);
+    }
+
+    for children in children_by_parent.values_mut() {
+        children.sort_by_key(|category_id| {
+            let Some((_, position)) = hierarchy.get(category_id) else {
+                return (i32::MAX, *category_id);
+            };
+            (*position, *category_id)
+        });
+    }
+
+    let roots = children_by_parent.remove(&None).ok_or_else(|| {
+        BlogError::invariant("Blog Category hierarchy has no root category")
+    })?;
+
+    let mut stack = roots.into_iter().rev().collect::<Vec<_>>();
+    let mut ordered = Vec::with_capacity(hierarchy.len());
+    let mut seen = std::collections::HashSet::with_capacity(hierarchy.len());
+
+    while let Some(category_id) = stack.pop() {
+        if !seen.insert(category_id) {
+            return Err(BlogError::invariant(format!(
+                "Blog Category hierarchy contains a cycle or duplicate placement at {category_id}",
+            )));
+        }
+        ordered.push(category_id);
+
+        if let Some(children) = children_by_parent.get(&Some(category_id)) {
+            for child_id in children.iter().rev() {
+                stack.push(*child_id);
+            }
+        }
+    }
+
+    if ordered.len() != hierarchy.len() {
+        return Err(BlogError::invariant(
+            "Blog Category hierarchy contains unreachable placements",
+        ));
+    }
+
+    Ok(ordered)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::hierarchical_category_order;
+    use std::collections::HashMap;
+    use uuid::Uuid;
+
+    #[test]
+    fn hierarchy_order_keeps_descendants_with_their_parent_branch() {
+        let root_a = Uuid::from_u128(1);
+        let root_b = Uuid::from_u128(2);
+        let child_a = Uuid::from_u128(3);
+        let child_b = Uuid::from_u128(4);
+        let grandchild_b = Uuid::from_u128(5);
+
+        let hierarchy = HashMap::from([
+            (root_a, (None, 0)),
+            (root_b, (None, 1)),
+            (child_a, (Some(root_a), 0)),
+            (child_b, (Some(root_b), 0)),
+            (grandchild_b, (Some(child_b), 0)),
+        ]);
+
+        let ordered = hierarchical_category_order(&hierarchy)
+            .expect("valid hierarchy should have a deterministic order");
+        assert_eq!(ordered, vec![root_a, child_a, root_b, child_b, grandchild_b]);
+    }
+
+    #[test]
+    fn hierarchy_order_rejects_missing_parents() {
+        let category = Uuid::from_u128(10);
+        let missing_parent = Uuid::from_u128(11);
+        let hierarchy = HashMap::from([(category, (Some(missing_parent), 0))]);
+
+        assert!(hierarchical_category_order(&hierarchy).is_err());
+    }
+
+    #[test]
+    fn hierarchy_order_rejects_unreachable_cycles() {
+        let root = Uuid::from_u128(20);
+        let first = Uuid::from_u128(21);
+        let second = Uuid::from_u128(22);
+        let hierarchy = HashMap::from([
+            (root, (None, 0)),
+            (first, (Some(second), 0)),
+            (second, (Some(first), 0)),
+        ]);
+
+        assert!(hierarchical_category_order(&hierarchy).is_err());
+    }
+}
 fn normalize_locale(locale: &str) -> BlogResult<String> {
     TenantLocale::new(locale)
         .map(TenantLocale::into_inner)
