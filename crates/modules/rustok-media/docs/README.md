@@ -15,6 +15,7 @@
 - typed cross-module image contract `MediaImageDescriptor`, delivery profile, and direct-public/proxy-required/not-addressable URL policy;
 - `MediaAssetReadPort` and `MediaAssetWritePort` metadata/control contracts, including durable reference retain/release;
 - the owner-only `MediaAssetReferenceAdmission` read fact, which exposes tenant identity plus typed lifecycle/reference eligibility without storage paths or delivery URLs;
+- the bounded `MediaAssetReferenceListPage` read contract, which enumerates durable consumer-owned holds for one normalized owner module using a strict reference-ID keyset;
 - the durable `MediaAssetReference` retention control, which stores stable consumer-owned holds and blocks Media lifecycle deletion while retained;
 - `MediaPublicImageReadPort`, which returns one owner result containing the canonical `MediaItem` and the public descriptor selected by Media policy;
 - `MediaPublicImageService`, which turns only storage-relative image descriptors into `/api/media/public/images/{id}/{checksum_sha256}` capability URLs;
@@ -69,6 +70,7 @@ Direct-public media has the same public-delivery revocation model as before: onc
 - Profiles consumes the owner descriptor and separately revalidates tenant, profile uploader, and image MIME before presentation;
 - `rustok-seo` and other metadata consumers may emit only Media-approved public descriptors;
 - no consumer reads Media tables, object keys, or storage handles directly;
+- reconciliation consumers may enumerate only owner-scoped reference identities through the public `MediaAssetReferenceListPage`; Media remains authoritative for hold persistence and lifecycle semantics.
 - Translation consumes exact Media coverage only through
   `TranslationTargetProvider::read_progress`. Media aggregates source-eligible
   active assets, counts only exact target-row values, and brackets the
