@@ -463,3 +463,8 @@ The Blog Search projector binds every owner relation to the source post tenant, 
 ## Search projector source-of-truth boundary
 
 The public `SearchProjector` facade delegates to the canonical `projector_core.rs` implementation. The previous `projector_legacy.rs` filename was retired because this code is current implementation, not compatibility or legacy behavior. `ensure_bootstrap` also fails closed when the database count row cannot be decoded: a missing row is the only condition that yields zero and can trigger bootstrap rebuild; database/schema decoding errors propagate instead of being converted into an empty index signal.
+
+
+## 2026-09-24 Search bootstrap failure boundary
+
+Both layers of the SearchProjector bootstrap path now propagate database count-row decoding errors. A missing count row yields no row and therefore zero; a present row that cannot be decoded is an infrastructure/schema error and must not be converted into an empty-index signal or trigger a destructive rebuild. The Search FBA verifier enforces this in the canonical projector core and facade.
