@@ -363,7 +363,7 @@ pub(super) async fn record_delete_route_tombstones_in_tx(
                 // physically deleted, resolve() folds this route to Gone by the
                 // target page's retained tombstone rather than rewriting history.
             }
-            [alias]
+            Some(alias)
                 if alias.page_id == page_id
                     && alias.disposition == ROUTE_DISPOSITION_GONE
                     && alias.target_page_id.is_none()
