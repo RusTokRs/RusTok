@@ -17,7 +17,7 @@ pub const FORUM_USE_REACTIONS_SETTING: &str = "use_reactions";
 
 #[derive(Debug, Deserialize, Default)]
 struct ForumSettings {
-    #[serde(default)]
+    #[serde(default, alias = "useReactions")]
     use_reactions: bool,
 }
 

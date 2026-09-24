@@ -20,15 +20,31 @@ use sea_orm::{
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
-struct TestForumSettingsReader;
+struct TestForumSettingsReader {
+    db: DatabaseConnection,
+}
 
 #[async_trait]
 impl StaticModuleSettingsReader for TestForumSettingsReader {
     async fn settings(
         &self,
-        _tenant_id: Uuid,
+        tenant_id: Uuid,
         module_slug: &str,
     ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+        let module = rustok_tenant::entities::tenant_module::Entity::find()
+            .filter(rustok_tenant::entities::tenant_module::Column::TenantId.eq(tenant_id))
+            .filter(rustok_tenant::entities::tenant_module::Column::ModuleSlug.eq(module_slug))
+            .one(&self.db)
+            .await
+            .map_err(|e| PortError::unavailable("database_error", e.to_string()))?;
+
+        if let Some(m) = module {
+            return Ok(Some(StaticModuleSettingsSnapshot {
+                enabled: m.enabled,
+                settings: m.settings,
+            }));
+        }
+
         Ok(Some(StaticModuleSettingsSnapshot {
             enabled: module_slug == "forum",
             settings: serde_json::json!({ "use_reactions": false }),
@@ -40,10 +56,24 @@ impl StaticModuleSettingsReader for TestForumSettingsReader {
 impl StaticModuleSettingsTransactionReader for TestForumSettingsReader {
     async fn settings_in_tx(
         &self,
-        _txn: &sea_orm::DatabaseTransaction,
-        _tenant_id: Uuid,
+        txn: &sea_orm::DatabaseTransaction,
+        tenant_id: Uuid,
         module_slug: &str,
     ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+        let module = rustok_tenant::entities::tenant_module::Entity::find()
+            .filter(rustok_tenant::entities::tenant_module::Column::TenantId.eq(tenant_id))
+            .filter(rustok_tenant::entities::tenant_module::Column::ModuleSlug.eq(module_slug))
+            .one(txn)
+            .await
+            .map_err(|e| PortError::unavailable("database_error", e.to_string()))?;
+
+        if let Some(m) = module {
+            return Ok(Some(StaticModuleSettingsSnapshot {
+                enabled: m.enabled,
+                settings: m.settings,
+            }));
+        }
+
         Ok(Some(StaticModuleSettingsSnapshot {
             enabled: module_slug == "forum",
             settings: serde_json::json!({ "use_reactions": false }),
@@ -51,8 +81,8 @@ impl StaticModuleSettingsTransactionReader for TestForumSettingsReader {
     }
 }
 
-fn test_settings_providers() -> rustok_forum::ForumSettingsProviders {
-    let reader = Arc::new(TestForumSettingsReader);
+fn test_settings_providers(db: DatabaseConnection) -> rustok_forum::ForumSettingsProviders {
+    let reader = Arc::new(TestForumSettingsReader { db });
     rustok_forum::ForumSettingsProviders::default().with_static_readers(
         SharedStaticModuleSettingsReader(reader.clone()),
         SharedStaticModuleSettingsTransactionReader(reader),
@@ -155,7 +185,7 @@ async fn topic_and_reply_votes_round_trip_through_read_paths() {
     let category_service = CategoryService::new(db.clone());
     let topic_service = TopicService::new(db.clone(), event_bus.clone());
     let reply_service = ReplyService::new(db.clone(), event_bus.clone());
-    let vote_service = VoteService::new(db).with_settings_providers(test_settings_providers());
+    let vote_service = VoteService::new(db.clone()).with_settings_providers(test_settings_providers(db.clone()));
 
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
     let author = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
@@ -301,7 +331,7 @@ async fn internal_votes_switch_by_forum_setting_independently_of_reactions_modul
     let category_service = CategoryService::new(db.clone());
     let topic_service = TopicService::new(db.clone(), event_bus.clone());
     let reply_service = ReplyService::new(db.clone(), event_bus.clone());
-    let vote_service = VoteService::new(db.clone()).with_settings_providers(test_settings_providers());
+    let vote_service = VoteService::new(db.clone()).with_settings_providers(test_settings_providers(db.clone()));
 
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
     let author = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
@@ -468,7 +498,7 @@ async fn vote_validation_rejects_invalid_values_and_pending_replies() {
     let category_service = CategoryService::new(db.clone());
     let topic_service = TopicService::new(db.clone(), event_bus.clone());
     let reply_service = ReplyService::new(db.clone(), event_bus.clone());
-    let vote_service = VoteService::new(db).with_settings_providers(test_settings_providers());
+    let vote_service = VoteService::new(db.clone()).with_settings_providers(test_settings_providers(db.clone()));
 
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
     let author = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));

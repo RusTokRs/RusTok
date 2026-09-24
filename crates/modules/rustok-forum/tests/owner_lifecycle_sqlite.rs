@@ -239,6 +239,14 @@ async fn owner_topic_restore_rejects_merged_source_topic() {
     let source_topic_id = Uuid::new_v4();
     let operation_id = Uuid::new_v4();
 
+    db.execute_unprepared(&format!(
+        "INSERT INTO users (id, tenant_id) VALUES ({}, {})",
+        sql_uuid(actor_id),
+        sql_uuid(tenant_id)
+    ))
+    .await
+    .expect("user seed should succeed");
+
     seed_category(&db, tenant_id, category_id, false).await;
     seed_topic(
         &db,
