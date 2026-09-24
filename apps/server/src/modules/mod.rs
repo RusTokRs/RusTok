@@ -231,7 +231,7 @@ mod contract_tests {
             blog.dependencies(),
             &["content", "taxonomy", "outbox", "channel"]
         );
-        assert_eq!(forum.dependencies(), &["content", "taxonomy"]);
+        assert_eq!(forum.dependencies(), &["content", "media", "taxonomy"]);
         assert_eq!(pages.dependencies(), &["content", "page_builder"]);
         assert_eq!(seo.dependencies(), &["content"]);
         assert_eq!(taxonomy.dependencies(), &["content"]);
