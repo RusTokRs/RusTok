@@ -7,6 +7,7 @@
 - `pub struct ForumModule`
 - `pub struct CategoryService`, `TopicService`, `ReplyService`, `ModerationService`, `SubscriptionService`, `UserStatsService`, `VoteService`
 - `pub struct ForumAttachmentRelationService`
+- `pub struct ForumAttachmentHoldReconciliationService` — read-only Media hold reconciliation report with bounded keyset pagination
 - `ForumAttachmentRelationService::get_attachment_relations(tenant_id, target, locale) -> ForumAttachmentRelationSet`
 - `ForumAttachmentRelationService::replace_attachment_relations(context, ForumAttachmentRelationAdmissionRequest) -> ForumAttachmentRelationSet`
 - `pub struct ForumRelationReadService`
