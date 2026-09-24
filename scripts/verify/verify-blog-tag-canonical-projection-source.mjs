@@ -12,6 +12,8 @@ const files = {
   evidence: 'crates/modules/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json',
   tagService: 'crates/modules/rustok-blog/src/services/tag.rs',
   taxonomyOwnerRead: 'crates/modules/rustok-taxonomy/src/owner_read.rs',
+  taxonomyService: 'crates/modules/rustok-taxonomy/src/services.rs',
+  taxonomyTranslationTests: 'crates/modules/rustok-taxonomy/src/translation_target_tests.rs',
   blogReadHarness: 'crates/modules/rustok-blog/tests/taxonomy_tags.rs',
   projector: 'crates/modules/rustok-search/src/blog_projector.rs',
   searchHarness: 'crates/modules/rustok-search/tests/blog_projection_postgres_test.rs',
@@ -34,6 +36,8 @@ function forbid(source, marker, label) { if (source.includes(marker)) failures.p
 const evidence = json(files.evidence);
 const tagService = read(files.tagService);
 const taxonomyOwnerRead = read(files.taxonomyOwnerRead);
+const taxonomyService = read(files.taxonomyService);
+const taxonomyTranslationTests = read(files.taxonomyTranslationTests);
 const blogReadHarness = read(files.blogReadHarness);
 const projector = read(files.projector);
 const searchHarness = read(files.searchHarness);
@@ -70,7 +74,7 @@ if (evidence) {
     evidence.source_contract?.tag_mutation_atomic_reindex_implemented !== false ||
     !Array.isArray(evidence.execution) || evidence.execution.length !== 0
   ) failures.push(`${files.evidence}: source/execution drift`);
-  if (evidence.next_source_gap?.status !== 'tag_mutation_atomic_reindex_next') failures.push(`${files.evidence}: next source gap drift`);
+  if (evidence.next_source_gap?.status !== "maintainer_execution_pending") failures.push(`${files.evidence}: next source gap drift`);
 }
 
 for (const marker of [
@@ -84,6 +88,21 @@ for (const marker of [
   'taxonomy_term::Entity',
   'taxonomy_term_translation::Entity',
 ]) forbid(tagService, marker, files.tagService);
+for (const marker of [
+  'pub(crate) async fn publish_global_tag_search_reindex_in_tx(',
+  'kind != TaxonomyTermKind::Tag',
+  'scope_type != TaxonomyScopeType::Global',
+  'TransactionalEventBus::publish_root_in_tx(',
+  'DomainEvent::ReindexRequested {',
+  'target_type: "search".to_string()',
+]) need(taxonomyService, marker, files.taxonomyService);
+
+for (const marker of [
+  'global_tag_search_reindex',
+  'index.reindex_requested',
+  'global Taxonomy Tag',
+]) need(taxonomyTranslationTests, marker, files.taxonomyTranslationTests);
+
 for (const marker of [
   'pub struct TaxonomyOwnerReader',
   'pub async fn load_scoped_terms(',
@@ -127,7 +146,7 @@ for (const marker of [
 ]) need(slice, marker, files.slice);
 for (const marker of [
   '`tag_canonical_projection = source_ready_maintainer_execution_pending`',
-  '`tag_mutation_atomic_reindex = next_source_gap`',
+  '`global_tag_search_invalidation = source_complete_maintainer_execution_pending`',
 ]) need(current, marker, files.current);
 
 if (failures.length) {
