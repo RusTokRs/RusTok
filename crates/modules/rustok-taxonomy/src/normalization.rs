@@ -1,3 +1,6 @@
+/// Maximum persisted length for canonical and localized Taxonomy route keys.
+pub const TAXONOMY_ROUTE_KEY_MAX_CHARS: usize = 120;
+
 /// Normalize a human-facing Taxonomy label or localized route value into the
 /// canonical route-key representation used by Taxonomy storage and lookup.
 ///
@@ -24,6 +27,19 @@ mod tests {
             Some("summer-sale".to_owned())
         );
         assert_eq!(normalize_term_route_key("   "), None);
+    }
+
+    #[test]
+    fn unicode_route_keys_can_expand_beyond_input_length_but_stay_storage_bounded() {
+        let input = "北".repeat(100);
+        let normalized = normalize_term_route_key(input.as_str())
+            .expect("Unicode should have a routable Taxonomy representation");
+        assert!(normalized.chars().count() > 120);
+    }
+
+    #[test]
+    fn route_key_storage_limit_is_explicitly_120_characters() {
+        assert_eq!(TAXONOMY_ROUTE_KEY_MAX_CHARS, 120);
     }
 
     #[test]

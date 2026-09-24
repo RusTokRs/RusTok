@@ -25,6 +25,7 @@ use crate::entities::{
 };
 use crate::error::{TaxonomyError, TaxonomyResult};
 use crate::module_term_mutation::ModuleTermCreateInput;
+use crate::normalization::TAXONOMY_ROUTE_KEY_MAX_CHARS;
 use crate::route_key_registry::ensure_route_key_available_in_tx;
 use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
 
@@ -80,18 +81,13 @@ impl TaxonomyService {
                 .as_deref()
                 .or(input.slug.as_deref())
                 .unwrap_or(&input.name),
-        );
-        if canonical_key.is_empty() {
-            return Err(TaxonomyError::validation(
-                "Canonical key cannot be empty after normalization",
-            ));
-        }
+        )?;
 
         validate_term_name(&input.name)?;
         validate_optional_description(input.description.as_deref())?;
         let translation_slug =
             normalize_non_empty_slug(input.slug.as_deref().unwrap_or(&input.name))?;
-        let aliases = normalize_aliases(&input.aliases);
+        let aliases = normalize_aliases(&input.aliases)?;
         if aliases.iter().any(|alias| alias == &translation_slug) {
             return Err(TaxonomyError::validation(
                 "Taxonomy alias cannot equal the current localized slug",
@@ -357,7 +353,7 @@ impl TaxonomyService {
         };
 
         if let Some(aliases) = input.aliases.as_ref() {
-            let aliases = normalize_aliases(aliases);
+            let aliases = normalize_aliases(aliases)?;
             let canonical_slug = taxonomy_term_translation::Entity::find()
                 .filter(taxonomy_term_translation::Column::TermId.eq(term_id))
                 .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
@@ -1369,22 +1365,43 @@ fn normalize_non_empty_slug(value: &str) -> TaxonomyResult<String> {
             "Localized slug cannot be empty after normalization",
         ));
     }
+    validate_route_key_length(&slug, "Localized slug")?;
     Ok(slug)
 }
 
-fn normalize_term_slug(value: &str) -> String {
-    slug::slugify(value)
+fn normalize_term_slug(value: &str) -> TaxonomyResult<String> {
+    let slug = slug::slugify(value);
+    if slug.is_empty() {
+        return Err(TaxonomyError::validation(
+            "Canonical key cannot be empty after normalization",
+        ));
+    }
+    validate_route_key_length(&slug, "Canonical key")?;
+    Ok(slug)
 }
 
-fn normalize_aliases(aliases: &[String]) -> Vec<String> {
-    let mut normalized = aliases
-        .iter()
-        .map(|alias| normalize_term_slug(alias))
-        .filter(|alias| !alias.is_empty())
-        .collect::<Vec<_>>();
+fn normalize_aliases(aliases: &[String]) -> TaxonomyResult<Vec<String>> {
+    let mut normalized = Vec::with_capacity(aliases.len());
+    for alias in aliases {
+        let slug = slug::slugify(alias);
+        if slug.is_empty() {
+            continue;
+        }
+        validate_route_key_length(&slug, "Taxonomy alias")?;
+        normalized.push(slug);
+    }
     normalized.sort();
     normalized.dedup();
-    normalized
+    Ok(normalized)
+}
+
+fn validate_route_key_length(value: &str, field: &str) -> TaxonomyResult<()> {
+    if value.chars().count() > TAXONOMY_ROUTE_KEY_MAX_CHARS {
+        return Err(TaxonomyError::validation(format!(
+            "{field} cannot exceed {TAXONOMY_ROUTE_KEY_MAX_CHARS} characters after normalization",
+        )));
+    }
+    Ok(())
 }
 
 fn resolve_aliases_for_locale(
