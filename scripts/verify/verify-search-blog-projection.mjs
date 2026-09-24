@@ -81,6 +81,8 @@ for (const marker of [
   "LEFT JOIN taxonomy_term_translations localized",
   "LEFT JOIN taxonomy_term_translations fallback",
   "relation.tenant_id = p.tenant_id",
+  "LEFT JOIN users u",
+  "u.tenant_id = p.tenant_id",
   "term.tenant_id = p.tenant_id",
   "localized.tenant_id = p.tenant_id",
   "fallback.tenant_id = p.tenant_id",
