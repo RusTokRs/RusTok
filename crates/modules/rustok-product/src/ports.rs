@@ -63,6 +63,19 @@ pub trait ProductCatalogReadPort: Send + Sync {
 
     /// Optional published storefront detail projection for legacy consumers that need the
     /// owner to apply lifecycle/channel visibility, locale narrowing, and public inventory.
+    /// Resolve a published storefront product by variant id, keeping variant-to-product
+    /// association and storefront visibility inside the Product owner.
+    async fn read_storefront_variant_product_projection(
+        &self,
+        _context: PortContext,
+        _request: StorefrontVariantProductProjectionRequest,
+    ) -> Result<Option<ProductResponse>, PortError> {
+        Err(PortError::unavailable(
+            "product.storefront_variant_detail_unavailable",
+            "storefront variant product detail is unavailable",
+        ))
+    }
+
     async fn read_storefront_product_projection(
         &self,
         _context: PortContext,
@@ -151,6 +164,14 @@ pub struct FilteredPublishedProductsRequest {
 pub enum StorefrontProductProjectionSubject {
     ProductId { product_id: Uuid },
     Handle { handle: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StorefrontVariantProductProjectionRequest {
+    pub variant_id: Uuid,
+    pub locale: Option<String>,
+    pub fallback_locale: Option<String>,
+    pub public_channel_slug: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -359,6 +380,47 @@ impl ProductCatalogReadPort for crate::CatalogService {
             }
         };
         result.map_err(|error| product_error_to_port_error(&context, owner_operation, error))
+    }
+
+    async fn read_storefront_variant_product_projection(
+        &self,
+        context: PortContext,
+        request: StorefrontVariantProductProjectionRequest,
+    ) -> Result<Option<ProductResponse>, PortError> {
+        let owner_operation = "read_storefront_variant_product_projection";
+        context
+            .require_policy(PortCallPolicy::read())
+            .map_err(|error| product_context_error(&context, owner_operation, error))?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        let variant = product_variant::Entity::find_by_id(request.variant_id)
+            .filter(product_variant::Column::TenantId.eq(tenant_id))
+            .one(self.database())
+            .await
+            .map_err(|error| product_storage_error(&context, owner_operation, error))?;
+
+        let Some(variant) = variant else {
+            return Ok(None);
+        };
+
+        let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
+        let product = self
+            .get_published_product_by_id_with_locale_fallback(
+                tenant_id,
+                variant.product_id,
+                locale,
+                request.fallback_locale.as_deref(),
+                request.public_channel_slug.as_deref(),
+            )
+            .await
+            .map_err(|error| product_error_to_port_error(&context, owner_operation, error))?;
+
+        Ok(product.and_then(|product| {
+            product
+                .variants
+                .iter()
+                .any(|item| item.id == request.variant_id)
+                .then_some(product)
+        }))
     }
 
     async fn list_legacy_storefront_products(

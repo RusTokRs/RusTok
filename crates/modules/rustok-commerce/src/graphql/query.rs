@@ -1,3 +1,14 @@
+use super::{
+    async_graphql_shim as async_graphql,
+    rustok_api_shim as rustok_api,
+    rustok_cart_shim as rustok_cart,
+    rustok_channel_shim as rustok_channel,
+    rustok_customer_shim as rustok_customer,
+    rustok_fulfillment_shim as rustok_fulfillment,
+    rustok_order_shim as rustok_order,
+    rustok_payment_shim as rustok_payment,
+    rustok_pricing_shim as rustok_pricing,
+};
 use async_graphql::{Context, FieldError, Object, Result};
 use rustok_api::Permission;
 use rustok_api::locale_tags_match;
@@ -16,7 +27,7 @@ use rustok_pricing::{
     ResolveProductPriceRequest, StorefrontProductPricingProjectionRequest,
     in_process_pricing_read_port,
 };
-use rustok_region::{RegionListRequest, RegionReadPort, RegionService};
+use rustok_region::{in_process_region_read_port, RegionListRequest};
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -355,8 +366,8 @@ impl CommerceQuery {
         let tenant_id = tenant_id.unwrap_or(tenant.id);
         let requested_locale =
             resolve_commerce_graphql_locale(ctx, locale.as_deref(), tenant.default_locale.as_str());
-        let region_service = RegionService::new(db.clone());
-        let regions = region_service
+        let region_read_port = in_process_region_read_port(db.clone());
+        let regions = region_read_port
             .list_regions_for_tenant(
                 rustok_api::PortContext::new(
                     tenant_id.to_string(),
@@ -372,7 +383,7 @@ impl CommerceQuery {
             )
             .await
             .map_err(|error| {
-                async_graphql::Error::new(format!("{}: {}", error.code, error.message))
+                async_graphql::Error::new(super::super::query_error_boundary::RegionGraphqlMessage::new(error))
             })?;
 
         Ok(regions
@@ -2526,7 +2537,7 @@ async fn resolve_storefront_context(
     ));
     StoreContextService::new(
         db.clone(),
-        std::sync::Arc::new(RegionService::new(db.clone())),
+        in_process_region_read_port(db.clone()),
     )
     .resolve_context(
         tenant_id,

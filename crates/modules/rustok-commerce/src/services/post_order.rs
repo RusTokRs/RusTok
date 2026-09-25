@@ -1,4 +1,5 @@
 use rust_decimal::Decimal;
+use rustok_api::PortError;
 use rustok_order::dto::{
     ApplyOrderChangeInput, CompleteOrderReturnInput, CreateOrderChangeInput,
     CreateOrderReturnInput, OrderChangeResponse, OrderReturnResponse,
@@ -27,6 +28,11 @@ pub enum PostOrderOrchestrationError {
     Payment(#[from] rustok_payment::error::PaymentError),
     #[error("payment orchestration error: {0}")]
     PaymentOrchestration(#[from] PaymentOrchestrationError),
+    #[error("owner port error ({owner}): {error}")]
+    OwnerPort {
+        owner: &'static str,
+        error: PortError,
+    },
     #[error("validation error: {0}")]
     Validation(String),
 }

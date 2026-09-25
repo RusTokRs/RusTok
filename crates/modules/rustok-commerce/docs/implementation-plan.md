@@ -1,6 +1,6 @@
 # RusToK ecommerce implementation plan
 
-Last reviewed: 2026-08-08
+Last reviewed: 2026-09-25
 
 ## FFA/FBA status
 
@@ -18,6 +18,13 @@ Last reviewed: 2026-08-08
   - `crates/modules/rustok-customer/contracts/customer-fba-registry.json`
   - `crates/modules/rustok-cart/contracts/cart-fba-registry.json`
 
+## Audit 2026-09-25: mounted owner-runtime composition
+
+- [x] Require host-composed `CommercePaymentReadRuntime` and `CommercePaymentCommandRuntime` for mounted Commerce GraphQL schema composition. The mandatory Payment capability now fails closed instead of silently synthesizing an in-process wrapper when host composition is incomplete.
+- [x] Compose the Commerce Payment GraphQL wrapper runtimes in `apps/server::attach_commerce_provider_registries`, preserving host/server-selected owner runtimes and deterministic in-process construction only at the explicit host-composition boundary.
+- [x] Remove obsolete duplicate admin REST implementations for order changes and returns. Each route now has one canonical transport adapter: owner-port reads/commands or the dedicated Commerce orchestration boundary.
+- [x] Extend `verify-commerce-fulfillment-requirement-boundary.mjs` with the Payment runtime-composition guard.
+- [ ] Execute the Commerce/server Rust test suites and the static verifier against a repository checkout; this environment cannot run the repository build because the GitHub source is not mounted locally.
 ## Payment workstream
 
 - Payment storefront and webhook boundary is guarded by `scripts/verify/verify-payment-storefront-boundary.mjs`.

@@ -306,10 +306,12 @@ pub async fn add_cart_line_item(
         super::build_store_pricing_context(&existing, &request_context, input.quantity);
     let public_channel_slug =
         super::storefront_public_channel_slug_for_cart(&existing, &request_context);
+    let product_catalog_read_port = runtime.product_catalog_read_port();
     let resolved_input = line_item_resolution::resolve_store_line_item_input(
         runtime.db(),
         tenant.id,
         super::StoreLineItemResolution {
+            product_catalog_read_port: product_catalog_read_port.as_ref(),
             pricing_read_port: pricing_read_port.as_ref(),
             pricing_context: &pricing_context,
             locale: existing
@@ -405,8 +407,10 @@ pub async fn update_cart_line_item(
     if let Some(existing_line_item) = existing.line_items.iter().find(|item| item.id == line_id)
         && let Some(variant_id) = existing_line_item.variant_id
     {
+        let product_catalog_read_port = runtime.product_catalog_read_port();
         line_item_resolution::validate_store_line_item_quantity(
             runtime.db(),
+            product_catalog_read_port.as_ref(),
             tenant.id,
             variant_id,
             input.quantity,

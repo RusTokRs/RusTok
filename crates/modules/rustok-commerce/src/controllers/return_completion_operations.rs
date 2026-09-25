@@ -127,8 +127,7 @@ pub async fn list_return_completion_operations(
     )?;
     let pagination = params.pagination.unwrap_or_default();
     let (items, total) =
-        ReturnCompletionOrchestrationService::new(runtime.db_clone(), runtime.event_bus())
-            .with_payment_provider_registry(runtime.payment_provider_registry())
+        runtime.return_completion_orchestration()
             .list_operations(
                 tenant.id,
                 ListReturnCompletionOperationsInput {
@@ -179,8 +178,7 @@ pub async fn show_return_completion_operation(
         "Permission denied: orders:read required",
     )?;
     let operation =
-        ReturnCompletionOrchestrationService::new(runtime.db_clone(), runtime.event_bus())
-            .with_payment_provider_registry(runtime.payment_provider_registry())
+        runtime.return_completion_orchestration()
             .get_operation(tenant.id, id)
             .await
             .map_err(|error| {
@@ -222,8 +220,7 @@ pub async fn retry_return_completion_operation(
         "Permission denied: orders:manage and payments:manage required",
     )?;
     let order_return =
-        ReturnCompletionOrchestrationService::new(runtime.db_clone(), runtime.event_bus())
-            .with_payment_provider_registry(runtime.payment_provider_registry())
+        runtime.return_completion_orchestration()
             .retry_operation(tenant.id, auth.user_id, id)
             .await
             .map_err(|error| {

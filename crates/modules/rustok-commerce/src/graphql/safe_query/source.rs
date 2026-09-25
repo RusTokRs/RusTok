@@ -95,17 +95,14 @@ use self::rustok_order_shim as rustok_order;
 use self::rustok_payment_shim as rustok_payment;
 use self::rustok_pricing_shim as rustok_pricing;
 
-// The unchanged compatibility resolver formats the Region owner code and message
-// before constructing a GraphQL error. Intercept only that exact source expression
-// inside the safe-query include so the complete typed PortError reaches the
-// transport mapper. Every other format invocation keeps standard Rust behavior.
-macro_rules! format {
-    ("{}: {}", $error:ident.code, $error_dup:ident.message) => {
-        super::query_error_boundary::RegionGraphqlMessage::new($error)
-    };
-    ($($tokens:tt)*) => {
-        ::std::format!($($tokens)*)
-    };
-}
+// Query implementation dependencies are re-exported from this source boundary so the
+// implementation module can consume the same scoped aliases without textual inclusion.
+pub(crate) use super::{
+    require_commerce_permission, require_storefront_channel_enabled, product_query_tenant,
+    types, MODULE_SLUG, PRODUCT_MODULE_SLUG,
+};
 
-include!("../query.rs");
+#[path = "../query.rs"]
+mod query_impl;
+
+pub(crate) use query_impl::CommerceQuery;

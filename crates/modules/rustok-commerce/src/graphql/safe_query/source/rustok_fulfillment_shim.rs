@@ -19,7 +19,6 @@ pub(crate) mod error {
     use super::BoundaryError;
 
     #[derive(Clone, Debug)]
-    #[allow(dead_code)]
     pub enum FulfillmentError {
         ShippingOptionNotFound(Uuid),
         FulfillmentNotFound(Uuid),
@@ -58,5 +57,7 @@ impl ShippingOptionAdminQueryError {
     }
 }
 
-include!("fulfillment_query_service.rs");
-include!("fulfillment_query_boundary.rs");
+mod fulfillment_query_boundary;
+mod fulfillment_query_service;
+
+pub(crate) use fulfillment_query_service::FulfillmentService;

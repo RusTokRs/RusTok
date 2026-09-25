@@ -23,6 +23,7 @@ pub use shipping::*;
 mod tests;
 
 use rust_decimal::Decimal;
+use rustok_api::PortErrorKind;
 use rustok_order::error::OrderError;
 use rustok_payment::PaymentError;
 use rustok_web::HttpError;
@@ -475,6 +476,59 @@ pub(crate) fn map_post_order_orchestration_error(error: PostOrderOrchestrationEr
         PostOrderOrchestrationError::Payment(error) => map_payment_error(error),
         PostOrderOrchestrationError::PaymentOrchestration(error) => {
             map_payment_orchestration_error(error)
+        }
+        PostOrderOrchestrationError::OwnerPort { owner, error } => {
+            let (status, code, message, error_kind) = match error.kind {
+                PortErrorKind::Validation => (
+                    axum::http::StatusCode::BAD_REQUEST,
+                    "commerce_admin_owner_request_invalid",
+                    "Owner operation is invalid",
+                    "validation",
+                ),
+                PortErrorKind::NotFound => (
+                    axum::http::StatusCode::NOT_FOUND,
+                    "commerce_admin_not_found",
+                    "Commerce resource not found",
+                    "not_found",
+                ),
+                PortErrorKind::Conflict => (
+                    axum::http::StatusCode::CONFLICT,
+                    "commerce_admin_owner_state_conflict",
+                    "Owner operation conflicts with the current state",
+                    "conflict",
+                ),
+                PortErrorKind::Forbidden => (
+                    axum::http::StatusCode::UNAUTHORIZED,
+                    "commerce_permission_denied",
+                    "Permission denied",
+                    "forbidden",
+                ),
+                PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+                    axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                    "commerce_admin_owner_unavailable",
+                    "Owner capability is temporarily unavailable",
+                    "temporarily_unavailable",
+                ),
+                PortErrorKind::InvariantViolation => (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "commerce_admin_owner_failed",
+                    "Owner operation could not be completed safely",
+                    "invariant_violation",
+                ),
+            };
+            tracing::error!(
+                error = ?error,
+                owner,
+                source_owner = owner,
+                error_kind = ?error.kind,
+                owner_code_length = error.code.chars().count(),
+                retryable = error.retryable,
+                public_code = code,
+                status = %status,
+                boundary = "commerce_admin_post_order_orchestration",
+                "post-order owner port operation failed"
+            );
+            HttpError::new(status, code, message)
         }
         error @ PostOrderOrchestrationError::Validation(_) => admin_public_error(
             &error,

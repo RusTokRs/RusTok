@@ -225,9 +225,12 @@ pub(crate) async fn resolve_context_for_db(
     locale: Option<String>,
     currency_code: Option<String>,
 ) -> HttpResult<StoreContextResponse> {
-    let service = StoreContextService::new(
-        db.clone(),
-        std::sync::Arc::new(rustok_region::RegionService::new(db.clone())),
+    let (tenant_read_port, tenant_locale_policy_port) =
+        rustok_tenant::in_process_tenant_storefront_ports(db.clone());
+    let service = StoreContextService::with_ports(
+        tenant_read_port,
+        tenant_locale_policy_port,
+        rustok_region::in_process_region_read_port(db.clone()),
     );
     service
         .resolve_context(
@@ -627,6 +630,7 @@ pub(crate) fn build_store_pricing_context(
 }
 
 pub(crate) struct StoreLineItemResolution<'a> {
+    pub(crate) product_catalog_read_port: &'a dyn rustok_product::ProductCatalogReadPort,
     pub(crate) pricing_read_port: &'a dyn PricingReadPort,
     pub(crate) pricing_context: &'a PriceResolutionContext,
     pub(crate) locale: &'a str,
