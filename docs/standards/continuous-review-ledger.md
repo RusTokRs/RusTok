@@ -69,6 +69,12 @@ Profiles now enforces its own 64-handle batch limit before any database work. Th
 
 Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
 
+## 2026-09-25 Commerce mounted owner-runtime composition
+
+A mounted Commerce GraphQL composition audit found that mandatory Payment owner wrappers could be silently synthesized inside the schema factory when host composition was incomplete. Commerce now requires the host-composed Payment provider registry, read runtime, and command runtime; the server composition layer explicitly assembles and preserves those wrapper runtimes. Fulfillment remains an optional Commerce capability and retains its separate owner-owned fallback path. Obsolete duplicate order-change and order-return REST implementations were removed so each route has one canonical adapter path.
+
+Repository Rust compilation, the Commerce/server test suites, and the static verifier remain unrun in this environment; no successful build or test result is claimed.
+
 ## Components Review Status
 
 | Status | Component | Category | Files | LOC | Last Audited | Notes |
