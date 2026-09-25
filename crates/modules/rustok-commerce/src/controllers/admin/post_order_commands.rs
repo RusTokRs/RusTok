@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
@@ -25,12 +25,45 @@ use crate::dto::{
 const ADMIN_POST_ORDER_OWNER: &str = "rustok_order.post_order_command";
 const ADMIN_POST_ORDER_BOUNDARY: &str = "commerce_admin_post_order_command_http";
 
+fn require_idempotency_key(headers: &HeaderMap) -> Result<String, HttpError> {
+    let value = headers
+        .get("Idempotency-Key")
+        .ok_or_else(|| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_admin_idempotency_key_required",
+                "Idempotency-Key header is required for this write operation",
+            )
+        })?
+        .to_str()
+        .map_err(|_| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_admin_idempotency_key_invalid",
+                "Idempotency-Key header is invalid",
+            )
+        })?
+        .trim()
+        .to_string();
+
+    if value.is_empty() || value.len() > 191 {
+        return Err(HttpError::new(
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_idempotency_key_invalid",
+            "Idempotency-Key header must contain 1 to 191 bytes",
+        ));
+    }
+
+    Ok(value)
+}
+
 fn admin_post_order_command_context(
     tenant: &TenantContext,
     auth: &AuthContext,
     request_context: &RequestContext,
     resource_id: Uuid,
     operation: &'static str,
+    idempotency_key: String,
 ) -> PortContext {
     let context = PortContext::new(
         tenant.id.to_string(),
@@ -38,10 +71,7 @@ fn admin_post_order_command_context(
         request_context.locale.as_str(),
         format!("commerce-admin-post-order:{operation}:{resource_id}"),
     )
-    // The owner write policy requires an idempotency identity. These legacy REST
-    // endpoints do not expose a caller idempotency key, so this value is admission
-    // metadata only and does not claim durable replay/exactly-once semantics.
-    .with_idempotency_key(Uuid::new_v4().to_string())
+    .with_idempotency_key(idempotency_key)
     .with_deadline(std::time::Duration::from_secs(2));
     match request_context.channel_slug.as_deref() {
         Some(channel) => context.with_channel(channel),
@@ -134,6 +164,7 @@ pub async fn create_order_change(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<CreateOrderChangeInput>,
 ) -> HttpResult<(StatusCode, Json<OrderChangeResponse>)> {
     ensure_permissions(
@@ -142,8 +173,15 @@ pub async fn create_order_change(
         "Permission denied: orders:update required",
     )?;
 
-    let context =
-        admin_post_order_command_context(&tenant, &auth, &request_context, id, "create_change");
+    let idempotency_key = require_idempotency_key(&headers)?;
+    let context = admin_post_order_command_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        "create_change",
+        idempotency_key,
+    );
     let created = runtime
         .order_post_order_command_port()
         .create_change(
@@ -186,6 +224,7 @@ pub async fn cancel_order_change(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<CancelOrderChangeInput>,
 ) -> HttpResult<Json<OrderChangeResponse>> {
     ensure_permissions(
@@ -194,8 +233,15 @@ pub async fn cancel_order_change(
         "Permission denied: orders:update required",
     )?;
 
-    let context =
-        admin_post_order_command_context(&tenant, &auth, &request_context, id, "cancel_change");
+    let idempotency_key = require_idempotency_key(&headers)?;
+    let context = admin_post_order_command_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        "cancel_change",
+        idempotency_key,
+    );
     let item = runtime
         .order_post_order_command_port()
         .cancel_change(
@@ -238,6 +284,7 @@ pub async fn create_order_return(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<CreateOrderReturnInput>,
 ) -> HttpResult<(StatusCode, Json<OrderReturnResponse>)> {
     ensure_permissions(
@@ -246,8 +293,15 @@ pub async fn create_order_return(
         "Permission denied: orders:update required",
     )?;
 
-    let context =
-        admin_post_order_command_context(&tenant, &auth, &request_context, id, "create_return");
+    let idempotency_key = require_idempotency_key(&headers)?;
+    let context = admin_post_order_command_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        "create_return",
+        idempotency_key,
+    );
     let created = runtime
         .order_post_order_command_port()
         .create_return(
@@ -290,6 +344,7 @@ pub async fn cancel_order_return(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<CancelOrderReturnInput>,
 ) -> HttpResult<Json<OrderReturnResponse>> {
     ensure_permissions(
@@ -298,8 +353,15 @@ pub async fn cancel_order_return(
         "Permission denied: orders:update required",
     )?;
 
-    let context =
-        admin_post_order_command_context(&tenant, &auth, &request_context, id, "cancel_return");
+    let idempotency_key = require_idempotency_key(&headers)?;
+    let context = admin_post_order_command_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        "cancel_return",
+        idempotency_key,
+    );
     let item = runtime
         .order_post_order_command_port()
         .cancel_return(
