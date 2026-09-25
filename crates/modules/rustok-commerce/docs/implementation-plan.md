@@ -26,7 +26,17 @@ Last reviewed: 2026-09-25
 - [x] Extend `verify-commerce-fulfillment-requirement-boundary.mjs` with the Payment runtime-composition guard.
 - [ ] Execute the Commerce/server Rust test suites and the static verifier against a repository checkout; this environment cannot run the repository build because the GitHub source is not mounted locally.
 
-## Audit 2026-09-25: Tax port error-envelope hardening## Audit 2026-09-25: Tax validation detail hardening## Audit 2026-09-25: Admin shared HTTP error-envelope hardening## Audit 2026-09-25: Order owner port diagnostic hardening## Audit 2026-09-25: Mounted Admin Order Detail owner-port cutover
+## Audit 2026-09-25: Tax port error-envelope hardening## Audit 2026-09-25: Tax validation detail hardening## Audit 2026-09-25: Admin shared HTTP error-envelope hardening## Audit 2026-09-25: Order owner port diagnostic hardening## Audit 2026-09-25: Mounted Admin Order Detail owner-port cutover## Audit 2026-09-25: Mounted Store Product runtime capability integrity
+
+- [x] Restore `crates/modules/rustok-commerce/src/controllers/store/products.rs` to its
+  explicit legacy compatibility source; the mounted route remains `products_owner_list.rs`.
+- [x] Add the missing `CommerceHttpRuntime::product_storefront_http_read_port()` delegation
+  required by the already-mounted Product owner-list handler.
+- [x] Extend the Product REST owner-read verifier to require the Commerce runtime accessor
+  so this source-integrity blocker cannot recur while legacy compatibility source remains intact.
+- [ ] Continue the mounted Commerce route audit for any remaining foreign owner construction.
+
+
 
 - [x] Replace the mounted `show_order` PaymentService/FulfillmentService direct constructions
   with the existing `PaymentOrderReadPort` and `FulfillmentReadPort` capabilities from
