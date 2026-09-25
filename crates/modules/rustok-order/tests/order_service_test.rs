@@ -337,6 +337,104 @@ async fn invalid_transition_is_rejected() {
     }
 }
 
+
+#[tokio::test]
+async fn post_order_command_replay_is_stable_and_conflicts_are_typed() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let order = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order should be created");
+
+    let input = CreateOrderChangeInput {
+        change_type: "exchange".to_string(),
+        description: Some("replay-safe change".to_string()),
+        preview: serde_json::json!({"quantity": 1}),
+        metadata: serde_json::json!({"source": "idempotency-test"}),
+    };
+
+    let created = service
+        .create_order_change(
+            tenant_id,
+            actor_id,
+            order.id,
+            "order-service-test-replay-create",
+            input.clone(),
+        )
+        .await
+        .expect("first command should create the order change");
+
+    let replayed = service
+        .create_order_change(
+            tenant_id,
+            actor_id,
+            order.id,
+            "order-service-test-replay-create",
+            input,
+        )
+        .await
+        .expect("same command should replay");
+
+    assert_eq!(replayed, created);
+
+    let conflict = service
+        .create_order_change(
+            tenant_id,
+            actor_id,
+            order.id,
+            "order-service-test-replay-create",
+            CreateOrderChangeInput {
+                description: Some("different payload".to_string()),
+                ..CreateOrderChangeInput {
+                    change_type: "exchange".to_string(),
+                    description: None,
+                    preview: serde_json::json!({"quantity": 1}),
+                    metadata: serde_json::json!({"source": "idempotency-test"}),
+                }
+            },
+        )
+        .await
+        .expect_err("same key with a different payload must conflict");
+
+    assert!(matches!(conflict, OrderError::IdempotencyConflict));
+
+    let created_return = service
+        .create_return(
+            tenant_id,
+            actor_id,
+            order.id,
+            "order-service-test-replay-return",
+            CreateOrderReturnInput {
+                reason: Some("damaged".to_string()),
+                note: None,
+                items: Vec::new(),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect("return should be created");
+
+    let replayed_return = service
+        .create_return(
+            tenant_id,
+            actor_id,
+            order.id,
+            "order-service-test-replay-return",
+            CreateOrderReturnInput {
+                reason: Some("damaged".to_string()),
+                note: None,
+                items: Vec::new(),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect("return should replay");
+
+    assert_eq!(replayed_return, created_return);
+}
+
 #[tokio::test]
 async fn create_list_apply_and_cancel_order_changes() {
     let service = setup().await;
