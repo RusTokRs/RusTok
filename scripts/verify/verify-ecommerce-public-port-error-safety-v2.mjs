@@ -267,6 +267,8 @@ forbidAll(fulfillment, [
 
 forbidAll(tax, [
   'PortError::validation("tax.validation", message)',
+  'format!("duplicate tax country rule for {country_code}")',
+  'detail: impl std::fmt::Display',
 ], 'tax public error mapping');
 forbidAll(taxCalculation, [
   'error = ?error',
