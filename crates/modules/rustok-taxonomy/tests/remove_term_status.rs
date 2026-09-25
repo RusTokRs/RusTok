@@ -44,8 +44,8 @@ async fn status_removal_migration_promotes_legacy_terms_and_drops_soft_lifecycle
             admin(),
             CreateTaxonomyTermInput {
                 kind: TaxonomyTermKind::Tag,
-                scope_type: TaxonomyScopeType::Module,
-                scope_value: Some("blog".to_string()),
+                scope_type: TaxonomyScopeType::Global,
+                scope_value: None,
                 locale: "en".to_string(),
                 name: "Legacy".to_string(),
                 slug: Some("legacy".to_string()),

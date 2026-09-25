@@ -54,6 +54,7 @@ fn input(name: &str) -> CreateCategoryInput {
 
 async fn create_category(db: &DatabaseConnection) -> Uuid {
     let transport = Arc::new(MemoryTransport::new());
+    let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(transport);
     CategoryService::new(db.clone(), event_bus)
         .create(Uuid::new_v4(), admin(), input("Settings contract"))

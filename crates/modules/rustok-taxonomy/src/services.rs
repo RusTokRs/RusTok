@@ -49,6 +49,7 @@ struct ModuleTerm<'a> {
     module_scope: &'a str,
     locale: &'a str,
     name: &'a str,
+    canonical_key: &'a str,
     normalized_slug: &'a str,
 }
 
@@ -57,7 +58,7 @@ impl TaxonomyService {
         Self { db }
     }
 
-    pub(crate) fn database(&self) -> &DatabaseConnection {
+    pub fn database(&self) -> &DatabaseConnection {
         &self.db
     }
 
@@ -191,6 +192,10 @@ impl TaxonomyService {
             Some(slug) => normalize_non_empty_slug(slug)?,
             None => normalize_non_empty_slug(&input.name)?,
         };
+        let canonical_key = match input.canonical_key.as_deref() {
+            Some(key) => normalize_term_slug(key)?,
+            None => normalized_slug.clone(),
+        };
 
         self.create_module_term_record_in_tx(
             txn,
@@ -200,6 +205,7 @@ impl TaxonomyService {
                 module_scope: &module_scope,
                 locale: &locale,
                 name: &input.name,
+                canonical_key: &canonical_key,
                 normalized_slug: &normalized_slug,
             },
         )
@@ -614,6 +620,7 @@ impl TaxonomyService {
                         module_scope: &module_scope,
                         locale: &locale,
                         name: label,
+                        canonical_key: &normalized_slug,
                         normalized_slug: &normalized_slug,
                     },
                 )
@@ -675,6 +682,7 @@ impl TaxonomyService {
                         module_scope: &module_scope,
                         locale: &locale,
                         name: label,
+                        canonical_key: &normalized_slug,
                         normalized_slug: &normalized_slug,
                     },
                 )
@@ -979,7 +987,7 @@ impl TaxonomyService {
             scope_type: TaxonomyScopeType::Module,
             scope_value: term.module_scope,
         };
-        self.ensure_canonical_key_available_in_tx(txn, scope, term.normalized_slug, None)
+        self.ensure_canonical_key_available_in_tx(txn, scope, term.canonical_key, None)
             .await?;
         ensure_route_key_available_in_tx(
             txn,
@@ -1001,7 +1009,7 @@ impl TaxonomyService {
             kind: Set(term.kind),
             scope_type: Set(TaxonomyScopeType::Module),
             scope_value: Set(term.module_scope.to_string()),
-            canonical_key: Set(term.normalized_slug.to_string()),
+            canonical_key: Set(term.canonical_key.to_string()),
             revision: Set(1),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
@@ -1010,7 +1018,7 @@ impl TaxonomyService {
             Ok(term) => term,
             Err(error) if is_unique_constraint(&error) => {
                 return Err(TaxonomyError::DuplicateCanonicalKey(
-                    term.normalized_slug.to_string(),
+                    term.canonical_key.to_string(),
                 ));
             }
             Err(error) => return Err(error.into()),
@@ -1511,9 +1519,16 @@ mod tests {
     use super::*;
     use crate::TaxonomyModule;
 
+    use rustok_outbox::SysEventsMigration;
+    use sea_orm_migration::MigrationTrait;
+
     async fn setup() -> (DatabaseConnection, TaxonomyService) {
         let db = setup_test_db().await;
         let schema_manager = SchemaManager::new(&db);
+        SysEventsMigration
+            .up(&schema_manager)
+            .await
+            .expect("failed to run sys_events migration");
         for migration in TaxonomyModule.migrations() {
             migration
                 .up(&schema_manager)
@@ -1571,29 +1586,42 @@ mod tests {
         let (_db, service) = setup().await;
         let tenant_id = Uuid::new_v4();
         let security = admin();
-        for (scope_type, scope_value) in [
-            (TaxonomyScopeType::Global, None),
-            (TaxonomyScopeType::Module, Some("blog".to_string())),
-        ] {
-            service
-                .create_term(
-                    tenant_id,
-                    security.clone(),
-                    CreateTaxonomyTermInput {
-                        kind: TaxonomyTermKind::Tag,
-                        scope_type,
-                        scope_value,
-                        locale: "en".to_string(),
-                        name: "Rust".to_string(),
-                        slug: None,
-                        canonical_key: None,
-                        description: None,
-                        aliases: vec![],
-                    },
-                )
-                .await
-                .expect("term should be created");
-        }
+        service
+            .create_term(
+                tenant_id,
+                security.clone(),
+                CreateTaxonomyTermInput {
+                    kind: TaxonomyTermKind::Tag,
+                    scope_type: TaxonomyScopeType::Global,
+                    scope_value: None,
+                    locale: "en".to_string(),
+                    name: "Rust".to_string(),
+                    slug: None,
+                    canonical_key: None,
+                    description: None,
+                    aliases: vec![],
+                },
+            )
+            .await
+            .expect("global term should be created");
+
+        let txn = service.database().begin().await.unwrap();
+        service
+            .create_module_term_in_tx(
+                &txn,
+                tenant_id,
+                TaxonomyTermKind::Tag,
+                "blog",
+                ModuleTermCreateInput {
+                    locale: "en".to_string(),
+                    name: "Rust".to_string(),
+                    slug: None,
+                    canonical_key: None,
+                },
+            )
+            .await
+            .expect("module term should be created");
+        txn.commit().await.unwrap();
     }
 
     #[tokio::test]
@@ -1607,8 +1635,8 @@ mod tests {
                 security.clone(),
                 CreateTaxonomyTermInput {
                     kind: TaxonomyTermKind::Tag,
-                    scope_type: TaxonomyScopeType::Module,
-                    scope_value: Some("forum".to_string()),
+                    scope_type: TaxonomyScopeType::Global,
+                    scope_value: None,
                     locale: "en".to_string(),
                     name: "Rust".to_string(),
                     slug: Some("systems".to_string()),
@@ -1625,8 +1653,8 @@ mod tests {
                 security,
                 CreateTaxonomyTermInput {
                     kind: TaxonomyTermKind::Tag,
-                    scope_type: TaxonomyScopeType::Module,
-                    scope_value: Some("forum".to_string()),
+                    scope_type: TaxonomyScopeType::Global,
+                    scope_value: None,
                     locale: "en".to_string(),
                     name: "Zig".to_string(),
                     slug: Some("systems".to_string()),
@@ -1651,8 +1679,8 @@ mod tests {
                 security.clone(),
                 CreateTaxonomyTermInput {
                     kind: TaxonomyTermKind::Tag,
-                    scope_type: TaxonomyScopeType::Module,
-                    scope_value: Some("forum".to_string()),
+                    scope_type: TaxonomyScopeType::Global,
+                    scope_value: None,
                     locale: "en".to_string(),
                     name: "Rust".to_string(),
                     slug: Some("systems".to_string()),
@@ -1669,8 +1697,8 @@ mod tests {
                 security,
                 CreateTaxonomyTermInput {
                     kind: TaxonomyTermKind::Tag,
-                    scope_type: TaxonomyScopeType::Module,
-                    scope_value: Some("forum".to_string()),
+                    scope_type: TaxonomyScopeType::Global,
+                    scope_value: None,
                     locale: "en".to_string(),
                     name: "Zig".to_string(),
                     slug: Some("zig".to_string()),
@@ -1695,8 +1723,8 @@ mod tests {
                 security.clone(),
                 CreateTaxonomyTermInput {
                     kind: TaxonomyTermKind::Tag,
-                    scope_type: TaxonomyScopeType::Module,
-                    scope_value: Some("forum".to_string()),
+                    scope_type: TaxonomyScopeType::Global,
+                    scope_value: None,
                     locale: "en".to_string(),
                     name: "Rust".to_string(),
                     slug: Some("rust".to_string()),
@@ -1713,8 +1741,8 @@ mod tests {
                 security,
                 CreateTaxonomyTermInput {
                     kind: TaxonomyTermKind::Tag,
-                    scope_type: TaxonomyScopeType::Module,
-                    scope_value: Some("forum".to_string()),
+                    scope_type: TaxonomyScopeType::Global,
+                    scope_value: None,
                     locale: "en".to_string(),
                     name: "Zig".to_string(),
                     slug: Some("systems".to_string()),
@@ -1804,24 +1832,23 @@ mod tests {
             )
             .await
             .expect("global term should be created");
+        let txn = service.database().begin().await.unwrap();
         let module_term_id = service
-            .create_term(
+            .create_module_term_in_tx(
+                &txn,
                 tenant_id,
-                security.clone(),
-                CreateTaxonomyTermInput {
-                    kind: TaxonomyTermKind::Tag,
-                    scope_type: TaxonomyScopeType::Module,
-                    scope_value: Some("blog".to_string()),
+                TaxonomyTermKind::Tag,
+                "blog",
+                ModuleTermCreateInput {
                     locale: "en".to_string(),
                     name: "Rust".to_string(),
                     slug: Some("rust".to_string()),
                     canonical_key: None,
-                    description: None,
-                    aliases: vec![],
                 },
             )
             .await
             .expect("module term should be created");
+        txn.commit().await.unwrap();
         let resolved = service
             .resolve_term_for_module(
                 tenant_id,

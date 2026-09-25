@@ -1,10 +1,12 @@
+use chrono::Utc;
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_taxonomy::{
-    CreateTaxonomyTermInput, TaxonomyError, TaxonomyModule, TaxonomyScopeType, TaxonomyService,
-    TaxonomyTermKind, entities::taxonomy_term_route_key,
+    CreateTaxonomyTermInput, ModuleTermCreateInput, TaxonomyError, TaxonomyModule,
+    TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
+    entities::{taxonomy_term_alias, taxonomy_term_route_key},
 };
 use rustok_test_utils::db::setup_test_db;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, TransactionTrait};
 use sea_orm_migration::prelude::SchemaManager;
 use uuid::Uuid;
 
@@ -35,24 +37,78 @@ async fn create_tag(
     canonical_key: &str,
     aliases: &[&str],
 ) -> Uuid {
-    service
-        .create_term(
-            tenant_id,
-            admin(),
-            CreateTaxonomyTermInput {
-                kind: TaxonomyTermKind::Tag,
-                scope_type,
-                scope_value: scope_value.map(str::to_string),
-                locale: "en".to_string(),
-                name: name.to_string(),
-                slug: Some(slug.to_string()),
-                canonical_key: Some(canonical_key.to_string()),
-                description: None,
-                aliases: aliases.iter().map(|alias| (*alias).to_string()).collect(),
-            },
-        )
-        .await
-        .expect("term should be created")
+    if scope_type == TaxonomyScopeType::Module {
+        let txn = service
+            .database()
+            .begin()
+            .await
+            .expect("transaction should start");
+        let term_id = service
+            .create_module_term_in_tx(
+                &txn,
+                tenant_id,
+                TaxonomyTermKind::Tag,
+                scope_value.expect("module scope value required"),
+                ModuleTermCreateInput {
+                    locale: "en".to_string(),
+                    name: name.to_string(),
+                    slug: Some(slug.to_string()),
+                    canonical_key: Some(canonical_key.to_string()),
+                },
+            )
+            .await
+            .expect("module term should be created");
+
+        let now = Utc::now();
+        for alias in aliases {
+            taxonomy_term_alias::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                term_id: Set(term_id),
+                tenant_id: Set(tenant_id),
+                locale: Set("en".to_string()),
+                name: Set((*alias).to_string()),
+                slug: Set((*alias).to_string()),
+                created_at: Set(now.into()),
+            }
+            .insert(&txn)
+            .await
+            .expect("alias should insert");
+
+            taxonomy_term_route_key::ActiveModel {
+                tenant_id: Set(tenant_id),
+                kind: Set(TaxonomyTermKind::Tag),
+                scope_type: Set(TaxonomyScopeType::Module),
+                scope_value: Set(scope_value.expect("module scope value required").to_string()),
+                locale: Set("en".to_string()),
+                route_key: Set((*alias).to_string()),
+                term_id: Set(term_id),
+            }
+            .insert(&txn)
+            .await
+            .expect("alias route key should insert");
+        }
+        txn.commit().await.expect("transaction should commit");
+        term_id
+    } else {
+        service
+            .create_term(
+                tenant_id,
+                admin(),
+                CreateTaxonomyTermInput {
+                    kind: TaxonomyTermKind::Tag,
+                    scope_type,
+                    scope_value: scope_value.map(str::to_string),
+                    locale: "en".to_string(),
+                    name: name.to_string(),
+                    slug: Some(slug.to_string()),
+                    canonical_key: Some(canonical_key.to_string()),
+                    description: None,
+                    aliases: aliases.iter().map(|alias| (*alias).to_string()).collect(),
+                },
+            )
+            .await
+            .expect("term should be created")
+    }
 }
 
 #[tokio::test]

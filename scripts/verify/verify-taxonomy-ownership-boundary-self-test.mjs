@@ -204,7 +204,7 @@ try {
   remove(root, "crates/modules/rustok-profiles/src/entities/profile_tag.rs");
   expectFailure(
     root,
-    /crates\/rustok-profiles\/src\/entities\/profile_tag\.rs/,
+    /crates\/modules\/rustok-profiles\/src\/entities\/profile_tag\.rs/,
     /missing Taxonomy ownership artifact/,
     "missing typed owner relation artifact must fail closed",
   );

@@ -20,6 +20,7 @@ pub struct ModuleTermCreateInput {
     pub locale: String,
     pub name: String,
     pub slug: Option<String>,
+    pub canonical_key: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

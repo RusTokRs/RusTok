@@ -170,11 +170,13 @@ native_server_adapter::fetch_blog(native_request, comments_page);
 graphql_adapter::fetch_blog(request, comments_page);
 pub async fn create_comment() {}
 execute_selected_transport(
-${options.legacySummarizerConsumer ? "summarize_content(content, format, template);" : ""}`
+${options.legacySummarizerConsumer ? "summarize_content(content, format, template);" : ""}
+${options.missingTenantFallbackBinding ? "" : "fn configured_fallback_tenant_slug(requested: Option<&str>)"}`
       : `pub mod graphql_adapter;
 pub mod native_server_adapter;
 native_server_adapter::fetch_blog(native_request);
-graphql_adapter::fetch_blog(request);`,
+graphql_adapter::fetch_blog(request);
+${options.missingTenantFallbackBinding ? "" : "fn configured_fallback_tenant_slug(requested: Option<&str>)"}`,
   );
   writeFixtureFile(
     root,
@@ -186,8 +188,7 @@ runtime_ctx.db_clone()
 ${options.missingTenantBinding ? "" : `let auth_context = leptos_axum::extract::<rustok_api::AuthContext>()
 ensure_storefront_tenant_binding(auth_context.as_ref(), tenant_id)?
 fn ensure_storefront_tenant_binding(`}
-${options.missingTenantFallbackBinding ? "" : `fn configured_fallback_tenant_slug(requested: Option<&str>)
-super::configured_fallback_tenant_slug(tenant_slug.as_deref())?`}
+${options.missingTenantFallbackBinding ? "" : `super::configured_fallback_tenant_slug(tenant_slug.as_deref())?`}
 ChannelService::new
 .is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)
 normalize_channel_slug

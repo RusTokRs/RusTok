@@ -1,8 +1,10 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_taxonomy::{
-    CreateTaxonomyTermInput, ModuleTermUpdateInput, ResolveTaxonomyTermInput, TaxonomyError,
-    TaxonomyModule, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind, UpdateTaxonomyTermInput,
-    entities::taxonomy_term_route_key, update_module_term_in_tx,
+    CreateTaxonomyTermInput, ModuleTermCreateInput, ModuleTermUpdateInput, ResolveTaxonomyTermInput,
+    TaxonomyError, TaxonomyModule, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
+    UpdateTaxonomyTermInput,
+    entities::{taxonomy_term_alias, taxonomy_term_route_key},
+    update_module_term_in_tx,
 };
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{
@@ -10,11 +12,17 @@ use sea_orm::{
     TransactionTrait,
 };
 use sea_orm_migration::prelude::SchemaManager;
+use rustok_outbox::SysEventsMigration;
+use sea_orm_migration::MigrationTrait;
 use uuid::Uuid;
 
 async fn setup() -> (DatabaseConnection, TaxonomyService) {
     let db = setup_test_db().await;
     let schema_manager = SchemaManager::new(&db);
+    SysEventsMigration
+        .up(&schema_manager)
+        .await
+        .expect("failed to run sys_events migration");
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&schema_manager)
@@ -42,8 +50,8 @@ async fn create_module_term(
             admin(),
             CreateTaxonomyTermInput {
                 kind: TaxonomyTermKind::Tag,
-                scope_type: TaxonomyScopeType::Module,
-                scope_value: Some("blog".to_string()),
+                scope_type: TaxonomyScopeType::Global,
+                scope_value: None,
                 locale: "en".to_string(),
                 name: name.to_string(),
                 slug: Some(slug.to_string()),
@@ -53,7 +61,7 @@ async fn create_module_term(
             },
         )
         .await
-        .expect("module term should be created")
+        .expect("term should be created")
 }
 
 async fn route_keys(db: &DatabaseConnection, tenant_id: Uuid, term_id: Uuid) -> Vec<String> {
@@ -94,9 +102,21 @@ async fn same_term_translation_and_alias_share_one_route_reservation() {
         tenant_id,
         "Systems",
         "systems",
-        vec!["systems".to_string()],
+        vec![],
     )
     .await;
+    taxonomy_term_alias::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        term_id: Set(term_id),
+        tenant_id: Set(tenant_id),
+        locale: Set("en".to_string()),
+        name: Set("systems".to_string()),
+        slug: Set("systems".to_string()),
+        created_at: Set(chrono::Utc::now().into()),
+    }
+    .insert(&db)
+    .await
+    .expect("alias should insert");
 
     assert_eq!(route_keys(&db, tenant_id, term_id).await, vec!["systems"]);
 }
@@ -140,15 +160,65 @@ async fn update_reserves_new_route_keys_and_releases_stale_keys() {
 async fn module_owner_update_rejects_route_reserved_by_an_alias() {
     let (db, service) = setup().await;
     let tenant_id = Uuid::new_v4();
-    let _alias_owner = create_module_term(
-        &service,
-        tenant_id,
-        "Rust",
-        "rust",
-        vec!["systems".to_string()],
-    )
-    .await;
-    let target = create_module_term(&service, tenant_id, "Zig", "zig", vec![]).await;
+    let txn = db.begin().await.expect("transaction should start");
+    let _alias_owner = service
+        .create_module_term_in_tx(
+            &txn,
+            tenant_id,
+            TaxonomyTermKind::Tag,
+            "blog",
+            ModuleTermCreateInput {
+                locale: "en".to_string(),
+                name: "Rust".to_string(),
+                slug: Some("rust".to_string()),
+                canonical_key: Some("rust".to_string()),
+            },
+        )
+        .await
+        .expect("module term should be created");
+
+    taxonomy_term_alias::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        term_id: Set(_alias_owner),
+        tenant_id: Set(tenant_id),
+        locale: Set("en".to_string()),
+        name: Set("systems".to_string()),
+        slug: Set("systems".to_string()),
+        created_at: Set(chrono::Utc::now().into()),
+    }
+    .insert(&txn)
+    .await
+    .expect("alias should insert");
+
+    taxonomy_term_route_key::ActiveModel {
+        tenant_id: Set(tenant_id),
+        kind: Set(TaxonomyTermKind::Tag),
+        scope_type: Set(TaxonomyScopeType::Module),
+        scope_value: Set("blog".to_string()),
+        locale: Set("en".to_string()),
+        route_key: Set("systems".to_string()),
+        term_id: Set(_alias_owner),
+    }
+    .insert(&txn)
+    .await
+    .expect("alias route key should insert");
+
+    let target = service
+        .create_module_term_in_tx(
+            &txn,
+            tenant_id,
+            TaxonomyTermKind::Tag,
+            "blog",
+            ModuleTermCreateInput {
+                locale: "en".to_string(),
+                name: "Zig".to_string(),
+                slug: Some("zig".to_string()),
+                canonical_key: Some("zig".to_string()),
+            },
+        )
+        .await
+        .expect("target module term should be created");
+    txn.commit().await.expect("transaction should commit");
 
     let txn = db.begin().await.expect("transaction should start");
     let error = update_module_term_in_tx(
@@ -182,8 +252,8 @@ async fn database_primary_key_rejects_second_route_owner() {
     let error = taxonomy_term_route_key::ActiveModel {
         tenant_id: Set(tenant_id),
         kind: Set(TaxonomyTermKind::Tag),
-        scope_type: Set(TaxonomyScopeType::Module),
-        scope_value: Set("blog".to_string()),
+        scope_type: Set(TaxonomyScopeType::Global),
+        scope_value: Set("".to_string()),
         locale: Set("en".to_string()),
         route_key: Set("systems".to_string()),
         term_id: Set(second),
@@ -369,8 +439,8 @@ async fn owner_service_update_releases_stale_route_reservation() {
     taxonomy_term_route_key::ActiveModel {
         tenant_id: Set(tenant_id),
         kind: Set(TaxonomyTermKind::Tag),
-        scope_type: Set(TaxonomyScopeType::Module),
-        scope_value: Set("blog".to_string()),
+        scope_type: Set(TaxonomyScopeType::Global),
+        scope_value: Set("".to_string()),
         locale: Set("en".to_string()),
         route_key: Set("legacy-rust".to_string()),
         term_id: Set(term_id),

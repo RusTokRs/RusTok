@@ -1,10 +1,12 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_taxonomy::{
-    CreateTaxonomyTermInput, SetTaxonomyCategoryPlacementInput,
+    ModuleTermCreateInput, ModuleTermUpdateInput, SetTaxonomyCategoryPlacementInput,
     SetTaxonomyCategoryPresentationInput, TaxonomyModule, TaxonomyOwnerCategoryReader,
-    TaxonomyScopeType, TaxonomyService, TaxonomyTermKind, UpdateTaxonomyTermInput,
+    TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
+    entities::taxonomy_term_translation, update_module_term_in_tx,
 };
 use rustok_test_utils::db::setup_test_db;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, TransactionTrait};
 use sea_orm_migration::prelude::SchemaManager;
 use uuid::Uuid;
 
@@ -34,24 +36,41 @@ async fn create_term(
     slug: &str,
     description: Option<&str>,
 ) -> Uuid {
-    service
-        .create_term(
+    let txn = service
+        .database()
+        .begin()
+        .await
+        .expect("transaction should start");
+    let term_id = service
+        .create_module_term_in_tx(
+            &txn,
             tenant_id,
-            admin(),
-            CreateTaxonomyTermInput {
-                kind,
-                scope_type: TaxonomyScopeType::Module,
-                scope_value: Some(scope_value.to_owned()),
+            kind,
+            scope_value,
+            ModuleTermCreateInput {
                 locale: "en".to_owned(),
                 name: name.to_owned(),
                 slug: Some(slug.to_owned()),
                 canonical_key: Some(slug.to_owned()),
-                description: description.map(ToOwned::to_owned),
-                aliases: vec![],
             },
         )
         .await
-        .expect("taxonomy term should be created")
+        .expect("taxonomy term should be created");
+
+    if let Some(desc) = description {
+        taxonomy_term_translation::Entity::update_many()
+            .filter(taxonomy_term_translation::Column::TermId.eq(term_id))
+            .filter(taxonomy_term_translation::Column::Locale.eq("en"))
+            .col_expr(
+                taxonomy_term_translation::Column::Description,
+                sea_orm::sea_query::Expr::value(Some(desc.to_string())),
+            )
+            .exec(&txn)
+            .await
+            .expect("description should be written");
+    }
+    txn.commit().await.expect("transaction should commit");
+    term_id
 }
 
 #[tokio::test]
@@ -101,21 +120,38 @@ async fn category_owner_reader_batches_canonical_copy_hierarchy_and_presentation
     )
     .await;
 
-    service
-        .update_term(
-            tenant_id,
-            child_id,
-            admin(),
-            UpdateTaxonomyTermInput {
-                locale: "ar".to_owned(),
-                name: Some("الدعم".to_owned()),
-                slug: Some("support-ar".to_owned()),
-                description: Some("الدعم بالعربية".to_owned()),
-                aliases: None,
-            },
-        )
+    let txn = service
+        .database()
+        .begin()
         .await
-        .expect("Arabic category copy should be added");
+        .expect("transaction should start");
+    update_module_term_in_tx(
+        &txn,
+        tenant_id,
+        child_id,
+        &admin(),
+        TaxonomyTermKind::Category,
+        "forum",
+        ModuleTermUpdateInput {
+            locale: "ar".to_owned(),
+            name: Some("الدعم".to_owned()),
+            slug: Some("support-ar".to_owned()),
+        },
+    )
+    .await
+    .expect("Arabic category copy should be added");
+
+    taxonomy_term_translation::Entity::update_many()
+        .filter(taxonomy_term_translation::Column::TermId.eq(child_id))
+        .filter(taxonomy_term_translation::Column::Locale.eq("ar"))
+        .col_expr(
+            taxonomy_term_translation::Column::Description,
+            sea_orm::sea_query::Expr::value(Some("الدعم بالعربية".to_string())),
+        )
+        .exec(&txn)
+        .await
+        .expect("Arabic category description should be written");
+    txn.commit().await.expect("transaction should commit");
     service
         .set_category_placement(
             tenant_id,

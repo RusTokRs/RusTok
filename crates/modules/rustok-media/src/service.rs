@@ -1498,7 +1498,7 @@ impl MediaService {
         ))
     }
 
-    async fn list_asset_references_page(
+    pub async fn list_asset_references_page(
         &self,
         tenant_id: Uuid,
         request: crate::MediaAssetReferenceListRequest,

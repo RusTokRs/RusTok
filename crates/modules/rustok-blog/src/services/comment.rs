@@ -744,8 +744,9 @@ mod rich_content_tests {
 mod public_target_tests {
     use super::{comments_write_port_context, is_public_comment_target};
     use crate::BlogPostStatus;
-    use rustok_api::PortActorKind;
+    use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActorKind};
     use rustok_core::SecurityContext;
+    use uuid::Uuid;
 
     #[test]
     fn public_comment_target_requires_a_published_post() {
@@ -762,7 +763,6 @@ mod public_target_tests {
     }
 
     #[test]
-    #[test]
     fn compensation_write_context_uses_the_trusted_system_actor() {
         let context = comments_write_port_context(
             Uuid::new_v4(),
@@ -778,6 +778,7 @@ mod public_target_tests {
         assert_eq!(context.actor.id, "system");
     }
 
+    #[test]
     fn public_comment_target_enforces_the_channel_allowlist() {
         let channels = vec!["web".to_string()];
         assert!(is_public_comment_target(

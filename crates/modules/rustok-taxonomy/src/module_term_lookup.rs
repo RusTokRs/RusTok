@@ -234,7 +234,8 @@ mod tests {
     use sea_orm_migration::prelude::SchemaManager;
 
     use super::*;
-    use crate::{CreateTaxonomyTermInput, TaxonomyModule};
+    use sea_orm::TransactionTrait;
+    use crate::{CreateTaxonomyTermInput, ModuleTermCreateInput, TaxonomyModule};
 
     async fn setup() -> (DatabaseConnection, TaxonomyService) {
         let db = setup_test_db().await;
@@ -262,24 +263,45 @@ mod tests {
         name: &str,
         slug: &str,
     ) -> Uuid {
-        service
-            .create_term(
-                tenant_id,
-                admin(),
-                CreateTaxonomyTermInput {
-                    kind: TaxonomyTermKind::Tag,
-                    scope_type,
-                    scope_value: scope_value.map(str::to_string),
-                    locale: locale.to_string(),
-                    name: name.to_string(),
-                    slug: Some(slug.to_string()),
-                    canonical_key: Some(format!("{}-{locale}", slug::slugify(name))),
-                    description: None,
-                    aliases: Vec::new(),
-                },
-            )
-            .await
-            .expect("tag should be created")
+        if scope_type == TaxonomyScopeType::Module {
+            let txn = service.database().begin().await.expect("transaction should start");
+            let term_id = service
+                .create_module_term_in_tx(
+                    &txn,
+                    tenant_id,
+                    TaxonomyTermKind::Tag,
+                    scope_value.expect("module scope value required"),
+                    ModuleTermCreateInput {
+                        locale: locale.to_string(),
+                        name: name.to_string(),
+                        slug: Some(slug.to_string()),
+                        canonical_key: Some(format!("{}-{locale}", slug::slugify(name))),
+                    },
+                )
+                .await
+                .expect("module tag should be created");
+            txn.commit().await.expect("transaction should commit");
+            term_id
+        } else {
+            service
+                .create_term(
+                    tenant_id,
+                    admin(),
+                    CreateTaxonomyTermInput {
+                        kind: TaxonomyTermKind::Tag,
+                        scope_type,
+                        scope_value: scope_value.map(str::to_string),
+                        locale: locale.to_string(),
+                        name: name.to_string(),
+                        slug: Some(slug.to_string()),
+                        canonical_key: Some(format!("{}-{locale}", slug::slugify(name))),
+                        description: None,
+                        aliases: Vec::new(),
+                    },
+                )
+                .await
+                .expect("tag should be created")
+        }
     }
 
     #[tokio::test]

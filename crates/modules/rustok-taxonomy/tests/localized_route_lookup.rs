@@ -1,8 +1,9 @@
 use chrono::Utc;
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_taxonomy::{
-    CreateTaxonomyTermInput, ListTaxonomyTermsFilter, ResolveTaxonomyTermInput, TaxonomyModule,
-    TaxonomyScopeType, TaxonomyService, TaxonomyTermKind, entities::taxonomy_term_alias,
+    CreateTaxonomyTermInput, ListTaxonomyTermsFilter, ModuleTermCreateInput,
+    ResolveTaxonomyTermInput, TaxonomyModule, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
+    entities::taxonomy_term_alias,
 };
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, TransactionTrait};
@@ -36,24 +37,49 @@ async fn create_term_with_canonical_key(
     slug: &str,
     canonical_key: &str,
 ) -> Uuid {
-    service
-        .create_term(
-            tenant_id,
-            admin(),
-            CreateTaxonomyTermInput {
-                kind: TaxonomyTermKind::Tag,
-                scope_type,
-                scope_value: scope_value.map(str::to_string),
-                locale: locale.to_string(),
-                name: name.to_string(),
-                slug: Some(slug.to_string()),
-                canonical_key: Some(canonical_key.to_string()),
-                description: None,
-                aliases: vec![],
-            },
-        )
-        .await
-        .expect("term should be created")
+    if scope_type == TaxonomyScopeType::Module {
+        let txn = service
+            .database()
+            .begin()
+            .await
+            .expect("transaction should start");
+        let term_id = service
+            .create_module_term_in_tx(
+                &txn,
+                tenant_id,
+                TaxonomyTermKind::Tag,
+                scope_value.expect("module scope value required"),
+                ModuleTermCreateInput {
+                    locale: locale.to_string(),
+                    name: name.to_string(),
+                    slug: Some(slug.to_string()),
+                    canonical_key: Some(canonical_key.to_string()),
+                },
+            )
+            .await
+            .expect("module term should be created");
+        txn.commit().await.expect("transaction should commit");
+        term_id
+    } else {
+        service
+            .create_term(
+                tenant_id,
+                admin(),
+                CreateTaxonomyTermInput {
+                    kind: TaxonomyTermKind::Tag,
+                    scope_type,
+                    scope_value: scope_value.map(str::to_string),
+                    locale: locale.to_string(),
+                    name: name.to_string(),
+                    slug: Some(slug.to_string()),
+                    canonical_key: Some(canonical_key.to_string()),
+                    description: None,
+                    aliases: vec![],
+                },
+            )
+            .await
+            .expect("term should be created")
+    }
 }
 
 async fn create_term(
@@ -486,26 +512,10 @@ async fn owner_batch_canonical_key_lookup_is_tenant_isolated() {
 
 #[tokio::test]
 async fn same_term_translation_and_alias_are_not_ambiguous() {
-    let (_db, service) = setup().await;
+    let (db, service) = setup().await;
     let tenant_id = Uuid::new_v4();
-    let term_id = service
-        .create_term(
-            tenant_id,
-            admin(),
-            CreateTaxonomyTermInput {
-                kind: TaxonomyTermKind::Tag,
-                scope_type: TaxonomyScopeType::Module,
-                scope_value: Some("blog".to_string()),
-                locale: "en".to_string(),
-                name: "Systems".to_string(),
-                slug: Some("systems".to_string()),
-                canonical_key: Some("systems".to_string()),
-                description: None,
-                aliases: vec!["systems".to_string()],
-            },
-        )
-        .await
-        .expect("same-term alias may share its canonical localized route key");
+    let term_id = create_module_term(&service, tenant_id, "Systems", "systems").await;
+    inject_unregistered_legacy_alias(&db, tenant_id, term_id, "systems").await;
 
     let resolved = service
         .resolve_term_for_module(

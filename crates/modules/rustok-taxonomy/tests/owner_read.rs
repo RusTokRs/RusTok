@@ -1,7 +1,7 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_taxonomy::{
-    CreateTaxonomyTermInput, TaxonomyModule, TaxonomyOwnerReader, TaxonomyScopeType,
-    TaxonomyService, TaxonomyTermKind,
+    CreateTaxonomyTermInput, ModuleTermCreateInput, TaxonomyModule, TaxonomyOwnerReader,
+    TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
 };
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::TransactionTrait;
@@ -33,24 +33,49 @@ async fn create_term(
     name: &str,
     slug: &str,
 ) -> Uuid {
-    service
-        .create_term(
-            tenant_id,
-            admin(),
-            CreateTaxonomyTermInput {
-                kind: TaxonomyTermKind::Tag,
-                scope_type,
-                scope_value: scope_value.map(ToOwned::to_owned),
-                locale: "en".to_owned(),
-                name: name.to_owned(),
-                slug: Some(slug.to_owned()),
-                canonical_key: Some(slug.to_owned()),
-                description: None,
-                aliases: vec![],
-            },
-        )
-        .await
-        .expect("taxonomy term should be created")
+    if scope_type == TaxonomyScopeType::Module {
+        let txn = service
+            .database()
+            .begin()
+            .await
+            .expect("transaction should start");
+        let term_id = service
+            .create_module_term_in_tx(
+                &txn,
+                tenant_id,
+                TaxonomyTermKind::Tag,
+                scope_value.expect("module scope value required"),
+                ModuleTermCreateInput {
+                    locale: "en".to_owned(),
+                    name: name.to_owned(),
+                    slug: Some(slug.to_owned()),
+                    canonical_key: Some(slug.to_owned()),
+                },
+            )
+            .await
+            .expect("module term should be created");
+        txn.commit().await.expect("transaction should commit");
+        term_id
+    } else {
+        service
+            .create_term(
+                tenant_id,
+                admin(),
+                CreateTaxonomyTermInput {
+                    kind: TaxonomyTermKind::Tag,
+                    scope_type,
+                    scope_value: scope_value.map(ToOwned::to_owned),
+                    locale: "en".to_owned(),
+                    name: name.to_owned(),
+                    slug: Some(slug.to_owned()),
+                    canonical_key: Some(slug.to_owned()),
+                    description: None,
+                    aliases: vec![],
+                },
+            )
+            .await
+            .expect("taxonomy term should be created")
+    }
 }
 
 #[tokio::test]

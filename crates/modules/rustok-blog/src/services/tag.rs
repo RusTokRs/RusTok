@@ -59,6 +59,7 @@ impl TagService {
                     locale: normalize_locale(&input.locale)?,
                     name: input.name,
                     slug: input.slug,
+                    canonical_key: None,
                 },
             )
             .await?;

@@ -40,8 +40,13 @@ if (taxonomySourceFiles.length === 0) {
 }
 
 const taxonomyPersistenceFiles = taxonomySourceFiles.filter(
-  (relative) =>
-    relative.includes("/src/entities/") || relative.includes("/src/migrations/"),
+  (relative) => {
+    const normalized = relative.replaceAll("\\", "/");
+    return (
+      normalized.includes("/src/entities/") ||
+      normalized.includes("/src/migrations/")
+    );
+  },
 );
 
 // Shared Category hierarchy and canonical presentation are accepted Taxonomy capabilities. What

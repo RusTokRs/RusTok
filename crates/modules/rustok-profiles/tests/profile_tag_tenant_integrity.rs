@@ -60,6 +60,7 @@ async fn create_tag(db: &DatabaseConnection, taxonomy: &TaxonomyService, tenant_
                 locale: "en".to_string(),
                 name: name.to_string(),
                 slug: Some(route_key),
+                canonical_key: None,
             },
         )
         .await

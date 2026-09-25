@@ -534,6 +534,7 @@ async fn module_owned_translation_requires_owner_and_runs_owner_side_effect_hook
                 locale: "en".to_string(),
                 name: "Systems".to_string(),
                 slug: Some("systems".to_string()),
+                canonical_key: None,
             },
         )
         .await

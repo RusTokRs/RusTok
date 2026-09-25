@@ -25,6 +25,9 @@ fn admin() -> SecurityContext {
     SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()))
 }
 
+use sea_orm::TransactionTrait;
+use rustok_taxonomy::ModuleTermCreateInput;
+
 async fn create_term(
     service: &TaxonomyService,
     tenant_id: Uuid,
@@ -33,24 +36,45 @@ async fn create_term(
     scope_value: Option<&str>,
     name: &str,
 ) -> Uuid {
-    service
-        .create_term(
-            tenant_id,
-            admin(),
-            CreateTaxonomyTermInput {
+    if scope_type == TaxonomyScopeType::Module {
+        let txn = service.database().begin().await.expect("transaction should start");
+        let term_id = service
+            .create_module_term_in_tx(
+                &txn,
+                tenant_id,
                 kind,
-                scope_type,
-                scope_value: scope_value.map(str::to_owned),
-                locale: "en".to_string(),
-                name: name.to_string(),
-                slug: None,
-                canonical_key: Some(format!("{}-{}", name.to_ascii_lowercase(), Uuid::new_v4())),
-                description: None,
-                aliases: Vec::new(),
-            },
-        )
-        .await
-        .expect("term should be created")
+                scope_value.expect("module scope value required"),
+                ModuleTermCreateInput {
+                    locale: "en".to_string(),
+                    name: name.to_string(),
+                    slug: None,
+                    canonical_key: Some(format!("{}-{}", name.to_ascii_lowercase(), Uuid::new_v4())),
+                },
+            )
+            .await
+            .expect("module term should be created");
+        txn.commit().await.expect("transaction should commit");
+        term_id
+    } else {
+        service
+            .create_term(
+                tenant_id,
+                admin(),
+                CreateTaxonomyTermInput {
+                    kind,
+                    scope_type,
+                    scope_value: scope_value.map(str::to_owned),
+                    locale: "en".to_string(),
+                    name: name.to_string(),
+                    slug: None,
+                    canonical_key: Some(format!("{}-{}", name.to_ascii_lowercase(), Uuid::new_v4())),
+                    description: None,
+                    aliases: Vec::new(),
+                },
+            )
+            .await
+            .expect("term should be created")
+    }
 }
 
 #[tokio::test]
