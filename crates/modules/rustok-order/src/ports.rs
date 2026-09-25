@@ -440,14 +440,21 @@ impl CheckoutOrderIdentityPort for InProcessCheckoutOrderIdentityPort {
             request.checkout_operation_id,
         )
         .await
-        .map_err(|error| {
-            tracing::error!(
-                error = ?error,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "order.checkout_identity_storage_unavailable",
-                "failed to read legacy order checkout identity"
+        .map_err(|_| {
+            let facts = OrderPortErrorFacts {
+                error_variant: "checkout_identity_storage",
+                text_field_count: 0,
+                text_total_length: 0,
+                uuid_field_count: 0,
+                uuid_non_nil_count: 0,
+                opaque_payload_present: true,
+            };
+            log_order_port_failure(
+                context,
+                owner_operation,
+                "order.checkout_identity_storage_unavailable",
+                &facts,
+                true,
             );
             PortError::unavailable(
                 "order.checkout_identity_storage_unavailable",
