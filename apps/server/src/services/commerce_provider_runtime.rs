@@ -554,6 +554,28 @@ mod tests {
                 &first_order.order_read_port(),
                 &second_order.order_read_port()
             ));
+
+            let first_payment_reads = first
+                .shared_get::<rustok_commerce::graphql_runtime::CommercePaymentReadRuntime>()
+                .expect("payment read runtime should be attached");
+            let second_payment_reads = second
+                .shared_get::<rustok_commerce::graphql_runtime::CommercePaymentReadRuntime>()
+                .expect("payment read runtime should be reused");
+            assert!(Arc::ptr_eq(
+                &first_payment_reads.admin_read_port(),
+                &second_payment_reads.admin_read_port()
+            ));
+
+            let first_payment_commands = first
+                .shared_get::<rustok_commerce::graphql_runtime::CommercePaymentCommandRuntime>()
+                .expect("payment command runtime should be attached");
+            let second_payment_commands = second
+                .shared_get::<rustok_commerce::graphql_runtime::CommercePaymentCommandRuntime>()
+                .expect("payment command runtime should be reused");
+            assert!(Arc::ptr_eq(
+                &first_payment_commands.collection_command_port(),
+                &second_payment_commands.collection_command_port()
+            ));
         }
     }
 }
