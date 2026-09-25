@@ -148,4 +148,5 @@ pub struct CommerceOrderChange {
 pub struct CommerceOrderChangeActionDraft {
     pub metadata_json: String,
     pub reason: String,
+    pub idempotency_key: String,
 }
