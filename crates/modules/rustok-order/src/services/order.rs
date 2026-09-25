@@ -626,9 +626,8 @@ impl OrderService {
         F: FnOnce(&mut entities::order::ActiveModel, chrono::DateTime<Utc>),
     {
         let txn = self.db.begin().await?;
-        let existing = self
-            .load_order_model_in_tx(&txn, tenant_id, order_id)
-            .await?;
+        let existing =
+            find_order_for_update_in_tx(&txn, tenant_id, order_id).await?;
         let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata)
             .unwrap_or(load_tenant_default_locale(&txn, tenant_id).await?);
         if existing.status != expected_from {
