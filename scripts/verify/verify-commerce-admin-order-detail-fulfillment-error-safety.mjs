@@ -57,7 +57,6 @@ for (const [value, label] of [
     'const ADMIN_ORDER_DETAIL_FULFILLMENT_OPERATION: &str = "find_fulfillment_by_order";',
     'fulfillment operation constant',
   ],
-  ['use rustok_fulfillment::FulfillmentError;', 'typed fulfillment compatibility error import'],
   ['use rustok_web::{HttpError, HttpResult};', 'typed HTTP error import'],
 ]) requireText(source, value, label);
 
@@ -78,9 +77,9 @@ for (const [value, label] of [
 for (const value of [
   'PaymentService::new(runtime.db_clone())',
   'FulfillmentService::new(runtime.db_clone())',
-  'map_order_detail_payment_error(',
-  'map_order_detail_fulfillment_error(',
-]) forbidText(showOrder, value, 'mounted order-detail direct owner construction/obsolete mapper');
+  'fn map_order_detail_payment_error(',
+  'fn map_order_detail_fulfillment_error(',
+]) forbidText(showOrder + paymentPortMapper + fulfillmentPortMapper, value, 'mounted order-detail direct owner construction/obsolete mapper');
 
 for (const [value, label] of [
   ['fn map_order_detail_payment_port_error(order_id: Uuid, error: PortError)', 'payment owner-port mapper'],
