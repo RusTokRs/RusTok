@@ -1191,6 +1191,18 @@ Source inspection is not execution evidence.
   guards for the formerly raw Product/Pricing/Inventory diagnostics.
 - [ ] Continue auditing mounted Commerce helper boundaries and provider adapters for raw
   owner error/context serialization.
+
+## Audit 2026-09-25: Admin checkout-operation diagnostic boundary
+
+- [x] Remove the redacted-`Debug` error wrapper from the mounted Admin checkout-operation
+  HTTP mapper; the helper now accepts only the already-classified policy and emits bounded
+  identity-state facts.
+- [x] Rename diagnostic fields to explicit `*_state`/`*_length` semantics so logs cannot
+  be mistaken for serialized tenant, actor, order, payment, or reservation identifiers.
+- [x] Extend the ecommerce public-port safety verifier to forbid the previous raw/redacted
+  diagnostic patterns and require the bounded Admin checkout-operation contract.
+- [ ] Continue the same no-serialization rule across remaining mounted Commerce transport
+  helpers and provider-adapter boundaries.
 ## Change rules
 
 1. Update this file with every completed or newly discovered ecommerce task.
