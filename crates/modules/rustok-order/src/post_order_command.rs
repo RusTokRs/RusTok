@@ -326,13 +326,21 @@ fn map_order_error(
             "not_found",
             false,
         ),
-        OrderError::InvalidTransition { .. } => (
+        OrderError::InvalidTransition { .. } | OrderError::IdempotencyConflict => (
             PortErrorKind::Conflict,
             "order.post_order_command_state_conflict",
             "order lifecycle transition conflicts with the requested operation",
             false,
-            "invalid_transition",
+            "conflict",
             false,
+        ),
+        OrderError::CommandReceiptCorrupt => (
+            PortErrorKind::InvariantViolation,
+            "order.post_order_command_receipt_invalid",
+            "order command state requires operator review",
+            false,
+            "receipt_corrupt",
+            true,
         ),
         OrderError::Database(_) => (
             PortErrorKind::Unavailable,
