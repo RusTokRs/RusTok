@@ -32,6 +32,143 @@ const ADMIN_ORDER_DETAIL_FULFILLMENT_OPERATION: &str = "find_fulfillment_by_orde
 
 type AdminOrderHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
 
+struct AdminOrderDetailOwnerErrorFacts {
+    error_variant: &'static str,
+    text_field_count: usize,
+    text_total_length: usize,
+    uuid_field_count: usize,
+    uuid_non_nil_count: usize,
+    opaque_payload_present: bool,
+}
+
+fn payment_detail_error_facts(error: &PaymentError) -> AdminOrderDetailOwnerErrorFacts {
+    match error {
+        PaymentError::PaymentCollectionNotFound(id)
+        | PaymentError::PaymentNotFound(id)
+        | PaymentError::RefundNotFound(id) => AdminOrderDetailOwnerErrorFacts {
+            error_variant: match error {
+                PaymentError::PaymentCollectionNotFound(_) => "payment_collection_not_found",
+                PaymentError::PaymentNotFound(_) => "payment_not_found",
+                PaymentError::RefundNotFound(_) => "refund_not_found",
+                _ => unreachable!(),
+            },
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 1,
+            uuid_non_nil_count: if id.is_nil() { 0 } else { 1 },
+            opaque_payload_present: false,
+        },
+        PaymentError::Validation(message) => AdminOrderDetailOwnerErrorFacts {
+            error_variant: "validation",
+            text_field_count: 1,
+            text_total_length: message.chars().count(),
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: false,
+        },
+        PaymentError::InvalidTransition { from, to } => AdminOrderDetailOwnerErrorFacts {
+            error_variant: "state_conflict",
+            text_field_count: 2,
+            text_total_length: from.chars().count() + to.chars().count(),
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: false,
+        },
+        PaymentError::ProviderRejected { .. } => AdminOrderDetailOwnerErrorFacts {
+            error_variant: "provider_rejected",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: true,
+        },
+        PaymentError::ProviderUnavailable { .. } => AdminOrderDetailOwnerErrorFacts {
+            error_variant: "provider_unavailable",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: true,
+        },
+        PaymentError::ProviderInvalidResponse { .. } => AdminOrderDetailOwnerErrorFacts {
+            error_variant: "provider_invalid_response",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: true,
+        },
+        PaymentError::ProviderOutcomeUnknown { .. } => AdminOrderDetailOwnerErrorFacts {
+            error_variant: "provider_outcome_unknown",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: true,
+        },
+        PaymentError::ProviderConfiguration { .. } => AdminOrderDetailOwnerErrorFacts {
+            error_variant: "provider_configuration",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: true,
+        },
+        PaymentError::Database(_) => AdminOrderDetailOwnerErrorFacts {
+            error_variant: "database",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: true,
+        },
+    }
+}
+
+fn fulfillment_detail_error_facts(
+    error: &FulfillmentError,
+) -> AdminOrderDetailOwnerErrorFacts {
+    match error {
+        FulfillmentError::Validation(message) => AdminOrderDetailOwnerErrorFacts {
+            error_variant: "validation",
+            text_field_count: 1,
+            text_total_length: message.chars().count(),
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: false,
+        },
+        FulfillmentError::ShippingOptionNotFound(id)
+        | FulfillmentError::FulfillmentNotFound(id) => AdminOrderDetailOwnerErrorFacts {
+            error_variant: match error {
+                FulfillmentError::ShippingOptionNotFound(_) => "shipping_option_not_found",
+                FulfillmentError::FulfillmentNotFound(_) => "fulfillment_not_found",
+                _ => unreachable!(),
+            },
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 1,
+            uuid_non_nil_count: if id.is_nil() { 0 } else { 1 },
+            opaque_payload_present: false,
+        },
+        FulfillmentError::InvalidTransition { from, to } => AdminOrderDetailOwnerErrorFacts {
+            error_variant: "state_conflict",
+            text_field_count: 2,
+            text_total_length: from.chars().count() + to.chars().count(),
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: false,
+        },
+        FulfillmentError::Database(_) => AdminOrderDetailOwnerErrorFacts {
+            error_variant: "database",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: true,
+        },
+    }
+}
+
 struct AdminOrderErrorContext {
     tenant_id: Uuid,
     actor_id: Uuid,
@@ -453,6 +590,7 @@ fn map_order_detail_payment_error(
     order_id: Uuid,
     error: PaymentError,
 ) -> HttpError {
+    let facts = payment_detail_error_facts(&error);
     let (status, code, message, error_kind) = match &error {
         PaymentError::PaymentCollectionNotFound(_)
         | PaymentError::PaymentNotFound(_)
@@ -506,16 +644,21 @@ fn map_order_detail_payment_error(
         ),
     };
     tracing::error!(
-        error = ?error,
         owner = ADMIN_ORDER_DETAIL_PAYMENT_OWNER,
-        tenant_id = %tenant_id,
-        order_id = %order_id,
+        tenant_id = uuid_shape(tenant_id),
+        order_id = uuid_shape(order_id),
         operation = ADMIN_ORDER_DETAIL_PAYMENT_OPERATION,
         error_kind,
         public_code = code,
         status = %status,
+        error_variant = facts.error_variant,
+        text_field_count = facts.text_field_count,
+        text_total_length = facts.text_total_length,
+        uuid_field_count = facts.uuid_field_count,
+        uuid_non_nil_count = facts.uuid_non_nil_count,
+        opaque_payload_present = facts.opaque_payload_present,
         boundary = "commerce_admin_order_detail_http",
-        "commerce admin order detail payment lookup failed"
+        "commerce admin order detail payment lookup failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
@@ -525,6 +668,7 @@ fn map_order_detail_fulfillment_error(
     order_id: Uuid,
     error: FulfillmentError,
 ) -> HttpError {
+    let facts = fulfillment_detail_error_facts(&error);
     let (status, code, message, error_kind) = match &error {
         FulfillmentError::Validation(_) => (
             axum::http::StatusCode::BAD_REQUEST,
@@ -552,16 +696,21 @@ fn map_order_detail_fulfillment_error(
         ),
     };
     tracing::error!(
-        error = ?error,
         owner = ADMIN_ORDER_DETAIL_FULFILLMENT_OWNER,
-        tenant_id = %tenant_id,
-        order_id = %order_id,
+        tenant_id = uuid_shape(tenant_id),
+        order_id = uuid_shape(order_id),
         operation = ADMIN_ORDER_DETAIL_FULFILLMENT_OPERATION,
         error_kind,
         public_code = code,
         status = %status,
+        error_variant = facts.error_variant,
+        text_field_count = facts.text_field_count,
+        text_total_length = facts.text_total_length,
+        uuid_field_count = facts.uuid_field_count,
+        uuid_non_nil_count = facts.uuid_non_nil_count,
+        opaque_payload_present = facts.opaque_payload_present,
         boundary = "commerce_admin_order_detail_http",
-        "commerce admin order detail fulfillment lookup failed"
+        "commerce admin order detail fulfillment lookup failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
