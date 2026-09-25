@@ -1,4 +1,4 @@
-use rustok_fulfillment::FulfillmentService;
+use rustok_fulfillment::{FulfillmentService, FulfillmentStatusKind};
 use rustok_fulfillment::providers::FulfillmentProviderRegistry;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -110,7 +110,7 @@ impl FulfillmentOrchestrationService {
         let current = FulfillmentService::new(self.db.clone())
             .get_fulfillment(tenant_id, fulfillment_id)
             .await?;
-        if current.status == "shipped"
+        if current.status_kind() == FulfillmentStatusKind::Shipped
             && current
                 .metadata
                 .get("provider_operation")
