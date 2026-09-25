@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
@@ -32,6 +32,38 @@ const ADMIN_ORDER_DETAIL_PAYMENT_OWNER: &str = "rustok_payment.admin_order_detai
 const ADMIN_ORDER_DETAIL_FULFILLMENT_OWNER: &str = "rustok_fulfillment.admin_order_detail";
 const ADMIN_ORDER_DETAIL_BOUNDARY: &str = "commerce_admin_order_detail_http";
 
+fn require_idempotency_key(headers: &HeaderMap) -> Result<String, HttpError> {
+    let value = headers
+        .get("Idempotency-Key")
+        .ok_or_else(|| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_admin_idempotency_key_required",
+                "Idempotency-Key header is required for this write operation",
+            )
+        })?
+        .to_str()
+        .map_err(|_| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_admin_idempotency_key_invalid",
+                "Idempotency-Key header is invalid",
+            )
+        })?
+        .trim()
+        .to_string();
+
+    if value.is_empty() || value.len() > 191 {
+        return Err(HttpError::new(
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_idempotency_key_invalid",
+            "Idempotency-Key header must contain 1 to 191 bytes",
+        ));
+    }
+
+    Ok(value)
+}
+
 fn admin_order_port_context(
     tenant: &TenantContext,
     auth: &AuthContext,
@@ -46,12 +78,29 @@ fn admin_order_port_context(
         request_context.locale.as_str(),
         format!("commerce-admin-order:{operation}:{resource_id}"),
     )
-    .with_deadline(std::time::Duration::from_secs(2))
-    .with_idempotency_key(Uuid::new_v4().to_string());
+    .with_deadline(std::time::Duration::from_secs(2));
     match request_context.channel_slug.as_deref() {
         Some(channel) => context.with_channel(channel),
         None => context,
     }
+}
+
+fn admin_order_command_port_context(
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    request_context: &RequestContext,
+    order_id: Uuid,
+    operation: &'static str,
+    idempotency_key: String,
+) -> PortContext {
+    admin_order_port_context(
+        tenant,
+        auth,
+        request_context,
+        Some(order_id),
+        operation,
+    )
+    .with_idempotency_key(idempotency_key)
 }
 
 fn port_error_kind(error: &PortError) -> &'static str {
@@ -115,7 +164,7 @@ fn map_order_port_error(
         order_id_non_nil = order_id.map(|value| !value.is_nil()).unwrap_or(false),
         operation,
         correlation_id = %context.correlation_id,
-        internal_code = %error.code,
+        owner_code_length = error.code.chars().count(),
         retryable = error.retryable,
         error_kind,
         public_code = code,
@@ -171,7 +220,7 @@ fn map_payment_detail_port_error(
         order_id_non_nil = !order_id.is_nil(),
         operation = "find_latest_payment_collection_by_order",
         correlation_id = %context.correlation_id,
-        internal_code = %error.code,
+        owner_code_length = error.code.chars().count(),
         retryable = error.retryable,
         error_kind,
         public_code = code,
@@ -227,7 +276,7 @@ fn map_fulfillment_detail_port_error(
         order_id_non_nil = !order_id.is_nil(),
         operation = "find_latest_fulfillment_by_order_projection",
         correlation_id = %context.correlation_id,
-        internal_code = %error.code,
+        owner_code_length = error.code.chars().count(),
         retryable = error.retryable,
         error_kind,
         public_code = code,
@@ -399,6 +448,7 @@ pub async fn mark_order_paid(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<MarkPaidOrderInput>,
 ) -> HttpResult<Json<OrderResponse>> {
     ensure_permissions(
@@ -407,12 +457,14 @@ pub async fn mark_order_paid(
         "Permission denied: orders:update required",
     )?;
 
-    let context = admin_order_port_context(
+    let idempotency_key = require_idempotency_key(&headers)?;
+    let context = admin_order_command_port_context(
         &tenant,
         &auth,
         &request_context,
-        Some(id),
+        id,
         "mark_order_paid",
+        idempotency_key,
     );
     let order = runtime
         .order_admin_command_port()
@@ -457,6 +509,7 @@ pub async fn ship_order(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<ShipOrderInput>,
 ) -> HttpResult<Json<OrderResponse>> {
     ensure_permissions(
@@ -465,8 +518,9 @@ pub async fn ship_order(
         "Permission denied: orders:update required",
     )?;
 
+    let idempotency_key = require_idempotency_key(&headers)?;
     let context =
-        admin_order_port_context(&tenant, &auth, &request_context, Some(id), "ship_order");
+        admin_order_command_port_context(&tenant, &auth, &request_context, id, "ship_order", idempotency_key);
     let order = runtime
         .order_admin_command_port()
         .ship(
@@ -510,6 +564,7 @@ pub async fn deliver_order(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<DeliverOrderInput>,
 ) -> HttpResult<Json<OrderResponse>> {
     ensure_permissions(
@@ -518,8 +573,9 @@ pub async fn deliver_order(
         "Permission denied: orders:update required",
     )?;
 
+    let idempotency_key = require_idempotency_key(&headers)?;
     let context =
-        admin_order_port_context(&tenant, &auth, &request_context, Some(id), "deliver_order");
+        admin_order_command_port_context(&tenant, &auth, &request_context, id, "deliver_order", idempotency_key);
     let order = runtime
         .order_admin_command_port()
         .deliver(
@@ -562,6 +618,7 @@ pub async fn cancel_order(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<CancelOrderInput>,
 ) -> HttpResult<Json<OrderResponse>> {
     ensure_permissions(
@@ -570,8 +627,9 @@ pub async fn cancel_order(
         "Permission denied: orders:update required",
     )?;
 
+    let idempotency_key = require_idempotency_key(&headers)?;
     let context =
-        admin_order_port_context(&tenant, &auth, &request_context, Some(id), "cancel_order");
+        admin_order_command_port_context(&tenant, &auth, &request_context, id, "cancel_order", idempotency_key);
     let order = runtime
         .order_admin_command_port()
         .cancel(
