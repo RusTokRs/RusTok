@@ -35,6 +35,13 @@ pub struct ChannelReadProjection {
     pub detail: ChannelDetailResponse,
 }
 
+/// Build the owner-controlled in-process channel read adapter for direct module composition.
+pub fn in_process_channel_read_port(
+    db: sea_orm::DatabaseConnection,
+) -> std::sync::Arc<dyn ChannelReadPort> {
+    std::sync::Arc::new(crate::ChannelService::new(db))
+}
+
 /// Transport-neutral owner boundary for channel read projections.
 #[async_trait]
 pub trait ChannelReadPort: Send + Sync {
