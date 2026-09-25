@@ -461,9 +461,27 @@ fn map_item(model: item::Model) -> MarketplacePayoutItemResponse {
 }
 
 fn map_ledger_port_error(error: rustok_api::PortError) -> MarketplacePayoutError {
+    // A provider/owner boundary may contain implementation-specific details even when it already
+    // uses the typed PortError envelope. Payout must classify the boundary failure before it can
+    // cross the payout domain boundary and never retain that raw message.
+    let message = match error.kind {
+        rustok_api::PortErrorKind::Validation
+        | rustok_api::PortErrorKind::NotFound
+        | rustok_api::PortErrorKind::Conflict => error.message,
+        rustok_api::PortErrorKind::Forbidden => {
+            "marketplace ledger permission was denied".to_string()
+        }
+        rustok_api::PortErrorKind::Unavailable | rustok_api::PortErrorKind::Timeout => {
+            "marketplace ledger is temporarily unavailable".to_string()
+        }
+        rustok_api::PortErrorKind::InvariantViolation => {
+            "marketplace ledger requires operator review".to_string()
+        }
+    };
+
     MarketplacePayoutError::LedgerBoundary {
         code: error.code,
-        message: error.message,
+        message,
         retryable: error.retryable,
     }
 }
