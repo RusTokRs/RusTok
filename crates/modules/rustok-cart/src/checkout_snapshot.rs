@@ -132,7 +132,7 @@ fn cart_checkout_service_error_facts(error: &CartError) -> CartCheckoutServiceEr
             text_field_count: 0,
             text_total_length: 0,
             uuid_field_count: 1,
-            uuid_non_nil_count: usize::from(!id.is_nil()),
+            uuid_non_nil_count: if id.is_nil() { 0 } else { 1 },
             opaque_payload_present: false,
         },
         CartError::InvalidTransition { .. } => CartCheckoutServiceErrorFacts {
