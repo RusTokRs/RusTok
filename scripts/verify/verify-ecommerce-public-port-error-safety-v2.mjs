@@ -43,6 +43,7 @@ const product = read('crates/modules/rustok-product/src/ports.rs');
 const storefrontProductsLegacy = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
 const storefrontCarts = read('crates/modules/rustok-commerce/src/controllers/store/carts.rs');
 const storefrontOrders = read('crates/modules/rustok-commerce/src/controllers/store/orders.rs');
+const storefrontOrderController = storefrontOrders;
 const storefrontLineItemResolution = read('crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs');
 const storefrontStore = read('crates/modules/rustok-commerce/src/controllers/store/mod.rs');
 const adminCheckoutOperations = read('crates/modules/rustok-commerce/src/controllers/admin/checkout_operations.rs');
@@ -86,6 +87,7 @@ for (const [source, label] of [
   [storefrontProductsLegacy, 'storefront auxiliary product controller'],
   [storefrontCarts, 'storefront cart controller'],
   [storefrontOrders, 'storefront order controller'],
+  [storefrontOrderController, 'storefront order idempotency controller'],
   [storefrontLineItemResolution, 'storefront line-item resolution'],
   [storefrontStore, 'storefront shared store controller'],
   [adminCheckoutOperations, 'admin checkout operations controller'],
@@ -706,6 +708,17 @@ requireAll(storefrontStore, [
   '"storefront channel resolution failed with bounded diagnostics"',
 ], 'storefront channel denial envelope');
 
+requireAll(storefrontOrderController, [
+  'fn require_idempotency_key(headers: &HeaderMap)',
+  'headers: HeaderMap,',
+  'let idempotency_key = require_idempotency_key(&headers)?;',
+  'fn storefront_order_return_command_context(',
+  '.with_idempotency_key(idempotency_key)',
+], 'storefront order command idempotency');
+
+forbidAll(storefrontOrderController, [
+  'Uuid::new_v4().to_string()',
+], 'storefront order synthetic idempotency');
 const required = [
   [pricing, [
     'correlation_id = %context.correlation_id',
