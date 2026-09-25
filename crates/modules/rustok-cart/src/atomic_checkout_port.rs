@@ -450,6 +450,12 @@ fn cart_error_to_port_error(error: CartError) -> PortError {
             code,
             message,
             retryable,
+        }
+        | CartError::ShippingBoundary {
+            kind,
+            code,
+            message,
+            retryable,
         } => PortError::new(kind, code, message, retryable),
     }
 }

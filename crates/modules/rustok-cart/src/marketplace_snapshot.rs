@@ -229,10 +229,16 @@ fn map_cart_error(
             code,
             retryable,
             ..
+        }
+        | CartError::ShippingBoundary {
+            kind,
+            code,
+            retryable,
+            ..
         } => PortError::new(
             kind,
             code,
-            "marketplace cart snapshot tax recalculation failed",
+            "marketplace cart snapshot boundary operation failed",
             retryable,
         ),
     }
@@ -245,6 +251,8 @@ fn cart_error_code(error: &CartError) -> &str {
         CartError::CartLineItemNotFound(_) => "cart.line_item_not_found",
         CartError::InvalidTransition { .. } => "cart.invalid_transition",
         CartError::Database(_) => "cart.marketplace_snapshot_storage_unavailable",
-        CartError::TaxBoundary { code, .. } => code.as_str(),
+        CartError::TaxBoundary { code, .. } | CartError::ShippingBoundary { code, .. } => {
+            code.as_str()
+        }
     }
 }

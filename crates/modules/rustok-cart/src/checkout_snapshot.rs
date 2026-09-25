@@ -436,6 +436,12 @@ fn map_cart_checkout_service_error(
             code,
             retryable,
             ..
+        }
+        | CartError::ShippingBoundary {
+            kind,
+            code,
+            retryable,
+            ..
         } => (
             code.as_str(),
             *retryable,
@@ -733,6 +739,12 @@ fn cart_error_to_port_error(error: CartError) -> PortError {
             )
         }
         CartError::TaxBoundary {
+            kind,
+            code,
+            message,
+            retryable,
+        }
+        | CartError::ShippingBoundary {
             kind,
             code,
             message,

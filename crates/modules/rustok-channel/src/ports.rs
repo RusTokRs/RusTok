@@ -114,7 +114,7 @@ impl ChannelReadPort for crate::ChannelService {
         &self,
         context: PortContext,
         request: ChannelListRequest,
-    ) -> Result<Vec<ChannelReadProjection>, PortError> {
+    ) -> Result<ChannelListProjectionPage, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context)?;
         if request.page == 0 || request.per_page == 0 {
@@ -194,7 +194,8 @@ fn map_channel_error(error: crate::ChannelError) -> PortError {
             "channel read projection hides inactive channels unless explicitly requested",
             false,
         ),
-        crate::ChannelError::InvalidTargetType(message)
+        crate::ChannelError::Validation(message)
+        | crate::ChannelError::InvalidTargetType(message)
         | crate::ChannelError::InvalidTargetValue(message)
         | crate::ChannelError::InvalidPolicyDefinition(message)
         | crate::ChannelError::InvalidPolicyOperation(message) => PortError::new(

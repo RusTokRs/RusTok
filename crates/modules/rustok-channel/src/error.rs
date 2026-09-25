@@ -7,6 +7,8 @@ pub type ChannelResult<T> = Result<T, ChannelError>;
 
 #[derive(Debug, Error)]
 pub enum ChannelError {
+    #[error("channel validation error: {0}")]
+    Validation(String),
     #[error("channel `{0}` already exists for this tenant")]
     SlugAlreadyExists(String),
     #[error("channel {0} not found")]

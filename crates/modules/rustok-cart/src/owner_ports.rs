@@ -360,7 +360,13 @@ fn cart_error_to_port_error(
             code,
             retryable,
             ..
-        } => PortError::new(kind, code, "cart tax recalculation failed", retryable),
+        }
+        | CartError::ShippingBoundary {
+            kind,
+            code,
+            retryable,
+            ..
+        } => PortError::new(kind, code, "cart boundary operation failed", retryable),
     }
 }
 
@@ -371,6 +377,8 @@ fn cart_error_code(error: &CartError) -> &str {
         CartError::CartLineItemNotFound(_) => "cart.line_item_not_found",
         CartError::InvalidTransition { .. } => "cart.invalid_transition",
         CartError::Database(_) => "cart.database_unavailable",
-        CartError::TaxBoundary { code, .. } => code.as_str(),
+        CartError::TaxBoundary { code, .. } | CartError::ShippingBoundary { code, .. } => {
+            code.as_str()
+        }
     }
 }

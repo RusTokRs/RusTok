@@ -357,6 +357,19 @@ fn cart_promotion_owner_error_facts(error: &CartError) -> CartPromotionOwnerErro
             tax_message_present: !message.trim().is_empty(),
             tax_message_length: Some(message.chars().count()),
         },
+        CartError::ShippingBoundary { code, message, .. } => CartPromotionOwnerErrorFacts {
+            error_variant: "shipping_boundary",
+            validation_detail_present: false,
+            validation_detail_length: None,
+            resource_id_non_nil: None,
+            transition_from_length: None,
+            transition_to_length: None,
+            database_error_present: false,
+            tax_code_present: !code.trim().is_empty(),
+            tax_code_length: Some(code.chars().count()),
+            tax_message_present: !message.trim().is_empty(),
+            tax_message_length: Some(message.chars().count()),
+        },
     }
 }
 
@@ -588,6 +601,17 @@ fn cart_promotion_error(
             "cart promotion tax recalculation failed",
             *retryable,
         ),
+        CartError::ShippingBoundary {
+            kind,
+            code,
+            retryable,
+            ..
+        } => PortError::new(
+            kind.clone(),
+            code.clone(),
+            "cart promotion shipping recalculation failed",
+            *retryable,
+        ),
     };
     let facts = cart_promotion_context_facts(context);
 
@@ -702,6 +726,8 @@ fn cart_promotion_error_code(error: &CartError) -> &str {
         CartError::CartLineItemNotFound(_) => "cart.line_item_not_found",
         CartError::InvalidTransition { .. } => "cart.promotion_state_conflict",
         CartError::Database(_) => "cart.database_unavailable",
-        CartError::TaxBoundary { code, .. } => code.as_str(),
+        CartError::TaxBoundary { code, .. } | CartError::ShippingBoundary { code, .. } => {
+            code.as_str()
+        }
     }
 }

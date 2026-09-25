@@ -351,7 +351,7 @@ pub fn build_delivery_groups(
 
     let is_single_group = groups.len() == 1;
 
-    groups
+    Ok(groups
         .into_iter()
         .map(|(group_key, line_item_ids)| {
             let selected_shipping_option_id =
@@ -372,7 +372,7 @@ pub fn build_delivery_groups(
                 available_shipping_options: Vec::new(),
             }
         })
-        .collect()
+        .collect())
 }
 
 pub fn sanitize_line_item_metadata(metadata: Value) -> Value {
