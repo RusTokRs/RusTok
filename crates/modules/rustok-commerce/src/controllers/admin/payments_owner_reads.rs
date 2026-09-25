@@ -27,7 +27,8 @@ use crate::dto::{
     CompleteRefundInput, CreateRefundInput, PaymentCollectionResponse, RefundResponse,
 };
 
-const MAX_REFUND_CREATION_KEY_LENGTH: usize = 191;
+const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 191;
+const MAX_REFUND_CREATION_KEY_LENGTH: usize = MAX_IDEMPOTENCY_KEY_LENGTH;
 const ADMIN_PAYMENT_READ_OWNER: &str = "rustok_payment.admin_read";
 const ADMIN_PAYMENT_READ_BOUNDARY: &str = "commerce_admin_payment_read_http";
 const ADMIN_PAYMENT_COMMAND_OWNER: &str = "rustok_payment.admin_collection_command";
@@ -80,7 +81,7 @@ fn require_command_idempotency_key(headers: &HeaderMap) -> Result<String, HttpEr
         .trim()
         .to_string();
 
-    if value.is_empty() || value.len() > MAX_REFUND_CREATION_KEY_LENGTH {
+    if value.is_empty() || value.len() > MAX_IDEMPOTENCY_KEY_LENGTH {
         return Err(HttpError::new(
             StatusCode::BAD_REQUEST,
             "commerce_admin_idempotency_key_invalid",
@@ -487,7 +488,10 @@ pub async fn show_payment_collection(
     post,
     path = "/admin/payment-collections/{id}/authorize",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Payment collection ID")),
+    params(
+        ("id" = Uuid, Path, description = "Payment collection ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
+    ),
     request_body = AuthorizePaymentInput,
     responses((status = 200, description = "Payment collection authorized", body = PaymentCollectionResponse), (status = 401, description = "Unauthorized"), (status = 404, description = "Payment collection not found"))
 )]
@@ -541,7 +545,10 @@ pub async fn authorize_payment_collection(
     post,
     path = "/admin/payment-collections/{id}/capture",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Payment collection ID")),
+    params(
+        ("id" = Uuid, Path, description = "Payment collection ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
+    ),
     request_body = CapturePaymentInput,
     responses((status = 200, description = "Payment collection captured", body = PaymentCollectionResponse), (status = 401, description = "Unauthorized"), (status = 404, description = "Payment collection not found"))
 )]
@@ -595,7 +602,10 @@ pub async fn capture_payment_collection(
     post,
     path = "/admin/payment-collections/{id}/cancel",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Payment collection ID")),
+    params(
+        ("id" = Uuid, Path, description = "Payment collection ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
+    ),
     request_body = CancelPaymentInput,
     responses((status = 200, description = "Payment collection cancelled", body = PaymentCollectionResponse), (status = 401, description = "Unauthorized"), (status = 404, description = "Payment collection not found"))
 )]
@@ -803,7 +813,10 @@ pub async fn show_refund(
     post,
     path = "/admin/refunds/{id}/complete",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Refund ID")),
+    params(
+        ("id" = Uuid, Path, description = "Refund ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
+    ),
     request_body = CompleteRefundInput,
     responses((status = 200, description = "Refund completed", body = RefundResponse), (status = 401, description = "Unauthorized"), (status = 404, description = "Refund not found"))
 )]
@@ -858,7 +871,10 @@ pub async fn complete_refund(
     post,
     path = "/admin/refunds/{id}/cancel",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Refund ID")),
+    params(
+        ("id" = Uuid, Path, description = "Refund ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
+    ),
     request_body = CancelRefundInput,
     responses((status = 200, description = "Refund cancelled", body = RefundResponse), (status = 401, description = "Unauthorized"), (status = 404, description = "Refund not found"))
 )]
