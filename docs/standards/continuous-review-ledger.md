@@ -20,6 +20,16 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ---
 
 
+## 2026-09-25 Commerce Order owner-port diagnostic hardening
+
+The Order owner port still emitted complete database/core `Debug` payloads, raw tenant IDs,
+validation text, and lifecycle transition values from checkout identity/completion paths.
+Those diagnostics are now centralized as bounded context and error-shape facts; the public
+PortError envelopes remain stable. The broad ecommerce verifier and canonical fixture now
+require the bounded Order contract and explicitly reject the removed raw patterns.
+
+Maintainer runtime evidence, Cargo build, tests, and verifier execution remain unrun.
+
 ## 2026-09-25 Commerce Admin shared HTTP error-envelope hardening
 
 The shared Commerce admin HTTP helper used to accept a generic Debug error and log
