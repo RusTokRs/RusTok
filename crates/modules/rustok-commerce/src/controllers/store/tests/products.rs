@@ -147,12 +147,14 @@ async fn storefront_line_item_resolution_uses_backend_variant_title_and_price() 
         .first()
         .expect("published product must include variant");
     let pricing_service = PricingService::new(db.clone(), mock_transactional_event_bus());
+    let product_catalog_read_port = CatalogService::new(db.clone(), mock_transactional_event_bus());
     let pricing_context = pricing_context("EUR", 2);
 
     let resolved = resolve_store_line_item_input(
         &db,
         tenant_id,
         StoreLineItemResolution {
+            product_catalog_read_port: &product_catalog_read_port,
             pricing_read_port: &pricing_service,
             pricing_context: &pricing_context,
             locale: "de",
@@ -210,12 +212,14 @@ async fn storefront_line_item_resolution_rejects_missing_price_for_cart_currency
         .first()
         .expect("published product must include variant");
     let pricing_service = PricingService::new(db.clone(), mock_transactional_event_bus());
+    let product_catalog_read_port = CatalogService::new(db.clone(), mock_transactional_event_bus());
     let pricing_context = pricing_context("USD", 1);
 
     let error = resolve_store_line_item_input(
         &db,
         tenant_id,
         StoreLineItemResolution {
+            product_catalog_read_port: &product_catalog_read_port,
             pricing_read_port: &pricing_service,
             pricing_context: &pricing_context,
             locale: "de",
@@ -260,12 +264,14 @@ async fn storefront_line_item_resolution_falls_back_to_first_product_translation
         .first()
         .expect("published product must include variant");
     let pricing_service = PricingService::new(db.clone(), mock_transactional_event_bus());
+    let product_catalog_read_port = CatalogService::new(db.clone(), mock_transactional_event_bus());
     let pricing_context = pricing_context("EUR", 1);
 
     let resolved = resolve_store_line_item_input(
         &db,
         tenant_id,
         StoreLineItemResolution {
+            product_catalog_read_port: &product_catalog_read_port,
             pricing_read_port: &pricing_service,
             pricing_context: &pricing_context,
             locale: "fr",
@@ -300,12 +306,14 @@ async fn storefront_line_item_resolution_returns_not_found_for_unknown_variant()
     support::ensure_commerce_schema(&db).await;
     let tenant_id = Uuid::new_v4();
     let pricing_service = PricingService::new(db.clone(), mock_transactional_event_bus());
+    let product_catalog_read_port = CatalogService::new(db.clone(), mock_transactional_event_bus());
     let pricing_context = pricing_context("EUR", 1);
 
     let error = resolve_store_line_item_input(
         &db,
         tenant_id,
         StoreLineItemResolution {
+            product_catalog_read_port: &product_catalog_read_port,
             pricing_read_port: &pricing_service,
             pricing_context: &pricing_context,
             locale: "de",
@@ -349,6 +357,7 @@ async fn storefront_line_item_resolution_rejects_quantity_above_channel_visible_
         .first()
         .expect("published product must include variant");
     let pricing_service = PricingService::new(db.clone(), mock_transactional_event_bus());
+    let product_catalog_read_port = CatalogService::new(db.clone(), mock_transactional_event_bus());
     let pricing_context = pricing_context("EUR", 1);
     set_stock_location_channel_visibility(&db, tenant_id, &["mobile-app"]).await;
 
@@ -356,6 +365,7 @@ async fn storefront_line_item_resolution_rejects_quantity_above_channel_visible_
         &db,
         tenant_id,
         StoreLineItemResolution {
+            product_catalog_read_port: &product_catalog_read_port,
             pricing_read_port: &pricing_service,
             pricing_context: &pricing_context,
             locale: "de",
