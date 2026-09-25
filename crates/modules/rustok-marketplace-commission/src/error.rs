@@ -3,6 +3,17 @@ use uuid::Uuid;
 
 pub type MarketplaceCommissionResult<T> = Result<T, MarketplaceCommissionError>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MarketplaceAllocationBoundaryKind {
+    Validation,
+    NotFound,
+    Conflict,
+    Forbidden,
+    Unavailable,
+    Timeout,
+    InvariantViolation,
+}
+
 #[derive(Debug, Error)]
 pub enum MarketplaceCommissionError {
     #[error("commission rule {0} was not found")]
@@ -24,6 +35,7 @@ pub enum MarketplaceCommissionError {
         code: String,
         message: String,
         retryable: bool,
+        kind: MarketplaceAllocationBoundaryKind,
     },
     #[error(transparent)]
     Database(#[from] sea_orm::DbErr),
