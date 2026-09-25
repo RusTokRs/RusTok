@@ -76,6 +76,7 @@ for (const [source, label] of [
   [customer, 'customer read port'],
   [inventory, 'inventory reservation port'],
   [order, 'order generic checkout port'],
+  [product, 'product catalog read port'],
   [orderCompensation, 'order checkout compensation port'],
   [orderPaymentSettlement, 'order checkout payment settlement port'],
   [orderRecovery, 'order checkout recovery adapter'],
@@ -545,8 +546,6 @@ requireAny(orderRecovery, [
   '"order.checkout_recovery_validation"',
   'code = "order.checkout_recovery_validation"',
 ], 'order recovery validation code');
-
-const productRequired = product;
 
 const required = [
   [pricing, [
