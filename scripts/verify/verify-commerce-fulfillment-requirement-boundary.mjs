@@ -78,18 +78,20 @@ forbidText(plan, 'shipping_profile_slug: item.shipping_profile_slug.unwrap_or', 
 forbidText(storefrontGraphql, 'FulfillmentService::new(', 'GraphQL cart shipping must use owner port');
 
 for (const marker of [
-  'Host-composed owner capabilities available to every mounted Commerce GraphQL resolver.',
+  'Payment is mandatory for the Commerce module and is therefore required from host composition.',
   'requires PaymentProviderRegistry in host composition',
-  'requires FulfillmentProviderRegistry in host composition',
   'requires CommercePaymentReadRuntime in host composition',
   'requires CommercePaymentCommandRuntime in host composition',
-  'requires CommerceFulfillmentCommandRuntime in host composition',
-  'requires CommerceFulfillmentLifecycleReadRuntime in host composition',
-]) requireText(graphqlRuntime, marker, 'Mounted Commerce GraphQL must fail closed when owner runtime composition is missing');
-forbidText(graphqlRuntime, 'shared_get::<CommercePaymentReadRuntime>()\\n            .unwrap_or_else', 'Mounted GraphQL must not synthesize Payment read runtime');
-forbidText(graphqlRuntime, 'shared_get::<CommercePaymentCommandRuntime>()\\n            .unwrap_or_else', 'Mounted GraphQL must not synthesize Payment command runtime');
-forbidText(graphqlRuntime, 'shared_get::<CommerceFulfillmentCommandRuntime>()\\n            .unwrap_or_else', 'Mounted GraphQL must not synthesize Fulfillment command runtime');
-forbidText(graphqlRuntime, 'shared_get::<CommerceFulfillmentLifecycleReadRuntime>()\\n            .unwrap_or_else', 'Mounted GraphQL must not synthesize Fulfillment lifecycle read runtime');
+]) requireText(graphqlRuntime, marker, 'Mounted Commerce GraphQL must fail closed when mandatory Payment composition is missing');
+forbidText(graphqlRuntime, 'shared_get::<CommercePaymentReadRuntime>()\\n        .unwrap_or_else', 'Mounted GraphQL must not synthesize Payment read runtime');
+forbidText(graphqlRuntime, 'shared_get::<CommercePaymentCommandRuntime>()\\n        .unwrap_or_else', 'Mounted GraphQL must not synthesize Payment command runtime');
+
+const serverCommerceRuntime = read('apps/server/src/services/commerce_provider_runtime.rs');
+for (const marker of [
+  'shared_get::<rustok_commerce::graphql_runtime::CommercePaymentReadRuntime>()',
+  'shared_get::<rustok_commerce::graphql_runtime::CommercePaymentCommandRuntime>()',
+]) requireText(serverCommerceRuntime, marker, 'Host must compose Commerce Payment GraphQL runtimes');
+
 
 if (failures.length) {
   for (const failure of failures) console.error(failure);
