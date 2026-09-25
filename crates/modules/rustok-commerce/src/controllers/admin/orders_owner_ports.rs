@@ -434,7 +434,10 @@ pub async fn show_order(
     post,
     path = "/admin/orders/{id}/mark-paid",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Order ID")),
+    params(
+        ("id" = Uuid, Path, description = "Order ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
+    ),
     request_body = MarkPaidOrderInput,
     responses(
         (status = 200, description = "Order marked paid", body = OrderResponse),
@@ -495,7 +498,10 @@ pub async fn mark_order_paid(
     post,
     path = "/admin/orders/{id}/ship",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Order ID")),
+    params(
+        ("id" = Uuid, Path, description = "Order ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
+    ),
     request_body = ShipOrderInput,
     responses(
         (status = 200, description = "Order shipped", body = OrderResponse),
@@ -550,7 +556,10 @@ pub async fn ship_order(
     post,
     path = "/admin/orders/{id}/deliver",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Order ID")),
+    params(
+        ("id" = Uuid, Path, description = "Order ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
+    ),
     request_body = DeliverOrderInput,
     responses(
         (status = 200, description = "Order delivered", body = OrderResponse),
@@ -604,7 +613,10 @@ pub async fn deliver_order(
     post,
     path = "/admin/orders/{id}/cancel",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Order ID")),
+    params(
+        ("id" = Uuid, Path, description = "Order ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
+    ),
     request_body = CancelOrderInput,
     responses(
         (status = 200, description = "Order cancelled", body = OrderResponse),
