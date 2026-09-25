@@ -6,6 +6,30 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum OrderLineFulfillmentRequirement {
+    Digital,
+    Physical,
+}
+
+impl OrderLineFulfillmentRequirement {
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "digital" => Ok(Self::Digital),
+            "physical" => Ok(Self::Physical),
+            _ => Err(format!("unknown order fulfillment requirement `{value}`")),
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Digital => "digital",
+            Self::Physical => "physical",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreateOrderInput {
     pub customer_id: Option<Uuid>,
@@ -30,8 +54,9 @@ pub struct CreateOrderInput {
 pub struct CreateOrderLineItemInput {
     pub product_id: Option<Uuid>,
     pub variant_id: Option<Uuid>,
+    pub fulfillment_requirement: OrderLineFulfillmentRequirement,
     #[validate(length(min = 1, max = 100))]
-    pub shipping_profile_slug: String,
+    pub shipping_profile_slug: Option<String>,
     #[validate(length(max = 100))]
     pub seller_id: Option<String>,
     #[validate(length(max = 100))]
@@ -227,7 +252,8 @@ pub struct OrderLineItemResponse {
     pub order_id: Uuid,
     pub product_id: Option<Uuid>,
     pub variant_id: Option<Uuid>,
-    pub shipping_profile_slug: String,
+    pub fulfillment_requirement: OrderLineFulfillmentRequirement,
+    pub shipping_profile_slug: Option<String>,
     pub seller_id: Option<String>,
     pub sku: Option<String>,
     pub title: String,
@@ -348,7 +374,8 @@ mod tests {
             line_items: vec![CreateOrderLineItemInput {
                 product_id: None,
                 variant_id: None,
-                shipping_profile_slug: "default".to_string(),
+                fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                shipping_profile_slug: Some("default".to_string()),
                 seller_id: None,
                 sku: None,
                 title: "Item".to_string(),
