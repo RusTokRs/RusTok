@@ -7,8 +7,10 @@ use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
     TenantContext,
 };
-use rustok_order::error::OrderError;
-use rustok_order::{ListOrderProjectionsRequest, OrderService, ReadOrderProjectionRequest};
+use rustok_order::{
+    CancelOrderRequest, DeliverOrderRequest, ListOrderProjectionsRequest, MarkOrderPaidRequest,
+    ReadOrderProjectionRequest, ShipOrderRequest,
+};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
@@ -107,33 +109,6 @@ impl std::fmt::Debug for AdminOrderReadPortDiagnosticError<'_> {
     }
 }
 
-struct AdminOrderMutationDiagnosticContext {
-    tenant_id: &'static str,
-    actor_id: &'static str,
-    order_id: &'static str,
-    customer_id: &'static str,
-    operation: &'static str,
-}
-
-impl From<&AdminOrderErrorContext> for AdminOrderMutationDiagnosticContext {
-    fn from(context: &AdminOrderErrorContext) -> Self {
-        Self {
-            tenant_id: uuid_shape(context.tenant_id),
-            actor_id: uuid_shape(context.actor_id),
-            order_id: optional_uuid_shape(context.order_id),
-            customer_id: optional_uuid_shape(context.customer_id),
-            operation: context.operation,
-        }
-    }
-}
-
-struct AdminOrderMutationDiagnosticError;
-
-impl std::fmt::Debug for AdminOrderMutationDiagnosticError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("redacted")
-    }
-}
 
 fn uuid_shape(value: Uuid) -> &'static str {
     if value.is_nil() { "nil" } else { "non_nil" }
@@ -163,7 +138,7 @@ fn optional_text_presence_shape(value: Option<&str>) -> &'static str {
     }
 }
 
-fn admin_order_read_port_context(
+fn admin_order_port_context(
     tenant_id: Uuid,
     auth: &AuthContext,
     request_context: &RequestContext,
@@ -254,71 +229,11 @@ fn map_admin_order_port_error(
         public_code = code,
         status = %status,
         boundary = ADMIN_ORDER_BOUNDARY,
-        "commerce admin order owner read failed"
+        "commerce admin order owner-port operation failed"
     );
     HttpError::new(status, code, message)
 }
 
-fn admin_order_error_policy(error: &OrderError) -> AdminOrderHttpPolicy {
-    match error {
-        OrderError::Validation(_) => (
-            StatusCode::BAD_REQUEST,
-            "commerce_admin_order_invalid",
-            "Order request is invalid",
-            "validation",
-        ),
-        OrderError::OrderNotFound(_)
-        | OrderError::OrderReturnNotFound(_)
-        | OrderError::OrderChangeNotFound(_) => (
-            StatusCode::NOT_FOUND,
-            "commerce_admin_not_found",
-            "Commerce resource not found",
-            "not_found",
-        ),
-        OrderError::InvalidTransition { .. } => (
-            StatusCode::CONFLICT,
-            "commerce_admin_order_state_conflict",
-            "Order operation conflicts with the current state",
-            "state_conflict",
-        ),
-        OrderError::Database(_) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_order_storage_unavailable",
-            "Order storage is temporarily unavailable",
-            "database",
-        ),
-        OrderError::Core(_) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "commerce_admin_order_failed",
-            "Order operation could not be completed safely",
-            "core",
-        ),
-    }
-}
-
-fn map_admin_order_error(mut context: AdminOrderErrorContext, error: OrderError) -> HttpError {
-    if let OrderError::OrderNotFound(id) = &error {
-        context.order_id = Some(*id);
-    }
-    let (status, code, message, error_kind) = admin_order_error_policy(&error);
-    let context = AdminOrderMutationDiagnosticContext::from(&context);
-    let error = AdminOrderMutationDiagnosticError;
-    tracing::error!(
-        error = ?error,
-        owner = ADMIN_ORDER_OWNER,
-        tenant_id = %context.tenant_id,
-        actor_id = %context.actor_id,
-        order_id = ?context.order_id,
-        customer_id = ?context.customer_id,
-        operation = %context.operation,
-        error_kind,
-        public_code = code,
-        status = %status,
-        boundary = ADMIN_ORDER_BOUNDARY,
-        "commerce admin order operation failed"
-    );
-    HttpError::new(status, code, message)
-}
 
 /// Show admin ecommerce order
 #[utoipa::path(
@@ -347,7 +262,7 @@ pub async fn list_orders(
     let pagination = params.pagination.unwrap_or_default();
     let customer_id = params.customer_id;
     let read_context =
-        admin_order_read_port_context(tenant.id, &auth, &request_context, None, "list_orders");
+        admin_order_port_context(tenant.id, &auth, &request_context, None, "list_orders");
     let page = runtime
         .order_read_port()
         .list_order_projections(
@@ -411,7 +326,7 @@ pub async fn show_order(
     )?;
 
     let read_context =
-        admin_order_read_port_context(tenant.id, &auth, &request_context, Some(id), "get_order");
+        admin_order_port_context(tenant.id, &auth, &request_context, Some(id), "get_order");
     let order = runtime
         .order_read_port()
         .read_order_projection(
@@ -431,7 +346,7 @@ pub async fn show_order(
             )
         })?;
     let payment_context =
-        admin_order_read_port_context(tenant.id, &auth, &request_context, Some(id), "get_order_payment");
+        admin_order_port_context(tenant.id, &auth, &request_context, Some(id), "get_order_payment");
     let payment_collection = runtime
         .payment_order_read_port()
         .find_latest_collection_by_order(
@@ -441,7 +356,7 @@ pub async fn show_order(
         .await
         .map_err(|error| map_order_detail_payment_port_error(id, error))?;
 
-    let fulfillment_context = admin_order_read_port_context(
+    let fulfillment_context = admin_order_port_context(
         tenant.id,
         &auth,
         &request_context,
@@ -596,6 +511,7 @@ pub async fn mark_order_paid(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
     Json(input): Json<MarkPaidOrderInput>,
 ) -> HttpResult<Json<OrderResponse>> {
@@ -605,17 +521,21 @@ pub async fn mark_order_paid(
         "Permission denied: orders:update required",
     )?;
 
-    let order = OrderService::new(runtime.db_clone(), runtime.event_bus())
+    let command_context =
+        admin_order_port_context(tenant.id, &auth, &request_context, Some(id), "mark_paid");
+    let order = runtime
+        .order_admin_command_port()
         .mark_paid(
-            tenant.id,
-            auth.user_id,
-            id,
-            input.payment_id,
-            input.payment_method,
+            command_context.clone(),
+            MarkOrderPaidRequest {
+                order_id: id,
+                payment_id: input.payment_id,
+                payment_method: input.payment_method,
+            },
         )
         .await
         .map_err(|error| {
-            map_admin_order_error(
+            map_admin_order_port_error(
                 AdminOrderErrorContext::new(
                     tenant.id,
                     auth.user_id,
@@ -623,6 +543,8 @@ pub async fn mark_order_paid(
                     None,
                     "mark_order_paid",
                 ),
+                &command_context,
+                "mark_paid",
                 error,
             )
         })?;
@@ -647,6 +569,7 @@ pub async fn ship_order(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
     Json(input): Json<ShipOrderInput>,
 ) -> HttpResult<Json<OrderResponse>> {
@@ -656,18 +579,24 @@ pub async fn ship_order(
         "Permission denied: orders:update required",
     )?;
 
-    let order = OrderService::new(runtime.db_clone(), runtime.event_bus())
-        .ship_order(
-            tenant.id,
-            auth.user_id,
-            id,
-            input.tracking_number,
-            input.carrier,
+    let command_context =
+        admin_order_port_context(tenant.id, &auth, &request_context, Some(id), "ship");
+    let order = runtime
+        .order_admin_command_port()
+        .ship(
+            command_context.clone(),
+            ShipOrderRequest {
+                order_id: id,
+                tracking_number: input.tracking_number,
+                carrier: input.carrier,
+            },
         )
         .await
         .map_err(|error| {
-            map_admin_order_error(
+            map_admin_order_port_error(
                 AdminOrderErrorContext::new(tenant.id, auth.user_id, Some(id), None, "ship_order"),
+                &command_context,
+                "ship",
                 error,
             )
         })?;
@@ -692,6 +621,7 @@ pub async fn deliver_order(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
     Json(input): Json<DeliverOrderInput>,
 ) -> HttpResult<Json<OrderResponse>> {
@@ -701,11 +631,20 @@ pub async fn deliver_order(
         "Permission denied: orders:update required",
     )?;
 
-    let order = OrderService::new(runtime.db_clone(), runtime.event_bus())
-        .deliver_order(tenant.id, auth.user_id, id, input.delivered_signature)
+    let command_context =
+        admin_order_port_context(tenant.id, &auth, &request_context, Some(id), "deliver");
+    let order = runtime
+        .order_admin_command_port()
+        .deliver(
+            command_context.clone(),
+            DeliverOrderRequest {
+                order_id: id,
+                delivered_signature: input.delivered_signature,
+            },
+        )
         .await
         .map_err(|error| {
-            map_admin_order_error(
+            map_admin_order_port_error(
                 AdminOrderErrorContext::new(
                     tenant.id,
                     auth.user_id,
@@ -713,6 +652,8 @@ pub async fn deliver_order(
                     None,
                     "deliver_order",
                 ),
+                &command_context,
+                "deliver",
                 error,
             )
         })?;
@@ -737,6 +678,7 @@ pub async fn cancel_order(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
     Json(input): Json<CancelOrderInput>,
 ) -> HttpResult<Json<OrderResponse>> {
@@ -746,11 +688,20 @@ pub async fn cancel_order(
         "Permission denied: orders:update required",
     )?;
 
-    let order = OrderService::new(runtime.db_clone(), runtime.event_bus())
-        .cancel_order(tenant.id, auth.user_id, id, input.reason)
+    let command_context =
+        admin_order_port_context(tenant.id, &auth, &request_context, Some(id), "cancel");
+    let order = runtime
+        .order_admin_command_port()
+        .cancel(
+            command_context.clone(),
+            CancelOrderRequest {
+                order_id: id,
+                reason: input.reason,
+            },
+        )
         .await
         .map_err(|error| {
-            map_admin_order_error(
+            map_admin_order_port_error(
                 AdminOrderErrorContext::new(
                     tenant.id,
                     auth.user_id,
@@ -758,6 +709,8 @@ pub async fn cancel_order(
                     None,
                     "cancel_order",
                 ),
+                &command_context,
+                "cancel",
                 error,
             )
         })?;
