@@ -1,3 +1,14 @@
+use super::{
+    async_graphql_shim as async_graphql,
+    rustok_api_shim as rustok_api,
+    rustok_cart_shim as rustok_cart,
+    rustok_channel_shim as rustok_channel,
+    rustok_customer_shim as rustok_customer,
+    rustok_fulfillment_shim as rustok_fulfillment,
+    rustok_order_shim as rustok_order,
+    rustok_payment_shim as rustok_payment,
+    rustok_pricing_shim as rustok_pricing,
+};
 use async_graphql::{Context, FieldError, Object, Result};
 use rustok_api::Permission;
 use rustok_api::locale_tags_match;
@@ -372,7 +383,7 @@ impl CommerceQuery {
             )
             .await
             .map_err(|error| {
-                async_graphql::Error::new(format!("{}: {}", error.code, error.message))
+                async_graphql::Error::new(super::super::query_error_boundary::RegionGraphqlMessage::new(error))
             })?;
 
         Ok(regions
