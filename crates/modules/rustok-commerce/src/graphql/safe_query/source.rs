@@ -106,18 +106,3 @@ pub(crate) use super::{
 mod query_impl;
 
 pub(crate) use query_impl::CommerceQuery;
-
-// The unchanged compatibility resolver formats the Region owner code and message
-// before constructing a GraphQL error. Intercept only that exact source expression
-// inside the safe-query include so the complete typed PortError reaches the
-// transport mapper. Every other format invocation keeps standard Rust behavior.
-macro_rules! format {
-    ("{}: {}", $error:ident.code, $error_dup:ident.message) => {
-        super::query_error_boundary::RegionGraphqlMessage::new($error)
-    };
-    ($($tokens:tt)*) => {
-        ::std::format!($($tokens)*)
-    };
-}
-
-include!("../query.rs");
