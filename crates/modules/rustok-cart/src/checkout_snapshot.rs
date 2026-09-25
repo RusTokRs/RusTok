@@ -19,6 +19,316 @@ const READ_CHECKOUT_SNAPSHOT_OPERATION: &str = "read_checkout_snapshot";
 const COMPLETE_CHECKOUT_OPERATION: &str = "complete_checkout";
 const RELEASE_CHECKOUT_OPERATION: &str = "release_checkout";
 
+struct CartCheckoutContextFacts {
+    correlation_id_length: usize,
+    tenant_id_length: usize,
+    actor_kind: &'static str,
+    actor_id_length: usize,
+    claim_count: usize,
+    role_count: usize,
+    channel_present: bool,
+    channel_length: Option<usize>,
+    locale_length: usize,
+    causation_id_present: bool,
+    causation_id_length: Option<usize>,
+    traceparent_present: bool,
+    traceparent_length: Option<usize>,
+    idempotency_key_present: bool,
+    idempotency_key_length: Option<usize>,
+    deadline_ms: Option<u64>,
+}
+
+struct CartCheckoutPortErrorFacts {
+    error_kind: &'static str,
+    error_code_length: usize,
+    message_present: bool,
+    message_length: usize,
+    retryable: bool,
+}
+
+struct CartCheckoutServiceErrorFacts {
+    error_variant: &'static str,
+    text_field_count: usize,
+    text_total_length: usize,
+    uuid_field_count: usize,
+    uuid_non_nil_count: usize,
+    opaque_payload_present: bool,
+}
+
+fn cart_checkout_context_facts(context: &PortContext) -> CartCheckoutContextFacts {
+    let actor_kind = match &context.actor.kind {
+        rustok_api::PortActorKind::User => "user",
+        rustok_api::PortActorKind::Service => "service",
+        rustok_api::PortActorKind::System => "system",
+    };
+    CartCheckoutContextFacts {
+        correlation_id_length: context.correlation_id.chars().count(),
+        tenant_id_length: context.tenant_id.chars().count(),
+        actor_kind,
+        actor_id_length: context.actor.id.chars().count(),
+        claim_count: context.claims.len(),
+        role_count: context.roles.len(),
+        channel_present: context.channel.is_some(),
+        channel_length: context.channel.as_ref().map(|value| value.chars().count()),
+        locale_length: context.locale.chars().count(),
+        causation_id_present: context.causation_id.is_some(),
+        causation_id_length: context
+            .causation_id
+            .as_ref()
+            .map(|value| value.chars().count()),
+        traceparent_present: context.traceparent.is_some(),
+        traceparent_length: context
+            .traceparent
+            .as_ref()
+            .map(|value| value.chars().count()),
+        idempotency_key_present: context.idempotency_key.is_some(),
+        idempotency_key_length: context
+            .idempotency_key
+            .as_ref()
+            .map(|value| value.chars().count()),
+        deadline_ms: context.deadline_ms,
+    }
+}
+
+fn cart_checkout_port_error_facts(error: &PortError) -> CartCheckoutPortErrorFacts {
+    let error_kind = match error.kind {
+        PortErrorKind::Validation => "validation",
+        PortErrorKind::NotFound => "not_found",
+        PortErrorKind::Conflict => "conflict",
+        PortErrorKind::Forbidden => "forbidden",
+        PortErrorKind::Unavailable => "unavailable",
+        PortErrorKind::Timeout => "timeout",
+        PortErrorKind::InvariantViolation => "invariant_violation",
+    };
+    CartCheckoutPortErrorFacts {
+        error_kind,
+        error_code_length: error.code.chars().count(),
+        message_present: !error.message.is_empty(),
+        message_length: error.message.chars().count(),
+        retryable: error.retryable,
+    }
+}
+
+fn cart_checkout_service_error_facts(error: &CartError) -> CartCheckoutServiceErrorFacts {
+    match error {
+        CartError::Validation(message) => CartCheckoutServiceErrorFacts {
+            error_variant: "validation",
+            text_field_count: 1,
+            text_total_length: message.chars().count(),
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: false,
+        },
+        CartError::CartNotFound(id) => CartCheckoutServiceErrorFacts {
+            error_variant: "cart_not_found",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 1,
+            uuid_non_nil_count: usize::from(!id.is_nil()),
+            opaque_payload_present: false,
+        },
+        CartError::CartLineItemNotFound(id) => CartCheckoutServiceErrorFacts {
+            error_variant: "line_item_not_found",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 1,
+            uuid_non_nil_count: usize::from(!id.is_nil()),
+            opaque_payload_present: false,
+        },
+        CartError::InvalidTransition { .. } => CartCheckoutServiceErrorFacts {
+            error_variant: "invalid_transition",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: false,
+        },
+        CartError::Database(_) => CartCheckoutServiceErrorFacts {
+            error_variant: "database",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: true,
+        },
+        CartError::TaxBoundary {
+            kind,
+            code,
+            message,
+            retryable,
+        }
+        | CartError::ShippingBoundary {
+            kind,
+            code,
+            message,
+            retryable,
+        } => CartCheckoutServiceErrorFacts {
+            error_variant: "foreign_boundary",
+            text_field_count: 2,
+            text_total_length: code.chars().count() + message.chars().count(),
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: matches!(
+                kind,
+                PortErrorKind::Unavailable
+                    | PortErrorKind::Timeout
+                    | PortErrorKind::InvariantViolation
+            ) || *retryable,
+        },
+    }
+}
+
+fn log_cart_checkout_port_error(
+    context: &PortContext,
+    owner_operation: &'static str,
+    phase: &'static str,
+    error: &PortError,
+) {
+    let context_facts = cart_checkout_context_facts(context);
+    let error_facts = cart_checkout_port_error_facts(error);
+    if matches!(
+        error.kind,
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation
+    ) {
+        tracing::error!(
+            owner = CART_CHECKOUT_OWNER,
+            owner_operation,
+            phase,
+            correlation_id_length = context_facts.correlation_id_length,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
+            error_kind = error_facts.error_kind,
+            error_code_length = error_facts.error_code_length,
+            error_message_present = error_facts.message_present,
+            error_message_length = error_facts.message_length,
+            retryable = error_facts.retryable,
+            boundary = CART_CHECKOUT_BOUNDARY,
+            "cart checkout owner boundary failed with bounded diagnostics"
+        );
+    } else {
+        tracing::warn!(
+            owner = CART_CHECKOUT_OWNER,
+            owner_operation,
+            phase,
+            correlation_id_length = context_facts.correlation_id_length,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
+            error_kind = error_facts.error_kind,
+            error_code_length = error_facts.error_code_length,
+            error_message_present = error_facts.message_present,
+            error_message_length = error_facts.message_length,
+            retryable = error_facts.retryable,
+            boundary = CART_CHECKOUT_BOUNDARY,
+            "cart checkout owner boundary was rejected with bounded diagnostics"
+        );
+    }
+}
+
+fn log_cart_checkout_service_error(
+    context: &PortContext,
+    owner_operation: &'static str,
+    service_operation: &'static str,
+    error: &CartError,
+    public_code: &'static str,
+    public_retryable: bool,
+    technical_failure: bool,
+) {
+    let context_facts = cart_checkout_context_facts(context);
+    let error_facts = cart_checkout_service_error_facts(error);
+    if technical_failure {
+        tracing::error!(
+            owner = CART_CHECKOUT_OWNER,
+            owner_operation,
+            service_operation,
+            correlation_id_length = context_facts.correlation_id_length,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
+            error_variant = error_facts.error_variant,
+            text_field_count = error_facts.text_field_count,
+            text_total_length = error_facts.text_total_length,
+            uuid_field_count = error_facts.uuid_field_count,
+            uuid_non_nil_count = error_facts.uuid_non_nil_count,
+            opaque_payload_present = error_facts.opaque_payload_present,
+            public_code,
+            public_retryable,
+            boundary = CART_CHECKOUT_BOUNDARY,
+            "cart checkout owner service operation failed with bounded diagnostics"
+        );
+    } else {
+        tracing::warn!(
+            owner = CART_CHECKOUT_OWNER,
+            owner_operation,
+            service_operation,
+            correlation_id_length = context_facts.correlation_id_length,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
+            error_variant = error_facts.error_variant,
+            text_field_count = error_facts.text_field_count,
+            text_total_length = error_facts.text_total_length,
+            uuid_field_count = error_facts.uuid_field_count,
+            uuid_non_nil_count = error_facts.uuid_non_nil_count,
+            opaque_payload_present = error_facts.opaque_payload_present,
+            public_code,
+            public_retryable,
+            boundary = CART_CHECKOUT_BOUNDARY,
+            "cart checkout owner service operation was rejected with bounded diagnostics"
+        );
+    }
+}
+
+
 /// Immutable, transport-neutral checkout snapshot owned by the cart module.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreparedCartCheckoutSnapshot {
@@ -124,55 +434,9 @@ fn log_cart_checkout_admission_rejection(
     admission_phase: &'static str,
     error: &PortError,
 ) {
-    match &error.kind {
-        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
-            tracing::error!(
-                error = ?error,
-                owner = CART_CHECKOUT_OWNER,
-                owner_operation,
-                admission_phase,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                actor = ?context.actor,
-                channel = ?context.channel,
-                locale = %context.locale,
-                causation_id = ?context.causation_id,
-                traceparent = ?context.traceparent,
-                idempotency_key = ?context.idempotency_key,
-                deadline_ms = ?context.deadline_ms,
-                internal_code = %error.code,
-                internal_message = %error.message,
-                error_kind = ?error.kind,
-                retryable = error.retryable,
-                boundary = CART_CHECKOUT_BOUNDARY,
-                "cart checkout owner admission failed"
-            );
-        }
-        _ => {
-            tracing::warn!(
-                error = ?error,
-                owner = CART_CHECKOUT_OWNER,
-                owner_operation,
-                admission_phase,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                actor = ?context.actor,
-                channel = ?context.channel,
-                locale = %context.locale,
-                causation_id = ?context.causation_id,
-                traceparent = ?context.traceparent,
-                idempotency_key = ?context.idempotency_key,
-                deadline_ms = ?context.deadline_ms,
-                internal_code = %error.code,
-                internal_message = %error.message,
-                error_kind = ?error.kind,
-                retryable = error.retryable,
-                boundary = CART_CHECKOUT_BOUNDARY,
-                "cart checkout owner admission was rejected"
-            );
-        }
-    }
+    log_cart_checkout_port_error(context, owner_operation, admission_phase, error);
 }
+
 
 #[async_trait]
 impl CartCheckoutPort for InProcessCartCheckoutPort {
@@ -367,57 +631,10 @@ fn map_cart_checkout_local_port_error(
     local_operation: &'static str,
     error: PortError,
 ) -> PortError {
-    match &error.kind {
-        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
-            tracing::error!(
-                error = ?error,
-                owner = "rustok_cart",
-                owner_operation,
-                local_operation,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                actor = ?context.actor,
-                channel = ?context.channel,
-                locale = %context.locale,
-                causation_id = ?context.causation_id,
-                traceparent = ?context.traceparent,
-                idempotency_key = ?context.idempotency_key,
-                deadline_ms = ?context.deadline_ms,
-                internal_code = %error.code,
-                internal_message = %error.message,
-                error_kind = ?error.kind,
-                retryable = error.retryable,
-                boundary = "cart_checkout_port",
-                "cart checkout local owner operation failed"
-            );
-        }
-        _ => {
-            tracing::warn!(
-                error = ?error,
-                owner = "rustok_cart",
-                owner_operation,
-                local_operation,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                actor = ?context.actor,
-                channel = ?context.channel,
-                locale = %context.locale,
-                causation_id = ?context.causation_id,
-                traceparent = ?context.traceparent,
-                idempotency_key = ?context.idempotency_key,
-                deadline_ms = ?context.deadline_ms,
-                internal_code = %error.code,
-                internal_message = %error.message,
-                error_kind = ?error.kind,
-                retryable = error.retryable,
-                boundary = "cart_checkout_port",
-                "cart checkout local owner operation was rejected"
-            );
-        }
-    }
-
+    log_cart_checkout_port_error(context, owner_operation, local_operation, &error);
     error
 }
+
 
 fn map_cart_checkout_service_error(
     context: &PortContext,
@@ -453,51 +670,18 @@ fn map_cart_checkout_service_error(
             ),
         ),
     };
-
-    if technical {
-        tracing::error!(
-            error = ?error,
-            owner = CART_CHECKOUT_OWNER,
-            owner_operation,
-            service_operation,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            actor = ?context.actor,
-            channel = ?context.channel,
-            locale = %context.locale,
-            causation_id = ?context.causation_id,
-            traceparent = ?context.traceparent,
-            idempotency_key = ?context.idempotency_key,
-            deadline_ms = ?context.deadline_ms,
-            public_code,
-            public_retryable,
-            boundary = CART_CHECKOUT_BOUNDARY,
-            "cart checkout owner service operation failed"
-        );
-    } else {
-        tracing::warn!(
-            error = ?error,
-            owner = CART_CHECKOUT_OWNER,
-            owner_operation,
-            service_operation,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            actor = ?context.actor,
-            channel = ?context.channel,
-            locale = %context.locale,
-            causation_id = ?context.causation_id,
-            traceparent = ?context.traceparent,
-            idempotency_key = ?context.idempotency_key,
-            deadline_ms = ?context.deadline_ms,
-            public_code,
-            public_retryable,
-            boundary = CART_CHECKOUT_BOUNDARY,
-            "cart checkout owner service operation was rejected"
-        );
-    }
-
+    log_cart_checkout_service_error(
+        context,
+        owner_operation,
+        service_operation,
+        &error,
+        public_code,
+        public_retryable,
+        technical,
+    );
     cart_error_to_port_error(error)
 }
+
 
 fn validate_prepare_input(input: &UpdateCartContextInput) -> Result<(), CartError> {
     input.validate().map_err(|error| {
@@ -511,36 +695,45 @@ fn parse_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.as_str()).map_err(|cause| {
+    Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
         let error = PortError::validation(
             "cart.tenant_id_invalid",
             "PortContext.tenant_id must be a UUID for cart checkout",
         );
+        let facts = cart_checkout_context_facts(context);
         tracing::warn!(
-            cause = ?cause,
-            error = ?error,
             owner = CART_CHECKOUT_OWNER,
             owner_operation,
             validation_phase = "tenant_id",
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            actor = ?context.actor,
-            channel = ?context.channel,
-            locale = %context.locale,
-            causation_id = ?context.causation_id,
-            traceparent = ?context.traceparent,
-            idempotency_key = ?context.idempotency_key,
-            deadline_ms = ?context.deadline_ms,
-            internal_code = %error.code,
-            internal_message = %error.message,
-            error_kind = ?error.kind,
+            correlation_id_length = facts.correlation_id_length,
+            tenant_id_length = facts.tenant_id_length,
+            actor_kind = facts.actor_kind,
+            actor_id_length = facts.actor_id_length,
+            claim_count = facts.claim_count,
+            role_count = facts.role_count,
+            channel_present = facts.channel_present,
+            channel_length = ?facts.channel_length,
+            locale_length = facts.locale_length,
+            causation_id_present = facts.causation_id_present,
+            causation_id_length = ?facts.causation_id_length,
+            traceparent_present = facts.traceparent_present,
+            traceparent_length = ?facts.traceparent_length,
+            idempotency_key_present = facts.idempotency_key_present,
+            idempotency_key_length = ?facts.idempotency_key_length,
+            deadline_ms = ?facts.deadline_ms,
+            parse_failed = true,
+            error_kind = "validation",
+            error_code_length = error.code.chars().count(),
+            error_message_present = !error.message.is_empty(),
+            error_message_length = error.message.chars().count(),
             retryable = error.retryable,
             boundary = CART_CHECKOUT_BOUNDARY,
-            "cart checkout owner tenant context was rejected"
+            "cart checkout owner tenant context was rejected with bounded diagnostics"
         );
         error
     })
 }
+
 
 fn snapshot_from_cart(cart: CartResponse) -> Result<PreparedCartCheckoutSnapshot, PortError> {
     let subtotal = cart.subtotal_amount;
@@ -717,7 +910,13 @@ fn merge_checkout_order_metadata(metadata: Value, order_id: Uuid) -> Value {
 fn cart_error_to_port_error(error: CartError) -> PortError {
     match error {
         CartError::Validation(message) => {
-            tracing::warn!(message = %message, "cart checkout owner validation failed");
+            tracing::warn!(
+                error_variant = "validation",
+                validation_message_present = !message.is_empty(),
+                validation_message_length = message.chars().count(),
+                boundary = CART_CHECKOUT_BOUNDARY,
+                "cart checkout owner validation failed with bounded diagnostics"
+            );
             PortError::validation(
                 "cart.checkout_validation",
                 "cart checkout request or projection is invalid",
@@ -731,8 +930,12 @@ fn cart_error_to_port_error(error: CartError) -> PortError {
             "cart.checkout_status_conflict",
             "cart status transition conflicts with checkout lifecycle",
         ),
-        CartError::Database(error) => {
-            tracing::error!(error = ?error, "cart checkout storage operation failed");
+        CartError::Database(_) => {
+            tracing::error!(
+                error_variant = "database",
+                boundary = CART_CHECKOUT_BOUNDARY,
+                "cart checkout storage operation failed"
+            );
             PortError::unavailable(
                 "cart.database_unavailable",
                 "cart storage is temporarily unavailable",
@@ -752,6 +955,7 @@ fn cart_error_to_port_error(error: CartError) -> PortError {
         } => PortError::new(kind, code, message, retryable),
     }
 }
+
 
 #[cfg(test)]
 mod tests {
