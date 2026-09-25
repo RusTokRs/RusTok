@@ -217,11 +217,16 @@ fn map_owner_error(error: MarketplaceCommissionError) -> PortError {
             code,
             message,
             retryable,
+            kind,
         } => PortError::new(
-            if retryable {
-                PortErrorKind::Unavailable
-            } else {
-                PortErrorKind::Conflict
+            match kind {
+                crate::error::MarketplaceAllocationBoundaryKind::Validation => PortErrorKind::Validation,
+                crate::error::MarketplaceAllocationBoundaryKind::NotFound => PortErrorKind::NotFound,
+                crate::error::MarketplaceAllocationBoundaryKind::Conflict => PortErrorKind::Conflict,
+                crate::error::MarketplaceAllocationBoundaryKind::Forbidden => PortErrorKind::Forbidden,
+                crate::error::MarketplaceAllocationBoundaryKind::Unavailable => PortErrorKind::Unavailable,
+                crate::error::MarketplaceAllocationBoundaryKind::Timeout => PortErrorKind::Timeout,
+                crate::error::MarketplaceAllocationBoundaryKind::InvariantViolation => PortErrorKind::InvariantViolation,
             },
             code,
             message,
