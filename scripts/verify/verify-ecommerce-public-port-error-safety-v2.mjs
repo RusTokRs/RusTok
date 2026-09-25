@@ -103,7 +103,7 @@ const cartCheckoutSections = {
   service: between(
     cart,
     'fn map_cart_checkout_service_error(',
-    'fn parse_tenant_id(',
+    'fn validate_prepare_input(',
   ),
   tenant: between(
     cart,
