@@ -1123,6 +1123,62 @@ Source inspection is not execution evidence.
   complete Product Admin retry identity retention, and require non-null explicit caller
   idempotency with no compatibility-generated lifecycle identity.
 
+## Audit 2026-09-25: Product owner-port diagnostic hardening
+
+- [x] Remove raw Product owner-port error, tenant, variant, and context values from
+  `rustok-product/src/ports.rs`; owner failures now retain bounded error-shape facts and
+  correlation-safe context facts while exposing stable public `PortError` messages.
+- [x] Account for every current `CommerceError` variant in the Product owner-port mapper,
+  including an explicit `DuplicateSku` conflict envelope instead of an accidental fallback.
+- [x] Extend `verify-ecommerce-public-port-error-safety-v2.mjs` with Product owner-port
+  diagnostic guards and require the bounded context/error fact contract.
+- [ ] Continue the broader correlation-safe mapper cleanup for remaining payment execution/
+  compensation, fulfillment, inventory, customer, tax, promotion, remaining ecommerce
+  adapters, and non-`PortError` public envelopes; compiler/runtime/test evidence remains
+  maintainer-owned.
+
+## Audit 2026-09-25: storefront auxiliary HTTP error safety
+
+- [x] Remove raw `PortError`, tenant/cart identity, actor, channel, locale, deadline, and
+  internal-code logging from the mounted storefront auxiliary controller path used by
+  `/store/regions` and `/store/shipping-options`.
+- [x] Remove the generic `Debug`-bounded storefront auxiliary public-error helper; its
+  callers now emit stable status/error-kind facts without serializing owner error values.
+- [x] Harden the legacy Product HTTP mapper in the same controller file so no unmounted
+  compatibility branch retains a raw owner error diagnostic that could regress into a
+  mounted path.
+- [x] Extend `verify-ecommerce-public-port-error-safety-v2.mjs` to guard the storefront
+  auxiliary controller and require its bounded diagnostic helpers.
+- [ ] Continue the broader non-`PortError` public-envelope and mounted owner-boundary audit
+  across remaining ecommerce controllers and transports.
+
+## Audit 2026-09-25: mounted storefront Cart and Order error safety
+
+- [x] Harden the mounted storefront Cart HTTP port mapper so raw `PortError`, tenant/cart
+  identifiers, and internal public-code values are not serialized into diagnostics.
+- [x] Harden the mounted storefront Order/Customer/Payment HTTP mappers so raw owner errors,
+  request context, customer/order identifiers, and internal error messages are not logged.
+- [x] Keep transport behavior stable while retaining bounded owner kind/code-length, identity
+  presence, retryability, correlation, and HTTP status facts needed for diagnosis.
+- [x] Extend `verify-ecommerce-public-port-error-safety-v2.mjs` to guard the mounted
+  storefront Cart and Order controllers against regression.
+- [ ] Continue the mounted non-`PortError` public-envelope audit and owner-port cleanup across
+  remaining ecommerce controllers/transports.
+
+## Audit 2026-09-25: Admin Order command owner-port cutover
+
+- [x] Route mounted `/admin/orders/{id}/mark-paid`, `/ship`, `/deliver`, and `/cancel`
+  handlers through the host-composed `OrderAdminCommandPort` instead of constructing
+  `OrderService` directly inside the Commerce HTTP controller.
+- [x] Forward typed `MarkOrderPaidRequest`, `ShipOrderRequest`, `DeliverOrderRequest`, and
+  `CancelOrderRequest` into the owner boundary and reuse the transport-neutral Order
+  `PortContext` for tenant, actor, locale, channel, and deadline semantics.
+- [x] Remove the controller-local legacy `OrderError` mutation mapper and its duplicate
+  diagnostic wrapper; command failures now use the owner-port `PortError` envelope.
+- [x] Extend the admin order/fulfillment verification guard to forbid direct OrderService
+  construction/lifecycle calls and require the owner command handoff.
+- [ ] Apply the same owner-port cutover discipline to remaining mounted Commerce handlers
+  still constructing foreign owner services directly.
 ## Change rules
 
 1. Update this file with every completed or newly discovered ecommerce task.

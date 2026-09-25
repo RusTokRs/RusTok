@@ -39,6 +39,10 @@ const channel = read('crates/modules/rustok-channel/src/ports.rs');
 const region = read('crates/modules/rustok-region/src/ports.rs');
 const cart = read('crates/modules/rustok-cart/src/checkout_snapshot.rs');
 const cartPromotion = read('crates/modules/rustok-cart/src/promotion_guard.rs');
+const product = read('crates/modules/rustok-product/src/ports.rs');
+const storefrontProductsLegacy = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
+const storefrontCarts = read('crates/modules/rustok-commerce/src/controllers/store/carts.rs');
+const storefrontOrders = read('crates/modules/rustok-commerce/src/controllers/store/orders.rs');
 const pricing = read('crates/modules/rustok-pricing/src/ports.rs');
 const payment = read('crates/modules/rustok-payment/src/ports.rs');
 const paymentCompensation = read('crates/modules/rustok-payment/src/checkout_compensation.rs');
@@ -75,6 +79,10 @@ for (const [source, label] of [
   [customer, 'customer read port'],
   [inventory, 'inventory reservation port'],
   [order, 'order generic checkout port'],
+  [product, 'product catalog read port'],
+  [storefrontProductsLegacy, 'storefront auxiliary product controller'],
+  [storefrontCarts, 'storefront cart controller'],
+  [storefrontOrders, 'storefront order controller'],
   [orderCompensation, 'order checkout compensation port'],
   [orderPaymentSettlement, 'order checkout payment settlement port'],
   [orderRecovery, 'order checkout recovery adapter'],
@@ -202,6 +210,71 @@ requireAll(cartPromotion, [
   'internal_message_length = error.message.chars().count()',
   'correlation_id = %context.correlation_id',
 ], 'cart promotion bounded diagnostics');
+
+forbidAll(product, [
+  'error = ?error',
+  'error = %error',
+  'internal_tenant_id = %context.tenant_id',
+  'tenant_id = %context.tenant_id',
+  'internal_message = %error.message',
+  'internal_code = %error.code',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+  'internal_variant_id = %variant_id',
+], 'product payload diagnostics');
+
+requireAll(product, [
+  'struct ProductPortContextFacts',
+  'struct ProductOwnerErrorFacts',
+  'fn product_port_context_facts(',
+  'fn product_owner_error_facts(',
+  'fn product_port_error_kind(',
+  'fn log_product_port_failure(',
+  'fn log_product_context_rejection(',
+  'correlation_id_length = context_facts.correlation_id_length',
+  'tenant_id_length = context_facts.tenant_id_length',
+  'actor_kind = context_facts.actor_kind',
+  'actor_id_length = context_facts.actor_id_length',
+  'claim_count = context_facts.claim_count',
+  'role_count = context_facts.role_count',
+  'channel_present = context_facts.channel_present',
+  'locale_length = context_facts.locale_length',
+  'causation_id_present = context_facts.causation_id_present',
+  'traceparent_present = context_facts.traceparent_present',
+  'idempotency_key_present = context_facts.idempotency_key_present',
+  'error_variant = error_facts.error_variant',
+  'text_field_count = error_facts.text_field_count',
+  'text_total_length = error_facts.text_total_length',
+  'uuid_field_count = error_facts.uuid_field_count',
+  'uuid_non_nil_count = error_facts.uuid_non_nil_count',
+  'opaque_payload_present = error_facts.opaque_payload_present',
+  'parse_failed = true',
+  'product.tenant_id_invalid',
+  'product.context_invalid',
+  'product.database_unavailable',
+  'product.product_not_found',
+  'product.variant_not_found',
+  'product.image_not_found',
+  'product.duplicate_handle',
+  'product.duplicate_sku',
+  'product.validation',
+  'product.no_variants',
+  'product.cannot_delete_only_variant',
+  'product.cannot_delete_published',
+  'product.invariant_violation',
+  '"product request context is invalid"',
+  '"product storage is temporarily unavailable"',
+  '"product request is invalid"',
+  '"product SKU conflicts with an existing product"',
+  '"product operation could not be completed safely"',
+  'product_error_to_port_error(',
+  'boundary = "product_catalog_read_port"',
+], 'product bounded diagnostics');
+
 
 forbidAll(pricing, [
   'format!("pricing storage unavailable: {error}")',
@@ -479,6 +552,84 @@ requireAny(orderRecovery, [
   '"order.checkout_recovery_validation"',
   'code = "order.checkout_recovery_validation"',
 ], 'order recovery validation code');
+
+forbidAll(storefrontProductsLegacy, [
+  'error = ?error',
+  'error = %error',
+  'tenant_id = %tenant_id',
+  'cart_id = ?cart_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'deadline_ms = ?context.deadline_ms',
+  'internal_code = %error.code',
+  'internal_message = %error.message',
+  'E: std::fmt::Debug',
+], 'storefront auxiliary payload diagnostics');
+
+requireAll(storefrontProductsLegacy, [
+  'fn storefront_port_error_kind(',
+  'tenant_non_nil = !tenant_id.is_nil()',
+  'cart_id_present = cart_id.is_some()',
+  'owner_error_kind = error_kind',
+  'owner_code_length = error.code.chars().count()',
+  'fn storefront_auxiliary_public_error(',
+  '"storefront auxiliary operation failed with bounded diagnostics"',
+  'error_kind = "database"',
+  'error_kind = "validation"',
+  'error_kind = "not_found"',
+  'error_kind = "unexpected_owner_error"',
+  '"storefront product operation failed with bounded diagnostics"',
+  '"storefront shipping-option owner read failed with bounded diagnostics"',
+], 'storefront auxiliary bounded diagnostics');
+
+forbidAll(storefrontCarts, [
+  'error = ?error',
+  'tenant_id = %tenant_id',
+  'cart_id = ?cart_id',
+  'public_code = %public.code',
+], 'storefront cart payload diagnostics');
+
+requireAll(storefrontCarts, [
+  'owner_error_kind',
+  'owner_code_length',
+  'tenant_non_nil = !tenant_id.is_nil()',
+  'cart_id_present = cart_id.is_some()',
+  '"storefront cart port operation failed with bounded diagnostics"',
+], 'storefront cart bounded diagnostics');
+
+forbidAll(storefrontOrders, [
+  'error = ?error',
+  'tenant_id = %context.tenant_id',
+  'user_id = %user_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+  'deadline_ms = ?context.deadline_ms',
+  'internal_code = %error.code',
+  'internal_message = %error.message',
+  'actor_id = %actor_id',
+  'customer_id = %customer_id',
+  'order_id = %order_id',
+], 'storefront order payload diagnostics');
+
+requireAll(storefrontOrders, [
+  'correlation_id = %context.correlation_id',
+  'tenant_id_length = context.tenant_id.chars().count()',
+  'actor_id_non_nil = !actor_id.is_nil()',
+  'customer_id_non_nil = !customer_id.is_nil()',
+  'order_id_non_nil = !order_id.is_nil()',
+  'owner_error_kind',
+  'owner_code_length',
+  'storefront customer read failed with bounded diagnostics',
+  'storefront customer read was rejected with bounded diagnostics',
+  'storefront order owner read failed with bounded diagnostics',
+  'storefront Order return command failed with bounded diagnostics',
+  'storefront Payment refund read failed with bounded diagnostics',
+], 'storefront order bounded diagnostics');
 
 const required = [
   [pricing, [
@@ -844,5 +995,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Channel, region, cart, pricing, payment collection/compensation, fulfillment, customer, inventory, order checkout, and marketplace payout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
+  '✔ Channel, region, cart, product, storefront auxiliary, storefront cart/order, pricing, payment collection/compensation, fulfillment, customer, inventory, order checkout, and marketplace payout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
 );

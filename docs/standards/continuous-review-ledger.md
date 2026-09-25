@@ -434,5 +434,64 @@ The control intentionally does not claim distributed transactionality with consu
 
 Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
 
+## 2026-09-25 Product owner-port diagnostic hardening
+
+The Product catalog read port still emitted raw owner error details and request identity
+values from its shared mapper path. The port now records bounded context facts
+(correlation/tenant/actor/channel/locale/causation/traceparent/idempotency presence and
+lengths) and bounded error-shape facts (variant, text/UUID counts, and opaque payload
+presence). Storage failures and variant-not-found diagnostics no longer expose backend
+error text or resource identifiers, and every Product `CommerceError` variant maps to a
+stable `PortError` envelope.
+
+The ecommerce public-port verifier now reads the Product owner port directly, rejects the
+former raw diagnostic patterns, requires the bounded fact helpers, and requires the stable
+error envelopes. The active Commerce `/store/products` list was already on the Product-owned
+HTTP capability before this slice and was not regressed or reintroduced through the legacy
+controller.
+
+Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
+
+## 2026-09-25 Storefront auxiliary HTTP error safety
+
+The mounted Commerce storefront controller still contained a shared auxiliary HTTP error
+boundary that serialized raw `PortError` and generic `Debug` error values while serving
+region and shipping-option requests. The helper now records only bounded owner/error-kind,
+retryability, tenant/cart presence, code-length, status, and stable operation facts. The
+generic public-error helper no longer requires `Debug` and no longer serializes its error
+value. The Product compatibility mapper in the same file was hardened to the same rule.
+
+The ecommerce public-port safety verifier now reads the mounted storefront controller and
+rejects the former raw diagnostic patterns while requiring the bounded helper contract.
+
+Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
+
+## 2026-09-25 Storefront Cart and Order HTTP error safety
+
+Mounted Commerce storefront Cart and Order transports still had raw owner diagnostics in
+shared HTTP mappers. Cart now logs only bounded owner kind/code-length, retryability,
+tenant/cart identity presence, and public status. Order Customer, Order read, return-command,
+and Payment refund mappers now retain bounded correlation/context facts and owner error shape
+without serializing raw `PortError`, tenant/user/customer/order identifiers, actor/channel
+values, internal codes, or internal messages.
+
+The ecommerce public-port verifier now includes these mounted Cart and Order controller files
+and rejects the former raw diagnostic patterns.
+
+Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
+
+## 2026-09-25 Admin Order command owner-port cutover
+
+Mounted Commerce Admin Order lifecycle commands previously constructed `OrderService`
+directly for mark-paid, ship, deliver, and cancel. The handlers now use the composed
+`OrderAdminCommandPort` with typed command requests and an explicit owner-port context.
+The legacy controller-local `OrderError` mutation mapper was removed in favor of the
+existing typed `PortError` HTTP envelope path.
+
+The admin order/fulfillment verification guard now forbids direct `OrderService`
+construction and lifecycle calls in the mounted controller and requires the typed command
+owner handoff.
+
+Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
 ## Completed Rounds Archive
 _No completed rounds yet. Round 1 is currently in progress._

@@ -42,60 +42,78 @@ fn map_storefront_customer_port_error(
     user_id: Uuid,
     consumer_operation: &'static str,
 ) -> HttpError {
-    let public = port_error_to_http_error(error.clone());
-    match &error.kind {
-        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
-            tracing::error!(
-                error = ?error,
-                owner = STOREFRONT_ORDER_CUSTOMER_OWNER,
-                owner_operation = STOREFRONT_ORDER_CUSTOMER_OWNER_OPERATION,
-                consumer_operation,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                user_id = %user_id,
-                actor = ?context.actor,
-                channel = ?context.channel,
-                locale = %context.locale,
-                causation_id = ?context.causation_id,
-                traceparent = ?context.traceparent,
-                idempotency_key = ?context.idempotency_key,
-                deadline_ms = ?context.deadline_ms,
-                internal_code = %error.code,
-                internal_message = %error.message,
-                error_kind = ?error.kind,
-                retryable = error.retryable,
-                public_code = %public.code,
-                status = %public.status,
-                boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
-                "storefront customer read failed"
-            );
-        }
-        _ => {
-            tracing::warn!(
-                error = ?error,
-                owner = STOREFRONT_ORDER_CUSTOMER_OWNER,
-                owner_operation = STOREFRONT_ORDER_CUSTOMER_OWNER_OPERATION,
-                consumer_operation,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                user_id = %user_id,
-                actor = ?context.actor,
-                channel = ?context.channel,
-                locale = %context.locale,
-                causation_id = ?context.causation_id,
-                traceparent = ?context.traceparent,
-                idempotency_key = ?context.idempotency_key,
-                deadline_ms = ?context.deadline_ms,
-                internal_code = %error.code,
-                internal_message = %error.message,
-                error_kind = ?error.kind,
-                retryable = error.retryable,
-                public_code = %public.code,
-                status = %public.status,
-                boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
-                "storefront customer read was rejected"
-            );
-        }
+    let owner_error_kind = match &error.kind {
+        PortErrorKind::Validation => "validation",
+        PortErrorKind::NotFound => "not_found",
+        PortErrorKind::Conflict => "conflict",
+        PortErrorKind::Forbidden => "forbidden",
+        PortErrorKind::Unavailable => "unavailable",
+        PortErrorKind::Timeout => "timeout",
+        PortErrorKind::InvariantViolation => "invariant_violation",
+    };
+    let owner_code_length = error.code.chars().count();
+    let retryable = error.retryable;
+    let public = port_error_to_http_error(error);
+    let critical = matches!(
+        public.status,
+        StatusCode::SERVICE_UNAVAILABLE
+            | StatusCode::GATEWAY_TIMEOUT
+            | StatusCode::INTERNAL_SERVER_ERROR
+    );
+    if critical {
+        tracing::error!(
+            owner = STOREFRONT_ORDER_CUSTOMER_OWNER,
+            owner_operation = STOREFRONT_ORDER_CUSTOMER_OWNER_OPERATION,
+            consumer_operation,
+            correlation_id = %context.correlation_id,
+            tenant_id_length = context.tenant_id.chars().count(),
+            actor_kind = match &context.actor.kind {
+                rustok_api::PortActorKind::User => "user",
+                rustok_api::PortActorKind::Service => "service",
+                rustok_api::PortActorKind::System => "system",
+            },
+            actor_id_length = context.actor.id.chars().count(),
+            user_id_non_nil = !user_id.is_nil(),
+            channel_present = context.channel.is_some(),
+            channel_length = context.channel.as_ref().map(|value| value.chars().count()),
+            locale_length = context.locale.chars().count(),
+            causation_id_present = context.causation_id.is_some(),
+            traceparent_present = context.traceparent.is_some(),
+            idempotency_key_present = context.idempotency_key.is_some(),
+            owner_error_kind,
+            owner_code_length,
+            retryable,
+            public_status = %public.status,
+            boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
+            "storefront customer read failed with bounded diagnostics"
+        );
+    } else {
+        tracing::warn!(
+            owner = STOREFRONT_ORDER_CUSTOMER_OWNER,
+            owner_operation = STOREFRONT_ORDER_CUSTOMER_OWNER_OPERATION,
+            consumer_operation,
+            correlation_id = %context.correlation_id,
+            tenant_id_length = context.tenant_id.chars().count(),
+            actor_kind = match &context.actor.kind {
+                rustok_api::PortActorKind::User => "user",
+                rustok_api::PortActorKind::Service => "service",
+                rustok_api::PortActorKind::System => "system",
+            },
+            actor_id_length = context.actor.id.chars().count(),
+            user_id_non_nil = !user_id.is_nil(),
+            channel_present = context.channel.is_some(),
+            channel_length = context.channel.as_ref().map(|value| value.chars().count()),
+            locale_length = context.locale.chars().count(),
+            causation_id_present = context.causation_id.is_some(),
+            traceparent_present = context.traceparent.is_some(),
+            idempotency_key_present = context.idempotency_key.is_some(),
+            owner_error_kind,
+            owner_code_length,
+            retryable,
+            public_status = %public.status,
+            boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
+            "storefront customer read was rejected with bounded diagnostics"
+        );
     }
     public
 }
@@ -188,27 +206,28 @@ fn map_storefront_order_port_error(
         ),
     };
     tracing::error!(
-        error = ?error,
         owner = STOREFRONT_ORDER_OWNER,
         owner_operation,
         consumer_operation,
         correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
-        actor_id = %actor_id,
-        customer_id = %customer_id,
-        order_id = %order_id,
-        actor = ?context.actor,
-        channel = ?context.channel,
-        locale = %context.locale,
-        deadline_ms = ?context.deadline_ms,
-        internal_code = %error.code,
-        internal_message = %error.message,
+        tenant_id_length = context.tenant_id.chars().count(),
+        actor_id_non_nil = !actor_id.is_nil(),
+        customer_id_non_nil = !customer_id.is_nil(),
+        order_id_non_nil = !order_id.is_nil(),
+        actor_kind = match &context.actor.kind {
+            rustok_api::PortActorKind::User => "user",
+            rustok_api::PortActorKind::Service => "service",
+            rustok_api::PortActorKind::System => "system",
+        },
+        channel_present = context.channel.is_some(),
+        channel_length = context.channel.as_ref().map(|value| value.chars().count()),
+        locale_length = context.locale.chars().count(),
+        owner_error_kind = error_kind,
+        owner_code_length = error.code.chars().count(),
         retryable = error.retryable,
-        error_kind,
-        public_code = code,
-        status = %status,
+        public_status = %status,
         boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
-        "storefront order owner read failed"
+        "storefront order owner read failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }

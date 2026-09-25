@@ -110,7 +110,13 @@ for (const [value, label] of [
   ['pub async fn deliver_order(', 'admin deliver-order handler'],
   ['pub async fn cancel_order(', 'admin cancel-order handler'],
   ['struct AdminOrderErrorContext {', 'order route context'],
-  ['fn map_admin_order_error(', 'context-aware order route mapper'],
+  ['fn map_admin_order_port_error(', 'context-aware order owner-port mapper'],
+  ['fn admin_order_port_context(', 'shared order port context'],
+  ['.order_admin_command_port()', 'admin order command owner-port handoff'],
+  ['MarkOrderPaidRequest {', 'mark-paid owner request'],
+  ['ShipOrderRequest {', 'ship owner request'],
+  ['DeliverOrderRequest {', 'deliver owner request'],
+  ['CancelOrderRequest {', 'cancel owner request'],
   ['let customer_id = params.customer_id;', 'customer filter capture'],
   ['list_orders_with_locale_fallback(', 'localized order list'],
   ['get_order_with_locale_fallback(', 'localized order detail'],
@@ -129,6 +135,17 @@ for (const value of [
   '.map_err(super::map_payment_error)?;',
   '.map_err(super::map_fulfillment_error)?;',
 ]) forbidText(orders, value, 'stale admin order shared mapper callsite');
+for (const value of [
+  'OrderService::new(',
+  'fn admin_order_error_policy(',
+  'fn map_admin_order_error(',
+  '.mark_paid(',
+  '.ship_order(',
+  '.deliver_order(',
+  '.cancel_order(',
+]) forbidText(orders, value, 'mounted admin order direct service/lifecycle callsite');
+
+
 
 for (const [value, label] of [
   ['pub async fn create_order_change(', 'admin order-change create'],
@@ -208,9 +225,9 @@ for (const [content, label] of [
 }
 
 const orderMapperUses =
-  orders.match(/map_admin_order_error\(\s+AdminOrderErrorContext::new\(/g) ?? [];
+  orders.match(/map_admin_order_port_error\(\s+AdminOrderErrorContext::new\(/g) ?? [];
 if (orderMapperUses.length !== 6) {
-  failures.push(`expected six context-aware admin order mapper callsites, found ${orderMapperUses.length}`);
+  failures.push(`expected six context-aware admin order owner-port mapper callsites, found ${orderMapperUses.length}`);
 }
 const sharedOrderMapperUses = orders.match(/\.map_err\(super::map_order_error\)\?;/g) ?? [];
 if (sharedOrderMapperUses.length !== 0) {
