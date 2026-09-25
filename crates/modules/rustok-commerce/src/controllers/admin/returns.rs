@@ -7,7 +7,7 @@ use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
     TenantContext,
 };
-use rustok_order::OrderService;
+use rustok_order::{CreateOrderReturnRequest, CancelOrderReturnRequest};
 use rustok_order::error::OrderError;
 use rustok_payment::error::PaymentError;
 use rustok_web::{HttpError, HttpResult};
@@ -229,6 +229,53 @@ fn admin_payment_port_error_policy(error: &PortError) -> AdminOrderReturnHttpPol
             "invariant_violation",
         ),
     }
+}
+
+fn admin_order_return_port_context(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    operation: &'static str,
+    resource_id: Uuid,
+    write: bool,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(actor_id.to_string()),
+        "en",
+        format!("commerce-admin-order-return:{}:{}", operation, resource_id),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    if write {
+        context.with_idempotency_key(format!(
+            "commerce-admin-order-return:{}:{}",
+            operation, resource_id
+        ))
+    } else {
+        context
+    }
+}
+
+fn map_admin_order_return_port_error(
+    context: &AdminOrderReturnErrorContext,
+    error: PortError,
+) -> HttpError {
+    let (status, code, message, error_kind) = admin_order_port_error_policy(&error);
+    tracing::error!(
+        owner = "rustok_order",
+        tenant_id = %context.tenant_id,
+        order_id = ?context.order_id,
+        return_id = ?context.return_id,
+        operation = %context.operation,
+        owner_error_kind = ?error.kind,
+        owner_code_length = error.code.chars().count(),
+        retryable = error.retryable,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = ADMIN_ORDER_RETURN_BOUNDARY,
+        "commerce admin order return owner port failed with bounded diagnostics"
+    );
+    HttpError::new(status, code, message)
 }
 
 fn admin_payment_error_policy(error: &PaymentError) -> AdminOrderReturnHttpPolicy {
@@ -469,15 +516,20 @@ pub async fn create_order_return(
         &[Permission::ORDERS_UPDATE],
         "Permission denied: orders:update required",
     )?;
-    let created = OrderService::new(runtime.db_clone(), runtime.event_bus())
-        .create_return(tenant.id, id, input)
+    let context = AdminOrderReturnErrorContext::new(
+        tenant.id,
+        Some(id),
+        None,
+        "create_return",
+    );
+    let created = runtime
+        .order_post_order_command_port()
+        .create_return(
+            admin_order_return_port_context(tenant.id, auth.user_id, "create_return", id, true),
+            CreateOrderReturnRequest { order_id: id, input },
+        )
         .await
-        .map_err(|error| {
-            map_admin_order_return_error(
-                AdminOrderReturnErrorContext::new(tenant.id, Some(id), None, "create_return"),
-                error,
-            )
-        })?;
+        .map_err(|error| map_admin_order_return_port_error(&context, error))?;
     Ok((StatusCode::CREATED, Json(created)))
 }
 
@@ -585,10 +637,23 @@ pub async fn list_order_returns(
     )?;
     let pagination = params.pagination.unwrap_or_default();
     let order_id = params.order_id;
-    let (items, total) = OrderService::new(runtime.db_clone(), runtime.event_bus())
-        .list_returns(
-            tenant.id,
-            ListOrderReturnsInput {
+    let context = AdminOrderReturnErrorContext::new(
+        tenant.id,
+        order_id,
+        None,
+        "list_returns",
+    );
+    let page = runtime
+        .order_read_port()
+        .list_order_return_projections(
+            admin_order_return_port_context(
+                tenant.id,
+                auth.user_id,
+                "list_returns",
+                order_id.unwrap_or(tenant.id),
+                false,
+            ),
+            rustok_order::ListOrderReturnProjectionsRequest {
                 page: pagination.page,
                 per_page: pagination.limit(),
                 order_id,
@@ -596,12 +661,9 @@ pub async fn list_order_returns(
             },
         )
         .await
-        .map_err(|error| {
-            map_admin_order_return_error(
-                AdminOrderReturnErrorContext::new(tenant.id, order_id, None, "list_returns"),
-                error,
-            )
-        })?;
+        .map_err(|error| map_admin_order_return_port_error(&context, error))?;
+    let items = page.items;
+    let total = page.total;
     Ok(Json(PaginatedResponse {
         data: items,
         meta: super::super::common::PaginationMeta::new(pagination.page, pagination.limit(), total),
@@ -630,15 +692,20 @@ pub async fn show_order_return(
         &[Permission::ORDERS_READ],
         "Permission denied: orders:read required",
     )?;
-    let item = OrderService::new(runtime.db_clone(), runtime.event_bus())
-        .get_return(tenant.id, id)
+    let context = AdminOrderReturnErrorContext::new(
+        tenant.id,
+        None,
+        Some(id),
+        "get_return",
+    );
+    let item = runtime
+        .order_read_port()
+        .read_order_return_projection(
+            admin_order_return_port_context(tenant.id, auth.user_id, "get_return", id, false),
+            rustok_order::ReadOrderReturnProjectionRequest { return_id: id },
+        )
         .await
-        .map_err(|error| {
-            map_admin_order_return_error(
-                AdminOrderReturnErrorContext::new(tenant.id, None, Some(id), "get_return"),
-                error,
-            )
-        })?;
+        .map_err(|error| map_admin_order_return_port_error(&context, error))?;
     Ok(Json(item))
 }
 
@@ -740,14 +807,19 @@ pub async fn cancel_order_return(
         &[Permission::ORDERS_UPDATE],
         "Permission denied: orders:update required",
     )?;
-    let item = OrderService::new(runtime.db_clone(), runtime.event_bus())
-        .cancel_return(tenant.id, id, input)
+    let context = AdminOrderReturnErrorContext::new(
+        tenant.id,
+        None,
+        Some(id),
+        "cancel_return",
+    );
+    let item = runtime
+        .order_post_order_command_port()
+        .cancel_return(
+            admin_order_return_port_context(tenant.id, auth.user_id, "cancel_return", id, true),
+            rustok_order::CancelOrderReturnRequest { return_id: id, input },
+        )
         .await
-        .map_err(|error| {
-            map_admin_order_return_error(
-                AdminOrderReturnErrorContext::new(tenant.id, None, Some(id), "cancel_return"),
-                error,
-            )
-        })?;
+        .map_err(|error| map_admin_order_return_port_error(&context, error))?;
     Ok(Json(item))
 }
