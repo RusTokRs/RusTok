@@ -40,8 +40,9 @@ pub struct RegionReadProjection {
 /// Build the owner-controlled in-process adapter used by hosts that compose
 /// the Region module directly.
 pub fn in_process_region_read_port(
+    db: sea_orm::DatabaseConnection,
 ) -> std::sync::Arc<dyn RegionReadPort> {
-    std::sync::Arc::new(crate::RegionService::default())
+    std::sync::Arc::new(crate::RegionService::new(db))
 }
 
 /// Transport-neutral owner boundary for region read projections.
