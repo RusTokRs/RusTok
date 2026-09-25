@@ -40,6 +40,15 @@ const fulfillmentLib = read('crates/modules/rustok-fulfillment/src/lib.rs');
 const fulfillmentStage = read(
   'crates/modules/rustok-commerce/src/services/checkout_fulfillment_stages.rs',
 );
+const fulfillmentAdminCommand = read(
+  'crates/modules/rustok-fulfillment/src/admin_command.rs',
+);
+const fulfillmentCommerceOrchestration = read(
+  'crates/modules/rustok-commerce/src/services/fulfillment_orchestration.rs',
+);
+const fulfillmentCommerceFacade = read(
+  'crates/modules/rustok-commerce/src/services/fulfillment_orchestration_facade.rs',
+);
 const finalization = read('crates/modules/rustok-commerce/src/services/checkout_finalization.rs');
 const compensation = read(
   'crates/modules/rustok-commerce/src/services/checkout_compensation_owner_ports.rs',
@@ -124,6 +133,41 @@ for (const [source, value, label] of [
     'in_process_checkout_fulfillment_execution_port',
     'mounted fulfillment typed root factory',
   ],
+  [
+    fulfillmentAdminCommand,
+    'FulfillmentStatusKind::Pending | FulfillmentStatusKind::Shipped',
+    'fulfillment admin typed ship admission',
+  ],
+  [
+    fulfillmentAdminCommand,
+    'current.status_kind() == FulfillmentStatusKind::Shipped',
+    'fulfillment admin typed reship replay',
+  ],
+  [
+    fulfillmentAdminCommand,
+    'current.status_kind() != FulfillmentStatusKind::Delivered',
+    'fulfillment admin typed reship transition',
+  ],
+  [
+    fulfillmentAdminCommand,
+    'current.status_kind() == FulfillmentStatusKind::Cancelled',
+    'fulfillment admin typed cancel replay',
+  ],
+  [
+    fulfillmentAdminCommand,
+    'current.status_kind() == FulfillmentStatusKind::Delivered',
+    'fulfillment admin typed cancel transition',
+  ],
+  [
+    fulfillmentCommerceOrchestration,
+    'FulfillmentStatusKind::Cancelled',
+    'commerce fulfillment orchestration typed cancellation filter',
+  ],
+  [
+    fulfillmentCommerceFacade,
+    'current.status_kind() == FulfillmentStatusKind::Shipped',
+    'commerce fulfillment facade typed reship replay',
+  ],
   [finalization, 'let cart = match cart_status(&current)?', 'typed cart finalization dispatch'],
   [finalization, 'PaymentCollectionStatusKind::Captured', 'typed finalization payment admission'],
   [finalization, 'state.order.status_kind()', 'typed finalization order admission'],
@@ -187,6 +231,27 @@ for (const value of [
 ]) {
   forbidText(compensation, value, 'checkout compensation raw owner lifecycle status');
 }
+
+for (const value of [
+  'current.status.as_str()',
+  'current.status == "shipped"',
+  'current.status != "delivered"',
+  'current.status == "cancelled"',
+  'current.status == "delivered"',
+]) {
+  forbidText(fulfillmentAdminCommand, value, 'fulfillment admin raw lifecycle status');
+}
+
+forbidText(
+  fulfillmentCommerceOrchestration,
+  'fulfillment.status == "cancelled"',
+  'commerce fulfillment orchestration raw lifecycle status',
+);
+forbidText(
+  fulfillmentCommerceFacade,
+  'current.status == "shipped"',
+  'commerce fulfillment facade raw lifecycle status',
+);
 
 forbidText(
   fulfillmentLib,
