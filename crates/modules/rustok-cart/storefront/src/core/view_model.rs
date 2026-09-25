@@ -142,7 +142,7 @@ pub fn cart_line_item_view_model(
         quantity_label: item.quantity.to_string(),
         unit_price: money_value(&item.currency_code, &item.unit_price),
         total_price: money_value(&item.currency_code, &item.total_price),
-        shipping_profile_slug: item.shipping_profile_slug,
+        shipping_profile_slug: optional_display(item.shipping_profile_slug.clone(), &fallbacks.empty),
         seller_identity: optional_identity(item.seller_id, None)
             .unwrap_or_else(|| fallbacks.empty.clone()),
     }
