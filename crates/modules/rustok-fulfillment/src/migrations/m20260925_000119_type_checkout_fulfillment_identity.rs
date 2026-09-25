@@ -111,12 +111,19 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 #- '{checkout,fulfillment_key}'
             WHERE metadata #>> '{checkout,fulfillment_key}' IS NOT NULL;
 
-            UPDATE fulfillment_items
+            UPDATE fulfillment_items AS fi
             SET metadata = metadata
                 #- '{checkout,operation_id}'
                 #- '{checkout,order_plan_hash}'
                 #- '{checkout,fulfillment_index}'
-            WHERE metadata #>> '{checkout,operation_id}' IS NOT NULL;
+            FROM fulfillments AS f
+            WHERE fi.fulfillment_id = f.id
+              AND f.checkout_operation_id IS NOT NULL
+              AND f.checkout_fulfillment_index IS NOT NULL
+              AND f.checkout_plan_hash IS NOT NULL
+              AND btrim(fi.metadata #>> '{checkout,operation_id}') = f.checkout_operation_id::text
+              AND btrim(fi.metadata #>> '{checkout,order_plan_hash}') = f.checkout_plan_hash
+              AND btrim(fi.metadata #>> '{checkout,fulfillment_index}') = f.checkout_fulfillment_index::text;
 
             ALTER TABLE fulfillments
                 DROP CONSTRAINT ck_fulfillments_checkout_identity_migration;
@@ -358,7 +365,20 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 '$.checkout.order_plan_hash',
                 '$.checkout.fulfillment_index'
             )
-            WHERE json_extract(metadata, '$.checkout.operation_id') IS NOT NULL;
+            WHERE EXISTS (
+                SELECT 1
+                FROM fulfillments AS f
+                WHERE f.id = fulfillment_items.fulfillment_id
+                  AND f.checkout_operation_id IS NOT NULL
+                  AND f.checkout_fulfillment_index IS NOT NULL
+                  AND f.checkout_plan_hash IS NOT NULL
+                  AND lower(trim(json_extract(fulfillment_items.metadata, '$.checkout.operation_id')))
+                        = lower(f.checkout_operation_id)
+                  AND trim(json_extract(fulfillment_items.metadata, '$.checkout.order_plan_hash'))
+                        = f.checkout_plan_hash
+                  AND trim(json_extract(fulfillment_items.metadata, '$.checkout.fulfillment_index'))
+                        = CAST(f.checkout_fulfillment_index AS TEXT)
+            );
 
             CREATE TRIGGER fulfillments_checkout_identity_typed_insert
             BEFORE INSERT ON fulfillments
@@ -590,14 +610,24 @@ async fn install_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             )
             WHERE JSON_EXTRACT(metadata, '$.checkout.fulfillment_key') IS NOT NULL;
 
-            UPDATE fulfillment_items
-            SET metadata = JSON_REMOVE(
-                metadata,
+            UPDATE fulfillment_items AS fi
+            JOIN fulfillments AS f
+              ON f.id = fi.fulfillment_id
+            SET fi.metadata = JSON_REMOVE(
+                fi.metadata,
                 '$.checkout.operation_id',
                 '$.checkout.order_plan_hash',
                 '$.checkout.fulfillment_index'
             )
-            WHERE JSON_EXTRACT(metadata, '$.checkout.operation_id') IS NOT NULL;
+            WHERE f.checkout_operation_id IS NOT NULL
+              AND f.checkout_fulfillment_index IS NOT NULL
+              AND f.checkout_plan_hash IS NOT NULL
+              AND TRIM(JSON_UNQUOTE(JSON_EXTRACT(fi.metadata, '$.checkout.operation_id')))
+                    = LOWER(f.checkout_operation_id)
+              AND TRIM(JSON_UNQUOTE(JSON_EXTRACT(fi.metadata, '$.checkout.order_plan_hash')))
+                    = f.checkout_plan_hash
+              AND TRIM(JSON_UNQUOTE(JSON_EXTRACT(fi.metadata, '$.checkout.fulfillment_index')))
+                    = CAST(f.checkout_fulfillment_index AS CHAR);
 
             CREATE TRIGGER fulfillments_checkout_identity_typed_insert
             BEFORE INSERT ON fulfillments
