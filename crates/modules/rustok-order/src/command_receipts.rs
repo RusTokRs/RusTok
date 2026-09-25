@@ -116,24 +116,16 @@ pub(crate) fn replay_command<R: DeserializeOwned>(
 ) -> OrderResult<R> {
     if receipt.command_kind != expected_command_kind || receipt.request_hash != expected_request_hash
     {
-        return Err(OrderError::Validation(
-            "order command idempotency key conflicts with another request".to_string(),
-        ));
+        return Err(OrderError::IdempotencyConflict);
     }
     if receipt.status != RECEIPT_STATUS_COMPLETED
         || receipt.response_kind.as_deref() != Some(expected_response_kind)
         || receipt.completed_at.is_none()
     {
-        return Err(OrderError::Validation(
-            "order command receipt requires operator review".to_string(),
-        ));
+        return Err(OrderError::CommandReceiptCorrupt);
     }
-    let response = receipt.response_json.ok_or_else(|| {
-        OrderError::Validation("order command receipt requires operator review".to_string())
-    })?;
-    serde_json::from_value(response).map_err(|_| {
-        OrderError::Validation("order command receipt requires operator review".to_string())
-    })
+    let response = receipt.response_json.ok_or(OrderError::CommandReceiptCorrupt)?;
+    serde_json::from_value(response).map_err(|_| OrderError::CommandReceiptCorrupt)
 }
 
 pub(crate) async fn complete_command<R: Serialize + Clone>(
