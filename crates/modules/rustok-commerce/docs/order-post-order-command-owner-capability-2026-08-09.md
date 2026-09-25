@@ -31,11 +31,11 @@ The request contracts wrap the existing Order DTOs and stable resource identitie
 
 ## Boundary and error policy
 
-The port requires write admission through `PortContext`, validates tenant and actor identities, and maps `OrderError` into bounded `PortError` families.
+The port requires write admission through `PortContext`, validates tenant and actor identities, and maps `OrderError` into bounded `PortError` families. Post-order mutations are durably admitted through an owner-owned idempotency receipt committed atomically with the mutation; replay returns the stored response and payload conflicts are typed.
 
 Database/core details are never copied into public `PortError.message`. Diagnostics log stable operation/error variants plus correlation/resource shape without raw backend errors.
 
-This source slice does not claim durable replay receipts for post-order create operations. The mounted consumer cutover must preserve explicit caller context and the broader ecommerce production gate remains open until replay/runtime evidence is retained.
+The source slice now includes durable replay receipts for all six post-order owner commands. Mounted HTTP writes must provide a caller-owned `Idempotency-Key`; the broader ecommerce production gate remains open until replay/runtime evidence is retained.
 
 ## Explicitly not changed
 
