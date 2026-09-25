@@ -3,7 +3,7 @@ use rustok_inventory::{
     PublicChannelInventoryVariantProjectionInput, check_variant_availability_for_public_channel,
 };
 use rustok_pricing::ResolveProductPriceRequest;
-use rustok_product::{ProductCatalogReadPort, ProductFulfillmentRequirement, VariantProductProjectionRequest};
+use rustok_product::{ProductCatalogReadPort, ProductFulfillmentRequirement, StorefrontVariantProductProjectionRequest};
 use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
 use sea_orm::{DatabaseConnection, DbErr};
 use uuid::Uuid;
@@ -11,7 +11,6 @@ use uuid::Uuid;
 use crate::controllers::store::{ResolvedStoreLineItemInput, StoreLineItemResolution};
 use crate::{
     CommerceError, dto::AddCartLineItemInput,
-    storefront_channel::is_metadata_visible_for_public_channel,
     storefront_shipping::effective_shipping_profile_slug,
 };
 
@@ -247,26 +246,17 @@ pub(crate) async fn resolve_store_line_item_input(
     let product = product_catalog_read_port
         .read_variant_product_projection(
             port_context.clone(),
-            VariantProductProjectionRequest {
+            StorefrontVariantProductProjectionRequest {
                 variant_id: input.variant_id,
                 locale: Some(locale.to_string()),
                 fallback_locale: Some(default_locale.to_string()),
+                public_channel_slug: public_channel_slug.map(str::to_owned),
             },
         )
         .await
         .map_err(|error| {
             map_storefront_line_item_product_port_error(error, &port_context, input.variant_id)
         })?;
-
-    if product.status != rustok_product::entities::product::ProductStatus::Active
-        || product.published_at.is_none()
-        || !is_metadata_visible_for_public_channel(&product.metadata, public_channel_slug)
-    {
-        return Err(HttpError::not_found(
-            "commerce_store_not_found",
-            "Commerce resource not found",
-        ));
-    }
 
     let variant = product
         .variants
@@ -407,6 +397,7 @@ pub(crate) async fn validate_store_line_item_quantity(
                 variant_id,
                 locale: Some("en".to_string()),
                 fallback_locale: Some(rustok_api::PLATFORM_FALLBACK_LOCALE.to_string()),
+                public_channel_slug: public_channel_slug.map(str::to_owned),
             },
         )
         .await
