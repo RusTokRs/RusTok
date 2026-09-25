@@ -19,6 +19,7 @@ function canonicalCartPromotion() {
   return `
 struct CartPromotionOwnerErrorFacts {}
 fn cart_promotion_owner_error_facts() {}
+fn cart_promotion_port_error_kind() {}
 tracing::error!(
   correlation_id = %context.correlation_id,
   tenant_id_length = facts.tenant_id_length,
@@ -26,6 +27,7 @@ tracing::error!(
   actor_id_length = facts.actor_id_length,
   claim_count = facts.claim_count,
   operation = owner_operation,
+  error_kind = cart_promotion_port_error_kind(&error.kind),
   internal_code = %error.code,
   internal_message_present = !error.message.trim().is_empty(),
   internal_message_length = error.message.chars().count(),
