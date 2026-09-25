@@ -194,6 +194,29 @@ async fn restore_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
               AND checkout_fulfillment_index IS NOT NULL
               AND checkout_plan_hash IS NOT NULL;
 
+            UPDATE fulfillment_items AS fi
+            SET metadata = jsonb_set(
+                jsonb_set(
+                    jsonb_set(
+                        COALESCE(fi.metadata, '{}'::jsonb),
+                        '{checkout,operation_id}',
+                        to_jsonb(f.checkout_operation_id::text),
+                        true
+                    ),
+                    '{checkout,order_plan_hash}',
+                    to_jsonb(f.checkout_plan_hash),
+                    true
+                ),
+                '{checkout,fulfillment_index}',
+                to_jsonb(f.checkout_fulfillment_index),
+                true
+            )
+            FROM fulfillments AS f
+            WHERE fi.fulfillment_id = f.id
+              AND f.checkout_operation_id IS NOT NULL
+              AND f.checkout_fulfillment_index IS NOT NULL
+              AND f.checkout_plan_hash IS NOT NULL;
+
             ALTER TABLE fulfillments
                 DROP CONSTRAINT IF EXISTS ck_fulfillments_checkout_identity_typed;
             ALTER TABLE fulfillments
@@ -400,6 +423,40 @@ async fn restore_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             WHERE checkout_operation_id IS NOT NULL
               AND checkout_fulfillment_index IS NOT NULL
               AND checkout_plan_hash IS NOT NULL;
+
+            UPDATE fulfillment_items
+            SET metadata = json_set(
+                COALESCE(metadata, '{}'),
+                '$.checkout.operation_id',
+                    (SELECT f.checkout_operation_id
+                     FROM fulfillments AS f
+                     WHERE f.id = fulfillment_items.fulfillment_id
+                       AND f.checkout_operation_id IS NOT NULL
+                       AND f.checkout_fulfillment_index IS NOT NULL
+                       AND f.checkout_plan_hash IS NOT NULL),
+                '$.checkout.order_plan_hash',
+                    (SELECT f.checkout_plan_hash
+                     FROM fulfillments AS f
+                     WHERE f.id = fulfillment_items.fulfillment_id
+                       AND f.checkout_operation_id IS NOT NULL
+                       AND f.checkout_fulfillment_index IS NOT NULL
+                       AND f.checkout_plan_hash IS NOT NULL),
+                '$.checkout.fulfillment_index',
+                    (SELECT f.checkout_fulfillment_index
+                     FROM fulfillments AS f
+                     WHERE f.id = fulfillment_items.fulfillment_id
+                       AND f.checkout_operation_id IS NOT NULL
+                       AND f.checkout_fulfillment_index IS NOT NULL
+                       AND f.checkout_plan_hash IS NOT NULL)
+            )
+            WHERE EXISTS (
+                SELECT 1
+                FROM fulfillments AS f
+                WHERE f.id = fulfillment_items.fulfillment_id
+                  AND f.checkout_operation_id IS NOT NULL
+                  AND f.checkout_fulfillment_index IS NOT NULL
+                  AND f.checkout_plan_hash IS NOT NULL
+            );
 
             ALTER TABLE fulfillments DROP COLUMN checkout_plan_hash;
             ALTER TABLE fulfillments DROP COLUMN checkout_fulfillment_index;
@@ -608,6 +665,19 @@ async fn restore_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             WHERE checkout_operation_id IS NOT NULL
               AND checkout_fulfillment_index IS NOT NULL
               AND checkout_plan_hash IS NOT NULL;
+
+            UPDATE fulfillment_items AS fi
+            JOIN fulfillments AS f
+              ON f.id = fi.fulfillment_id
+            SET fi.metadata = JSON_SET(
+                COALESCE(fi.metadata, JSON_OBJECT()),
+                '$.checkout.operation_id', f.checkout_operation_id,
+                '$.checkout.order_plan_hash', f.checkout_plan_hash,
+                '$.checkout.fulfillment_index', f.checkout_fulfillment_index
+            )
+            WHERE f.checkout_operation_id IS NOT NULL
+              AND f.checkout_fulfillment_index IS NOT NULL
+              AND f.checkout_plan_hash IS NOT NULL;
 
             ALTER TABLE fulfillments
                 ADD COLUMN checkout_fulfillment_identity VARCHAR(191)
