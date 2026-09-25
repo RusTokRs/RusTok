@@ -332,11 +332,11 @@ pub(crate) fn product_catalog_command_runtime_for_current_graphql_scope(
         .unwrap_or_else(|_| ProductCatalogCommandRuntime::in_process(db, event_bus))
 }
 
-/// Host-composed owner capabilities available to every mounted Commerce GraphQL resolver.
+/// Host-composed owner capabilities available to mounted Commerce GraphQL resolvers.
 ///
-/// Mounted schema composition is fail-closed: owner runtimes and provider registries must already be
-/// present in `HostRuntimeContext`. Explicit in-process fallbacks remain limited to directly embedded
-/// compatibility schemas, where the caller constructs those adapters intentionally.
+/// Payment is mandatory for the Commerce module and is therefore required from host composition.
+/// Fulfillment remains an optional module capability; its GraphQL compatibility surfaces retain an
+/// explicit owner-owned in-process adapter when that capability is not composed.
 #[derive(Clone)]
 pub struct CommerceGraphqlRuntimeData {
     payment_provider_registry: PaymentProviderRegistry,
@@ -426,9 +426,7 @@ pub fn attach_schema_data(
         })?;
     let fulfillment_provider_registry = inputs
         .shared_get::<FulfillmentProviderRegistry>()
-        .ok_or_else(|| {
-            "commerce GraphQL requires FulfillmentProviderRegistry in host composition".to_string()
-        })?;
+        .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider);
 
     let payment_read_runtime = inputs
         .shared_get::<CommercePaymentReadRuntime>()
@@ -442,14 +440,12 @@ pub fn attach_schema_data(
         })?;
     let fulfillment_command_runtime = inputs
         .shared_get::<CommerceFulfillmentCommandRuntime>()
-        .ok_or_else(|| {
-            "commerce GraphQL requires CommerceFulfillmentCommandRuntime in host composition".to_string()
-        })?;
+        .unwrap_or_else(|| CommerceFulfillmentCommandRuntime::from_graphql_inputs(inputs));
     let fulfillment_lifecycle_read_runtime = inputs
         .shared_get::<CommerceFulfillmentLifecycleReadRuntime>()
-        .ok_or_else(|| {
-            "commerce GraphQL requires CommerceFulfillmentLifecycleReadRuntime in host composition".to_string()
-        })?;
+        .unwrap_or_else(|| {
+            CommerceFulfillmentLifecycleReadRuntime::in_process(inputs.db_clone())
+        });
 
     Ok(CommerceGraphqlRuntimeData {
         payment_provider_registry,
