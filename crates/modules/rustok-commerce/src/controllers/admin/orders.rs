@@ -7,10 +7,8 @@ use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
     TenantContext,
 };
-use rustok_fulfillment::FulfillmentError;
 use rustok_order::error::OrderError;
 use rustok_order::{ListOrderProjectionsRequest, OrderService, ReadOrderProjectionRequest};
-use rustok_payment::PaymentError;
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
@@ -31,143 +29,6 @@ const ADMIN_ORDER_DETAIL_FULFILLMENT_OWNER: &str = "rustok_fulfillment.admin_ord
 const ADMIN_ORDER_DETAIL_FULFILLMENT_OPERATION: &str = "find_fulfillment_by_order";
 
 type AdminOrderHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
-
-struct AdminOrderDetailOwnerErrorFacts {
-    error_variant: &'static str,
-    text_field_count: usize,
-    text_total_length: usize,
-    uuid_field_count: usize,
-    uuid_non_nil_count: usize,
-    opaque_payload_present: bool,
-}
-
-fn payment_detail_error_facts(error: &PaymentError) -> AdminOrderDetailOwnerErrorFacts {
-    match error {
-        PaymentError::PaymentCollectionNotFound(id)
-        | PaymentError::PaymentNotFound(id)
-        | PaymentError::RefundNotFound(id) => AdminOrderDetailOwnerErrorFacts {
-            error_variant: match error {
-                PaymentError::PaymentCollectionNotFound(_) => "payment_collection_not_found",
-                PaymentError::PaymentNotFound(_) => "payment_not_found",
-                PaymentError::RefundNotFound(_) => "refund_not_found",
-                _ => unreachable!(),
-            },
-            text_field_count: 0,
-            text_total_length: 0,
-            uuid_field_count: 1,
-            uuid_non_nil_count: if id.is_nil() { 0 } else { 1 },
-            opaque_payload_present: false,
-        },
-        PaymentError::Validation(message) => AdminOrderDetailOwnerErrorFacts {
-            error_variant: "validation",
-            text_field_count: 1,
-            text_total_length: message.chars().count(),
-            uuid_field_count: 0,
-            uuid_non_nil_count: 0,
-            opaque_payload_present: false,
-        },
-        PaymentError::InvalidTransition { from, to } => AdminOrderDetailOwnerErrorFacts {
-            error_variant: "state_conflict",
-            text_field_count: 2,
-            text_total_length: from.chars().count() + to.chars().count(),
-            uuid_field_count: 0,
-            uuid_non_nil_count: 0,
-            opaque_payload_present: false,
-        },
-        PaymentError::ProviderRejected { .. } => AdminOrderDetailOwnerErrorFacts {
-            error_variant: "provider_rejected",
-            text_field_count: 0,
-            text_total_length: 0,
-            uuid_field_count: 0,
-            uuid_non_nil_count: 0,
-            opaque_payload_present: true,
-        },
-        PaymentError::ProviderUnavailable { .. } => AdminOrderDetailOwnerErrorFacts {
-            error_variant: "provider_unavailable",
-            text_field_count: 0,
-            text_total_length: 0,
-            uuid_field_count: 0,
-            uuid_non_nil_count: 0,
-            opaque_payload_present: true,
-        },
-        PaymentError::ProviderInvalidResponse { .. } => AdminOrderDetailOwnerErrorFacts {
-            error_variant: "provider_invalid_response",
-            text_field_count: 0,
-            text_total_length: 0,
-            uuid_field_count: 0,
-            uuid_non_nil_count: 0,
-            opaque_payload_present: true,
-        },
-        PaymentError::ProviderOutcomeUnknown { .. } => AdminOrderDetailOwnerErrorFacts {
-            error_variant: "provider_outcome_unknown",
-            text_field_count: 0,
-            text_total_length: 0,
-            uuid_field_count: 0,
-            uuid_non_nil_count: 0,
-            opaque_payload_present: true,
-        },
-        PaymentError::ProviderConfiguration { .. } => AdminOrderDetailOwnerErrorFacts {
-            error_variant: "provider_configuration",
-            text_field_count: 0,
-            text_total_length: 0,
-            uuid_field_count: 0,
-            uuid_non_nil_count: 0,
-            opaque_payload_present: true,
-        },
-        PaymentError::Database(_) => AdminOrderDetailOwnerErrorFacts {
-            error_variant: "database",
-            text_field_count: 0,
-            text_total_length: 0,
-            uuid_field_count: 0,
-            uuid_non_nil_count: 0,
-            opaque_payload_present: true,
-        },
-    }
-}
-
-fn fulfillment_detail_error_facts(
-    error: &FulfillmentError,
-) -> AdminOrderDetailOwnerErrorFacts {
-    match error {
-        FulfillmentError::Validation(message) => AdminOrderDetailOwnerErrorFacts {
-            error_variant: "validation",
-            text_field_count: 1,
-            text_total_length: message.chars().count(),
-            uuid_field_count: 0,
-            uuid_non_nil_count: 0,
-            opaque_payload_present: false,
-        },
-        FulfillmentError::ShippingOptionNotFound(id)
-        | FulfillmentError::FulfillmentNotFound(id) => AdminOrderDetailOwnerErrorFacts {
-            error_variant: match error {
-                FulfillmentError::ShippingOptionNotFound(_) => "shipping_option_not_found",
-                FulfillmentError::FulfillmentNotFound(_) => "fulfillment_not_found",
-                _ => unreachable!(),
-            },
-            text_field_count: 0,
-            text_total_length: 0,
-            uuid_field_count: 1,
-            uuid_non_nil_count: if id.is_nil() { 0 } else { 1 },
-            opaque_payload_present: false,
-        },
-        FulfillmentError::InvalidTransition { from, to } => AdminOrderDetailOwnerErrorFacts {
-            error_variant: "state_conflict",
-            text_field_count: 2,
-            text_total_length: from.chars().count() + to.chars().count(),
-            uuid_field_count: 0,
-            uuid_non_nil_count: 0,
-            opaque_payload_present: false,
-        },
-        FulfillmentError::Database(_) => AdminOrderDetailOwnerErrorFacts {
-            error_variant: "database",
-            text_field_count: 0,
-            text_total_length: 0,
-            uuid_field_count: 0,
-            uuid_non_nil_count: 0,
-            opaque_payload_present: true,
-        },
-    }
-}
 
 struct AdminOrderErrorContext {
     tenant_id: Uuid,
