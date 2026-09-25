@@ -15,7 +15,6 @@ use rustok_product::{
 };
 use rustok_region::RegionListRequest;
 use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
-use sea_orm::EntityTrait;
 use uuid::Uuid;
 
 use super::{
@@ -88,18 +87,22 @@ fn map_storefront_product_error(
     HttpError::new(status, code, message)
 }
 
-fn map_storefront_product_database_error(
-    error: sea_orm::DbErr,
-    operation: &'static str,
+fn storefront_product_list_port_context(
     tenant_id: Uuid,
-    product_id: Option<Uuid>,
-) -> HttpError {
-    map_storefront_product_error(
-        ProductError::Database(error),
-        operation,
-        tenant_id,
-        product_id,
+    request_context: &RequestContext,
+    public_channel_slug: Option<&str>,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("rustok-commerce.storefront-product-list"),
+        request_context.locale.as_str(),
+        format!("commerce-store-products:list:{tenant_id}"),
     )
+    .with_deadline(std::time::Duration::from_secs(2));
+    match public_channel_slug {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
 }
 
 fn storefront_product_port_context(
