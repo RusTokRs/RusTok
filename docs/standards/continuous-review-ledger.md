@@ -465,5 +465,19 @@ The ecommerce public-port safety verifier now reads the mounted storefront contr
 rejects the former raw diagnostic patterns while requiring the bounded helper contract.
 
 Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
+
+## 2026-09-25 Storefront Cart and Order HTTP error safety
+
+Mounted Commerce storefront Cart and Order transports still had raw owner diagnostics in
+shared HTTP mappers. Cart now logs only bounded owner kind/code-length, retryability,
+tenant/cart identity presence, and public status. Order Customer, Order read, return-command,
+and Payment refund mappers now retain bounded correlation/context facts and owner error shape
+without serializing raw `PortError`, tenant/user/customer/order identifiers, actor/channel
+values, internal codes, or internal messages.
+
+The ecommerce public-port verifier now includes these mounted Cart and Order controller files
+and rejects the former raw diagnostic patterns.
+
+Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
 ## Completed Rounds Archive
 _No completed rounds yet. Round 1 is currently in progress._
