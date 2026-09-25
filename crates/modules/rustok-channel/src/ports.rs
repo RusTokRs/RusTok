@@ -26,7 +26,16 @@ pub struct ChannelReadRequest {
 /// Transport-neutral request for tenant channel list consumers.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChannelListRequest {
+    pub page: u64,
+    pub per_page: u64,
     pub include_inactive: bool,
+}
+
+/// A paginated tenant channel-read projection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelListProjectionPage {
+    pub items: Vec<ChannelReadProjection>,
+    pub total: u64,
 }
 
 /// Transport-neutral channel detail projection exposed by the channel owner module.
@@ -55,7 +64,7 @@ pub trait ChannelReadPort: Send + Sync {
         &self,
         context: PortContext,
         request: ChannelListRequest,
-    ) -> Result<Vec<ChannelReadProjection>, PortError>;
+    ) -> Result<ChannelListProjectionPage, PortError>;
 }
 
 #[async_trait]
@@ -108,16 +117,23 @@ impl ChannelReadPort for crate::ChannelService {
     ) -> Result<Vec<ChannelReadProjection>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context)?;
-        self.list_channel_details(tenant_id)
+        if request.page == 0 || request.per_page == 0 {
+            return Err(PortError::validation(
+                "channel.pagination_invalid",
+                "channel read port requires non-zero page and per_page",
+            ));
+        }
+        let (items, total) = self
+            .list_channel_details_page(tenant_id, request.page, request.per_page, request.include_inactive)
             .await
-            .map_err(map_channel_error)
-            .map(|items| {
-                items
-                    .into_iter()
-                    .filter(|detail| request.include_inactive || detail.channel.is_active)
-                    .map(|detail| ChannelReadProjection { detail })
-                    .collect()
-            })
+            .map_err(map_channel_error)?;
+        Ok(ChannelListProjectionPage {
+            items: items
+                .into_iter()
+                .map(|detail| ChannelReadProjection { detail })
+                .collect(),
+            total,
+        })
     }
 }
 
