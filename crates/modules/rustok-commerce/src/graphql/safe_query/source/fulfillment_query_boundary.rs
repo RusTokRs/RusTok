@@ -1,11 +1,10 @@
 use super::{
-    error::FulfillmentError, with_current_graphql_public_channel,
-    GRAPHQL_QUERY_FULFILLMENT_BOUNDARY, ShippingOptionAdminQueryError,
+    error::FulfillmentError, GRAPHQL_QUERY_FULFILLMENT_BOUNDARY, ShippingOptionAdminQueryError,
 };
 use ::rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use ::uuid::Uuid;
 
-fn shipping_option_query_context(
+pub(super) fn shipping_option_query_context(
     tenant_id: Uuid,
     query_field: &'static str,
     shipping_option_id: Option<Uuid>,
@@ -27,7 +26,7 @@ fn shipping_option_query_context(
     )
 }
 
-fn fulfillment_query_context(
+pub(super) fn fulfillment_query_context(
     tenant_id: Uuid,
     query_field: &'static str,
     operation: &'static str,
@@ -56,7 +55,7 @@ fn with_current_graphql_public_channel(context: PortContext) -> PortContext {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn map_shipping_option_lookup_port_error(
+pub(super) fn map_shipping_option_lookup_port_error(
     error: PortError,
     context: &PortContext,
     query_field: &'static str,
@@ -99,7 +98,7 @@ fn map_shipping_option_lookup_port_error(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn map_shipping_option_port_error(
+pub(super) fn map_shipping_option_port_error(
     error: PortError,
     context: &PortContext,
     query_field: &'static str,
@@ -132,7 +131,7 @@ fn map_shipping_option_port_error(
     }
 }
 
-fn map_fulfillment_port_error(
+pub(super) fn map_fulfillment_port_error(
     error: PortError,
     context: &PortContext,
     query_field: &'static str,
