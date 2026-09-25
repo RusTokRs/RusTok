@@ -215,7 +215,7 @@ pub(crate) async fn resolve_store_line_item_input(
         input.variant_id,
     );
     let product = product_catalog_read_port
-        .read_variant_product_projection(
+        .read_storefront_variant_product_projection(
             port_context.clone(),
             StorefrontVariantProductProjectionRequest {
                 variant_id: input.variant_id,
@@ -366,9 +366,9 @@ pub(crate) async fn validate_store_line_item_quantity(
         variant_id,
     );
     let product = product_catalog_read_port
-        .read_variant_product_projection(
+        .read_storefront_variant_product_projection(
             port_context.clone(),
-            VariantProductProjectionRequest {
+            StorefrontVariantProductProjectionRequest {
                 variant_id,
                 locale: Some("en".to_string()),
                 fallback_locale: Some(rustok_api::PLATFORM_FALLBACK_LOCALE.to_string()),
