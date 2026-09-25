@@ -28,6 +28,7 @@ const fulfillmentStage = read('crates/modules/rustok-commerce/src/services/check
 const storefrontRest = read('crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs');
 const storefrontGraphql = read('crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs');
 const graphqlShipping = read('crates/modules/rustok-commerce/src/graphql/mutations/typed_shipping_option_helper.rs');
+const graphqlRuntime = read('crates/modules/rustok-commerce/src/graphql_runtime.rs');
 
 for (const marker of [
   'pub enum ProductFulfillmentRequirement',
@@ -75,6 +76,20 @@ forbidText(storefrontRest, 'shipping_profile_slug: Some(effective_shipping_profi
 forbidText(storefrontGraphql, 'shipping_profile_slug: Some(effective_shipping_profile_slug(', 'GraphQL digital lines must not get synthetic shipping profiles');
 forbidText(plan, 'shipping_profile_slug: item.shipping_profile_slug.unwrap_or', 'Checkout plan must not synthesize a shipping profile');
 forbidText(storefrontGraphql, 'FulfillmentService::new(', 'GraphQL cart shipping must use owner port');
+
+for (const marker of [
+  'Host-composed owner capabilities available to every mounted Commerce GraphQL resolver.',
+  'requires PaymentProviderRegistry in host composition',
+  'requires FulfillmentProviderRegistry in host composition',
+  'requires CommercePaymentReadRuntime in host composition',
+  'requires CommercePaymentCommandRuntime in host composition',
+  'requires CommerceFulfillmentCommandRuntime in host composition',
+  'requires CommerceFulfillmentLifecycleReadRuntime in host composition',
+]) requireText(graphqlRuntime, marker, 'Mounted Commerce GraphQL must fail closed when owner runtime composition is missing');
+forbidText(graphqlRuntime, 'shared_get::<CommercePaymentReadRuntime>()\\n            .unwrap_or_else', 'Mounted GraphQL must not synthesize Payment read runtime');
+forbidText(graphqlRuntime, 'shared_get::<CommercePaymentCommandRuntime>()\\n            .unwrap_or_else', 'Mounted GraphQL must not synthesize Payment command runtime');
+forbidText(graphqlRuntime, 'shared_get::<CommerceFulfillmentCommandRuntime>()\\n            .unwrap_or_else', 'Mounted GraphQL must not synthesize Fulfillment command runtime');
+forbidText(graphqlRuntime, 'shared_get::<CommerceFulfillmentLifecycleReadRuntime>()\\n            .unwrap_or_else', 'Mounted GraphQL must not synthesize Fulfillment lifecycle read runtime');
 
 if (failures.length) {
   for (const failure of failures) console.error(failure);
