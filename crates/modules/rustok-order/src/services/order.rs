@@ -517,8 +517,7 @@ impl OrderService {
         delivered_signature: Option<String>,
     ) -> OrderResult<OrderResponse> {
         let txn = self.db.begin().await?;
-        let existing = self
-            find_order_for_update_in_tx(&txn, tenant_id, order_id).await?;
+        let existing = find_order_for_update_in_tx(&txn, tenant_id, order_id).await?;
         let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata)
             .unwrap_or(load_tenant_default_locale(&txn, tenant_id).await?);
         if existing.status != STATUS_SHIPPED {
@@ -568,9 +567,7 @@ impl OrderService {
         reason: Option<String>,
     ) -> OrderResult<OrderResponse> {
         let txn = self.db.begin().await?;
-        let existing = self
-            .load_order_model_in_tx(&txn, tenant_id, order_id)
-            .await?;
+        let existing = find_order_for_update_in_tx(&txn, tenant_id, order_id).await?;
         let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata)
             .unwrap_or(load_tenant_default_locale(&txn, tenant_id).await?);
         if !can_cancel(&existing.status) {
