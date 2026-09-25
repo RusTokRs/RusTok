@@ -3,8 +3,7 @@
 use std::{error::Error, io, sync::Arc, time::Duration};
 
 use alloy::storage::{
-    ScriptPresentationAuthoringMutation, SeaOrmScriptAuthoringStore,
-    SeaOrmScriptPresentationStore,
+    ScriptPresentationAuthoringMutation, SeaOrmScriptAuthoringStore, SeaOrmScriptPresentationStore,
 };
 use alloy::{
     AlloyModule, RhaiWorkspace, Script, ScriptDeletionCommand, ScriptRegistry, ScriptTrigger,

@@ -1540,7 +1540,7 @@ where
     Ok(default_locale)
 }
 impl OrderService {
-    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, order_id = %order_id, actor_id = %actor_id))]
+    #[instrument(skip(self, input, idempotency_key), fields(tenant_id = %tenant_id, order_id = %order_id, actor_id = %actor_id))]
     pub async fn create_order_change(
         &self,
         tenant_id: Uuid,
@@ -1840,7 +1840,7 @@ impl OrderService {
 }
 
 impl OrderService {
-    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, order_id = %order_id, actor_id = %actor_id))]
+    #[instrument(skip(self, input, idempotency_key), fields(tenant_id = %tenant_id, order_id = %order_id, actor_id = %actor_id))]
     pub async fn create_return(
         &self,
         tenant_id: Uuid,

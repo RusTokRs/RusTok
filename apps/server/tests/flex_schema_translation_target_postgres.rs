@@ -8,9 +8,7 @@ use std::{
     time::Duration,
 };
 
-use flex::{
-    CreateFlexSchemaCommand, FlexModule, FlexStandaloneService, UpdateFlexSchemaCommand,
-};
+use flex::{CreateFlexSchemaCommand, FlexModule, FlexStandaloneService, UpdateFlexSchemaCommand};
 use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
 use rustok_core::{
     ModuleRegistry,
@@ -33,8 +31,9 @@ use rustok_test_utils::{
 use rustok_translation_targets::{
     ListTranslationResourcesRequest, OwnerSlug, ReadTranslationResourceRequest, ResourceKind,
     TranslationDataClassification, TranslationFieldPatch, TranslationPatchRequest,
-    TranslationResourceLifecycle, TranslationTargetChangesRequest, TranslationTargetProgressRequest,
-    TranslationTargetProvider, TranslationValueProfile, translation_target_registry,
+    TranslationResourceLifecycle, TranslationTargetChangesRequest,
+    TranslationTargetProgressRequest, TranslationTargetProvider, TranslationValueProfile,
+    translation_target_registry,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
@@ -55,7 +54,8 @@ async fn flex_schema_copy_registered_translation_provider_multi_replica_evidence
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
     assert_postgres_url(&admin_url);
 
-    let database_name = unique_postgres_database_name("rustok_flex_schema_copy_translation_evidence");
+    let database_name =
+        unique_postgres_database_name("rustok_flex_schema_copy_translation_evidence");
     let database_url = postgres_database_url(&admin_url, &database_name);
     let admin = connect_postgres(&admin_url).await.map_err(|error| {
         test_error(format!(
@@ -78,7 +78,12 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let isolated_tenant_id = Uuid::new_v4();
     seed_tenant(&seed_connection, tenant_id, "flex-schema-copy").await?;
-    seed_tenant(&seed_connection, isolated_tenant_id, "flex-schema-copy-isolated").await?;
+    seed_tenant(
+        &seed_connection,
+        isolated_tenant_id,
+        "flex-schema-copy-isolated",
+    )
+    .await?;
 
     let standalone = FlexStandaloneSeaOrmService::new(seed_connection.clone());
     let schema = standalone
@@ -150,14 +155,14 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         target_locale: TenantLocale::new("fr")?,
     };
     let initial = seed_provider
-        .read_resource(
-            read_context(tenant_id, "seed-read"),
-            read_request.clone(),
-        )
+        .read_resource(read_context(tenant_id, "seed-read"), read_request.clone())
         .await?;
     assert_schema_copy_shape(&initial)?;
     if initial.target_revision.is_some()
-        || initial.fields.iter().any(|field| field.exact_target_value.is_some())
+        || initial
+            .fields
+            .iter()
+            .any(|field| field.exact_target_value.is_some())
     {
         return Err(test_error(format!(
             "fresh Flex schema-copy resource unexpectedly had exact target state: {initial:?}"
@@ -532,10 +537,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         .ok_or_else(|| test_error("deleted Flex schema-copy cursor is missing"))?;
 
     let deleted_read = deletion_provider
-        .read_resource(
-            read_context(tenant_id, "deletion-read"),
-            read_request,
-        )
+        .read_resource(read_context(tenant_id, "deletion-read"), read_request)
         .await
         .expect_err("hard-deleted Flex schema must not remain readable through Translation");
     if deleted_read.kind != PortErrorKind::NotFound {
@@ -599,7 +601,10 @@ fn registered_provider(db: DatabaseConnection) -> TestResult<Arc<dyn Translation
     let targets = translation_target_registry(&extensions)
         .ok_or_else(|| test_error("host composition did not publish TranslationTargetRegistry"))?;
     targets
-        .get(&OwnerSlug::new(OWNER_SLUG)?, &ResourceKind::new(RESOURCE_KIND)?)
+        .get(
+            &OwnerSlug::new(OWNER_SLUG)?,
+            &ResourceKind::new(RESOURCE_KIND)?,
+        )
         .ok_or_else(|| test_error("host composition did not register flex/schema_copy").into())
 }
 

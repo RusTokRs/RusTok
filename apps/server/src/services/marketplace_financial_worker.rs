@@ -30,10 +30,12 @@ pub fn spawn_marketplace_financial_worker(
     stop_rx: tokio::sync::watch::Receiver<bool>,
 ) -> Option<MarketplaceFinancialWorkerHandle> {
     let instance_id = MARKETPLACE_FINANCIAL_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
-    let Some(financial_runtime) = runtime_ctx
-        .shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()
+    let Some(financial_runtime) =
+        runtime_ctx.shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()
     else {
-        tracing::warn!("MarketplaceFinancialRuntime not available; skipping financial recovery worker");
+        tracing::warn!(
+            "MarketplaceFinancialRuntime not available; skipping financial recovery worker"
+        );
         return None;
     };
     let event_bus = runtime_ctx

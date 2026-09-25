@@ -171,7 +171,8 @@ impl TranslationTargetProvider for OAuthAppTranslationTargetProvider {
                 "source and target locale must differ",
             ));
         }
-        self.load_snapshot(parse_tenant_id(&context)?, &request).await
+        self.load_snapshot(parse_tenant_id(&context)?, &request)
+            .await
     }
 
     async fn validate_patch(
@@ -185,7 +186,10 @@ impl TranslationTargetProvider for OAuthAppTranslationTargetProvider {
             .validate()
             .map_err(|error| contract_validation_error(error.to_string()))?;
         let snapshot = self
-            .load_snapshot(parse_tenant_id(&context)?, &read_request_from_patch(&request))
+            .load_snapshot(
+                parse_tenant_id(&context)?,
+                &read_request_from_patch(&request),
+            )
             .await?;
         Ok(validate_patch_against_snapshot(&request, &snapshot))
     }
@@ -347,7 +351,11 @@ impl TranslationTargetProvider for OAuthAppTranslationTargetProvider {
             .validate()
             .map_err(|error| contract_validation_error(error.to_string()))?;
         let tenant_id = parse_tenant_id(&context)?;
-        let parsed = request.after.as_ref().map(parse_change_cursor).transpose()?;
+        let parsed = request
+            .after
+            .as_ref()
+            .map(parse_change_cursor)
+            .transpose()?;
         let (through, after) = match parsed {
             Some((through, after)) if through == after => {
                 let current = self
@@ -490,10 +498,7 @@ fn snapshot_from_owner(
         fields: translation_fields(&snapshot.source, snapshot.target.as_ref()),
     };
     resource.validate().map_err(|error| {
-        PortError::invariant_violation(
-            "auth.oauth_translation_snapshot_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("auth.oauth_translation_snapshot_invalid", error.to_string())
     })?;
     Ok(resource)
 }
@@ -553,7 +558,9 @@ fn translation_fields(
     ]
 }
 
-fn decode_owner_receipt(value: serde_json::Value) -> Result<OAuthAppTranslationApplyReceipt, PortError> {
+fn decode_owner_receipt(
+    value: serde_json::Value,
+) -> Result<OAuthAppTranslationApplyReceipt, PortError> {
     serde_json::from_value(value).map_err(|error| {
         PortError::invariant_violation("outbox.operation_receipt_corrupt", error.to_string())
     })
@@ -576,7 +583,11 @@ fn application_receipt(
             "resource_revision",
         )?,
         target_revision: opaque_revision(owner_receipt.target_revision.clone(), "target_revision")?,
-        applied_field_keys: request.fields.iter().map(|field| field.key.clone()).collect(),
+        applied_field_keys: request
+            .fields
+            .iter()
+            .map(|field| field.key.clone())
+            .collect(),
     })
 }
 

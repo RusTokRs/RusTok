@@ -17,7 +17,10 @@ use crate::auth::{
 use crate::context::infer_user_role_from_permissions;
 use crate::models::{sessions, users};
 use crate::services::server_runtime_context::ServerRuntimeContext;
-use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 use super::rbac_service::RbacService;
 
@@ -264,9 +267,7 @@ impl AuthLifecycleService {
                 Some(normalized)
             }
         });
-        let name_changed = next_name
-            .as_ref()
-            .is_some_and(|next| user.name != *next);
+        let name_changed = next_name.as_ref().is_some_and(|next| user.name != *next);
 
         let mut user_active: users::ActiveModel = user.into();
         if let Some(next_name) = next_name {
@@ -392,47 +393,44 @@ impl AuthLifecycleService {
         Self::refresh_with_config_db(ctx.db(), config, tenant_id, refresh_token).await
     }
 
-async fn find_refresh_session_for_update_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: uuid::Uuid,
-    token_hash: &str,
-) -> std::result::Result<Option<sessions::Model>, AuthLifecycleError> {
-    let query = sessions::Entity::find()
-        .filter(sessions::Column::TenantId.eq(tenant_id))
-        .filter(sessions::Column::TokenHash.eq(token_hash));
+    async fn find_refresh_session_for_update_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: uuid::Uuid,
+        token_hash: &str,
+    ) -> std::result::Result<Option<sessions::Model>, AuthLifecycleError> {
+        let query = sessions::Entity::find()
+            .filter(sessions::Column::TenantId.eq(tenant_id))
+            .filter(sessions::Column::TokenHash.eq(token_hash));
 
-    let session = match txn.get_database_backend() {
-        DatabaseBackend::Postgres | DatabaseBackend::MySql => query
-            .lock_exclusive()
-            .one(txn)
-            .await
-            .map_err(AuthLifecycleError::from)?,
-        DatabaseBackend::Sqlite => {
-            let existing = query
+        let session = match txn.get_database_backend() {
+            DatabaseBackend::Postgres | DatabaseBackend::MySql => query
+                .lock_exclusive()
                 .one(txn)
                 .await
-                .map_err(AuthLifecycleError::from)?;
-            if let Some(existing) = existing.as_ref() {
-                let statement = Statement::from_sql_and_values(
-                    DatabaseBackend::Sqlite,
-                    "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND id = ?2 AND token_hash = ?3 AND revoked_at IS NULL",
-                    [
-                        tenant_id.into(),
-                        existing.id.into(),
-                        token_hash.to_string().into(),
-                    ],
-                );
-                txn.execute_raw(statement)
-                    .await
-                    .map_err(AuthLifecycleError::from)?;
+                .map_err(AuthLifecycleError::from)?,
+            DatabaseBackend::Sqlite => {
+                let existing = query.one(txn).await.map_err(AuthLifecycleError::from)?;
+                if let Some(existing) = existing.as_ref() {
+                    let statement = Statement::from_sql_and_values(
+                        DatabaseBackend::Sqlite,
+                        "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND id = ?2 AND token_hash = ?3 AND revoked_at IS NULL",
+                        [
+                            tenant_id.into(),
+                            existing.id.into(),
+                            token_hash.to_string().into(),
+                        ],
+                    );
+                    txn.execute_raw(statement)
+                        .await
+                        .map_err(AuthLifecycleError::from)?;
+                }
+                existing
             }
-            existing
-        }
-        _ => query.one(txn).await.map_err(AuthLifecycleError::from)?,
-    };
+            _ => query.one(txn).await.map_err(AuthLifecycleError::from)?,
+        };
 
-    Ok(session)
-}
+        Ok(session)
+    }
 
     async fn refresh_with_config_db(
         db: &DatabaseConnection,
@@ -518,36 +516,36 @@ async fn find_refresh_session_for_update_in_tx(
         .await
     }
 
-async fn find_user_for_password_change_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: uuid::Uuid,
-    user_id: uuid::Uuid,
-) -> std::result::Result<Option<users::Model>, AuthLifecycleError> {
-    let query = users::Entity::find_by_id(user_id)
-        .filter(users::Column::TenantId.eq(tenant_id));
-    match txn.get_database_backend() {
-        DatabaseBackend::Postgres | DatabaseBackend::MySql => query
-            .lock_exclusive()
-            .one(txn)
-            .await
-            .map_err(AuthLifecycleError::from),
-        DatabaseBackend::Sqlite => {
-            let existing = query.one(txn).await.map_err(AuthLifecycleError::from)?;
-            if let Some(existing) = existing.as_ref() {
-                let statement = Statement::from_sql_and_values(
-                    DatabaseBackend::Sqlite,
-                    "UPDATE users SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
-                    [tenant_id.into(), existing.id.into()],
-                );
-                txn.execute_raw(statement)
-                    .await
-                    .map_err(AuthLifecycleError::from)?;
+    async fn find_user_for_password_change_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+    ) -> std::result::Result<Option<users::Model>, AuthLifecycleError> {
+        let query =
+            users::Entity::find_by_id(user_id).filter(users::Column::TenantId.eq(tenant_id));
+        match txn.get_database_backend() {
+            DatabaseBackend::Postgres | DatabaseBackend::MySql => query
+                .lock_exclusive()
+                .one(txn)
+                .await
+                .map_err(AuthLifecycleError::from),
+            DatabaseBackend::Sqlite => {
+                let existing = query.one(txn).await.map_err(AuthLifecycleError::from)?;
+                if let Some(existing) = existing.as_ref() {
+                    let statement = Statement::from_sql_and_values(
+                        DatabaseBackend::Sqlite,
+                        "UPDATE users SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                        [tenant_id.into(), existing.id.into()],
+                    );
+                    txn.execute_raw(statement)
+                        .await
+                        .map_err(AuthLifecycleError::from)?;
+                }
+                Ok(existing)
             }
-            Ok(existing)
+            _ => query.one(txn).await.map_err(AuthLifecycleError::from),
         }
-        _ => query.one(txn).await.map_err(AuthLifecycleError::from),
     }
-}
 
     async fn change_password_db(
         db: &DatabaseConnection,
@@ -558,7 +556,8 @@ async fn find_user_for_password_change_in_tx(
         new_password: &str,
     ) -> std::result::Result<(), AuthLifecycleError> {
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
-        let user = Self::find_user_for_password_change_in_tx(&txn, tenant_id, user_id).await?
+        let user = Self::find_user_for_password_change_in_tx(&txn, tenant_id, user_id)
+            .await?
             .ok_or(AuthLifecycleError::InvalidCredentials)?;
 
         if !verify_password(current_password, &user.password_hash)
@@ -758,29 +757,26 @@ async fn find_user_for_password_change_in_tx(
         Ok(infer_user_role_from_permissions(&permissions))
     }
 
-async fn revoke_user_sessions_db_with_connection<C>(
-    db: &C,
-    tenant_id: uuid::Uuid,
-    user_id: uuid::Uuid,
-    except_session_id: Option<uuid::Uuid>,
-) -> std::result::Result<u64, AuthLifecycleError>
-where
-    C: sea_orm::ConnectionTrait,
-{
-    let mut query = sessions::Entity::update_many()
-        .col_expr(sessions::Column::RevokedAt, Expr::value(Utc::now()))
-        .filter(sessions::Column::TenantId.eq(tenant_id))
-        .filter(sessions::Column::UserId.eq(user_id))
-        .filter(sessions::Column::RevokedAt.is_null());
-    if let Some(session_id) = except_session_id {
-        query = query.filter(sessions::Column::Id.ne(session_id));
+    async fn revoke_user_sessions_db_with_connection<C>(
+        db: &C,
+        tenant_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+        except_session_id: Option<uuid::Uuid>,
+    ) -> std::result::Result<u64, AuthLifecycleError>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        let mut query = sessions::Entity::update_many()
+            .col_expr(sessions::Column::RevokedAt, Expr::value(Utc::now()))
+            .filter(sessions::Column::TenantId.eq(tenant_id))
+            .filter(sessions::Column::UserId.eq(user_id))
+            .filter(sessions::Column::RevokedAt.is_null());
+        if let Some(session_id) = except_session_id {
+            query = query.filter(sessions::Column::Id.ne(session_id));
+        }
+        let result = query.exec(db).await.map_err(AuthLifecycleError::from)?;
+        Ok(result.rows_affected)
     }
-    let result = query
-        .exec(db)
-        .await
-        .map_err(AuthLifecycleError::from)?;
-    Ok(result.rows_affected)
-}
 
     async fn revoke_user_sessions_db(
         db: &DatabaseConnection,

@@ -423,7 +423,8 @@ pub fn attach_commerce_provider_registries(
         let observers = server
             .shared_get::<rustok_payment::PaymentProviderEventObservers>()
             .or_else(|| {
-                let runtime = server.shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()?;
+                let runtime =
+                    server.shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()?;
                 let observers = runtime.payment_provider_event_observers(server.db_clone());
                 server.shared_insert(observers.clone());
                 Some(observers)

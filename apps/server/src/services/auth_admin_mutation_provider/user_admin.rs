@@ -526,9 +526,9 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             None
         };
 
-        let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(
-            self.db.clone(),
-        )) as Arc<dyn EventTransport>);
+        let event_bus = TransactionalEventBus::new(
+            Arc::new(OutboxTransport::new(self.db.clone())) as Arc<dyn EventTransport>
+        );
 
         if let Some(plan) = role_mutation_plan.as_ref() {
             let generation = durable_generation.ok_or_else(|| {

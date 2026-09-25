@@ -258,7 +258,8 @@ impl From<rustok_channel::ChannelError> for BlogError {
     fn from(value: rustok_channel::ChannelError) -> Self {
         match value {
             rustok_channel::ChannelError::Database(error) => Self::Database(error),
-            rustok_channel::ChannelError::InvalidTargetType(message)
+            rustok_channel::ChannelError::Validation(message)
+            | rustok_channel::ChannelError::InvalidTargetType(message)
             | rustok_channel::ChannelError::InvalidTargetValue(message)
             | rustok_channel::ChannelError::InvalidPolicyDefinition(message)
             | rustok_channel::ChannelError::InvalidPolicyOperation(message) => Self::Validation(message),

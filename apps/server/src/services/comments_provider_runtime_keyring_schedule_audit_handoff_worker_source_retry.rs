@@ -1,4 +1,3 @@
-use super::*;
 use super::super::keyring_schedule_audit_source_retry_postgres::{
     COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_SOURCE_MAX_ATTEMPTS,
     COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_SOURCE_MAX_RETRY_DELAY_SECONDS,
@@ -6,6 +5,7 @@ use super::super::keyring_schedule_audit_source_retry_postgres::{
     CommentsTcpDelegationScheduleAuditSourceRetryPolicyError,
     PostgresCommentsTcpDelegationScheduleAuditSourceRetryPolicy,
 };
+use super::*;
 
 pub const COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_HANDOFF_SOURCE_MAX_ATTEMPTS_ENV: &str =
     "RUSTOK_COMMENTS_TCP_DELEGATION_AUDIT_HANDOFF_SOURCE_MAX_ATTEMPTS";

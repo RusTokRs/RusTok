@@ -26,8 +26,8 @@ use rustok_test_utils::{
 use rustok_translation_targets::{
     ListTranslationResourcesRequest, OwnerSlug, ReadTranslationResourceRequest, ResourceKind,
     TranslationDataClassification, TranslationFieldPatch, TranslationPatchRequest,
-    TranslationResourceLifecycle, TranslationTargetChangesRequest, TranslationTargetProgressRequest,
-    TranslationTargetProvider, translation_target_registry,
+    TranslationResourceLifecycle, TranslationTargetChangesRequest,
+    TranslationTargetProgressRequest, TranslationTargetProvider, translation_target_registry,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use sea_orm_migration::{MigratorTrait, SchemaManager};
@@ -41,8 +41,8 @@ type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires PostgreSQL admin access"]
-async fn oauth_application_registered_translation_provider_multi_replica_evidence_postgres(
-) -> TestResult<()> {
+async fn oauth_application_registered_translation_provider_multi_replica_evidence_postgres()
+-> TestResult<()> {
     let admin_url = std::env::var(ADMIN_URL_ENV)
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
     assert_postgres_url(&admin_url);
@@ -250,10 +250,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             },
         )
         .await?;
-    if after_secret_rotation.summary.resource_revision
-        != initial_snapshot.summary.resource_revision
+    if after_secret_rotation.summary.resource_revision != initial_snapshot.summary.resource_revision
         || after_secret_rotation.source_revision != initial_snapshot.source_revision
-        || progress_after_secret_rotation.owner_change_cursor != progress_initial.owner_change_cursor
+        || progress_after_secret_rotation.owner_change_cursor
+            != progress_initial.owner_change_cursor
     {
         return Err(test_error(format!(
             "secret-only OAuth mutation changed Translation copy evidence: before={initial_snapshot:?} after={after_secret_rotation:?} progress_before={progress_initial:?} progress_after={progress_after_secret_rotation:?}"
@@ -458,16 +458,12 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     )
     .await?;
     let late_snapshot = seed_provider
-        .read_resource(
-            read_context(tenant_id, "late-read"),
-            read_request.clone(),
-        )
+        .read_resource(read_context(tenant_id, "late-read"), read_request.clone())
         .await?;
     if late_snapshot.summary.resource_revision == winner_receipt.resource_revision {
-        return Err(test_error(
-            "late OAuth source mutation did not rotate the resource revision",
-        )
-        .into());
+        return Err(
+            test_error("late OAuth source mutation did not rotate the resource revision").into(),
+        );
     }
 
     let frozen_second = seed_provider
@@ -527,10 +523,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     revoke_app(&owner, tenant_id, actor_id, app_id, "en").await?;
 
     let archived_snapshot = seed_provider
-        .read_resource(
-            read_context(tenant_id, "archived-read"),
-            read_request,
-        )
+        .read_resource(read_context(tenant_id, "archived-read"), read_request)
         .await?;
     if archived_snapshot.summary.lifecycle != TranslationResourceLifecycle::Archived
         || archived_snapshot.summary.resource_revision != pre_revoke_revision
@@ -704,7 +697,10 @@ async fn create_app(
         description: Some(description.to_string()),
         icon_url: None,
         app_type: "third_party".to_string(),
-        redirect_uris: vec![format!("https://{}.example.test/callback", tenant_id.simple())],
+        redirect_uris: vec![format!(
+            "https://{}.example.test/callback",
+            tenant_id.simple()
+        )],
         scopes: vec!["openid".to_string()],
         grant_types: vec!["authorization_code".to_string()],
         granted_permissions: Vec::new(),
@@ -731,7 +727,10 @@ async fn update_app(
         name: name.to_string(),
         description: Some(description.to_string()),
         icon_url: None,
-        redirect_uris: vec![format!("https://{}.example.test/callback", tenant_id.simple())],
+        redirect_uris: vec![format!(
+            "https://{}.example.test/callback",
+            tenant_id.simple()
+        )],
         scopes: vec!["openid".to_string()],
         grant_types: vec!["authorization_code".to_string()],
         granted_permissions: Vec::new(),

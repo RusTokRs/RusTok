@@ -21,6 +21,7 @@ pub mod checkout_order_recovery;
 #[path = "checkout_owner_context.rs"]
 mod checkout_owner_context_impl;
 mod checkout_payment_settlement;
+mod command_receipts;
 pub mod dto;
 pub mod entities;
 pub mod error;

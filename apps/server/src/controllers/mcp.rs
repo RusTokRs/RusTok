@@ -13,11 +13,11 @@ use crate::extractors::{
     rbac::{RequireMcpManage, RequireMcpRead},
     tenant::CurrentTenant,
 };
-use crate::services::mcp_management_authority::McpManagementAuthorityService;
 use crate::services::mcp_management::{
     ApplyMcpScaffoldDraftInput, CreateMcpClientInput, McpAuditFilters, McpClientDetails,
     McpManagementService, RotateMcpTokenInput, StageMcpScaffoldDraftInput, UpdateMcpPolicyInput,
 };
+use crate::services::mcp_management_authority::McpManagementAuthorityService;
 use crate::services::mcp_runtime::{DbBackedMcpRuntimeBridge, McpRemoteBootstrapResponse};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_core::ModuleRegistry;

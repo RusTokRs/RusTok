@@ -13,11 +13,11 @@ use rustok_comments::{
     CommentsTcpAuthorityResolver, CommentsTcpBearerAuthorityResolver, CommentsTcpBearerToken,
     CommentsTcpChannelProtection, CommentsTcpClientChannelConnector,
     CommentsTcpDelegatingAuthorityResolver, CommentsTcpDelegationSecret,
-    CommentsTcpDelegationSigner, CommentsTcpServerChannelAcceptor,
-    CommentsThreadTransport, DEFAULT_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY,
-    DEFAULT_COMMENTS_TCP_DELEGATION_TTL_MS, MAX_COMMENTS_TCP_DELEGATION_TTL_MS,
-    PlaintextLoopbackCommentsTcpChannel, TcpJsonCommentsServerAdapter, TcpJsonCommentsTransport,
-    in_process_comments_thread_port, remote_comments_thread_port,
+    CommentsTcpDelegationSigner, CommentsTcpServerChannelAcceptor, CommentsThreadTransport,
+    DEFAULT_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY, DEFAULT_COMMENTS_TCP_DELEGATION_TTL_MS,
+    MAX_COMMENTS_TCP_DELEGATION_TTL_MS, PlaintextLoopbackCommentsTcpChannel,
+    TcpJsonCommentsServerAdapter, TcpJsonCommentsTransport, in_process_comments_thread_port,
+    remote_comments_thread_port,
 };
 use rustok_comments_api::CommentsThreadPort;
 use rustok_core::ModuleRuntimeExtensions;
@@ -539,9 +539,7 @@ fn ensure_stop_handle(runtime_ctx: &ServerRuntimeContext) -> StopHandle {
 
     let (candidate, _receiver) = StopHandle::new();
     let _ = runtime_ctx.shared_insert_if_absent(candidate.clone());
-    runtime_ctx
-        .shared_get::<StopHandle>()
-        .unwrap_or(candidate)
+    runtime_ctx.shared_get::<StopHandle>().unwrap_or(candidate)
 }
 
 async fn run_comments_tcp_listener(

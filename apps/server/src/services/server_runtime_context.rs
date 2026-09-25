@@ -46,8 +46,7 @@ impl ServerSharedValues {
     where
         T: 'static + Send + Sync,
     {
-        self.write_lock()
-            .insert(TypeId::of::<T>(), Arc::new(value));
+        self.write_lock().insert(TypeId::of::<T>(), Arc::new(value));
     }
 
     fn insert_if_absent<T>(&self, value: T) -> bool

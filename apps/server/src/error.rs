@@ -58,9 +58,7 @@ impl IntoResponse for Error {
             Self::Unauthorized(message) => {
                 error_response(StatusCode::UNAUTHORIZED, "unauthorized", message)
             }
-            Self::Forbidden(message) => {
-                error_response(StatusCode::FORBIDDEN, "forbidden", message)
-            }
+            Self::Forbidden(message) => error_response(StatusCode::FORBIDDEN, "forbidden", message),
             Self::NotFound => error_response(StatusCode::NOT_FOUND, "not_found", "Not found"),
             Self::BadRequest(message) | Self::Validation(message) => {
                 error_response(StatusCode::BAD_REQUEST, "bad_request", message)

@@ -11,6 +11,7 @@ chrono.workspace = true
 hex.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
+rustok-marketplace-allocation = { path = "../rustok-marketplace-allocation" }
 rustok-marketplace-commission = { path = "../rustok-marketplace-commission" }
 sea-orm.workspace = true
 sea-orm-migration.workspace = true

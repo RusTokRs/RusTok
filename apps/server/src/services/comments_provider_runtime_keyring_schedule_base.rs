@@ -979,4 +979,3 @@ fn current_unix_ms() -> std::result::Result<u64, String> {
 
 #[path = "comments_provider_runtime_keyring_schedule_persistence_bridge.rs"]
 mod bridge;
-

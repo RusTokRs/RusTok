@@ -42,8 +42,8 @@ type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires PostgreSQL admin access"]
-async fn product_variant_registered_translation_provider_multi_replica_evidence_postgres(
-) -> TestResult<()> {
+async fn product_variant_registered_translation_provider_multi_replica_evidence_postgres()
+-> TestResult<()> {
     let admin_url = std::env::var(ADMIN_URL_ENV)
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
     assert_postgres_url(&admin_url);
@@ -126,7 +126,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         .await?;
     assert!(!field(&initial).source_value.trim().is_empty());
     assert!(field(&initial).exact_target_value.is_none());
-    assert_eq!(initial.summary.lifecycle, TranslationResourceLifecycle::Active);
+    assert_eq!(
+        initial.summary.lifecycle,
+        TranslationResourceLifecycle::Active
+    );
     assert_eq!(
         owner_change.changes[0].resource_revision,
         initial.summary.resource_revision
@@ -150,7 +153,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             first_patch,
         )
         .await?;
-    assert_eq!(replay.provider_receipt_id, first_receipt.provider_receipt_id);
+    assert_eq!(
+        replay.provider_receipt_id,
+        first_receipt.provider_receipt_id
+    );
     assert_eq!(replay.resource_revision, first_receipt.resource_revision);
     assert_eq!(replay.target_revision, first_receipt.target_revision);
 
@@ -271,7 +277,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     let archived = provider
         .read_resource(read_context(tenant_id, "archived"), read_request.clone())
         .await?;
-    assert_eq!(archived.summary.lifecycle, TranslationResourceLifecycle::Archived);
+    assert_eq!(
+        archived.summary.lifecycle,
+        TranslationResourceLifecycle::Archived
+    );
     assert_ne!(
         after_noop.summary.resource_revision,
         archived.summary.resource_revision
@@ -292,8 +301,14 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     let restored = provider
         .read_resource(read_context(tenant_id, "restored"), read_request.clone())
         .await?;
-    assert_eq!(restored.summary.lifecycle, TranslationResourceLifecycle::Active);
-    assert_ne!(archived.summary.resource_revision, restored.summary.resource_revision);
+    assert_eq!(
+        restored.summary.lifecycle,
+        TranslationResourceLifecycle::Active
+    );
+    assert_ne!(
+        archived.summary.resource_revision,
+        restored.summary.resource_revision
+    );
     let restored_revision = restored.summary.resource_revision.clone();
 
     let late_receipt = provider
@@ -356,7 +371,9 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         .resource_revision;
     assert_eq!(revision_before_delete, late_receipt.resource_revision);
 
-    owner.delete_product(tenant_id, actor_id, product_id).await?;
+    owner
+        .delete_product(tenant_id, actor_id, product_id)
+        .await?;
     let deleted = provider
         .read_changes(
             read_context(tenant_id, "deleted-change"),

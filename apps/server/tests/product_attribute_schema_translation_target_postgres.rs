@@ -10,8 +10,9 @@ use rustok_product::{
     ProductModule,
     services::{
         AttributeGroupTranslationInput, AttributeTranslationInput, AttributeValueType,
-        BindSchemaAttributeInput, CreateProductAttributeInput, CreateProductAttributeSchemaGroupInput,
-        CreateProductAttributeSchemaInput, ProductCatalogSchemaService, SchemaTranslationInput,
+        BindSchemaAttributeInput, CreateProductAttributeInput,
+        CreateProductAttributeSchemaGroupInput, CreateProductAttributeSchemaInput,
+        ProductCatalogSchemaService, SchemaTranslationInput,
     },
 };
 use rustok_server::{
@@ -45,12 +46,13 @@ type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires PostgreSQL admin access"]
-async fn product_attribute_schema_registered_translation_provider_multi_replica_evidence_postgres(
-) -> TestResult<()> {
+async fn product_attribute_schema_registered_translation_provider_multi_replica_evidence_postgres()
+-> TestResult<()> {
     let admin_url = std::env::var(ADMIN_URL_ENV)
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
     assert_postgres_url(&admin_url);
-    let database_name = unique_postgres_database_name("rustok_attribute_schema_translation_evidence");
+    let database_name =
+        unique_postgres_database_name("rustok_attribute_schema_translation_evidence");
     let database_url = postgres_database_url(&admin_url, &database_name);
     let admin = connect_postgres(&admin_url).await?;
     drop_postgres_database_if_exists(&admin, &database_name).await?;
@@ -88,11 +90,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     let other_schema = owner
-        .create_schema(
-            other_tenant_id,
-            actor_id,
-            source_schema("isolated_details"),
-        )
+        .create_schema(other_tenant_id, actor_id, source_schema("isolated_details"))
         .await?;
 
     let provider = registered_provider(seed_connection.clone());
@@ -159,7 +157,12 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         TranslationDataClassification::Public
     );
     assert!(group.descriptor.ai_export_allowed);
-    assert!(initial.fields.iter().all(|field| field.exact_target_value.is_none()));
+    assert!(
+        initial
+            .fields
+            .iter()
+            .all(|field| field.exact_target_value.is_none())
+    );
 
     let owner_changes = provider
         .read_changes(
@@ -203,25 +206,20 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     let first_patch = full_patch(&initial, "premier");
     let first_receipt = first_provider
         .apply_patch(
-            apply_context(
-                tenant_id,
-                "first-apply",
-                "attribute-schema-first-apply",
-            ),
+            apply_context(tenant_id, "first-apply", "attribute-schema-first-apply"),
             first_patch.clone(),
         )
         .await?;
     let replay = second_provider
         .apply_patch(
-            apply_context(
-                tenant_id,
-                "first-replay",
-                "attribute-schema-first-apply",
-            ),
+            apply_context(tenant_id, "first-replay", "attribute-schema-first-apply"),
             first_patch,
         )
         .await?;
-    assert_eq!(replay.provider_receipt_id, first_receipt.provider_receipt_id);
+    assert_eq!(
+        replay.provider_receipt_id,
+        first_receipt.provider_receipt_id
+    );
     assert_eq!(replay.resource_revision, first_receipt.resource_revision);
     assert_eq!(replay.target_revision, first_receipt.target_revision);
 
@@ -241,16 +239,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     assert_eq!(completed.complete_resources, 1);
 
     let replica_one = first_provider
-        .read_resource(
-            read_context(tenant_id, "replica-one"),
-            read_request.clone(),
-        )
+        .read_resource(read_context(tenant_id, "replica-one"), read_request.clone())
         .await?;
     let replica_two = second_provider
-        .read_resource(
-            read_context(tenant_id, "replica-two"),
-            read_request.clone(),
-        )
+        .read_resource(read_context(tenant_id, "replica-two"), read_request.clone())
         .await?;
     assert_eq!(
         replica_one.summary.resource_revision,
@@ -270,18 +262,18 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             assert_eq!(error.kind, PortErrorKind::Conflict);
             receipt
         }
-        other => panic!(
-            "expected exactly one concurrent Product Attribute Schema CAS winner: {other:?}"
-        ),
+        other => {
+            panic!("expected exactly one concurrent Product Attribute Schema CAS winner: {other:?}")
+        }
     };
 
     let after_race = provider
-        .read_resource(
-            read_context(tenant_id, "after-race"),
-            read_request.clone(),
-        )
+        .read_resource(read_context(tenant_id, "after-race"), read_request.clone())
         .await?;
-    assert_eq!(after_race.summary.resource_revision, race_winner.resource_revision);
+    assert_eq!(
+        after_race.summary.resource_revision,
+        race_winner.resource_revision
+    );
 
     let frozen_first = provider
         .read_changes(
@@ -338,11 +330,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
 
     let stale_error = provider
         .apply_patch(
-            apply_context(
-                tenant_id,
-                "stale",
-                "attribute-schema-stale-after-group",
-            ),
+            apply_context(tenant_id, "stale", "attribute-schema-stale-after-group"),
             stale_patch,
         )
         .await
@@ -393,10 +381,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     let final_snapshot = provider
-        .read_resource(
-            read_context(tenant_id, "final-read"),
-            read_request.clone(),
-        )
+        .read_resource(read_context(tenant_id, "final-read"), read_request.clone())
         .await?;
     assert_eq!(
         final_snapshot.summary.resource_revision,
@@ -445,10 +430,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     let after_binding = provider
-        .read_resource(
-            read_context(tenant_id, "after-binding"),
-            read_request,
-        )
+        .read_resource(read_context(tenant_id, "after-binding"), read_request)
         .await?;
     assert_eq!(
         before_binding.summary.resource_revision,
@@ -464,16 +446,12 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     assert_eq!(
-        before_binding_cursor,
-        after_binding_progress.owner_change_cursor,
+        before_binding_cursor, after_binding_progress.owner_change_cursor,
         "binding-only schema mutation must not manufacture Translation change evidence"
     );
 
     let other_after = provider
-        .list_resources(
-            read_context(other_tenant_id, "other-after"),
-            list_request,
-        )
+        .list_resources(read_context(other_tenant_id, "other-after"), list_request)
         .await?;
     assert_eq!(other_after.resources.len(), 1);
     assert_eq!(

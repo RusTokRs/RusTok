@@ -100,10 +100,11 @@ impl MigrationTrait for Migration {
 
 async fn install_constraints(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     match manager.get_database_backend() {
-        DatabaseBackend::Postgres => manager
-            .get_connection()
-            .execute_unprepared(
-                r#"
+        DatabaseBackend::Postgres => {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    r#"
                 ALTER TABLE order_command_receipts
                     ADD CONSTRAINT ck_order_command_receipt_identity
                         CHECK (
@@ -126,12 +127,14 @@ async fn install_constraints(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                             (status = 'completed' AND response_kind IS NOT NULL AND response_json IS NOT NULL AND completed_at IS NOT NULL)
                         );
                 "#,
-            )
-            .await,
-        DatabaseBackend::MySql => manager
-            .get_connection()
-            .execute_unprepared(
-                r#"
+                )
+                .await?;
+        }
+        DatabaseBackend::MySql => {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    r#"
                 ALTER TABLE order_command_receipts
                     ADD CONSTRAINT ck_order_command_receipt_identity CHECK (
                         actor_id <> '00000000-0000-0000-0000-000000000000'
@@ -152,12 +155,14 @@ async fn install_constraints(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                         (status = 'completed' AND response_kind IS NOT NULL AND response_json IS NOT NULL AND completed_at IS NOT NULL)
                     );
                 "#,
-            )
-            .await,
-        DatabaseBackend::Sqlite => manager
-            .get_connection()
-            .execute_unprepared(
-                r#"
+                )
+                .await?;
+        }
+        DatabaseBackend::Sqlite => {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    r#"
                 CREATE TRIGGER order_command_receipt_insert_guard
                 BEFORE INSERT ON order_command_receipts
                 FOR EACH ROW BEGIN
@@ -204,12 +209,16 @@ async fn install_constraints(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                         THEN RAISE(ABORT, 'invalid order command receipt transition') END;
                 END;
                 "#,
-            )
-            .await,
-        backend => Err(DbErr::Custom(format!(
-            "unsupported database backend: {backend:?}"
-        ))),
+                )
+                .await?;
+        }
+        backend => {
+            return Err(DbErr::Custom(format!(
+                "unsupported database backend: {backend:?}"
+            )));
+        }
     }
+    Ok(())
 }
 
 #[derive(Iden)]

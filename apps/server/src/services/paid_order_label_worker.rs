@@ -30,8 +30,8 @@ pub fn spawn_paid_order_create_label_worker(
     stop_rx: tokio::sync::watch::Receiver<bool>,
 ) -> Option<PaidOrderCreateLabelWorkerHandle> {
     let instance_id = PAID_ORDER_LABEL_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
-    let Some(fulfillment_provider_registry) = runtime_ctx
-        .shared_get::<rustok_fulfillment::providers::FulfillmentProviderRegistry>()
+    let Some(fulfillment_provider_registry) =
+        runtime_ctx.shared_get::<rustok_fulfillment::providers::FulfillmentProviderRegistry>()
     else {
         tracing::warn!(
             "FulfillmentProviderRegistry not available; skipping paid-order label worker"

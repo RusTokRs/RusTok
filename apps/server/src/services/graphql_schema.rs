@@ -12,12 +12,12 @@ use crate::services::commerce_provider_runtime::attach_commerce_provider_registr
 use crate::services::event_bus::{event_bus_from_context, transactional_event_bus_from_context};
 use crate::services::field_definition_cache::field_definition_cache_from_context;
 use crate::services::profile_media_public_image_runtime::attach_profile_media_public_image_provider;
-#[cfg(feature = "mod-profiles")]
-use rustok_profiles_api::ProfileSummaryReader;
 #[cfg(feature = "mod-seo")]
 use crate::services::seo_redirect_cache_reconciliation::start_seo_redirect_cache_reconciliation;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::static_module_registry::static_module_registry_reader_from_context;
+#[cfg(feature = "mod-profiles")]
+use rustok_profiles_api::ProfileSummaryReader;
 
 /// Keeps at least one watch receiver alive for API-only hosts so `StopHandle::stop()` can publish
 /// the terminal value even when no background worker has subscribed yet.
@@ -93,10 +93,9 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
         host_runtime
     };
     #[cfg(feature = "mod-profiles")]
-    let host_runtime = host_runtime.with_shared_value(
-        Arc::new(rustok_profiles::ProfilePresentationService::new(ctx.db_clone()))
-            as Arc<dyn ProfileSummaryReader>,
-    );
+    let host_runtime = host_runtime.with_shared_value(Arc::new(
+        rustok_profiles::ProfilePresentationService::new(ctx.db_clone()),
+    ) as Arc<dyn ProfileSummaryReader>);
 
     let graphql_runtime_inputs = rustok_api::graphql::GraphqlRuntimeInputs::new(host_runtime);
     let schema = Arc::new(build_schema(GraphqlSchemaDependencies {
@@ -160,20 +159,18 @@ fn alloy_runtime_from_ctx(ctx: &ServerRuntimeContext) -> alloy::SharedAlloyRunti
     if let Some(runtime) = ctx.shared_get::<alloy::SharedAlloyRuntime>() {
         return runtime;
     }
-    tracing::warn!("SharedAlloyRuntime not found in ServerRuntimeContext; creating minimal fallback");
+    tracing::warn!(
+        "SharedAlloyRuntime not found in ServerRuntimeContext; creating minimal fallback"
+    );
     let executors = rustok_sandbox::ExecutorRegistry::new();
     let sandbox = rustok_sandbox::SandboxRuntime::new(
         executors,
         Arc::new(rustok_sandbox::CapabilityBrokerRouter::new()),
     );
-    let draft_runtime = alloy::AlloyDraftRuntime::new(
-        sandbox,
-        rustok_sandbox::SandboxPolicy::default(),
-    );
-    let runtime = alloy::SharedAlloyRuntime(alloy::build_alloy_runtime(
-        ctx.db_clone(),
-        draft_runtime,
-    ));
+    let draft_runtime =
+        alloy::AlloyDraftRuntime::new(sandbox, rustok_sandbox::SandboxPolicy::default());
+    let runtime =
+        alloy::SharedAlloyRuntime(alloy::build_alloy_runtime(ctx.db_clone(), draft_runtime));
     ctx.shared_insert(runtime.clone());
     runtime
 }
@@ -281,7 +278,10 @@ mod forum_media_provider_composition_tests {
         let ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
         let storage = StorageRuntime::local(&LocalStorageConfig {
             base_dir: std::env::temp_dir()
-                .join(format!("rustok-forum-media-provider-{}", uuid::Uuid::new_v4()))
+                .join(format!(
+                    "rustok-forum-media-provider-{}",
+                    uuid::Uuid::new_v4()
+                ))
                 .display()
                 .to_string(),
             base_url: String::new(),

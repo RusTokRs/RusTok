@@ -410,8 +410,7 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
             .map_err(|e| FlexError::Database(e.to_string()))?;
 
         let entry_ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
-        let localized =
-            Self::load_entry_localization_map(&self.db, tenant_id, &entry_ids).await?;
+        let localized = Self::load_entry_localization_map(&self.db, tenant_id, &entry_ids).await?;
 
         Ok(rows
             .into_iter()
@@ -449,8 +448,7 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
             return Ok(None);
         };
 
-        let localized =
-            Self::load_entry_localization_map(&self.db, tenant_id, &[row.id]).await?;
+        let localized = Self::load_entry_localization_map(&self.db, tenant_id, &[row.id]).await?;
         let localized_data = localized
             .get(&row.id)
             .and_then(|items| Self::select_entry_localization(items, &preferred_locale))
@@ -733,7 +731,6 @@ where
     }
 }
 
-
 async fn upsert_entry_localization_on<C>(
     db: &C,
     entry_id: Uuid,
@@ -850,7 +847,10 @@ mod tests {
     use flex::FlexStandaloneService;
     use rustok_core::field_schema::{FieldDefinition, FieldType};
     use rustok_test_utils::db::setup_test_db;
-    use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+    use sea_orm::{
+        ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
+        QueryFilter, Set,
+    };
     use serde_json::json;
     use std::collections::{HashMap, HashSet};
     use uuid::Uuid;
@@ -1094,10 +1094,8 @@ mod tests {
             id: Set(schema_id),
             tenant_id: Set(tenant_id),
             slug: Set("landing".to_string()),
-            fields_config: Set(
-                flex::serialize_standalone_fields_config(fields_config)
-                    .expect("serialize schema fields"),
-            ),
+            fields_config: Set(flex::serialize_standalone_fields_config(fields_config)
+                .expect("serialize schema fields")),
             settings: Set(json!({})),
             is_active: Set(true),
             created_at: sea_orm::ActiveValue::NotSet,
@@ -1200,10 +1198,8 @@ mod tests {
             id: Set(schema_id),
             tenant_id: Set(tenant_id),
             slug: Set("landing".to_string()),
-            fields_config: Set(
-                flex::serialize_standalone_fields_config(fields_config)
-                    .expect("serialize schema fields"),
-            ),
+            fields_config: Set(flex::serialize_standalone_fields_config(fields_config)
+                .expect("serialize schema fields")),
             settings: Set(json!({})),
             is_active: Set(true),
             created_at: sea_orm::ActiveValue::NotSet,
@@ -1328,10 +1324,8 @@ mod tests {
             id: Set(schema_id),
             tenant_id: Set(tenant_id),
             slug: Set("landing_form_exact_update".to_string()),
-            fields_config: Set(
-                flex::serialize_standalone_fields_config(fields_config)
-                    .expect("serialize schema fields"),
-            ),
+            fields_config: Set(flex::serialize_standalone_fields_config(fields_config)
+                .expect("serialize schema fields")),
             settings: Set(json!({})),
             is_active: Set(true),
             created_at: sea_orm::ActiveValue::NotSet,
@@ -1406,4 +1400,3 @@ mod tests {
         assert_eq!(russian.data, json!({"title": "Russian title"}));
     }
 }
-

@@ -1101,7 +1101,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tombstone_tracker_saturation_fails_closed_and_prevents_stale_primary_hits_until_reconciled() {
+    async fn tombstone_tracker_saturation_fails_closed_and_prevents_stale_primary_hits_until_reconciled()
+     {
         let primary = Arc::new(RecoveringStaleBackend {
             fail_writes: AtomicBool::new(true),
             value: StdMutex::new(Some(b"stale".to_vec())),

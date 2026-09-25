@@ -3,7 +3,12 @@
 use std::{error::Error, sync::Arc, time::Duration};
 
 use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
-use rustok_commerce::{CommerceModule, services::collection_translation::{CollectionTranslationExactLocaleRecord, CollectionTranslationService}};
+use rustok_commerce::{
+    CommerceModule,
+    services::collection_translation::{
+        CollectionTranslationExactLocaleRecord, CollectionTranslationService,
+    },
+};
 use rustok_core::ModuleRegistry;
 use rustok_migrations::Migrator;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
@@ -38,8 +43,8 @@ type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires PostgreSQL admin access"]
-async fn commerce_collection_registered_translation_provider_multi_replica_evidence_postgres(
-) -> TestResult<()> {
+async fn commerce_collection_registered_translation_provider_multi_replica_evidence_postgres()
+-> TestResult<()> {
     let admin_url = std::env::var(ADMIN_URL_ENV)
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
     assert_postgres_url(&admin_url);
@@ -159,7 +164,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             first_patch,
         )
         .await?;
-    assert_eq!(replay.provider_receipt_id, first_receipt.provider_receipt_id);
+    assert_eq!(
+        replay.provider_receipt_id,
+        first_receipt.provider_receipt_id
+    );
     assert_eq!(replay.resource_revision, first_receipt.resource_revision);
     assert_eq!(replay.target_revision, first_receipt.target_revision);
 
@@ -352,10 +360,12 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         next_window.changes[1].resource_revision,
         late_receipt.resource_revision
     );
-    assert!(next_window
-        .changes
-        .iter()
-        .all(|change| change.lifecycle == TranslationResourceLifecycle::Active));
+    assert!(
+        next_window
+            .changes
+            .iter()
+            .all(|change| change.lifecycle == TranslationResourceLifecycle::Active)
+    );
     let pre_delete_cursor = next_window.next_cursor.expect("pre-delete cursor");
 
     let revision_before_delete = provider
@@ -365,7 +375,9 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         .resource_revision;
     assert_eq!(revision_before_delete, late_receipt.resource_revision);
 
-    owner.delete_collection_owner(tenant_id, collection_id).await?;
+    owner
+        .delete_collection_owner(tenant_id, collection_id)
+        .await?;
     let deleted = provider
         .read_changes(
             read_context(tenant_id, "deleted-change"),

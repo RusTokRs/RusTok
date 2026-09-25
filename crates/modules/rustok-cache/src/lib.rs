@@ -58,12 +58,12 @@ pub use envelope::{
     CACHE_ENVELOPE_FORMAT_VERSION, CacheEnvelope, CacheEnvelopeError, CacheEnvelopeFreshness,
     DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
 };
-#[cfg(feature = "redis-cache")]
-pub use fallback::DegradationAwareFallbackBackend;
 pub use event_dedupe::{
     BoundedCacheEventDedupe, CacheEventDedupeDecision, CacheEventDedupeError,
     CacheEventDedupeStats, DEFAULT_CACHE_EVENT_DEDUPE_TTL, DEFAULT_MAX_CACHE_EVENT_DEDUPE_ENTRIES,
 };
+#[cfg(feature = "redis-cache")]
+pub use fallback::DegradationAwareFallbackBackend;
 pub use generation::{
     CacheGenerationError, CacheGenerationSource, CacheGenerationStats, CacheNamespaceGeneration,
     CacheNamespaceGenerationStore, DEFAULT_MAX_LOCAL_GENERATION_SNAPSHOTS,

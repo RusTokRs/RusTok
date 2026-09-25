@@ -8,10 +8,10 @@ use uuid::Uuid;
 use flex::{
     AttachedEntityRef, FlexMappedErrorKind, GenericAttachedFieldDefinitionService,
     ORDER_ENTITY_TYPE, PRODUCT_ENTITY_TYPE, TAXONOMY_CATEGORY_ENTITY_TYPE, TOPIC_ENTITY_TYPE,
-    USER_ENTITY_TYPE, delete_attached_localized_values,
-    delete_generic_attached_values, load_exact_locale_values, load_generic_attached_shared_values,
-    load_localized_values_by_locale, lock_attached_translation_schema_in_tx, map_flex_error,
-    merge_donor_flex_metadata, persist_localized_values, persist_prepared_generic_attached_values,
+    USER_ENTITY_TYPE, delete_attached_localized_values, delete_generic_attached_values,
+    load_exact_locale_values, load_generic_attached_shared_values, load_localized_values_by_locale,
+    lock_attached_translation_schema_in_tx, map_flex_error, merge_donor_flex_metadata,
+    persist_localized_values, persist_prepared_generic_attached_values,
     prepare_attached_values_create, prepare_attached_values_update,
     prepare_generic_attached_values_update, record_flex_attached_translation_deleted_in_tx,
     resolve_attached_payload, resolve_generic_attached_values, split_donor_metadata,
@@ -171,8 +171,7 @@ impl FlexAttachedValuesService {
                 if let Some(flex_meta) = prepared.metadata.as_ref() {
                     let new_metadata =
                         merge_donor_flex_metadata(&schema, &product.metadata, flex_meta);
-                    let mut active: rustok_product::entities::product::ActiveModel =
-                        product.into();
+                    let mut active: rustok_product::entities::product::ActiveModel = product.into();
                     active.metadata = sea_orm::ActiveValue::Set(new_metadata);
                     active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
                     active.update(&txn).await?;
@@ -232,8 +231,7 @@ impl FlexAttachedValuesService {
                 if let Some(flex_meta) = prepared.metadata.as_ref() {
                     let new_metadata =
                         merge_donor_flex_metadata(&schema, &topic.metadata, flex_meta);
-                    let mut active: rustok_forum::entities::forum_topic::ActiveModel =
-                        topic.into();
+                    let mut active: rustok_forum::entities::forum_topic::ActiveModel = topic.into();
                     active.metadata = sea_orm::ActiveValue::Set(new_metadata);
                     active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
                     active.update(&txn).await?;
@@ -385,8 +383,7 @@ impl FlexAttachedValuesService {
                     None => product.metadata.clone(),
                 };
 
-                let mut active: rustok_product::entities::product::ActiveModel =
-                    product.into();
+                let mut active: rustok_product::entities::product::ActiveModel = product.into();
                 active.metadata = sea_orm::ActiveValue::Set(new_metadata);
                 active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
                 active.update(&txn).await?;
@@ -478,8 +475,7 @@ impl FlexAttachedValuesService {
                     None => topic.metadata.clone(),
                 };
 
-                let mut active: rustok_forum::entities::forum_topic::ActiveModel =
-                    topic.into();
+                let mut active: rustok_forum::entities::forum_topic::ActiveModel = topic.into();
                 active.metadata = sea_orm::ActiveValue::Set(new_metadata);
                 active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
                 active.update(&txn).await?;
@@ -693,8 +689,7 @@ impl FlexAttachedValuesService {
                     .await
                     .map_err(map_flex_host_error)?;
                 let (reserved, _) = split_donor_metadata(&schema, &product.metadata);
-                let mut active: rustok_product::entities::product::ActiveModel =
-                    product.into();
+                let mut active: rustok_product::entities::product::ActiveModel = product.into();
                 active.metadata = sea_orm::ActiveValue::Set(serde_json::Value::Object(reserved));
                 active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
                 active.update(&txn).await?;
@@ -740,8 +735,7 @@ impl FlexAttachedValuesService {
                     .await
                     .map_err(map_flex_host_error)?;
                 let (reserved, _) = split_donor_metadata(&schema, &topic.metadata);
-                let mut active: rustok_forum::entities::forum_topic::ActiveModel =
-                    topic.into();
+                let mut active: rustok_forum::entities::forum_topic::ActiveModel = topic.into();
                 active.metadata = sea_orm::ActiveValue::Set(serde_json::Value::Object(reserved));
                 active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
                 active.update(&txn).await?;
@@ -994,11 +988,7 @@ where
                 .one(db)
                 .await?
                 .is_some();
-            if exists {
-                Ok(())
-            } else {
-                Err(Error::NotFound)
-            }
+            if exists { Ok(()) } else { Err(Error::NotFound) }
         }
         #[cfg(feature = "mod-product")]
         PRODUCT_ENTITY_TYPE => {
@@ -1007,11 +997,7 @@ where
                 .one(db)
                 .await?
                 .is_some();
-            if exists {
-                Ok(())
-            } else {
-                Err(Error::NotFound)
-            }
+            if exists { Ok(()) } else { Err(Error::NotFound) }
         }
         #[cfg(feature = "mod-order")]
         ORDER_ENTITY_TYPE => {
@@ -1020,11 +1006,7 @@ where
                 .one(db)
                 .await?
                 .is_some();
-            if exists {
-                Ok(())
-            } else {
-                Err(Error::NotFound)
-            }
+            if exists { Ok(()) } else { Err(Error::NotFound) }
         }
         #[cfg(feature = "mod-forum")]
         TOPIC_ENTITY_TYPE => {
@@ -1033,11 +1015,7 @@ where
                 .one(db)
                 .await?
                 .is_some();
-            if exists {
-                Ok(())
-            } else {
-                Err(Error::NotFound)
-            }
+            if exists { Ok(()) } else { Err(Error::NotFound) }
         }
         #[cfg(feature = "mod-taxonomy")]
         TAXONOMY_CATEGORY_ENTITY_TYPE => {
@@ -1053,11 +1031,7 @@ where
                     "Taxonomy Flex owner identity lookup failed: {error}"
                 ))
             })?;
-            if exists {
-                Ok(())
-            } else {
-                Err(Error::NotFound)
-            }
+            if exists { Ok(()) } else { Err(Error::NotFound) }
         }
         other => Err(Error::BadRequest(format!(
             "generic Flex owner adapter is not registered for {other}"

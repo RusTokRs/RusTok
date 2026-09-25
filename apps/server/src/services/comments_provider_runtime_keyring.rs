@@ -8,9 +8,8 @@ use rustok_comments::{
     CommentsTcpAuthorityResolver, CommentsTcpBearerToken, CommentsTcpChannelProtection,
     CommentsTcpClientChannelConnector, CommentsTcpDelegatingAuthorityResolver,
     CommentsTcpDelegationKeyId, CommentsTcpDelegationKeyring, CommentsTcpDelegationSecret,
-    CommentsTcpDelegationSigner, CommentsThreadTransport,
-    MAX_COMMENTS_TCP_DELEGATION_KEYS, PlaintextLoopbackCommentsTcpChannel,
-    TcpJsonCommentsTransport, remote_comments_thread_port,
+    CommentsTcpDelegationSigner, CommentsThreadTransport, MAX_COMMENTS_TCP_DELEGATION_KEYS,
+    PlaintextLoopbackCommentsTcpChannel, TcpJsonCommentsTransport, remote_comments_thread_port,
 };
 use rustok_comments_api::CommentsThreadPort;
 use rustok_core::ModuleRuntimeExtensions;

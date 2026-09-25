@@ -205,7 +205,6 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         static_settings_reader,
     ));
 
-
     #[cfg(all(feature = "mod-seo", feature = "mod-media"))]
     if let Some(storage) = runtime_ctx.shared_get::<rustok_storage::StorageRuntime>() {
         let provider: Arc<dyn rustok_media::MediaAssetReadPort> =

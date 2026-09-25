@@ -46,8 +46,8 @@ type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires PostgreSQL admin access"]
-async fn product_category_form_registered_translation_provider_multi_replica_evidence_postgres(
-) -> TestResult<()> {
+async fn product_category_form_registered_translation_provider_multi_replica_evidence_postgres()
+-> TestResult<()> {
     let admin_url = std::env::var(ADMIN_URL_ENV)
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
     assert_postgres_url(&admin_url);
@@ -205,7 +205,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             first_patch,
         )
         .await?;
-    assert_eq!(replay.provider_receipt_id, first_receipt.provider_receipt_id);
+    assert_eq!(
+        replay.provider_receipt_id,
+        first_receipt.provider_receipt_id
+    );
     assert_eq!(replay.resource_revision, first_receipt.resource_revision);
     assert_eq!(replay.target_revision, first_receipt.target_revision);
 
@@ -223,16 +226,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     assert_eq!(completed.complete_resources, 1);
 
     let replica_one = first_provider
-        .read_resource(
-            read_context(tenant_id, "replica-one"),
-            read_request.clone(),
-        )
+        .read_resource(read_context(tenant_id, "replica-one"), read_request.clone())
         .await?;
     let replica_two = second_provider
-        .read_resource(
-            read_context(tenant_id, "replica-two"),
-            read_request.clone(),
-        )
+        .read_resource(read_context(tenant_id, "replica-two"), read_request.clone())
         .await?;
     assert_eq!(
         replica_one.summary.resource_revision,
@@ -252,16 +249,18 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             assert_eq!(error.kind, PortErrorKind::Conflict);
             receipt
         }
-        other => panic!("expected exactly one concurrent Product Category Form CAS winner: {other:?}"),
+        other => {
+            panic!("expected exactly one concurrent Product Category Form CAS winner: {other:?}")
+        }
     };
 
     let after_race = provider
-        .read_resource(
-            read_context(tenant_id, "after-race"),
-            read_request.clone(),
-        )
+        .read_resource(read_context(tenant_id, "after-race"), read_request.clone())
         .await?;
-    assert_eq!(after_race.summary.resource_revision, race_winner.resource_revision);
+    assert_eq!(
+        after_race.summary.resource_revision,
+        race_winner.resource_revision
+    );
 
     let frozen_first = provider
         .read_changes(
@@ -367,10 +366,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     let final_snapshot = provider
-        .read_resource(
-            read_context(tenant_id, "final-read"),
-            read_request.clone(),
-        )
+        .read_resource(read_context(tenant_id, "final-read"), read_request.clone())
         .await?;
     assert_eq!(
         final_snapshot.summary.resource_revision,
@@ -418,10 +414,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     let after_binding = provider
-        .read_resource(
-            read_context(tenant_id, "after-binding"),
-            read_request,
-        )
+        .read_resource(read_context(tenant_id, "after-binding"), read_request)
         .await?;
     assert_eq!(
         before_binding.summary.resource_revision,
@@ -437,16 +430,12 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     assert_eq!(
-        before_binding_cursor,
-        after_binding_progress.owner_change_cursor,
+        before_binding_cursor, after_binding_progress.owner_change_cursor,
         "binding-only category-form mutation must not manufacture Translation change evidence"
     );
 
     let other_after = provider
-        .list_resources(
-            read_context(other_tenant_id, "other-after"),
-            list_request,
-        )
+        .list_resources(read_context(other_tenant_id, "other-after"), list_request)
         .await?;
     assert_eq!(other_after.resources.len(), 1);
     assert_eq!(

@@ -48,8 +48,8 @@ type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires PostgreSQL admin access"]
-async fn product_attribute_value_registered_translation_provider_multi_replica_evidence_postgres(
-) -> TestResult<()> {
+async fn product_attribute_value_registered_translation_provider_multi_replica_evidence_postgres()
+-> TestResult<()> {
     let admin_url = std::env::var(ADMIN_URL_ENV)
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
     assert_postgres_url(&admin_url);
@@ -71,7 +71,12 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let other_tenant_id = Uuid::new_v4();
     seed_tenant(&seed_connection, tenant_id, "attribute-value-main").await?;
-    seed_tenant(&seed_connection, other_tenant_id, "attribute-value-isolated").await?;
+    seed_tenant(
+        &seed_connection,
+        other_tenant_id,
+        "attribute-value-isolated",
+    )
+    .await?;
 
     let schema_owner = schema_owner(seed_connection.clone());
     let catalog_owner = catalog_owner(seed_connection.clone());
@@ -240,20 +245,32 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             first_patch,
         )
         .await?;
-    assert_eq!(replay.provider_receipt_id, first_receipt.provider_receipt_id);
+    assert_eq!(
+        replay.provider_receipt_id,
+        first_receipt.provider_receipt_id
+    );
     assert_eq!(replay.resource_revision, first_receipt.resource_revision);
     assert_eq!(replay.target_revision, first_receipt.target_revision);
 
     let after_first = first_provider
         .read_resource(read_context(tenant_id, "after-first"), read_request.clone())
         .await?;
-    assert_eq!(field(&after_first).exact_target_value.as_deref(), Some("Public professionnel"));
+    assert_eq!(
+        field(&after_first).exact_target_value.as_deref(),
+        Some("Public professionnel")
+    );
 
     let first_race_snapshot = first_provider
-        .read_resource(read_context(tenant_id, "race-one-read"), read_request.clone())
+        .read_resource(
+            read_context(tenant_id, "race-one-read"),
+            read_request.clone(),
+        )
         .await?;
     let second_race_snapshot = second_provider
-        .read_resource(read_context(tenant_id, "race-two-read"), read_request.clone())
+        .read_resource(
+            read_context(tenant_id, "race-two-read"),
+            read_request.clone(),
+        )
         .await?;
     let first_apply = first_provider.apply_patch(
         apply_context(tenant_id, "race-one", "attribute-value-race-one"),
@@ -310,14 +327,19 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             "en",
             vec![ProductAttributeValuePatch {
                 attribute_id: attribute.id,
-                value: ProductAttributeValuePatchValue::Text("Updated professional audience".into()),
+                value: ProductAttributeValuePatchValue::Text(
+                    "Updated professional audience".into(),
+                ),
             }],
         )
         .await?;
     let late_snapshot = provider
         .read_resource(read_context(tenant_id, "late-source"), read_request.clone())
         .await?;
-    assert_eq!(field(&late_snapshot).source_value, "Updated professional audience");
+    assert_eq!(
+        field(&late_snapshot).source_value,
+        "Updated professional audience"
+    );
 
     let frozen_second = provider
         .read_changes(
@@ -329,7 +351,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     assert_eq!(frozen_second.changes.len(), 1);
-    assert_eq!(frozen_second.changes[0].resource_revision, winner.resource_revision);
+    assert_eq!(
+        frozen_second.changes[0].resource_revision,
+        winner.resource_revision
+    );
     let frozen_terminal = frozen_second.next_cursor.expect("frozen terminal cursor");
 
     let next_window = provider
@@ -535,7 +560,11 @@ fn source_product(category_id: Uuid) -> CreateProductInput {
     }
 }
 
-fn patch(snapshot: &TranslationResourceSnapshot, value: &str, suffix: &str) -> TranslationPatchRequest {
+fn patch(
+    snapshot: &TranslationResourceSnapshot,
+    value: &str,
+    suffix: &str,
+) -> TranslationPatchRequest {
     TranslationPatchRequest {
         identity: snapshot.summary.identity.clone(),
         source_locale: snapshot.source_locale.clone(),
@@ -553,7 +582,9 @@ fn patch(snapshot: &TranslationResourceSnapshot, value: &str, suffix: &str) -> T
     }
 }
 
-fn field(snapshot: &TranslationResourceSnapshot) -> &rustok_translation_targets::TranslationFieldSnapshot {
+fn field(
+    snapshot: &TranslationResourceSnapshot,
+) -> &rustok_translation_targets::TranslationFieldSnapshot {
     snapshot
         .fields
         .iter()

@@ -6,8 +6,8 @@ use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
 use rustok_core::ModuleRegistry;
 use rustok_migrations::Migrator;
 use rustok_pricing::{
-    CreatePriceListOwnerInput, PriceListOwnerService, PriceListOwnerTranslationInput, PricingModule,
-    UpdatePriceListOwnerInput,
+    CreatePriceListOwnerInput, PriceListOwnerService, PriceListOwnerTranslationInput,
+    PricingModule, UpdatePriceListOwnerInput,
 };
 use rustok_server::{
     auth::AuthConfig,
@@ -39,8 +39,8 @@ type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires PostgreSQL admin access"]
-async fn pricing_price_list_registered_translation_provider_multi_replica_evidence_postgres(
-) -> TestResult<()> {
+async fn pricing_price_list_registered_translation_provider_multi_replica_evidence_postgres()
+-> TestResult<()> {
     let admin_url = std::env::var(ADMIN_URL_ENV)
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
     assert_postgres_url(&admin_url);
@@ -120,7 +120,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     assert_eq!(owner_change.changes.len(), 1);
-    assert_eq!(owner_change.changes[0].lifecycle, TranslationResourceLifecycle::Active);
+    assert_eq!(
+        owner_change.changes[0].lifecycle,
+        TranslationResourceLifecycle::Active
+    );
     let owner_cursor = owner_change.next_cursor.expect("owner cursor");
 
     let read_request = ReadTranslationResourceRequest {
@@ -139,7 +142,12 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     let first_provider = registered_provider(first_connection.clone());
     let second_provider = registered_provider(second_connection.clone());
 
-    let first_patch = patch(&initial, "Vente d'automne", "Tarification saisonnière", "first");
+    let first_patch = patch(
+        &initial,
+        "Vente d'automne",
+        "Tarification saisonnière",
+        "first",
+    );
     let first_receipt = first_provider
         .apply_patch(
             apply_context(tenant_id, "first-apply", "pricing-first-apply"),
@@ -152,7 +160,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             first_patch,
         )
         .await?;
-    assert_eq!(replay.provider_receipt_id, first_receipt.provider_receipt_id);
+    assert_eq!(
+        replay.provider_receipt_id,
+        first_receipt.provider_receipt_id
+    );
     assert_eq!(replay.resource_revision, first_receipt.resource_revision);
     assert_eq!(replay.target_revision, first_receipt.target_revision);
 
@@ -210,7 +221,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     let frozen_cursor = frozen_first.next_cursor.expect("frozen cursor");
 
     let before_operational = provider
-        .read_resource(read_context(tenant_id, "before-operational"), read_request.clone())
+        .read_resource(
+            read_context(tenant_id, "before-operational"),
+            read_request.clone(),
+        )
         .await?;
     owner
         .update_price_list(
@@ -224,7 +238,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     let after_operational = provider
-        .read_resource(read_context(tenant_id, "after-operational"), read_request.clone())
+        .read_resource(
+            read_context(tenant_id, "after-operational"),
+            read_request.clone(),
+        )
         .await?;
     assert_eq!(
         before_operational.summary.resource_revision,
@@ -239,7 +256,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             },
         )
         .await?;
-    assert_eq!(progress.owner_change_cursor, progress_after_operational.owner_change_cursor);
+    assert_eq!(
+        progress.owner_change_cursor,
+        progress_after_operational.owner_change_cursor
+    );
 
     owner
         .update_price_list(
@@ -260,7 +280,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             },
         )
         .await?;
-    assert_eq!(progress.owner_change_cursor, progress_after_noop.owner_change_cursor);
+    assert_eq!(
+        progress.owner_change_cursor,
+        progress_after_noop.owner_change_cursor
+    );
 
     let late_snapshot = provider
         .read_resource(read_context(tenant_id, "late-read"), read_request.clone())
@@ -282,7 +305,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     assert_eq!(frozen_second.changes.len(), 1);
-    assert_eq!(frozen_second.changes[0].resource_revision, winner.resource_revision);
+    assert_eq!(
+        frozen_second.changes[0].resource_revision,
+        winner.resource_revision
+    );
     let frozen_terminal = frozen_second.next_cursor.expect("frozen terminal cursor");
 
     let next_window = provider
@@ -295,7 +321,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     assert_eq!(next_window.changes.len(), 1);
-    assert_eq!(next_window.changes[0].resource_revision, late_receipt.resource_revision);
+    assert_eq!(
+        next_window.changes[0].resource_revision,
+        late_receipt.resource_revision
+    );
     let pre_delete_cursor = next_window.next_cursor.expect("pre-delete cursor");
     let revision_before_delete = provider
         .read_resource(read_context(tenant_id, "pre-delete"), read_request.clone())
@@ -315,7 +344,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     assert_eq!(deleted.changes.len(), 1);
-    assert_eq!(deleted.changes[0].lifecycle, TranslationResourceLifecycle::Deleted);
+    assert_eq!(
+        deleted.changes[0].lifecycle,
+        TranslationResourceLifecycle::Deleted
+    );
     assert_eq!(deleted.changes[0].resource_revision, revision_before_delete);
     let deleted_cursor = deleted.next_cursor.expect("deleted cursor");
 
@@ -335,7 +367,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         .await?;
     assert_eq!(deleted_progress.resources, 0);
     assert_eq!(deleted_progress.complete_resources, 0);
-    assert_eq!(deleted_progress.owner_change_cursor.as_ref(), Some(&deleted_cursor));
+    assert_eq!(
+        deleted_progress.owner_change_cursor.as_ref(),
+        Some(&deleted_cursor)
+    );
 
     drop(provider);
     drop(first_provider);
@@ -397,7 +432,9 @@ fn patch(
     }
 }
 
-fn owner_translations(snapshot: &TranslationResourceSnapshot) -> Vec<PriceListOwnerTranslationInput> {
+fn owner_translations(
+    snapshot: &TranslationResourceSnapshot,
+) -> Vec<PriceListOwnerTranslationInput> {
     let source_description = field(snapshot, "description").source_value.clone();
     let target_description = field(snapshot, "description")
         .exact_target_value

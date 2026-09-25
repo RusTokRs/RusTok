@@ -39,7 +39,8 @@ type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires PostgreSQL admin access"]
-async fn region_registered_translation_provider_multi_replica_evidence_postgres() -> TestResult<()> {
+async fn region_registered_translation_provider_multi_replica_evidence_postgres() -> TestResult<()>
+{
     let admin_url = std::env::var(ADMIN_URL_ENV)
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
     assert_postgres_url(&admin_url);
@@ -382,7 +383,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             },
         )
         .await?;
-    if after_semantic_noop.owner_change_cursor != progress_before_owner_updates.owner_change_cursor {
+    if after_semantic_noop.owner_change_cursor != progress_before_owner_updates.owner_change_cursor
+    {
         return Err(test_error(format!(
             "semantically identical Region translation replacement manufactured a cursor event: before={progress_before_owner_updates:?} after={after_semantic_noop:?}"
         ))

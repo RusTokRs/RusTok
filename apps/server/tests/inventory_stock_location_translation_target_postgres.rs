@@ -4,10 +4,7 @@ use std::{error::Error, io, sync::Arc, time::Duration};
 
 use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
 use rustok_core::ModuleRegistry;
-use rustok_inventory::{
-    BootstrapService, InventoryModule,
-    entities::stock_location,
-};
+use rustok_inventory::{BootstrapService, InventoryModule, entities::stock_location};
 use rustok_migrations::Migrator;
 use rustok_server::{
     auth::AuthConfig,
@@ -40,8 +37,8 @@ type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires PostgreSQL admin access"]
-async fn inventory_stock_location_registered_translation_provider_multi_replica_evidence_postgres(
-) -> TestResult<()> {
+async fn inventory_stock_location_registered_translation_provider_multi_replica_evidence_postgres()
+-> TestResult<()> {
     let admin_url = std::env::var(ADMIN_URL_ENV)
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
     assert_postgres_url(&admin_url);
@@ -69,10 +66,16 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let other_tenant_id = Uuid::new_v4();
     seed_tenant(&seed_connection, tenant_id, "inventory-stock-location").await?;
-    seed_tenant(&seed_connection, other_tenant_id, "inventory-stock-location-isolation").await?;
+    seed_tenant(
+        &seed_connection,
+        other_tenant_id,
+        "inventory-stock-location-isolation",
+    )
+    .await?;
 
     let bootstrap_txn = seed_connection.begin().await?;
-    let location = BootstrapService::ensure_default_location_in_tx(&bootstrap_txn, tenant_id).await?;
+    let location =
+        BootstrapService::ensure_default_location_in_tx(&bootstrap_txn, tenant_id).await?;
     bootstrap_txn.commit().await?;
 
     let replay_txn = seed_connection.begin().await?;
@@ -220,7 +223,9 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     if first_snapshot.summary.resource_revision != second_snapshot.summary.resource_revision {
-        return Err(test_error("independent Inventory replicas observed different revisions").into());
+        return Err(
+            test_error("independent Inventory replicas observed different revisions").into(),
+        );
     }
 
     let first_patch = patch_from_snapshot(&first_snapshot, "Entrepôt A", "replica-one");

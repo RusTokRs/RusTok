@@ -1,7 +1,5 @@
 use rustok_api::PortError;
-use rustok_auth::{
-    OAuthAppTranslationLifecycle, oauth_app_translation_locale_revision,
-};
+use rustok_auth::{OAuthAppTranslationLifecycle, oauth_app_translation_locale_revision};
 use rustok_outbox::idempotency;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, FromQueryResult,
@@ -247,9 +245,8 @@ impl OAuthAppTranslationService {
             return Err(OAuthAppTranslationError::RevisionConflict { revision: "target" });
         }
 
-        let unchanged = target.is_some_and(|current| {
-            current.name == name && current.description == description
-        });
+        let unchanged = target
+            .is_some_and(|current| current.name == name && current.description == description);
         if !unchanged {
             oauth_apps::upsert_translation(
                 &txn,
@@ -275,7 +272,8 @@ impl OAuthAppTranslationService {
                 app_id,
                 locale: target_locale,
             })?;
-        let resource_revision = oauth_apps::translation_resource_revision(&app, &translations_after);
+        let resource_revision =
+            oauth_apps::translation_resource_revision(&app, &translations_after);
         let operation_id = operation_lease
             .as_ref()
             .map(|lease| lease.operation_id)
@@ -320,16 +318,16 @@ impl OAuthAppTranslationService {
                 vec![target_locale.into(), tenant_id.into(), source_locale.into()],
             ),
         };
-        let row = ProgressRow::find_by_statement(Statement::from_sql_and_values(
-            backend, sql, values,
-        ))
-        .one(&self.db)
-        .await?
-        .ok_or_else(|| {
-            OAuthAppTranslationError::Validation(
-                "OAuth application Translation progress aggregate returned no row".to_string(),
-            )
-        })?;
+        let row =
+            ProgressRow::find_by_statement(Statement::from_sql_and_values(backend, sql, values))
+                .one(&self.db)
+                .await?
+                .ok_or_else(|| {
+                    OAuthAppTranslationError::Validation(
+                        "OAuth application Translation progress aggregate returned no row"
+                            .to_string(),
+                    )
+                })?;
         let facts = OAuthAppTranslationProgressFacts {
             resources: count(row.resources, "resources")?,
             exact_required_units: count(row.exact_required_units, "exact required units")?,
@@ -370,7 +368,11 @@ impl OAuthAppTranslationService {
         ))
         .one(&self.db)
         .await?
-        .ok_or_else(|| OAuthAppTranslationError::Validation("OAuth application Translation highwater aggregate returned no row".to_string()))?;
+        .ok_or_else(|| {
+            OAuthAppTranslationError::Validation(
+                "OAuth application Translation highwater aggregate returned no row".to_string(),
+            )
+        })?;
         row.highwater
             .map(|value| count(value, "change highwater"))
             .transpose()
@@ -389,34 +391,50 @@ impl OAuthAppTranslationService {
                 "OAuth application Translation change page size must be between 1 and {MAX_OAUTH_APP_TRANSLATION_RESOURCE_PAGE}"
             )));
         }
-        let after = i64::try_from(after).map_err(|_| OAuthAppTranslationError::Validation(
-            "OAuth application Translation change cursor is too large".to_string(),
-        ))?;
-        let through = i64::try_from(through).map_err(|_| OAuthAppTranslationError::Validation(
-            "OAuth application Translation change cursor is too large".to_string(),
-        ))?;
+        let after = i64::try_from(after).map_err(|_| {
+            OAuthAppTranslationError::Validation(
+                "OAuth application Translation change cursor is too large".to_string(),
+            )
+        })?;
+        let through = i64::try_from(through).map_err(|_| {
+            OAuthAppTranslationError::Validation(
+                "OAuth application Translation change cursor is too large".to_string(),
+            )
+        })?;
         let backend = self.db.get_database_backend();
         let (sql, values) = match backend {
             DbBackend::Postgres => (
                 "SELECT change_seq, app_id, resource_revision, lifecycle FROM oauth_app_translation_change_journal WHERE tenant_id = $1 AND change_seq > $2 AND change_seq <= $3 ORDER BY change_seq ASC LIMIT $4",
-                vec![tenant_id.into(), after.into(), through.into(), i64::from(limit).into()],
+                vec![
+                    tenant_id.into(),
+                    after.into(),
+                    through.into(),
+                    i64::from(limit).into(),
+                ],
             ),
             _ => (
                 "SELECT change_seq, app_id, resource_revision, lifecycle FROM oauth_app_translation_change_journal WHERE tenant_id = ? AND change_seq > ? AND change_seq <= ? ORDER BY change_seq ASC LIMIT ?",
-                vec![tenant_id.into(), after.into(), through.into(), i64::from(limit).into()],
+                vec![
+                    tenant_id.into(),
+                    after.into(),
+                    through.into(),
+                    i64::from(limit).into(),
+                ],
             ),
         };
-        let rows = ChangeRow::find_by_statement(Statement::from_sql_and_values(
-            backend, sql, values,
-        ))
-        .all(&self.db)
-        .await?;
+        let rows =
+            ChangeRow::find_by_statement(Statement::from_sql_and_values(backend, sql, values))
+                .all(&self.db)
+                .await?;
         rows.into_iter()
             .map(|row| {
                 let lifecycle = OAuthAppTranslationLifecycle::parse(row.lifecycle.as_str())
-                    .ok_or_else(|| OAuthAppTranslationError::Validation(
-                        "OAuth application Translation journal lifecycle is invalid".to_string(),
-                    ))?;
+                    .ok_or_else(|| {
+                        OAuthAppTranslationError::Validation(
+                            "OAuth application Translation journal lifecycle is invalid"
+                                .to_string(),
+                        )
+                    })?;
                 Ok(OAuthAppTranslationChangeRecord {
                     change_seq: count(row.change_seq, "change sequence")?,
                     app_id: row.app_id,
@@ -428,7 +446,11 @@ impl OAuthAppTranslationService {
     }
 }
 
-async fn load_app<C>(db: &C, tenant_id: Uuid, app_id: Uuid) -> OAuthAppTranslationResult<oauth_apps::Model>
+async fn load_app<C>(
+    db: &C,
+    tenant_id: Uuid,
+    app_id: Uuid,
+) -> OAuthAppTranslationResult<oauth_apps::Model>
 where
     C: ConnectionTrait,
 {
@@ -487,7 +509,11 @@ fn locale_revision(translation: &oauth_app_translations::Model) -> String {
     )
 }
 
-fn validate_identity(tenant_id: Uuid, app_id: Uuid, require_app: bool) -> OAuthAppTranslationResult<()> {
+fn validate_identity(
+    tenant_id: Uuid,
+    app_id: Uuid,
+    require_app: bool,
+) -> OAuthAppTranslationResult<()> {
     if tenant_id.is_nil() || (require_app && app_id.is_nil()) {
         return Err(OAuthAppTranslationError::Validation(
             "OAuth application Translation identity must use non-nil UUIDs".to_string(),
@@ -539,9 +565,11 @@ fn ensure_revision(
 }
 
 fn count(value: i64, field: &'static str) -> OAuthAppTranslationResult<u64> {
-    u64::try_from(value).map_err(|_| OAuthAppTranslationError::Validation(format!(
-        "OAuth application Translation {field} must not be negative"
-    )))
+    u64::try_from(value).map_err(|_| {
+        OAuthAppTranslationError::Validation(format!(
+            "OAuth application Translation {field} must not be negative"
+        ))
+    })
 }
 
 #[derive(Debug, FromQueryResult)]

@@ -5,8 +5,8 @@ use std::{error::Error, io, sync::Arc, time::Duration};
 use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
 use rustok_core::ModuleRegistry;
 use rustok_fulfillment::{
-    CreateShippingOptionInput, FulfillmentModule, FulfillmentService, ShippingOptionTranslationInput,
-    UpdateShippingOptionInput,
+    CreateShippingOptionInput, FulfillmentModule, FulfillmentService,
+    ShippingOptionTranslationInput, UpdateShippingOptionInput,
 };
 use rustok_migrations::Migrator;
 use rustok_server::{
@@ -40,13 +40,14 @@ type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires PostgreSQL admin access"]
-async fn fulfillment_shipping_option_registered_translation_provider_multi_replica_evidence_postgres(
-) -> TestResult<()> {
+async fn fulfillment_shipping_option_registered_translation_provider_multi_replica_evidence_postgres()
+-> TestResult<()> {
     let admin_url = std::env::var(ADMIN_URL_ENV)
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
     assert_postgres_url(&admin_url);
 
-    let database_name = unique_postgres_database_name("rustok_shipping_option_translation_evidence");
+    let database_name =
+        unique_postgres_database_name("rustok_shipping_option_translation_evidence");
     let database_url = postgres_database_url(&admin_url, &database_name);
     let admin = connect_postgres(&admin_url).await.map_err(|error| {
         test_error(format!(
@@ -69,7 +70,12 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let other_tenant_id = Uuid::new_v4();
     seed_tenant(&seed_connection, tenant_id, "shipping-option-translation").await?;
-    seed_tenant(&seed_connection, other_tenant_id, "shipping-option-isolation").await?;
+    seed_tenant(
+        &seed_connection,
+        other_tenant_id,
+        "shipping-option-isolation",
+    )
+    .await?;
 
     let owner = FulfillmentService::new(seed_connection.clone());
     let option = owner
@@ -214,23 +220,40 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         target_locale: TenantLocale::new("fr")?,
     };
     let first_snapshot = first_provider
-        .read_resource(read_context(tenant_id, "replica-one-read"), read_request.clone())
+        .read_resource(
+            read_context(tenant_id, "replica-one-read"),
+            read_request.clone(),
+        )
         .await?;
     let second_snapshot = second_provider
-        .read_resource(read_context(tenant_id, "replica-two-read"), read_request.clone())
+        .read_resource(
+            read_context(tenant_id, "replica-two-read"),
+            read_request.clone(),
+        )
         .await?;
     if first_snapshot.summary.resource_revision != second_snapshot.summary.resource_revision {
-        return Err(test_error("independent Fulfillment replicas did not observe the same revision").into());
+        return Err(test_error(
+            "independent Fulfillment replicas did not observe the same revision",
+        )
+        .into());
     }
 
     let first_patch = patch_from_snapshot(&first_snapshot, "Rapide A", "replica-one");
     let second_patch = patch_from_snapshot(&second_snapshot, "Rapide B", "replica-two");
     let first_apply = first_provider.apply_patch(
-        apply_context(tenant_id, "replica-one-apply", "shipping-option-replica-one"),
+        apply_context(
+            tenant_id,
+            "replica-one-apply",
+            "shipping-option-replica-one",
+        ),
         first_patch,
     );
     let second_apply = second_provider.apply_patch(
-        apply_context(tenant_id, "replica-two-apply", "shipping-option-replica-two"),
+        apply_context(
+            tenant_id,
+            "replica-two-apply",
+            "shipping-option-replica-two",
+        ),
         second_patch,
     );
     let (first_result, second_result) = tokio::join!(first_apply, second_apply);
@@ -301,7 +324,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         .ok_or_else(|| test_error("first frozen Shipping Option cursor is missing"))?;
 
     let copy_before_operational = seed_provider
-        .read_resource(read_context(tenant_id, "before-operational"), read_request.clone())
+        .read_resource(
+            read_context(tenant_id, "before-operational"),
+            read_request.clone(),
+        )
         .await?;
     owner
         .update_shipping_option(
@@ -318,7 +344,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     let copy_after_operational = seed_provider
-        .read_resource(read_context(tenant_id, "after-operational"), read_request.clone())
+        .read_resource(
+            read_context(tenant_id, "after-operational"),
+            read_request.clone(),
+        )
         .await?;
     let progress_after_operational = seed_provider
         .read_progress(
@@ -340,7 +369,9 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         .into());
     }
 
-    owner.deactivate_shipping_option(tenant_id, option.id).await?;
+    owner
+        .deactivate_shipping_option(tenant_id, option.id)
+        .await?;
 
     let frozen_second = seed_provider
         .read_changes(

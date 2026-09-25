@@ -66,7 +66,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
 
     let target_id = Uuid::new_v4();
     let other_target_id = Uuid::new_v4();
-    let meta_id = seed_seo_source(&seed_connection, tenant_id, target_id, "SEO source title").await?;
+    let meta_id =
+        seed_seo_source(&seed_connection, tenant_id, target_id, "SEO source title").await?;
     seed_seo_source(
         &seed_connection,
         other_tenant_id,
@@ -204,7 +205,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             first_patch,
         )
         .await?;
-    assert_eq!(replay.provider_receipt_id, first_receipt.provider_receipt_id);
+    assert_eq!(
+        replay.provider_receipt_id,
+        first_receipt.provider_receipt_id
+    );
     assert_eq!(replay.resource_revision, first_receipt.resource_revision);
     assert_eq!(replay.target_revision, first_receipt.target_revision);
     assert_eq!(
@@ -276,7 +280,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     let post_race = provider
         .read_resource(read_context(tenant_id, "post-race"), read_request.clone())
         .await?;
-    assert_eq!(post_race.summary.resource_revision, winner.resource_revision);
+    assert_eq!(
+        post_race.summary.resource_revision,
+        winner.resource_revision
+    );
     let stale_patch = patch(&post_race, "Stale", "stale-after-owner-write");
 
     let first_window = provider
@@ -332,7 +339,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
 
     update_source_title(&seed_connection, meta_id, "SEO source title revised").await?;
     let source_changed = provider
-        .read_resource(read_context(tenant_id, "source-changed"), read_request.clone())
+        .read_resource(
+            read_context(tenant_id, "source-changed"),
+            read_request.clone(),
+        )
         .await?;
     assert_eq!(
         field(&source_changed, "title").source_value,
@@ -479,7 +489,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         .await?;
     assert_eq!(other_after_delete.resources.len(), 1);
     assert_eq!(
-        other_after_delete.resources[0].identity.resource_id.as_str(),
+        other_after_delete.resources[0]
+            .identity
+            .resource_id
+            .as_str(),
         other_target_id.to_string()
     );
 

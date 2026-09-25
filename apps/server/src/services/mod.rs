@@ -1,8 +1,8 @@
+#[cfg(feature = "mod-alloy")]
+pub mod alloy_translation_target;
 pub mod app_lifecycle;
 pub mod app_router;
 pub mod app_runtime;
-#[cfg(feature = "mod-alloy")]
-pub mod alloy_translation_target;
 pub(crate) mod artifact_binding;
 pub mod artifact_delivery_tenants;
 pub mod artifact_mcp;
@@ -68,6 +68,9 @@ pub mod forum_notification_recipient_context;
 #[cfg(feature = "mod-forum")]
 pub mod forum_posting_policy_facts;
 #[cfg(feature = "mod-forum")]
+#[path = "forum_search_category_scope.rs"]
+mod forum_search_category_scope;
+#[cfg(feature = "mod-forum")]
 pub mod forum_search_inbox_worker;
 pub mod graphql_schema;
 pub mod iggy_connector_control_adapter;
@@ -84,9 +87,6 @@ pub mod mcp_management_guard;
 pub mod mcp_management_mutation_provider;
 pub mod mcp_runtime;
 pub mod mcp_scaffold_workspace;
-#[cfg(feature = "mod-forum")]
-#[path = "forum_search_category_scope.rs"]
-mod forum_search_category_scope;
 
 #[cfg(feature = "mod-forum")]
 #[path = "forum_search_owner_revision.rs"]
@@ -165,9 +165,7 @@ pub mod module_event_dispatcher {
             {
                 let provider = rustok_comments::in_process_comments_thread_port(
                     db.clone(),
-                    crate::services::event_bus::transactional_event_bus_from_context(
-                        &runtime_ctx,
-                    ),
+                    crate::services::event_bus::transactional_event_bus_from_context(&runtime_ctx),
                 );
                 extensions.insert(provider);
             }
@@ -336,9 +334,7 @@ pub mod module_event_dispatcher {
         #[cfg(feature = "mod-translation")]
         rustok_translation_targets::register_translation_target_provider(
             &mut extensions,
-            super::oauth_app_translation_target::OAuthAppTranslationTargetProvider::new(
-                db.clone(),
-            ),
+            super::oauth_app_translation_target::OAuthAppTranslationTargetProvider::new(db.clone()),
         )
         .map_err(|error| {
             Error::Message(format!(

@@ -5,6 +5,7 @@ use std::{error::Error, io, sync::Arc, time::Duration};
 use chrono::Utc;
 use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
 use rustok_core::ModuleRegistry;
+use rustok_marketplace_seller::entities::{seller, seller_translation};
 use rustok_marketplace_seller::{
     CreateMarketplaceSellerInput, MarketplaceSellerCommandPort, MarketplaceSellerModule,
     MarketplaceSellerService, ReviewMarketplaceSellerOnboardingInput,
@@ -13,7 +14,6 @@ use rustok_marketplace_seller::{
     SuspendMarketplaceSellerRequest, UpdateMarketplaceSellerProfileInput,
     UpdateMarketplaceSellerProfileRequest,
 };
-use rustok_marketplace_seller::entities::{seller, seller_translation};
 use rustok_migrations::Migrator;
 use rustok_server::{
     auth::AuthConfig,
@@ -46,13 +46,14 @@ type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires PostgreSQL admin access"]
-async fn marketplace_seller_registered_translation_provider_multi_replica_evidence_postgres(
-) -> TestResult<()> {
+async fn marketplace_seller_registered_translation_provider_multi_replica_evidence_postgres()
+-> TestResult<()> {
     let admin_url = std::env::var(ADMIN_URL_ENV)
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
     assert_postgres_url(&admin_url);
 
-    let database_name = unique_postgres_database_name("rustok_marketplace_seller_translation_evidence");
+    let database_name =
+        unique_postgres_database_name("rustok_marketplace_seller_translation_evidence");
     let database_url = postgres_database_url(&admin_url, &database_name);
     let admin = connect_postgres(&admin_url).await.map_err(|error| {
         test_error(format!(
@@ -519,16 +520,12 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     let late_snapshot = seed_provider
-        .read_resource(
-            read_context(tenant_id, "late-read"),
-            read_request.clone(),
-        )
+        .read_resource(read_context(tenant_id, "late-read"), read_request.clone())
         .await?;
     if late_snapshot.summary.resource_revision == winner_receipt.resource_revision {
-        return Err(test_error(
-            "late Seller source mutation did not rotate the resource revision",
-        )
-        .into());
+        return Err(
+            test_error("late Seller source mutation did not rotate the resource revision").into(),
+        );
     }
 
     let frozen_second = seed_provider
@@ -541,10 +538,14 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     if frozen_second.changes.len() != 2
-        || frozen_second.changes.iter().any(|change| {
-            change.resource_revision == late_snapshot.summary.resource_revision
-        })
-        || frozen_second.changes.last().map(|change| &change.resource_revision)
+        || frozen_second
+            .changes
+            .iter()
+            .any(|change| change.resource_revision == late_snapshot.summary.resource_revision)
+        || frozen_second
+            .changes
+            .last()
+            .map(|change| &change.resource_revision)
             != Some(&winner_receipt.resource_revision)
     {
         return Err(test_error(format!(
@@ -603,10 +604,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     let suspended_snapshot = seed_provider
-        .read_resource(
-            read_context(tenant_id, "suspended-read"),
-            read_request,
-        )
+        .read_resource(read_context(tenant_id, "suspended-read"), read_request)
         .await?;
     let progress_after_suspend = seed_provider
         .read_progress(
