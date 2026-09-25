@@ -20,6 +20,18 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ---
 
 
+## 2026-09-25 Commerce Cart Checkout diagnostic hardening
+
+Cart Checkout owner-boundary logging previously retained full PortError debug payloads and
+raw request context such as tenant ID, actor, channel, locale, traceparent, and idempotency
+key. The checkout snapshot port now emits only bounded correlation/context facts plus typed
+error-shape metadata; the service mapper similarly records variant/field-shape facts without
+raw values. Tenant parse and validation/database diagnostics follow the same contract. The
+broad ecommerce verifier now isolates these mapper sections and forbids the raw diagnostic
+patterns so this boundary cannot regress silently.
+
+Maintainer runtime evidence, gatekeeper, build, and tests remain unrun in this continuation.
+
 ## 2026-09-25 Commerce GraphQL validation envelope hardening
 
 The Commerce GraphQL checkout compatibility boundary previously copied raw validation details from `CommerceError` and owner `PortError` into public GraphQL messages. Both validation branches now emit stable public text while retaining only bounded diagnostic facts internally, and the existing checkout source verifier explicitly forbids the raw-message forwarding patterns.
