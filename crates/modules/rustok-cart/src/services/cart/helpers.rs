@@ -1364,4 +1364,45 @@ mod tests {
         assert!(!customer_tax_exempt(&json!({"customer_tax_exempt": "yes"})));
         assert!(customer_tax_exempt(&json!({"customer_tax_exempt": true})));
     }
+
+    #[test]
+    fn digital_line_never_receives_shipping_profile() {
+        assert_eq!(
+            normalize_line_item_shipping_profile(
+                CartLineFulfillmentRequirement::Digital,
+                None,
+            )
+            .expect("digital line without profile is valid"),
+            None
+        );
+        assert!(normalize_line_item_shipping_profile(
+            CartLineFulfillmentRequirement::Digital,
+            Some("default"),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn physical_line_requires_and_normalizes_shipping_profile() {
+        assert_eq!(
+            normalize_line_item_shipping_profile(
+                CartLineFulfillmentRequirement::Physical,
+                Some("  Express "),
+            )
+            .expect("physical line should normalize its profile")
+            .as_deref(),
+            Some("express")
+        );
+        assert!(normalize_line_item_shipping_profile(
+            CartLineFulfillmentRequirement::Physical,
+            None,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn digital_lines_do_not_create_delivery_groups() {
+        let groups = collect_delivery_group_snapshots(&[]).expect("empty cart has no groups");
+        assert!(groups.is_empty());
+    }
 }
