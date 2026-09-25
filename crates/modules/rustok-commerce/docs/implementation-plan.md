@@ -32,6 +32,7 @@ Last reviewed: 2026-09-25
 - [x] Repair the malformed marker array in `verify-order-post-order-command-port.mjs` so the post-order owner-boundary guard is valid JavaScript.
 - [x] Sanitize Commerce GraphQL checkout validation envelopes so `CommerceError` and owner `PortError` diagnostics cannot leak raw validation text to clients; add a static guard for both paths.
 - [x] Sanitize the legacy GraphQL cart shipping-option helper so owner `PortError` messages cannot bypass the checkout public error envelope.
+- [x] Make the shared `legacy_graphql_error` mapper always use its caller-owned public message instead of copying an arbitrary `async_graphql::Error` message into the client envelope; existing cart helper verification now passes its source contract again.
 - [ ] Run the Rust compiler and static verification suite after this repair; runtime, migration, and test evidence remains maintainer-owned for this continuation.
 
 
