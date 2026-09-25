@@ -35,7 +35,8 @@ pub struct StorefrontCartLineItem {
     pub unit_price: String,
     pub total_price: String,
     pub currency_code: String,
-    pub shipping_profile_slug: String,
+    pub fulfillment_requirement: String,
+    pub shipping_profile_slug: Option<String>,
     pub seller_id: Option<String>,
 }
 
