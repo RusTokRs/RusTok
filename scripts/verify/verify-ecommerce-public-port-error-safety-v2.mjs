@@ -43,6 +43,7 @@ const product = read('crates/modules/rustok-product/src/ports.rs');
 const storefrontProductsLegacy = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
 const storefrontCarts = read('crates/modules/rustok-commerce/src/controllers/store/carts.rs');
 const storefrontOrders = read('crates/modules/rustok-commerce/src/controllers/store/orders.rs');
+const storefrontLineItemResolution = read('crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs');
 const pricing = read('crates/modules/rustok-pricing/src/ports.rs');
 const payment = read('crates/modules/rustok-payment/src/ports.rs');
 const paymentCompensation = read('crates/modules/rustok-payment/src/checkout_compensation.rs');
@@ -83,6 +84,7 @@ for (const [source, label] of [
   [storefrontProductsLegacy, 'storefront auxiliary product controller'],
   [storefrontCarts, 'storefront cart controller'],
   [storefrontOrders, 'storefront order controller'],
+  [storefrontLineItemResolution, 'storefront line-item resolution'],
   [orderCompensation, 'order checkout compensation port'],
   [orderPaymentSettlement, 'order checkout payment settlement port'],
   [orderRecovery, 'order checkout recovery adapter'],
@@ -631,6 +633,31 @@ requireAll(storefrontOrders, [
   'storefront Payment refund read failed with bounded diagnostics',
 ], 'storefront order bounded diagnostics');
 
+forbidAll(storefrontLineItemResolution, [
+  'error = ?error',
+  'tenant_id = %context.tenant_id',
+  'tenant_id = %tenant_id',
+  'channel = ?context.channel',
+  'channel = ?public_channel_slug',
+  'locale = ?locale',
+  'variant_id = %variant_id',
+  'product_id = %product_id',
+  'public_code = %public.code',
+], 'storefront line-item payload diagnostics');
+
+requireAll(storefrontLineItemResolution, [
+  'owner_error_kind',
+  'owner_code_length',
+  'tenant_id_length = context.tenant_id.chars().count()',
+  'variant_id_non_nil = !variant_id.is_nil()',
+  'product_id_non_nil = !product_id.is_nil()',
+  'channel_present',
+  'locale_present',
+  'storefront line item Product owner read failed with bounded diagnostics',
+  'storefront line item pricing resolution failed with bounded diagnostics',
+  'storefront line item inventory operation failed with bounded diagnostics',
+], 'storefront line-item bounded diagnostics');
+
 const required = [
   [pricing, [
     'correlation_id = %context.correlation_id',
@@ -995,5 +1022,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Channel, region, cart, product, storefront auxiliary, storefront cart/order, pricing, payment collection/compensation, fulfillment, customer, inventory, order checkout, and marketplace payout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
+  '✔ Channel, region, cart, product, storefront auxiliary, storefront cart/order/line-item, pricing, payment collection/compensation, fulfillment, customer, inventory, order checkout, and marketplace payout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
 );
