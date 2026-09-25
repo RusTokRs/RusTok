@@ -39,6 +39,7 @@ const channel = read('crates/modules/rustok-channel/src/ports.rs');
 const region = read('crates/modules/rustok-region/src/ports.rs');
 const cart = read('crates/modules/rustok-cart/src/checkout_snapshot.rs');
 const cartPromotion = read('crates/modules/rustok-cart/src/promotion_guard.rs');
+const product = read('crates/modules/rustok-product/src/ports.rs');
 const pricing = read('crates/modules/rustok-pricing/src/ports.rs');
 const payment = read('crates/modules/rustok-payment/src/ports.rs');
 const paymentCompensation = read('crates/modules/rustok-payment/src/checkout_compensation.rs');
@@ -202,6 +203,71 @@ requireAll(cartPromotion, [
   'internal_message_length = error.message.chars().count()',
   'correlation_id = %context.correlation_id',
 ], 'cart promotion bounded diagnostics');
+
+forbidAll(product, [
+  'error = ?error',
+  'error = %error',
+  'internal_tenant_id = %context.tenant_id',
+  'tenant_id = %context.tenant_id',
+  'internal_message = %error.message',
+  'internal_code = %error.code',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+  'internal_variant_id = %variant_id',
+], 'product payload diagnostics');
+
+requireAll(product, [
+  'struct ProductPortContextFacts',
+  'struct ProductOwnerErrorFacts',
+  'fn product_port_context_facts(',
+  'fn product_owner_error_facts(',
+  'fn product_port_error_kind(',
+  'fn log_product_port_failure(',
+  'fn log_product_context_rejection(',
+  'correlation_id_length = context_facts.correlation_id_length',
+  'tenant_id_length = context_facts.tenant_id_length',
+  'actor_kind = context_facts.actor_kind',
+  'actor_id_length = context_facts.actor_id_length',
+  'claim_count = context_facts.claim_count',
+  'role_count = context_facts.role_count',
+  'channel_present = context_facts.channel_present',
+  'locale_length = context_facts.locale_length',
+  'causation_id_present = context_facts.causation_id_present',
+  'traceparent_present = context_facts.traceparent_present',
+  'idempotency_key_present = context_facts.idempotency_key_present',
+  'error_variant = error_facts.error_variant',
+  'text_field_count = error_facts.text_field_count',
+  'text_total_length = error_facts.text_total_length',
+  'uuid_field_count = error_facts.uuid_field_count',
+  'uuid_non_nil_count = error_facts.uuid_non_nil_count',
+  'opaque_payload_present = error_facts.opaque_payload_present',
+  'parse_failed = true',
+  'product.tenant_id_invalid',
+  'product.context_invalid',
+  'product.database_unavailable',
+  'product.product_not_found',
+  'product.variant_not_found',
+  'product.image_not_found',
+  'product.duplicate_handle',
+  'product.duplicate_sku',
+  'product.validation',
+  'product.no_variants',
+  'product.cannot_delete_only_variant',
+  'product.cannot_delete_published',
+  'product.invariant_violation',
+  '"product request context is invalid"',
+  '"product storage is temporarily unavailable"',
+  '"product request is invalid"',
+  '"product SKU conflicts with an existing product"',
+  '"product operation could not be completed safely"',
+  'product_error_to_port_error(',
+  'boundary = "product_catalog_read_port"',
+], 'product bounded diagnostics');
+
 
 forbidAll(pricing, [
   'format!("pricing storage unavailable: {error}")',
@@ -479,6 +545,8 @@ requireAny(orderRecovery, [
   '"order.checkout_recovery_validation"',
   'code = "order.checkout_recovery_validation"',
 ], 'order recovery validation code');
+
+const productRequired = product;
 
 const required = [
   [pricing, [
@@ -844,5 +912,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Channel, region, cart, pricing, payment collection/compensation, fulfillment, customer, inventory, order checkout, and marketplace payout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
+  '✔ Channel, region, cart, product, pricing, payment collection/compensation, fulfillment, customer, inventory, order checkout, and marketplace payout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
 );
