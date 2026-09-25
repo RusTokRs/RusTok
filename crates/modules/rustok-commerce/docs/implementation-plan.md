@@ -1165,20 +1165,19 @@ Source inspection is not execution evidence.
 - [ ] Continue the mounted non-`PortError` public-envelope audit and owner-port cleanup across
   remaining ecommerce controllers/transports.
 
-## Audit 2026-09-25: Admin Order command owner-port cutover
+## Audit correction 2026-09-25: active Admin Order command path
 
-- [x] Route mounted `/admin/orders/{id}/mark-paid`, `/ship`, `/deliver`, and `/cancel`
-  handlers through the host-composed `OrderAdminCommandPort` instead of constructing
-  `OrderService` directly inside the Commerce HTTP controller.
-- [x] Forward typed `MarkOrderPaidRequest`, `ShipOrderRequest`, `DeliverOrderRequest`, and
-  `CancelOrderRequest` into the owner boundary and reuse the transport-neutral Order
-  `PortContext` for tenant, actor, locale, channel, and deadline semantics.
-- [x] Remove the controller-local legacy `OrderError` mutation mapper and its duplicate
-  diagnostic wrapper; command failures now use the owner-port `PortError` envelope.
-- [x] Extend the admin order/fulfillment verification guard to forbid direct OrderService
-  construction/lifecycle calls and require the owner command handoff.
-- [ ] Apply the same owner-port cutover discipline to remaining mounted Commerce handlers
-  still constructing foreign owner services directly.
+- [x] Confirm the mounted Admin Order controller is `controllers/admin/orders_owner_ports.rs`;
+  the legacy `controllers/admin/orders.rs` is not mounted.
+- [x] Revert the accidental edits previously made to that unmounted legacy controller; no
+  legacy command migration is claimed as completed.
+- [x] Confirm the active controller already routes mark-paid, ship, deliver, and cancel through
+  `OrderAdminCommandPort` with typed owner requests.
+- [x] Fix the active command context so reads do not invent idempotency keys and writes require
+  the caller-owned `Idempotency-Key` header and propagate it unchanged to the owner port.
+- [x] Align the Admin Order/fulfillment and order-detail verifiers with the mounted
+  `orders_owner_ports.rs` source.
+- [ ] Continue the same active-path audit for remaining mounted Commerce controllers.
 
 ## Audit 2026-09-25: storefront line-item resolution error safety
 
