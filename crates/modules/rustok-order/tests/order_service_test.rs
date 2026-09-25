@@ -38,7 +38,8 @@ fn create_order_input() -> CreateOrderInput {
             CreateOrderLineItemInput {
                 product_id: Some(Uuid::new_v4()),
                 variant_id: Some(Uuid::new_v4()),
-                shipping_profile_slug: "default".to_string(),
+            fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                shipping_profile_slug: Some("default".to_string()),
                 seller_id: None,
                 sku: Some("SKU-1".to_string()),
                 title: "Test product".to_string(),
