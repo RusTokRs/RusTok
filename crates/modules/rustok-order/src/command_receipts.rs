@@ -141,9 +141,15 @@ pub(crate) async fn complete_command<R: Serialize + Clone>(
     response_kind: &str,
     response: &R,
 ) -> OrderResult<R> {
-    let response_json = serde_json::to_value(response).map_err(|_| {
-        OrderError::Validation("order command result could not be serialized".to_string())
-    })?;
+    let response_json = match serde_json::to_value(response) {
+        Ok(value) => value,
+        Err(_) => {
+            receipt.transaction.rollback().await?;
+            return Err(OrderError::Validation(
+                "order command result could not be serialized".to_string(),
+            ));
+        }
+    };
 
     let updated = order_command_receipt::Entity::update_many()
         .col_expr(
