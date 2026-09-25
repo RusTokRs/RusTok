@@ -1151,6 +1151,19 @@ Source inspection is not execution evidence.
   auxiliary controller and require its bounded diagnostic helpers.
 - [ ] Continue the broader non-`PortError` public-envelope and mounted owner-boundary audit
   across remaining ecommerce controllers and transports.
+
+## Audit 2026-09-25: mounted storefront Cart and Order error safety
+
+- [x] Harden the mounted storefront Cart HTTP port mapper so raw `PortError`, tenant/cart
+  identifiers, and internal public-code values are not serialized into diagnostics.
+- [x] Harden the mounted storefront Order/Customer/Payment HTTP mappers so raw owner errors,
+  request context, customer/order identifiers, and internal error messages are not logged.
+- [x] Keep transport behavior stable while retaining bounded owner kind/code-length, identity
+  presence, retryability, correlation, and HTTP status facts needed for diagnosis.
+- [x] Extend `verify-ecommerce-public-port-error-safety-v2.mjs` to guard the mounted
+  storefront Cart and Order controllers against regression.
+- [ ] Continue the mounted non-`PortError` public-envelope audit and owner-port cleanup across
+  remaining ecommerce controllers/transports.
 ## Change rules
 
 1. Update this file with every completed or newly discovered ecommerce task.
