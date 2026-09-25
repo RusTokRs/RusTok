@@ -16,7 +16,9 @@ use rustok_api::{
 };
 use rustok_commerce_foundation::entities::{region, region_country_tax_policy};
 use rustok_core::generate_id;
-use rustok_fulfillment::entities::shipping_option;
+use rustok_fulfillment::{
+    ReadShippingOptionProjectionRequest, ShippingOptionReadPort, ShippingOptionResponse,
+};
 use rustok_tax::{
     TaxCalculationInput, TaxCalculationPort, TaxPolicyCountryRule, TaxPolicySnapshot, TaxableAmount,
 };
@@ -817,41 +819,71 @@ where
     })
 }
 
-pub async fn load_shipping_total<C>(
-    conn: &C,
+pub async fn load_shipping_options(
+    shipping_option_read_port: &dyn ShippingOptionReadPort,
+    cart: &entities::cart::Model,
+    shipping_option_ids: impl IntoIterator<Item = Uuid>,
+) -> CartResult<Vec<ShippingOptionResponse>> {
+    let mut ids = shipping_option_ids.into_iter().collect::<Vec<_>>();
+    ids.sort_unstable();
+    ids.dedup();
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let locale = cart
+        .locale_code
+        .as_deref()
+        .and_then(normalize_locale_tag)
+        .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+    let mut context = PortContext::new(
+        cart.tenant_id.to_string(),
+        PortActor::service("rustok-cart.shipping"),
+        locale,
+        format!("cart-shipping:read-options:{}", cart.id),
+    )
+    .with_deadline(Duration::from_secs(2));
+    if let Some(channel) = cart.channel_slug.as_deref() {
+        context = context.with_channel(channel);
+    }
+
+    let mut options = Vec::with_capacity(ids.len());
+    for shipping_option_id in ids {
+        let option = shipping_option_read_port
+            .read_shipping_option_projection(
+                context.clone(),
+                ReadShippingOptionProjectionRequest {
+                    shipping_option_id,
+                    requested_locale: cart.locale_code.clone(),
+                    tenant_default_locale: None,
+                },
+            )
+            .await
+            .map_err(|error| CartError::ShippingBoundary {
+                kind: error.kind,
+                code: error.code,
+                message: error.message,
+                retryable: error.retryable,
+            })?;
+        options.push(option);
+    }
+    Ok(options)
+}
+
+pub async fn load_shipping_total(
     cart: &entities::cart::Model,
     line_items: &[entities::cart_line_item::Model],
     shipping_selections: &[entities::cart_shipping_selection::Model],
-) -> CartResult<Decimal>
-where
-    C: ConnectionTrait,
-{
+    shipping_options: &[ShippingOptionResponse],
+) -> CartResult<Decimal> {
     if collect_delivery_group_snapshots(line_items)?.is_empty() {
         return Ok(Decimal::ZERO);
     }
-
-    let shipping_option_ids = if shipping_selections.is_empty() {
-        cart.selected_shipping_option_id
-            .into_iter()
-            .collect::<Vec<_>>()
-    } else {
-        shipping_selections
-            .iter()
-            .filter_map(|selection| selection.selected_shipping_option_id)
-            .collect::<Vec<_>>()
-    };
-
-    if shipping_option_ids.is_empty() {
+    if shipping_selections.is_empty() && cart.selected_shipping_option_id.is_none() {
         return Ok(Decimal::ZERO);
     }
-
-    let options = shipping_option::Entity::find()
-        .filter(shipping_option::Column::Id.is_in(shipping_option_ids))
-        .all(conn)
-        .await?;
-
-    Ok(options
-        .into_iter()
+    Ok(shipping_options
+        .iter()
         .fold(Decimal::ZERO, |acc, option| acc + option.amount))
 }
 
@@ -860,7 +892,7 @@ pub async fn recalculate_tax_lines<C>(
     tax_calculation_port: &dyn TaxCalculationPort,
     cart: &entities::cart::Model,
     line_items: &[entities::cart_line_item::Model],
-    shipping_selections: &[entities::cart_shipping_selection::Model],
+    shipping_options: &[ShippingOptionResponse],
 ) -> CartResult<(Decimal, bool)>
 where
     C: ConnectionTrait,
@@ -902,17 +934,7 @@ where
         });
     }
 
-    for selection in shipping_selections {
-        let Some(shipping_option_id) = selection.selected_shipping_option_id else {
-            continue;
-        };
-        let option = shipping_option::Entity::find_by_id(shipping_option_id)
-            .filter(shipping_option::Column::TenantId.eq(cart.tenant_id))
-            .one(conn)
-            .await?;
-        let Some(option) = option else {
-            continue;
-        };
+    for option in shipping_options {
         if option.currency_code != cart.currency_code {
             continue;
         }
@@ -988,6 +1010,7 @@ where
 pub async fn recalculate_totals<C>(
     conn: &C,
     tax_calculation_port: &dyn TaxCalculationPort,
+    shipping_option_read_port: &dyn ShippingOptionReadPort,
     cart: entities::cart::Model,
 ) -> CartResult<()>
 where
@@ -1009,14 +1032,31 @@ where
         .filter(entities::cart_shipping_selection::Column::CartId.eq(cart.id))
         .all(conn)
         .await?;
+    let physical_groups = collect_delivery_group_snapshots(&line_items)?;
+    let selected_shipping_option_ids = if physical_groups.is_empty() {
+        Vec::new()
+    } else if shipping_selections.is_empty() {
+        cart.selected_shipping_option_id.into_iter().collect()
+    } else {
+        shipping_selections
+            .iter()
+            .filter_map(|selection| selection.selected_shipping_option_id)
+            .collect()
+    };
+    let shipping_options = load_shipping_options(
+        shipping_option_read_port,
+        &cart,
+        selected_shipping_option_ids,
+    )
+    .await?;
     let shipping_total =
-        load_shipping_total(conn, &cart, &line_items, &shipping_selections).await?;
+        load_shipping_total(&cart, &line_items, &shipping_selections, &shipping_options).await?;
     let (tax_total, tax_included) = recalculate_tax_lines(
         conn,
         tax_calculation_port,
         &cart,
         &line_items,
-        &shipping_selections,
+        &shipping_options,
     )
     .await?;
     let subtotal = subtotal_amount(&line_items);
