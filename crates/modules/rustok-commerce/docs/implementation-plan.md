@@ -1202,6 +1202,22 @@ Source inspection is not execution evidence.
   diagnostic patterns and require the bounded Admin checkout-operation contract.
 - [ ] Continue the same no-serialization rule across remaining mounted Commerce transport
   helpers and provider-adapter boundaries.
+
+## Audit 2026-09-25: active Admin Order idempotency and cart lifecycle typing
+
+- [x] Make mounted Admin Order read contexts free of synthetic idempotency keys.
+- [x] Require a caller-owned `Idempotency-Key` header for mark-paid, ship, deliver, and
+  cancel, validate its size, and propagate the exact key through `OrderAdminCommandPort`.
+- [x] Remove raw owner error-code values from active Admin Order HTTP diagnostics; retain
+  only bounded code-length, error-kind, retryability, identity shape, and status facts.
+- [x] Replace the active storefront payment-collection guard's raw `cart.status == "completed"`
+  comparison with `CartResponse::lifecycle_status()` and `CartStatus::Completed`.
+- [x] Fail closed on unknown cart lifecycle values instead of treating them as a valid
+  non-completed state.
+- [x] Align Admin Order and order-detail verification scripts with the actually mounted
+  `orders_owner_ports.rs` controller.
+- [ ] Continue the same caller-owned idempotency and typed-lifecycle audit in remaining
+  mounted Commerce write boundaries.
 ## Change rules
 
 1. Update this file with every completed or newly discovered ecommerce task.
