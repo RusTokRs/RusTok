@@ -12,9 +12,9 @@ server:
 database:
   uri: postgres://rustok:rustok@localhost:5432/rustok_dev
   enable_logging: true
-  connect_timeout: 500
-  idle_timeout: 500
-  min_connections: 1
+  connect_timeout: 10000
+  idle_timeout: 300000
+  min_connections: 5
   max_connections: 30
   auto_migrate: true
 

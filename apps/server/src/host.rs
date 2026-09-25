@@ -316,9 +316,13 @@ async fn connect_database(
 ) -> Result<sea_orm::DatabaseConnection> {
     let mut options = ConnectOptions::new(uri.to_string());
     options.sqlx_logging(config.enable_logging);
-    if config.connect_timeout > 0 {
-        options.connect_timeout(Duration::from_millis(config.connect_timeout));
-    }
+    let timeout = if config.connect_timeout > 0 {
+        Duration::from_millis(config.connect_timeout.max(5000))
+    } else {
+        Duration::from_secs(10)
+    };
+    options.connect_timeout(timeout);
+    options.acquire_timeout(timeout);
     if config.idle_timeout > 0 {
         options.idle_timeout(Duration::from_millis(config.idle_timeout));
     }

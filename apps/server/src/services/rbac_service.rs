@@ -249,6 +249,31 @@ impl RbacService {
             return Ok(role);
         }
 
+        let role_query = match db.get_database_backend() {
+            sea_orm::DbBackend::Postgres => {
+                sea_orm::Statement::from_sql_and_values(
+                    sea_orm::DbBackend::Postgres,
+                    "SELECT r.slug FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id = $1 AND (r.tenant_id = $2 OR r.tenant_id = '00000000-0000-0000-0000-000000000001'::uuid) ORDER BY CASE WHEN r.slug = 'super_admin' THEN 1 WHEN r.slug = 'admin' THEN 2 WHEN r.slug = 'manager' THEN 3 ELSE 4 END LIMIT 1",
+                    [*user_id, *tenant_id],
+                )
+            }
+            _ => {
+                sea_orm::Statement::from_sql_and_values(
+                    db.get_database_backend(),
+                    "SELECT r.slug FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id = ? AND (r.tenant_id = ? OR r.tenant_id = '00000000-0000-0000-0000-000000000001') ORDER BY CASE WHEN r.slug = 'super_admin' THEN 1 WHEN r.slug = 'admin' THEN 2 WHEN r.slug = 'manager' THEN 3 ELSE 4 END LIMIT 1",
+                    [user_id.to_string().into(), tenant_id.to_string().into()],
+                )
+            }
+        };
+
+        if let Ok(Some(row)) = db.query_one(role_query).await {
+            if let Ok(slug) = row.try_get::<String>("", "slug") {
+                if let Ok(role) = std::str::FromStr::from_str(&slug) {
+                    return Ok(role);
+                }
+            }
+        }
+
         let permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
         Ok(crate::context::infer_user_role_from_permissions(
             &permissions,

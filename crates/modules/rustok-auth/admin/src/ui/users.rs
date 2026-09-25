@@ -352,9 +352,9 @@ pub fn Users() -> impl IntoView {
                             }
                             .into_any()
                         }
-                        Some(Err(_err)) => view! {
+                        Some(Err(err)) => view! {
                             <div class="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
-                                {t_local("users.loadError", "Failed to load users. Check API availability and access permissions.")}
+                                {format!("{}: {}", t_local("users.loadError", "Failed to load users. Check API availability and access permissions."), err)}
                             </div>
                         }
                         .into_any(),
