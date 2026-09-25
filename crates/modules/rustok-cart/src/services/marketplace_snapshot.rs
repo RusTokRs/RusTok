@@ -81,16 +81,18 @@ impl CartMarketplaceSnapshotService {
             Some(locale) => locale,
             None => load_tenant_default_locale(&transaction, tenant_id).await?,
         };
-        let shipping_profile_slug =
-            normalize_shipping_profile_slug(input.line_item.shipping_profile_slug.as_deref());
+        let shipping_profile_slug = super::cart::helpers::normalize_line_item_shipping_profile(
+            input.line_item.fulfillment_requirement,
+            input.line_item.shipping_profile_slug.as_deref(),
+        )?;
         if let Some(profile) = snapshot.fulfillment_profile_slug.as_deref() {
-            if profile != shipping_profile_slug {
+            if Some(profile.to_string()) != shipping_profile_slug {
                 return Err(CartError::Validation(
                     "marketplace snapshot fulfillment profile does not match cart line".to_string(),
                 ));
             }
         } else {
-            snapshot.fulfillment_profile_slug = Some(shipping_profile_slug.clone());
+            snapshot.fulfillment_profile_slug = shipping_profile_slug.clone();
         }
 
         let line_item_id = generate_id();
@@ -100,7 +102,8 @@ impl CartMarketplaceSnapshotService {
             cart_id: Set(cart_id),
             product_id: Set(input.line_item.product_id),
             variant_id: Set(input.line_item.variant_id),
-            shipping_profile_slug: Set(shipping_profile_slug),
+            fulfillment_requirement: Set(input.line_item.fulfillment_requirement.as_str().to_string()),
+            shipping_profile_slug: Set(shipping_profile_slug.clone().unwrap_or_default()),
             sku: Set(input.line_item.sku),
             quantity: Set(input.line_item.quantity),
             unit_price: Set(input.line_item.unit_price),
@@ -393,6 +396,26 @@ fn validate_line_binding(
     if line.product_id != Some(input.master_product_id)
         || line.variant_id != Some(input.master_variant_id)
     {
+        let requirement = super::cart::helpers::line_item_fulfillment_requirement(
+            &line.fulfillment_requirement,
+        )?;
+        match requirement {
+            crate::dto::CartLineFulfillmentRequirement::Digital
+                if input.fulfillment_profile_slug.is_some() =>
+            {
+                return Err(CartError::Validation(
+                    "digital marketplace cart lines must not have a fulfillment profile".to_string(),
+                ));
+            }
+            crate::dto::CartLineFulfillmentRequirement::Physical
+                if input.fulfillment_profile_slug.is_none() =>
+            {
+                return Err(CartError::Validation(
+                    "physical marketplace cart lines require a fulfillment profile".to_string(),
+                ));
+            }
+            _ => {}
+        }
         return Err(CartError::Validation(format!(
             "cart line {} identity does not match marketplace snapshot",
             line.id
@@ -400,7 +423,14 @@ fn validate_line_binding(
     }
     validate_snapshot_amounts(input, line.quantity)?;
     validate_decimal_unit_price(line.unit_price, input)?;
-    if input.fulfillment_profile_slug.as_deref() != Some(line.shipping_profile_slug.as_str()) {
+    let expected_profile = if line.fulfillment_requirement.eq_ignore_ascii_case("digital") {
+        None
+    } else {
+        super::cart::helpers::normalize_optional_shipping_profile_slug(
+            Some(line.shipping_profile_slug.as_str()),
+        )
+    };
+    if input.fulfillment_profile_slug != expected_profile {
         return Err(CartError::Validation(format!(
             "cart line {} shipping profile does not match marketplace snapshot",
             line.id
