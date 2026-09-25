@@ -15,6 +15,8 @@ pub use changes::*;
 pub use fulfillments::*;
 pub use orders::*;
 pub use payments::*;
+pub use post_order_commands::*;
+pub use post_order_reads::*;
 pub use products::*;
 pub use returns::*;
 pub use shipping::*;

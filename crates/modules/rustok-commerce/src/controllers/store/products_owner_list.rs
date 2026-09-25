@@ -23,14 +23,6 @@ const STOREFRONT_PRODUCT_OWNER: &str = "rustok_product";
 const STOREFRONT_PRODUCT_BOUNDARY: &str = "commerce_storefront_product_http";
 const STOREFRONT_PRODUCT_LIST_OPERATION: &str = "list_legacy_storefront_http_products";
 
-impl CommerceHttpRuntime {
-    fn product_storefront_http_read_port(
-        &self,
-    ) -> Option<std::sync::Arc<dyn ProductStorefrontHttpReadPort>> {
-        self.product_catalog_read_runtime
-            .storefront_http_read_port()
-    }
-}
 
 fn storefront_product_list_port_context(
     tenant_id: Uuid,

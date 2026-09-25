@@ -383,6 +383,11 @@ fn map_admin_order_change_orchestration_error(
             "validation",
             "rustok_commerce",
         ),
+        PostOrderOrchestrationError::OwnerPort { owner, error } => {
+            let (status, code, message, error_kind) =
+                admin_order_change_port_error_policy(error);
+            (status, code, message, error_kind, *owner)
+        }
     };
     tracing::error!(
         error = ?error,

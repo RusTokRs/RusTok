@@ -271,7 +271,13 @@ impl OrderChangeOrchestrationService {
             }
             "claim" => {
                 post_order
-                    .apply_claim_order_change(tenant_id, change_id, metadata)
+                    .apply_claim_order_change(
+                        tenant_id,
+                        actor_id,
+                        change_id,
+                        idempotency_key,
+                        metadata,
+                    )
                     .await
             }
             _ => {

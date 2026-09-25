@@ -282,6 +282,14 @@ impl CheckoutService {
                             .map(|item| CreateOrderLineItemInput {
                                 product_id: item.product_id,
                                 variant_id: item.variant_id,
+                                fulfillment_requirement: match item.fulfillment_requirement {
+                                    rustok_cart::CartLineFulfillmentRequirement::Digital => {
+                                        rustok_order::OrderLineFulfillmentRequirement::Digital
+                                    }
+                                    rustok_cart::CartLineFulfillmentRequirement::Physical => {
+                                        rustok_order::OrderLineFulfillmentRequirement::Physical
+                                    }
+                                },
                                 shipping_profile_slug: item.shipping_profile_slug.clone(),
                                 seller_id: item.seller_id.clone(),
                                 sku: item.sku.clone(),

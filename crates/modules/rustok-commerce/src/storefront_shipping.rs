@@ -117,7 +117,11 @@ pub async fn load_cart_shipping_profile_slugs(
     Ok(cart
         .line_items
         .iter()
-        .filter_map(|item| normalize_shipping_profile_slug(item.shipping_profile_slug.as_str()))
+        .filter_map(|item| {
+            item.shipping_profile_slug
+                .as_deref()
+                .and_then(normalize_shipping_profile_slug)
+        })
         .collect())
 }
 

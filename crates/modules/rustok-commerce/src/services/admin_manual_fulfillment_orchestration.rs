@@ -100,10 +100,11 @@ impl AdminManualFulfillmentOrchestrationService {
                     .get(&item.order_line_item_id)
                     .ok_or_else(invalid_request)?;
                 Ok(DeliveryGroupKey {
-                    shipping_profile_slug: normalize_shipping_profile_slug(
-                        line_item.shipping_profile_slug.as_str(),
-                    )
-                    .unwrap_or_else(|| "default".to_string()),
+                    shipping_profile_slug: line_item
+                        .shipping_profile_slug
+                        .as_deref()
+                        .and_then(normalize_shipping_profile_slug)
+                        .unwrap_or_else(|| "default".to_string()),
                     seller_id: normalize_seller_id(
                         line_item
                             .seller_id

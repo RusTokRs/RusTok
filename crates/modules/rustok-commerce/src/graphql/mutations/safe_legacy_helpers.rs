@@ -49,7 +49,7 @@ mod rustok_fulfillment_shim {
 
             self.shipping_option_reads
                 .read_shipping_option_projection(
-                    context,
+                    context.clone(),
                     ReadShippingOptionProjectionRequest {
                         shipping_option_id,
                         requested_locale: requested_locale.map(str::to_owned),
