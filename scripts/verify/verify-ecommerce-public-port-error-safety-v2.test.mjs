@@ -315,16 +315,46 @@ async fn available_quantity<C>(
 
 function canonicalOrder() {
   return `
+struct OrderPortContextFacts {}
+struct OrderPortErrorFacts {}
+fn order_port_context_facts() {}
+fn order_checkout_identity_error_facts() {}
+fn order_error_facts() {}
+fn log_order_port_failure() {}
+fn log_order_context_rejection() {}
 tracing::error!(
+  owner = "rustok_order",
+  owner_operation,
   correlation_id = %context.correlation_id,
-  tenant_id = %context.tenant_id,
-  operation = owner_operation,
-  code = "order.checkout_identity_storage_unavailable",
+  correlation_id_length = context_facts.correlation_id_length,
+  tenant_id_length = context_facts.tenant_id_length,
+  actor_kind = context_facts.actor_kind,
+  actor_id_length = context_facts.actor_id_length,
+  claim_count = context_facts.claim_count,
+  role_count = context_facts.role_count,
+  channel_present = context_facts.channel_present,
+  channel_length = ?context_facts.channel_length,
+  locale_length = context_facts.locale_length,
+  causation_id_present = context_facts.causation_id_present,
+  causation_id_length = ?context_facts.causation_id_length,
+  traceparent_present = context_facts.traceparent_present,
+  traceparent_length = ?context_facts.traceparent_length,
+  idempotency_key_present = context_facts.idempotency_key_present,
+  idempotency_key_length = ?context_facts.idempotency_key_length,
+  deadline_ms = ?context_facts.deadline_ms,
+  code,
+  error_variant = facts.error_variant,
+  text_field_count = facts.text_field_count,
+  text_total_length = facts.text_total_length,
+  uuid_field_count = facts.uuid_field_count,
+  uuid_non_nil_count = facts.uuid_non_nil_count,
+  opaque_payload_present = facts.opaque_payload_present,
+  boundary = ORDER_PORT_BOUNDARY,
 );
 tracing::warn!(code = "order.checkout_identity_validation");
-tracing::error!(code = "order.database_unavailable");
 tracing::warn!(code = "order.validation");
 tracing::warn!(code = "order.invalid_transition");
+tracing::error!(code = "order.database_unavailable");
 tracing::error!(code = "order.invariant_violation");
 "checkout order identity request is invalid";
 "order request is invalid";
@@ -339,7 +369,6 @@ order_error_to_port_error(&context, owner_operation, error);
 let owner_operation = "read_checkout_identity_by_operation";
 let owner_operation = "read_checkout_identity_by_cart";
 let owner_operation = "bind_checkout_identity";
-let owner_operation = "adopt_legacy_checkout_identity";
 let owner_operation = "complete_checkout";
 let owner_operation = "read_checkout_result";
 let owner_operation = "read_checkout_result_by_operation";
@@ -531,6 +560,10 @@ const failureCases = [
   ["identity storage context", { removeInventoryIdentityStorageContext: true }, /inventory identity storage mapping: missing/],
   ["helper storage context", { removeInventoryHelperStorageContext: true }, /inventory helper storage mapping: missing/],
   ["raw generic order validation cause", { orderAppend: 'PortError::validation("order.validation", message);' }, /order generic port public error mapping: forbidden/],
+  ["complete order error diagnostics", { orderAppend: 'tracing::error!(error = ?error);' }, /order generic port payload diagnostics: forbidden/],
+  ["raw order tenant diagnostics", { orderAppend: 'tenant_id = %context.tenant_id;' }, /order generic port payload diagnostics: forbidden/],
+  ["raw order transition diagnostics", { orderAppend: 'from = %from;' }, /order generic port payload diagnostics: forbidden/],
+  ["raw order validation diagnostics", { orderAppend: 'internal_message = %message;' }, /order generic port payload diagnostics: forbidden/],
   ["raw checkout identity validation cause", { orderAppend: 'PortError::validation("order.checkout_identity_validation", message);' }, /order generic port public error mapping: forbidden/],
   ["contextless generic order mapper", { orderAppend: '.map_err(order_error_to_port_error);' }, /order generic port public error mapping: forbidden/],
   ["generic order context disclosure", { orderAppend: '"PortContext.tenant_id must be a UUID for order ports";' }, /order generic port public error mapping: forbidden/],
