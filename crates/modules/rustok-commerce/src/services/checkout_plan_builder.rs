@@ -12,8 +12,8 @@ use rustok_fulfillment::{
 };
 use rustok_inventory::{InventoryAvailabilityRequest, InventoryReservationPort};
 use rustok_product::{
-    ProductCatalogReadPort, ProductProjectionRequest, VariantProductProjectionRequest,
-    entities::product::ProductStatus,
+    ProductCatalogReadPort, ProductFulfillmentRequirement, ProductProjectionRequest,
+    VariantProductProjectionRequest, entities::product::ProductStatus,
 };
 use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
@@ -244,7 +244,7 @@ impl CheckoutPlanBuilder {
             channel_id: cart.channel_id,
             channel_slug: cart.channel_slug.clone(),
             context,
-            create_fulfillment: input.create_fulfillment,
+            create_fulfillment: input.create_fulfillment && !fulfillment_plans.is_empty(),
             fulfillment_plans,
             marketplace_lines,
             checkout_metadata,
@@ -323,16 +323,46 @@ impl CheckoutPlanBuilder {
                     product.id
                 )));
             }
-            let current_shipping_profile_slug = effective_shipping_profile_slug(
-                product.shipping_profile_slug.as_deref(),
-                &product.metadata,
-                variant.shipping_profile_slug.as_deref(),
-            );
-            if current_shipping_profile_slug != line_item.shipping_profile_slug {
+            let current_requirement = product.fulfillment_requirement;
+            let cart_requirement = match line_item.fulfillment_requirement {
+                rustok_cart::CartLineFulfillmentRequirement::Digital => {
+                    ProductFulfillmentRequirement::Digital
+                }
+                rustok_cart::CartLineFulfillmentRequirement::Physical => {
+                    ProductFulfillmentRequirement::Physical
+                }
+            };
+            if current_requirement != cart_requirement {
                 return Err(CheckoutError::Validation(format!(
-                    "Line item {} uses stale shipping profile snapshot {} (current: {})",
-                    line_item.id, line_item.shipping_profile_slug, current_shipping_profile_slug
+                    "Line item {} fulfillment requirement is stale relative to the catalog",
+                    line_item.id
                 )));
+            }
+
+            match current_requirement {
+                ProductFulfillmentRequirement::Digital => {
+                    if line_item.shipping_profile_slug.is_some() {
+                        return Err(CheckoutError::Validation(format!(
+                            "Digital line item {} must not have a shipping profile",
+                            line_item.id
+                        )));
+                    }
+                }
+                ProductFulfillmentRequirement::Physical => {
+                    let current_shipping_profile_slug = effective_shipping_profile_slug(
+                        product.shipping_profile_slug.as_deref(),
+                        &product.metadata,
+                        variant.shipping_profile_slug.as_deref(),
+                    );
+                    if line_item.shipping_profile_slug.as_deref()
+                        != Some(current_shipping_profile_slug.as_str())
+                    {
+                        return Err(CheckoutError::Validation(format!(
+                            "Line item {} uses stale shipping profile snapshot",
+                            line_item.id
+                        )));
+                    }
+                }
             }
             let inventory_context =
                 inventory_context(tenant_id, actor_id, cart, public_channel_slug.as_deref());
