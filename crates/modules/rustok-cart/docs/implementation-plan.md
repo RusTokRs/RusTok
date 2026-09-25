@@ -30,7 +30,7 @@ transport `status` fields remain strings for backward compatibility.
 
 ## Accepted fulfillment-requirement cutover
 
-Cart must persist the Product-owned digital/physical requirement in its immutable line
+**Implemented on 2026-09-25:** Cart persists the Product-owned digital/physical requirement in its immutable line
 snapshot. Delivery groups, shipping selections, and shipping totals cover physical
 lines only. Digital-only carts have none of those records; mixed carts keep digital
 lines outside every delivery group. Provider absence may reject a physical checkout
