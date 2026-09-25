@@ -14,7 +14,7 @@ use rustok_product::{
     StorefrontProductProjectionSubject,
     entities::{product, product_translation},
 };
-use rustok_region::{RegionListRequest, RegionReadPort};
+use rustok_region::RegionListRequest;
 use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
@@ -592,8 +592,7 @@ pub async fn list_regions(
 ) -> HttpResult<Json<Vec<RegionResponse>>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    let service = rustok_region::RegionService::new(runtime.db_clone());
-    let regions = service
+    let regions = rustok_region::in_process_region_read_port(runtime.db_clone())
         .list_regions_for_tenant(
             PortContext::new(
                 tenant.id.to_string(),
