@@ -7,8 +7,9 @@ use flex::{
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    Statement, TransactionTrait,
 };
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -49,6 +50,81 @@ const RETURN_RESOLUTION_STORE_CREDIT: &str = "store_credit";
 const ORDER_CHANGE_STATUS_PENDING: &str = "pending";
 const ORDER_CHANGE_STATUS_APPLIED: &str = "applied";
 const ORDER_CHANGE_STATUS_CANCELLED: &str = "cancelled";
+
+async fn find_order_for_update_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    order_id: Uuid,
+) -> OrderResult<entities::order::Model> {
+    let query = entities::order::Entity::find_by_id(order_id)
+        .filter(entities::order::Column::TenantId.eq(tenant_id));
+    let order = match txn.get_database_backend() {
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => {
+            query.lock_exclusive().one(txn).await?
+        }
+        DatabaseBackend::Sqlite => {
+            let statement = Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE orders SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                [tenant_id.into(), order_id.into()],
+            );
+            txn.execute_raw(statement).await?;
+            query.one(txn).await?
+        }
+        _ => query.one(txn).await?,
+    };
+    order.ok_or(OrderError::OrderNotFound(order_id))
+}
+
+async fn find_order_change_for_update_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    change_id: Uuid,
+) -> OrderResult<entities::order_change::Model> {
+    let query = entities::order_change::Entity::find_by_id(change_id)
+        .filter(entities::order_change::Column::TenantId.eq(tenant_id));
+    let change = match txn.get_database_backend() {
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => {
+            query.lock_exclusive().one(txn).await?
+        }
+        DatabaseBackend::Sqlite => {
+            let statement = Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE order_changes SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                [tenant_id.into(), change_id.into()],
+            );
+            txn.execute_raw(statement).await?;
+            query.one(txn).await?
+        }
+        _ => query.one(txn).await?,
+    };
+    change.ok_or(OrderError::OrderChangeNotFound(change_id))
+}
+
+async fn find_order_return_for_update_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    return_id: Uuid,
+) -> OrderResult<entities::order_return::Model> {
+    let query = entities::order_return::Entity::find_by_id(return_id)
+        .filter(entities::order_return::Column::TenantId.eq(tenant_id));
+    let order_return = match txn.get_database_backend() {
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => {
+            query.lock_exclusive().one(txn).await?
+        }
+        DatabaseBackend::Sqlite => {
+            let statement = Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE order_returns SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                [tenant_id.into(), return_id.into()],
+            );
+            txn.execute_raw(statement).await?;
+            query.one(txn).await?
+        }
+        _ => query.one(txn).await?,
+    };
+    order_return.ok_or(OrderError::OrderReturnNotFound(return_id))
+}
 
 mod order_field_definitions_storage {
     rustok_core::define_field_definitions_entity!("order_field_definitions");
@@ -442,8 +518,7 @@ impl OrderService {
     ) -> OrderResult<OrderResponse> {
         let txn = self.db.begin().await?;
         let existing = self
-            .load_order_model_in_tx(&txn, tenant_id, order_id)
-            .await?;
+            find_order_for_update_in_tx(&txn, tenant_id, order_id).await?;
         let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata)
             .unwrap_or(load_tenant_default_locale(&txn, tenant_id).await?);
         if existing.status != STATUS_SHIPPED {
@@ -1545,7 +1620,8 @@ impl OrderService {
     where
         F: FnOnce(&mut entities::order_change::ActiveModel, chrono::DateTime<Utc>),
     {
-        let existing = self.load_order_change_model(tenant_id, change_id).await?;
+        let txn = self.db.begin().await?;
+        let existing = find_order_change_for_update_in_tx(&txn, tenant_id, change_id).await?;
         if existing.status != expected_from {
             return Err(OrderError::InvalidTransition {
                 from: existing.status,
@@ -1562,7 +1638,8 @@ impl OrderService {
         ));
         active.updated_at = Set(now.into());
         mutate(&mut active, now);
-        let updated = active.update(&self.db).await?;
+        let updated = active.update(&txn).await?;
+        txn.commit().await?;
         Ok(map_order_change_response(updated))
     }
 }
@@ -1578,10 +1655,13 @@ impl OrderService {
         input
             .validate()
             .map_err(|error| OrderError::Validation(error.to_string()))?;
-        self.load_order_model(tenant_id, order_id).await?;
+
+        let txn = self.db.begin().await?;
+        find_order_for_update_in_tx(&txn, tenant_id, order_id).await?;
+
         let order_items = entities::order_line_item::Entity::find()
             .filter(entities::order_line_item::Column::OrderId.eq(order_id))
-            .all(&self.db)
+            .all(&txn)
             .await?;
         let order_items_by_id: HashMap<Uuid, entities::order_line_item::Model> = order_items
             .into_iter()
@@ -1596,7 +1676,7 @@ impl OrderService {
                 .filter(entities::order_return::Column::TenantId.eq(tenant_id))
                 .filter(entities::order_return::Column::OrderId.eq(order_id))
                 .filter(entities::order_return::Column::Status.ne(RETURN_STATUS_CANCELLED))
-                .all(&self.db)
+                .all(&txn)
                 .await?
                 .into_iter()
                 .map(|row| row.id)
@@ -1610,7 +1690,7 @@ impl OrderService {
                         entities::order_return_item::Column::LineItemId
                             .is_in(requested_line_item_ids),
                     )
-                    .all(&self.db)
+                    .all(&txn)
                     .await?
                 {
                     *quantities.entry(existing_item.line_item_id).or_default() +=
@@ -1650,7 +1730,6 @@ impl OrderService {
         }
 
         let now = Utc::now();
-        let txn = self.db.begin().await?;
         let return_id = generate_id();
         let created = entities::order_return::ActiveModel {
             id: Set(return_id),
@@ -1848,7 +1927,8 @@ impl OrderService {
     where
         F: FnOnce(&mut entities::order_return::ActiveModel, chrono::DateTime<Utc>),
     {
-        let existing = self.load_return_model(tenant_id, return_id).await?;
+        let txn = self.db.begin().await?;
+        let existing = find_order_return_for_update_in_tx(&txn, tenant_id, return_id).await?;
         if existing.status != expected_from {
             return Err(OrderError::InvalidTransition {
                 from: existing.status,
@@ -1865,8 +1945,14 @@ impl OrderService {
         ));
         active.updated_at = Set(now.into());
         mutate(&mut active, now);
-        let updated = active.update(&self.db).await?;
-        let items = self.load_return_items(tenant_id, return_id).await?;
+        let updated = active.update(&txn).await?;
+        let items = entities::order_return_item::Entity::find()
+            .filter(entities::order_return_item::Column::TenantId.eq(tenant_id))
+            .filter(entities::order_return_item::Column::ReturnId.eq(return_id))
+            .order_by_asc(entities::order_return_item::Column::CreatedAt)
+            .all(&txn)
+            .await?;
+        txn.commit().await?;
         Ok(map_order_return_response(updated, items))
     }
 }

@@ -189,6 +189,8 @@ digital order creation or historical reads. The canonical matrix is in
 - [ ] Execute order/commerce compile and targeted Rust tests.
 - [ ] Execute clean/upgraded/down/reapply migrations on SQLite, PostgreSQL, and
   MySQL and retain constraint/rollback evidence.
+- [x] Serialize order lifecycle, order-change, and return status transitions with owner-row
+  locks and serialize return-quantity admission on the parent order row.
 - [ ] Execute PostgreSQL/MySQL concurrent completion/admission, compensation,
   payment settlement, kill-point, restart, and remote-adapter evidence.
 - [ ] Remove old JSON expression indexes, generated columns, metadata identity
