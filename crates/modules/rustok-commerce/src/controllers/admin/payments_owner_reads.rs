@@ -59,12 +59,45 @@ fn admin_payment_read_context(
     }
 }
 
+fn require_command_idempotency_key(headers: &HeaderMap) -> Result<String, HttpError> {
+    let value = headers
+        .get("Idempotency-Key")
+        .ok_or_else(|| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_admin_idempotency_key_required",
+                "Idempotency-Key header is required for this write operation",
+            )
+        })?
+        .to_str()
+        .map_err(|_| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_admin_idempotency_key_invalid",
+                "Idempotency-Key header is invalid",
+            )
+        })?
+        .trim()
+        .to_string();
+
+    if value.is_empty() || value.len() > MAX_REFUND_CREATION_KEY_LENGTH {
+        return Err(HttpError::new(
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_idempotency_key_invalid",
+            "Idempotency-Key header must contain 1 to 191 bytes",
+        ));
+    }
+
+    Ok(value)
+}
+
 fn admin_payment_collection_command_context(
     tenant: &TenantContext,
     auth: &AuthContext,
     request_context: &RequestContext,
     collection_id: Uuid,
     operation: &'static str,
+    idempotency_key: String,
 ) -> PortContext {
     let context = PortContext::new(
         tenant.id.to_string(),
@@ -72,15 +105,14 @@ fn admin_payment_collection_command_context(
         request_context.locale.as_str(),
         format!("commerce-admin-payment-command:{operation}:{collection_id}"),
     )
-    .with_idempotency_key(format!(
-        "admin-payment-collection:{collection_id}:{operation}"
-    ))
+    .with_idempotency_key(idempotency_key)
     .with_deadline(std::time::Duration::from_secs(2));
     match request_context.channel_slug.as_deref() {
         Some(channel) => context.with_channel(channel),
         None => context,
     }
 }
+
 
 fn admin_refund_create_context(
     tenant: &TenantContext,
@@ -109,6 +141,7 @@ fn admin_refund_transition_context(
     request_context: &RequestContext,
     refund_id: Uuid,
     operation: &'static str,
+    idempotency_key: String,
 ) -> PortContext {
     let context = PortContext::new(
         tenant.id.to_string(),
@@ -116,13 +149,14 @@ fn admin_refund_transition_context(
         request_context.locale.as_str(),
         format!("commerce-admin-refund-command:{operation}:{refund_id}"),
     )
-    .with_idempotency_key(format!("admin-refund:{refund_id}:{operation}"))
+    .with_idempotency_key(idempotency_key)
     .with_deadline(std::time::Duration::from_secs(2));
     match request_context.channel_slug.as_deref() {
         Some(channel) => context.with_channel(channel),
         None => context,
     }
 }
+
 
 fn payment_read_error_policy(error: &PortError) -> AdminPaymentReadHttpPolicy {
     match &error.kind {
@@ -273,7 +307,7 @@ fn map_payment_read_error(
         resource_id_non_nil = resource_id.map(|value| !value.is_nil()).unwrap_or(false),
         operation,
         correlation_id = %context.correlation_id,
-        internal_code = %error.code,
+        owner_code_length = error.code.chars().count(),
         retryable = error.retryable,
         error_kind,
         public_code = code,
@@ -300,7 +334,7 @@ fn map_payment_command_error(
         collection_id_non_nil = !collection_id.is_nil(),
         operation,
         correlation_id = %context.correlation_id,
-        internal_code = %error.code,
+        owner_code_length = error.code.chars().count(),
         retryable = error.retryable,
         error_kind,
         public_code = code,
@@ -331,7 +365,7 @@ fn map_refund_command_error(
         refund_id_non_nil = refund_id.map(|value| !value.is_nil()).unwrap_or(false),
         operation,
         correlation_id = %context.correlation_id,
-        internal_code = %error.code,
+        owner_code_length = error.code.chars().count(),
         retryable = error.retryable,
         error_kind,
         public_code = code,
@@ -463,6 +497,7 @@ pub async fn authorize_payment_collection(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<AuthorizePaymentInput>,
 ) -> HttpResult<Json<PaymentCollectionResponse>> {
     ensure_permissions(
@@ -470,8 +505,15 @@ pub async fn authorize_payment_collection(
         &[Permission::PAYMENTS_UPDATE],
         "Permission denied: payments:update required",
     )?;
-    let context =
-        admin_payment_collection_command_context(&tenant, &auth, &request_context, id, "authorize");
+    let idempotency_key = require_command_idempotency_key(&headers)?;
+    let context = admin_payment_collection_command_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        "authorize",
+        idempotency_key,
+    );
     let collection = runtime
         .payment_admin_collection_command_port()
         .authorize_payment_collection(
@@ -509,6 +551,7 @@ pub async fn capture_payment_collection(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<CapturePaymentInput>,
 ) -> HttpResult<Json<PaymentCollectionResponse>> {
     ensure_permissions(
@@ -516,8 +559,15 @@ pub async fn capture_payment_collection(
         &[Permission::PAYMENTS_UPDATE],
         "Permission denied: payments:update required",
     )?;
-    let context =
-        admin_payment_collection_command_context(&tenant, &auth, &request_context, id, "capture");
+    let idempotency_key = require_command_idempotency_key(&headers)?;
+    let context = admin_payment_collection_command_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        "capture",
+        idempotency_key,
+    );
     let collection = runtime
         .payment_admin_collection_command_port()
         .capture_payment_collection(
@@ -555,6 +605,7 @@ pub async fn cancel_payment_collection(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<CancelPaymentInput>,
 ) -> HttpResult<Json<PaymentCollectionResponse>> {
     ensure_permissions(
@@ -562,8 +613,15 @@ pub async fn cancel_payment_collection(
         &[Permission::PAYMENTS_UPDATE],
         "Permission denied: payments:update required",
     )?;
-    let context =
-        admin_payment_collection_command_context(&tenant, &auth, &request_context, id, "cancel");
+    let idempotency_key = require_command_idempotency_key(&headers)?;
+    let context = admin_payment_collection_command_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        "cancel",
+        idempotency_key,
+    );
     let collection = runtime
         .payment_admin_collection_command_port()
         .cancel_payment_collection(
@@ -755,6 +813,7 @@ pub async fn complete_refund(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<CompleteRefundInput>,
 ) -> HttpResult<Json<RefundResponse>> {
     ensure_permissions(
@@ -762,7 +821,15 @@ pub async fn complete_refund(
         &[Permission::PAYMENTS_UPDATE],
         "Permission denied: payments:update required",
     )?;
-    let context = admin_refund_transition_context(&tenant, &auth, &request_context, id, "complete");
+    let idempotency_key = require_command_idempotency_key(&headers)?;
+    let context = admin_refund_transition_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        "complete",
+        idempotency_key,
+    );
     let refund = runtime
         .payment_admin_refund_command_port()
         .complete_refund(
@@ -801,6 +868,7 @@ pub async fn cancel_refund(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<CancelRefundInput>,
 ) -> HttpResult<Json<RefundResponse>> {
     ensure_permissions(
@@ -808,7 +876,15 @@ pub async fn cancel_refund(
         &[Permission::PAYMENTS_UPDATE],
         "Permission denied: payments:update required",
     )?;
-    let context = admin_refund_transition_context(&tenant, &auth, &request_context, id, "cancel");
+    let idempotency_key = require_command_idempotency_key(&headers)?;
+    let context = admin_refund_transition_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        "cancel",
+        idempotency_key,
+    );
     let refund = runtime
         .payment_admin_refund_command_port()
         .cancel_refund(
