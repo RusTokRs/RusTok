@@ -10,6 +10,7 @@ pub struct Model {
     pub order_id: Uuid,
     pub product_id: Option<Uuid>,
     pub variant_id: Option<Uuid>,
+    pub fulfillment_requirement: String,
     pub shipping_profile_slug: String,
     pub seller_id: Option<String>,
     pub sku: Option<String>,
