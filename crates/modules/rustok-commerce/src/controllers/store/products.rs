@@ -10,11 +10,13 @@ use rustok_api::{
 use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
 use rustok_fulfillment::ListShippingOptionProjectionsRequest;
 use rustok_product::{
-    CommerceError as ProductError, LegacyStorefrontHttpProductsRequest,
-    StorefrontProductProjectionRequest, StorefrontProductProjectionSubject,
+    CatalogService, CommerceError as ProductError, StorefrontProductProjectionRequest,
+    StorefrontProductProjectionSubject,
+    entities::{product, product_translation},
 };
 use rustok_region::RegionListRequest;
 use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
 use super::{
@@ -87,71 +89,18 @@ fn map_storefront_product_error(
     HttpError::new(status, code, message)
 }
 
-fn storefront_product_list_port_context(
-    tenant_id: Uuid,
-    request_context: &RequestContext,
-    public_channel_slug: Option<&str>,
-) -> PortContext {
-    let context = PortContext::new(
-        tenant_id.to_string(),
-        PortActor::service("rustok-commerce.storefront-product-list"),
-        request_context.locale.as_str(),
-        format!("commerce-store-products:list:{tenant_id}"),
-    )
-    .with_deadline(std::time::Duration::from_secs(2));
-    match public_channel_slug {
-        Some(channel) => context.with_channel(channel),
-        None => context,
-    }
-}
-
-fn map_storefront_product_list_port_error(
-    error: PortError,
-    context: &PortContext,
+fn map_storefront_product_database_error(
+    error: sea_orm::DbErr,
     operation: &'static str,
     tenant_id: Uuid,
+    product_id: Option<Uuid>,
 ) -> HttpError {
-    let (status, code, message, error_kind) = match &error.kind {
-        PortErrorKind::Validation => (
-            StatusCode::BAD_REQUEST,
-            "commerce_store_product_invalid",
-            "Product request is invalid",
-            "validation",
-        ),
-        PortErrorKind::NotFound => (
-            StatusCode::NOT_FOUND,
-            "commerce_store_not_found",
-            "Commerce resource not found",
-            "not_found",
-        ),
-        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_store_product_unavailable",
-            "Product service is temporarily unavailable",
-            "unavailable",
-        ),
-        PortErrorKind::Conflict | PortErrorKind::Forbidden | PortErrorKind::InvariantViolation => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "commerce_store_product_failed",
-            "Product operation could not be completed safely",
-            "owner_failure",
-        ),
-    };
-    tracing::error!(
-        owner = "rustok_product",
-        owner_operation = operation,
-        correlation_id = %context.correlation_id,
-        tenant_id_non_nil = !tenant_id.is_nil(),
-        owner_error_kind = ?error.kind,
-        owner_code_length = error.code.chars().count(),
-        retryable = error.retryable,
-        error_kind,
-        public_code = code,
-        status = %status,
-        boundary = "commerce_storefront_product_http",
-        "storefront product list owner read failed with bounded diagnostics"
-    );
-    HttpError::new(status, code, message)
+    map_storefront_product_error(
+        ProductError::Database(error),
+        operation,
+        tenant_id,
+        product_id,
+    )
 }
 
 fn storefront_product_port_context(
@@ -444,73 +393,132 @@ pub async fn list_products(
 ) -> HttpResult<Json<PaginatedResponse<ProductListItem>>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
+    let _requested_limit = params
+        .pagination
+        .as_ref()
+        .map(|pagination| pagination.per_page);
     let pagination = params.pagination.unwrap_or_default();
     let locale = params
         .locale
         .as_deref()
         .unwrap_or(request_context.locale.as_str());
+
     let public_channel_slug = public_channel_slug_from_request(&request_context);
+    let mut query = product::Entity::find()
+        .filter(product::Column::TenantId.eq(tenant.id))
+        .filter(product::Column::Status.eq(product::ProductStatus::Active))
+        .filter(product::Column::PublishedAt.is_not_null());
 
-    let read_context = storefront_product_list_port_context(
-        tenant.id,
-        &request_context,
-        public_channel_slug.as_deref(),
-    );
-    let read_port = runtime
-        .product_storefront_http_read_port()
-        .ok_or_else(|| {
-            HttpError::new(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "commerce_store_product_unavailable",
-                "Product service is temporarily unavailable",
+    if let Some(vendor) = &params.vendor {
+        query = query.filter(product::Column::Vendor.eq(vendor));
+    }
+    if let Some(product_type) = &params.product_type {
+        query = query.filter(product::Column::ProductType.eq(product_type));
+    }
+    if let Some(search) = &params.search {
+        query = query.filter(crate::search::product_translation_title_search_condition(
+            runtime.db().get_database_backend(),
+            locale,
+            search,
+        ));
+    }
+
+    let visible_products = query
+        .order_by_desc(product::Column::PublishedAt)
+        .order_by_desc(product::Column::CreatedAt)
+        .all(runtime.db())
+        .await
+        .map_err(|error| {
+            map_storefront_product_database_error(error, "list_products", tenant.id, None)
+        })?
+        .into_iter()
+        .filter(|product| {
+            is_metadata_visible_for_public_channel(
+                &product.metadata,
+                public_channel_slug.as_deref(),
             )
-        })?;
+        })
+        .collect::<Vec<_>>();
+    let total = visible_products.len() as u64;
+    let products = visible_products
+        .into_iter()
+        .skip(pagination.offset() as usize)
+        .take(pagination.limit() as usize)
+        .collect::<Vec<_>>();
 
-    let projection = read_port
-        .list_legacy_storefront_http_products(
-            read_context.clone(),
-            rustok_product::LegacyStorefrontHttpProductsRequest {
-                locale: Some(locale.to_string()),
-                fallback_locale: Some(tenant.default_locale.clone()),
-                public_channel_slug,
-                vendor: params.vendor.clone(),
-                product_type: params.product_type.clone(),
-                search: params.search.clone(),
-                page: pagination.page.max(1),
-                per_page: pagination.limit(),
-            },
+    let product_ids = products
+        .iter()
+        .map(|product| product.id)
+        .collect::<Vec<_>>();
+    let translations = if product_ids.is_empty() {
+        Vec::new()
+    } else {
+        product_translation::Entity::find()
+            .filter(product_translation::Column::ProductId.is_in(product_ids))
+            .all(runtime.db())
+            .await
+            .map_err(|error| {
+                map_storefront_product_database_error(
+                    error,
+                    "list_product_translations",
+                    tenant.id,
+                    None,
+                )
+            })?
+    };
+
+    let mut translation_map =
+        std::collections::HashMap::<Uuid, Vec<product_translation::Model>>::new();
+    for translation in translations {
+        translation_map
+            .entry(translation.product_id)
+            .or_default()
+            .push(translation);
+    }
+    let catalog = CatalogService::new(runtime.db_clone(), runtime.event_bus());
+    let product_tags = catalog
+        .load_product_tag_map(
+            tenant.id,
+            &products,
+            locale,
+            Some(tenant.default_locale.as_str()),
         )
         .await
         .map_err(|error| {
-            map_storefront_product_list_port_error(
-                error,
-                &read_context,
-                "list_legacy_storefront_http_products",
-                tenant.id,
-            )
+            map_storefront_product_error(error, "list_product_tags", tenant.id, None)
         })?;
 
-    let items = projection
-        .items
+    let items = products
         .into_iter()
-        .map(|product| ProductListItem {
-            id: product.id,
-            status: product.status.to_string(),
-            title: product.title,
-            handle: product.handle,
-            seller_id: product.seller_id,
-            vendor: product.vendor,
-            product_type: product.product_type,
-            shipping_profile_slug: Some(product.shipping_profile_slug),
-            tags: product.tags,
-            created_at: product.created_at.to_rfc3339(),
-            published_at: product.published_at.map(|value| value.to_rfc3339()),
+        .map(|product| {
+            let translation = translation_map.get(&product.id).and_then(|items| {
+                super::pick_product_translation(items, locale, tenant.default_locale.as_str())
+            });
+            ProductListItem {
+                id: product.id,
+                status: product.status.to_string(),
+                title: translation
+                    .map(|value| value.title.clone())
+                    .unwrap_or_default(),
+                handle: translation
+                    .map(|value| value.handle.clone())
+                    .unwrap_or_default(),
+                seller_id: product.seller_id,
+                vendor: product.vendor,
+                product_type: product.product_type,
+                shipping_profile_slug: Some(shipping_profile_slug_from_product_metadata(
+                    &product.metadata,
+                )),
+                tags: product_tags.get(&product.id).cloned().unwrap_or_default(),
+                created_at: product.created_at.to_rfc3339(),
+                published_at: product.published_at.map(|value| value.to_rfc3339()),
+            }
         })
         .collect::<Vec<_>>();
 
     Ok(Json(PaginatedResponse {
         data: items,
-        meta: PaginationMeta::new(projection.page, projection.per_page, projection.total),
+        meta: PaginationMeta::new(pagination.page, pagination.limit(), total),
     }))
 }
 
