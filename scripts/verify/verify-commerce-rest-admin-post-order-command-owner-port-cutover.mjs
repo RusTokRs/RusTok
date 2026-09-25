@@ -58,7 +58,9 @@ for (const [value, label] of [
   ['PortActor::user(auth.user_id.to_string())', 'authenticated actor'],
   ['request_context.locale.as_str()', 'request locale'],
   ['request_context.channel_slug.as_deref()', 'request channel'],
-  ['with_idempotency_key(Uuid::new_v4().to_string())', 'write admission identity'],
+  ['fn require_idempotency_key(headers: &HeaderMap)', 'caller idempotency admission'],
+  ['headers: HeaderMap,', 'caller idempotency header'],
+  ['.with_idempotency_key(idempotency_key)', 'caller-owned write identity'],
   ['with_deadline(std::time::Duration::from_secs(2))', 'bounded deadline'],
   ['[Permission::ORDERS_UPDATE]', 'order update admission'],
   ['.order_post_order_command_port()', 'host-selected owner port accessor'],
@@ -75,6 +77,7 @@ for (const value of [
   '.cancel_order_change(tenant.id,',
   '.create_return(tenant.id,',
   '.cancel_return(tenant.id,',
+  'Uuid::new_v4().to_string()',
 ]) forbidText(commands, value, 'concrete Order service construction');
 
 for (const [value, label] of [
