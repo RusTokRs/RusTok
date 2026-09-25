@@ -17,7 +17,7 @@ impl From<rustok_graphql::GraphqlHttpError> for ApiError {
     }
 }
 
-const STOREFRONT_CART_QUERY: &str = "query StorefrontCart($id: UUID!) { storefrontCart(id: $id) { id status currencyCode subtotalAmount adjustmentTotal shippingTotal totalAmount channelSlug email customerId regionId countryCode localeCode lineItems { id title sku quantity unitPrice totalPrice currencyCode shippingProfileSlug sellerId } adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } deliveryGroups { shippingProfileSlug sellerId lineItemIds selectedShippingOptionId availableShippingOptions { id name currencyCode amount providerId active } } } }";
+const STOREFRONT_CART_QUERY: &str = "query StorefrontCart($id: UUID!) { storefrontCart(id: $id) { id status currencyCode subtotalAmount adjustmentTotal shippingTotal totalAmount channelSlug email customerId regionId countryCode localeCode lineItems { id title sku quantity unitPrice totalPrice currencyCode fulfillmentRequirement shippingProfileSlug sellerId } adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } deliveryGroups { shippingProfileSlug sellerId lineItemIds selectedShippingOptionId availableShippingOptions { id name currencyCode amount providerId active } } } }";
 const UPDATE_STOREFRONT_CART_LINE_ITEM_MUTATION: &str = "mutation UpdateStorefrontCartLineItem($cartId: UUID!, $lineId: UUID!, $input: UpdateStorefrontCartLineItemInput!) { updateStorefrontCartLineItem(cartId: $cartId, lineId: $lineId, input: $input) { id } }";
 const REMOVE_STOREFRONT_CART_LINE_ITEM_MUTATION: &str = "mutation RemoveStorefrontCartLineItem($cartId: UUID!, $lineId: UUID!) { removeStorefrontCartLineItem(cartId: $cartId, lineId: $lineId) { id } }";
 
@@ -115,8 +115,10 @@ struct GraphqlCartLineItem {
     total_price: String,
     #[serde(rename = "currencyCode")]
     currency_code: String,
+    #[serde(rename = "fulfillmentRequirement")]
+    fulfillment_requirement: String,
     #[serde(rename = "shippingProfileSlug")]
-    shipping_profile_slug: String,
+    shipping_profile_slug: Option<String>,
     #[serde(rename = "sellerId")]
     seller_id: Option<String>,
 }
@@ -319,6 +321,7 @@ fn map_graphql_cart(value: GraphqlCart) -> StorefrontCart {
                 unit_price: item.unit_price,
                 total_price: item.total_price,
                 currency_code: item.currency_code,
+                fulfillment_requirement: item.fulfillment_requirement,
                 shipping_profile_slug: item.shipping_profile_slug,
                 seller_id: item.seller_id,
             })
