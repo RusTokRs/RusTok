@@ -43,6 +43,11 @@ const product = read('crates/modules/rustok-product/src/ports.rs');
 const storefrontProductsLegacy = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
 const storefrontCarts = read('crates/modules/rustok-commerce/src/controllers/store/carts.rs');
 const storefrontOrders = read('crates/modules/rustok-commerce/src/controllers/store/orders.rs');
+const storefrontOrderController = storefrontOrders;
+const storefrontLineItemResolution = read('crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs');
+const storefrontStore = read('crates/modules/rustok-commerce/src/controllers/store/mod.rs');
+const adminCheckoutOperations = read('crates/modules/rustok-commerce/src/controllers/admin/checkout_operations.rs');
+const adminPayments = read('crates/modules/rustok-commerce/src/controllers/admin/payments_owner_reads.rs');
 const pricing = read('crates/modules/rustok-pricing/src/ports.rs');
 const payment = read('crates/modules/rustok-payment/src/ports.rs');
 const paymentCompensation = read('crates/modules/rustok-payment/src/checkout_compensation.rs');
@@ -83,6 +88,11 @@ for (const [source, label] of [
   [storefrontProductsLegacy, 'storefront auxiliary product controller'],
   [storefrontCarts, 'storefront cart controller'],
   [storefrontOrders, 'storefront order controller'],
+  [storefrontOrderController, 'storefront order idempotency controller'],
+  [storefrontLineItemResolution, 'storefront line-item resolution'],
+  [storefrontStore, 'storefront shared store controller'],
+  [adminCheckoutOperations, 'admin checkout operations controller'],
+  [adminPayments, 'admin payment command controller'],
   [orderCompensation, 'order checkout compensation port'],
   [orderPaymentSettlement, 'order checkout payment settlement port'],
   [orderRecovery, 'order checkout recovery adapter'],
@@ -631,6 +641,103 @@ requireAll(storefrontOrders, [
   'storefront Payment refund read failed with bounded diagnostics',
 ], 'storefront order bounded diagnostics');
 
+forbidAll(storefrontLineItemResolution, [
+  'error = ?error',
+  'tenant_id = %context.tenant_id',
+  'tenant_id = %tenant_id',
+  'channel = ?context.channel',
+  'channel = ?public_channel_slug',
+  'locale = ?locale',
+  'variant_id = %variant_id',
+  'product_id = %product_id',
+  'public_code = %public.code',
+], 'storefront line-item payload diagnostics');
+
+requireAll(storefrontLineItemResolution, [
+  'owner_error_kind',
+  'owner_code_length',
+  'tenant_id_length = context.tenant_id.chars().count()',
+  'variant_id_non_nil = !variant_id.is_nil()',
+  'product_id_non_nil = !product_id.is_nil()',
+  'channel_present',
+  'locale_present',
+  'storefront line item Product owner read failed with bounded diagnostics',
+  'storefront line item pricing resolution failed with bounded diagnostics',
+  'storefront line item inventory operation failed with bounded diagnostics',
+], 'storefront line-item bounded diagnostics');
+
+forbidAll(adminCheckoutOperations, [
+  'let error = "redacted"',
+  'error = ?error',
+  'E: std::fmt::Debug',
+  'tenant_id = %context.tenant_id',
+  'actor_id = %context.actor_id',
+  'checkout_operation_id = ?context.checkout_operation_id',
+  'reservation_id = ?context.reservation_id',
+  'payment_collection_id = ?context.payment_collection_id',
+  'payment_id = ?context.payment_id',
+  'refund_id = ?context.refund_id',
+  'order_id = ?context.order_id',
+  'order_return_id = ?context.order_return_id',
+  'order_change_id = ?context.order_change_id',
+], 'admin checkout operation payload diagnostics');
+
+requireAll(adminCheckoutOperations, [
+  'struct AdminCheckoutOperationDiagnosticContext',
+  'tenant_state = context.tenant_state',
+  'actor_state = context.actor_state',
+  'checkout_operation_state = context.checkout_operation_state',
+  'reservation_state = context.reservation_state',
+  'payment_collection_state = context.payment_collection_state',
+  'payment_state = context.payment_state',
+  'refund_state = context.refund_state',
+  'order_state = context.order_state',
+  'order_return_state = context.order_return_state',
+  'order_change_state = context.order_change_state',
+  'fn admin_checkout_operation_http_error(',
+  '"storefront auxiliary operation failed with bounded diagnostics"',
+], 'admin checkout operation bounded diagnostics');
+
+forbidAll(storefrontStore, [
+  'Module \'{MODULE_SLUG}\' is not enabled for channel',
+  'format!("Module',
+  'request_context.channel_slug.as_deref().unwrap_or("current")',
+], 'storefront dynamic channel denial envelope');
+
+requireAll(storefrontStore, [
+  'The commerce module is not available for the current channel',
+  'fn map_storefront_channel_error(',
+  '"storefront channel resolution failed with bounded diagnostics"',
+], 'storefront channel denial envelope');
+
+requireAll(storefrontOrderController, [
+  'fn require_idempotency_key(headers: &HeaderMap)',
+  'headers: HeaderMap,',
+  'let idempotency_key = require_idempotency_key(&headers)?;',
+  'fn storefront_order_return_command_context(',
+  '.with_idempotency_key(idempotency_key)',
+], 'storefront order command idempotency');
+
+forbidAll(storefrontOrderController, [
+  'Uuid::new_v4().to_string()',
+], 'storefront order synthetic idempotency');
+requireAll(adminPayments, [
+  'fn require_command_idempotency_key(headers: &HeaderMap)',
+  'let idempotency_key = require_command_idempotency_key(&headers)?;',
+  '.with_idempotency_key(idempotency_key)',
+  'owner_code_length = error.code.chars().count()',
+], 'admin payment replay/error boundary');
+
+forbidAll(adminPayments, [
+  'format!("admin-payment-collection:{collection_id}:{operation}")',
+  'format!("admin-refund:{refund_id}:{operation}")',
+  'internal_code = %error.code',
+  'error = ?error',
+], 'admin payment unsafe/generated boundary');
+
+if ((adminPayments.match(/let idempotency_key = require_command_idempotency_key\(&headers\)\?;/g) ?? []).length !== 5) {
+  throw new Error('expected five admin payment collection/refund transitions to require caller-owned Idempotency-Key');
+}
 const required = [
   [pricing, [
     'correlation_id = %context.correlation_id',
@@ -995,5 +1102,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Channel, region, cart, product, storefront auxiliary, storefront cart/order, pricing, payment collection/compensation, fulfillment, customer, inventory, order checkout, and marketplace payout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
+  '✔ Channel, region, cart, product, storefront auxiliary, storefront cart/order/line-item, admin checkout operations, admin payment commands, storefront channel denial, pricing, payment collection/compensation, fulfillment, customer, inventory, order checkout, and marketplace payout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
 );

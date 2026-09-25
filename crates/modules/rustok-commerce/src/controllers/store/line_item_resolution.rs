@@ -38,20 +38,30 @@ fn map_storefront_line_item_product_port_error(
     context: &PortContext,
     variant_id: Uuid,
 ) -> HttpError {
-    let public = port_error_to_http_error(error.clone());
+    let owner_error_kind = match &error.kind {
+        rustok_api::PortErrorKind::Validation => "validation",
+        rustok_api::PortErrorKind::NotFound => "not_found",
+        rustok_api::PortErrorKind::Conflict => "conflict",
+        rustok_api::PortErrorKind::Forbidden => "forbidden",
+        rustok_api::PortErrorKind::Unavailable => "unavailable",
+        rustok_api::PortErrorKind::Timeout => "timeout",
+        rustok_api::PortErrorKind::InvariantViolation => "invariant_violation",
+    };
+    let owner_code_length = error.code.chars().count();
+    let retryable = error.retryable;
+    let public = port_error_to_http_error(error);
     tracing::error!(
-        error = ?error,
         owner = "rustok_product",
         operation = "read_variant_product_projection",
-        tenant_id = %context.tenant_id,
         correlation_id = %context.correlation_id,
-        variant_id = %variant_id,
-        error_kind = ?error.kind,
-        retryable = error.retryable,
-        public_code = %public.code,
-        status = %public.status,
+        tenant_id_length = context.tenant_id.chars().count(),
+        variant_id_non_nil = !variant_id.is_nil(),
+        owner_error_kind,
+        owner_code_length,
+        retryable,
+        public_status = %public.status,
         boundary = "commerce_storefront_line_item_http",
-        "storefront line item Product owner read failed"
+        "storefront line item Product owner read failed with bounded diagnostics"
     );
     public
 }
@@ -104,22 +114,32 @@ fn map_storefront_line_item_pricing_error(
     variant_id: Uuid,
     product_id: Uuid,
 ) -> HttpError {
-    let public = port_error_to_http_error(error.clone());
+    let owner_error_kind = match &error.kind {
+        rustok_api::PortErrorKind::Validation => "validation",
+        rustok_api::PortErrorKind::NotFound => "not_found",
+        rustok_api::PortErrorKind::Conflict => "conflict",
+        rustok_api::PortErrorKind::Forbidden => "forbidden",
+        rustok_api::PortErrorKind::Unavailable => "unavailable",
+        rustok_api::PortErrorKind::Timeout => "timeout",
+        rustok_api::PortErrorKind::InvariantViolation => "invariant_violation",
+    };
+    let owner_code_length = error.code.chars().count();
+    let retryable = error.retryable;
+    let public = port_error_to_http_error(error);
     tracing::error!(
-        error = ?error,
         owner = "rustok_pricing",
         operation = "resolve_product_price",
-        tenant_id = %context.tenant_id,
         correlation_id = %context.correlation_id,
-        channel = ?context.channel,
-        variant_id = %variant_id,
-        product_id = %product_id,
-        error_kind = ?error.kind,
-        retryable = error.retryable,
-        public_code = %public.code,
-        status = %public.status,
+        tenant_id_length = context.tenant_id.chars().count(),
+        channel_present = context.channel.is_some(),
+        variant_id_non_nil = !variant_id.is_nil(),
+        product_id_non_nil = !product_id.is_nil(),
+        owner_error_kind,
+        owner_code_length,
+        retryable,
+        public_status = %public.status,
         boundary = "commerce_storefront_line_item_http",
-        "storefront line item pricing resolution failed"
+        "storefront line item pricing resolution failed with bounded diagnostics"
     );
     public
 }
@@ -176,19 +196,19 @@ fn map_storefront_line_item_inventory_error(
         ),
     };
     tracing::error!(
-        error = ?error,
         owner = "rustok_inventory.public_channel",
         operation,
-        tenant_id = %tenant_id,
-        variant_id = %variant_id,
-        product_id = %product_id,
-        channel = ?public_channel_slug,
-        locale = ?locale,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        variant_id_non_nil = !variant_id.is_nil(),
+        product_id_non_nil = !product_id.is_nil(),
+        channel_present = public_channel_slug.is_some(),
+        channel_length = public_channel_slug.map(str::len),
+        locale_present = locale.is_some(),
+        locale_length = locale.map(str::len),
         error_kind,
-        public_code = code,
-        status = %status,
+        public_status = %status,
         boundary = "commerce_storefront_line_item_http",
-        "storefront line item inventory operation failed"
+        "storefront line item inventory operation failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }

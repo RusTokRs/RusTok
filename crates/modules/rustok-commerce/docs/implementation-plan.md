@@ -1165,20 +1165,85 @@ Source inspection is not execution evidence.
 - [ ] Continue the mounted non-`PortError` public-envelope audit and owner-port cleanup across
   remaining ecommerce controllers/transports.
 
-## Audit 2026-09-25: Admin Order command owner-port cutover
+## Audit correction 2026-09-25: active Admin Order command path
 
-- [x] Route mounted `/admin/orders/{id}/mark-paid`, `/ship`, `/deliver`, and `/cancel`
-  handlers through the host-composed `OrderAdminCommandPort` instead of constructing
-  `OrderService` directly inside the Commerce HTTP controller.
-- [x] Forward typed `MarkOrderPaidRequest`, `ShipOrderRequest`, `DeliverOrderRequest`, and
-  `CancelOrderRequest` into the owner boundary and reuse the transport-neutral Order
-  `PortContext` for tenant, actor, locale, channel, and deadline semantics.
-- [x] Remove the controller-local legacy `OrderError` mutation mapper and its duplicate
-  diagnostic wrapper; command failures now use the owner-port `PortError` envelope.
-- [x] Extend the admin order/fulfillment verification guard to forbid direct OrderService
-  construction/lifecycle calls and require the owner command handoff.
-- [ ] Apply the same owner-port cutover discipline to remaining mounted Commerce handlers
-  still constructing foreign owner services directly.
+- [x] Confirm the mounted Admin Order controller is `controllers/admin/orders_owner_ports.rs`;
+  the legacy `controllers/admin/orders.rs` is not mounted.
+- [x] Revert the accidental edits previously made to that unmounted legacy controller; no
+  legacy command migration is claimed as completed.
+- [x] Confirm the active controller already routes mark-paid, ship, deliver, and cancel through
+  `OrderAdminCommandPort` with typed owner requests.
+- [x] Fix the active command context so reads do not invent idempotency keys and writes require
+  the caller-owned `Idempotency-Key` header and propagate it unchanged to the owner port.
+- [x] Align the Admin Order/fulfillment and order-detail verifiers with the mounted
+  `orders_owner_ports.rs` source.
+- [ ] Continue the same active-path audit for remaining mounted Commerce controllers.
+
+## Audit 2026-09-25: storefront line-item resolution error safety
+
+- [x] Remove raw Product and Pricing `PortError` diagnostics from the mounted line-item
+  resolution path; keep bounded owner kind/code-length, retryability, tenant/channel,
+  correlation, and resource-shape facts.
+- [x] Remove raw Inventory `CommerceError`, variant/product identifiers, channel values,
+  and locale values from the line-item HTTP error boundary.
+- [x] Extend `verify-ecommerce-public-port-error-safety-v2.mjs` with line-item resolution
+  guards for the formerly raw Product/Pricing/Inventory diagnostics.
+- [ ] Continue auditing mounted Commerce helper boundaries and provider adapters for raw
+  owner error/context serialization.
+
+## Audit 2026-09-25: Admin checkout-operation diagnostic boundary
+
+- [x] Remove the redacted-`Debug` error wrapper from the mounted Admin checkout-operation
+  HTTP mapper; the helper now accepts only the already-classified policy and emits bounded
+  identity-state facts.
+- [x] Rename diagnostic fields to explicit `*_state`/`*_length` semantics so logs cannot
+  be mistaken for serialized tenant, actor, order, payment, or reservation identifiers.
+- [x] Extend the ecommerce public-port safety verifier to forbid the previous raw/redacted
+  diagnostic patterns and require the bounded Admin checkout-operation contract.
+- [ ] Continue the same no-serialization rule across remaining mounted Commerce transport
+  helpers and provider-adapter boundaries.
+
+## Audit 2026-09-25: active Admin Order idempotency and cart lifecycle typing
+
+- [x] Make mounted Admin Order read contexts free of synthetic idempotency keys.
+- [x] Require a caller-owned `Idempotency-Key` header for mark-paid, ship, deliver, and
+  cancel, validate its size, and propagate the exact key through `OrderAdminCommandPort`.
+- [x] Remove raw owner error-code values from active Admin Order HTTP diagnostics; retain
+  only bounded code-length, error-kind, retryability, identity shape, and status facts.
+- [x] Replace the active storefront payment-collection guard's raw `cart.status == "completed"`
+  comparison with `CartResponse::lifecycle_status()` and `CartStatus::Completed`.
+- [x] Fail closed on unknown cart lifecycle values instead of treating them as a valid
+  non-completed state.
+- [x] Align Admin Order and order-detail verification scripts with the actually mounted
+  `orders_owner_ports.rs` controller.
+- [ ] Continue the same caller-owned idempotency and typed-lifecycle audit in remaining
+  mounted Commerce write boundaries.
+
+## Audit 2026-09-25: caller-owned Payment and Fulfillment idempotency
+
+- [x] Require and propagate caller-owned `Idempotency-Key` headers for all mounted Admin
+  Fulfillment writes: create, ship, deliver, reopen, reship, and cancel.
+- [x] Remove payload-hash and resource/operation-derived synthetic Fulfillment idempotency
+  keys; retry identity is now supplied explicitly by the caller.
+- [x] Require and propagate caller-owned `Idempotency-Key` headers for mounted Admin Payment
+  collection transitions (authorize/capture/cancel) and refund transitions (complete/cancel).
+- [x] Keep existing caller-owned refund-creation idempotency and normalize Payment HTTP
+  diagnostics to bounded owner-code length rather than internal code serialization.
+- [x] Extend the ecommerce public-port verifier to reject generated Payment/Fulfillment keys
+  and require caller-owned replay propagation.
+- [ ] Continue the same idempotency review for any remaining mounted Commerce write boundary
+  that crosses an owner port or provider.
+
+## Audit 2026-09-25: storefront return idempotency contract
+
+- [x] Require a caller-owned `Idempotency-Key` for storefront order-return creation and
+  propagate the exact key to `OrderPostOrderCommandPort`.
+- [x] Expose the required write-operation header in the affected Admin Order, Admin
+  Fulfillment, Admin Payment, and storefront return OpenAPI contracts.
+- [x] Keep read contexts free of invented idempotency keys so reads remain observational
+  and cannot accidentally claim a write replay identity.
+- [ ] Continue auditing remaining mounted write endpoints for explicit caller-owned replay
+  identity and consistent OpenAPI contracts.
 ## Change rules
 
 1. Update this file with every completed or newly discovered ecommerce task.

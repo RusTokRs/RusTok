@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
@@ -32,12 +32,45 @@ const ADMIN_FULFILLMENT_COMMAND_BOUNDARY: &str = "commerce_admin_fulfillment_com
 
 type AdminFulfillmentCommandHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
 
+fn require_idempotency_key(headers: &HeaderMap) -> Result<String, HttpError> {
+    let value = headers
+        .get("Idempotency-Key")
+        .ok_or_else(|| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_admin_idempotency_key_required",
+                "Idempotency-Key header is required for this write operation",
+            )
+        })?
+        .to_str()
+        .map_err(|_| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_admin_idempotency_key_invalid",
+                "Idempotency-Key header is invalid",
+            )
+        })?
+        .trim()
+        .to_string();
+
+    if value.is_empty() || value.len() > 191 {
+        return Err(HttpError::new(
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_idempotency_key_invalid",
+            "Idempotency-Key header must contain 1 to 191 bytes",
+        ));
+    }
+
+    Ok(value)
+}
+
 fn admin_fulfillment_command_context(
     tenant: &TenantContext,
     auth: &AuthContext,
     request_context: &RequestContext,
     fulfillment_id: Uuid,
     operation: &'static str,
+    idempotency_key: String,
 ) -> PortContext {
     let context = PortContext::new(
         tenant.id.to_string(),
@@ -45,13 +78,14 @@ fn admin_fulfillment_command_context(
         request_context.locale.as_str(),
         format!("commerce-admin-fulfillment-command:{operation}:{fulfillment_id}"),
     )
-    .with_idempotency_key(format!("admin-fulfillment:{fulfillment_id}:{operation}"))
+    .with_idempotency_key(idempotency_key)
     .with_deadline(std::time::Duration::from_secs(2));
     match request_context.channel_slug.as_deref() {
         Some(channel) => context.with_channel(channel),
         None => context,
     }
 }
+
 
 fn admin_fulfillment_create_read_context(
     tenant: &TenantContext,
@@ -76,42 +110,23 @@ fn admin_fulfillment_create_command_context(
     tenant: &TenantContext,
     auth: &AuthContext,
     request_context: &RequestContext,
-    input: &CreateFulfillmentInput,
-) -> Result<PortContext, HttpError> {
-    let payload = serde_json::to_vec(input).map_err(|_| {
-        HttpError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "commerce_admin_fulfillment_failed",
-            "Fulfillment operation could not be completed safely",
-        )
-    })?;
-    let first = fnv1a64(&payload, 0xcbf29ce484222325);
-    let second = fnv1a64(&payload, 0x84222325cbf29ce4);
+    order_id: Uuid,
+    idempotency_key: String,
+) -> PortContext {
     let context = PortContext::new(
         tenant.id.to_string(),
         PortActor::user(auth.user_id.to_string()),
         request_context.locale.as_str(),
-        format!(
-            "commerce-admin-fulfillment-create-command:{}",
-            input.order_id
-        ),
+        format!("commerce-admin-fulfillment-create-command:{order_id}"),
     )
-    .with_idempotency_key(format!(
-        "admin-fulfillment:create:{}:{first:016x}{second:016x}",
-        input.order_id
-    ))
+    .with_idempotency_key(idempotency_key)
     .with_deadline(std::time::Duration::from_secs(2));
-    Ok(match request_context.channel_slug.as_deref() {
+    match request_context.channel_slug.as_deref() {
         Some(channel) => context.with_channel(channel),
         None => context,
-    })
+    }
 }
 
-fn fnv1a64(bytes: &[u8], offset_basis: u64) -> u64 {
-    bytes.iter().fold(offset_basis, |hash, byte| {
-        (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
-    })
-}
 
 fn fulfillment_command_error_policy(error: &PortError) -> AdminFulfillmentCommandHttpPolicy {
     match error.code.as_str() {
@@ -190,7 +205,7 @@ fn map_fulfillment_command_error(
         fulfillment_id_non_nil = !fulfillment_id.is_nil(),
         operation,
         correlation_id = %context.correlation_id,
-        internal_code = %error.code,
+        owner_code_length = error.code.chars().count(),
         retryable = error.retryable,
         error_kind,
         public_code = code,
@@ -216,7 +231,7 @@ fn map_fulfillment_create_error(
         order_id_non_nil = !order_id.is_nil(),
         operation = "create_fulfillment",
         correlation_id = %context.correlation_id,
-        internal_code = %error.code,
+        owner_code_length = error.code.chars().count(),
         retryable = error.retryable,
         error_kind,
         public_code = code,
@@ -264,7 +279,7 @@ fn map_fulfillment_read_error(
         fulfillment_id_present = fulfillment_id.is_some(),
         operation,
         correlation_id = %context.correlation_id,
-        internal_code = %error.code,
+        owner_code_length = error.code.chars().count(),
         retryable = error.retryable,
         error_kind,
         public_code = code,
@@ -393,6 +408,7 @@ pub async fn show_fulfillment(
     post,
     path = "/admin/fulfillments",
     tag = "admin",
+    params(("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes")),
     request_body = CreateFulfillmentInput,
     responses(
         (status = 201, description = "Fulfillment created", body = FulfillmentResponse),
@@ -405,6 +421,7 @@ pub async fn create_fulfillment(
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
+    headers: HeaderMap,
     Json(input): Json<CreateFulfillmentInput>,
 ) -> HttpResult<(StatusCode, Json<FulfillmentResponse>)> {
     ensure_permissions(
@@ -413,10 +430,16 @@ pub async fn create_fulfillment(
         "Permission denied: fulfillments:create required",
     )?;
     let order_id = input.order_id;
+    let idempotency_key = require_idempotency_key(&headers)?;
     let read_context =
         admin_fulfillment_create_read_context(&tenant, &auth, &request_context, order_id);
-    let write_context =
-        admin_fulfillment_create_command_context(&tenant, &auth, &request_context, &input)?;
+    let write_context = admin_fulfillment_create_command_context(
+        &tenant,
+        &auth,
+        &request_context,
+        order_id,
+        idempotency_key,
+    );
     let service = AdminManualFulfillmentOrchestrationService::new(
         runtime.order_read_port(),
         runtime.fulfillment_read_port(),
@@ -436,7 +459,10 @@ pub async fn create_fulfillment(
     post,
     path = "/admin/fulfillments/{id}/ship",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Fulfillment ID")),
+    params(
+        ("id" = Uuid, Path, description = "Fulfillment ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
+    ),
     request_body = ShipFulfillmentInput,
     responses(
         (status = 200, description = "Fulfillment shipped", body = FulfillmentResponse),
@@ -450,6 +476,7 @@ pub async fn ship_fulfillment(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<ShipFulfillmentInput>,
 ) -> HttpResult<Json<FulfillmentResponse>> {
     ensure_permissions(
@@ -457,7 +484,15 @@ pub async fn ship_fulfillment(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
-    let context = admin_fulfillment_command_context(&tenant, &auth, &request_context, id, "ship");
+    let idempotency_key = require_idempotency_key(&headers)?;
+    let context = admin_fulfillment_command_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        "ship",
+        idempotency_key,
+    );
     let fulfillment = runtime
         .fulfillment_admin_command_port()
         .ship_fulfillment(
@@ -485,7 +520,10 @@ pub async fn ship_fulfillment(
     post,
     path = "/admin/fulfillments/{id}/deliver",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Fulfillment ID")),
+    params(
+        ("id" = Uuid, Path, description = "Fulfillment ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
+    ),
     request_body = DeliverFulfillmentInput,
     responses(
         (status = 200, description = "Fulfillment delivered", body = FulfillmentResponse),
@@ -499,6 +537,7 @@ pub async fn deliver_fulfillment(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<DeliverFulfillmentInput>,
 ) -> HttpResult<Json<FulfillmentResponse>> {
     ensure_permissions(
@@ -506,8 +545,15 @@ pub async fn deliver_fulfillment(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
-    let context =
-        admin_fulfillment_command_context(&tenant, &auth, &request_context, id, "deliver");
+    let idempotency_key = require_idempotency_key(&headers)?;
+    let context = admin_fulfillment_command_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        "deliver",
+        idempotency_key,
+    );
     let fulfillment = runtime
         .fulfillment_admin_command_port()
         .deliver_fulfillment(
@@ -535,7 +581,10 @@ pub async fn deliver_fulfillment(
     post,
     path = "/admin/fulfillments/{id}/reopen",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Fulfillment ID")),
+    params(
+        ("id" = Uuid, Path, description = "Fulfillment ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
+    ),
     request_body = ReopenFulfillmentInput,
     responses(
         (status = 200, description = "Fulfillment reopened", body = FulfillmentResponse),
@@ -549,6 +598,7 @@ pub async fn reopen_fulfillment(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<ReopenFulfillmentInput>,
 ) -> HttpResult<Json<FulfillmentResponse>> {
     ensure_permissions(
@@ -556,7 +606,15 @@ pub async fn reopen_fulfillment(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
-    let context = admin_fulfillment_command_context(&tenant, &auth, &request_context, id, "reopen");
+    let idempotency_key = require_idempotency_key(&headers)?;
+    let context = admin_fulfillment_command_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        "reopen",
+        idempotency_key,
+    );
     let fulfillment = runtime
         .fulfillment_admin_command_port()
         .reopen_fulfillment(
@@ -584,7 +642,10 @@ pub async fn reopen_fulfillment(
     post,
     path = "/admin/fulfillments/{id}/reship",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Fulfillment ID")),
+    params(
+        ("id" = Uuid, Path, description = "Fulfillment ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
+    ),
     request_body = ReshipFulfillmentInput,
     responses(
         (status = 200, description = "Fulfillment marked for reship", body = FulfillmentResponse),
@@ -598,6 +659,7 @@ pub async fn reship_fulfillment(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<ReshipFulfillmentInput>,
 ) -> HttpResult<Json<FulfillmentResponse>> {
     ensure_permissions(
@@ -605,7 +667,15 @@ pub async fn reship_fulfillment(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
-    let context = admin_fulfillment_command_context(&tenant, &auth, &request_context, id, "reship");
+    let idempotency_key = require_idempotency_key(&headers)?;
+    let context = admin_fulfillment_command_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        "reship",
+        idempotency_key,
+    );
     let fulfillment = runtime
         .fulfillment_admin_command_port()
         .reship_fulfillment(
@@ -633,7 +703,10 @@ pub async fn reship_fulfillment(
     post,
     path = "/admin/fulfillments/{id}/cancel",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Fulfillment ID")),
+    params(
+        ("id" = Uuid, Path, description = "Fulfillment ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
+    ),
     request_body = CancelFulfillmentInput,
     responses(
         (status = 200, description = "Fulfillment cancelled", body = FulfillmentResponse),
@@ -647,6 +720,7 @@ pub async fn cancel_fulfillment(
     auth: AuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<CancelFulfillmentInput>,
 ) -> HttpResult<Json<FulfillmentResponse>> {
     ensure_permissions(
@@ -654,7 +728,15 @@ pub async fn cancel_fulfillment(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
-    let context = admin_fulfillment_command_context(&tenant, &auth, &request_context, id, "cancel");
+    let idempotency_key = require_idempotency_key(&headers)?;
+    let context = admin_fulfillment_command_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        "cancel",
+        idempotency_key,
+    );
     let fulfillment = runtime
         .fulfillment_admin_command_port()
         .cancel_fulfillment(

@@ -480,17 +480,85 @@ and rejects the former raw diagnostic patterns.
 
 Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
 
-## 2026-09-25 Admin Order command owner-port cutover
+## 2026-09-25 Admin Order audit correction
 
-Mounted Commerce Admin Order lifecycle commands previously constructed `OrderService`
-directly for mark-paid, ship, deliver, and cancel. The handlers now use the composed
-`OrderAdminCommandPort` with typed command requests and an explicit owner-port context.
-The legacy controller-local `OrderError` mutation mapper was removed in favor of the
-existing typed `PortError` HTTP envelope path.
+The repository mounts `controllers/admin/orders_owner_ports.rs` for the Admin Order routes;
+`controllers/admin/orders.rs` is legacy and unmounted. An accidental edit to the legacy file
+was reverted, so no legacy command migration is claimed.
 
-The admin order/fulfillment verification guard now forbids direct `OrderService`
-construction and lifecycle calls in the mounted controller and requires the typed command
-owner handoff.
+The active controller already used `OrderAdminCommandPort` for mark-paid, ship, deliver, and
+cancel. The real active defect was its generated per-request idempotency key. The command
+context now requires the caller-provided `Idempotency-Key` header, while read contexts carry
+no synthetic idempotency key. The order/fulfillment and order-detail verifiers were aligned
+to the mounted controller.
+
+Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
+
+## 2026-09-25 Storefront line-item resolution error safety
+
+Mounted storefront line-item resolution still serialized raw Product/Pricing `PortError`
+and Inventory `CommerceError` values at its HTTP boundary. The Product and Pricing mappers
+now retain bounded owner kind/code-length/retryability and safe request/resource shape facts;
+Inventory now records only bounded error-kind and identity/channel/locale presence facts.
+Public HTTP envelopes remain stable.
+
+The ecommerce public-port verifier now guards the line-item resolution controller against
+the former raw owner error/context patterns.
+
+Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
+
+## 2026-09-25 Admin checkout-operation diagnostic safety
+
+Mounted Admin checkout-operation HTTP mapping used a redacted `Debug` wrapper and
+serialized shape-labeled identity fields. The shared mapper now takes no error value at all
+and emits only explicit tenant/actor/operation/payment/order/reservation state facts plus
+stable public policy data. The verifier now rejects the former redacted/raw patterns.
+
+Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
+
+## 2026-09-25 Active Admin Order idempotency and cart lifecycle typing
+
+The mounted Admin Order controller was already using `OrderAdminCommandPort`, but its
+shared context helper generated a new UUID per request and therefore could not preserve
+caller-owned replay identity. Read contexts now carry no idempotency key; all four write
+handlers require and propagate the caller's `Idempotency-Key` header.
+
+Active Admin Order HTTP diagnostics also now retain only bounded error-code length rather
+than serializing the internal code value. Separately, the storefront payment-collection
+guard now parses `CartResponse::lifecycle_status()` and checks `CartStatus::Completed`,
+failing closed when an unknown persisted status is encountered.
+
+The Admin Order and order-detail verifier scripts were corrected to inspect the mounted
+`orders_owner_ports.rs` controller rather than the unmounted legacy `orders.rs` source.
+
+Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
+
+## 2026-09-25 Caller-owned Payment and Fulfillment idempotency
+
+Mounted Admin Fulfillment write endpoints previously generated resource/operation or
+payload-hash-derived idempotency keys. All six writes now require a caller-owned
+`Idempotency-Key` and propagate it into the fulfillment owner command context.
+
+Mounted Admin Payment collection transitions and refund transitions had the same
+resource/operation-derived replay identity. They now require caller-owned keys; refund
+creation already used a validated caller key and remains on that path. Internal payment and
+fulfillment error codes are also represented only by bounded length facts at the HTTP boundary.
+
+The ecommerce public-port verifier now guards both controllers against synthetic replay
+identity and raw internal error-code diagnostics.
+
+Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
+
+## 2026-09-25 Storefront return idempotency contract
+
+Storefront order-return creation previously generated an idempotency UUID inside its
+command context. It now requires a caller-owned `Idempotency-Key`, validates the same 191
+byte contract used by the other commerce writes, and propagates the key to the Order
+post-order command port. The endpoint's OpenAPI contract now declares the required header.
+
+Admin Order, Fulfillment, and Payment write endpoints updated in this review similarly
+declare their caller-owned `Idempotency-Key` in OpenAPI, keeping the documented transport
+contract aligned with runtime enforcement.
 
 Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
 ## Completed Rounds Archive

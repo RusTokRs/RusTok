@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind, RequestContext, TenantContext};
 use rustok_customer::dto::CustomerResponse;
@@ -138,11 +138,44 @@ fn storefront_order_read_port_context(
     }
 }
 
+fn require_idempotency_key(headers: &HeaderMap) -> Result<String, HttpError> {
+    let value = headers
+        .get("Idempotency-Key")
+        .ok_or_else(|| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_store_idempotency_key_required",
+                "Idempotency-Key header is required for this write operation",
+            )
+        })?
+        .to_str()
+        .map_err(|_| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_store_idempotency_key_invalid",
+                "Idempotency-Key header is invalid",
+            )
+        })?
+        .trim()
+        .to_string();
+
+    if value.is_empty() || value.len() > 191 {
+        return Err(HttpError::new(
+            StatusCode::BAD_REQUEST,
+            "commerce_store_idempotency_key_invalid",
+            "Idempotency-Key header must contain 1 to 191 bytes",
+        ));
+    }
+
+    Ok(value)
+}
+
 fn storefront_order_return_command_context(
     tenant_id: Uuid,
     auth: &rustok_api::AuthContext,
     request_context: &RequestContext,
     order_id: Uuid,
+    idempotency_key: String,
 ) -> PortContext {
     let context = PortContext::new(
         tenant_id.to_string(),
@@ -151,12 +184,13 @@ fn storefront_order_return_command_context(
         format!("commerce-storefront-order:create-return:{order_id}"),
     )
     .with_deadline(std::time::Duration::from_secs(2))
-    .with_idempotency_key(Uuid::new_v4().to_string());
+    .with_idempotency_key(idempotency_key);
     match request_context.channel_slug.as_deref() {
         Some(channel) => context.with_channel(channel),
         None => context,
     }
 }
+
 
 fn map_storefront_order_port_error(
     error: PortError,
@@ -594,6 +628,7 @@ pub async fn create_order_return(
     request_context: RequestContext,
     auth: rustok_api::AuthContext,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
     Json(input): Json<CreateOrderReturnInput>,
 ) -> HttpResult<(StatusCode, Json<OrderReturnResponse>)> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
@@ -609,8 +644,14 @@ pub async fn create_order_return(
     )
     .await?;
 
-    let command_context =
-        storefront_order_return_command_context(tenant.id, &auth, &request_context, id);
+    let idempotency_key = require_idempotency_key(&headers)?;
+    let command_context = storefront_order_return_command_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        id,
+        idempotency_key,
+    );
     let created = runtime
         .order_post_order_command_port()
         .create_return(
@@ -641,6 +682,7 @@ pub async fn create_order_return(
     tag = "store",
     params(
         ("id" = Uuid, Path, description = "Order ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
         PaginationParams,
         ("status" = Option<String>, Query, description = "Optional return status filter")
     ),

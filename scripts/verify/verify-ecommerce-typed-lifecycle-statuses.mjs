@@ -16,6 +16,7 @@ const forbidText = (source, value, label) => {
 const cart = read('crates/modules/rustok-cart/src/dto/status.rs');
 const cartLib = read('crates/modules/rustok-cart/src/lib.rs');
 const cartAtomic = read('crates/modules/rustok-cart/src/atomic_checkout_port.rs');
+const storefrontStore = read('crates/modules/rustok-commerce/src/controllers/store/mod.rs');
 const order = read('crates/modules/rustok-order/src/status.rs');
 const orderLib = read('crates/modules/rustok-order/src/lib.rs');
 const orderCompensation = read('crates/modules/rustok-order/src/checkout_compensation.rs');
@@ -82,6 +83,9 @@ requireText(
 
 for (const [source, value, label] of [
   [cart, 'pub enum CartStatus', 'canonical cart status enum'],
+  [storefrontStore, 'use rustok_cart::{CartStatus, CartStorefrontPort, CartStorefrontRepriceRequest};', 'storefront typed cart status import'],
+  [storefrontStore, 'let status = cart.lifecycle_status().map_err', 'storefront cart lifecycle accessor'],
+  [storefrontStore, 'if status == CartStatus::Completed', 'storefront completed status check'],
   [cart, 'pub fn lifecycle_status(&self) -> CartResult<CartStatus>', 'cart typed accessor'],
   [cart, 'pub const fn can_begin_checkout(self) -> bool', 'cart begin predicate'],
   [cart, 'pub const fn can_complete_checkout(self) -> bool', 'cart completion predicate'],
@@ -220,6 +224,7 @@ for (const value of [
   'state.payment_collection.status != "captured"',
   'state.order.status.as_str()',
   'cart.status != CartStatus::Completed.as_str()',
+  'cart.status == "completed"',
 ]) {
   forbidText(finalization, value, 'checkout finalization raw lifecycle status');
 }
