@@ -1,39 +1,3 @@
-pub(super) async fn lock_category_tree_in_tx(txn: &DatabaseTransaction, tenant_id: Uuid) -> ForumResult<()> {
-    match txn.get_database_backend() {
-        DatabaseBackend::Postgres => {
-            txn.execute_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                [tenant_id.to_string().into()],
-            ))
-            .await?;
-            Ok(())
-        }
-        DatabaseBackend::Sqlite => Ok(()),
-        backend => Err(ForumError::Validation(format!(
-            "Forum category lifecycle does not support {backend:?}"
-        ))),
-    }
-}
-
-async fn load_categories_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-) -> ForumResult<Vec<forum_category::Model>> {
-    let categories = forum_category::Entity::find()
-        .filter(forum_category::Column::TenantId.eq(tenant_id))
-        .order_by_asc(forum_category::Column::Id)
-        .limit(MAX_FORUM_CATEGORY_TREE_NODES + 1)
-        .all(txn)
-        .await?;
-    if categories.len() > MAX_FORUM_CATEGORY_TREE_NODES as usize {
-        return Err(ForumError::Validation(format!(
-            "Forum category tree exceeds the bounded limit of {MAX_FORUM_CATEGORY_TREE_NODES} nodes"
-        )));
-    }
-    Ok(categories)
-}
-
 /// Verify that a category and every ancestor are active.
 ///
 /// Structural topic commands and restore use the same category-tree lifecycle invariant:
@@ -72,34 +36,31 @@ async fn load_category_parents_in_tx(
     tenant_id: Uuid,
     category_ids: &[Uuid],
 ) -> ForumResult<HashMap<Uuid, Option<Uuid>>> {
-    let hierarchy_rows = rustok_taxonomy::entities::taxonomy_category_hierarchy::Entity::find()
-        .filter(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
-        .filter(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TermId.is_in(category_ids.iter().copied()))
-        .all(txn)
-        .await?;
-    let parent_by_id = hierarchy_rows
-        .into_iter()
-        .map(|row| (row.term_id, row.parent_term_id))
-        .collect::<HashMap<_, _>>();
-
-    for category_id in category_ids {
-        if !parent_by_id.contains_key(category_id) {
-            return Err(ForumError::Validation(format!(
-                "Forum category {category_id} is missing its canonical Taxonomy hierarchy row"
-            )));
-        }
+    if category_ids.is_empty() {
+        return Ok(HashMap::new());
     }
-
-    Ok(parent_by_id)
-}
-
-/// Verify that a deleted topic/reply can be restored into its category tree.
-pub(super) async fn ensure_category_restore_target_is_active_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    category_id: Uuid,
-) -> ForumResult<()> {
-    ensure_category_tree_target_is_active_in_tx(txn, tenant_id, category_id).await
+    let projections = rustok_taxonomy::TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
+        txn,
+        tenant_id,
+        rustok_taxonomy::TaxonomyScopeType::Module,
+        Some("forum"),
+        Some(category_ids),
+        "en",
+        None,
+    )
+    .await
+    .map_err(|error| ForumError::Validation(format!(
+        "Forum Category Taxonomy hierarchy read failed: {error}"
+    )))?;
+    if projections.len() != category_ids.len() {
+        return Err(ForumError::Validation(
+            "Forum Category Taxonomy hierarchy coverage is incomplete".to_string(),
+        ));
+    }
+    Ok(projections
+        .into_iter()
+        .map(|category| (category.id, category.parent_id))
+        .collect())
 }
 
 fn collect_subtree_ids(

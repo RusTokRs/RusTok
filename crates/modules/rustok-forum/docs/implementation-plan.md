@@ -54,7 +54,7 @@ native Forum storefront check, whole-host Next typecheck,
 and the updated ownership verifiers pass.
 Manifest dependencies between `modules.toml`, `rustok-module.toml`,
 `RusToKModule::dependencies()` and `docs/modules/registry.md` are aligned to
-`["content", "media", "taxonomy"]`, and `cargo xtask module validate forum` passes.
+`["content", "media", "taxonomy"]. Taxonomy owns the canonical Forum Category persistence boundary.
 The WASM storefront check still stops in the pre-existing
 `Resource::new_blocking`/non-`Send` GraphQL future and missing direct `web_sys`
 dependency path, outside the richtext renderer.
@@ -342,28 +342,33 @@ is deferred to the final production-validation phase.
 
 ## Corrected task boundaries
 
-### `FORUM-13`/`FORUM-14`: Media
+### FORUM-13/FORUM-14: Media and Category ownership
 
 Media owns upload, blobs, MIME, dimensions, renditions, quarantine, deletion,
-delivery and reconciliation. Forum stores only typed tenant-scoped relations,
-Forum usage/order/caption and source revision. Text-only Forum remains available
-when Media is disabled. Attachment mutations require the Media owner reference-retention
-capability. Media keeps lifecycle ownership. Forum never reads Media persistence directly.
+delivery and reconciliation. Forum stores typed tenant-scoped attachment
+relations, Forum usage/order/caption and source revision. Canonical Category
+identity, localized copy, hierarchy, routes, aliases and presentation are
+owned by Taxonomy.
 
-#### Delivered in `FORUM-13A`
+#### FORUM-13 status
 
-- Category icon writes normalize to bounded lowercase kebab-case semantic keys at the database write boundary; CSS classes, markup, URLs and paths fail closed.
-- Category colors remain restricted to safe bounded hexadecimal values.
-- `CategoryCoverMediaCandidate` is a transport-neutral validation input containing only media identity, tenant, MIME, size, dimensions and `MediaImageDescriptor`.
-- Cover candidate policy rejects foreign tenants, unsupported image MIME, size or dimension violations, descriptor mismatch and non-direct-public delivery.
-- Category presentation rejects Media persistence/storage access and arbitrary category image URL/path fields.
+Forum-specific Category presentation ownership was superseded by
+TAXONOMY-CAT-3 and retired during the CAT-5 Forum Category cutover. Canonical
+icon, color, image/cover Media identities, presentation revision and their
+validation boundary belong to Taxonomy. Forum must not reintroduce a duplicate
+presentation validator, persistence model, Media capability error surface or
+Category-cover owner command.
 
-#### Delivered in `FORUM-13B`
+The remaining multilingual/RTL browser packet is production-validation
+evidence for the Taxonomy-owned Category surface, not additional Forum
+implementation scope.
 
-- `resolve_category_cover_for_write` resolves Media metadata only through Media public-image owner admission, validates the candidate and returns stable `FORUM_CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE` when the optional Media owner is not composed.
-- `hydrate_category_cover_for_read` degrades to an absent descriptor only in the explicit Media-disabled profile.
-- Not-found, timeout, storage and other Media provider failures remain typed `ForumError::CapabilityFailure` values with source code and retryability.
-- Media keeps lifecycle ownership.
+#### Delivered in the retired pre-cutover FORUM-13 scope
+
+The historical FORUM-13A/FORUM-13B Category presentation implementation is no
+longer part of the active runtime contract. Its old cover candidate,
+Media owner-port resolver and Forum-local icon normalizer were removed when
+Category ownership moved to Taxonomy.
 
 #### Delivered in `FORUM-14B`
 

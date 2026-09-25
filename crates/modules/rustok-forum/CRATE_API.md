@@ -50,7 +50,7 @@
 - `pub struct ForumModerationAudienceAuthorizationService`, `ForumModerationAudienceAuthorization`
 - `ModerationService::with_audience_facts(db, event_bus, SharedForumAudienceFactsPort) -> ModerationService`
 - `ModerationService::*_with_audience_context(..., PortContext) -> ForumResult<()>` for reply status, topic pin/lock/status, and solution commands
-- `CategoryCoverMediaCandidate`, `normalize_category_icon_key`, `validate_category_cover_candidate`
+- `TaxonomyOwnerCategory`, Taxonomy-backed Category owner mutation adapters and Media owner-reference retention
 - `resolve_category_cover_for_write(media_port, context, media_id, alt) -> ForumResult<MediaImageDescriptor>`
 - `hydrate_category_cover_for_read(media_port, context, media_id, alt) -> ForumResult<Option<MediaImageDescriptor>>`
 - `extract_forum_mention_candidates(document: &RichTextDocument, policy) -> ForumResult<ForumMentionCandidates>`
@@ -155,16 +155,13 @@
 - PostgreSQL and SQLite enforce tenant/category ownership, immutable rows, bounded relations, and one shared advisory key for owner replacement and direct bounded inserts.
 - GraphQL/REST exact context composition remains `FORUM-20AZ`; no moderation DTO changed in `FORUM-20AY`.
 - Run `node scripts/verify/verify-forum-moderation-audience-policy.mjs` after changing this boundary.
-### Category presentation contract
-- Existing `icon` storage is interpreted as an `icon_key` and accepts only a bounded lowercase kebab-case semantic token at the database write boundary.
-- Category colors remain bounded hexadecimal colors; CSS declarations and arbitrary color expressions are rejected.
-- `CategoryCoverMediaCandidate` is a transport-neutral Media-to-Forum validation input and carries only media identity, tenant, MIME, size, dimensions and `MediaImageDescriptor`.
-- `validate_category_cover_candidate` rejects foreign tenants, unsupported image MIME, oversized or dimensionless images, descriptor mismatch and non-direct-public delivery.
-- `resolve_category_cover_for_write` calls the Media owner port and fails with stable code `FORUM_CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE` when Media is not composed; it never treats a missing capability as a clear-cover command.
-- `hydrate_category_cover_for_read` returns `None` only for the explicit Media-disabled profile. Media not-found, timeout, storage and other provider failures remain typed `ForumError::CapabilityFailure` values with source code and retryability.
-- Forum does not accept or store cover URLs, storage paths, drivers, credentials or blobs.
-- Persistent `cover_media_id` writes remain disabled until the Media owner contract publishes quarantine/deletion state.
-- Run `node scripts/verify/verify-forum-category-presentation.mjs` after changing this boundary.
+### Category presentation ownership
+- Canonical Category identity, localized copy, hierarchy, routes, aliases and presentation are owned by `rustok-taxonomy`.
+- Forum Category commands pass `icon` and `color` through the Taxonomy owner-sync boundary; Forum does not normalize or persist a second canonical presentation model.
+- Forum Category reads consume the Taxonomy-owned `TaxonomyOwnerCategory` projection, including locale, hierarchy and presentation fields.
+- Category Media identities are typed Taxonomy references. Media remains the binary lifecycle owner; Forum does not resolve Category-cover Media capability, store Media URLs/paths, read Media persistence, or expose a duplicate cover error surface.
+- Forum attachment relations remain separate and use the Media owner-reference retention contract.
+
 ### Mention and quote revision contract
 - Mention extraction walks the canonical `RichTextDocument` tree and ignores `codeBlock` nodes, code-marked text, and email-address `@` tokens.
 - Forum never parses a format selector, Markdown source, or a second JSON envelope for mentions.
@@ -275,7 +272,7 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 ## Dependencies on Other RusToK Crates
 - `rustok-content`
 - `rustok-core`
-- `rustok-media` for transport-neutral image descriptors, owner read-port resolution and optional-capability degradation
+- `rustok-taxonomy` for canonical Category identity/copy/hierarchy/routes/presentation and `rustok-media` for Forum attachment owner-reference retention
 - `rustok-events` for the sealed Forum mention event family
 - `rustok-outbox`
 - `rustok-profiles` for tenant-scoped mention handle resolution through `ProfilesReader`
@@ -289,9 +286,9 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Writes `parent_id` or sibling positions directly instead of using category owner commands.
 - Writes lifecycle rows parent-first or restores a child beneath an archived ancestor.
 - Creates a topic without honoring the category-owned lifecycle and `allows_topics` policy.
-- Treats category `icon` as a CSS class, URL or markup instead of a semantic icon key.
-- Stores a category image URL/path or reads Media tables instead of using the Media owner port.
-- Swallows a Media port failure as an absent category cover instead of degrading only when Media is not composed.
+- Reimplements Taxonomy Category presentation normalization or persistence inside Forum.
+- Reads Taxonomy entity tables directly instead of using the Taxonomy owner projection/mutation ports.
+- Treats Category-cover lifecycle as Forum-owned instead of consuming Media/Taxonomy owner contracts.
 - Parses mentions from code blocks or code-marked structural text.
 - Resolves mention handles by querying profile tables or by trusting display labels instead of `ProfilesReader`.
 - Emits mention delivery for unchanged targets or rewrites quote history to the latest revision.
@@ -332,8 +329,7 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Topic-local reply-create audience is a separate normalized final narrowing layer evaluated only after every inherited category reply-create layer.
 - Category moderation audience is normalized, inherited as a conjunction, and evaluated before all moderator-owned topic/reply/solution writes while preserving the topic-author solution owner path.
 - Topic/reply create transports derive exact tenant, actor, claims, locale, deadline, and route channel only from authenticated runtime contexts and use the same host-published optional audience facts port.
-- Category icon/color values are bounded safe tokens; cover media candidates are tenant-scoped and transport-neutral.
-- Category cover writes fail closed when Media is unavailable; reads degrade only for an explicitly absent optional Media owner and never swallow provider errors.
+- Category presentation values are normalized and owned by Taxonomy; Forum consumes the owner projection and never creates a second persistence validator.
 - Mention extraction is bounded, format-aware and code/escape-safe; profile resolution is tenant-scoped and privacy fail-closed.
 - Mention revision diffs are immutable on replay and only added resolved targets become owner events.
 - Relation revisions and mention/quote children are append-only, tenant-bound and atomically matched to the persisted source body.

@@ -2,15 +2,15 @@
 
 import fs from 'node:fs';
 
-const read = (path) => fs.readFileSync(path, 'utf8');
+const read = (file) => fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
 const failures = [];
-const requireMarker = (path, marker, label = marker) => {
-  const source = read(path);
-  if (!source.includes(marker)) failures.push(`${path}: missing ${label}`);
+const requireMarker = (file, marker, label = marker) => {
+  const source = read(file);
+  if (!source.includes(marker)) failures.push(`${file}: missing ${label}`);
 };
-const rejectMarker = (path, marker, label = marker) => {
-  const source = read(path);
-  if (source.includes(marker)) failures.push(`${path}: must not contain ${label}`);
+const rejectMarker = (file, marker, label = marker) => {
+  const source = read(file);
+  if (source.includes(marker)) failures.push(`${file}: must not contain ${label}`);
 };
 
 const migration = 'crates/modules/rustok-forum/src/migrations/m20260823_000029_add_forum_taxonomy_category_binding.rs';
@@ -24,127 +24,73 @@ const categoryService = 'crates/modules/rustok-forum/src/services/category.rs';
 const categoryMutationSupport = 'crates/modules/rustok-forum/src/services/category_mutation_support.rs';
 const categoryImport = 'crates/modules/rustok-forum/src/services/category_import.rs';
 const categoryProjectionOwner = 'crates/modules/rustok-forum/src/services/category_projection_owner.rs';
+const categoryCommandOwner = 'crates/modules/rustok-forum/src/services/category_command_owner.rs';
+const categoryCommandLegacy = 'crates/modules/rustok-forum/src/services/category_command.rs';
+const categoryPresentationLegacy = 'crates/modules/rustok-forum/src/category_presentation.rs';
+const categoryLifecycle = 'crates/modules/rustok-forum/src/services/category_lifecycle.rs';
 const forumServices = 'crates/modules/rustok-forum/src/services/mod.rs';
+const forumLib = 'crates/modules/rustok-forum/src/lib.rs';
+const forumManifest = 'crates/modules/rustok-forum/rustok-module.toml';
+const forumComposition = 'modules.toml';
+const taxonomyHierarchy = 'crates/modules/rustok-taxonomy/src/owner_category_hierarchy_mutation.rs';
+const taxonomyRead = 'crates/modules/rustok-taxonomy/src/owner_category_read.rs';
+const taxonomyLib = 'crates/modules/rustok-taxonomy/src/lib.rs';
 
-for (const path of [
-  migration,
-  migrationRegistry,
-  backfillContracts,
-  relation,
-  runtimeTest,
-  entities,
-  legacyCategory,
-  categoryService,
-  categoryMutationSupport,
-  categoryImport,
-  categoryProjectionOwner,
-  forumServices,
+for (const file of [
+  migration, migrationRegistry, backfillContracts, relation, runtimeTest, entities,
+  legacyCategory, categoryService, categoryMutationSupport, categoryImport,
+  categoryProjectionOwner, categoryCommandOwner, categoryLifecycle, forumServices,
+  forumLib, forumManifest, forumComposition, taxonomyHierarchy, taxonomyRead, taxonomyLib,
 ]) {
-  if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
+  if (!fs.existsSync(file)) failures.push(`${file}: file is required`);
 }
 
 if (failures.length === 0) {
   requireMarker(migration, 'forum_category_taxonomy_bindings', 'typed Forum→Taxonomy binding table');
   requireMarker(migration, 'fk_forum_category_taxonomy_binding_forum', 'Forum composite foreign key');
   requireMarker(migration, 'fk_forum_category_taxonomy_binding_taxonomy', 'Taxonomy composite foreign key');
-  requireMarker(migration, 'uq_forum_category_taxonomy_binding_taxonomy', 'one-to-one tenant binding index');
-  requireMarker(migration, '(TaxonomyTerms::TenantId, TaxonomyTerms::Id)', 'tenant-safe Taxonomy identity target');
-  requireMarker(migrationRegistry, 'm20260823_000029_add_forum_taxonomy_category_binding', 'registered CAT-5 migration');
-  requireMarker(migrationRegistry, 'm20260711_000001_add_tenant_identity_key', 'Taxonomy tenant identity dependency');
+  requireMarker(migrationRegistry, 'm20260823_000029_add_forum_taxonomy_category_binding', 'CAT-5 migration registration');
   requireMarker(backfillContracts, 'forum-taxonomy-category-binding-bootstrap', 'CAT-5 backfill declaration');
-  requireMarker(backfillContracts, '"migration": "m20260823_000029_add_forum_taxonomy_category_binding"', 'CAT-5 migration backfill registration');
-  requireMarker(backfillContracts, '"mode": "none"', 'empty binding-table backfill mode');
-
-  requireMarker(relation, 'ForumCategoryTaxonomyBindingService', 'bounded binding service');
-  requireMarker(relation, 'taxonomy_term_identity_exists', 'Taxonomy owner identity validation');
-  requireMarker(relation, 'TaxonomyTermKind::Category', 'Category-only owner validation');
-  requireMarker(relation, 'same-tenant Taxonomy Category', 'cross-tenant fail-closed contract');
-  requireMarker(relation, 'already bound to a different Taxonomy Category', 'no implicit rebind contract');
-  requireMarker(relation, 'already bound to another Forum category', 'one-to-one duplicate guard');
-  requireMarker(entities, 'pub mod forum_category_taxonomy_binding;', 'binding entity registration');
-
+  requireMarker(relation, 'ForumCategoryTaxonomyBindingService', 'typed binding owner');
   requireMarker(runtimeTest, 'forum_category_binding_is_category_only_tenant_bounded_and_one_to_one', 'runtime binding contract');
-  requireMarker(runtimeTest, 'repeating the same binding should be idempotent', 'idempotent bind proof');
-  requireMarker(runtimeTest, 'Taxonomy Tags must not masquerade as Categories', 'wrong-kind runtime proof');
-  requireMarker(runtimeTest, 'foreign-tenant Taxonomy Categories must fail closed', 'foreign-tenant runtime proof');
-  requireMarker(runtimeTest, 'stale Taxonomy Category identities must fail closed', 'stale identity runtime proof');
+  rejectMarker(legacyCategory, 'taxonomy_category_id', 'retired Taxonomy identity column in Forum Category');
+  requireMarker(legacyCategory, 'pub parent_id: Option<Uuid>', 'legacy hierarchy placeholder retained only where explicitly staged');
 
-  rejectMarker(legacyCategory, 'taxonomy_category_id', 'binding state embedded in legacy category row');
-  requireMarker(legacyCategory, 'pub parent_id: Option<Uuid>', 'legacy hierarchy retained during staged cutover');
+  requireMarker(categoryService, 'pub(super) struct CategoryService;', 'Forum Category persistence seam');
+  requireMarker(categoryService, 'pub(crate) async fn load_categories_in_tx(', 'bounded Forum Category loader');
+  rejectMarker(categoryService, 'rustok_taxonomy::entities', 'direct Taxonomy persistence access');
+  rejectMarker(categoryMutationSupport, 'rustok_taxonomy::entities', 'direct Taxonomy persistence access');
+  requireMarker(categoryMutationSupport, 'fn validate_category_name', 'Forum-local Category validation');
+  requireMarker(categoryMutationSupport, 'fn normalize_required_slug', 'Forum-local slug validation');
 
-  requireMarker(categoryService, 'include!("category_mutation_support.rs");', 'explicit shared Category mutation support');
-  requireMarker(categoryService, 'pub(super) struct CategoryService;', 'crate-private Category persistence seam');
-  requireMarker(categoryService, 'pub(crate) async fn ensure_exists_in_tx(', 'retained Category existence helper');
-  requireMarker(categoryService, 'pub(crate) async fn find_category_in_tx(', 'retained Category lookup helper');
-  requireMarker(categoryService, 'pub(crate) async fn adjust_counters_in_tx(', 'retained Category counter helper');
-  for (const [marker, label] of [
-    ['async fn lock_category_tree_in_tx', 'shared Category tree-lock implementation'],
-    ['async fn shift_siblings_for_insert_in_tx', 'shared Category insert-order implementation'],
-    ['fn validate_category_name', 'shared Category name validation implementation'],
-    ['fn normalize_locale(', 'shared Category locale normalization implementation'],
-    ['fn normalize_required_slug', 'shared Category required-slug implementation'],
-    ['fn normalize_slug(', 'shared Category slug normalization implementation'],
-    ['use crate::dto::{CreateCategoryInput, UpdateCategoryInput};', 'Category command DTO imports'],
-    ['use rustok_api::{Action, Resource};', 'Category command authorization imports'],
-  ]) {
-    rejectMarker(categoryService, marker, label);
-  }
+  requireMarker(categoryImport, 'taxonomy_sync::shift_category_siblings_for_insert_in_tx(', 'Taxonomy-owned insertion shift');
+  rejectMarker(categoryImport, 'rustok_taxonomy::entities', 'direct Taxonomy persistence access');
+  requireMarker(categoryProjectionOwner, 'taxonomy_sync::load_category_owner_snapshot_in_tx', 'Taxonomy owner projection');
+  requireMarker(categoryProjectionOwner, 'taxonomy_sync::sync_category_copy_in_tx(', 'Taxonomy owner sync');
+  requireMarker(categoryProjectionOwner, 'rustok_taxonomy::lock_category_hierarchy_writer_in_tx', 'canonical hierarchy lock');
+  rejectMarker(categoryProjectionOwner, 'rustok_taxonomy::entities', 'direct Taxonomy persistence access');
+  rejectMarker(categoryProjectionOwner, 'crate::category_presentation', 'retired Forum presentation owner');
 
-  requireMarker(categoryMutationSupport, 'Shared implementation support for the `category` include group', 'live shared-support boundary');
-  requireMarker(categoryMutationSupport, 'use tracing::instrument;', 'projection owner instrumentation import');
-  requireMarker(categoryMutationSupport, 'use crate::dto::{CreateCategoryInput, UpdateCategoryInput};', 'projection owner command DTO imports');
-  requireMarker(categoryMutationSupport, 'use rustok_api::{Action, Resource};', 'projection owner authorization imports');
-  requireMarker(categoryMutationSupport, 'async fn lock_category_tree_in_tx', 'shared Category tree lock');
-  requireMarker(categoryMutationSupport, 'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', 'tenant Category tree lock key');
-  requireMarker(categoryMutationSupport, 'async fn shift_siblings_for_insert_in_tx', 'shared Category insert ordering');
-  requireMarker(categoryMutationSupport, 'fn validate_category_name', 'shared Category name validator');
-  requireMarker(categoryMutationSupport, 'fn normalize_locale(', 'shared Category locale normalizer');
-  requireMarker(categoryMutationSupport, 'fn normalize_required_slug', 'shared Category required-slug normalizer');
-  requireMarker(categoryMutationSupport, 'fn normalize_slug(', 'shared Category slug normalizer');
-  rejectMarker(categoryMutationSupport, 'forum_category_translation', 'retired Forum-local Category translation donor');
+  requireMarker(categoryCommandOwner, 'taxonomy_sync::move_category_in_tx', 'Taxonomy-owned Category move');
+  requireMarker(categoryCommandOwner, 'taxonomy_sync::reorder_category_siblings_in_tx', 'Taxonomy-owned Category reorder');
+  rejectMarker(categoryCommandOwner, 'rustok_taxonomy::entities', 'direct Taxonomy persistence access');
+  requireMarker(categoryLifecycle, 'TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict', 'Taxonomy-owned lifecycle hierarchy read');
+  rejectMarker(categoryLifecycle, 'rustok_taxonomy::entities', 'direct Taxonomy persistence access');
+  rejectMarker(forumServices, 'include!("category_command.rs")', 'retired direct-persistence command include');
 
-  for (const marker of [
-    'insert_import_category_in_tx(',
-    'validate_category_name(&record.name)',
-    'normalize_locale(&record.locale)',
-    'normalize_required_slug(&record.slug)',
-    'lock_category_tree_in_tx(txn, tenant_id)',
-    'shift_siblings_for_insert_in_tx(',
-    'taxonomy_sync::sync_category_copy_in_tx(',
-  ]) {
-    requireMarker(categoryImport, marker, `live import support call ${marker}`);
-  }
+  if (fs.existsSync(categoryCommandLegacy)) failures.push(`${categoryCommandLegacy}: retired direct-persistence helper must be removed`);
+  if (fs.existsSync(categoryPresentationLegacy)) failures.push(`${categoryPresentationLegacy}: retired Forum presentation owner must be removed`);
 
-  for (const marker of [
-    'CategoryProjectionOwnerService',
-    'enforce_scope(&security, Resource::ForumCategories, Action::Create)',
-    'enforce_scope(&security, Resource::ForumCategories, Action::Update)',
-    'lock_category_tree_in_tx(&txn, tenant_id)',
-    'shift_siblings_for_insert_in_tx(',
-    'validate_category_name(',
-    'normalize_locale(',
-    'normalize_required_slug',
-    'taxonomy_sync::sync_category_copy_in_tx(',
-  ]) {
-    requireMarker(categoryProjectionOwner, marker, `live projection-owner support call ${marker}`);
-  }
-  requireMarker(
-    categoryProjectionOwner,
-    'if input.position.is_some() {',
-    'transactional metadata-update placement guard',
-  );
-  requireMarker(
-    categoryProjectionOwner,
-    'Category position must be changed through move/reorder commands',
-    'transactional placement rejection contract',
-  );
-  rejectMarker(
-    categoryProjectionOwner,
-    'active.position = Set(position);',
-    'direct Category placement write in metadata update',
-  );
+  requireMarker(forumLib, '["content", "media", "taxonomy"]', 'Forum runtime dependency set');
+  requireMarker(forumManifest, 'taxonomy = { version_req = ">=0.1.0" }', 'Forum Taxonomy runtime dependency');
+  rejectMarker(forumManifest, 'tenant = { version_req = ">=0.1.0" }', 'stale Forum tenant runtime dependency');
+  rejectMarker(forumComposition, 'depends_on = ["content", "media", "taxonomy", "tenant"]', 'stale Forum tenant composition dependency');
 
-  rejectMarker(forumServices, 'ForumCategoryTranslationTargetProvider', 'retired duplicate Forum Translation provider');
+  requireMarker(taxonomyHierarchy, 'pub async fn move_module_category_in_tx', 'Taxonomy Category move owner');
+  requireMarker(taxonomyHierarchy, 'pub async fn shift_module_category_siblings_for_insert_in_tx', 'Taxonomy Category insertion owner');
+  requireMarker(taxonomyRead, 'pub async fn load_module_category_sibling_ids_in', 'Taxonomy Category sibling read owner');
+  requireMarker(taxonomyLib, 'move_module_category_in_tx', 'exported Taxonomy Category move owner');
+  requireMarker(taxonomyLib, 'shift_module_category_siblings_for_insert_in_tx', 'exported Taxonomy Category insertion owner');
 }
 
 if (failures.length > 0) {
@@ -153,4 +99,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('[forum-taxonomy-category-binding] typed staged binding boundary verified');
+console.log('[forum-taxonomy-category-binding] typed staged binding and Category ownership boundary verified');

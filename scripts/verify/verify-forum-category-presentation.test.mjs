@@ -16,68 +16,61 @@ function writeFixture(root, relativePath, content) {
 }
 
 function fixture(options = {}) {
-  const root = mkdtempSync(path.join(tmpdir(), "rustok-forum-presentation-"));
-  const contract = `
-pub use rustok_media::MediaPublicImageReadPort;
-// Media decides whether the requested asset is an active, ready public image
-pub const CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE_CODE: &str =
-  "FORUM_CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE";
-pub struct CategoryCoverMediaCandidate {
-  pub media_id: Uuid,
-  pub tenant_id: Uuid,
-  pub mime_type: String,
-  pub size: i64,
-  pub width: Option<i32>,
-  pub height: Option<i32>,
-  pub descriptor: Option<MediaImageDescriptor>,
-}
-pub fn normalize_category_icon_key() {}
-pub fn validate() { should_emit_to_public_metadata(); }
-pub async fn resolve_category_cover_for_write(media_port: Option<&dyn MediaPublicImageReadPort>) {
-  let media_port = media_port.ok_or_else(category_cover_media_capability_unavailable);
-  media_port.get_public_image_asset();
-  map_category_cover_media_port_error();
-  ${options.swallowMediaFailure ? "map_category_cover_media_port_error().ok();" : ""}
-}
-pub async fn hydrate_category_cover_for_read(media_port: Option<&dyn MediaPublicImageReadPort>) {
-  let Some(media_port) = media_port else { return Ok(None); };
-  media_port.get_public_image_asset();
-  map_category_cover_media_port_error();
-}
-// Quarantine/deletion state is not currently published
-${options.rawMediaAccess ? "rustok_media::entities::media;" : ""}
-${options.arbitraryUrl ? "cover_url: String" : ""}
-`;
-  writeFixture(root, "crates/modules/rustok-forum/src/category_presentation.rs", contract);
+  const root = mkdtempSync(path.join(tmpdir(), "rustok-forum-category-"));
   writeFixture(
     root,
-    "crates/modules/rustok-forum/src/error.rs",
-    options.missingTypedError
-      ? "pub enum ForumError { Validation }"
-      : "pub enum ForumError { CapabilityUnavailable } pub const fn stable_code() {}",
+    "crates/modules/rustok-forum/src/lib.rs",
+    options.legacy ? "pub mod category_presentation; ["content", "media", "taxonomy", "tenant"]" : "dependencies ["content", "media", "taxonomy"]",
   );
   writeFixture(
     root,
-    "crates/modules/rustok-forum/src/entities/forum_category.rs",
-    options.unvalidatedIcon ? "pub icon: Option<String>" : "normalize_category_icon_key(icon);",
+    "crates/modules/rustok-forum/src/services/category_projection_owner.rs",
+    options.directTaxonomy ? "rustok_taxonomy::entities::taxonomy_category_hierarchy" : "taxonomy_sync::load_category_owner_snapshot_in_tx rustok_taxonomy::lock_category_hierarchy_writer_in_tx",
   );
-  for (const filePath of [
-    "crates/modules/rustok-forum/src/dto/category.rs",
-    "crates/modules/rustok-forum/src/dto/category_tree.rs",
-    "crates/modules/rustok-forum/src/services/category.rs",
-    "crates/modules/rustok-forum/src/services/category_owner.rs",
-  ]) {
-    writeFixture(root, filePath, "category boundary\n");
-  }
   writeFixture(
     root,
-    "crates/modules/rustok-forum/docs/implementation-plan.md",
-    "Delivered in `FORUM-13A`\nDelivered in `FORUM-13B`\nMedia keeps lifecycle ownership.\nremaining quarantine/deletion owner state\n",
+    "crates/modules/rustok-forum/src/services/category_command_owner.rs",
+    options.directTaxonomy ? "rustok_taxonomy::entities::taxonomy_category_hierarchy" : "taxonomy_sync::move_category_in_tx taxonomy_sync::reorder_category_siblings_in_tx",
+  );
+  writeFixture(
+    root,
+    "crates/modules/rustok-forum/src/services/category_taxonomy_sync.rs",
+    "rustok_taxonomy::move_module_category_in_tx rustok_taxonomy::shift_module_category_siblings_for_insert_in_tx TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict",
+  );
+  writeFixture(
+    root,
+    "crates/modules/rustok-forum/src/services/category_import.rs",
+    "taxonomy_sync::shift_category_siblings_for_insert_in_tx",
+  );
+  writeFixture(
+    root,
+    "crates/modules/rustok-forum/src/services/category_lifecycle.rs",
+    "TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict",
   );
   writeFixture(
     root,
     "crates/modules/rustok-forum/CRATE_API.md",
-    "CategoryCoverMediaCandidate\nresolve_category_cover_for_write\nhydrate_category_cover_for_read\nFORUM_CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE\n",
+    options.staleApi ? "CategoryCoverMediaCandidate resolve_category_cover_for_write" : "### Category presentation ownership",
+  );
+  writeFixture(
+    root,
+    "crates/modules/rustok-forum/docs/implementation-plan.md",
+    options.stalePlan ? "#### Delivered in \`FORUM-13A\` CategoryCoverMediaCandidate" : "Forum-specific Category presentation ownership was superseded",
+  );
+  writeFixture(
+    root,
+    "crates/modules/rustok-taxonomy/src/owner_category_hierarchy_mutation.rs",
+    "pub async fn move_module_category_in_tx pub async fn shift_module_category_siblings_for_insert_in_tx",
+  );
+  writeFixture(
+    root,
+    "crates/modules/rustok-taxonomy/src/owner_category_read.rs",
+    "pub async fn load_module_category_sibling_ids_in",
+  );
+  writeFixture(
+    root,
+    "crates/modules/rustok-taxonomy/src/lib.rs",
+    "move_module_category_in_tx shift_module_category_siblings_for_insert_in_tx",
   );
   return root;
 }
@@ -99,44 +92,37 @@ function withFixture(options, assertion) {
   }
 }
 
-test("category presentation verifier accepts canonical boundary", () => {
+test("category presentation verifier accepts the Taxonomy owner boundary", () => {
   withFixture({}, (result) => {
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.match(result.stdout, /verification passed/);
   });
 });
 
-test("category presentation verifier rejects raw Media access", () => {
-  withFixture({ rawMediaAccess: true }, (result) => {
+test("category presentation verifier rejects direct Taxonomy persistence access", () => {
+  withFixture({ directTaxonomy: true }, (result) => {
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /must not access Media persistence/);
+    assert.match(result.stderr, /must not access Taxonomy persistence entities/);
   });
 });
 
-test("category presentation verifier rejects arbitrary cover URL", () => {
-  withFixture({ arbitraryUrl: true }, (result) => {
+test("category presentation verifier rejects the legacy tenant dependency", () => {
+  withFixture({ legacy: true }, (result) => {
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /must not store an arbitrary image URL/);
+    assert.match(result.stderr, /runtime dependency contract is stale/);
   });
 });
 
-test("category presentation verifier requires DB icon guard", () => {
-  withFixture({ unvalidatedIcon: true }, (result) => {
+test("category presentation verifier rejects retired Forum presentation APIs", () => {
+  withFixture({ staleApi: true }, (result) => {
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /database write boundary/);
+    assert.match(result.stderr, /retired Forum-local Category presentation APIs/);
   });
 });
 
-test("category presentation verifier requires typed unavailable error", () => {
-  withFixture({ missingTypedError: true }, (result) => {
+test("category presentation verifier rejects retired roadmap implementation details", () => {
+  withFixture({ stalePlan: true }, (result) => {
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /typed capability-unavailable/);
-  });
-});
-
-test("category presentation verifier rejects swallowed Media failures", () => {
-  withFixture({ swallowMediaFailure: true }, (result) => {
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /must not swallow Media provider failures/);
+    assert.match(result.stderr, /retired Category presentation implementation details/);
   });
 });

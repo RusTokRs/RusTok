@@ -17,63 +17,6 @@ use crate::entities::forum_category;
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
 
-// Shared implementation support for the `category` include group. These
-// helpers are live dependencies of Category import and Taxonomy-backed
-// projection-owner mutations; keeping them outside `category.rs` makes the
-// narrow persistence seam explicit without changing mutation behavior.
-async fn lock_category_tree_in_tx(txn: &DatabaseTransaction, tenant_id: Uuid) -> ForumResult<()> {
-    match txn.get_database_backend() {
-        DatabaseBackend::Postgres => {
-            txn.execute_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                [tenant_id.to_string().into()],
-            ))
-            .await?;
-            Ok(())
-        }
-        DatabaseBackend::Sqlite => Ok(()),
-        backend => Err(ForumError::Validation(format!(
-            "Forum category creation does not support {backend:?}"
-        ))),
-    }
-}
-
-async fn shift_siblings_for_insert_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    parent_id: Option<Uuid>,
-    requested_position: i32,
-) -> ForumResult<()> {
-    let mut query = rustok_taxonomy::entities::taxonomy_category_hierarchy::Entity::find()
-        .filter(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
-        .filter(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::Position.gte(requested_position));
-    query = match parent_id {
-        Some(parent_id) => query.filter(
-            rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::ParentTermId.eq(parent_id),
-        ),
-        None => query.filter(
-            rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::ParentTermId.is_null(),
-        ),
-    };
-    let siblings = query
-        .order_by_desc(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::Position)
-        .order_by_desc(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TermId)
-        .all(txn)
-        .await?;
-
-    for sibling in siblings {
-        let next_position = sibling.position.checked_add(1).ok_or_else(|| {
-            ForumError::Validation("Category sibling position exceeds i32 range".to_string())
-        })?;
-        let mut active: rustok_taxonomy::entities::taxonomy_category_hierarchy::ActiveModel = sibling.into();
-        active.position = Set(next_position);
-        active.update(txn).await?;
-    }
-
-    Ok(())
-}
-
 fn validate_category_name(name: &str) -> ForumResult<()> {
     if name.trim().is_empty() {
         return Err(ForumError::Validation(

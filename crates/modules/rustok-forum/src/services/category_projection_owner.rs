@@ -37,7 +37,9 @@ impl CategoryProjectionOwnerService {
         let now = Utc::now();
         let id = Uuid::new_v4();
         let txn = self.db.begin().await?;
-        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id)
+            .await
+            .map_err(taxonomy_sync::map_taxonomy_error)?;
 
         if let Some(parent_id) = input.parent_id {
             CategoryService::find_category_in_tx(&txn, tenant_id, parent_id).await?;
@@ -122,24 +124,15 @@ impl CategoryProjectionOwnerService {
         }
         active.update(&txn).await?;
 
-        let existing_placement =
-            rustok_taxonomy::entities::taxonomy_category_hierarchy::Entity::find_by_id((tenant_id, category_id))
-                .one(&txn)
+        let taxonomy_category =
+            taxonomy_sync::load_category_owner_snapshot_in_tx(&txn, tenant_id, category_id, &locale)
                 .await?;
-        let (parent_id, position) = match existing_placement {
-            Some(p) => (p.parent_term_id, p.position),
-            None => (None, 0),
-        };
+        let parent_id = taxonomy_category.parent_id;
+        let position = taxonomy_category.position;
         let requested_icon = input.icon.clone();
         let requested_color = input.color.clone();
-        let existing_presentation =
-            rustok_taxonomy::entities::taxonomy_category_presentation::Entity::find_by_id((tenant_id, category_id))
-                .one(&txn)
-                .await?;
-        let (icon, color) = match existing_presentation {
-            Some(p) => (requested_icon.or(p.icon_key), requested_color.or(p.color)),
-            None => (requested_icon, requested_color),
-        };
+        let icon = requested_icon.or(taxonomy_category.icon_key);
+        let color = requested_color.or(taxonomy_category.color);
 
         let existing_canonical =
             taxonomy_sync::load_category_locale_copy_in_tx(&txn, tenant_id, category_id, &locale)

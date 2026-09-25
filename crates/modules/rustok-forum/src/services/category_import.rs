@@ -34,12 +34,12 @@ impl CategoryService {
                 )
             })?;
 
-        lock_category_tree_in_tx(txn, tenant_id).await?;
+        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(txn, tenant_id)
+            .await
+            .map_err(taxonomy_sync::map_taxonomy_error)?;
         if let Some(parent_id) = record.parent_id {
             Self::find_category_in_tx(txn, tenant_id, parent_id).await?;
         }
-        shift_siblings_for_insert_in_tx(txn, tenant_id, record.parent_id, record.position).await?;
-
         forum_category::ActiveModel {
             id: Set(record.id),
             tenant_id: Set(tenant_id),
@@ -64,6 +64,15 @@ impl CategoryService {
             record.name.clone(),
             slug,
             record.description.clone(),
+        )
+        .await?;
+
+        taxonomy_sync::shift_category_siblings_for_insert_in_tx(
+            txn,
+            tenant_id,
+            record.id,
+            record.parent_id,
+            record.position,
         )
         .await?;
 

@@ -1,5 +1,7 @@
 include!("category_mutation_support.rs");
 
+use crate::dto::MAX_FORUM_CATEGORY_TREE_NODES;
+
 /// Crate-private persistence seam shared by Forum category owner commands.
 ///
 /// Canonical Category reads and localized copy no longer live here: public reads
@@ -9,6 +11,24 @@ include!("category_mutation_support.rs");
 pub(super) struct CategoryService;
 
 impl CategoryService {
+    pub(crate) async fn load_categories_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+    ) -> ForumResult<Vec<forum_category::Model>> {
+        let categories = forum_category::Entity::find()
+            .filter(forum_category::Column::TenantId.eq(tenant_id))
+            .order_by_asc(forum_category::Column::Id)
+            .limit(MAX_FORUM_CATEGORY_TREE_NODES + 1)
+            .all(txn)
+            .await?;
+        if categories.len() > MAX_FORUM_CATEGORY_TREE_NODES as usize {
+            return Err(ForumError::Validation(format!(
+                "Forum category tree exceeds the bounded limit of {MAX_FORUM_CATEGORY_TREE_NODES} nodes"
+            )));
+        }
+        Ok(categories)
+    }
+
     pub(crate) async fn ensure_exists_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,

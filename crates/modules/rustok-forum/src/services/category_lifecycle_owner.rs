@@ -68,9 +68,11 @@ impl CategoryLifecycleProjectionOwnerService {
     ) -> ForumResult<CategorySubtreeLifecycleResponse> {
         enforce_scope(&security, Resource::ForumCategories, required_action)?;
         let txn = self.db.begin().await?;
-        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id)
+            .await
+            .map_err(super::category::taxonomy_sync::map_taxonomy_error)?;
 
-        let categories = load_categories_in_tx(&txn, tenant_id).await?;
+        let categories = super::category::CategoryService::load_categories_in_tx(&txn, tenant_id).await?;
         let models = categories
             .iter()
             .cloned()

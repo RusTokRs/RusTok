@@ -1,126 +1,76 @@
-/// Transactional category placement owner with full Forum projection invalidation.
+use std::collections::{HashMap, HashSet};
+
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait};
+use uuid::Uuid;
+
+use rustok_api::{Action, Resource};
+use rustok_core::SecurityContext;
+
+use crate::dto::{
+    CategoryPlacementResponse, MAX_FORUM_CATEGORY_TREE_NODES, MoveCategoryInput, MoveCategoryResponse,
+    ReorderCategorySiblingsInput, ReorderCategorySiblingsResponse,
+};
+use crate::entities::forum_category_lifecycle;
+use crate::error::{ForumError, ForumResult};
+use crate::services::rbac::enforce_scope;
+
 pub(super) struct CategoryCommandProjectionOwnerService {
     db: DatabaseConnection,
 }
 
 impl CategoryCommandProjectionOwnerService {
-    pub(super) fn new(db: DatabaseConnection) -> Self {
-        Self { db }
-    }
+    pub(super) fn new(db: DatabaseConnection) -> Self { Self { db } }
 
     pub(super) async fn move_category(
-        &self,
-        tenant_id: Uuid,
-        category_id: Uuid,
-        security: SecurityContext,
-        input: MoveCategoryInput,
+        &self, tenant_id: Uuid, category_id: Uuid, security: SecurityContext, input: MoveCategoryInput
     ) -> ForumResult<MoveCategoryResponse> {
         enforce_scope(&security, Resource::ForumCategories, Action::Manage)?;
         let txn = self.db.begin().await?;
-        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id)
+            .await
+            .map_err(super::category::taxonomy_sync::map_taxonomy_error)?;
 
-        let categories = load_categories_in_tx(&txn, tenant_id).await?;
-        let models = categories
-            .iter()
-            .cloned()
-            .map(|category| (category.id, category))
-            .collect::<HashMap<_, _>>();
+        let categories = super::category::CategoryService::load_categories_in_tx(&txn, tenant_id).await?;
+        let models = categories.iter().cloned().map(|c| (c.id, c)).collect::<HashMap<_, _>>();
         if !models.contains_key(&category_id) {
             return Err(ForumError::CategoryNotFound(category_id));
         }
-        ensure_parent_exists(&models, input.parent_id)?;
-
+        if let Some(parent_id) = input.parent_id && !models.contains_key(&parent_id) {
+            return Err(ForumError::Validation(format!("Category parent {parent_id} does not exist in the tenant")));
+        }
         if let Some(parent_id) = input.parent_id {
-            let is_parent_archived = forum_category_lifecycle::Entity::find()
+            let parent_archived = forum_category_lifecycle::Entity::find()
                 .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
                 .filter(forum_category_lifecycle::Column::CategoryId.eq(parent_id))
                 .one(&txn)
                 .await?
                 .is_some();
-            if is_parent_archived {
-                let is_category_archived = forum_category_lifecycle::Entity::find()
+            if parent_archived {
+                let category_archived = forum_category_lifecycle::Entity::find()
                     .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
                     .filter(forum_category_lifecycle::Column::CategoryId.eq(category_id))
                     .one(&txn)
                     .await?
                     .is_some();
-                if !is_category_archived {
-                    return Err(ForumError::Validation(
-                        "active forum category cannot have archived parent".to_string(),
-                    ));
+                if !category_archived {
+                    return Err(ForumError::Validation("active forum category cannot have archived parent".to_string()));
                 }
             }
         }
-
-        let category_ids = categories.iter().map(|c| c.id).collect::<Vec<_>>();
-        let placement_by_id = load_placements_in_tx(&txn, tenant_id, &category_ids).await?;
-
-        let mut parent_by_id = placement_by_id
-            .iter()
-            .map(|(id, (parent, _))| (*id, *parent))
-            .collect::<HashMap<_, _>>();
-        validate_parent_map(&parent_by_id)?;
-        parent_by_id.insert(category_id, input.parent_id);
-        validate_parent_map(&parent_by_id)?;
-
-        let source_parent_id = placement_by_id[&category_id].0;
-        let target_index = input.position as usize;
-        let updated = if source_parent_id == input.parent_id {
-            let mut siblings = sibling_ids(&category_ids, &placement_by_id, source_parent_id, Some(category_id));
-            if target_index > siblings.len() {
-                return Err(ForumError::Validation(format!(
-                    "Category position {} exceeds sibling count {}",
-                    input.position,
-                    siblings.len()
-                )));
-            }
-            siblings.insert(target_index, category_id);
-            persist_sibling_order(&txn, tenant_id, source_parent_id, &siblings).await?
-        } else {
-            let source_siblings = sibling_ids(&category_ids, &placement_by_id, source_parent_id, Some(category_id));
-            let mut target_siblings = sibling_ids(&category_ids, &placement_by_id, input.parent_id, None);
-            if target_index > target_siblings.len() {
-                return Err(ForumError::Validation(format!(
-                    "Category position {} exceeds destination sibling count {}",
-                    input.position,
-                    target_siblings.len()
-                )));
-            }
-            target_siblings.insert(target_index, category_id);
-
-            let mut updated =
-                persist_sibling_order(&txn, tenant_id, source_parent_id, &source_siblings).await?;
-            updated.extend(
-                persist_sibling_order(&txn, tenant_id, input.parent_id, &target_siblings).await?,
-            );
-            updated
-        };
-
-        let moved = updated
-            .iter()
-            .find(|placement| placement.id == category_id)
-            .cloned()
-            .ok_or_else(|| {
-                ForumError::Validation(
-                    "Moved category was not persisted in sibling order".to_string(),
-                )
-            })?;
-
+        let updated = super::category::taxonomy_sync::move_category_in_tx(
+            &txn, tenant_id, category_id, input.parent_id, input.position
+        ).await?;
+        let moved = updated.iter().find(|p| p.id == category_id).cloned().ok_or_else(||
+            ForumError::Validation("Moved category was not persisted in sibling order".to_string()))?;
         super::projection_invalidation::publish_forum_projection_scope_direct_in_tx(
-            &txn,
-            tenant_id,
-            security.user_id,
-        )
-        .await?;
+            &txn, tenant_id, security.user_id
+        ).await?;
         txn.commit().await?;
         Ok(MoveCategoryResponse { moved, updated })
     }
 
     pub(super) async fn reorder_siblings(
-        &self,
-        tenant_id: Uuid,
-        security: SecurityContext,
-        input: ReorderCategorySiblingsInput,
+        &self, tenant_id: Uuid, security: SecurityContext, input: ReorderCategorySiblingsInput
     ) -> ForumResult<ReorderCategorySiblingsResponse> {
         enforce_scope(&security, Resource::ForumCategories, Action::Manage)?;
         if input.ordered_category_ids.len() > MAX_FORUM_CATEGORY_TREE_NODES as usize {
@@ -128,52 +78,48 @@ impl CategoryCommandProjectionOwnerService {
                 "Category sibling order exceeds the bounded limit of {MAX_FORUM_CATEGORY_TREE_NODES}"
             )));
         }
-
         let txn = self.db.begin().await?;
-        lock_category_tree_in_tx(&txn, tenant_id).await?;
-        let categories = load_categories_in_tx(&txn, tenant_id).await?;
-        let models = categories
-            .iter()
-            .cloned()
-            .map(|category| (category.id, category))
-            .collect::<HashMap<_, _>>();
-        ensure_parent_exists(&models, input.parent_id)?;
-
-        let category_ids = categories.iter().map(|c| c.id).collect::<Vec<_>>();
-        let placement_by_id = load_placements_in_tx(&txn, tenant_id, &category_ids).await?;
-
-        let parent_by_id = placement_by_id
-            .iter()
-            .map(|(id, (parent, _))| (*id, *parent))
-            .collect::<HashMap<_, _>>();
-        validate_parent_map(&parent_by_id)?;
-
-        let current = sibling_ids(&category_ids, &placement_by_id, input.parent_id, None);
+        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id)
+            .await
+            .map_err(super::category::taxonomy_sync::map_taxonomy_error)?;
+        let categories = super::category::CategoryService::load_categories_in_tx(&txn, tenant_id).await?;
+        let models = categories.iter().cloned().map(|c| (c.id, c)).collect::<HashMap<_, _>>();
+        if let Some(parent_id) = input.parent_id && !models.contains_key(&parent_id) {
+            return Err(ForumError::Validation(format!("Category parent {parent_id} does not exist in the tenant")));
+        }
+        for id in &input.ordered_category_ids {
+            if !models.contains_key(id) {
+                return Err(ForumError::CategoryNotFound(*id));
+            }
+        }
+        let current = super::category::taxonomy_sync::load_category_siblings_in_tx(
+            &txn, tenant_id, input.parent_id
+        ).await?;
+        let current_set = current.iter().copied().collect::<HashSet<_>>();
         let requested = input.ordered_category_ids;
         let requested_set = requested.iter().copied().collect::<HashSet<_>>();
-        let current_set = current.iter().copied().collect::<HashSet<_>>();
         if requested_set.len() != requested.len() {
-            return Err(ForumError::Validation(
-                "Category sibling order contains duplicate category ids".to_string(),
-            ));
+            return Err(ForumError::Validation("Category sibling order contains duplicate category ids".to_string()));
         }
         if requested_set != current_set || requested.len() != current.len() {
-            return Err(ForumError::Validation(
-                "Category sibling order must contain every direct child exactly once".to_string(),
-            ));
+            return Err(ForumError::Validation("Category sibling order must contain every direct child exactly once".to_string()));
         }
-
-        let siblings = persist_sibling_order(&txn, tenant_id, input.parent_id, &requested).await?;
+        super::category::taxonomy_sync::reorder_category_siblings_in_tx(
+            &txn, tenant_id, input.parent_id, &requested
+        ).await?;
+        let siblings = requested.iter().copied().enumerate().map(|(position, id)| {
+            Ok::<_, ForumError>(CategoryPlacementResponse {
+                id,
+                parent_id: input.parent_id,
+                position: i32::try_from(position).map_err(|_|
+                    ForumError::Validation("Category sibling position exceeds i32 range".to_string())
+                )?,
+            })
+        }).collect::<Result<Vec<_>, _>>()?;
         super::projection_invalidation::publish_forum_projection_scope_direct_in_tx(
-            &txn,
-            tenant_id,
-            security.user_id,
-        )
-        .await?;
+            &txn, tenant_id, security.user_id
+        ).await?;
         txn.commit().await?;
-        Ok(ReorderCategorySiblingsResponse {
-            parent_id: input.parent_id,
-            siblings,
-        })
+        Ok(ReorderCategorySiblingsResponse { parent_id: input.parent_id, siblings })
     }
 }

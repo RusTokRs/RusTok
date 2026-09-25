@@ -162,7 +162,7 @@ fn placement_from_model(row: taxonomy_category_hierarchy::Model) -> TaxonomyCate
     }
 }
 
-fn validate_candidate_hierarchy(
+pub(crate) fn validate_candidate_hierarchy(
     term_id: Uuid,
     parent_id: Option<Uuid>,
     rows: &[taxonomy_category_hierarchy::Model],

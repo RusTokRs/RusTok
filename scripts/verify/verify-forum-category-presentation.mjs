@@ -27,138 +27,58 @@ function reject(source, pattern, message) {
   if (pattern.test(source)) failures.push(message);
 }
 
-const contractPath = "crates/modules/rustok-forum/src/category_presentation.rs";
-const errorPath = "crates/modules/rustok-forum/src/error.rs";
-const entityPath = "crates/modules/rustok-forum/src/entities/forum_category.rs";
-const dtoPath = "crates/modules/rustok-forum/src/dto/category.rs";
-const treeDtoPath = "crates/modules/rustok-forum/src/dto/category_tree.rs";
-const categoryServicePath = "crates/modules/rustok-forum/src/services/category.rs";
-const categoryOwnerPath = "crates/modules/rustok-forum/src/services/category_owner.rs";
-const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
-const crateApiPath = "crates/modules/rustok-forum/CRATE_API.md";
+const forumLib = read("crates/modules/rustok-forum/src/lib.rs");
+const categoryOwner = read("crates/modules/rustok-forum/src/services/category_projection_owner.rs");
+const categoryCommands = read("crates/modules/rustok-forum/src/services/category_command_owner.rs");
+const categorySync = read("crates/modules/rustok-forum/src/services/category_taxonomy_sync.rs");
+const categoryImport = read("crates/modules/rustok-forum/src/services/category_import.rs");
+const categoryLifecycle = read("crates/modules/rustok-forum/src/services/category_lifecycle.rs");
+const api = read("crates/modules/rustok-forum/CRATE_API.md");
+const plan = read("crates/modules/rustok-forum/docs/implementation-plan.md");
+const taxonomyHierarchy = read("crates/modules/rustok-taxonomy/src/owner_category_hierarchy_mutation.rs");
+const taxonomyRead = read("crates/modules/rustok-taxonomy/src/owner_category_read.rs");
+const taxonomyLib = read("crates/modules/rustok-taxonomy/src/lib.rs");
 
-const contract = read(contractPath);
-const errors = read(errorPath);
-const entity = read(entityPath);
-const plan = read(planPath);
-const crateApi = read(crateApiPath);
-const categoryBoundary = [
-  dtoPath,
-  treeDtoPath,
-  entityPath,
-  categoryServicePath,
-  categoryOwnerPath,
-  contractPath,
-]
-  .map((filePath) => `${filePath}\n${read(filePath)}`)
-  .join("\n");
+requireText(forumLib, '["content", "media", "taxonomy"]', "Forum runtime dependency contract is stale");
+reject(forumLib, /category_presentation/, "Forum must not register a duplicate Category presentation owner");
 
-requireText(
-  contract,
-  "pub struct CategoryCoverMediaCandidate",
-  `${contractPath}: transport-neutral cover candidate is missing`,
-);
-for (const field of [
-  "media_id",
-  "tenant_id",
-  "mime_type",
-  "size",
-  "width",
-  "height",
-  "descriptor",
-]) {
-  requireText(contract, `pub ${field}:`, `${contractPath}: cover candidate misses ${field}`);
-}
-requireText(
-  contract,
-  "normalize_category_icon_key",
-  `${contractPath}: category icon token normalization is missing`,
-);
-requireText(
-  contract,
-  "should_emit_to_public_metadata",
-  `${contractPath}: public descriptor policy is not enforced`,
-);
-for (const marker of [
-  "MediaPublicImageReadPort",
-  "get_public_image_asset",
-  "CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE_CODE",
-  "resolve_category_cover_for_write",
-  "hydrate_category_cover_for_read",
-  "media_port.ok_or_else(category_cover_media_capability_unavailable)",
-  "let Some(media_port) = media_port else",
-  "map_category_cover_media_port_error",
-]) {
-  requireText(contract, marker, `${contractPath}: Media owner marker is missing: ${marker}`);
-}
-requireText(
-  contract,
-  "active, ready public image",
-  `${contractPath}: Media lifecycle authority must stay explicit`,
-);
-requireText(
-  errors,
-  "CapabilityUnavailable",
-  `${errorPath}: typed capability-unavailable error is missing`,
-);
-requireText(
-  errors,
-  "pub const fn stable_code",
-  `${errorPath}: stable Forum error-code mapping is missing`,
-);
-const categoryWriteBoundary = [
-  entityPath,
-  "crates/modules/rustok-forum/src/services/category_projection_owner.rs",
-]
-  .map(read)
-  .join("\n");
-requireText(
-  categoryWriteBoundary,
-  "normalize_category_icon_key",
-  "category write boundary does not validate icon tokens",
-);
+requireText(categoryOwner, "taxonomy_sync::load_category_owner_snapshot_in_tx", "Category writes must consume Taxonomy owner projection");
+requireText(categoryOwner, "rustok_taxonomy::lock_category_hierarchy_writer_in_tx", "Category write path must use Taxonomy hierarchy serialization");
+reject(categoryOwner, /rustok_taxonomy::entities/, "Forum Category projection owner must not access Taxonomy persistence entities");
 
-reject(
-  categoryBoundary,
-  /rustok_media::entities|MediaService::new|storage_path|storage_driver/,
-  "forum category presentation must not access Media persistence or storage internals",
-);
-reject(
-  contract,
-  /\bMediaAssetReadPort\b/,
-  "forum category cover must consume Media public-image owner admission, not the generic asset-read port",
-);
-reject(
-  categoryBoundary,
-  /\b(?:cover|image)_(?:url|path)\b/i,
-  "forum category presentation must not store an arbitrary image URL or path",
-);
-reject(
-  contract,
-  /map_category_cover_media_port_error[\s\S]{0,800}\.(?:ok|unwrap_or_default)\s*\(/,
-  "forum category cover hydration must not swallow Media provider failures",
-);
+requireText(categoryCommands, "taxonomy_sync::move_category_in_tx", "Category move must delegate hierarchy mutation to Taxonomy");
+requireText(categoryCommands, "taxonomy_sync::reorder_category_siblings_in_tx", "Category reorder must delegate hierarchy mutation to Taxonomy");
+reject(categoryCommands, /rustok_taxonomy::entities/, "Forum Category command owner must not access Taxonomy persistence entities");
 
-requireText(plan, "Delivered in `FORUM-13A`", `${planPath}: FORUM-13A delivery is not recorded`);
-requireText(plan, "Delivered in `FORUM-13B`", `${planPath}: FORUM-13B delivery is not recorded`);
-requireText(
-  plan,
-  "Media keeps lifecycle ownership.",
-  `${planPath}: Media lifecycle ownership is not recorded in FORUM-13`,
-);
-for (const marker of [
-  "CategoryCoverMediaCandidate",
-  "resolve_category_cover_for_write",
-  "hydrate_category_cover_for_read",
-  "FORUM_CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE",
-]) {
-  requireText(crateApi, marker, `${crateApiPath}: category presentation marker is missing: ${marker}`);
-}
+requireText(categorySync, "rustok_taxonomy::move_module_category_in_tx", "Forum Taxonomy adapter must expose Taxonomy-owned move");
+requireText(categorySync, "rustok_taxonomy::shift_module_category_siblings_for_insert_in_tx", "Forum Taxonomy adapter must expose Taxonomy-owned insertion shift");
+requireText(categorySync, "TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict", "Forum Taxonomy adapter must expose canonical owner reads");
+
+requireText(categoryImport, "taxonomy_sync::shift_category_siblings_for_insert_in_tx", "Forum import must use Taxonomy-owned sibling insertion");
+reject(categoryImport, /rustok_taxonomy::entities/, "Forum Category import must not access Taxonomy persistence entities");
+
+requireText(categoryLifecycle, "TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict", "Forum lifecycle must derive hierarchy from Taxonomy owner read");
+reject(categoryLifecycle, /rustok_taxonomy::entities/, "Forum Category lifecycle must not access Taxonomy persistence entities");
+
+requireText(taxonomyHierarchy, "pub async fn move_module_category_in_tx", "Taxonomy must own module Category move");
+requireText(taxonomyHierarchy, "pub async fn shift_module_category_siblings_for_insert_in_tx", "Taxonomy must own module Category insertion shift");
+requireText(taxonomyRead, "pub async fn load_module_category_sibling_ids_in", "Taxonomy must expose storage-encapsulated Category sibling reads");
+requireText(taxonomyLib, "move_module_category_in_tx", "Taxonomy move owner must be exported");
+requireText(taxonomyLib, "shift_module_category_siblings_for_insert_in_tx", "Taxonomy insertion owner must be exported");
+
+requireText(api, "### Category presentation ownership", "Forum API contract must describe Taxonomy Category presentation ownership");
+reject(api, /CategoryCoverMediaCandidate|resolve_category_cover_for_write|hydrate_category_cover_for_read|normalize_category_icon_key/, "Forum API contract must not describe retired Forum-local Category presentation APIs");
+
+requireText(plan, "Forum-specific Category presentation ownership was superseded", "Forum roadmap must record Category presentation cutover");
+reject(plan, /#### Delivered in `FORUM-13A`[sS]*CategoryCoverMediaCandidate/, "Forum roadmap must not retain retired Category presentation implementation details");
+
+const retiredPresentation = path.join(repoRoot, "crates/modules/rustok-forum/src/category_presentation.rs");
+if (existsSync(retiredPresentation)) failures.push("retired Forum Category presentation source must not exist");
 
 if (failures.length > 0) {
-  console.error("forum category presentation verification failed:");
+  console.error("forum category presentation ownership verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
 
-console.log("forum category presentation verification passed");
+console.log("forum category presentation ownership verification passed");

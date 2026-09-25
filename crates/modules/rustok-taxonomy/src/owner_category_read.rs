@@ -61,6 +61,44 @@ impl TaxonomyOwnerCategoryReader {
         Self { db }
     }
 
+    /// Load direct sibling identities for a module-owned Category parent.
+    ///
+    /// The result is ordered by canonical Taxonomy position and stable term identity.
+    /// Consumer persistence tables are never consulted.
+    pub async fn load_module_category_sibling_ids_in<C>(
+        connection: &C,
+        tenant_id: Uuid,
+        module_scope: &str,
+        parent_id: Option<Uuid>,
+    ) -> TaxonomyResult<Vec<Uuid>>
+    where
+        C: ConnectionTrait,
+    {
+        let scope_value = normalize_scope_value(TaxonomyScopeType::Module, Some(module_scope))?;
+        let terms = taxonomy_term::Entity::find()
+            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category))
+            .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
+            .filter(taxonomy_term::Column::ScopeValue.eq(&scope_value))
+            .all(connection)
+            .await?;
+        if terms.is_empty() {
+            return Ok(Vec::new());
+        }
+        let term_ids = terms.iter().map(|term| term.id).collect::<Vec<_>>();
+        let hierarchy = taxonomy_category_hierarchy::Entity::find()
+            .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_category_hierarchy::Column::TermId.is_in(term_ids))
+            .filter(match parent_id {
+                Some(parent_id) => taxonomy_category_hierarchy::Column::ParentTermId.eq(parent_id),
+                None => taxonomy_category_hierarchy::Column::ParentTermId.is_null(),
+            })
+            .order_by_asc(taxonomy_category_hierarchy::Column::Position)
+            .order_by_asc(taxonomy_category_hierarchy::Column::TermId)
+            .all(connection)
+            .await?;
+        Ok(hierarchy.into_iter().map(|row| row.term_id).collect())
+    }
     /// Loads Category snapshots in one bounded owner read.
     ///
     /// `term_ids=None` lists the selected Category scope. `Some(ids)` restricts
