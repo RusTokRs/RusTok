@@ -27,7 +27,6 @@ use crate::{
     },
 };
 
-const ADMIN_ORDER_CHANGE_OWNER: &str = "rustok_order.admin_changes";
 const ADMIN_ORDER_CHANGE_ORCHESTRATION_OWNER: &str =
     "rustok_commerce.admin_order_change_orchestration";
 const ADMIN_ORDER_CHANGE_BOUNDARY: &str = "commerce_admin_order_change_http";
@@ -172,32 +171,6 @@ fn adopt_order_change_payment_error_identity(
         PaymentError::RefundNotFound(id) => context.refund_id = Some(*id),
         _ => {}
     }
-}
-
-fn map_admin_order_change_error(
-    mut context: AdminOrderChangeErrorContext,
-    error: OrderError,
-) -> HttpError {
-    match &error {
-        OrderError::OrderNotFound(id) => context.order_id = Some(*id),
-        OrderError::OrderChangeNotFound(id) => context.order_change_id = Some(*id),
-        _ => {}
-    }
-    let (status, code, message, error_kind) = admin_order_change_order_error_policy(&error);
-    tracing::error!(
-        error = ?error,
-        owner = ADMIN_ORDER_CHANGE_OWNER,
-        tenant_id = %context.tenant_id,
-        order_id = ?context.order_id,
-        order_change_id = ?context.order_change_id,
-        operation = %context.operation,
-        error_kind,
-        public_code = code,
-        status = %status,
-        boundary = ADMIN_ORDER_CHANGE_BOUNDARY,
-        "commerce admin order change owner operation failed"
-    );
-    HttpError::new(status, code, message)
 }
 
 fn map_admin_order_change_port_error(
