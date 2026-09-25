@@ -44,6 +44,8 @@ const orderPaymentSettlement = read('crates/modules/rustok-order/src/checkout_pa
 const orderRecovery = read('crates/modules/rustok-order/src/checkout_order_recovery.rs');
 const orderCheckoutAdapters = orderCompensation + orderPaymentSettlement + orderRecovery;
 const marketplacePayoutService = read('crates/modules/rustok-marketplace-payout/src/service.rs');
+const marketplacePayoutError = read('crates/modules/rustok-marketplace-payout/src/error.rs');
+const marketplacePayoutPorts = read('crates/modules/rustok-marketplace-payout/src/ports.rs');
 
 for (const [source, label] of [
   [channel, 'channel port'],
@@ -244,6 +246,7 @@ forbidAll(orderCheckoutAdapters, [
 forbidAll(marketplacePayoutService, [
   'MarketplacePayoutError::LedgerBoundary {',
   'message: error.message,',
+  'if retryable {\n                PortErrorKind::Unavailable\n            } else {\n                PortErrorKind::Conflict',
 ], 'marketplace payout ledger-boundary public error mapping');
 
 requireText(pricing, 'correlation_id = %context.correlation_id', 'pricing correlation logging');
