@@ -548,5 +548,18 @@ The ecommerce public-port verifier now guards both controllers against synthetic
 identity and raw internal error-code diagnostics.
 
 Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
+
+## 2026-09-25 Storefront return idempotency contract
+
+Storefront order-return creation previously generated an idempotency UUID inside its
+command context. It now requires a caller-owned `Idempotency-Key`, validates the same 191
+byte contract used by the other commerce writes, and propagates the key to the Order
+post-order command port. The endpoint's OpenAPI contract now declares the required header.
+
+Admin Order, Fulfillment, and Payment write endpoints updated in this review similarly
+declare their caller-owned `Idempotency-Key` in OpenAPI, keeping the documented transport
+contract aligned with runtime enforcement.
+
+Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
 ## Completed Rounds Archive
 _No completed rounds yet. Round 1 is currently in progress._
