@@ -165,7 +165,7 @@ requireAll(cart, [
   'error_variant = "database"',
   'PortError::unavailable(
                 "cart.database_unavailable"',
-  'Cart checkout owner boundary was rejected',
+  'cart checkout owner boundary was rejected with bounded diagnostics',
 ], 'cart checkout bounded diagnostics');
 
 
