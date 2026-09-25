@@ -23,6 +23,10 @@ use rustok_core::generate_id;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
+use crate::command_receipts::{
+    CommandReceiptAdmission, admit_command, command_request_hash, complete_command,
+    normalize_idempotency_key, replay_command, rollback_command,
+};
 use crate::dto::{
     ApplyOrderChangeInput, CancelOrderChangeInput, CancelOrderReturnInput,
     CompleteOrderReturnInput, CreateOrderAdjustmentInput, CreateOrderChangeInput, CreateOrderInput,
@@ -1542,34 +1546,79 @@ impl OrderService {
         tenant_id: Uuid,
         actor_id: Uuid,
         order_id: Uuid,
+        idempotency_key: impl Into<String>,
         input: CreateOrderChangeInput,
     ) -> OrderResult<OrderChangeResponse> {
         input
             .validate()
             .map_err(|error| OrderError::Validation(error.to_string()))?;
-        self.load_order_model(tenant_id, order_id).await?;
 
         let change_type = normalize_order_change_type(&input.change_type)?;
-        let now = Utc::now();
-        let row = entities::order_change::ActiveModel {
-            id: Set(generate_id()),
-            tenant_id: Set(tenant_id),
-            order_id: Set(order_id),
-            created_by: Set(actor_id),
-            change_type: Set(change_type),
-            status: Set(ORDER_CHANGE_STATUS_PENDING.to_string()),
-            description: Set(trim_optional_text(input.description)),
-            preview: Set(normalize_json_object(input.preview, "preview")?),
-            metadata: Set(normalize_json_object(input.metadata, "metadata")?),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-            applied_at: Set(None),
-            cancelled_at: Set(None),
-        }
-        .insert(&self.db)
-        .await?;
+        let description = trim_optional_text(input.description.clone());
+        let preview = normalize_json_object(input.preview.clone(), "preview")?;
+        let metadata = normalize_json_object(input.metadata.clone(), "metadata")?;
+        let key = normalize_idempotency_key(idempotency_key)?;
+        let hash = command_request_hash(
+            "create_order_change",
+            actor_id,
+            &serde_json::json!({
+                "order_id": order_id,
+                "change_type": change_type,
+                "description": description,
+                "preview": preview,
+                "metadata": metadata,
+            }),
+        )?;
 
-        Ok(map_order_change_response(row))
+        match admit_command(
+            &self.db,
+            tenant_id,
+            actor_id,
+            key,
+            "create_order_change",
+            hash.as_str(),
+        )
+        .await?
+        {
+            CommandReceiptAdmission::Replay(receipt) => replay_command(
+                receipt,
+                "create_order_change",
+                hash.as_str(),
+                "order_change",
+            ),
+            CommandReceiptAdmission::New(receipt) => {
+                let result = async {
+                    find_order_for_update_in_tx(&receipt.transaction, tenant_id, order_id).await?;
+
+                    let now = Utc::now();
+                    let row = entities::order_change::ActiveModel {
+                        id: Set(generate_id()),
+                        tenant_id: Set(tenant_id),
+                        order_id: Set(order_id),
+                        created_by: Set(actor_id),
+                        change_type: Set(change_type),
+                        status: Set(ORDER_CHANGE_STATUS_PENDING.to_string()),
+                        description: Set(description),
+                        preview: Set(preview),
+                        metadata: Set(metadata),
+                        created_at: Set(now.into()),
+                        updated_at: Set(now.into()),
+                        applied_at: Set(None),
+                        cancelled_at: Set(None),
+                    }
+                    .insert(&receipt.transaction)
+                    .await?;
+
+                    Ok::<_, OrderError>(map_order_change_response(row))
+                }
+                .await;
+
+                match result {
+                    Ok(response) => complete_command(receipt, "order_change", &response).await,
+                    Err(error) => rollback_command(receipt, error).await,
+                }
+            }
+        }
     }
 
     pub async fn get_order_change(
@@ -1620,29 +1669,67 @@ impl OrderService {
     pub async fn apply_order_change(
         &self,
         tenant_id: Uuid,
+        actor_id: Uuid,
         change_id: Uuid,
+        idempotency_key: impl Into<String>,
         input: ApplyOrderChangeInput,
     ) -> OrderResult<OrderChangeResponse> {
         input
             .validate()
             .map_err(|error| OrderError::Validation(error.to_string()))?;
-        self.transition_order_change(
+        let metadata = normalize_json_object(input.metadata, "metadata")?;
+        let key = normalize_idempotency_key(idempotency_key)?;
+        let hash = command_request_hash(
+            "apply_order_change",
+            actor_id,
+            &serde_json::json!({"change_id": change_id, "metadata": metadata}),
+        )?;
+
+        match admit_command(
+            &self.db,
             tenant_id,
-            change_id,
-            ORDER_CHANGE_STATUS_PENDING,
-            ORDER_CHANGE_STATUS_APPLIED,
-            normalize_json_object(input.metadata, "metadata")?,
-            |active, now| {
-                active.applied_at = Set(Some(now.into()));
-            },
+            actor_id,
+            key,
+            "apply_order_change",
+            hash.as_str(),
         )
-        .await
+        .await?
+        {
+            CommandReceiptAdmission::Replay(receipt) => replay_command(
+                receipt,
+                "apply_order_change",
+                hash.as_str(),
+                "order_change",
+            ),
+            CommandReceiptAdmission::New(receipt) => {
+                let result = self
+                    .transition_order_change(
+                        &receipt.transaction,
+                        tenant_id,
+                        change_id,
+                        ORDER_CHANGE_STATUS_PENDING,
+                        ORDER_CHANGE_STATUS_APPLIED,
+                        metadata,
+                        |active, now| {
+                            active.applied_at = Set(Some(now.into()));
+                        },
+                    )
+                    .await;
+
+                match result {
+                    Ok(response) => complete_command(receipt, "order_change", &response).await,
+                    Err(error) => rollback_command(receipt, error).await,
+                }
+            }
+        }
     }
 
     pub async fn cancel_order_change(
         &self,
         tenant_id: Uuid,
+        actor_id: Uuid,
         change_id: Uuid,
+        idempotency_key: impl Into<String>,
         input: CancelOrderChangeInput,
     ) -> OrderResult<OrderChangeResponse> {
         input
@@ -1650,22 +1737,59 @@ impl OrderService {
             .map_err(|error| OrderError::Validation(error.to_string()))?;
         let reason = trim_optional_text(input.reason);
         let mut metadata = normalize_json_object(input.metadata, "metadata")?;
-        if let Some(reason) = reason
+        if let Some(reason) = reason.clone()
             && let Value::Object(ref mut object) = metadata
         {
             object.insert("cancellation_reason".to_string(), Value::String(reason));
         }
-        self.transition_order_change(
+        let key = normalize_idempotency_key(idempotency_key)?;
+        let hash = command_request_hash(
+            "cancel_order_change",
+            actor_id,
+            &serde_json::json!({
+                "change_id": change_id,
+                "reason": reason,
+                "metadata": metadata,
+            }),
+        )?;
+
+        match admit_command(
+            &self.db,
             tenant_id,
-            change_id,
-            ORDER_CHANGE_STATUS_PENDING,
-            ORDER_CHANGE_STATUS_CANCELLED,
-            metadata,
-            |active, now| {
-                active.cancelled_at = Set(Some(now.into()));
-            },
+            actor_id,
+            key,
+            "cancel_order_change",
+            hash.as_str(),
         )
-        .await
+        .await?
+        {
+            CommandReceiptAdmission::Replay(receipt) => replay_command(
+                receipt,
+                "cancel_order_change",
+                hash.as_str(),
+                "order_change",
+            ),
+            CommandReceiptAdmission::New(receipt) => {
+                let result = self
+                    .transition_order_change(
+                        &receipt.transaction,
+                        tenant_id,
+                        change_id,
+                        ORDER_CHANGE_STATUS_PENDING,
+                        ORDER_CHANGE_STATUS_CANCELLED,
+                        metadata,
+                        |active, now| {
+                            active.cancelled_at = Set(Some(now.into()));
+                        },
+                    )
+                    .await;
+
+                match result {
+                    Ok(response) => complete_command(receipt, "order_change", &response).await,
+                    Err(error) => rollback_command(receipt, error).await,
+                }
+            }
+        }
     }
 
     async fn load_order_change_model(
@@ -1682,6 +1806,7 @@ impl OrderService {
 
     async fn transition_order_change<F>(
         &self,
+        txn: &DatabaseTransaction,
         tenant_id: Uuid,
         change_id: Uuid,
         expected_from: &str,
@@ -1692,8 +1817,7 @@ impl OrderService {
     where
         F: FnOnce(&mut entities::order_change::ActiveModel, chrono::DateTime<Utc>),
     {
-        let txn = self.db.begin().await?;
-        let existing = find_order_change_for_update_in_tx(&txn, tenant_id, change_id).await?;
+        let existing = find_order_change_for_update_in_tx(txn, tenant_id, change_id).await?;
         if existing.status != expected_from {
             return Err(OrderError::InvalidTransition {
                 from: existing.status,
@@ -1710,30 +1834,77 @@ impl OrderService {
         ));
         active.updated_at = Set(now.into());
         mutate(&mut active, now);
-        let updated = active.update(&txn).await?;
-        txn.commit().await?;
+        let updated = active.update(txn).await?;
         Ok(map_order_change_response(updated))
     }
 }
 
 impl OrderService {
-    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, order_id = %order_id))]
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, order_id = %order_id, actor_id = %actor_id))]
     pub async fn create_return(
         &self,
         tenant_id: Uuid,
+        actor_id: Uuid,
         order_id: Uuid,
+        idempotency_key: impl Into<String>,
         input: CreateOrderReturnInput,
     ) -> OrderResult<OrderReturnResponse> {
         input
             .validate()
             .map_err(|error| OrderError::Validation(error.to_string()))?;
 
-        let txn = self.db.begin().await?;
-        find_order_for_update_in_tx(&txn, tenant_id, order_id).await?;
+        let key = normalize_idempotency_key(idempotency_key)?;
+        let hash = command_request_hash(
+            "create_return",
+            actor_id,
+            &serde_json::json!({"order_id": order_id, "input": input}),
+        )?;
+
+        match admit_command(
+            &self.db,
+            tenant_id,
+            actor_id,
+            key,
+            "create_return",
+            hash.as_str(),
+        )
+        .await?
+        {
+            CommandReceiptAdmission::Replay(receipt) => replay_command(
+                receipt,
+                "create_return",
+                hash.as_str(),
+                "order_return",
+            ),
+            CommandReceiptAdmission::New(receipt) => {
+                let result = self
+                    .create_return_in_transaction(
+                        &receipt.transaction,
+                        tenant_id,
+                        order_id,
+                        input,
+                    )
+                    .await;
+                match result {
+                    Ok(response) => complete_command(receipt, "order_return", &response).await,
+                    Err(error) => rollback_command(receipt, error).await,
+                }
+            }
+        }
+    }
+
+    async fn create_return_in_transaction(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        order_id: Uuid,
+        input: CreateOrderReturnInput,
+    ) -> OrderResult<OrderReturnResponse> {
+        find_order_for_update_in_tx(txn, tenant_id, order_id).await?;
 
         let order_items = entities::order_line_item::Entity::find()
             .filter(entities::order_line_item::Column::OrderId.eq(order_id))
-            .all(&txn)
+            .all(txn)
             .await?;
         let order_items_by_id: HashMap<Uuid, entities::order_line_item::Model> = order_items
             .into_iter()
@@ -1748,7 +1919,7 @@ impl OrderService {
                 .filter(entities::order_return::Column::TenantId.eq(tenant_id))
                 .filter(entities::order_return::Column::OrderId.eq(order_id))
                 .filter(entities::order_return::Column::Status.ne(RETURN_STATUS_CANCELLED))
-                .all(&txn)
+                .all(txn)
                 .await?
                 .into_iter()
                 .map(|row| row.id)
@@ -1757,12 +1928,15 @@ impl OrderService {
             if !active_return_ids.is_empty() {
                 for existing_item in entities::order_return_item::Entity::find()
                     .filter(entities::order_return_item::Column::TenantId.eq(tenant_id))
-                    .filter(entities::order_return_item::Column::ReturnId.is_in(active_return_ids))
+                    .filter(
+                        entities::order_return_item::Column::ReturnId
+                            .is_in(active_return_ids),
+                    )
                     .filter(
                         entities::order_return_item::Column::LineItemId
                             .is_in(requested_line_item_ids),
                     )
-                    .all(&txn)
+                    .all(txn)
                     .await?
                 {
                     *quantities.entry(existing_item.line_item_id).or_default() +=
@@ -1819,7 +1993,7 @@ impl OrderService {
             completed_at: Set(None),
             cancelled_at: Set(None),
         }
-        .insert(&txn)
+        .insert(txn)
         .await?;
 
         let mut created_items = Vec::with_capacity(input.items.len());
@@ -1837,11 +2011,11 @@ impl OrderService {
                 created_at: Set(now.into()),
                 updated_at: Set(now.into()),
             }
-            .insert(&txn)
+            .insert(txn)
             .await?;
             created_items.push(created_item);
         }
-        txn.commit().await?;
+
         Ok(map_order_return_response(created, created_items))
     }
 
@@ -1858,7 +2032,9 @@ impl OrderService {
     pub async fn complete_return(
         &self,
         tenant_id: Uuid,
+        actor_id: Uuid,
         return_id: Uuid,
+        idempotency_key: impl Into<String>,
         input: CompleteOrderReturnInput,
     ) -> OrderResult<OrderReturnResponse> {
         input
@@ -1870,46 +2046,126 @@ impl OrderService {
             input.refund_id,
             input.order_change_id,
         )?;
-        self.transition_return(
+        let metadata = input.metadata.clone();
+        let key = normalize_idempotency_key(idempotency_key)?;
+        let hash = command_request_hash(
+            "complete_return",
+            actor_id,
+            &serde_json::json!({
+                "return_id": return_id,
+                "resolution_type": resolution_type,
+                "refund_id": input.refund_id,
+                "order_change_id": input.order_change_id,
+                "metadata": metadata,
+            }),
+        )?;
+
+        match admit_command(
+            &self.db,
             tenant_id,
-            return_id,
-            RETURN_STATUS_PENDING,
-            RETURN_STATUS_COMPLETED,
-            input.metadata,
-            |active, now| {
-                active.completed_at = Set(Some(now.into()));
-                active.resolution_type = Set(resolution_type.clone());
-                active.refund_id = Set(input.refund_id);
-                active.order_change_id = Set(input.order_change_id);
-            },
+            actor_id,
+            key,
+            "complete_return",
+            hash.as_str(),
         )
-        .await
+        .await?
+        {
+            CommandReceiptAdmission::Replay(receipt) => replay_command(
+                receipt,
+                "complete_return",
+                hash.as_str(),
+                "order_return",
+            ),
+            CommandReceiptAdmission::New(receipt) => {
+                let result = self
+                    .transition_return(
+                        &receipt.transaction,
+                        tenant_id,
+                        return_id,
+                        RETURN_STATUS_PENDING,
+                        RETURN_STATUS_COMPLETED,
+                        metadata,
+                        |active, now| {
+                            active.completed_at = Set(Some(now.into()));
+                            active.resolution_type = Set(resolution_type.clone());
+                            active.refund_id = Set(input.refund_id);
+                            active.order_change_id = Set(input.order_change_id);
+                        },
+                    )
+                    .await;
+
+                match result {
+                    Ok(response) => complete_command(receipt, "order_return", &response).await,
+                    Err(error) => rollback_command(receipt, error).await,
+                }
+            }
+        }
     }
 
     pub async fn cancel_return(
         &self,
         tenant_id: Uuid,
+        actor_id: Uuid,
         return_id: Uuid,
+        idempotency_key: impl Into<String>,
         input: CancelOrderReturnInput,
     ) -> OrderResult<OrderReturnResponse> {
         input
             .validate()
             .map_err(|error| OrderError::Validation(error.to_string()))?;
         let reason = trim_optional_text(input.reason);
-        self.transition_return(
+        let metadata = input.metadata.clone();
+        let key = normalize_idempotency_key(idempotency_key)?;
+        let hash = command_request_hash(
+            "cancel_return",
+            actor_id,
+            &serde_json::json!({
+                "return_id": return_id,
+                "reason": reason,
+                "metadata": metadata,
+            }),
+        )?;
+
+        match admit_command(
+            &self.db,
             tenant_id,
-            return_id,
-            RETURN_STATUS_PENDING,
-            RETURN_STATUS_CANCELLED,
-            input.metadata,
-            move |active, now| {
-                active.cancelled_at = Set(Some(now.into()));
-                if reason.is_some() {
-                    active.reason = Set(reason.clone());
-                }
-            },
+            actor_id,
+            key,
+            "cancel_return",
+            hash.as_str(),
         )
-        .await
+        .await?
+        {
+            CommandReceiptAdmission::Replay(receipt) => replay_command(
+                receipt,
+                "cancel_return",
+                hash.as_str(),
+                "order_return",
+            ),
+            CommandReceiptAdmission::New(receipt) => {
+                let result = self
+                    .transition_return(
+                        &receipt.transaction,
+                        tenant_id,
+                        return_id,
+                        RETURN_STATUS_PENDING,
+                        RETURN_STATUS_CANCELLED,
+                        metadata,
+                        move |active, now| {
+                            active.cancelled_at = Set(Some(now.into()));
+                            if reason.is_some() {
+                                active.reason = Set(reason.clone());
+                            }
+                        },
+                    )
+                    .await;
+
+                match result {
+                    Ok(response) => complete_command(receipt, "order_return", &response).await,
+                    Err(error) => rollback_command(receipt, error).await,
+                }
+            }
+        }
     }
 
     pub async fn list_returns(
@@ -1989,6 +2245,7 @@ impl OrderService {
 
     async fn transition_return<F>(
         &self,
+        txn: &DatabaseTransaction,
         tenant_id: Uuid,
         return_id: Uuid,
         expected_from: &str,
@@ -1999,8 +2256,7 @@ impl OrderService {
     where
         F: FnOnce(&mut entities::order_return::ActiveModel, chrono::DateTime<Utc>),
     {
-        let txn = self.db.begin().await?;
-        let existing = find_order_return_for_update_in_tx(&txn, tenant_id, return_id).await?;
+        let existing = find_order_return_for_update_in_tx(txn, tenant_id, return_id).await?;
         if existing.status != expected_from {
             return Err(OrderError::InvalidTransition {
                 from: existing.status,
@@ -2017,14 +2273,13 @@ impl OrderService {
         ));
         active.updated_at = Set(now.into());
         mutate(&mut active, now);
-        let updated = active.update(&txn).await?;
+        let updated = active.update(txn).await?;
         let items = entities::order_return_item::Entity::find()
             .filter(entities::order_return_item::Column::TenantId.eq(tenant_id))
             .filter(entities::order_return_item::Column::ReturnId.eq(return_id))
             .order_by_asc(entities::order_return_item::Column::CreatedAt)
-            .all(&txn)
+            .all(txn)
             .await?;
-        txn.commit().await?;
         Ok(map_order_return_response(updated, items))
     }
 }
