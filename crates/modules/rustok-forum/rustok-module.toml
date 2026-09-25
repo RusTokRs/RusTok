@@ -16,7 +16,6 @@ tags = ["community", "content", "discussions"]
 content = { version_req = ">=0.1.0" }
 media = { version_req = ">=0.1.0" }
 taxonomy = { version_req = ">=0.1.0" }
-tenant = { version_req = ">=0.1.0" }
 
 [settings]
 use_reactions = { type = "boolean", default = false, description = "Use the shared Reactions module for Forum reactions instead of internal Forum voting." }

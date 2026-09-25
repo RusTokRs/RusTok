@@ -10,7 +10,6 @@ use sea_orm_migration::MigrationTrait;
 
 pub mod attachment_relation;
 pub mod audience;
-pub mod category_presentation;
 pub mod category_read_transport;
 pub mod constants;
 pub mod controllers;
@@ -212,7 +211,7 @@ impl RusToKModule for ForumModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["content", "media", "taxonomy", "tenant"]
+        &["content", "media", "taxonomy"]
     }
 
     fn permissions(&self) -> Vec<Permission> {

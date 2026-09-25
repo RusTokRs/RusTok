@@ -54,7 +54,7 @@ native Forum storefront check, whole-host Next typecheck,
 and the updated ownership verifiers pass.
 Manifest dependencies between `modules.toml`, `rustok-module.toml`,
 `RusToKModule::dependencies()` and `docs/modules/registry.md` are aligned to
-`["content", "taxonomy"]`, and `cargo xtask module validate forum` passes.
+`["content", "media", "taxonomy"]`, and `cargo xtask module validate forum` passes.
 The WASM storefront check still stops in the pre-existing
 `Resource::new_blocking`/non-`Send` GraphQL future and missing direct `web_sys`
 dependency path, outside the richtext renderer.
@@ -302,7 +302,7 @@ is deferred to the final production-validation phase.
 | `FORUM-10` | `done` | Bounded cursor reads. |
 | `FORUM-11` | `done` | Subscription levels and participation policy. |
 | `FORUM-12` | `in_progress` | Mention/quote relations and notification source exist. Runtime execution, profile/block privacy, moderator audience and final Notifications evidence remain. |
-| `FORUM-13` | `in_progress` | Optional Media presentation policy exists. Add typed category-cover owner command, transports, UI and runtime evidence; Media keeps lifecycle ownership. |
+| `FORUM-13` | `in_progress` | Forum-specific Category presentation ownership is retired: canonical icon, color and typed Media presentation references are owned by Taxonomy under TAXONOMY-CAT-3/CAT-5. Forum must not reintroduce a duplicate presentation validator, storage model or Category-cover owner. Remaining mounted/runtime evidence belongs to the Taxonomy/CAT-5 production-validation gate. |
 | `FORUM-14` | `in_progress` | Forum attachment relations over Media-owned assets are implemented through a dedicated CAS head, bounded ordered rows and durable Media owner reference retention. `source_revision` is content provenance only; attachment-only changes do not advance Forum content revisions. Runtime integration/reconciliation evidence remains open; FORUM-33 now audits conservative orphan holds through the public Media owner-reference listing contract. |
 | `FORUM-15` | `in_progress` | Profiles supplies `ProfilesReader`; FORUM-15A through 15E provide member-card owner service, user stats, GraphQL/native transport, and privacy-aware storefront UI composition. Retain live runtime evidence. |
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |

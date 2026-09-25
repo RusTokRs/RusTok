@@ -28,12 +28,12 @@ notifications module, and cross-module release gates.
 - Forum widget contract-freeze and Page Builder consumer evidence;
 - tag attachments via `forum_topic_tags` with shared vocabulary in `rustok-taxonomy`;
 - visibility, moderation and user-facing derived fields in Forum read/write contracts;
-- attachment relation heads/rows and Media owner-reference retention coordination.
+- attachment relation heads/rows and Media owner-reference retention coordination; canonical Category presentation is consumed from Taxonomy rather than reimplemented in Forum.
 
 ## Integration
 
 - uses `rustok-content` only as a shared helper/orchestration dependency;
-- uses `rustok-taxonomy` as a shared dictionary for tag identity;
+- uses `rustok-taxonomy` as the canonical Category owner (identity, localized copy, hierarchy, routes and presentation) and as the shared dictionary for tag identity;
 - uses the Media owner port for attachment reference retention/release; Forum does not read Media tables.
 - uses `rustok-profiles` for the author presentation contract;
 - uses `rustok-channel` for visibility and SEO gating;

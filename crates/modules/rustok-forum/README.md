@@ -7,7 +7,7 @@
 ## Responsibilities
 
 - Provide `ForumModule` metadata for the runtime registry.
-- Own forum categories, topics, replies, and moderation workflows.
+- Own Forum category membership/bindings, topic/reply state, and moderation workflows; canonical Category identity, localized copy, hierarchy, routes and presentation are owned by `rustok-taxonomy`.
 - Own forum subscriptions through forum-owned `forum_category_subscriptions` and
   `forum_topic_subscriptions`.
 - Own per-user forum statistics through forum-owned `forum_user_stats`.
@@ -35,8 +35,7 @@
 ## Interactions
 
 - Depends on `rustok-content` for shared rich-text, locale, and future orchestration helpers.
-- Depends on `rustok-taxonomy` for the shared scope-aware term dictionary behind
-  forum topic tags.
+- Depends on `rustok-taxonomy` for canonical Category identity, localized copy, hierarchy, routes and presentation, and for the shared scope-aware term dictionary behind forum topic tags.
 - Category slugs are translation-local. `ForumCategoryRouteService` owns the
   transport-neutral flat `/{locale}/forum/c/{slug}` identity, shared locale
   fallback semantics and immutable old-slug redirects. Historical
