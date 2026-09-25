@@ -16,6 +16,7 @@ use sea_orm_migration::MigrationTrait;
 mod admin_command;
 pub mod analytics;
 mod checkout_compensation;
+mod command_receipts;
 mod checkout_compensation_local_context;
 pub mod checkout_order_recovery;
 #[path = "checkout_owner_context.rs"]
