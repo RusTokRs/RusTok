@@ -227,7 +227,7 @@ pub(crate) async fn resolve_context_for_db(
 ) -> HttpResult<StoreContextResponse> {
     let service = StoreContextService::new(
         db.clone(),
-        std::sync::Arc::new(rustok_region::RegionService::new(db.clone())),
+        rustok_region::in_process_region_read_port(db.clone()),
     );
     service
         .resolve_context(
