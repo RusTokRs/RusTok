@@ -281,7 +281,7 @@ pub async fn complete_storefront_checkout_input_with_product_port(
         rustok_inventory::in_process_inventory_reservation_identity_port(runtime.db_clone());
     let plan_builder = crate::CheckoutPlanBuilder::new(
         runtime.db_clone(),
-        Arc::new(rustok_region::RegionService::new(runtime.db_clone())),
+        rustok_region::in_process_region_read_port(runtime.db_clone()),
         inventory_availability,
         product_catalog_read_port,
     );
