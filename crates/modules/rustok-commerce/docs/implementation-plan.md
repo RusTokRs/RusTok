@@ -26,7 +26,16 @@ Last reviewed: 2026-09-25
 - [x] Extend `verify-commerce-fulfillment-requirement-boundary.mjs` with the Payment runtime-composition guard.
 - [ ] Execute the Commerce/server Rust test suites and the static verifier against a repository checkout; this environment cannot run the repository build because the GitHub source is not mounted locally.
 
-## Audit 2026-09-25: Tax port error-envelope hardening
+## Audit 2026-09-25: Tax port error-envelope hardening## Audit 2026-09-25: Tax validation detail hardening
+
+- [x] Make the Tax request-validation helper accept only static public detail, eliminating
+  accidental future `Display`/formatted-input leakage through `PortError::Validation`.
+- [x] Replace the duplicate-country-rule message that previously embedded the submitted
+  country code with a stable public message and add a verifier regression guard.
+- [ ] Continue owner-level mapper review for remaining Tax/Promotion and non-`PortError`
+  public envelopes, then collect the maintainer-owned execution evidence.
+
+
 
 - [x] Stop the legacy TaxCalculationPort implementation from copying arbitrary
   TaxError::Validation text into public PortError messages; validation now uses a
