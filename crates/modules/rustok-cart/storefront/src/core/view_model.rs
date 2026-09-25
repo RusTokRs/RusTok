@@ -189,6 +189,7 @@ mod tests {
         let fallbacks = CartDisplayFallbacks::new("not set".to_string(), "guest".to_string());
         let item = StorefrontCartLineItem {
             id: "line-1".to_string(),
+            fulfillment_requirement: "physical".to_string(),
             title: "Item".to_string(),
             sku: None,
             quantity: 2,
