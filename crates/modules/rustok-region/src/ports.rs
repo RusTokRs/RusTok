@@ -37,6 +37,13 @@ pub struct RegionReadProjection {
     pub region: RegionResponse,
 }
 
+/// Build the owner-controlled in-process adapter used by hosts that compose
+/// the Region module directly.
+pub fn in_process_region_read_port(
+) -> std::sync::Arc<dyn RegionReadPort> {
+    std::sync::Arc::new(crate::RegionService::default())
+}
+
 /// Transport-neutral owner boundary for region read projections.
 #[async_trait]
 pub trait RegionReadPort: Send + Sync {
