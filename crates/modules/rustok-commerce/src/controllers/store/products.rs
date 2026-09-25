@@ -76,15 +76,15 @@ fn map_storefront_product_error(
         ),
     };
     tracing::error!(
-        error = ?error,
+        owner = "rustok_product",
         operation,
-        tenant_id = %tenant_id,
-        product_id = ?product_id,
+        tenant_non_nil = !tenant_id.is_nil(),
+        product_id_non_nil = product_id.is_some_and(|value| !value.is_nil()),
         error_kind,
         public_code = code,
         status = %status,
         boundary = "commerce_storefront_product_http",
-        "storefront product operation failed"
+        "storefront product operation failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
@@ -173,6 +173,18 @@ fn map_storefront_product_port_error(
     HttpError::new(status, code, message)
 }
 
+fn storefront_port_error_kind(kind: &PortErrorKind) -> &'static str {
+    match kind {
+        PortErrorKind::Validation => "validation",
+        PortErrorKind::NotFound => "not_found",
+        PortErrorKind::Conflict => "conflict",
+        PortErrorKind::Forbidden => "forbidden",
+        PortErrorKind::Unavailable => "unavailable",
+        PortErrorKind::Timeout => "timeout",
+        PortErrorKind::InvariantViolation => "invariant_violation",
+    }
+}
+
 fn map_storefront_auxiliary_port_error(
     error: PortError,
     owner: &'static str,
@@ -180,25 +192,26 @@ fn map_storefront_auxiliary_port_error(
     tenant_id: Uuid,
     cart_id: Option<Uuid>,
 ) -> HttpError {
-    let public = port_error_to_http_error(error.clone());
+    let error_kind = storefront_port_error_kind(&error.kind);
+    let owner_code_length = error.code.chars().count();
+    let public = port_error_to_http_error(error);
     tracing::error!(
-        error = ?error,
         owner,
         operation,
-        tenant_id = %tenant_id,
-        cart_id = ?cart_id,
-        error_kind = ?error.kind,
-        retryable = error.retryable,
-        public_code = %public.code,
-        status = %public.status,
+        tenant_non_nil = !tenant_id.is_nil(),
+        cart_id_present = cart_id.is_some(),
+        owner_error_kind = error_kind,
+        owner_code_length,
+        retryable = public.status == StatusCode::SERVICE_UNAVAILABLE
+            || public.status == StatusCode::GATEWAY_TIMEOUT,
+        public_status = %public.status,
         boundary = "commerce_storefront_auxiliary_http",
-        "storefront auxiliary port operation failed"
+        "storefront auxiliary port operation failed with bounded diagnostics"
     );
     public
 }
 
-fn storefront_auxiliary_public_error<E>(
-    error: &E,
+fn storefront_auxiliary_public_error(
     owner: &'static str,
     operation: &'static str,
     tenant_id: Uuid,
@@ -207,21 +220,16 @@ fn storefront_auxiliary_public_error<E>(
     code: &'static str,
     message: &'static str,
     error_kind: &'static str,
-) -> HttpError
-where
-    E: std::fmt::Debug,
-{
+) -> HttpError {
     tracing::error!(
-        error = ?error,
         owner,
         operation,
-        tenant_id = %tenant_id,
-        cart_id = ?cart_id,
+        tenant_non_nil = !tenant_id.is_nil(),
+        cart_id_present = cart_id.is_some(),
         error_kind,
-        public_code = code,
-        status = %status,
+        public_status = %status,
         boundary = "commerce_storefront_auxiliary_http",
-        "storefront auxiliary operation failed"
+        "storefront auxiliary operation failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
@@ -270,7 +278,6 @@ fn map_storefront_shipping_context_error(
         ),
     };
     storefront_auxiliary_public_error(
-        &error,
         "rustok_commerce.storefront_shipping",
         operation,
         tenant_id,
@@ -352,24 +359,18 @@ fn map_storefront_shipping_port_error(
         ),
     };
     tracing::error!(
-        error = ?error,
         owner = "rustok_fulfillment",
         owner_operation = "list_shipping_option_projections",
         operation,
         correlation_id = %context.correlation_id,
-        tenant_id = %tenant_id,
-        cart_id = ?cart_id,
-        actor = ?context.actor,
-        channel = ?context.channel,
-        locale = %context.locale,
-        deadline_ms = ?context.deadline_ms,
-        internal_code = %error.code,
+        tenant_non_nil = !tenant_id.is_nil(),
+        cart_id_present = cart_id.is_some(),
+        owner_error_kind = error_kind,
+        owner_code_length = error.code.chars().count(),
         retryable = error.retryable,
-        error_kind,
-        public_code = code,
-        status = %status,
+        public_status = %status,
         boundary = "commerce_storefront_auxiliary_http",
-        "storefront shipping-option owner read failed"
+        "storefront shipping-option owner read failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
