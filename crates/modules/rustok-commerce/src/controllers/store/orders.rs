@@ -682,6 +682,7 @@ pub async fn create_order_return(
     tag = "store",
     params(
         ("id" = Uuid, Path, description = "Order ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
         PaginationParams,
         ("status" = Option<String>, Query, description = "Optional return status filter")
     ),
