@@ -3,6 +3,17 @@ use uuid::Uuid;
 
 pub type MarketplaceLedgerResult<T> = Result<T, MarketplaceLedgerError>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MarketplaceCommissionBoundaryKind {
+    Validation,
+    NotFound,
+    Conflict,
+    Forbidden,
+    Unavailable,
+    Timeout,
+    InvariantViolation,
+}
+
 #[derive(Debug, Error)]
 pub enum MarketplaceLedgerError {
     #[error("marketplace ledger transaction for order {0} was not found")]
@@ -33,6 +44,7 @@ pub enum MarketplaceLedgerError {
         code: String,
         message: String,
         retryable: bool,
+        kind: MarketplaceCommissionBoundaryKind,
     },
     #[error(transparent)]
     Database(#[from] sea_orm::DbErr),

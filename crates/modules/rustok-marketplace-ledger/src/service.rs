@@ -534,10 +534,42 @@ fn normalize_currency(value: String) -> MarketplaceLedgerResult<String> {
 }
 
 fn map_commission_port_error(error: rustok_api::PortError) -> MarketplaceLedgerError {
+    let (kind, message) = match error.kind {
+        rustok_api::PortErrorKind::Validation => (
+            crate::error::MarketplaceCommissionBoundaryKind::Validation,
+            "marketplace commission request is invalid",
+        ),
+        rustok_api::PortErrorKind::NotFound => (
+            crate::error::MarketplaceCommissionBoundaryKind::NotFound,
+            "marketplace commission resource was not found",
+        ),
+        rustok_api::PortErrorKind::Conflict => (
+            crate::error::MarketplaceCommissionBoundaryKind::Conflict,
+            "marketplace commission operation conflicts with the current state",
+        ),
+        rustok_api::PortErrorKind::Forbidden => (
+            crate::error::MarketplaceCommissionBoundaryKind::Forbidden,
+            "marketplace commission permission was denied",
+        ),
+        rustok_api::PortErrorKind::Unavailable => (
+            crate::error::MarketplaceCommissionBoundaryKind::Unavailable,
+            "marketplace commission service is temporarily unavailable",
+        ),
+        rustok_api::PortErrorKind::Timeout => (
+            crate::error::MarketplaceCommissionBoundaryKind::Timeout,
+            "marketplace commission request timed out",
+        ),
+        rustok_api::PortErrorKind::InvariantViolation => (
+            crate::error::MarketplaceCommissionBoundaryKind::InvariantViolation,
+            "marketplace commission requires operator review",
+        ),
+    };
+
     MarketplaceLedgerError::CommissionBoundary {
         code: error.code,
-        message: error.message,
+        message: message.to_string(),
         retryable: error.retryable,
+        kind,
     }
 }
 

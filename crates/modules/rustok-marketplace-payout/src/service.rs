@@ -461,10 +461,43 @@ fn map_item(model: item::Model) -> MarketplacePayoutItemResponse {
 }
 
 fn map_ledger_port_error(error: rustok_api::PortError) -> MarketplacePayoutError {
+    // Preserve owner error semantics while replacing the owner message with a payout-safe one.
+    let (kind, message) = match error.kind {
+        rustok_api::PortErrorKind::Validation => (
+            crate::error::MarketplaceLedgerBoundaryKind::Validation,
+            "marketplace ledger request is invalid",
+        ),
+        rustok_api::PortErrorKind::NotFound => (
+            crate::error::MarketplaceLedgerBoundaryKind::NotFound,
+            "marketplace ledger resource was not found",
+        ),
+        rustok_api::PortErrorKind::Conflict => (
+            crate::error::MarketplaceLedgerBoundaryKind::Conflict,
+            "marketplace ledger operation conflicts with the current state",
+        ),
+        rustok_api::PortErrorKind::Forbidden => (
+            crate::error::MarketplaceLedgerBoundaryKind::Forbidden,
+            "marketplace ledger permission was denied",
+        ),
+        rustok_api::PortErrorKind::Unavailable => (
+            crate::error::MarketplaceLedgerBoundaryKind::Unavailable,
+            "marketplace ledger is temporarily unavailable",
+        ),
+        rustok_api::PortErrorKind::Timeout => (
+            crate::error::MarketplaceLedgerBoundaryKind::Timeout,
+            "marketplace ledger request timed out",
+        ),
+        rustok_api::PortErrorKind::InvariantViolation => (
+            crate::error::MarketplaceLedgerBoundaryKind::InvariantViolation,
+            "marketplace ledger requires operator review",
+        ),
+    };
+
     MarketplacePayoutError::LedgerBoundary {
         code: error.code,
-        message: error.message,
+        message: message.to_string(),
         retryable: error.retryable,
+        kind,
     }
 }
 

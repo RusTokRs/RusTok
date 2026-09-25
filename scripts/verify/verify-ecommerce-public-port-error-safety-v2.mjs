@@ -43,6 +43,15 @@ const orderCompensation = read('crates/modules/rustok-order/src/checkout_compens
 const orderPaymentSettlement = read('crates/modules/rustok-order/src/checkout_payment_settlement.rs');
 const orderRecovery = read('crates/modules/rustok-order/src/checkout_order_recovery.rs');
 const orderCheckoutAdapters = orderCompensation + orderPaymentSettlement + orderRecovery;
+const marketplacePayoutService = read('crates/modules/rustok-marketplace-payout/src/service.rs');
+const marketplacePayoutError = read('crates/modules/rustok-marketplace-payout/src/error.rs');
+const marketplacePayoutPorts = read('crates/modules/rustok-marketplace-payout/src/ports.rs');
+const marketplaceCommissionService = read('crates/modules/rustok-marketplace-commission/src/service.rs');
+const marketplaceCommissionError = read('crates/modules/rustok-marketplace-commission/src/error.rs');
+const marketplaceCommissionPorts = read('crates/modules/rustok-marketplace-commission/src/ports.rs');
+const marketplaceLedgerService = read('crates/modules/rustok-marketplace-ledger/src/service.rs');
+const marketplaceLedgerError = read('crates/modules/rustok-marketplace-ledger/src/error.rs');
+const marketplaceLedgerPorts = read('crates/modules/rustok-marketplace-ledger/src/ports.rs');
 
 for (const [source, label] of [
   [channel, 'channel port'],
@@ -239,6 +248,12 @@ forbidAll(orderCheckoutAdapters, [
   '"PortContext.actor.id must be a UUID for order write ports"',
   'format!(\n                "{field} must be a lowercase hexadecimal value',
 ], 'order checkout adapter public error mapping');
+
+forbidAll(marketplacePayoutService, [
+  'MarketplacePayoutError::LedgerBoundary {',
+  'message: error.message,',
+  'if retryable {\n                PortErrorKind::Unavailable\n            } else {\n                PortErrorKind::Conflict',
+], 'marketplace payout ledger-boundary public error mapping');
 
 requireText(pricing, 'correlation_id = %context.correlation_id', 'pricing correlation logging');
 requireText(payment, 'operation = owner_operation', 'payment owner operation logging');
@@ -537,6 +552,93 @@ requireText(region, '"region storage is temporarily unavailable"', 'region stabl
 requireText(cart, '"cart checkout request or projection is invalid"', 'cart stable validation message');
 requireText(cart, '"cart checkout snapshot could not be encoded"', 'cart stable encoding message');
 
+requireAll(marketplacePayoutService, [
+  'rustok_api::PortErrorKind::Validation',
+  'rustok_api::PortErrorKind::Forbidden',
+  'rustok_api::PortErrorKind::Unavailable',
+  'rustok_api::PortErrorKind::Timeout',
+  'rustok_api::PortErrorKind::InvariantViolation',
+  '"marketplace ledger permission was denied"',
+  '"marketplace ledger is temporarily unavailable"',
+  '"marketplace ledger requires operator review"',
+], 'marketplace payout ledger-boundary classification');
+
+requireAll(marketplacePayoutError, [
+  'MarketplaceLedgerBoundaryKind',
+  'kind: MarketplaceLedgerBoundaryKind',
+], 'marketplace payout error-kind contract');
+
+requireAll(marketplacePayoutPorts, [
+  'MarketplaceLedgerBoundaryKind::Validation',
+  'MarketplaceLedgerBoundaryKind::NotFound',
+  'MarketplaceLedgerBoundaryKind::Conflict',
+  'MarketplaceLedgerBoundaryKind::Forbidden',
+  'MarketplaceLedgerBoundaryKind::Unavailable',
+  'MarketplaceLedgerBoundaryKind::Timeout',
+  'MarketplaceLedgerBoundaryKind::InvariantViolation',
+], 'marketplace payout port error-kind preservation');
+
+forbidAll(marketplaceCommissionService + marketplaceLedgerService, [
+  'message: error.message,',
+  'if retryable {\n                PortErrorKind::Unavailable\n            } else {\n                PortErrorKind::Conflict',
+], 'marketplace financial boundary raw error mapping');
+
+requireAll(marketplaceCommissionService, [
+  'MarketplaceAllocationBoundaryKind::Validation',
+  'MarketplaceAllocationBoundaryKind::NotFound',
+  'MarketplaceAllocationBoundaryKind::Conflict',
+  'MarketplaceAllocationBoundaryKind::Forbidden',
+  'MarketplaceAllocationBoundaryKind::Unavailable',
+  'MarketplaceAllocationBoundaryKind::Timeout',
+  'MarketplaceAllocationBoundaryKind::InvariantViolation',
+  '"marketplace allocation request is invalid"',
+  '"marketplace allocation service is temporarily unavailable"',
+  '"marketplace allocation requires operator review"',
+], 'marketplace commission allocation-boundary classification');
+
+requireAll(marketplaceCommissionError, [
+  'MarketplaceAllocationBoundaryKind',
+  'kind: MarketplaceAllocationBoundaryKind',
+], 'marketplace commission allocation-boundary kind contract');
+
+requireAll(marketplaceCommissionPorts, [
+  'MarketplaceAllocationBoundaryKind::Validation',
+  'MarketplaceAllocationBoundaryKind::NotFound',
+  'MarketplaceAllocationBoundaryKind::Conflict',
+  'MarketplaceAllocationBoundaryKind::Forbidden',
+  'MarketplaceAllocationBoundaryKind::Unavailable',
+  'MarketplaceAllocationBoundaryKind::Timeout',
+  'MarketplaceAllocationBoundaryKind::InvariantViolation',
+], 'marketplace commission allocation-boundary preservation');
+
+requireAll(marketplaceLedgerService, [
+  'MarketplaceCommissionBoundaryKind::Validation',
+  'MarketplaceCommissionBoundaryKind::NotFound',
+  'MarketplaceCommissionBoundaryKind::Conflict',
+  'MarketplaceCommissionBoundaryKind::Forbidden',
+  'MarketplaceCommissionBoundaryKind::Unavailable',
+  'MarketplaceCommissionBoundaryKind::Timeout',
+  'MarketplaceCommissionBoundaryKind::InvariantViolation',
+  '"marketplace commission request is invalid"',
+  '"marketplace commission service is temporarily unavailable"',
+  '"marketplace commission requires operator review"',
+], 'marketplace ledger commission-boundary classification');
+
+requireAll(marketplaceLedgerError, [
+  'MarketplaceCommissionBoundaryKind',
+  'kind: MarketplaceCommissionBoundaryKind',
+], 'marketplace ledger commission-boundary kind contract');
+
+requireAll(marketplaceLedgerPorts, [
+  'MarketplaceCommissionBoundaryKind::Validation',
+  'MarketplaceCommissionBoundaryKind::NotFound',
+  'MarketplaceCommissionBoundaryKind::Conflict',
+  'MarketplaceCommissionBoundaryKind::Forbidden',
+  'MarketplaceCommissionBoundaryKind::Unavailable',
+  'MarketplaceCommissionBoundaryKind::Timeout',
+  'MarketplaceCommissionBoundaryKind::InvariantViolation',
+], 'marketplace ledger commission-boundary preservation');
+
 if (failures.length > 0) {
   console.error('Scoped ecommerce public port error safety verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
@@ -544,5 +646,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Channel, region, cart, pricing, payment collection/compensation, fulfillment, customer, inventory, and order checkout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
+  '✔ Channel, region, cart, pricing, payment collection/compensation, fulfillment, customer, inventory, order checkout, and marketplace payout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
 );

@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use std::sync::Arc;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use uuid::Uuid;
 
@@ -53,6 +54,19 @@ pub trait MarketplaceCommissionCommandPort: Send + Sync {
         context: PortContext,
         request: AssessMarketplaceOrderCommissionsInput,
     ) -> Result<AssessMarketplaceOrderCommissionsResponse, PortError>;
+}
+
+/// Build the owner-controlled in-process command adapter for checkout composition.
+///
+/// Allocation persistence remains owned by Marketplace Allocation; the consumer only sees the
+/// typed commission command port.
+pub fn in_process_marketplace_commission_command_port(
+    db: sea_orm::DatabaseConnection,
+) -> Arc<dyn MarketplaceCommissionCommandPort> {
+    let allocation = Arc::new(rustok_marketplace_allocation::MarketplaceAllocationService::new(
+        db.clone(),
+    ));
+    Arc::new(crate::MarketplaceCommissionService::new(db, allocation))
 }
 
 #[async_trait]
@@ -203,11 +217,16 @@ fn map_owner_error(error: MarketplaceCommissionError) -> PortError {
             code,
             message,
             retryable,
+            kind,
         } => PortError::new(
-            if retryable {
-                PortErrorKind::Unavailable
-            } else {
-                PortErrorKind::Conflict
+            match kind {
+                crate::error::MarketplaceAllocationBoundaryKind::Validation => PortErrorKind::Validation,
+                crate::error::MarketplaceAllocationBoundaryKind::NotFound => PortErrorKind::NotFound,
+                crate::error::MarketplaceAllocationBoundaryKind::Conflict => PortErrorKind::Conflict,
+                crate::error::MarketplaceAllocationBoundaryKind::Forbidden => PortErrorKind::Forbidden,
+                crate::error::MarketplaceAllocationBoundaryKind::Unavailable => PortErrorKind::Unavailable,
+                crate::error::MarketplaceAllocationBoundaryKind::Timeout => PortErrorKind::Timeout,
+                crate::error::MarketplaceAllocationBoundaryKind::InvariantViolation => PortErrorKind::InvariantViolation,
             },
             code,
             message,

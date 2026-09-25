@@ -281,7 +281,7 @@ pub async fn complete_storefront_checkout_input_with_product_port(
         rustok_inventory::in_process_inventory_reservation_identity_port(runtime.db_clone());
     let plan_builder = crate::CheckoutPlanBuilder::new(
         runtime.db_clone(),
-        Arc::new(rustok_region::RegionService::new(runtime.db_clone())),
+        rustok_region::in_process_region_read_port(runtime.db_clone()),
         inventory_availability,
         product_catalog_read_port,
     );
@@ -293,24 +293,24 @@ pub async fn complete_storefront_checkout_input_with_product_port(
     );
     #[cfg(feature = "marketplace-financial")]
     let pipeline = {
-        let marketplace_allocation_service = Arc::new(
-            rustok_marketplace_allocation::MarketplaceAllocationService::new(runtime.db_clone()),
-        );
-        let marketplace_commission_service = Arc::new(
-            rustok_marketplace_commission::MarketplaceCommissionService::new(
+        // Marketplace checkout receives typed owner capabilities. Concrete allocation, commission,
+        // and ledger services are composed only inside their respective owner factories.
+        let allocation_port =
+            rustok_marketplace_allocation::in_process_marketplace_allocation_command_port(
                 runtime.db_clone(),
-                marketplace_allocation_service.clone(),
-            ),
-        );
-        let marketplace_ledger_service =
-            Arc::new(rustok_marketplace_ledger::MarketplaceLedgerService::new(
+            );
+        let commission_port =
+            rustok_marketplace_commission::in_process_marketplace_commission_command_port(
                 runtime.db_clone(),
-                marketplace_commission_service.clone(),
-            ));
+            );
+        let ledger_port =
+            rustok_marketplace_ledger::in_process_marketplace_ledger_command_port(
+                runtime.db_clone(),
+            );
         pipeline
-            .with_marketplace_allocation_port(marketplace_allocation_service)
-            .with_marketplace_commission_port(marketplace_commission_service)
-            .with_marketplace_ledger_port(marketplace_ledger_service)
+            .with_marketplace_allocation_port(allocation_port)
+            .with_marketplace_commission_port(commission_port)
+            .with_marketplace_ledger_port(ledger_port)
     };
     let pipeline = pipeline.with_payment_provider_registry(payment_provider_registry.clone());
     let staged = crate::StagedCheckoutService::new(

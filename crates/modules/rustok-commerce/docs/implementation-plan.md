@@ -706,6 +706,19 @@ These are source-contract defects, not verification-only tasks.
 - [ ] Execute production-like Stripe, real signature, redelivery, restart, replica,
   degraded, reconciliation, observer replay, and operator evidence.
 - [ ] Prove adapters never own payment/refund lifecycle state.
+- [x] Harden Marketplace Payout ledger-boundary error mapping so internal owner messages
+  cannot cross the payout port boundary; preserve stable codes and classify forbidden,
+  unavailable/timeout, and invariant failures as safe public categories.
+- [x] Extend the ecommerce public-port static verifier to cover Marketplace Payout
+  ledger-boundary redaction and exact typed error-kind preservation.
+- [x] Extend the same fail-closed error-boundary treatment through Marketplace
+  Commission and Marketplace Ledger: foreign owner messages are redacted at each hop and
+  typed PortError kinds are preserved instead of being collapsed by retryability.
+- [x] Remove direct RegionService construction from mounted staged checkout; the checkout
+  plan builder now receives the RegionReadPort through the owner factory.
+- [x] Move Marketplace Allocation, Commission, and Ledger checkout composition behind
+  owner-provided in-process command-port factories; staged Commerce no longer constructs
+  foreign marketplace services directly.
 
 ## Verification
 

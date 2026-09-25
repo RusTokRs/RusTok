@@ -657,10 +657,42 @@ fn map_assessment(
 }
 
 fn map_allocation_port_error(error: rustok_api::PortError) -> MarketplaceCommissionError {
+    let (kind, message) = match error.kind {
+        rustok_api::PortErrorKind::Validation => (
+            crate::error::MarketplaceAllocationBoundaryKind::Validation,
+            "marketplace allocation request is invalid",
+        ),
+        rustok_api::PortErrorKind::NotFound => (
+            crate::error::MarketplaceAllocationBoundaryKind::NotFound,
+            "marketplace allocation resource was not found",
+        ),
+        rustok_api::PortErrorKind::Conflict => (
+            crate::error::MarketplaceAllocationBoundaryKind::Conflict,
+            "marketplace allocation operation conflicts with the current state",
+        ),
+        rustok_api::PortErrorKind::Forbidden => (
+            crate::error::MarketplaceAllocationBoundaryKind::Forbidden,
+            "marketplace allocation permission was denied",
+        ),
+        rustok_api::PortErrorKind::Unavailable => (
+            crate::error::MarketplaceAllocationBoundaryKind::Unavailable,
+            "marketplace allocation service is temporarily unavailable",
+        ),
+        rustok_api::PortErrorKind::Timeout => (
+            crate::error::MarketplaceAllocationBoundaryKind::Timeout,
+            "marketplace allocation request timed out",
+        ),
+        rustok_api::PortErrorKind::InvariantViolation => (
+            crate::error::MarketplaceAllocationBoundaryKind::InvariantViolation,
+            "marketplace allocation requires operator review",
+        ),
+    };
+
     MarketplaceCommissionError::AllocationBoundary {
         code: error.code,
-        message: error.message,
+        message: message.to_string(),
         retryable: error.retryable,
+        kind,
     }
 }
 
