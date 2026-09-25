@@ -12,6 +12,7 @@ use crate::{
     CreateFulfillmentInput, CreateFulfillmentItemInput, FulfillmentError, FulfillmentResponse,
     FulfillmentService,
 };
+use crate::services::fulfillment::CheckoutFulfillmentRecord;
 
 const CHECKOUT_FULFILLMENT_OWNER: &str = "rustok_fulfillment";
 const CHECKOUT_FULFILLMENT_BOUNDARY: &str = "checkout_fulfillment_execution_port";
@@ -100,33 +101,49 @@ impl InProcessCheckoutFulfillmentExecutionPort {
                 error,
             )
         })?;
-        let mut result = Vec::with_capacity(request.plans.len());
+
+        let mut records = Vec::with_capacity(request.plans.len());
         for plan in &request.plans {
-            let key = fulfillment_key(request.checkout_operation_id, plan.index);
-            let input = build_input(&request, plan, key.as_str());
+            let input = build_input(&request, plan);
             let existing = self
-                .find_by_key(
+                .find_checkout_fulfillment(
                     context,
                     ENSURE_OPERATION,
                     "find_checkout_fulfillment_before_create",
                     tenant_id,
-                    request.order_id,
-                    key.as_str(),
+                    request.checkout_operation_id,
+                    plan.index,
                 )
                 .await?;
-            let fulfillment = match existing {
+
+            let record = match existing {
                 Some(existing) => existing,
-                None => match self.service.create_fulfillment(tenant_id, input).await {
-                    Ok(created) => created,
+                None => match self
+                    .service
+                    .create_checkout_fulfillment(
+                        tenant_id,
+                        input,
+                        request.checkout_operation_id,
+                        plan.index,
+                        request.order_plan_hash.as_str(),
+                    )
+                    .await
+                {
+                    Ok(created) => CheckoutFulfillmentRecord {
+                        index: plan.index,
+                        order_id: created.order_id,
+                        plan_hash: Some(request.order_plan_hash.clone()),
+                        fulfillment: created,
+                    },
                     Err(error) => {
                         let adopted = self
-                            .find_by_key(
+                            .find_checkout_fulfillment(
                                 context,
                                 ENSURE_OPERATION,
                                 "adopt_checkout_fulfillment_after_create_error",
                                 tenant_id,
-                                request.order_id,
-                                key.as_str(),
+                                request.checkout_operation_id,
+                                plan.index,
                             )
                             .await?;
                         match adopted {
@@ -142,16 +159,15 @@ impl InProcessCheckoutFulfillmentExecutionPort {
                     }
                 },
             };
+
             validate_fulfillment(
-                &fulfillment,
+                &record,
                 FulfillmentExpectation {
                     tenant_id,
-                    checkout_operation_id: request.checkout_operation_id,
                     order_id: request.order_id,
                     customer_id: request.customer_id,
                     plan_hash: request.order_plan_hash.as_str(),
                     plan,
-                    key: key.as_str(),
                 },
             )
             .map_err(|error| {
@@ -162,10 +178,14 @@ impl InProcessCheckoutFulfillmentExecutionPort {
                     error,
                 )
             })?;
-            result.push(fulfillment);
+            records.push(record);
         }
-        result.sort_by_key(fulfillment_index);
-        Ok(result)
+
+        records.sort_by_key(|record| record.index);
+        Ok(records
+            .into_iter()
+            .map(|record| record.fulfillment)
+            .collect())
     }
 
     async fn read(
@@ -188,28 +208,19 @@ impl InProcessCheckoutFulfillmentExecutionPort {
                 error,
             )
         })?;
-        let rows = self
-            .service
-            .list_by_order(tenant_id, request.order_id)
-            .await
-            .map_err(|error| {
-                fulfillment_error_to_port_error(
-                    context,
-                    "list_checkout_fulfillments_for_read",
-                    error,
-                )
-            })?;
-        let operation_id = request.checkout_operation_id.to_string();
+
+        let records = self
+            .list_checkout_fulfillments(
+                context,
+                READ_OPERATION,
+                "list_checkout_fulfillments_for_read",
+                tenant_id,
+                request.checkout_operation_id,
+            )
+            .await?;
         let mut by_index = BTreeMap::new();
-        for row in rows.into_iter().filter(|row| {
-            row.metadata
-                .get("checkout")
-                .and_then(|checkout| checkout.get("operation_id"))
-                .and_then(Value::as_str)
-                == Some(operation_id.as_str())
-        }) {
-            let index = fulfillment_index(&row);
-            if by_index.insert(index, row).is_some() {
+        for record in records {
+            if by_index.insert(record.index, record).is_some() {
                 return Err(map_checkout_fulfillment_local_port_error(
                     context,
                     READ_OPERATION,
@@ -232,10 +243,10 @@ impl InProcessCheckoutFulfillmentExecutionPort {
                 ),
             ));
         }
+
         let mut result = Vec::with_capacity(request.expected_plans.len());
         for plan in &request.expected_plans {
-            let key = fulfillment_key(request.checkout_operation_id, plan.index);
-            let fulfillment = by_index.remove(&plan.index).ok_or_else(|| {
+            let record = by_index.remove(&plan.index).ok_or_else(|| {
                 map_checkout_fulfillment_local_port_error(
                     context,
                     READ_OPERATION,
@@ -247,15 +258,13 @@ impl InProcessCheckoutFulfillmentExecutionPort {
                 )
             })?;
             validate_fulfillment(
-                &fulfillment,
+                &record,
                 FulfillmentExpectation {
                     tenant_id,
-                    checkout_operation_id: request.checkout_operation_id,
                     order_id: request.order_id,
                     customer_id: request.customer_id,
                     plan_hash: request.order_plan_hash.as_str(),
                     plan,
-                    key: key.as_str(),
                 },
             )
             .map_err(|error| {
@@ -266,160 +275,61 @@ impl InProcessCheckoutFulfillmentExecutionPort {
                     error,
                 )
             })?;
-            result.push(fulfillment);
+            result.push(record.fulfillment);
         }
         Ok(result)
     }
 
-    async fn find_by_key(
+    async fn list_checkout_fulfillments(
         &self,
         context: &PortContext,
         owner_operation: &'static str,
         service_operation: &'static str,
         tenant_id: Uuid,
-        order_id: Uuid,
-        key: &str,
-    ) -> Result<Option<FulfillmentResponse>, PortError> {
-        let rows = self
-            .service
-            .list_by_order(tenant_id, order_id)
+        checkout_operation_id: Uuid,
+    ) -> Result<Vec<CheckoutFulfillmentRecord>, PortError> {
+        self.service
+            .list_checkout_fulfillments(tenant_id, checkout_operation_id)
             .await
-            .map_err(|error| fulfillment_error_to_port_error(context, service_operation, error))?;
-        let mut matches = rows.into_iter().filter(|fulfillment| {
-            fulfillment
-                .metadata
-                .get("checkout")
-                .and_then(|checkout| checkout.get("fulfillment_key"))
-                .and_then(Value::as_str)
-                == Some(key)
-        });
-        let first = matches.next();
-        if matches.next().is_some() {
-            return Err(map_checkout_fulfillment_local_port_error(
-                context,
-                owner_operation,
-                "find_checkout_fulfillment_by_key",
-                PortError::conflict(
-                    "fulfillment.checkout_identity_duplicate",
-                    "multiple fulfillments share one checkout fulfillment identity",
-                ),
-            ));
-        }
-        Ok(first)
-    }
-}
-
-fn map_checkout_fulfillment_local_port_error(
-    context: &PortContext,
-    owner_operation: &'static str,
-    local_operation: &'static str,
-    error: PortError,
-) -> PortError {
-    let error_kind = match &error.kind {
-        PortErrorKind::Validation => "validation",
-        PortErrorKind::NotFound => "not_found",
-        PortErrorKind::Conflict => "conflict",
-        PortErrorKind::Forbidden => "forbidden",
-        PortErrorKind::Unavailable => "unavailable",
-        PortErrorKind::Timeout => "timeout",
-        PortErrorKind::InvariantViolation => "invariant_violation",
-    };
-    let technical_failure = matches!(
-        &error.kind,
-        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation
-    );
-    let actor_kind = match &context.actor.kind {
-        rustok_api::PortActorKind::User => "user",
-        rustok_api::PortActorKind::Service => "service",
-        rustok_api::PortActorKind::System => "system",
-    };
-    let tenant_id_length = context.tenant_id.chars().count();
-    let actor_id_length = context.actor.id.chars().count();
-    let claim_count = context.claims.len();
-    let role_count = context.roles.len();
-    let channel_present = context.channel.is_some();
-    let channel_length = context.channel.as_ref().map(|value| value.chars().count());
-    let locale_length = context.locale.chars().count();
-    let causation_id_present = context.causation_id.is_some();
-    let causation_id_length = context
-        .causation_id
-        .as_ref()
-        .map(|value| value.chars().count());
-    let traceparent_present = context.traceparent.is_some();
-    let traceparent_length = context
-        .traceparent
-        .as_ref()
-        .map(|value| value.chars().count());
-    let idempotency_key_present = context.idempotency_key.is_some();
-    let idempotency_key_length = context
-        .idempotency_key
-        .as_ref()
-        .map(|value| value.chars().count());
-    let internal_message_present = !error.message.trim().is_empty();
-    let internal_message_length = error.message.chars().count();
-
-    if technical_failure {
-        tracing::error!(
-            owner = CHECKOUT_FULFILLMENT_OWNER,
-            owner_operation,
-            local_operation,
-            correlation_id = %context.correlation_id,
-            tenant_id_length,
-            actor_kind,
-            actor_id_length,
-            claim_count,
-            role_count,
-            channel_present,
-            channel_length = ?channel_length,
-            locale_length,
-            causation_id_present,
-            causation_id_length = ?causation_id_length,
-            traceparent_present,
-            traceparent_length = ?traceparent_length,
-            idempotency_key_present,
-            idempotency_key_length = ?idempotency_key_length,
-            deadline_ms = ?context.deadline_ms,
-            internal_code = %error.code,
-            internal_message_present,
-            internal_message_length,
-            error_kind,
-            retryable = error.retryable,
-            boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
-            "checkout fulfillment local owner operation failed"
-        );
-    } else {
-        tracing::warn!(
-            owner = CHECKOUT_FULFILLMENT_OWNER,
-            owner_operation,
-            local_operation,
-            correlation_id = %context.correlation_id,
-            tenant_id_length,
-            actor_kind,
-            actor_id_length,
-            claim_count,
-            role_count,
-            channel_present,
-            channel_length = ?channel_length,
-            locale_length,
-            causation_id_present,
-            causation_id_length = ?causation_id_length,
-            traceparent_present,
-            traceparent_length = ?traceparent_length,
-            idempotency_key_present,
-            idempotency_key_length = ?idempotency_key_length,
-            deadline_ms = ?context.deadline_ms,
-            internal_code = %error.code,
-            internal_message_present,
-            internal_message_length,
-            error_kind,
-            retryable = error.retryable,
-            boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
-            "checkout fulfillment local owner operation was rejected"
-        );
+            .map_err(|error| fulfillment_error_to_port_error(context, service_operation, error))
+            .map(|records| {
+                tracing::debug!(
+                    boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
+                    owner_operation,
+                    record_count = records.len(),
+                    "checkout fulfillment typed identity lookup completed"
+                );
+                records
+            })
     }
 
-    error
-}
+    async fn find_checkout_fulfillment(
+        &self,
+        context: &PortContext,
+        owner_operation: &'static str,
+        service_operation: &'static str,
+        tenant_id: Uuid,
+        checkout_operation_id: Uuid,
+        checkout_fulfillment_index: u32,
+    ) -> Result<Option<CheckoutFulfillmentRecord>, PortError> {
+        self.service
+            .find_checkout_fulfillment(
+                tenant_id,
+                checkout_operation_id,
+                checkout_fulfillment_index,
+            )
+            .await
+            .map_err(|error| fulfillment_error_to_port_error(context, service_operation, error))
+            .map(|record| {
+                tracing::debug!(
+                    boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
+                    owner_operation,
+                    record_present = record.is_some(),
+                    "checkout fulfillment typed identity lookup completed"
+                );
+                record
+            })
+    }
 
 pub fn in_process_checkout_fulfillment_execution_port(
     db: DatabaseConnection,
@@ -639,7 +549,6 @@ fn validate_request(
 fn build_input(
     request: &EnsureCheckoutFulfillmentsRequest,
     plan: &CheckoutFulfillmentCommand,
-    key: &str,
 ) -> CreateFulfillmentInput {
     CreateFulfillmentInput {
         order_id: request.order_id,
@@ -655,22 +564,12 @@ fn build_input(
                     quantity: item.quantity,
                     metadata: fulfillment_item_metadata(
                         item.metadata.clone(),
-                        request.checkout_operation_id,
                         item.cart_line_item_id,
-                        request.order_plan_hash.as_str(),
-                        plan.index,
                     ),
                 })
                 .collect(),
         ),
-        metadata: fulfillment_metadata(
-            plan.metadata.clone(),
-            request.checkout_operation_id,
-            request.order_id,
-            request.order_plan_hash.as_str(),
-            plan.index,
-            key,
-        ),
+        metadata: fulfillment_metadata(plan.metadata.clone()),
     }
 }
 
@@ -687,16 +586,37 @@ struct FulfillmentExpectation<'a> {
 fn validate_fulfillment(
     fulfillment: &FulfillmentResponse,
     expected: FulfillmentExpectation<'_>,
+) -> Result<(struct FulfillmentExpectation<'a> {
+    tenant_id: Uuid,
+    order_id: Uuid,
+    customer_id: Option<Uuid>,
+    plan_hash: &'a str,
+    plan: &'a CheckoutFulfillmentCommand,
+}
+
+fn validate_fulfillment(
+    record: &CheckoutFulfillmentRecord,
+    expected: FulfillmentExpectation<'_>,
 ) -> Result<(), PortError> {
     let FulfillmentExpectation {
         tenant_id,
-        checkout_operation_id,
         order_id,
         customer_id,
         plan_hash,
         plan,
-        key,
     } = expected;
+
+    if record.index != plan.index
+        || record.order_id != order_id
+        || record.plan_hash.as_deref() != Some(plan_hash)
+    {
+        return Err(PortError::conflict(
+            "fulfillment.checkout_identity_conflict",
+            "fulfillment has a mismatched checkout identity",
+        ));
+    }
+
+    let fulfillment = &record.fulfillment;
     if fulfillment.tenant_id != tenant_id
         || fulfillment.order_id != order_id
         || fulfillment.shipping_option_id != plan.shipping_option_id
@@ -725,77 +645,11 @@ fn validate_fulfillment(
             "fulfillment items do not match the immutable checkout plan",
         ));
     }
-    let checkout = fulfillment
-        .metadata
-        .get("checkout")
-        .and_then(Value::as_object)
-        .ok_or_else(|| {
-            PortError::conflict(
-                "fulfillment.checkout_identity_missing",
-                "fulfillment has no checkout identity",
-            )
-        })?;
-    let operation_id = checkout_operation_id.to_string();
-    let order_id_text = order_id.to_string();
-    if checkout.get("operation_id").and_then(Value::as_str) != Some(operation_id.as_str())
-        || checkout.get("order_id").and_then(Value::as_str) != Some(order_id_text.as_str())
-        || checkout.get("order_plan_hash").and_then(Value::as_str) != Some(plan_hash)
-        || checkout.get("fulfillment_index").and_then(Value::as_u64) != Some(u64::from(plan.index))
-        || checkout.get("fulfillment_key").and_then(Value::as_str) != Some(key)
-    {
-        return Err(PortError::conflict(
-            "fulfillment.checkout_identity_conflict",
-            "fulfillment has a mismatched checkout identity",
-        ));
-    }
     Ok(())
 }
 
-fn fulfillment_index(fulfillment: &FulfillmentResponse) -> u32 {
-    fulfillment
-        .metadata
-        .get("checkout")
-        .and_then(|checkout| checkout.get("fulfillment_index"))
-        .and_then(Value::as_u64)
-        .and_then(|index| u32::try_from(index).ok())
-        .unwrap_or(u32::MAX)
-}
-
-fn fulfillment_key(operation_id: Uuid, index: u32) -> String {
-    format!("checkout:{operation_id}:fulfillment:{index}")
-}
-
-fn fulfillment_metadata(
-    base: Value,
-    operation_id: Uuid,
-    order_id: Uuid,
-    plan_hash: &str,
-    index: u32,
-    key: &str,
-) -> Value {
-    let mut root = object_or_empty(base);
-    let mut checkout = root
-        .remove("checkout")
-        .and_then(|value| value.as_object().cloned())
-        .unwrap_or_default();
-    checkout.insert(
-        "operation_id".to_string(),
-        Value::String(operation_id.to_string()),
-    );
-    checkout.insert("order_id".to_string(), Value::String(order_id.to_string()));
-    checkout.insert(
-        "order_plan_hash".to_string(),
-        Value::String(plan_hash.to_string()),
-    );
-    checkout.insert(
-        "fulfillment_index".to_string(),
-        Value::Number(u64::from(index).into()),
-    );
-    checkout.insert(
-        "fulfillment_key".to_string(),
-        Value::String(key.to_string()),
-    );
-    root.insert("checkout".to_string(), Value::Object(checkout));
+fn fulfillment_metadata(base: Value) -> Value {
+    let mut root = strip_checkout_identity_metadata(base);
     root.insert(
         "commerce_orchestration".to_string(),
         serde_json::json!({"operation": "checkout_create_fulfillment"}),
@@ -803,24 +657,41 @@ fn fulfillment_metadata(
     Value::Object(root)
 }
 
-fn fulfillment_item_metadata(
-    base: Value,
-    operation_id: Uuid,
-    cart_line_item_id: Uuid,
-    plan_hash: &str,
-    index: u32,
-) -> Value {
-    let mut root = object_or_empty(base);
-    root.insert(
-        "checkout".to_string(),
-        serde_json::json!({
-            "operation_id": operation_id,
-            "cart_line_item_id": cart_line_item_id,
-            "order_plan_hash": plan_hash,
-            "fulfillment_index": index,
-        }),
+fn fulfillment_item_metadata(base: Value, cart_line_item_id: Uuid) -> Value {
+    let mut root = strip_checkout_identity_metadata(base);
+    let mut checkout = root
+        .remove("checkout")
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    checkout.insert(
+        "cart_line_item_id".to_string(),
+        Value::String(cart_line_item_id.to_string()),
     );
+    if checkout.is_empty() {
+        root.remove("checkout");
+    } else {
+        root.insert("checkout".to_string(), Value::Object(checkout));
+    }
     Value::Object(root)
+}
+
+fn strip_checkout_identity_metadata(value: Value) -> serde_json::Map<String, Value> {
+    let mut root = object_or_empty(value);
+    if let Some(Value::Object(mut checkout)) = root.remove("checkout") {
+        for key in [
+            "operation_id",
+            "order_id",
+            "order_plan_hash",
+            "fulfillment_index",
+            "fulfillment_key",
+        ] {
+            checkout.remove(key);
+        }
+        if !checkout.is_empty() {
+            root.insert("checkout".to_string(), Value::Object(checkout));
+        }
+    }
+    root
 }
 
 fn object_or_empty(value: Value) -> serde_json::Map<String, Value> {

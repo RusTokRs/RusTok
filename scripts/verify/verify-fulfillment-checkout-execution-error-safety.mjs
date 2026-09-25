@@ -54,12 +54,12 @@ const ensure = between(
 const readHelper = between(
   source,
   'async fn read(',
-  'async fn find_by_key(',
+  'async fn list_checkout_fulfillments(',
   'checkout fulfillment read helper',
 );
 const findHelper = between(
   source,
-  'async fn find_by_key(',
+  'async fn find_checkout_fulfillment(',
   'pub fn in_process_checkout_fulfillment_execution_port(',
   'checkout fulfillment lookup helper',
 );
@@ -98,6 +98,11 @@ for (const [value, label] of [
   ['use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};', 'typed port imports'],
 ]) requireText(source, value, label);
 
+for (const value of [
+  'fn fulfillment_key(',
+  'fn fulfillment_index(',
+]) forbidText(source, value, 'legacy metadata checkout identity implementation');
+
 for (const [content, value, label] of [
   [ensure, 'context: &PortContext', 'ensure context input'],
   [ensure, '"find_checkout_fulfillment_before_create"', 'pre-create lookup operation'],
@@ -105,9 +110,11 @@ for (const [content, value, label] of [
   [ensure, '"create_checkout_fulfillment"', 'create operation'],
   [ensure, 'fulfillment_error_to_port_error(', 'create mapper handoff'],
   [readHelper, 'context: &PortContext', 'read context input'],
+  [readHelper, 'list_checkout_fulfillments_for_read', 'typed read operation'],
   [readHelper, '"list_checkout_fulfillments_for_read"', 'read owner operation'],
   [readHelper, 'fulfillment_error_to_port_error(', 'read mapper handoff'],
   [findHelper, 'context: &PortContext', 'lookup context input'],
+  [findHelper, 'self.service\n            .find_checkout_fulfillment(', 'typed lookup owner service'],
   [findHelper, "owner_operation: &'static str", 'lookup operation input'],
   [findHelper, "service_operation: &'static str", 'lookup service operation input'],
   [findHelper, 'fulfillment_error_to_port_error(context, service_operation, error)', 'lookup mapper handoff'],

@@ -38,6 +38,21 @@ const STATUS_DELIVERED: &str = "delivered";
 const STATUS_CANCELLED: &str = "cancelled";
 const MANUAL_PROVIDER_ID: &str = "manual";
 
+#[derive(Debug, Clone)]
+struct CheckoutFulfillmentIdentity {
+    operation_id: Uuid,
+    index: u32,
+    plan_hash: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CheckoutFulfillmentRecord {
+    pub index: u32,
+    pub order_id: Uuid,
+    pub plan_hash: Option<String>,
+    pub fulfillment: FulfillmentResponse,
+}
+
 pub struct FulfillmentService {
     db: DatabaseConnection,
 }
@@ -93,7 +108,7 @@ impl FulfillmentService {
             amount: Set(amount),
             provider_id: Set(provider_id),
             active: Set(true),
-            metadata: Set(metadata),
+            metadata: Set(strip_fulfillment_identity_metadata(metadata)),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
@@ -308,6 +323,38 @@ impl FulfillmentService {
         tenant_id: Uuid,
         input: CreateFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        self.create_fulfillment_with_identity(tenant_id, input, None)
+            .await
+    }
+
+    pub(crate) async fn create_checkout_fulfillment(
+        &self,
+        tenant_id: Uuid,
+        input: CreateFulfillmentInput,
+        checkout_operation_id: Uuid,
+        checkout_fulfillment_index: u32,
+        checkout_plan_hash: &str,
+    ) -> FulfillmentResult<FulfillmentResponse> {
+        let checkout_plan_hash = validate_checkout_identity(
+            checkout_operation_id,
+            checkout_fulfillment_index,
+            checkout_plan_hash,
+        )?;
+        let identity = CheckoutFulfillmentIdentity {
+            operation_id: checkout_operation_id,
+            index: checkout_fulfillment_index,
+            plan_hash: checkout_plan_hash,
+        };
+        self.create_fulfillment_with_identity(tenant_id, input, Some(identity))
+            .await
+    }
+
+    async fn create_fulfillment_with_identity(
+        &self,
+        tenant_id: Uuid,
+        input: CreateFulfillmentInput,
+        identity: Option<CheckoutFulfillmentIdentity>,
+    ) -> FulfillmentResult<FulfillmentResponse> {
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
@@ -318,21 +365,41 @@ impl FulfillmentService {
         }
         validate_fulfillment_items(input.items.as_deref())?;
 
+        let CreateFulfillmentInput {
+            order_id,
+            shipping_option_id,
+            customer_id,
+            carrier,
+            tracking_number,
+            items,
+            metadata,
+        } = input;
         let fulfillment_id = generate_id();
         let now = Utc::now();
         let txn = self.db.begin().await?;
+        let checkout_operation_id = identity.as_ref().map(|value| value.operation_id);
+        let checkout_fulfillment_index = identity
+            .as_ref()
+            .map(|value| i64::from(value.index));
+        let checkout_plan_hash = identity
+            .as_ref()
+            .map(|value| value.plan_hash.clone());
+
         entities::fulfillment::ActiveModel {
             id: Set(fulfillment_id),
             tenant_id: Set(tenant_id),
-            order_id: Set(input.order_id),
-            shipping_option_id: Set(input.shipping_option_id),
-            customer_id: Set(input.customer_id),
+            order_id: Set(order_id),
+            shipping_option_id: Set(shipping_option_id),
+            customer_id: Set(customer_id),
+            checkout_operation_id: Set(checkout_operation_id),
+            checkout_fulfillment_index: Set(checkout_fulfillment_index),
+            checkout_plan_hash: Set(checkout_plan_hash),
             status: Set(STATUS_PENDING.to_string()),
-            carrier: Set(input.carrier),
-            tracking_number: Set(input.tracking_number),
+            carrier: Set(carrier),
+            tracking_number: Set(tracking_number),
             delivered_note: Set(None),
             cancellation_reason: Set(None),
-            metadata: Set(input.metadata),
+            metadata: Set(metadata),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
             shipped_at: Set(None),
@@ -342,7 +409,7 @@ impl FulfillmentService {
         .insert(&txn)
         .await?;
 
-        if let Some(items) = input.items {
+        if let Some(items) = items {
             for item in items {
                 entities::fulfillment_item::ActiveModel {
                     id: Set(generate_id()),
@@ -373,6 +440,76 @@ impl FulfillmentService {
         let fulfillment = self.load_fulfillment(tenant_id, fulfillment_id).await?;
         self.build_fulfillment_response(fulfillment).await
     }
+
+    pub(crate) async fn find_checkout_fulfillment(
+        &self,
+        tenant_id: Uuid,
+        checkout_operation_id: Uuid,
+        checkout_fulfillment_index: u32,
+    ) -> FulfillmentResult<Option<CheckoutFulfillmentRecord>> {
+        let row = entities::fulfillment::Entity::find()
+            .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
+            .filter(entities::fulfillment::Column::CheckoutOperationId.eq(checkout_operation_id))
+            .filter(
+                entities::fulfillment::Column::CheckoutFulfillmentIndex
+                    .eq(i64::from(checkout_fulfillment_index)),
+            )
+            .one(&self.db)
+            .await?;
+
+        match row {
+            Some(row) => {
+                let order_id = row.order_id;
+                let plan_hash = row.checkout_plan_hash.clone();
+                let fulfillment = self.build_fulfillment_response(row).await?;
+                Ok(Some(CheckoutFulfillmentRecord {
+                    index: checkout_fulfillment_index,
+                    order_id,
+                    plan_hash,
+                    fulfillment,
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn list_checkout_fulfillments(
+        &self,
+        tenant_id: Uuid,
+        checkout_operation_id: Uuid,
+    ) -> FulfillmentResult<Vec<CheckoutFulfillmentRecord>> {
+        let rows = entities::fulfillment::Entity::find()
+            .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
+            .filter(entities::fulfillment::Column::CheckoutOperationId.eq(checkout_operation_id))
+            .order_by_asc(entities::fulfillment::Column::CheckoutFulfillmentIndex)
+            .all(&self.db)
+            .await?;
+
+        let mut records = Vec::with_capacity(rows.len());
+        for row in rows {
+            let index = row.checkout_fulfillment_index.ok_or_else(|| {
+                FulfillmentError::Validation(
+                    "checkout fulfillment identity index is missing".to_string(),
+                )
+            })?;
+            let index = u32::try_from(index).map_err(|_| {
+                FulfillmentError::Validation(
+                    "checkout fulfillment identity index is out of range".to_string(),
+                )
+            })?;
+            let order_id = row.order_id;
+            let plan_hash = row.checkout_plan_hash.clone();
+            let fulfillment = self.build_fulfillment_response(row).await?;
+            records.push(CheckoutFulfillmentRecord {
+                index,
+                order_id,
+                plan_hash,
+                fulfillment,
+            });
+        }
+        Ok(records)
+    }
+
 
     pub async fn find_by_order(
         &self,
@@ -484,7 +621,7 @@ impl FulfillmentService {
             active.carrier = Set(Some(carrier.clone()));
             active.tracking_number = Set(Some(tracking_number.clone()));
             active.metadata = Set(append_audit_event(
-                merge_metadata(metadata, input.metadata),
+                merge_fulfillment_metadata(metadata, input.metadata),
                 build_fulfillment_audit_event(
                     FulfillmentItemAction::Ship,
                     now,
@@ -539,7 +676,7 @@ impl FulfillmentService {
         active.carrier = Set(Some(input.carrier.clone()));
         active.tracking_number = Set(Some(input.tracking_number.clone()));
         active.metadata = Set(append_audit_event(
-            merge_metadata(metadata, input.metadata),
+            merge_fulfillment_metadata(metadata, input.metadata),
             build_fulfillment_audit_event(
                 FulfillmentItemAction::Ship,
                 now,
@@ -580,7 +717,7 @@ impl FulfillmentService {
             active.status = Set(STATUS_DELIVERED.to_string());
             active.delivered_note = Set(input.delivered_note.clone());
             active.metadata = Set(append_audit_event(
-                merge_metadata(metadata, input.metadata),
+                merge_fulfillment_metadata(metadata, input.metadata),
                 build_fulfillment_audit_event(
                     FulfillmentItemAction::Deliver,
                     now,
@@ -637,7 +774,7 @@ impl FulfillmentService {
         });
         active.delivered_note = Set(input.delivered_note.clone());
         active.metadata = Set(append_audit_event(
-            merge_metadata(metadata, input.metadata),
+            merge_fulfillment_metadata(metadata, input.metadata),
             build_fulfillment_audit_event(
                 FulfillmentItemAction::Deliver,
                 now,
@@ -676,7 +813,7 @@ impl FulfillmentService {
                 active.cancellation_reason = Set(None);
                 active.cancelled_at = Set(None);
                 active.metadata = Set(append_audit_event(
-                    merge_metadata(metadata, input.metadata),
+                    merge_fulfillment_metadata(metadata, input.metadata),
                     build_fulfillment_audit_event(
                         FulfillmentItemAction::Reopen,
                         now,
@@ -700,7 +837,7 @@ impl FulfillmentService {
                     active.delivered_note = Set(None);
                     active.delivered_at = Set(None);
                     active.metadata = Set(append_audit_event(
-                        merge_metadata(metadata, input.metadata),
+                        merge_fulfillment_metadata(metadata, input.metadata),
                         build_fulfillment_audit_event(
                             FulfillmentItemAction::Reopen,
                             now,
@@ -747,7 +884,7 @@ impl FulfillmentService {
                 active.delivered_note = Set(None);
                 active.delivered_at = Set(None);
                 active.metadata = Set(append_audit_event(
-                    merge_metadata(metadata, input.metadata),
+                    merge_fulfillment_metadata(metadata, input.metadata),
                     build_fulfillment_audit_event(
                         FulfillmentItemAction::Reopen,
                         now,
@@ -799,7 +936,7 @@ impl FulfillmentService {
             active.delivered_note = Set(None);
             active.delivered_at = Set(None);
             active.metadata = Set(append_audit_event(
-                merge_metadata(metadata, input.metadata),
+                merge_fulfillment_metadata(metadata, input.metadata),
                 build_fulfillment_audit_event(
                     FulfillmentItemAction::Reship,
                     now,
@@ -847,7 +984,7 @@ impl FulfillmentService {
         active.delivered_note = Set(None);
         active.delivered_at = Set(None);
         active.metadata = Set(append_audit_event(
-            merge_metadata(metadata, input.metadata),
+            merge_fulfillment_metadata(metadata, input.metadata),
             build_fulfillment_audit_event(
                 FulfillmentItemAction::Reship,
                 now,
@@ -884,7 +1021,7 @@ impl FulfillmentService {
         active.status = Set(STATUS_CANCELLED.to_string());
         active.cancellation_reason = Set(input.reason);
         active.metadata = Set(append_audit_event(
-            merge_metadata(metadata, input.metadata),
+            merge_fulfillment_metadata(metadata, input.metadata),
             build_fulfillment_audit_event(
                 FulfillmentItemAction::Cancel,
                 now,
@@ -979,6 +1116,28 @@ impl FulfillmentService {
     }
 }
 
+fn validate_checkout_identity(
+    checkout_operation_id: Uuid,
+    checkout_fulfillment_index: u32,
+    checkout_plan_hash: &str,
+) -> FulfillmentResult<String> {
+    if checkout_operation_id.is_nil() {
+        return Err(FulfillmentError::Validation(
+            "checkout operation identity must be non-nil".to_string(),
+        ));
+    }
+    let checkout_plan_hash = checkout_plan_hash.trim();
+    if checkout_plan_hash.len() != 64
+        || !checkout_plan_hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err(FulfillmentError::Validation(
+            "checkout fulfillment plan hash must be a 64-character hexadecimal value".to_string(),
+        ));
+    }
+    let _ = checkout_fulfillment_index;
+    Ok(checkout_plan_hash.to_string())
+}
+
 fn normalize_currency_code(value: &str) -> FulfillmentResult<String> {
     let normalized = value.trim().to_ascii_uppercase();
     if normalized.len() != 3 {
@@ -987,6 +1146,37 @@ fn normalize_currency_code(value: &str) -> FulfillmentResult<String> {
         ));
     }
     Ok(normalized)
+}
+
+fn merge_fulfillment_metadata(
+    current: serde_json::Value,
+    patch: serde_json::Value,
+) -> serde_json::Value {
+    strip_fulfillment_identity_metadata(merge_metadata(current, patch))
+}
+
+fn strip_fulfillment_identity_metadata(value: serde_json::Value) -> serde_json::Value {
+    let mut root = match value {
+        serde_json::Value::Object(object) => object,
+        _ => return value,
+    };
+    if let Some(serde_json::Value::Object(mut checkout)) = root.remove("checkout") {
+        for key in [
+            "operation_id",
+            "order_id",
+            "order_plan_hash",
+            "fulfillment_index",
+            "fulfillment_key",
+        ] {
+            checkout.remove(key);
+        }
+        if checkout.is_empty() {
+            root.remove("checkout");
+        } else {
+            root.insert("checkout".to_string(), serde_json::Value::Object(checkout));
+        }
+    }
+    serde_json::Value::Object(root)
 }
 
 fn merge_metadata(current: serde_json::Value, patch: serde_json::Value) -> serde_json::Value {

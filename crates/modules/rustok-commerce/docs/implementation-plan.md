@@ -477,7 +477,7 @@ These are source-contract defects, not verification-only tasks.
 - [ ] Remove private legacy checkout completion and journal facade source after
   compile/replay/upgraded evidence, then migrate compatibility tests to the staged
   harness and remove public re-exports.
-- [ ] Replace fulfillment metadata identity with owner-owned typed persistence and a
+- [x] Replace fulfillment metadata identity with owner-owned typed persistence and a
   concurrency-safe uniqueness constraint.
 - [ ] Remove temporary metadata write/adoption bridges and old executor/compensation/
   pipeline source after upgraded/restart evidence proves every recovery path uses typed
