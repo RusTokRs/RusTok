@@ -171,6 +171,33 @@ parse_port_tenant_id(&context, "select_shipping_option");
 `;
 }
 
+function canonicalTax() {
+  return `
+struct TaxCalculationContextFacts {}
+fn tax_calculation_context_facts() {}
+tracing::error!(
+  correlation_id = %context.correlation_id,
+  tenant_id_length = facts.tenant_id_length,
+  actor_kind = facts.actor_kind,
+  actor_id_length = facts.actor_id_length,
+  claim_count = facts.claim_count,
+  role_count = facts.role_count,
+  boundary = TAX_CALCULATION_PORT_BOUNDARY,
+  error_message_present = !error.message.is_empty(),
+  error_message_length = error.message.chars().count(),
+);
+tracing::warn!(code = "tax.validation");
+"tax.currency_code_invalid";
+"tax.negative_policy_rate";
+"tax.validation";
+"tax calculation request is invalid";
+PortError::validation(
+  "tax.validation",
+  "tax calculation request is invalid",
+);
+`;
+}
+
 function canonicalCustomer() {
   return `
 struct CustomerReadContextFacts {}
@@ -362,6 +389,11 @@ function fixture(options = {}) {
   if (options.removeFulfillmentCorrelation) fulfillment = fulfillment.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
   put(root, 'crates/modules/rustok-fulfillment/src/ports.rs', fulfillment);
 
+  let tax = `${canonicalTax()}${options.taxAppend ?? ''}`;
+  put(root, 'crates/modules/rustok-tax/src/ports.rs', tax);
+  let taxCalculation = `${canonicalTax()}${options.taxAppend ?? ''}`;
+  put(root, 'crates/modules/rustok-tax/src/calculation_context.rs', taxCalculation);
+
   let customer = `${canonicalCustomer()}${options.customerAppend ?? ''}`;
   if (options.removeCustomerCorrelation) customer = customer.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
   put(root, 'crates/modules/rustok-customer/src/ports.rs', customer);
@@ -441,6 +473,8 @@ const failureCases = [
   ["pricing resource diagnostic identity", { pricingAppend: 'variant_id = %variant_id;' }, /pricing payload diagnostics: forbidden/],
   ["exact pricing stock diagnostics", { pricingAppend: 'code = "pricing.insufficient_inventory",\n                requested,\n                available,' }, /pricing payload diagnostics: forbidden/],
   ["raw fulfillment validation cause", { fulfillmentAppend: 'PortError::validation("fulfillment.validation", message);' }, /fulfillment public error mapping: forbidden/],
+  ["raw tax validation cause", { taxAppend: 'PortError::validation("tax.validation", message);' }, /tax public error mapping: forbidden/],
+  ["complete tax error diagnostics", { taxAppend: 'tracing::error!(error = ?error);' }, /tax calculation payload diagnostics: forbidden/],
   ["raw fulfillment storage cause", { fulfillmentAppend: 'format!("fulfillment storage unavailable: {error}");' }, /fulfillment public error mapping: forbidden/],
   ["complete fulfillment error diagnostics", { fulfillmentAppend: 'tracing::error!(error = ?error);' }, /fulfillment payload diagnostics: forbidden/],
   ["raw fulfillment tenant diagnostics", { fulfillmentAppend: 'tenant_id = %context.tenant_id;' }, /fulfillment payload diagnostics: forbidden/],
