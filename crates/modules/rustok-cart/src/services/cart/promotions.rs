@@ -414,7 +414,13 @@ impl CartService {
         .insert(&txn)
         .await?;
 
-        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), cart).await?;
+        recalculate_totals(
+            &txn,
+            self.tax_calculation_port.as_ref(),
+            self.shipping_option_read_port.as_ref(),
+            cart,
+        )
+        .await?;
         reconcile_cart_shipping_state(&txn, cart_id).await?;
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await

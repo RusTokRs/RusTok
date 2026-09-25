@@ -663,6 +663,17 @@ pub(crate) async fn load_tenant_context(
 
     infra
         .get_or_load_with_coalescing(&cache_key, || async move {
+            if let Some(reason) = infra_clone
+                .check_negative(&negative_key_clone)
+                .await
+                .map_err(|err| CoreError::Cache(err.to_string()))?
+            {
+                return Err(match reason {
+                    CachedTenantMiss::NotFound => CoreError::NotFound("tenant not found".to_string()),
+                    CachedTenantMiss::Disabled => CoreError::Forbidden("tenant disabled".to_string()),
+                });
+            }
+
             let projection = match tenant_service
                 .read_tenant(tenant_port_context, tenant_request)
                 .await

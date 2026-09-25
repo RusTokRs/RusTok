@@ -171,7 +171,13 @@ impl CartService {
         }
 
         let prepared_cart = load_cart_in_tx(&txn, tenant_id, cart.id).await?;
-        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), prepared_cart).await?;
+        recalculate_totals(
+            &txn,
+            self.tax_calculation_port.as_ref(),
+            self.shipping_option_read_port.as_ref(),
+            prepared_cart,
+        )
+        .await?;
         txn.commit().await?;
         self.get_cart(tenant_id, cart.id).await
     }

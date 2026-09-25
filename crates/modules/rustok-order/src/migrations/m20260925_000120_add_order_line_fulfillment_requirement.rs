@@ -18,9 +18,15 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         match manager.get_database_backend() {
-            DatabaseBackend::Postgres => manager.get_connection().execute_unprepared("DO $ BEGIN IF EXISTS (SELECT 1 FROM order_line_items WHERE fulfillment_requirement = 'digital') THEN RAISE EXCEPTION 'cannot roll back order fulfillment requirement while digital lines exist'; END IF; END $; ALTER TABLE order_line_items DROP CONSTRAINT IF EXISTS ck_order_line_items_fulfillment_shipping, DROP CONSTRAINT IF EXISTS ck_order_line_items_fulfillment_requirement, DROP COLUMN IF EXISTS fulfillment_requirement;").await?,
-            DatabaseBackend::MySql => manager.get_connection().execute_unprepared("ALTER TABLE order_line_items DROP CHECK ck_order_line_items_fulfillment_shipping, DROP CHECK ck_order_line_items_fulfillment_requirement, DROP COLUMN fulfillment_requirement;").await?,
-            DatabaseBackend::Sqlite => manager.get_connection().execute_unprepared("SELECT CASE WHEN EXISTS (SELECT 1 FROM order_line_items WHERE fulfillment_requirement = 'digital') THEN RAISE(ABORT, 'cannot roll back order fulfillment requirement while digital lines exist') END; DROP TRIGGER IF EXISTS order_line_items_fulfillment_update_guard; DROP TRIGGER IF EXISTS order_line_items_fulfillment_insert_guard; ALTER TABLE order_line_items DROP COLUMN fulfillment_requirement;").await?,
+            DatabaseBackend::Postgres => {
+                manager.get_connection().execute_unprepared("DO $ BEGIN IF EXISTS (SELECT 1 FROM order_line_items WHERE fulfillment_requirement = 'digital') THEN RAISE EXCEPTION 'cannot roll back order fulfillment requirement while digital lines exist'; END IF; END $; ALTER TABLE order_line_items DROP CONSTRAINT IF EXISTS ck_order_line_items_fulfillment_shipping, DROP CONSTRAINT IF EXISTS ck_order_line_items_fulfillment_requirement, DROP COLUMN IF EXISTS fulfillment_requirement;").await?;
+            }
+            DatabaseBackend::MySql => {
+                manager.get_connection().execute_unprepared("ALTER TABLE order_line_items DROP CHECK ck_order_line_items_fulfillment_shipping, DROP CHECK ck_order_line_items_fulfillment_requirement, DROP COLUMN fulfillment_requirement;").await?;
+            }
+            DatabaseBackend::Sqlite => {
+                manager.get_connection().execute_unprepared("SELECT CASE WHEN EXISTS (SELECT 1 FROM order_line_items WHERE fulfillment_requirement = 'digital') THEN RAISE(ABORT, 'cannot roll back order fulfillment requirement while digital lines exist') END; DROP TRIGGER IF EXISTS order_line_items_fulfillment_update_guard; DROP TRIGGER IF EXISTS order_line_items_fulfillment_insert_guard; ALTER TABLE order_line_items DROP COLUMN fulfillment_requirement;").await?;
+            }
             backend => return Err(DbErr::Custom(format!("unsupported database backend: {backend:?}"))),
         }
         Ok(())
@@ -40,7 +46,8 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                     OR
                     (fulfillment_requirement = 'physical' AND btrim(shipping_profile_slug) <> '')
                 );
-    "#).await
+    "#).await?;
+    Ok(())
 }
 
 async fn install_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
@@ -53,7 +60,8 @@ async fn install_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 (fulfillment_requirement = 'digital' AND shipping_profile_slug = '')
                 OR (fulfillment_requirement = 'physical' AND TRIM(shipping_profile_slug) <> '')
             );
-    "#).await
+    "#).await?;
+    Ok(())
 }
 
 async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
@@ -78,5 +86,6 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 OR (NEW.fulfillment_requirement = 'physical' AND trim(NEW.shipping_profile_slug) <> '')
             ) THEN RAISE(ABORT, 'invalid order fulfillment shipping profile state') END;
         END;
-    "#).await
+    "#).await?;
+    Ok(())
 }

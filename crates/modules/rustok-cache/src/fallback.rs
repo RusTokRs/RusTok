@@ -1,6 +1,7 @@
 use std::collections::{HashSet, VecDeque, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -112,6 +113,10 @@ impl PendingInvalidationTracker {
         self.keys.lock().await.remove(key);
     }
 
+    async fn clear(&self) {
+        self.keys.lock().await.clear();
+    }
+
     async fn insert(&self, key: &str) -> rustok_core::Result<()> {
         validate_degraded_key(key, "invalidation")?;
         let mut keys = self.keys.lock().await;
@@ -157,6 +162,7 @@ pub(crate) struct DegradationAwareFallbackBackend {
     degraded_writes: DegradedWriteTracker,
     pending_invalidations: PendingInvalidationTracker,
     key_locks: Vec<Mutex<()>>,
+    tombstone_saturation: AtomicBool,
 }
 
 impl DegradationAwareFallbackBackend {
@@ -169,7 +175,14 @@ impl DegradationAwareFallbackBackend {
             key_locks: (0..FALLBACK_KEY_LOCK_STRIPES)
                 .map(|_| Mutex::new(()))
                 .collect(),
+            tombstone_saturation: AtomicBool::new(false),
         }
+    }
+
+    pub(crate) async fn reconcile_tombstones(&self) -> rustok_core::Result<()> {
+        self.pending_invalidations.clear().await;
+        self.tombstone_saturation.store(false, Ordering::Release);
+        Ok(())
     }
 
     fn key_lock(&self, key: &str) -> &Mutex<()> {
@@ -293,11 +306,12 @@ impl DegradationAwareFallbackBackend {
             }
             Err(error) => {
                 if let Err(tracker_error) = self.pending_invalidations.insert(key).await {
+                    self.tombstone_saturation.store(true, Ordering::Release);
                     tracing::warn!(
                         %error,
                         %tracker_error,
                         key,
-                        "Primary cache invalidation failed and local tombstone retention was unavailable"
+                        "Primary cache invalidation failed and local tombstone retention was unavailable; entered fail-closed saturation state"
                     );
                 } else {
                     tracing::warn!(
@@ -319,6 +333,12 @@ impl DegradationAwareFallbackBackend {
 #[async_trait]
 impl CacheBackend for DegradationAwareFallbackBackend {
     async fn health(&self) -> rustok_core::Result<()> {
+        if self.tombstone_saturation.load(Ordering::Acquire) {
+            return Err(rustok_core::Error::Cache(
+                "cache invalidation tombstone tracker saturated; fail-closed recovery required"
+                    .to_string(),
+            ));
+        }
         self.primary.health().await
     }
 
@@ -329,6 +349,12 @@ impl CacheBackend for DegradationAwareFallbackBackend {
         }
         if let Some(value) = self.read_degraded_write(key).await? {
             return Ok(Some(value));
+        }
+        if self.tombstone_saturation.load(Ordering::Acquire) {
+            return Err(rustok_core::Error::Cache(
+                "cache invalidation tombstone tracker saturated; shared reads suspended until reconciliation"
+                    .to_string(),
+            ));
         }
 
         match self.primary.get(key).await {
@@ -438,7 +464,9 @@ impl CacheBackend for DegradationAwareFallbackBackend {
         ttl: Option<Duration>,
     ) -> rustok_core::Result<CacheCompareAndSetOutcome> {
         let _guard = self.key_lock(key).lock().await;
-        if self.has_unsynchronized_mutation(key).await {
+        if self.tombstone_saturation.load(Ordering::Acquire)
+            || self.has_unsynchronized_mutation(key).await
+        {
             return Err(rustok_core::Error::Cache(
                 "cache compare-and-set rejected while local and shared state are unsynchronized"
                     .to_string(),
@@ -1070,5 +1098,38 @@ mod tests {
         );
         assert!(backend.pending_invalidations.contains("key").await);
         assert_eq!(backend.get("key").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn tombstone_tracker_saturation_fails_closed_and_prevents_stale_primary_hits_until_reconciled() {
+        let primary = Arc::new(RecoveringStaleBackend {
+            fail_writes: AtomicBool::new(true),
+            value: StdMutex::new(Some(b"stale".to_vec())),
+        });
+        let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 16));
+        let mut backend = backend(primary.clone(), fallback);
+        backend.pending_invalidations = PendingInvalidationTracker::new(1);
+
+        // First invalidation fails on primary, successfully tracked as tombstone
+        assert!(backend.invalidate("key-1").await.is_err());
+        assert_eq!(backend.get("key-1").await.unwrap(), None);
+        assert!(backend.health().await.is_ok());
+
+        // Second invalidation fails on primary and exceeds capacity (1)
+        assert!(backend.invalidate("key-2").await.is_err());
+
+        // Health/readiness now fails closed
+        assert!(backend.health().await.is_err());
+
+        // Even though primary now recovers, key-2 cannot return stale value from primary
+        primary.fail_writes.store(false, Ordering::SeqCst);
+        assert!(backend.get("key-2").await.is_err());
+
+        // Tracked key-1 still safely returns None (tombstone active)
+        assert_eq!(backend.get("key-1").await.unwrap(), None);
+
+        // Explicit reconciliation clears saturation and restores healthy reads
+        backend.reconcile_tombstones().await.unwrap();
+        assert!(backend.health().await.is_ok());
     }
 }

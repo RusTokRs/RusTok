@@ -249,11 +249,11 @@ The detailed active-cache contract is maintained in
 
 ### P1. Fail-closed pending-invalidation saturation
 
-- [ ] When a Redis invalidation fails after the bounded tombstone tracker reaches capacity, enter an
+- [x] When a Redis invalidation fails after the bounded tombstone tracker reaches capacity, enter an
   explicit fail-closed recovery state instead of leaving the new key untracked. Health/readiness must
   remain degraded, reads must not return shared values that may be stale, and recovery must require a
   deliberate namespace or owner-source reconciliation step.
-- [ ] Add regression coverage proving that a second failed invalidation at capacity cannot become a
+- [x] Add regression coverage proving that a second failed invalidation at capacity cannot become a
   stale Redis hit after the primary recovers.
 
 ### P1. Load, chaos and tuning evidence

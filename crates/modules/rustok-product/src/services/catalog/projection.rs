@@ -1,4 +1,5 @@
 use super::*;
+use crate::ProductFulfillmentRequirement;
 use sea_orm::FromQueryResult;
 
 #[derive(FromQueryResult)]
@@ -394,6 +395,10 @@ impl CatalogService {
                 .push(translation);
         }
 
+        let fulfillment_requirement = ProductFulfillmentRequirement::from_product_type(
+            product.product_type.as_deref(),
+        );
+
         let response = ProductResponse {
             id: product.id,
             tenant_id: product.tenant_id,
@@ -401,9 +406,7 @@ impl CatalogService {
             seller_id: product.seller_id,
             vendor: product.vendor,
             product_type: product.product_type,
-            fulfillment_requirement: ProductFulfillmentRequirement::from_product_type(
-                product.product_type.as_deref(),
-            ),
+            fulfillment_requirement,
             shipping_profile_slug: product
                 .shipping_profile_slug
                 .clone()
