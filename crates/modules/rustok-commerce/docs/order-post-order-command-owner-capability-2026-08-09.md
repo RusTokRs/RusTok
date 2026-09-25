@@ -35,7 +35,7 @@ The port requires write admission through `PortContext`, validates tenant and ac
 
 Database/core details are never copied into public `PortError.message`. Diagnostics log stable operation/error variants plus correlation/resource shape without raw backend errors.
 
-The source slice now includes durable replay receipts for all six post-order owner commands. Mounted HTTP writes must provide a caller-owned `Idempotency-Key`; the broader ecommerce production gate remains open until replay/runtime evidence is retained.
+The source slice now includes durable idempotency receipts and durable replay for all six post-order owner commands. Mounted HTTP writes must provide a caller-owned Idempotency-Key; the broader ecommerce production gate remains open until replay/runtime evidence is retained.
 
 ## Explicitly not changed
 
