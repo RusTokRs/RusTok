@@ -389,6 +389,37 @@ forbidAll(order, [
   '"PortContext.tenant_id must be a UUID for order ports"',
   '"PortContext.actor.id must be a UUID for order write ports"',
 ], 'order generic port public error mapping');
+
+forbidAll(order, [
+  'error = ?error',
+  'error = %error',
+  'internal_message = %message',
+  'tenant_id = %context.tenant_id',
+  'actor_id = %context.actor.id',
+  'order_id = %order_id',
+  'resource_id = %resource_id',
+  'from = %from',
+  'to = %to',
+], 'order generic port payload diagnostics');
+
+requireAll(order, [
+  'struct OrderPortContextFacts',
+  'struct OrderPortErrorFacts',
+  'fn order_port_context_facts(',
+  'fn order_checkout_identity_error_facts(',
+  'fn order_error_facts(',
+  'fn log_order_port_failure(',
+  'fn log_order_context_rejection(',
+  'error_variant = facts.error_variant',
+  'text_field_count = facts.text_field_count',
+  'text_total_length = facts.text_total_length',
+  'uuid_field_count = facts.uuid_field_count',
+  'uuid_non_nil_count = facts.uuid_non_nil_count',
+  'opaque_payload_present = facts.opaque_payload_present',
+  'tenant_id_length = context_facts.tenant_id_length',
+  'actor_id_length = context_facts.actor_id_length',
+], 'order bounded diagnostics');
+
 forbidAll(orderCheckoutAdapters, [
   'fn manual_reconciliation(message: impl Into<String>)',
   'PortError::validation("order.validation", message)',
@@ -415,6 +446,8 @@ requireText(inventory, 'correlation_id = %context.correlation_id', 'inventory co
 requireText(inventory, 'storage_unavailable_with_context(&context, owner_operation, error)', 'inventory identity storage mapping');
 requireText(inventory, 'storage_unavailable_with_context(context, owner_operation, error)', 'inventory helper storage mapping');
 requireText(order, 'correlation_id = %context.correlation_id', 'order generic correlation logging');
+requireText(order, 'correlation_id_length = context_facts.correlation_id_length', 'order correlation length diagnostics');
+
 requireText(orderCompensation, 'correlation_id = %context.correlation_id', 'order compensation correlation logging');
 requireText(orderRecovery, 'correlation_id = %context.correlation_id', 'order recovery correlation logging');
 
@@ -642,8 +675,24 @@ const required = [
     'async fn available_quantity<C>(\n    context: &PortContext,',
   ], 'inventory'],
   [order, [
+    'struct OrderPortContextFacts',
+    'struct OrderPortErrorFacts',
+    'fn order_port_context_facts(',
+    'fn order_checkout_identity_error_facts(',
+    'fn order_error_facts(',
+    'fn log_order_port_failure(',
+    'fn log_order_context_rejection(',
     'correlation_id = %context.correlation_id',
-    'tenant_id = %context.tenant_id',
+    'correlation_id_length = context_facts.correlation_id_length',
+    'tenant_id_length = context_facts.tenant_id_length',
+    'actor_kind = context_facts.actor_kind',
+    'actor_id_length = context_facts.actor_id_length',
+    'error_variant = facts.error_variant',
+    'text_field_count = facts.text_field_count',
+    'text_total_length = facts.text_total_length',
+    'uuid_field_count = facts.uuid_field_count',
+    'uuid_non_nil_count = facts.uuid_non_nil_count',
+    'opaque_payload_present = facts.opaque_payload_present',
     'operation = owner_operation',
     'code = "order.checkout_identity_validation"',
     'code = "order.checkout_identity_storage_unavailable"',

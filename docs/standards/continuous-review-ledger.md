@@ -20,6 +20,59 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ---
 
 
+## 2026-09-25 Commerce Store shared HTTP error-envelope hardening
+
+The mounted Store shared HTTP mapper exposed dynamic StoreContext validation/currency
+details and logged full owner errors plus tenant/user/channel identifiers. It now emits
+stable public messages and bounded diagnostics: typed error kind, code/status, identity
+presence/shape, and channel presence/length only. The shared storefront safety verifier
+now requires the bounded contract and rejects the former raw payload patterns.
+
+Maintainer runtime evidence, Cargo build, tests, and verifier execution remain unrun.
+
+## 2026-09-25 Commerce Mounted Store Product runtime capability integrity
+
+`products.rs` is intentionally retained as the compiled legacy Product compatibility source;
+the mounted `/store/products` handler lives in `products_owner_list.rs` and already called
+`runtime.product_storefront_http_read_port()`. The Commerce runtime was missing that delegation,
+leaving an existing owner-read path without its host accessor. The missing delegation is now
+present, and the owner-read verifier explicitly requires it. The legacy source was restored
+exactly to its pre-audit state; no compatibility behavior was changed.
+
+Maintainer runtime evidence, Cargo build, tests, and verifier execution remain unrun.
+
+## 2026-09-25 Commerce Mounted Admin Order Detail owner-port cutover
+
+The mounted `show_order` endpoint was still constructing `PaymentService` and
+`FulfillmentService` directly even though `CommerceHttpRuntime` already mounted the
+canonical `PaymentOrderReadPort` and `FulfillmentReadPort` capabilities. The route now
+uses those owner ports, preserving optional collection/fulfillment reads, and the old
+domain-error mappers were removed after becoming orphaned. The dedicated source verifier
+now requires the typed owner-port handoffs and rejects direct foreign service construction.
+
+Maintainer runtime evidence, Cargo build, tests, and verifier execution remain unrun.
+
+## 2026-09-25 Commerce Order owner-port diagnostic hardening
+
+The Order owner port still emitted complete database/core `Debug` payloads, raw tenant IDs,
+validation text, and lifecycle transition values from checkout identity/completion paths.
+Those diagnostics are now centralized as bounded context and error-shape facts; the public
+PortError envelopes remain stable. The broad ecommerce verifier and canonical fixture now
+require the bounded Order contract and explicitly reject the removed raw patterns.
+
+Maintainer runtime evidence, Cargo build, tests, and verifier execution remain unrun.
+
+## 2026-09-25 Commerce Admin shared HTTP error-envelope hardening
+
+The shared Commerce admin HTTP helper used to accept a generic Debug error and log
+`error = ?error`, and the post-order owner-port branch repeated the same full PortError
+payload. Both paths now retain only stable owner/error-kind/public-code/status facts while
+the public HTTP envelope remains unchanged. The existing admin order/fulfillment verifier
+now requires the bounded helper contract and explicitly rejects the removed generic raw
+error logging.
+
+Maintainer runtime evidence, Cargo build, tests, and verifier execution remain unrun.
+
 ## 2026-09-25 Commerce Tax validation detail hardening
 
 Tax request validation contained one dynamic public detail (`duplicate tax country rule for

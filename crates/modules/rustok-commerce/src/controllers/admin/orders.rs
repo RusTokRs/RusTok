@@ -7,10 +7,8 @@ use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
     TenantContext,
 };
-use rustok_fulfillment::{FulfillmentError, FulfillmentService};
 use rustok_order::error::OrderError;
 use rustok_order::{ListOrderProjectionsRequest, OrderService, ReadOrderProjectionRequest};
-use rustok_payment::{PaymentError, PaymentService};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
@@ -432,14 +430,32 @@ pub async fn show_order(
                 error,
             )
         })?;
-    let payment_collection = PaymentService::new(runtime.db_clone())
-        .find_latest_collection_by_order(tenant.id, id)
+    let payment_context =
+        admin_order_read_port_context(tenant.id, &auth, &request_context, Some(id), "get_order_payment");
+    let payment_collection = runtime
+        .payment_order_read_port()
+        .find_latest_collection_by_order(
+            payment_context.clone(),
+            rustok_payment::LatestPaymentCollectionByOrderRequest { order_id: id },
+        )
         .await
-        .map_err(|error| map_order_detail_payment_error(tenant.id, id, error))?;
-    let fulfillment = FulfillmentService::new(runtime.db_clone())
-        .find_by_order(tenant.id, id)
+        .map_err(|error| map_order_detail_payment_port_error(id, error))?;
+
+    let fulfillment_context = admin_order_read_port_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        Some(id),
+        "get_order_fulfillment",
+    );
+    let fulfillment = runtime
+        .fulfillment_read_port()
+        .find_latest_fulfillment_by_order_projection(
+            fulfillment_context.clone(),
+            rustok_fulfillment::FindLatestFulfillmentByOrderProjectionRequest { order_id: id },
+        )
         .await
-        .map_err(|error| map_order_detail_fulfillment_error(tenant.id, id, error))?;
+        .map_err(|error| map_order_detail_fulfillment_port_error(id, error))?;
 
     Ok(Json(AdminOrderDetailResponse {
         order,
@@ -448,123 +464,120 @@ pub async fn show_order(
     }))
 }
 
-fn map_order_detail_payment_error(
-    tenant_id: Uuid,
-    order_id: Uuid,
-    error: PaymentError,
-) -> HttpError {
-    let (status, code, message, error_kind) = match &error {
-        PaymentError::PaymentCollectionNotFound(_)
-        | PaymentError::PaymentNotFound(_)
-        | PaymentError::RefundNotFound(_) => (
-            axum::http::StatusCode::NOT_FOUND,
-            "commerce_admin_not_found",
-            "Commerce resource not found",
-            "not_found",
-        ),
-        PaymentError::Validation(_) => (
+fn map_order_detail_payment_port_error(order_id: Uuid, error: PortError) -> HttpError {
+    let (status, code, message, error_kind) = match error.kind {
+        PortErrorKind::Validation => (
             axum::http::StatusCode::BAD_REQUEST,
             "commerce_admin_payment_invalid",
             "Payment request is invalid",
             "validation",
         ),
-        PaymentError::InvalidTransition { .. } | PaymentError::ProviderRejected { .. } => (
-            axum::http::StatusCode::CONFLICT,
-            "commerce_admin_payment_state_conflict",
-            "Payment operation conflicts with the current state",
-            "state_conflict",
-        ),
-        PaymentError::ProviderUnavailable { .. } => (
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_payment_provider_unavailable",
-            "Payment provider is temporarily unavailable",
-            "provider_unavailable",
-        ),
-        PaymentError::ProviderInvalidResponse { .. } => (
-            axum::http::StatusCode::BAD_GATEWAY,
-            "commerce_admin_payment_provider_invalid_response",
-            "Payment provider returned an invalid response; reconciliation may be required",
-            "provider_invalid_response",
-        ),
-        PaymentError::ProviderOutcomeUnknown { .. } => (
-            axum::http::StatusCode::CONFLICT,
-            "commerce_admin_payment_reconciliation_required",
-            "Payment provider outcome is unknown and requires reconciliation",
-            "provider_outcome_unknown",
-        ),
-        PaymentError::ProviderConfiguration { .. } => (
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_payment_provider_not_configured",
-            "Payment provider is not configured for this tenant",
-            "provider_configuration",
-        ),
-        PaymentError::Database(_) => (
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_payment_storage_unavailable",
-            "Payment storage is temporarily unavailable",
-            "database",
-        ),
-    };
-    tracing::error!(
-        error = ?error,
-        owner = ADMIN_ORDER_DETAIL_PAYMENT_OWNER,
-        tenant_id = %tenant_id,
-        order_id = %order_id,
-        operation = ADMIN_ORDER_DETAIL_PAYMENT_OPERATION,
-        error_kind,
-        public_code = code,
-        status = %status,
-        boundary = "commerce_admin_order_detail_http",
-        "commerce admin order detail payment lookup failed"
-    );
-    HttpError::new(status, code, message)
-}
-
-fn map_order_detail_fulfillment_error(
-    tenant_id: Uuid,
-    order_id: Uuid,
-    error: FulfillmentError,
-) -> HttpError {
-    let (status, code, message, error_kind) = match &error {
-        FulfillmentError::Validation(_) => (
-            axum::http::StatusCode::BAD_REQUEST,
-            "commerce_admin_fulfillment_invalid",
-            "Fulfillment request is invalid",
-            "validation",
-        ),
-        FulfillmentError::ShippingOptionNotFound(_) | FulfillmentError::FulfillmentNotFound(_) => (
+        PortErrorKind::NotFound => (
             axum::http::StatusCode::NOT_FOUND,
             "commerce_admin_not_found",
             "Commerce resource not found",
             "not_found",
         ),
-        FulfillmentError::InvalidTransition { .. } => (
+        PortErrorKind::Conflict => (
+            axum::http::StatusCode::CONFLICT,
+            "commerce_admin_payment_state_conflict",
+            "Payment operation conflicts with the current state",
+            "state_conflict",
+        ),
+        PortErrorKind::Forbidden => (
+            axum::http::StatusCode::UNAUTHORIZED,
+            "commerce_permission_denied",
+            "Permission denied",
+            "forbidden",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_payment_storage_unavailable",
+            "Payment storage is temporarily unavailable",
+            "unavailable",
+        ),
+        PortErrorKind::InvariantViolation => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_payment_failed",
+            "Payment data could not be read safely",
+            "invariant_violation",
+        ),
+    };
+    tracing::error!(
+        owner = ADMIN_ORDER_DETAIL_PAYMENT_OWNER,
+        order_id = uuid_shape(order_id),
+        operation = ADMIN_ORDER_DETAIL_PAYMENT_OPERATION,
+        error_kind,
+        internal_code_length = error.code.chars().count(),
+        retryable = error.retryable,
+        public_code = code,
+        status = %status,
+        boundary = "commerce_admin_order_detail_http",
+        "commerce admin order detail payment owner-port lookup failed with bounded diagnostics"
+    );
+    HttpError::new(status, code, message)
+}
+
+fn map_order_detail_fulfillment_port_error(
+    order_id: Uuid,
+    error: PortError,
+) -> HttpError {
+    let (status, code, message, error_kind) = match error.kind {
+        PortErrorKind::Validation => (
+            axum::http::StatusCode::BAD_REQUEST,
+            "commerce_admin_fulfillment_invalid",
+            "Fulfillment request is invalid",
+            "validation",
+        ),
+        PortErrorKind::NotFound => (
+            axum::http::StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        PortErrorKind::Conflict => (
             axum::http::StatusCode::CONFLICT,
             "commerce_admin_fulfillment_state_conflict",
             "Fulfillment operation conflicts with the current state",
             "state_conflict",
         ),
-        FulfillmentError::Database(_) => (
+        PortErrorKind::Forbidden => (
+            axum::http::StatusCode::UNAUTHORIZED,
+            "commerce_permission_denied",
+            "Permission denied",
+            "forbidden",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
             "commerce_admin_fulfillment_storage_unavailable",
             "Fulfillment storage is temporarily unavailable",
-            "database",
+            "unavailable",
+        ),
+        PortErrorKind::InvariantViolation => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_fulfillment_failed",
+            "Fulfillment data could not be read safely",
+            "invariant_violation",
         ),
     };
     tracing::error!(
-        error = ?error,
         owner = ADMIN_ORDER_DETAIL_FULFILLMENT_OWNER,
-        tenant_id = %tenant_id,
-        order_id = %order_id,
+        order_id = uuid_shape(order_id),
         operation = ADMIN_ORDER_DETAIL_FULFILLMENT_OPERATION,
         error_kind,
+        internal_code_length = error.code.chars().count(),
+        retryable = error.retryable,
         public_code = code,
         status = %status,
         boundary = "commerce_admin_order_detail_http",
-        "commerce admin order detail fulfillment lookup failed"
+        "commerce admin order detail fulfillment owner-port lookup failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
+
+
+
+
 
 /// Mark admin ecommerce order as paid
 #[utoipa::path(

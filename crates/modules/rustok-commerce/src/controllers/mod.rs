@@ -242,6 +242,12 @@ impl CommerceHttpRuntime {
         self.product_catalog_read_runtime.read_port()
     }
 
+    fn product_storefront_http_read_port(
+        &self,
+    ) -> Option<std::sync::Arc<dyn rustok_product::ProductStorefrontHttpReadPort>> {
+        self.product_catalog_read_runtime.storefront_http_read_port()
+    }
+
     fn product_catalog_command_port(
         &self,
     ) -> std::sync::Arc<dyn rustok_product::ProductCatalogCommandPort> {

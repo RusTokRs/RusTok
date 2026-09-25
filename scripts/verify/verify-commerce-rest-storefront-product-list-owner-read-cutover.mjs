@@ -15,6 +15,7 @@ const mounted = read('crates/modules/rustok-commerce/src/controllers/store/produ
 const legacy = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
 const owner = read('crates/modules/rustok-product/src/storefront_http_read_port.rs');
 const runtime = read('crates/modules/rustok-product/src/runtime.rs');
+const commerceRuntime = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
 const lib = read('crates/modules/rustok-product/src/lib.rs');
 const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
 const record = read(
@@ -122,6 +123,11 @@ const skipIndex = owner.indexOf('.skip(offset as usize)');
 if (visibilityIndex < 0 || skipIndex < 0 || visibilityIndex > skipIndex) {
   failures.push('owner REST compatibility projection must apply channel visibility before pagination');
 }
+
+for (const [value, label] of [
+  ['fn product_storefront_http_read_port(', 'Commerce host Product HTTP owner accessor'],
+  ['self.product_catalog_read_runtime.storefront_http_read_port()', 'Commerce host delegates to Product runtime'],
+]) requireText(commerceRuntime, value, label);
 
 for (const [value, label] of [
   ['storefront_http_read_port: Option<Arc<dyn ProductStorefrontHttpReadPort>>', 'optional runtime capability'],

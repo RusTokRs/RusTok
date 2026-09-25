@@ -19,6 +19,7 @@ function canonicalCartPromotion() {
   return `
 struct CartPromotionOwnerErrorFacts {}
 fn cart_promotion_owner_error_facts() {}
+fn cart_promotion_port_error_kind() {}
 tracing::error!(
   correlation_id = %context.correlation_id,
   tenant_id_length = facts.tenant_id_length,
@@ -26,6 +27,7 @@ tracing::error!(
   actor_id_length = facts.actor_id_length,
   claim_count = facts.claim_count,
   operation = owner_operation,
+  error_kind = cart_promotion_port_error_kind(&error.kind),
   internal_code = %error.code,
   internal_message_present = !error.message.trim().is_empty(),
   internal_message_length = error.message.chars().count(),
@@ -195,7 +197,20 @@ parse_port_tenant_id(&context, "select_shipping_option");
 `;
 }
 
-function canonicalTax() {
+function canonicalTaxPort() {
+  return `
+"tax.currency_code_invalid";
+"tax.negative_policy_rate";
+"tax.validation";
+"tax calculation request is invalid";
+PortError::validation(
+  "tax.validation",
+  "tax calculation request is invalid",
+);
+`;
+}
+
+function canonicalTaxCalculation() {
   return `
 struct TaxCalculationContextFacts {}
 fn tax_calculation_context_facts() {}
@@ -210,18 +225,8 @@ tracing::error!(
   error_message_present = !error.message.is_empty(),
   error_message_length = error.message.chars().count(),
 );
-tracing::warn!(code = "tax.validation");
-"tax.currency_code_invalid";
-"tax.negative_policy_rate";
-"tax.validation";
-"tax calculation request is invalid";
-PortError::validation(
-  "tax.validation",
-  "tax calculation request is invalid",
-);
 `;
 }
-
 function canonicalCustomer() {
   return `
 struct CustomerReadContextFacts {}
@@ -315,13 +320,73 @@ async fn available_quantity<C>(
 
 function canonicalOrder() {
   return `
+struct OrderPortContextFacts {}
+struct OrderPortErrorFacts {}
+fn order_port_context_facts() {}
+fn order_checkout_identity_error_facts() {}
+fn order_error_facts() {}
+fn log_order_port_failure() {}
+fn log_order_context_rejection() {}
 tracing::error!(
+  owner = "rustok_order",
+  owner_operation,
   correlation_id = %context.correlation_id,
-  tenant_id = %context.tenant_id,
-  operation = owner_operation,
-  code = "order.checkout_identity_storage_unavailable",
+  correlation_id_length = context_facts.correlation_id_length,
+  tenant_id_length = context_facts.tenant_id_length,
+  actor_kind = context_facts.actor_kind,
+  actor_id_length = context_facts.actor_id_length,
+  claim_count = context_facts.claim_count,
+  role_count = context_facts.role_count,
+  channel_present = context_facts.channel_present,
+  channel_length = ?context_facts.channel_length,
+  locale_length = context_facts.locale_length,
+  causation_id_present = context_facts.causation_id_present,
+  causation_id_length = ?context_facts.causation_id_length,
+  traceparent_present = context_facts.traceparent_present,
+  traceparent_length = ?context_facts.traceparent_length,
+  idempotency_key_present = context_facts.idempotency_key_present,
+  idempotency_key_length = ?context_facts.idempotency_key_length,
+  deadline_ms = ?context_facts.deadline_ms,
+  code,
+  error_variant = facts.error_variant,
+  text_field_count = facts.text_field_count,
+  text_total_length = facts.text_total_length,
+  uuid_field_count = facts.uuid_field_count,
+  uuid_non_nil_count = facts.uuid_non_nil_count,
+  opaque_payload_present = facts.opaque_payload_present,
+  boundary = ORDER_PORT_BOUNDARY,
+);
+tracing::error!(
+  owner = "rustok_order",
+  owner_operation,
+  correlation_id = %context.correlation_id,
+  correlation_id_length = context_facts.correlation_id_length,
+  tenant_id_length = context_facts.tenant_id_length,
+  actor_kind = context_facts.actor_kind,
+  actor_id_length = context_facts.actor_id_length,
+  claim_count = context_facts.claim_count,
+  role_count = context_facts.role_count,
+  channel_present = context_facts.channel_present,
+  channel_length = ?context_facts.channel_length,
+  locale_length = context_facts.locale_length,
+  causation_id_present = context_facts.causation_id_present,
+  causation_id_length = ?context_facts.causation_id_length,
+  traceparent_present = context_facts.traceparent_present,
+  traceparent_length = ?context_facts.traceparent_length,
+  idempotency_key_present = context_facts.idempotency_key_present,
+  idempotency_key_length = ?context_facts.idempotency_key_length,
+  deadline_ms = ?context_facts.deadline_ms,
+  code,
+  error_variant = facts.error_variant,
+  text_field_count = facts.text_field_count,
+  text_total_length = facts.text_total_length,
+  uuid_field_count = facts.uuid_field_count,
+  uuid_non_nil_count = facts.uuid_non_nil_count,
+  opaque_payload_present = facts.opaque_payload_present,
+  boundary = ORDER_PORT_BOUNDARY,
 );
 tracing::warn!(code = "order.checkout_identity_validation");
+tracing::error!(code = "order.checkout_identity_storage_unavailable");
 tracing::error!(code = "order.database_unavailable");
 tracing::warn!(code = "order.validation");
 tracing::warn!(code = "order.invalid_transition");
@@ -415,11 +480,10 @@ function fixture(options = {}) {
   if (options.removeFulfillmentCorrelation) fulfillment = fulfillment.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
   put(root, 'crates/modules/rustok-fulfillment/src/ports.rs', fulfillment);
 
-  let tax = `${canonicalTax()}${options.taxAppend ?? ''}`;
+  let tax = `${canonicalTaxPort()}${options.taxAppend ?? ''}`;
   put(root, 'crates/modules/rustok-tax/src/ports.rs', tax);
-  let taxCalculation = `${canonicalTax()}${options.taxAppend ?? ''}`;
+  let taxCalculation = `${canonicalTaxCalculation()}${options.taxCalculationAppend ?? ''}`;
   put(root, 'crates/modules/rustok-tax/src/calculation_context.rs', taxCalculation);
-
   let customer = `${canonicalCustomer()}${options.customerAppend ?? ''}`;
   if (options.removeCustomerCorrelation) customer = customer.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
   put(root, 'crates/modules/rustok-customer/src/ports.rs', customer);
@@ -505,7 +569,7 @@ const failureCases = [
   ["raw tax validation cause", { taxAppend: 'PortError::validation("tax.validation", message);' }, /tax public error mapping: forbidden/],
   ["dynamic tax country validation detail", { taxAppend: 'format!("duplicate tax country rule for {country_code}");' }, /tax public error mapping: forbidden/],
   ["display-based tax validation helper", { taxAppend: 'detail: impl std::fmt::Display' }, /tax public error mapping: forbidden/],
-  ["complete tax error diagnostics", { taxAppend: 'tracing::error!(error = ?error);' }, /tax calculation payload diagnostics: forbidden/],
+  ["complete tax error diagnostics", { taxCalculationAppend: 'tracing::error!(error = ?error);' }, /tax calculation payload diagnostics: forbidden/],
   ["raw fulfillment storage cause", { fulfillmentAppend: 'format!("fulfillment storage unavailable: {error}");' }, /fulfillment public error mapping: forbidden/],
   ["complete fulfillment error diagnostics", { fulfillmentAppend: 'tracing::error!(error = ?error);' }, /fulfillment payload diagnostics: forbidden/],
   ["raw fulfillment tenant diagnostics", { fulfillmentAppend: 'tenant_id = %context.tenant_id;' }, /fulfillment payload diagnostics: forbidden/],
@@ -531,6 +595,10 @@ const failureCases = [
   ["identity storage context", { removeInventoryIdentityStorageContext: true }, /inventory identity storage mapping: missing/],
   ["helper storage context", { removeInventoryHelperStorageContext: true }, /inventory helper storage mapping: missing/],
   ["raw generic order validation cause", { orderAppend: 'PortError::validation("order.validation", message);' }, /order generic port public error mapping: forbidden/],
+  ["complete order error diagnostics", { orderAppend: 'tracing::error!(error = ?error);' }, /order generic port payload diagnostics: forbidden/],
+  ["raw order tenant diagnostics", { orderAppend: 'tenant_id = %context.tenant_id;' }, /order generic port payload diagnostics: forbidden/],
+  ["raw order transition diagnostics", { orderAppend: 'from = %from;' }, /order generic port payload diagnostics: forbidden/],
+  ["raw order validation diagnostics", { orderAppend: 'internal_message = %message;' }, /order generic port payload diagnostics: forbidden/],
   ["raw checkout identity validation cause", { orderAppend: 'PortError::validation("order.checkout_identity_validation", message);' }, /order generic port public error mapping: forbidden/],
   ["contextless generic order mapper", { orderAppend: '.map_err(order_error_to_port_error);' }, /order generic port public error mapping: forbidden/],
   ["generic order context disclosure", { orderAppend: '"PortContext.tenant_id must be a UUID for order ports";' }, /order generic port public error mapping: forbidden/],

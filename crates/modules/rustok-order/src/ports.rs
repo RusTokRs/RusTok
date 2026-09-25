@@ -14,6 +14,284 @@ use crate::services::{
 };
 use crate::{OrderError, OrderResponse, OrderService, OrderStatusKind};
 
+const ORDER_PORT_BOUNDARY: &str = "order_port";
+
+struct OrderPortContextFacts {
+    correlation_id_length: usize,
+    tenant_id_length: usize,
+    actor_kind: &'static str,
+    actor_id_length: usize,
+    claim_count: usize,
+    role_count: usize,
+    channel_present: bool,
+    channel_length: Option<usize>,
+    locale_length: usize,
+    causation_id_present: bool,
+    causation_id_length: Option<usize>,
+    traceparent_present: bool,
+    traceparent_length: Option<usize>,
+    idempotency_key_present: bool,
+    idempotency_key_length: Option<usize>,
+    deadline_ms: Option<u64>,
+}
+
+struct OrderPortErrorFacts {
+    error_variant: &'static str,
+    text_field_count: usize,
+    text_total_length: usize,
+    uuid_field_count: usize,
+    uuid_non_nil_count: usize,
+    opaque_payload_present: bool,
+}
+
+fn order_port_context_facts(context: &PortContext) -> OrderPortContextFacts {
+    let actor_kind = match &context.actor.kind {
+        rustok_api::PortActorKind::User => "user",
+        rustok_api::PortActorKind::Service => "service",
+        rustok_api::PortActorKind::System => "system",
+    };
+    OrderPortContextFacts {
+        correlation_id_length: context.correlation_id.chars().count(),
+        tenant_id_length: context.tenant_id.chars().count(),
+        actor_kind,
+        actor_id_length: context.actor.id.chars().count(),
+        claim_count: context.claims.len(),
+        role_count: context.roles.len(),
+        channel_present: context.channel.is_some(),
+        channel_length: context.channel.as_ref().map(|value| value.chars().count()),
+        locale_length: context.locale.chars().count(),
+        causation_id_present: context.causation_id.is_some(),
+        causation_id_length: context
+            .causation_id
+            .as_ref()
+            .map(|value| value.chars().count()),
+        traceparent_present: context.traceparent.is_some(),
+        traceparent_length: context
+            .traceparent
+            .as_ref()
+            .map(|value| value.chars().count()),
+        idempotency_key_present: context.idempotency_key.is_some(),
+        idempotency_key_length: context
+            .idempotency_key
+            .as_ref()
+            .map(|value| value.chars().count()),
+        deadline_ms: context.deadline_ms,
+    }
+}
+
+fn order_checkout_identity_error_facts(
+    error: &OrderCheckoutIdentityError,
+) -> OrderPortErrorFacts {
+    match error {
+        OrderCheckoutIdentityError::Validation(message)
+        | OrderCheckoutIdentityError::Conflict(message) => OrderPortErrorFacts {
+            error_variant: match error {
+                OrderCheckoutIdentityError::Validation(_) => "checkout_identity_validation",
+                OrderCheckoutIdentityError::Conflict(_) => "checkout_identity_conflict",
+                _ => unreachable!(),
+            },
+            text_field_count: 1,
+            text_total_length: message.chars().count(),
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: false,
+        },
+        OrderCheckoutIdentityError::OrderNotFound(id) => OrderPortErrorFacts {
+            error_variant: "checkout_identity_order_not_found",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 1,
+            uuid_non_nil_count: if id.is_nil() { 0 } else { 1 },
+            opaque_payload_present: false,
+        },
+        OrderCheckoutIdentityError::Database(_) => OrderPortErrorFacts {
+            error_variant: "checkout_identity_database",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: true,
+        },
+    }
+}
+
+fn order_error_facts(error: &OrderError) -> OrderPortErrorFacts {
+    match error {
+        OrderError::Validation(message) => OrderPortErrorFacts {
+            error_variant: "validation",
+            text_field_count: 1,
+            text_total_length: message.chars().count(),
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: false,
+        },
+        OrderError::OrderNotFound(id)
+        | OrderError::OrderReturnNotFound(id)
+        | OrderError::OrderChangeNotFound(id) => OrderPortErrorFacts {
+            error_variant: match error {
+                OrderError::OrderNotFound(_) => "order_not_found",
+                OrderError::OrderReturnNotFound(_) => "order_return_not_found",
+                OrderError::OrderChangeNotFound(_) => "order_change_not_found",
+                _ => unreachable!(),
+            },
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 1,
+            uuid_non_nil_count: if id.is_nil() { 0 } else { 1 },
+            opaque_payload_present: false,
+        },
+        OrderError::InvalidTransition { from, to } => OrderPortErrorFacts {
+            error_variant: "invalid_transition",
+            text_field_count: 2,
+            text_total_length: from.chars().count() + to.chars().count(),
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: false,
+        },
+        OrderError::Database(_) => OrderPortErrorFacts {
+            error_variant: "database",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: true,
+        },
+        OrderError::Core(_) => OrderPortErrorFacts {
+            error_variant: "core",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: true,
+        },
+        OrderError::IdempotencyConflict => OrderPortErrorFacts {
+            error_variant: "idempotency_conflict",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: false,
+        },
+        OrderError::CommandReceiptCorrupt => OrderPortErrorFacts {
+            error_variant: "command_receipt_corrupt",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: false,
+        },
+    }
+}
+
+fn log_order_port_failure(
+    context: &PortContext,
+    owner_operation: &'static str,
+    code: &'static str,
+    facts: &OrderPortErrorFacts,
+    technical_failure: bool,
+) {
+    let context_facts = order_port_context_facts(context);
+    if technical_failure {
+        tracing::error!(
+            owner = "rustok_order",
+            owner_operation,
+            correlation_id = %context.correlation_id,
+            correlation_id_length = context_facts.correlation_id_length,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
+            code,
+            error_variant = facts.error_variant,
+            text_field_count = facts.text_field_count,
+            text_total_length = facts.text_total_length,
+            uuid_field_count = facts.uuid_field_count,
+            uuid_non_nil_count = facts.uuid_non_nil_count,
+            opaque_payload_present = facts.opaque_payload_present,
+            boundary = ORDER_PORT_BOUNDARY,
+            "order owner operation failed with bounded diagnostics"
+        );
+    } else {
+        tracing::warn!(
+            owner = "rustok_order",
+            owner_operation,
+            correlation_id = %context.correlation_id,
+            correlation_id_length = context_facts.correlation_id_length,
+            tenant_id_length = context_facts.tenant_id_length,
+            actor_kind = context_facts.actor_kind,
+            actor_id_length = context_facts.actor_id_length,
+            claim_count = context_facts.claim_count,
+            role_count = context_facts.role_count,
+            channel_present = context_facts.channel_present,
+            channel_length = ?context_facts.channel_length,
+            locale_length = context_facts.locale_length,
+            causation_id_present = context_facts.causation_id_present,
+            causation_id_length = ?context_facts.causation_id_length,
+            traceparent_present = context_facts.traceparent_present,
+            traceparent_length = ?context_facts.traceparent_length,
+            idempotency_key_present = context_facts.idempotency_key_present,
+            idempotency_key_length = ?context_facts.idempotency_key_length,
+            deadline_ms = ?context_facts.deadline_ms,
+            code,
+            error_variant = facts.error_variant,
+            text_field_count = facts.text_field_count,
+            text_total_length = facts.text_total_length,
+            uuid_field_count = facts.uuid_field_count,
+            uuid_non_nil_count = facts.uuid_non_nil_count,
+            opaque_payload_present = facts.opaque_payload_present,
+            boundary = ORDER_PORT_BOUNDARY,
+            "order owner operation was rejected with bounded diagnostics"
+        );
+    }
+}
+
+fn log_order_context_rejection(
+    context: &PortContext,
+    owner_operation: &'static str,
+    code: &'static str,
+    parse_target: &'static str,
+) {
+    let context_facts = order_port_context_facts(context);
+    tracing::warn!(
+        owner = "rustok_order",
+        owner_operation,
+        correlation_id = %context.correlation_id,
+        correlation_id_length = context_facts.correlation_id_length,
+        tenant_id_length = context_facts.tenant_id_length,
+        actor_kind = context_facts.actor_kind,
+        actor_id_length = context_facts.actor_id_length,
+        claim_count = context_facts.claim_count,
+        role_count = context_facts.role_count,
+        channel_present = context_facts.channel_present,
+        channel_length = ?context_facts.channel_length,
+        locale_length = context_facts.locale_length,
+        causation_id_present = context_facts.causation_id_present,
+        causation_id_length = ?context_facts.causation_id_length,
+        traceparent_present = context_facts.traceparent_present,
+        traceparent_length = ?context_facts.traceparent_length,
+        idempotency_key_present = context_facts.idempotency_key_present,
+        idempotency_key_length = ?context_facts.idempotency_key_length,
+        deadline_ms = ?context_facts.deadline_ms,
+        code,
+        parse_target,
+        parse_failed = true,
+        boundary = ORDER_PORT_BOUNDARY,
+        "order port context was rejected with bounded diagnostics"
+    );
+}
+
+
 /// Transport-neutral order-owner boundary for durable checkout identity.
 #[async_trait]
 pub trait CheckoutOrderIdentityPort: Send + Sync {
@@ -162,14 +440,21 @@ impl CheckoutOrderIdentityPort for InProcessCheckoutOrderIdentityPort {
             request.checkout_operation_id,
         )
         .await
-        .map_err(|error| {
-            tracing::error!(
-                error = ?error,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "order.checkout_identity_storage_unavailable",
-                "failed to read legacy order checkout identity"
+        .map_err(|_| {
+            let facts = OrderPortErrorFacts {
+                error_variant: "checkout_identity_storage",
+                text_field_count: 0,
+                text_total_length: 0,
+                uuid_field_count: 0,
+                uuid_non_nil_count: 0,
+                opaque_payload_present: true,
+            };
+            log_order_port_failure(
+                context,
+                owner_operation,
+                "order.checkout_identity_storage_unavailable",
+                &facts,
+                true,
             );
             PortError::unavailable(
                 "order.checkout_identity_storage_unavailable",
@@ -332,67 +617,41 @@ fn order_checkout_identity_error_to_port_error(
     owner_operation: &'static str,
     error: OrderCheckoutIdentityError,
 ) -> PortError {
+    let facts = order_checkout_identity_error_facts(&error);
+    let (code, technical_failure) = match &error {
+        OrderCheckoutIdentityError::Validation(_) => ("order.checkout_identity_validation", false),
+        OrderCheckoutIdentityError::Conflict(_) => ("order.checkout_identity_conflict", false),
+        OrderCheckoutIdentityError::OrderNotFound(_) => {
+            ("order.checkout_identity_order_not_found", false)
+        }
+        OrderCheckoutIdentityError::Database(_) => (
+            "order.checkout_identity_storage_unavailable",
+            true,
+        ),
+    };
+    log_order_port_failure(context, owner_operation, code, &facts, technical_failure);
     match error {
-        OrderCheckoutIdentityError::Validation(message) => {
-            tracing::warn!(
-                internal_message = %message,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "order.checkout_identity_validation",
-                "checkout order identity validation failed"
-            );
-            PortError::validation(
-                "order.checkout_identity_validation",
-                "checkout order identity request is invalid",
-            )
-        }
-        OrderCheckoutIdentityError::Conflict(message) => {
-            tracing::warn!(
-                internal_message = %message,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "order.checkout_identity_conflict",
-                "checkout order identity conflicts with an existing binding"
-            );
-            PortError::conflict(
-                "order.checkout_identity_conflict",
-                "checkout order identity conflicts with an existing order binding",
-            )
-        }
-        OrderCheckoutIdentityError::OrderNotFound(order_id) => {
-            tracing::warn!(
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "order.checkout_identity_order_not_found",
-                order_id = %order_id,
-                "order for checkout identity was not found"
-            );
-            PortError::new(
-                rustok_api::PortErrorKind::NotFound,
-                "order.checkout_identity_order_not_found",
-                "order for checkout identity was not found",
-                false,
-            )
-        }
-        OrderCheckoutIdentityError::Database(error) => {
-            tracing::error!(
-                error = ?error,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "order.checkout_identity_storage_unavailable",
-                "order checkout identity storage failed"
-            );
-            PortError::unavailable(
-                "order.checkout_identity_storage_unavailable",
-                "order checkout identity storage is temporarily unavailable",
-            )
-        }
+        OrderCheckoutIdentityError::Validation(_) => PortError::validation(
+            "order.checkout_identity_validation",
+            "checkout order identity request is invalid",
+        ),
+        OrderCheckoutIdentityError::Conflict(_) => PortError::conflict(
+            "order.checkout_identity_conflict",
+            "checkout order identity conflicts with an existing order binding",
+        ),
+        OrderCheckoutIdentityError::OrderNotFound(_) => PortError::new(
+            rustok_api::PortErrorKind::NotFound,
+            "order.checkout_identity_order_not_found",
+            "order for checkout identity was not found",
+            false,
+        ),
+        OrderCheckoutIdentityError::Database(_) => PortError::unavailable(
+            "order.checkout_identity_storage_unavailable",
+            "order checkout identity storage is temporarily unavailable",
+        ),
     }
 }
+
 
 /// Transport-neutral owner boundary for checkout completion and recovery reads.
 #[async_trait]
@@ -953,14 +1212,12 @@ fn parse_port_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.trim()).map_err(|error| {
-        tracing::warn!(
-            error = ?error,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            operation = owner_operation,
-            code = "order.tenant_id_invalid",
-            "order tenant context is invalid"
+    Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
+        log_order_context_rejection(
+            context,
+            owner_operation,
+            "order.tenant_id_invalid",
+            "tenant_id",
         );
         PortError::validation(
             "order.tenant_id_invalid",
@@ -969,48 +1226,45 @@ fn parse_port_tenant_id(
     })
 }
 
+
 fn parse_port_actor_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.actor.id.trim()).map_err(|error| {
-        tracing::warn!(
-            error = ?error,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            operation = owner_operation,
-            code = "order.actor_id_invalid",
-            "order actor context is invalid"
+    Uuid::parse_str(context.actor.id.trim()).map_err(|_| {
+        log_order_context_rejection(
+            context,
+            owner_operation,
+            "order.actor_id_invalid",
+            "actor_id",
         );
         PortError::validation("order.actor_id_invalid", "order request context is invalid")
     })
 }
+
 
 fn parse_checkout_operation_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
     let value = context.causation_id.as_deref().ok_or_else(|| {
-        tracing::warn!(
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            operation = owner_operation,
-            code = "order.checkout_operation_id_required",
-            "checkout operation context is missing"
+        log_order_context_rejection(
+            context,
+            owner_operation,
+            "order.checkout_operation_id_required",
+            "causation_id",
         );
         PortError::validation(
             "order.checkout_operation_id_required",
             "order request context is invalid",
         )
     })?;
-    Uuid::parse_str(value).map_err(|error| {
-        tracing::warn!(
-            error = ?error,
-            correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
-            operation = owner_operation,
-            code = "order.checkout_operation_id_invalid",
-            "checkout operation context is invalid"
+    Uuid::parse_str(value).map_err(|_| {
+        log_order_context_rejection(
+            context,
+            owner_operation,
+            "order.checkout_operation_id_invalid",
+            "causation_id",
         );
         PortError::validation(
             "order.checkout_operation_id_invalid",
@@ -1018,6 +1272,7 @@ fn parse_checkout_operation_id(
         )
     })
 }
+
 
 fn checkout_request_hashes(
     context: &PortContext,
@@ -1036,13 +1291,18 @@ fn checkout_request_hashes(
         "adjustments": request.adjustments,
         "tax_lines": request.tax_lines,
     });
-    let full_request = serde_json::to_value(request).map_err(|error| {
+    let full_request = serde_json::to_value(request).map_err(|_| {
+        let facts = order_port_context_facts(context);
         tracing::error!(
-            error = ?error,
+            owner = "rustok_order",
+            owner_operation,
             correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
+            correlation_id_length = facts.correlation_id_length,
+            tenant_id_length = facts.tenant_id_length,
             operation = owner_operation,
             code = "order.checkout_request_encoding_failed",
+            encoding_failed = true,
+            boundary = ORDER_PORT_BOUNDARY,
             "failed to encode checkout completion request"
         );
         PortError::new(
@@ -1058,30 +1318,39 @@ fn checkout_request_hashes(
     ))
 }
 
+
 fn hash_json(
     context: &PortContext,
     owner_operation: &'static str,
     value: Value,
 ) -> Result<String, PortError> {
     let canonical = canonicalize_json(value);
-    let bytes = serde_json::to_vec(&canonical).map_err(|error| {
+    let bytes = serde_json::to_vec(&canonical).map_err(|_| {
+        let facts = order_port_context_facts(context);
         tracing::error!(
-            error = ?error,
+            owner = "rustok_order",
+            owner_operation,
             correlation_id = %context.correlation_id,
-            tenant_id = %context.tenant_id,
+            correlation_id_length = facts.correlation_id_length,
+            tenant_id_length = facts.tenant_id_length,
             operation = owner_operation,
             code = "order.checkout_request_encoding_failed",
+            encoding_failed = true,
+            boundary = ORDER_PORT_BOUNDARY,
             "failed to encode canonical checkout request"
         );
         PortError::new(
             rustok_api::PortErrorKind::InvariantViolation,
             "order.checkout_request_encoding_failed",
-            "checkout completion request could not be encoded",
+            "checkout request could not be encoded",
             false,
         )
     })?;
-    Ok(hex::encode(Sha256::digest(bytes)))
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    Ok(format!("{:x}", hasher.finalize()))
 }
+
 
 fn canonicalize_json(value: Value) -> Value {
     match value {
@@ -1196,123 +1465,60 @@ fn order_error_to_port_error(
     owner_operation: &'static str,
     error: OrderError,
 ) -> PortError {
+    let facts = order_error_facts(&error);
+    let (code, technical_failure) = match &error {
+        OrderError::Database(_) => ("order.database_unavailable", true),
+        OrderError::OrderNotFound(_) => ("order.order_not_found", false),
+        OrderError::Validation(_) => ("order.validation", false),
+        OrderError::InvalidTransition { .. } => ("order.invalid_transition", false),
+        OrderError::OrderReturnNotFound(_) | OrderError::OrderChangeNotFound(_) => {
+            ("order.related_resource_not_found", false)
+        }
+        OrderError::Core(_) => ("order.invariant_violation", true),
+        OrderError::IdempotencyConflict => ("order.idempotency_conflict", false),
+        OrderError::CommandReceiptCorrupt => ("order.command_receipt_corrupt", true),
+    };
+    log_order_port_failure(context, owner_operation, code, &facts, technical_failure);
     match error {
-        OrderError::Database(error) => {
-            tracing::error!(
-                error = ?error,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "order.database_unavailable",
-                "order storage operation failed"
-            );
-            PortError::unavailable(
-                "order.database_unavailable",
-                "order storage is temporarily unavailable",
-            )
-        }
-        OrderError::OrderNotFound(order_id) => {
-            tracing::warn!(
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "order.order_not_found",
-                order_id = %order_id,
-                "order was not found"
-            );
-            PortError::new(
-                rustok_api::PortErrorKind::NotFound,
-                "order.order_not_found",
-                "order was not found",
-                false,
-            )
-        }
-        OrderError::Validation(message) => {
-            tracing::warn!(
-                internal_message = %message,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "order.validation",
-                "order request validation failed"
-            );
+        OrderError::Database(_) => PortError::unavailable(
+            "order.database_unavailable",
+            "order storage is temporarily unavailable",
+        ),
+        OrderError::OrderNotFound(_) => PortError::new(
+            rustok_api::PortErrorKind::NotFound,
+            "order.order_not_found",
+            "order was not found",
+            false,
+        ),
+        OrderError::Validation(_) => {
             PortError::validation("order.validation", "order request is invalid")
         }
-        OrderError::InvalidTransition { from, to } => {
-            tracing::warn!(
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "order.invalid_transition",
-                from = %from,
-                to = %to,
-                "order lifecycle transition conflicts with the current state"
-            );
-            PortError::conflict(
-                "order.invalid_transition",
-                "order lifecycle transition conflicts with the current state",
-            )
-        }
-        OrderError::OrderReturnNotFound(resource_id)
-        | OrderError::OrderChangeNotFound(resource_id) => {
-            tracing::warn!(
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "order.related_resource_not_found",
-                resource_id = %resource_id,
-                "related order resource was not found"
-            );
-            PortError::new(
-                rustok_api::PortErrorKind::NotFound,
-                "order.related_resource_not_found",
-                "related order resource was not found",
-                false,
-            )
-        }
-        OrderError::Core(error) => {
-            tracing::error!(
-                error = ?error,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "order.invariant_violation",
-                "order core operation failed"
-            );
-            PortError::new(
-                rustok_api::PortErrorKind::InvariantViolation,
-                "order.invariant_violation",
-                "order operation failed an internal invariant",
-                false,
-            )
-        }
-        OrderError::IdempotencyConflict => {
-            tracing::warn!(
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "order.idempotency_conflict",
-                "order operation conflicts with an existing idempotency key"
-            );
-            PortError::conflict(
-                "order.idempotency_conflict",
-                "order operation conflicts with an existing idempotency key",
-            )
-        }
-        OrderError::CommandReceiptCorrupt => {
-            tracing::error!(
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                operation = owner_operation,
-                code = "order.command_receipt_corrupt",
-                "order command receipt requires operator review"
-            );
-            PortError::new(
-                rustok_api::PortErrorKind::InvariantViolation,
-                "order.command_receipt_corrupt",
-                "order command receipt requires operator review",
-                false,
-            )
-        }
+        OrderError::InvalidTransition { .. } => PortError::conflict(
+            "order.invalid_transition",
+            "order lifecycle transition conflicts with the current state",
+        ),
+        OrderError::OrderReturnNotFound(_) | OrderError::OrderChangeNotFound(_) => PortError::new(
+            rustok_api::PortErrorKind::NotFound,
+            "order.related_resource_not_found",
+            "related order resource was not found",
+            false,
+        ),
+        OrderError::Core(_) => PortError::new(
+            rustok_api::PortErrorKind::InvariantViolation,
+            "order.invariant_violation",
+            "order operation failed an internal invariant",
+            false,
+        ),
+        OrderError::IdempotencyConflict => PortError::conflict(
+            "order.idempotency_conflict",
+            "order operation conflicts with an existing idempotency key",
+        ),
+        OrderError::CommandReceiptCorrupt => PortError::new(
+            rustok_api::PortErrorKind::InvariantViolation,
+            "order.command_receipt_corrupt",
+            "order command receipt requires operator review",
+            false,
+        ),
     }
 }
+

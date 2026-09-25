@@ -26,7 +26,60 @@ Last reviewed: 2026-09-25
 - [x] Extend `verify-commerce-fulfillment-requirement-boundary.mjs` with the Payment runtime-composition guard.
 - [ ] Execute the Commerce/server Rust test suites and the static verifier against a repository checkout; this environment cannot run the repository build because the GitHub source is not mounted locally.
 
-## Audit 2026-09-25: Tax port error-envelope hardening## Audit 2026-09-25: Tax validation detail hardening
+## Audit 2026-09-25: Tax port error-envelope hardening## Audit 2026-09-25: Tax validation detail hardening## Audit 2026-09-25: Admin shared HTTP error-envelope hardening## Audit 2026-09-25: Order owner port diagnostic hardening## Audit 2026-09-25: Mounted Admin Order Detail owner-port cutover## Audit 2026-09-25: Mounted Store Product runtime capability integrity## Audit 2026-09-25: Store shared HTTP error-envelope hardening
+
+- [x] Replace StoreContext validation/currency public messages with stable envelopes; internal
+  `StoreContextError` details are no longer exposed by the mounted shared HTTP mapper.
+- [x] Remove full StoreContextError, Customer PortError, tenant/user identities, and channel
+  identifiers/slugs from shared storefront diagnostics; retain only bounded shape/kind facts.
+- [x] Update `verify-commerce-storefront-shared-http-error-safety.mjs` to require the bounded
+  diagnostic contract and explicitly forbid the removed raw payload patterns.
+- [ ] Continue the mounted Store/Admin non-PortError envelope audit across remaining controllers.
+
+
+
+- [x] Restore `crates/modules/rustok-commerce/src/controllers/store/products.rs` to its
+  explicit legacy compatibility source; the mounted route remains `products_owner_list.rs`.
+- [x] Add the missing `CommerceHttpRuntime::product_storefront_http_read_port()` delegation
+  required by the already-mounted Product owner-list handler.
+- [x] Extend the Product REST owner-read verifier to require the Commerce runtime accessor
+  so this source-integrity blocker cannot recur while legacy compatibility source remains intact.
+- [ ] Continue the mounted Commerce route audit for any remaining foreign owner construction.
+
+
+
+- [x] Replace the mounted `show_order` PaymentService/FulfillmentService direct constructions
+  with the existing `PaymentOrderReadPort` and `FulfillmentReadPort` capabilities from
+  `CommerceHttpRuntime`, preserving the existing optional payment/fulfillment read semantics.
+- [x] Remove the now-orphaned domain-level order-detail PaymentError/FulfillmentError
+  mappers and their diagnostic facts rather than retaining a divergent second mapping path.
+- [x] Extend `verify-commerce-admin-order-detail-fulfillment-error-safety.mjs` to require
+  owner read-port handoffs and forbid direct foreign owner construction and obsolete mappers.
+- [ ] Audit the remaining mounted Commerce controllers for direct foreign owner service
+  construction and migrate each live path to its canonical owner capability.
+
+
+
+- [x] Remove complete `DbErr`/`OrderError` debug payloads and raw tenant/transition/validation
+  values from checkout-identity and checkout-completion owner-port diagnostics.
+- [x] Centralize Order owner diagnostic facts into bounded context/error-shape helpers covering
+  validation text length, resource UUID shape, transition field lengths, and opaque causes.
+- [x] Extend the broad ecommerce public-port verifier and canonical fixture regression coverage
+  to require the bounded Order diagnostics and reject the former raw patterns.
+- [ ] Continue the same audit for remaining non-PortError envelopes and compatibility adapters.
+
+
+
+- [x] Remove generic Debug-based raw error logging from the shared Commerce admin HTTP
+  envelope helper; it now records only stable owner/error-kind/public-code/status facts.
+- [x] Remove the remaining full PortError debug payload from post-order owner-port error
+  handling in the same shared admin module.
+- [x] Update the existing admin order/fulfillment HTTP safety verifier so this shared
+  helper is required to remain bounded and raw Debug logging is explicitly forbidden.
+- [ ] Continue the broader non-PortError public-envelope audit across mounted REST/GraphQL
+  and client transport adapters.
+
+
 
 - [x] Make the Tax request-validation helper accept only static public detail, eliminating
   accidental future `Display`/formatted-input leakage through `PortError::Validation`.
@@ -290,7 +343,6 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   matching from critical checkout, compensation, order, payment, and fulfillment paths.
   The 2026-09-25 slice now covers FulfillmentAdminCommandPort plus Commerce fulfillment
   orchestration/facade lifecycle checks; remaining critical paths still require cutover.
-  matching from critical checkout, compensation, order, payment, and fulfillment paths.
 
 ## Audit 2026-07-27: standalone dependency and topology P0
 
