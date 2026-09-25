@@ -401,6 +401,9 @@ impl CatalogService {
             seller_id: product.seller_id,
             vendor: product.vendor,
             product_type: product.product_type,
+            fulfillment_requirement: ProductFulfillmentRequirement::from_product_type(
+                product.product_type.as_deref(),
+            ),
             shipping_profile_slug: product
                 .shipping_profile_slug
                 .clone()

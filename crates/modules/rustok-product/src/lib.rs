@@ -26,6 +26,7 @@ pub mod migrations;
 pub mod ports;
 mod public_error;
 mod runtime;
+pub mod fulfillment;
 mod seo_targets;
 pub mod services;
 mod storefront_http_read_port;
@@ -35,6 +36,7 @@ mod variant_translation_progress_target;
 mod variant_translation_target;
 
 pub use catalog_command_port::ProductCatalogCommandPort;
+pub use fulfillment::ProductFulfillmentRequirement;
 pub use catalog_schema_read_port::{
     ProductAttributeValuesRequest, ProductCatalogSchemaReadPort,
     ProductEffectiveFormAttributeProjection, ProductEffectiveFormProjection,

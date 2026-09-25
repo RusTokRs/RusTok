@@ -36,6 +36,13 @@ impl From<GqlProductStatus> for ProductStatus {
 ///
 /// For pricing-authoritative reads with explicit currency/region/price-list/channel
 /// context, use `adminPricingProduct` or `storefrontPricingProduct`.
+#[derive(async_graphql::Enum, Copy, Clone, Eq, PartialEq)]
+#[graphql(rename_items = "snake_case")]
+pub enum GqlFulfillmentRequirement {
+    Digital,
+    Physical,
+}
+
 #[derive(SimpleObject)]
 pub struct GqlProduct {
     pub id: Uuid,
@@ -43,6 +50,7 @@ pub struct GqlProduct {
     pub seller_id: Option<String>,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
+    pub fulfillment_requirement: GqlFulfillmentRequirement,
     pub shipping_profile_slug: Option<String>,
     pub primary_category_id: Option<Uuid>,
     pub tags: Vec<String>,
@@ -1678,6 +1686,14 @@ impl From<dto::ProductResponse> for GqlProduct {
             seller_id: product.seller_id,
             vendor: product.vendor,
             product_type: product.product_type,
+            fulfillment_requirement: match product.fulfillment_requirement {
+                rustok_product::ProductFulfillmentRequirement::Digital => {
+                    GqlFulfillmentRequirement::Digital
+                }
+                rustok_product::ProductFulfillmentRequirement::Physical => {
+                    GqlFulfillmentRequirement::Physical
+                }
+            },
             shipping_profile_slug: product.shipping_profile_slug,
             primary_category_id: product.primary_category_id,
             tags: product.tags,

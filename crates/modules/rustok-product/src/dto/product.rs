@@ -9,6 +9,7 @@ use super::{
     CreateVariantInput, VariantAxisConfigResponse, VariantAxisInput, VariantResponse,
 };
 use crate::entities::product::ProductStatus;
+use crate::fulfillment::ProductFulfillmentRequirement;
 
 fn deserialize_tenant_locale<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
@@ -104,6 +105,7 @@ pub struct ProductResponse {
     pub seller_id: Option<String>,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
+    pub fulfillment_requirement: ProductFulfillmentRequirement,
     pub shipping_profile_slug: Option<String>,
     pub primary_category_id: Option<Uuid>,
     pub tags: Vec<String>,
