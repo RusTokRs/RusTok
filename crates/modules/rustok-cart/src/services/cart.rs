@@ -175,15 +175,18 @@ impl CartService {
             None => load_tenant_default_locale(&txn, tenant_id).await?,
         };
         let line_item_id = generate_id();
+        let shipping_profile_slug = normalize_line_item_shipping_profile(
+            input.fulfillment_requirement,
+            input.shipping_profile_slug.as_deref(),
+        )?;
 
         entities::cart_line_item::ActiveModel {
             id: Set(line_item_id),
             cart_id: Set(cart_id),
             product_id: Set(input.product_id),
             variant_id: Set(input.variant_id),
-            shipping_profile_slug: Set(normalize_shipping_profile_slug(
-                input.shipping_profile_slug.as_deref(),
-            )),
+            fulfillment_requirement: Set(input.fulfillment_requirement.as_str().to_string()),
+            shipping_profile_slug: Set(shipping_profile_slug.clone().unwrap_or_default()),
             sku: Set(input.sku),
             quantity: Set(input.quantity),
             unit_price: Set(input.unit_price),
@@ -239,9 +242,7 @@ impl CartService {
                     total_amount: Set(subtotal_amount),
                     pricing_reference: Set(None),
                     inventory_reference: Set(None),
-                    fulfillment_profile_slug: Set(Some(normalize_shipping_profile_slug(
-                        input.shipping_profile_slug.as_deref(),
-                    ))),
+                    fulfillment_profile_slug: Set(shipping_profile_slug.clone()),
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
                 }
