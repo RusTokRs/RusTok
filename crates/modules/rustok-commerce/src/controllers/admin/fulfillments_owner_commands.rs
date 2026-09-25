@@ -408,6 +408,7 @@ pub async fn show_fulfillment(
     post,
     path = "/admin/fulfillments",
     tag = "admin",
+    params(("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes")),
     request_body = CreateFulfillmentInput,
     responses(
         (status = 201, description = "Fulfillment created", body = FulfillmentResponse),
@@ -458,7 +459,10 @@ pub async fn create_fulfillment(
     post,
     path = "/admin/fulfillments/{id}/ship",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Fulfillment ID")),
+    params(
+        ("id" = Uuid, Path, description = "Fulfillment ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
+    ),
     request_body = ShipFulfillmentInput,
     responses(
         (status = 200, description = "Fulfillment shipped", body = FulfillmentResponse),
@@ -516,7 +520,10 @@ pub async fn ship_fulfillment(
     post,
     path = "/admin/fulfillments/{id}/deliver",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Fulfillment ID")),
+    params(
+        ("id" = Uuid, Path, description = "Fulfillment ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
+    ),
     request_body = DeliverFulfillmentInput,
     responses(
         (status = 200, description = "Fulfillment delivered", body = FulfillmentResponse),
@@ -574,7 +581,10 @@ pub async fn deliver_fulfillment(
     post,
     path = "/admin/fulfillments/{id}/reopen",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Fulfillment ID")),
+    params(
+        ("id" = Uuid, Path, description = "Fulfillment ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
+    ),
     request_body = ReopenFulfillmentInput,
     responses(
         (status = 200, description = "Fulfillment reopened", body = FulfillmentResponse),
@@ -632,7 +642,10 @@ pub async fn reopen_fulfillment(
     post,
     path = "/admin/fulfillments/{id}/reship",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Fulfillment ID")),
+    params(
+        ("id" = Uuid, Path, description = "Fulfillment ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
+    ),
     request_body = ReshipFulfillmentInput,
     responses(
         (status = 200, description = "Fulfillment marked for reship", body = FulfillmentResponse),
@@ -690,7 +703,10 @@ pub async fn reship_fulfillment(
     post,
     path = "/admin/fulfillments/{id}/cancel",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Fulfillment ID")),
+    params(
+        ("id" = Uuid, Path, description = "Fulfillment ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
+    ),
     request_body = CancelFulfillmentInput,
     responses(
         (status = 200, description = "Fulfillment cancelled", body = FulfillmentResponse),
