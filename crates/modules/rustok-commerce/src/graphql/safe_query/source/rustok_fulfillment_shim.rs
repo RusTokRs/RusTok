@@ -58,5 +58,7 @@ impl ShippingOptionAdminQueryError {
     }
 }
 
-include!("fulfillment_query_service.rs");
-include!("fulfillment_query_boundary.rs");
+mod fulfillment_query_boundary;
+mod fulfillment_query_service;
+
+pub(crate) use fulfillment_query_service::FulfillmentService;
