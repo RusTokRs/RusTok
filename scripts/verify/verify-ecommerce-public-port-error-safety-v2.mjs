@@ -557,6 +557,21 @@ requireAll(marketplacePayoutService, [
   '"marketplace ledger requires operator review"',
 ], 'marketplace payout ledger-boundary classification');
 
+requireAll(marketplacePayoutError, [
+  'MarketplaceLedgerBoundaryKind',
+  'kind: MarketplaceLedgerBoundaryKind',
+], 'marketplace payout error-kind contract');
+
+requireAll(marketplacePayoutPorts, [
+  'MarketplaceLedgerBoundaryKind::Validation',
+  'MarketplaceLedgerBoundaryKind::NotFound',
+  'MarketplaceLedgerBoundaryKind::Conflict',
+  'MarketplaceLedgerBoundaryKind::Forbidden',
+  'MarketplaceLedgerBoundaryKind::Unavailable',
+  'MarketplaceLedgerBoundaryKind::Timeout',
+  'MarketplaceLedgerBoundaryKind::InvariantViolation',
+], 'marketplace payout port error-kind preservation');
+
 if (failures.length > 0) {
   console.error('Scoped ecommerce public port error safety verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
