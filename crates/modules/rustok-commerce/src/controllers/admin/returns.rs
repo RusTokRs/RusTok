@@ -1,13 +1,12 @@
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
 };
 use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
     TenantContext,
 };
-use rustok_order::{CreateOrderReturnRequest, CancelOrderReturnRequest};
 use rustok_order::error::OrderError;
 use rustok_payment::error::PaymentError;
 use rustok_web::{HttpError, HttpResult};
@@ -16,9 +15,9 @@ use uuid::Uuid;
 use super::{
     super::{
         CommerceHttpRuntime,
-        common::{PaginatedResponse, ensure_permissions},
+        common::ensure_permissions,
     },
-    AdminCompleteOrderReturnInput, ListOrderReturnsParams,
+    AdminCompleteOrderReturnInput,
 };
 use crate::{
     CompleteReturnClaimInput, CompleteReturnExchangeInput, CompleteReturnRefundInput,
@@ -26,9 +25,7 @@ use crate::{
     PostOrderOrchestrationError, ReturnCompletionOrchestrationService,
     ReturnDecisionOwnerOrchestrationError, ReturnDecisionOwnerOrchestrationService,
     ReturnDecisionResponse,
-    dto::{
-        CancelOrderReturnInput, CreateOrderReturnInput, ListOrderReturnsInput, OrderReturnResponse,
-    },
+    dto::OrderReturnResponse,
 };
 
 const ADMIN_ORDER_RETURN_OWNER: &str = "rustok_order.admin_returns";
@@ -505,47 +502,6 @@ fn map_admin_order_return_orchestration_error(
 
 #[utoipa::path(
     post,
-    path = "/admin/orders/{id}/returns",
-    tag = "admin",
-    params(("id" = Uuid, Path, description = "Order ID")),
-    request_body = CreateOrderReturnInput,
-    responses(
-        (status = 201, description = "Return created", body = OrderReturnResponse),
-        (status = 401, description = "Unauthorized"),
-        (status = 404, description = "Order not found")
-    )
-)]
-pub async fn create_order_return(
-    State(runtime): State<CommerceHttpRuntime>,
-    tenant: TenantContext,
-    auth: AuthContext,
-    Path(id): Path<Uuid>,
-    Json(input): Json<CreateOrderReturnInput>,
-) -> HttpResult<(StatusCode, Json<OrderReturnResponse>)> {
-    ensure_permissions(
-        &auth,
-        &[Permission::ORDERS_UPDATE],
-        "Permission denied: orders:update required",
-    )?;
-    let context = AdminOrderReturnErrorContext::new(
-        tenant.id,
-        Some(id),
-        None,
-        "create_return",
-    );
-    let created = runtime
-        .order_post_order_command_port()
-        .create_return(
-            admin_order_return_port_context(tenant.id, auth.user_id, "create_return", id, true),
-            CreateOrderReturnRequest { order_id: id, input },
-        )
-        .await
-        .map_err(|error| map_admin_order_return_port_error(&context, error))?;
-    Ok((StatusCode::CREATED, Json(created)))
-}
-
-#[utoipa::path(
-    post,
     path = "/admin/orders/{id}/returns/decision",
     tag = "admin",
     params(("id" = Uuid, Path, description = "Order ID")),
@@ -626,101 +582,6 @@ pub async fn create_order_return_decision(
 }
 
 #[utoipa::path(
-    get,
-    path = "/admin/returns",
-    tag = "admin",
-    params(ListOrderReturnsParams),
-    responses(
-        (status = 200, description = "Returns", body = PaginatedResponse<OrderReturnResponse>),
-        (status = 401, description = "Unauthorized")
-    )
-)]
-pub async fn list_order_returns(
-    State(runtime): State<CommerceHttpRuntime>,
-    tenant: TenantContext,
-    auth: AuthContext,
-    Query(params): Query<ListOrderReturnsParams>,
-) -> HttpResult<Json<PaginatedResponse<OrderReturnResponse>>> {
-    ensure_permissions(
-        &auth,
-        &[Permission::ORDERS_READ],
-        "Permission denied: orders:read required",
-    )?;
-    let pagination = params.pagination.unwrap_or_default();
-    let order_id = params.order_id;
-    let context = AdminOrderReturnErrorContext::new(
-        tenant.id,
-        order_id,
-        None,
-        "list_returns",
-    );
-    let page = runtime
-        .order_read_port()
-        .list_order_return_projections(
-            admin_order_return_port_context(
-                tenant.id,
-                auth.user_id,
-                "list_returns",
-                order_id.unwrap_or(tenant.id),
-                false,
-            ),
-            rustok_order::ListOrderReturnProjectionsRequest {
-                page: pagination.page,
-                per_page: pagination.limit(),
-                order_id,
-                status: params.status,
-            },
-        )
-        .await
-        .map_err(|error| map_admin_order_return_port_error(&context, error))?;
-    let items = page.items;
-    let total = page.total;
-    Ok(Json(PaginatedResponse {
-        data: items,
-        meta: super::super::common::PaginationMeta::new(pagination.page, pagination.limit(), total),
-    }))
-}
-
-#[utoipa::path(
-    get,
-    path = "/admin/returns/{id}",
-    tag = "admin",
-    params(("id" = Uuid, Path, description = "Return ID")),
-    responses(
-        (status = 200, description = "Return details", body = OrderReturnResponse),
-        (status = 401, description = "Unauthorized"),
-        (status = 404, description = "Return not found")
-    )
-)]
-pub async fn show_order_return(
-    State(runtime): State<CommerceHttpRuntime>,
-    tenant: TenantContext,
-    auth: AuthContext,
-    Path(id): Path<Uuid>,
-) -> HttpResult<Json<OrderReturnResponse>> {
-    ensure_permissions(
-        &auth,
-        &[Permission::ORDERS_READ],
-        "Permission denied: orders:read required",
-    )?;
-    let context = AdminOrderReturnErrorContext::new(
-        tenant.id,
-        None,
-        Some(id),
-        "get_return",
-    );
-    let item = runtime
-        .order_read_port()
-        .read_order_return_projection(
-            admin_order_return_port_context(tenant.id, auth.user_id, "get_return", id, false),
-            rustok_order::ReadOrderReturnProjectionRequest { return_id: id },
-        )
-        .await
-        .map_err(|error| map_admin_order_return_port_error(&context, error))?;
-    Ok(Json(item))
-}
-
-#[utoipa::path(
     post,
     path = "/admin/returns/{id}/complete",
     tag = "admin",
@@ -791,46 +652,5 @@ pub async fn complete_order_return(
             )
         })?;
 
-    Ok(Json(item))
-}
-
-#[utoipa::path(
-    post,
-    path = "/admin/returns/{id}/cancel",
-    tag = "admin",
-    params(("id" = Uuid, Path, description = "Return ID")),
-    request_body = CancelOrderReturnInput,
-    responses(
-        (status = 200, description = "Return cancelled", body = OrderReturnResponse),
-        (status = 401, description = "Unauthorized"),
-        (status = 404, description = "Return not found")
-    )
-)]
-pub async fn cancel_order_return(
-    State(runtime): State<CommerceHttpRuntime>,
-    tenant: TenantContext,
-    auth: AuthContext,
-    Path(id): Path<Uuid>,
-    Json(input): Json<CancelOrderReturnInput>,
-) -> HttpResult<Json<OrderReturnResponse>> {
-    ensure_permissions(
-        &auth,
-        &[Permission::ORDERS_UPDATE],
-        "Permission denied: orders:update required",
-    )?;
-    let context = AdminOrderReturnErrorContext::new(
-        tenant.id,
-        None,
-        Some(id),
-        "cancel_return",
-    );
-    let item = runtime
-        .order_post_order_command_port()
-        .cancel_return(
-            admin_order_return_port_context(tenant.id, auth.user_id, "cancel_return", id, true),
-            rustok_order::CancelOrderReturnRequest { return_id: id, input },
-        )
-        .await
-        .map_err(|error| map_admin_order_return_port_error(&context, error))?;
     Ok(Json(item))
 }
