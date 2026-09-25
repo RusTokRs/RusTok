@@ -34,6 +34,17 @@ pub struct TenantReadProjection {
     pub settings: serde_json::Value,
 }
 
+/// Build the owner-controlled tenant read capabilities used by directly embedded hosts.
+pub fn in_process_tenant_storefront_ports(
+    db: sea_orm::DatabaseConnection,
+) -> (
+    std::sync::Arc<dyn TenantReadPort>,
+    std::sync::Arc<dyn TenantLocalePolicyPort>,
+) {
+    let service = std::sync::Arc::new(crate::TenantService::new(db));
+    (service.clone(), service)
+}
+
 /// Transport-neutral owner boundary for tenant read projections.
 #[async_trait]
 pub trait TenantReadPort: Send + Sync {
