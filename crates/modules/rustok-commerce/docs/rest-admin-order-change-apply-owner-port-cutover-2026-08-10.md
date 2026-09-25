@@ -45,10 +45,10 @@ The read context carries:
 - order-change-bound correlation identity;
 - a two-second read deadline.
 
-The command context carries the same request identity plus a two-second write deadline and a fresh
-UUID idempotency identity. This route does not expose a caller idempotency key, so the UUID is
-**write-admission metadata only** and this slice does not claim durable replay or exactly-once
-semantics.
+The command context carries the same request identity plus a two-second write deadline and the
+caller-owned `Idempotency-Key`. Missing, invalid, or overlong keys are rejected before owner
+execution. The Order owner persists the command receipt atomically with the lifecycle mutation,
+so same-key retries replay the saved response and changed payloads fail as typed conflicts.
 
 ## Error boundary
 
