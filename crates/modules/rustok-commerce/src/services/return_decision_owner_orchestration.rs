@@ -356,7 +356,13 @@ fn command_context_for(
     };
     let mut context = base.clone();
     context.correlation_id = format!("{}:{operation}:{resource_id}", base.correlation_id);
-    context.idempotency_key = Some(format!("{root_idempotency_key}:{operation}:{resource_id}"));
+    let derived = {
+        use sha2::{Digest, Sha256};
+        let material = format!("v1:{root_idempotency_key}:{operation}:{resource_id}");
+        let digest = Sha256::digest(material.as_bytes());
+        format!("return-decision-{}-{operation}", hex::encode(digest))
+    };
+    context.idempotency_key = Some(derived);
     Ok(context)
 }
 
