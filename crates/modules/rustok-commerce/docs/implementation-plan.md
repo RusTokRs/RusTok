@@ -711,6 +711,9 @@ These are source-contract defects, not verification-only tasks.
   unavailable/timeout, and invariant failures as safe public categories.
 - [x] Remove direct RegionService construction from mounted staged checkout; the checkout
   plan builder now receives the RegionReadPort through the owner factory.
+- [x] Move Marketplace Allocation, Commission, and Ledger checkout composition behind
+  owner-provided in-process command-port factories; staged Commerce no longer constructs
+  foreign marketplace services directly.
 
 ## Verification
 
