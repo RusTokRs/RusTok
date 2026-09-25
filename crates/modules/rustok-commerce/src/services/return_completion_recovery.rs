@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
 use chrono::Utc;
+use rustok_api::{PortActor, PortContext};
 use rustok_core::generate_id;
-use rustok_order::OrderService;
+use rustok_order::{OrderReadPort, ReadOrderReturnProjectionRequest};
 use rustok_order::dto::OrderReturnResponse;
 use rustok_order::error::OrderError;
-use rustok_outbox::TransactionalEventBus;
-use rustok_payment::providers::PaymentProviderRegistry;
+use rustok_payment::{PaymentAdminReadPort, PaymentAdminRefundCommandPort};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
@@ -65,25 +65,27 @@ pub struct ReturnCompletionOperationResponse {
 /// execute provider/owner effects.
 pub struct ReturnCompletionOrchestrationService {
     db: DatabaseConnection,
-    event_bus: TransactionalEventBus,
-    payment_provider_registry: PaymentProviderRegistry,
+    order_read_port: std::sync::Arc<dyn OrderReadPort>,
+    order_post_order_command_port: std::sync::Arc<dyn rustok_order::OrderPostOrderCommandPort>,
+    payment_admin_read_port: std::sync::Arc<dyn PaymentAdminReadPort>,
+    payment_admin_refund_command_port: std::sync::Arc<dyn PaymentAdminRefundCommandPort>,
 }
 
 impl ReturnCompletionOrchestrationService {
-    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+    pub fn new(
+        db: DatabaseConnection,
+        order_read_port: std::sync::Arc<dyn OrderReadPort>,
+        order_post_order_command_port: std::sync::Arc<dyn rustok_order::OrderPostOrderCommandPort>,
+        payment_admin_read_port: std::sync::Arc<dyn PaymentAdminReadPort>,
+        payment_admin_refund_command_port: std::sync::Arc<dyn PaymentAdminRefundCommandPort>,
+    ) -> Self {
         Self {
             db,
-            event_bus,
-            payment_provider_registry: PaymentProviderRegistry::with_manual_provider(),
+            order_read_port,
+            order_post_order_command_port,
+            payment_admin_read_port,
+            payment_admin_refund_command_port,
         }
-    }
-
-    pub fn with_payment_provider_registry(
-        mut self,
-        payment_provider_registry: PaymentProviderRegistry,
-    ) -> Self {
-        self.payment_provider_registry = payment_provider_registry;
-        self
     }
 
     pub async fn complete_return(
@@ -94,8 +96,7 @@ impl ReturnCompletionOrchestrationService {
         input: core::CompleteReturnResolutionInput,
     ) -> PostOrderOrchestrationResult<OrderReturnResponse> {
         validate_completion_shape(&input)?;
-        OrderService::new(self.db.clone(), self.event_bus.clone())
-            .get_return(tenant_id, return_id)
+        self.read_return_for_admission(tenant_id, actor_id, return_id)
             .await?;
         let request_payload = completion_request_payload(&input);
         let request_hash = completion_request_hash(&request_payload)?;
@@ -248,8 +249,39 @@ impl ReturnCompletionOrchestrationService {
     }
 
     fn core_service(&self) -> core::ReturnCompletionOrchestrationService {
-        core::ReturnCompletionOrchestrationService::new(self.db.clone(), self.event_bus.clone())
-            .with_payment_provider_registry(self.payment_provider_registry.clone())
+        core::ReturnCompletionOrchestrationService::new(
+            self.db.clone(),
+            self.order_read_port.clone(),
+            self.order_post_order_command_port.clone(),
+            self.payment_admin_read_port.clone(),
+            self.payment_admin_refund_command_port.clone(),
+        )
+    }
+
+    async fn read_return_for_admission(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        return_id: Uuid,
+    ) -> PostOrderOrchestrationResult<OrderReturnResponse> {
+        self.order_read_port
+            .read_order_return_projection(
+                PortContext::new(
+                    tenant_id.to_string(),
+                    PortActor::user(actor_id.to_string()),
+                    "en",
+                    format!("commerce-return-completion:admit:return:{}", return_id),
+                )
+                .with_deadline(std::time::Duration::from_secs(3)),
+                ReadOrderReturnProjectionRequest { return_id },
+            )
+            .await
+            .map_err(|error| {
+                PostOrderOrchestrationError::OwnerPort {
+                    owner: "rustok_order",
+                    error,
+                }
+            })
     }
 
     async fn admit_command_and_operation(
