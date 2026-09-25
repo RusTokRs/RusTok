@@ -20,6 +20,16 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ---
 
 
+## 2026-09-25 Commerce Tax validation detail hardening
+
+Tax request validation contained one dynamic public detail (`duplicate tax country rule for
+{country_code}`), and its helper accepted arbitrary Display values, making future validation
+message leakage easy to introduce. The helper now takes only static detail; the duplicate
+country-rule path emits a stable message. The public-port verifier and regression fixture
+explicitly reject both the old format and the Display-based helper signature.
+
+Maintainer runtime evidence, Cargo build, tests, and verifier execution remain unrun.
+
 ## 2026-09-25 Commerce Tax port error-envelope hardening
 
 The legacy TaxCalculationPort mapper could copy TaxError::Validation text into the
