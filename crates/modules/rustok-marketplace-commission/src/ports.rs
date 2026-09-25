@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use std::sync::Arc;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use uuid::Uuid;
 
@@ -53,6 +54,19 @@ pub trait MarketplaceCommissionCommandPort: Send + Sync {
         context: PortContext,
         request: AssessMarketplaceOrderCommissionsInput,
     ) -> Result<AssessMarketplaceOrderCommissionsResponse, PortError>;
+}
+
+/// Build the owner-controlled in-process command adapter for checkout composition.
+///
+/// Allocation persistence remains owned by Marketplace Allocation; the consumer only sees the
+/// typed commission command port.
+pub fn in_process_marketplace_commission_command_port(
+    db: sea_orm::DatabaseConnection,
+) -> Arc<dyn MarketplaceCommissionCommandPort> {
+    let allocation = Arc::new(rustok_marketplace_allocation::MarketplaceAllocationService::new(
+        db.clone(),
+    ));
+    Arc::new(crate::MarketplaceCommissionService::new(db, allocation))
 }
 
 #[async_trait]
