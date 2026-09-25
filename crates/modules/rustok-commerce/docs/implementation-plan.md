@@ -26,7 +26,18 @@ Last reviewed: 2026-09-25
 - [x] Extend `verify-commerce-fulfillment-requirement-boundary.mjs` with the Payment runtime-composition guard.
 - [ ] Execute the Commerce/server Rust test suites and the static verifier against a repository checkout; this environment cannot run the repository build because the GitHub source is not mounted locally.
 
-## Audit 2026-09-25: Tax port error-envelope hardening## Audit 2026-09-25: Tax validation detail hardening
+## Audit 2026-09-25: Tax port error-envelope hardening## Audit 2026-09-25: Tax validation detail hardening## Audit 2026-09-25: Admin shared HTTP error-envelope hardening
+
+- [x] Remove generic Debug-based raw error logging from the shared Commerce admin HTTP
+  envelope helper; it now records only stable owner/error-kind/public-code/status facts.
+- [x] Remove the remaining full PortError debug payload from post-order owner-port error
+  handling in the same shared admin module.
+- [x] Update the existing admin order/fulfillment HTTP safety verifier so this shared
+  helper is required to remain bounded and raw Debug logging is explicitly forbidden.
+- [ ] Continue the broader non-PortError public-envelope audit across mounted REST/GraphQL
+  and client transport adapters.
+
+
 
 - [x] Make the Tax request-validation helper accept only static public detail, eliminating
   accidental future `Display`/formatted-input leakage through `PortError::Validation`.
