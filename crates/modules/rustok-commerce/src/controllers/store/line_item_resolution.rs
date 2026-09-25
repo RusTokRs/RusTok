@@ -5,7 +5,7 @@ use rustok_inventory::{
 use rustok_pricing::ResolveProductPriceRequest;
 use rustok_product::{ProductCatalogReadPort, ProductFulfillmentRequirement, StorefrontVariantProductProjectionRequest};
 use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
-use sea_orm::{DatabaseConnection, DbErr};
+use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::controllers::store::{ResolvedStoreLineItemInput, StoreLineItemResolution};
@@ -13,35 +13,6 @@ use crate::{
     CommerceError, dto::AddCartLineItemInput,
     storefront_shipping::effective_shipping_profile_slug,
 };
-
-fn map_storefront_line_item_database_error(
-    error: DbErr,
-    operation: &'static str,
-    tenant_id: Uuid,
-    variant_id: Option<Uuid>,
-    product_id: Option<Uuid>,
-    public_channel_slug: Option<&str>,
-    locale: Option<&str>,
-) -> HttpError {
-    let status = axum::http::StatusCode::SERVICE_UNAVAILABLE;
-    let code = "commerce_store_catalog_unavailable";
-    tracing::error!(
-        error = ?error,
-        owner = "rustok_product.persistence",
-        operation,
-        tenant_id = %tenant_id,
-        variant_id = ?variant_id,
-        product_id = ?product_id,
-        channel = ?public_channel_slug,
-        locale = ?locale,
-        error_kind = "database",
-        public_code = code,
-        status = %status,
-        boundary = "commerce_storefront_line_item_http",
-        "storefront line item catalog read failed"
-    );
-    HttpError::new(status, code, "Store catalog is temporarily unavailable")
-}
 
 fn storefront_product_port_context(
     tenant_id: Uuid,
@@ -256,9 +227,13 @@ pub(crate) async fn resolve_store_line_item_input(
         .await
         .map_err(|error| {
             map_storefront_line_item_product_port_error(error, &port_context, input.variant_id)
-        })?;
+        })?
+        .ok_or(HttpError::not_found(
+            "commerce_store_not_found",
+            "Commerce resource not found",
+        ))?;
 
-    let variant = product
+    let variant
         .variants
         .iter()
         .find(|variant| variant.id == input.variant_id)
@@ -403,9 +378,13 @@ pub(crate) async fn validate_store_line_item_quantity(
         .await
         .map_err(|error| {
             map_storefront_line_item_product_port_error(error, &port_context, variant_id)
-        })?;
+        })?
+        .ok_or(HttpError::not_found(
+            "commerce_store_not_found",
+            "Commerce resource not found",
+        ))?;
 
-    let variant = product
+    let variant
         .variants
         .iter()
         .find(|variant| variant.id == variant_id)
