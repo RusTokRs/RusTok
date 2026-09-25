@@ -58,32 +58,32 @@ impl AdminCheckoutOperationErrorContext {
 }
 
 struct AdminCheckoutOperationDiagnosticContext {
-    tenant_id: &'static str,
-    actor_id: &'static str,
-    checkout_operation_id: &'static str,
-    reservation_id: &'static str,
-    payment_collection_id: &'static str,
-    payment_id: &'static str,
-    refund_id: &'static str,
-    order_id: &'static str,
-    order_return_id: &'static str,
-    order_change_id: &'static str,
+    tenant_state: &'static str,
+    actor_state: &'static str,
+    checkout_operation_state: &'static str,
+    reservation_state: &'static str,
+    payment_collection_state: &'static str,
+    payment_state: &'static str,
+    refund_state: &'static str,
+    order_state: &'static str,
+    order_return_state: &'static str,
+    order_change_state: &'static str,
     operation: &'static str,
 }
 
 impl From<&AdminCheckoutOperationErrorContext> for AdminCheckoutOperationDiagnosticContext {
     fn from(context: &AdminCheckoutOperationErrorContext) -> Self {
         Self {
-            tenant_id: uuid_shape(context.tenant_id),
-            actor_id: uuid_shape(context.actor_id),
-            checkout_operation_id: optional_uuid_shape(context.checkout_operation_id),
-            reservation_id: optional_uuid_shape(context.reservation_id),
-            payment_collection_id: optional_uuid_shape(context.payment_collection_id),
-            payment_id: optional_uuid_shape(context.payment_id),
-            refund_id: optional_uuid_shape(context.refund_id),
-            order_id: optional_uuid_shape(context.order_id),
-            order_return_id: optional_uuid_shape(context.order_return_id),
-            order_change_id: optional_uuid_shape(context.order_change_id),
+            tenant_state: uuid_shape(context.tenant_id),
+            actor_state: uuid_shape(context.actor_id),
+            checkout_operation_state: optional_uuid_shape(context.checkout_operation_id),
+            reservation_state: optional_uuid_shape(context.reservation_id),
+            payment_collection_state: optional_uuid_shape(context.payment_collection_id),
+            payment_state: optional_uuid_shape(context.payment_id),
+            refund_state: optional_uuid_shape(context.refund_id),
+            order_state: optional_uuid_shape(context.order_id),
+            order_return_state: optional_uuid_shape(context.order_return_id),
+            order_change_state: optional_uuid_shape(context.order_change_id),
             operation: context.operation,
         }
     }
@@ -378,32 +378,28 @@ fn adopt_reservation_error_identity(
     }
 }
 
-fn admin_checkout_operation_http_error<E>(
+fn admin_checkout_operation_http_error(
     context: &AdminCheckoutOperationErrorContext,
-    error: &E,
     source_owner: &'static str,
     policy: AdminCheckoutOperationHttpPolicy,
     log_message: &'static str,
 ) -> HttpError {
-    let _ = error;
     let context = AdminCheckoutOperationDiagnosticContext::from(context);
-    let error = "redacted";
     let (status, code, message, error_kind) = policy;
     tracing::error!(
-        error = ?error,
         owner = ADMIN_CHECKOUT_OPERATION_OWNER,
         source_owner,
-        tenant_id = %context.tenant_id,
-        actor_id = %context.actor_id,
-        checkout_operation_id = ?context.checkout_operation_id,
-        reservation_id = ?context.reservation_id,
-        payment_collection_id = ?context.payment_collection_id,
-        payment_id = ?context.payment_id,
-        refund_id = ?context.refund_id,
-        order_id = ?context.order_id,
-        order_return_id = ?context.order_return_id,
-        order_change_id = ?context.order_change_id,
-        operation = %context.operation,
+        tenant_state = context.tenant_state,
+        actor_state = context.actor_state,
+        checkout_operation_state = context.checkout_operation_state,
+        reservation_state = context.reservation_state,
+        payment_collection_state = context.payment_collection_state,
+        payment_state = context.payment_state,
+        refund_state = context.refund_state,
+        order_state = context.order_state,
+        order_return_state = context.order_return_state,
+        order_change_state = context.order_change_state,
+        operation = context.operation,
         error_kind,
         public_code = code,
         status = %status,
@@ -421,7 +417,6 @@ fn map_operation_error(
     let policy = checkout_operation_error_policy(&error);
     admin_checkout_operation_http_error(
         &context,
-        &error,
         "rustok_commerce.checkout_operation",
         policy,
         "commerce admin checkout operation lookup failed",
@@ -505,7 +500,6 @@ fn map_compensation_error(
 
     admin_checkout_operation_http_error(
         &context,
-        &error,
         source_owner,
         policy,
         "commerce admin checkout compensation failed",
