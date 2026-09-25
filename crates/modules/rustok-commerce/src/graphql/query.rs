@@ -27,7 +27,7 @@ use rustok_pricing::{
     ResolveProductPriceRequest, StorefrontProductPricingProjectionRequest,
     in_process_pricing_read_port,
 };
-use rustok_region::{in_process_region_read_port, RegionListRequest, RegionReadPort};
+use rustok_region::{in_process_region_read_port, RegionListRequest};
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
