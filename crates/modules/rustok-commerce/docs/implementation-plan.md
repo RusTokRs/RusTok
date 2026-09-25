@@ -1233,6 +1233,17 @@ Source inspection is not execution evidence.
   and require caller-owned replay propagation.
 - [ ] Continue the same idempotency review for any remaining mounted Commerce write boundary
   that crosses an owner port or provider.
+
+## Audit 2026-09-25: storefront return idempotency contract
+
+- [x] Require a caller-owned `Idempotency-Key` for storefront order-return creation and
+  propagate the exact key to `OrderPostOrderCommandPort`.
+- [x] Expose the required write-operation header in the affected Admin Order, Admin
+  Fulfillment, Admin Payment, and storefront return OpenAPI contracts.
+- [x] Keep read contexts free of invented idempotency keys so reads remain observational
+  and cannot accidentally claim a write replay identity.
+- [ ] Continue auditing remaining mounted write endpoints for explicit caller-owned replay
+  identity and consistent OpenAPI contracts.
 ## Change rules
 
 1. Update this file with every completed or newly discovered ecommerce task.
