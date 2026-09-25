@@ -256,7 +256,9 @@ These are source-contract defects, not verification-only tasks.
 - [x] Make Fulfillment optional at the Commerce module-composition boundary: root/package
   dependency declarations no longer require it, and paid-order label listeners register only
   when the Fulfillment provider capability is actually composed.
-- [x] Publish Product-owned `ProductCatalogCommandPort` / `ProductCatalogCommandRuntime`,
+- [x] Remove the remaining direct GraphQL cart shipping validator path in favor of the
+  typed Fulfillment shipping-option read port, and reject selections without a matching
+  physical delivery group.- [x] Publish Product-owned `ProductCatalogCommandPort` / `ProductCatalogCommandRuntime`,
   host-compose embedded or external command providers, and cut mounted admin REST
   product create/update over to the owner port with deadline, payload-bound deterministic
   write identity, channel, actor, locale, and stable public errors.
@@ -755,6 +757,7 @@ Source inspection is not execution evidence.
   `OrderService`, provider journal access, and fulfillment SQL in mounted payment,
   fulfillment, and pipeline source.
 - [x] Add static guards for fail-closed public `PortError` transport sanitization and
+- [x] Add a static fulfillment-requirement boundary guard spanning Product, Cart, Order, and Checkout.
   typed order/payment/fulfillment/cart lifecycle use in checkout execution, recovery,
   finalization, settlement, compensation, provider orchestration, webhook application,
   and mounted owner stages.
