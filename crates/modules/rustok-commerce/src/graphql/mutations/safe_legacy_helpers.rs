@@ -4,6 +4,7 @@ mod rustok_fulfillment_shim {
     use ::rustok_fulfillment::{
         ReadShippingOptionProjectionRequest, ShippingOptionReadPort, ShippingOptionResponse,
     };
+    use ::rustok_api::PortErrorKind;
     use sea_orm::DatabaseConnection;
     use uuid::Uuid;
 
@@ -56,7 +57,43 @@ mod rustok_fulfillment_shim {
                     },
                 )
                 .await
-                .map_err(|error| async_graphql::Error::new(error.message))
+                .map_err(|error| {
+                    let (message, error_kind) = match error.kind {
+                        PortErrorKind::Validation => (
+                            "Shipping option request is invalid",
+                            "validation",
+                        ),
+                        PortErrorKind::NotFound => ("Shipping option was not found", "not_found"),
+                        PortErrorKind::Conflict => (
+                            "Shipping option state conflicts with this query",
+                            "conflict",
+                        ),
+                        PortErrorKind::Forbidden => (
+                            "Shipping option query is not permitted",
+                            "forbidden",
+                        ),
+                        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+                            "Shipping option data is temporarily unavailable",
+                            "temporarily_unavailable",
+                        ),
+                        PortErrorKind::InvariantViolation => (
+                            "Shipping option query could not be completed safely",
+                            "invariant",
+                        ),
+                    };
+                    tracing::error!(
+                        owner = "rustok_fulfillment",
+                        owner_operation = "read_shipping_option_projection",
+                        correlation_id = %context.correlation_id,
+                        error_kind,
+                        owner_code = %error.code,
+                        owner_message_length = error.message.chars().count(),
+                        owner_retryable = error.retryable,
+                        boundary = "commerce_graphql_cart_shipping_option",
+                        "commerce GraphQL legacy shipping-option owner error was sanitized"
+                    );
+                    async_graphql::Error::new(message)
+                })
         }
     }
 }
