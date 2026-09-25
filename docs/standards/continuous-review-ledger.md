@@ -20,6 +20,17 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ---
 
 
+## 2026-09-25 Commerce Fulfillment lifecycle status typing
+
+The Fulfillment owner command adapter had critical lifecycle checks expressed as raw
+status strings (ship admission, reship replay/transition, cancel replay/transition).
+Commerce fulfillment orchestration and its compatibility facade also compared response
+statuses directly. These checks now use the canonical FulfillmentStatusKind view, whose
+unknown value remains fail-closed. The ecommerce lifecycle verifier now covers these
+surfaces and rejects their former raw comparisons.
+
+Maintainer runtime evidence, Cargo build, tests, and verifier execution remain unrun.
+
 ## 2026-09-25 Commerce Cart Checkout diagnostic hardening
 
 Cart Checkout owner-boundary logging previously retained full PortError debug payloads and
