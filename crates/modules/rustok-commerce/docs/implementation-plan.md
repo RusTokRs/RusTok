@@ -1136,6 +1136,21 @@ Source inspection is not execution evidence.
   compensation, fulfillment, inventory, customer, tax, promotion, remaining ecommerce
   adapters, and non-`PortError` public envelopes; compiler/runtime/test evidence remains
   maintainer-owned.
+
+## Audit 2026-09-25: storefront auxiliary HTTP error safety
+
+- [x] Remove raw `PortError`, tenant/cart identity, actor, channel, locale, deadline, and
+  internal-code logging from the mounted storefront auxiliary controller path used by
+  `/store/regions` and `/store/shipping-options`.
+- [x] Remove the generic `Debug`-bounded storefront auxiliary public-error helper; its
+  callers now emit stable status/error-kind facts without serializing owner error values.
+- [x] Harden the legacy Product HTTP mapper in the same controller file so no unmounted
+  compatibility branch retains a raw owner error diagnostic that could regress into a
+  mounted path.
+- [x] Extend `verify-ecommerce-public-port-error-safety-v2.mjs` to guard the storefront
+  auxiliary controller and require its bounded diagnostic helpers.
+- [ ] Continue the broader non-`PortError` public-envelope and mounted owner-boundary audit
+  across remaining ecommerce controllers and transports.
 ## Change rules
 
 1. Update this file with every completed or newly discovered ecommerce task.
