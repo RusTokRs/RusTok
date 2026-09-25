@@ -451,5 +451,19 @@ HTTP capability before this slice and was not regressed or reintroduced through 
 controller.
 
 Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
+
+## 2026-09-25 Storefront auxiliary HTTP error safety
+
+The mounted Commerce storefront controller still contained a shared auxiliary HTTP error
+boundary that serialized raw `PortError` and generic `Debug` error values while serving
+region and shipping-option requests. The helper now records only bounded owner/error-kind,
+retryability, tenant/cart presence, code-length, status, and stable operation facts. The
+generic public-error helper no longer requires `Debug` and no longer serializes its error
+value. The Product compatibility mapper in the same file was hardened to the same rule.
+
+The ecommerce public-port safety verifier now reads the mounted storefront controller and
+rejects the former raw diagnostic patterns while requiring the bounded helper contract.
+
+Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
 ## Completed Rounds Archive
 _No completed rounds yet. Round 1 is currently in progress._
