@@ -333,26 +333,21 @@ pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
         )
 }
 
-fn admin_public_error<E>(
-    error: &E,
+fn admin_public_error(
     owner: &'static str,
     error_kind: &'static str,
     status: axum::http::StatusCode,
     code: &'static str,
     message: impl Into<String>,
-) -> HttpError
-where
-    E: std::fmt::Debug,
-{
+) -> HttpError {
     let message = message.into();
     tracing::error!(
-        error = ?error,
         owner,
         error_kind,
         public_code = code,
         status = %status,
         boundary = "commerce_admin_http",
-        "commerce admin operation failed"
+        "commerce admin operation failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
@@ -467,7 +462,7 @@ pub(crate) fn map_order_error(error: OrderError) -> HttpError {
             "core",
         ),
     };
-    admin_public_error(&error, "rustok_order", error_kind, status, code, message)
+    admin_public_error("rustok_order", error_kind, status, code, message)
 }
 
 pub(crate) fn map_post_order_orchestration_error(error: PostOrderOrchestrationError) -> HttpError {
@@ -517,7 +512,6 @@ pub(crate) fn map_post_order_orchestration_error(error: PostOrderOrchestrationEr
                 ),
             };
             tracing::error!(
-                error = ?error,
                 owner,
                 source_owner = owner,
                 error_kind = ?error.kind,
@@ -531,7 +525,6 @@ pub(crate) fn map_post_order_orchestration_error(error: PostOrderOrchestrationEr
             HttpError::new(status, code, message)
         }
         error @ PostOrderOrchestrationError::Validation(_) => admin_public_error(
-            &error,
             "rustok_commerce",
             "validation",
             axum::http::StatusCode::BAD_REQUEST,
