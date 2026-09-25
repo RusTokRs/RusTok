@@ -10,6 +10,7 @@ use rustok_payment::providers::PaymentProviderRegistry;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -117,19 +118,31 @@ impl PostOrderOrchestrationService {
         tenant_id: Uuid,
         actor_id: Uuid,
         order_id: Uuid,
+        idempotency_key: impl Into<String>,
         input: CreateReturnDecisionInput,
     ) -> PostOrderOrchestrationResult<ReturnDecisionResponse> {
         input
             .validate()
             .map_err(|error| PostOrderOrchestrationError::Validation(error.to_string()))?;
 
+        let idempotency_key = normalize_command_idempotency_key(idempotency_key)?;
         let action = normalize_decision_action(&input.decision.action)?;
         validate_decision_shape(&action, &input.decision)?;
 
         let decision_metadata = input.decision.metadata.clone();
         let order_service = OrderService::new(self.db.clone(), self.event_bus.clone());
         let order_return = order_service
-            .create_return(tenant_id, order_id, input.return_request)
+            .create_return(
+                tenant_id,
+                actor_id,
+                order_id,
+                derive_command_idempotency_key(
+                    idempotency_key.as_str(),
+                    "create_return",
+                    order_id,
+                ),
+                input.return_request,
+            )
             .await?;
 
         let (order_return, refund, order_change) = match action.as_str() {
@@ -137,11 +150,13 @@ impl PostOrderOrchestrationService {
                 let order_return = complete_return_decision(
                     &order_service,
                     tenant_id,
+                    actor_id,
                     order_return.id,
                     None,
                     None,
                     None,
                     decision_metadata.clone(),
+                    idempotency_key.as_str(),
                 )
                 .await?;
                 (order_return, None, None)
@@ -158,6 +173,7 @@ impl PostOrderOrchestrationService {
                 let order_return = complete_return_decision(
                     &order_service,
                     tenant_id,
+                    actor_id,
                     order_return.id,
                     Some("refund"),
                     Some(refund.id),
@@ -178,6 +194,11 @@ impl PostOrderOrchestrationService {
                         tenant_id,
                         actor_id,
                         order_id,
+                        derive_command_idempotency_key(
+                            idempotency_key.as_str(),
+                            "create_order_change",
+                            order_id,
+                        ),
                         build_return_order_change_input(
                             "exchange",
                             exchange_input.description.clone(),
@@ -190,6 +211,7 @@ impl PostOrderOrchestrationService {
                 let order_return = complete_return_decision(
                     &order_service,
                     tenant_id,
+                    actor_id,
                     order_return.id,
                     Some("exchange"),
                     None,
@@ -222,6 +244,7 @@ impl PostOrderOrchestrationService {
                 let order_return = complete_return_decision(
                     &order_service,
                     tenant_id,
+                    actor_id,
                     order_return.id,
                     Some("claim"),
                     None,
@@ -310,12 +333,15 @@ impl PostOrderOrchestrationService {
     pub async fn apply_exchange_order_change(
         &self,
         tenant_id: Uuid,
+        actor_id: Uuid,
         order_id: Uuid,
         change_id: Uuid,
+        idempotency_key: impl Into<String>,
         difference_refund: Option<ExchangeDifferenceRefundInput>,
         metadata: Value,
     ) -> PostOrderOrchestrationResult<ApplyOrderChangeResult> {
         let order_service = OrderService::new(self.db.clone(), self.event_bus.clone());
+        let idempotency_key = normalize_command_idempotency_key(idempotency_key)?;
 
         let mut apply_metadata = normalize_object_or_empty(metadata, "metadata")?;
         if let Value::Object(ref mut obj) = apply_metadata {
@@ -328,7 +354,13 @@ impl PostOrderOrchestrationService {
         let order_change = order_service
             .apply_order_change(
                 tenant_id,
+                actor_id,
                 change_id,
+                derive_command_idempotency_key(
+                    idempotency_key.as_str(),
+                    "apply_order_change",
+                    change_id,
+                ),
                 ApplyOrderChangeInput {
                     metadata: apply_metadata,
                 },
@@ -382,10 +414,13 @@ impl PostOrderOrchestrationService {
     pub async fn apply_claim_order_change(
         &self,
         tenant_id: Uuid,
+        actor_id: Uuid,
         change_id: Uuid,
+        idempotency_key: impl Into<String>,
         metadata: Value,
     ) -> PostOrderOrchestrationResult<ApplyOrderChangeResult> {
         let order_service = OrderService::new(self.db.clone(), self.event_bus.clone());
+        let idempotency_key = normalize_command_idempotency_key(idempotency_key)?;
 
         let mut apply_metadata = normalize_object_or_empty(metadata, "metadata")?;
         if let Value::Object(ref mut obj) = apply_metadata {
@@ -398,7 +433,13 @@ impl PostOrderOrchestrationService {
         let order_change = order_service
             .apply_order_change(
                 tenant_id,
+                actor_id,
                 change_id,
+                derive_command_idempotency_key(
+                    idempotency_key.as_str(),
+                    "apply_order_change",
+                    change_id,
+                ),
                 ApplyOrderChangeInput {
                     metadata: apply_metadata,
                 },
@@ -410,6 +451,23 @@ impl PostOrderOrchestrationService {
             refund: None,
         })
     }
+}
+
+fn normalize_command_idempotency_key(
+    value: impl Into<String>,
+) -> PostOrderOrchestrationResult<String> {
+    let value = value.into().trim().to_string();
+    if value.is_empty() || value.len() > 191 {
+        return Err(PostOrderOrchestrationError::Validation(
+            "idempotency key must contain 1 to 191 bytes".to_string(),
+        ));
+    }
+    Ok(value)
+}
+
+fn derive_command_idempotency_key(root: &str, operation: &str, resource_id: Uuid) -> String {
+    let payload = format!("order-post-order/v1/{root}:{operation}:{resource_id}");
+    hex::encode(Sha256::digest(payload.as_bytes()))
 }
 
 fn normalize_decision_action(action: &str) -> PostOrderOrchestrationResult<String> {
@@ -451,16 +509,24 @@ fn validate_decision_shape(
 async fn complete_return_decision(
     order_service: &OrderService,
     tenant_id: Uuid,
+    actor_id: Uuid,
     return_id: Uuid,
     resolution_type: Option<&str>,
     refund_id: Option<Uuid>,
     order_change_id: Option<Uuid>,
     metadata: Value,
+    root_idempotency_key: &str,
 ) -> PostOrderOrchestrationResult<OrderReturnResponse> {
     order_service
         .complete_return(
             tenant_id,
+            actor_id,
             return_id,
+            derive_command_idempotency_key(
+                root_idempotency_key,
+                "complete_return",
+                return_id,
+            ),
             CompleteOrderReturnInput {
                 resolution_type: resolution_type.map(str::to_string),
                 refund_id,
