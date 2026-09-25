@@ -8,7 +8,6 @@ use rustok_auth::{
 };
 
 use crate::auth::{AuthConfig, encode_password_reset_token};
-use crate::context::infer_user_role_from_permissions;
 use crate::models::users;
 use crate::services::auth_invite::InviteAcceptanceError;
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService, AuthTokens};
@@ -102,11 +101,19 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?
             .ok_or(AuthLifecycleMutationError::Unauthorized)?;
 
+        let role = AuthLifecycleService::resolve_effective_role(
+            self.runtime_ctx.db(),
+            context.tenant_id,
+            user.id,
+        )
+        .await
+        .map_err(map_lifecycle_error)?;
+
         Ok(AuthUserRecord {
             id: user.id,
             email: user.email,
             name: user.name,
-            role: infer_user_role_from_permissions(&context.permissions),
+            role,
             status: user.status.to_string(),
             permissions: permission_strings_from_context(context),
         })
@@ -256,11 +263,19 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         .await
         .map_err(map_lifecycle_error)?;
 
+        let role = AuthLifecycleService::resolve_effective_role(
+            self.runtime_ctx.db(),
+            context.tenant_id,
+            updated.id,
+        )
+        .await
+        .map_err(map_lifecycle_error)?;
+
         Ok(AuthUserRecord {
             id: updated.id,
             email: updated.email,
             name: updated.name,
-            role: infer_user_role_from_permissions(&context.permissions),
+            role,
             status: updated.status.to_string(),
             permissions: permission_strings_from_context(context),
         })

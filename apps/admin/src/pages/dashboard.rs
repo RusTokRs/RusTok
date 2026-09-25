@@ -126,7 +126,7 @@ pub fn Dashboard() -> impl IntoView {
                                         <StatsCard
                                             title=title
                                             value=value
-                                            icon=view! { <span class="size-5 text-center text-base leading-5">"вЂў"</span> }.into_any()
+                                            icon=view! { <span class="size-5 text-center text-base leading-5">"•"</span> }.into_any()
                                             trend=hint
                                             trend_label=i18n.translate("app.dashboard.stats.vsLastMonth")
                                             trend_up=trend_up

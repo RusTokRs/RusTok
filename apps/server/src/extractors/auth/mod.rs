@@ -291,14 +291,23 @@ pub async fn resolve_current_user_from_access_token(
             } else {
                 granted_permissions
             };
-            let inferred_role = infer_user_role_from_permissions(&effective_permissions);
-            if claims.role != inferred_role {
+            let effective_role = match crate::services::auth_lifecycle::AuthLifecycleService::resolve_effective_role(
+                db,
+                tenant_id,
+                user.id,
+            )
+            .await
+            {
+                Ok(role) => role,
+                Err(_) => infer_user_role_from_permissions(&effective_permissions),
+            };
+            if claims.role != effective_role {
                 RbacService::record_claim_role_mismatch();
                 warn!(
                     user_id = %user.id,
                     tenant_id = %tenant_id,
                     claimed_role = %claims.role,
-                    inferred_role = %inferred_role,
+                    effective_role = %effective_role,
                     "rbac_claim_role_mismatch"
                 );
             }
@@ -306,7 +315,7 @@ pub async fn resolve_current_user_from_access_token(
             (
                 user,
                 effective_permissions,
-                inferred_role,
+                effective_role,
                 claims.session_id,
                 SecurityActorKind::User,
             )

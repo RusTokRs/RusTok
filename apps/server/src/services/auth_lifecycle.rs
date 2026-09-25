@@ -743,7 +743,7 @@ impl AuthLifecycleService {
         })
     }
 
-    async fn resolve_effective_role<C>(
+    pub(crate) async fn resolve_effective_role<C>(
         db: &C,
         tenant_id: uuid::Uuid,
         user_id: uuid::Uuid,
@@ -751,6 +751,30 @@ impl AuthLifecycleService {
     where
         C: ConnectionTrait,
     {
+        let user_role_links = crate::models::_entities::user_roles::Entity::find()
+            .filter(crate::models::_entities::user_roles::Column::UserId.eq(user_id))
+            .all(db)
+            .await
+            .map_err(Error::from)?;
+
+        let role_ids: Vec<uuid::Uuid> = user_role_links.into_iter().map(|ur| ur.role_id).collect();
+        if !role_ids.is_empty() {
+            let assigned_roles = crate::models::_entities::roles::Entity::find()
+                .filter(crate::models::_entities::roles::Column::Id.is_in(role_ids))
+                .filter(crate::models::_entities::roles::Column::TenantId.eq(tenant_id))
+                .all(db)
+                .await
+                .map_err(Error::from)?;
+
+            if let Some(highest_role) = assigned_roles
+                .into_iter()
+                .filter_map(|r| <rustok_core::UserRole as std::str::FromStr>::from_str(&r.slug).ok())
+                .max_by_key(|r| r.privilege_rank())
+            {
+                return Ok(highest_role);
+            }
+        }
+
         let permissions = RbacService::get_user_permissions_authoritative(db, &tenant_id, &user_id)
             .await
             .map_err(AuthLifecycleError::from)?;

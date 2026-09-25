@@ -338,9 +338,28 @@ impl Rbac {
 }
 
 fn role_matches_permissions(role: UserRole, permissions: &[Permission]) -> bool {
-    Rbac::permissions_for_role(&role)
-        .iter()
-        .all(|permission| permissions.contains(permission))
+    let has_grant = |p: &Permission| -> bool {
+        permissions.contains(p)
+            || permissions.contains(&Permission::new(p.resource, Action::Manage))
+    };
+
+    match role {
+        UserRole::SuperAdmin => {
+            has_grant(&Permission::new(Resource::Tenants, Action::Manage))
+                && has_grant(&Permission::new(Resource::Modules, Action::Manage))
+                && has_grant(&Permission::new(Resource::Users, Action::Manage))
+                && has_grant(&Permission::new(Resource::Settings, Action::Manage))
+        }
+        UserRole::Admin => {
+            has_grant(&Permission::new(Resource::Users, Action::Manage))
+                && has_grant(&Permission::new(Resource::Settings, Action::Manage))
+        }
+        UserRole::Manager => {
+            has_grant(&Permission::PRODUCTS_READ)
+                && (has_grant(&Permission::PRODUCTS_CREATE) || has_grant(&Permission::ORDERS_READ))
+        }
+        UserRole::Customer => true,
+    }
 }
 
 pub fn infer_user_role_from_permissions(permissions: &[Permission]) -> UserRole {
