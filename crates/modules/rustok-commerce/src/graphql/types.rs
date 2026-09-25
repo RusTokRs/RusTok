@@ -695,13 +695,21 @@ pub struct GqlOrder {
     pub tax_lines: Vec<GqlOrderTaxLine>,
 }
 
+#[derive(async_graphql::Enum, Copy, Clone, Eq, PartialEq)]
+#[graphql(rename_items = "snake_case")]
+pub enum GqlOrderFulfillmentRequirement {
+    Digital,
+    Physical,
+}
+
 #[derive(SimpleObject)]
 pub struct GqlOrderLineItem {
     pub id: Uuid,
     pub order_id: Uuid,
     pub product_id: Option<Uuid>,
     pub variant_id: Option<Uuid>,
-    pub shipping_profile_slug: String,
+    pub fulfillment_requirement: GqlOrderFulfillmentRequirement,
+    pub shipping_profile_slug: Option<String>,
     pub seller_id: Option<String>,
     pub sku: Option<String>,
     pub title: String,
@@ -2491,6 +2499,10 @@ impl From<dto::OrderLineItemResponse> for GqlOrderLineItem {
             order_id: item.order_id,
             product_id: item.product_id,
             variant_id: item.variant_id,
+            fulfillment_requirement: match item.fulfillment_requirement {
+                dto::OrderLineFulfillmentRequirement::Digital => GqlOrderFulfillmentRequirement::Digital,
+                dto::OrderLineFulfillmentRequirement::Physical => GqlOrderFulfillmentRequirement::Physical,
+            },
             shipping_profile_slug: item.shipping_profile_slug,
             seller_id: item.seller_id,
             sku: item.sku,
