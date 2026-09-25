@@ -578,6 +578,7 @@ async fn store_cart_transport_returns_typed_adjustments_and_totals() {
             tenant_id,
             cart.id,
             AddCartLineItemInput {
+                fulfillment_requirement: rustok_cart::CartLineFulfillmentRequirement::Physical,
                 product_id: Some(published.id),
                 variant_id: Some(variant.id),
                 shipping_profile_slug: None,
@@ -724,6 +725,7 @@ async fn store_cart_transport_returns_shipping_total_and_shipping_scoped_promoti
             tenant_id,
             cart.id,
             AddCartLineItemInput {
+                fulfillment_requirement: rustok_cart::CartLineFulfillmentRequirement::Physical,
                 product_id: Some(published.id),
                 variant_id: Some(variant.id),
                 shipping_profile_slug: None,
