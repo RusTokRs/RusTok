@@ -709,6 +709,8 @@ These are source-contract defects, not verification-only tasks.
 - [x] Harden Marketplace Payout ledger-boundary error mapping so internal owner messages
   cannot cross the payout port boundary; preserve stable codes and classify forbidden,
   unavailable/timeout, and invariant failures as safe public categories.
+- [x] Extend the ecommerce public-port static verifier to cover Marketplace Payout
+  ledger-boundary redaction and exact typed error-kind preservation.
 - [x] Remove direct RegionService construction from mounted staged checkout; the checkout
   plan builder now receives the RegionReadPort through the owner factory.
 - [x] Move Marketplace Allocation, Commission, and Ledger checkout composition behind
