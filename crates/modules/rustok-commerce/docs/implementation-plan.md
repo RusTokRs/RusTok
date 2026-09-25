@@ -250,6 +250,9 @@ These are source-contract defects, not verification-only tasks.
 - [x] Route checkout-plan shipping-option reads through the typed
   `ShippingOptionReadPort`; the builder no longer constructs `FulfillmentService`
   and accepts a host-selected shipping-option read port.
+- [x] Make Fulfillment optional at the Commerce module-composition boundary: root/package
+  dependency declarations no longer require it, and paid-order label listeners register only
+  when the Fulfillment provider capability is actually composed.
 - [x] Publish Product-owned `ProductCatalogCommandPort` / `ProductCatalogCommandRuntime`,
   host-compose embedded or external command providers, and cut mounted admin REST
   product create/update over to the owner port with deadline, payload-bound deterministic
