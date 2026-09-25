@@ -532,5 +532,21 @@ The Admin Order and order-detail verifier scripts were corrected to inspect the 
 `orders_owner_ports.rs` controller rather than the unmounted legacy `orders.rs` source.
 
 Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
+
+## 2026-09-25 Caller-owned Payment and Fulfillment idempotency
+
+Mounted Admin Fulfillment write endpoints previously generated resource/operation or
+payload-hash-derived idempotency keys. All six writes now require a caller-owned
+`Idempotency-Key` and propagate it into the fulfillment owner command context.
+
+Mounted Admin Payment collection transitions and refund transitions had the same
+resource/operation-derived replay identity. They now require caller-owned keys; refund
+creation already used a validated caller key and remains on that path. Internal payment and
+fulfillment error codes are also represented only by bounded length facts at the HTTP boundary.
+
+The ecommerce public-port verifier now guards both controllers against synthetic replay
+identity and raw internal error-code diagnostics.
+
+Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
 ## Completed Rounds Archive
 _No completed rounds yet. Round 1 is currently in progress._
