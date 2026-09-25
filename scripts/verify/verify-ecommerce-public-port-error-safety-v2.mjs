@@ -28,6 +28,12 @@ const requireAll = (source, values, label) => {
 const forbidAll = (source, values, label) => {
   for (const value of values) forbidText(source, value, label);
 };
+const between = (source, start, end) => {
+  const startIndex = source.indexOf(start);
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  if (startIndex < 0 || endIndex < 0) return '';
+  return source.slice(startIndex, endIndex);
+};
 
 const channel = read('crates/modules/rustok-channel/src/ports.rs');
 const region = read('crates/modules/rustok-region/src/ports.rs');
@@ -82,6 +88,87 @@ forbidAll(cart, [
   'format!("failed to serialize cart snapshot: {error}")',
   'PortError::validation("cart.checkout_validation", message)',
 ], 'cart checkout public error mapping');
+
+const cartCheckoutSections = {
+  admission: between(
+    cart,
+    'fn log_cart_checkout_admission_rejection(',
+    '#[async_trait]',
+  ),
+  local: between(
+    cart,
+    'fn map_cart_checkout_local_port_error(',
+    'fn map_cart_checkout_service_error(',
+  ),
+  service: between(
+    cart,
+    'fn map_cart_checkout_service_error(',
+    'fn parse_tenant_id(',
+  ),
+  tenant: between(
+    cart,
+    'fn parse_tenant_id(',
+    'fn snapshot_from_cart(',
+  ),
+  mapper: between(
+    cart,
+    'fn cart_error_to_port_error(',
+    '#[cfg(test)]',
+  ),
+};
+for (const [section, source] of Object.entries(cartCheckoutSections)) {
+  if (!source) failures.push(`cart checkout ${section} section could not be isolated`);
+  forbidAll(source, [
+    'error = ?error',
+    'error = %error',
+    'tenant_id = %context.tenant_id',
+    'actor = ?context.actor',
+    'channel = ?context.channel',
+    'locale = %context.locale',
+    'causation_id = ?context.causation_id',
+    'traceparent = ?context.traceparent',
+    'idempotency_key = ?context.idempotency_key',
+    'internal_message = %error.message',
+    'message = %message',
+    'cause = ?cause',
+  ], `cart checkout ${section} raw diagnostics`);
+}
+requireAll(cart, [
+  'struct CartCheckoutContextFacts',
+  'struct CartCheckoutPortErrorFacts',
+  'struct CartCheckoutServiceErrorFacts',
+  'fn cart_checkout_context_facts(',
+  'fn cart_checkout_port_error_facts(',
+  'fn cart_checkout_service_error_facts(',
+  'fn log_cart_checkout_port_error(',
+  'fn log_cart_checkout_service_error(',
+  'correlation_id_length = context_facts.correlation_id_length',
+  'tenant_id_length = context_facts.tenant_id_length',
+  'actor_id_length = context_facts.actor_id_length',
+  'claim_count = context_facts.claim_count',
+  'role_count = context_facts.role_count',
+  'channel_present = context_facts.channel_present',
+  'locale_length = context_facts.locale_length',
+  'causation_id_present = context_facts.causation_id_present',
+  'traceparent_present = context_facts.traceparent_present',
+  'idempotency_key_present = context_facts.idempotency_key_present',
+  'error_kind = error_facts.error_kind',
+  'error_code_length = error_facts.error_code_length',
+  'error_message_present = error_facts.message_present',
+  'error_message_length = error_facts.message_length',
+  'text_field_count = error_facts.text_field_count',
+  'text_total_length = error_facts.text_total_length',
+  'uuid_field_count = error_facts.uuid_field_count',
+  'uuid_non_nil_count = error_facts.uuid_non_nil_count',
+  'opaque_payload_present = error_facts.opaque_payload_present',
+  'validation_message_length = message.chars().count()',
+  'error_variant = "database"',
+  'PortError::unavailable(
+                "cart.database_unavailable"',
+  'Cart checkout owner boundary was rejected',
+], 'cart checkout bounded diagnostics');
+
+
 
 forbidAll(pricing, [
   'format!("pricing storage unavailable: {error}")',
