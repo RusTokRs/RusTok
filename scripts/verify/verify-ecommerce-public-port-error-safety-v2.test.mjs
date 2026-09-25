@@ -474,6 +474,8 @@ const failureCases = [
   ["exact pricing stock diagnostics", { pricingAppend: 'code = "pricing.insufficient_inventory",\n                requested,\n                available,' }, /pricing payload diagnostics: forbidden/],
   ["raw fulfillment validation cause", { fulfillmentAppend: 'PortError::validation("fulfillment.validation", message);' }, /fulfillment public error mapping: forbidden/],
   ["raw tax validation cause", { taxAppend: 'PortError::validation("tax.validation", message);' }, /tax public error mapping: forbidden/],
+  ["dynamic tax country validation detail", { taxAppend: 'format!("duplicate tax country rule for {country_code}");' }, /tax public error mapping: forbidden/],
+  ["display-based tax validation helper", { taxAppend: 'detail: impl std::fmt::Display' }, /tax public error mapping: forbidden/],
   ["complete tax error diagnostics", { taxAppend: 'tracing::error!(error = ?error);' }, /tax calculation payload diagnostics: forbidden/],
   ["raw fulfillment storage cause", { fulfillmentAppend: 'format!("fulfillment storage unavailable: {error}");' }, /fulfillment public error mapping: forbidden/],
   ["complete fulfillment error diagnostics", { fulfillmentAppend: 'tracing::error!(error = ?error);' }, /fulfillment payload diagnostics: forbidden/],
