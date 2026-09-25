@@ -14,7 +14,8 @@ use crate::dto::{
 };
 use crate::entities::provider_operation;
 use crate::error::FulfillmentError;
-use crate::providers::{
+use crate::status::FulfillmentStatusKind;
+use crate::providers {
     FulfillmentProviderOperationRequest, FulfillmentProviderOperationResult,
     FulfillmentProviderRegistry, MANUAL_FULFILLMENT_PROVIDER_ID,
 };
@@ -162,7 +163,7 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             .get_fulfillment(tenant_id, request.fulfillment_id)
             .await
             .map_err(|error| map_fulfillment_error(&context, OPERATION, error))?;
-        if !matches!(current.status.as_str(), "pending" | "shipped") {
+        if !matches!(current.status_kind(), FulfillmentStatusKind::Pending | FulfillmentStatusKind::Shipped) {
             return Err(map_fulfillment_error(
                 &context,
                 OPERATION,
@@ -301,7 +302,7 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             .get_fulfillment(tenant_id, request.fulfillment_id)
             .await
             .map_err(|error| map_fulfillment_error(&context, OPERATION, error))?;
-        if current.status == "shipped"
+        if current.status_kind() == FulfillmentStatusKind::Shipped
             && current
                 .metadata
                 .get("provider_operation")
@@ -311,7 +312,7 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
         {
             return Ok(current);
         }
-        if current.status != "delivered" {
+        if current.status_kind() != FulfillmentStatusKind::Delivered {
             return Err(map_fulfillment_error(
                 &context,
                 OPERATION,
@@ -415,10 +416,10 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             .get_fulfillment(tenant_id, request.fulfillment_id)
             .await
             .map_err(|error| map_fulfillment_error(&context, OPERATION, error))?;
-        if current.status == "cancelled" {
+        if current.status_kind() == FulfillmentStatusKind::Cancelled {
             return Ok(current);
         }
-        if current.status == "delivered" {
+        if current.status_kind() == FulfillmentStatusKind::Delivered {
             return Err(map_fulfillment_error(
                 &context,
                 OPERATION,
