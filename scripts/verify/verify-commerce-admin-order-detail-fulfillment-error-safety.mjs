@@ -10,7 +10,7 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const source = read('crates/modules/rustok-commerce/src/controllers/admin/orders.rs');
+const source = read('crates/modules/rustok-commerce/src/controllers/admin/orders_owner_ports.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -29,102 +29,67 @@ const between = (content, start, end, label) => {
   return content.slice(startIndex, endIndex);
 };
 
-const showOrder = between(
-  source,
-  'pub async fn show_order(',
-  '/// Mark admin ecommerce order as paid',
-  'admin order detail handler',
-);
-const paymentPortMapper = between(
-  source,
-  'fn map_order_detail_payment_port_error(',
-  'fn map_order_detail_fulfillment_port_error(',
-  'admin order detail payment owner-port mapper',
-);
-const fulfillmentPortMapper = between(
-  source,
-  'fn map_order_detail_fulfillment_port_error(',
-  '/// Mark admin ecommerce order as paid',
-  'admin order detail fulfillment owner-port mapper',
-);
+const showOrder = between(source, 'pub async fn show_order(', 'pub async fn mark_order_paid(', 'admin order detail handler');
+const paymentMapper = between(source, 'fn map_payment_detail_port_error(', 'fn map_fulfillment_detail_port_error(', 'payment detail owner-port mapper');
+const fulfillmentMapper = between(source, 'fn map_fulfillment_detail_port_error(', 'pub async fn list_orders(', 'fulfillment detail owner-port mapper');
 
 for (const [value, label] of [
-  [
-    'const ADMIN_ORDER_DETAIL_FULFILLMENT_OWNER: &str = "rustok_fulfillment.admin_order_detail";',
-    'fulfillment owner constant',
-  ],
-  [
-    'const ADMIN_ORDER_DETAIL_FULFILLMENT_OPERATION: &str = "find_fulfillment_by_order";',
-    'fulfillment operation constant',
-  ],
-  ['use rustok_web::{HttpError, HttpResult};', 'typed HTTP error import'],
-]) requireText(source, value, label);
-
-for (const [value, label] of [
-  ['.payment_order_read_port()', 'payment owner read port handoff'],
-  ['find_latest_collection_by_order(', 'payment owner latest-collection operation'],
+  ['.order_read_port()', 'order owner read handoff'],
+  ['ReadOrderProjectionRequest {', 'order owner read request'],
+  ['.payment_order_read_port()', 'payment owner read handoff'],
   ['LatestPaymentCollectionByOrderRequest { order_id: id }', 'payment owner request'],
-  ['.fulfillment_read_port()', 'fulfillment owner read port handoff'],
-  ['find_latest_fulfillment_by_order_projection(', 'fulfillment owner latest-fulfillment operation'],
+  ['.fulfillment_read_port()', 'fulfillment owner read handoff'],
   ['FindLatestFulfillmentByOrderProjectionRequest { order_id: id }', 'fulfillment owner request'],
-  ['map_order_detail_payment_port_error(id, error)', 'payment port error mapper handoff'],
-  ['map_order_detail_fulfillment_port_error(id, error)', 'fulfillment port error mapper handoff'],
-  ['[Permission::ORDERS_READ]', 'order read permission'],
-  ['Path(id): Path<Uuid>', 'typed order path'],
+  ['map_payment_detail_port_error(tenant.id, id, &payment_context, error)', 'payment detail mapper handoff'],
+  ['map_fulfillment_detail_port_error(tenant.id, id, &fulfillment_context, error)', 'fulfillment detail mapper handoff'],
   ['HttpResult<Json<AdminOrderDetailResponse>>', 'order detail result contract'],
 ]) requireText(showOrder, value, label);
 
 for (const value of [
-  'PaymentService::new(runtime.db_clone())',
-  'FulfillmentService::new(runtime.db_clone())',
-  'fn map_order_detail_payment_error(',
-  'fn map_order_detail_fulfillment_error(',
-]) forbidText(showOrder + paymentPortMapper + fulfillmentPortMapper, value, 'mounted order-detail direct owner construction/obsolete mapper');
-
-for (const [value, label] of [
-  ['fn map_order_detail_payment_port_error(order_id: Uuid, error: PortError)', 'payment owner-port mapper'],
-  ['fn map_order_detail_fulfillment_port_error(', 'fulfillment owner-port mapper'],
-  ['PortErrorKind::Validation', 'validation kind mapping'],
-  ['PortErrorKind::NotFound', 'not-found kind mapping'],
-  ['PortErrorKind::Conflict', 'conflict kind mapping'],
-  ['PortErrorKind::Forbidden', 'forbidden kind mapping'],
-  ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'unavailable kind mapping'],
-  ['PortErrorKind::InvariantViolation', 'invariant kind mapping'],
-  ['order_id = uuid_shape(order_id)', 'order shape logging'],
-  ['internal_code_length = error.code.chars().count()', 'bounded owner code logging'],
-  ['retryable = error.retryable', 'retryable logging'],
-  ['owner = ADMIN_ORDER_DETAIL_PAYMENT_OWNER', 'payment owner log'],
-  ['owner = ADMIN_ORDER_DETAIL_FULFILLMENT_OWNER', 'fulfillment owner log'],
-  ['operation = ADMIN_ORDER_DETAIL_PAYMENT_OPERATION', 'payment operation log'],
-  ['operation = ADMIN_ORDER_DETAIL_FULFILLMENT_OPERATION', 'fulfillment operation log'],
-  ['error_variant = facts.error_variant', 'domain error shape logging'],
-  ['text_field_count = facts.text_field_count', 'text shape logging'],
-  ['uuid_field_count = facts.uuid_field_count', 'uuid shape logging'],
-  ['opaque_payload_present = facts.opaque_payload_present', 'opaque cause logging'],
-  ['public_code = code', 'stable code log'],
-  ['status = %status', 'status log'],
-  ['boundary = "commerce_admin_order_detail_http"', 'HTTP boundary log'],
-]) requireText(paymentPortMapper + fulfillmentPortMapper, value, label);
-
-for (const [value, label] of [
-  ['"Payment request is invalid"', 'payment static validation envelope'],
-  ['"Payment storage is temporarily unavailable"', 'payment static unavailable envelope'],
-  ['"Payment data could not be read safely"', 'payment static invariant envelope'],
-  ['"Fulfillment request is invalid"', 'fulfillment static validation envelope'],
-  ['"Fulfillment storage is temporarily unavailable"', 'fulfillment static unavailable envelope'],
-  ['"Fulfillment data could not be read safely"', 'fulfillment static invariant envelope'],
-  ['"Commerce resource not found"', 'static not-found envelope'],
-  ['HttpError::new(status, code, message)', 'single public envelope constructor'],
-]) requireText(paymentPortMapper + fulfillmentPortMapper, value, label);
-
-for (const value of [
-  'error = ?error',
-  'tenant_id = %tenant_id',
-  'order_id = %order_id',
-  'error.to_string()',
+  'PaymentService::new(',
+  'FulfillmentService::new(',
+  'OrderService::new(',
+  'find_latest_collection_by_order(tenant.id, id)',
+  'find_by_order(tenant.id, id)',
   'map_order_detail_payment_error(',
   'map_order_detail_fulfillment_error(',
-]) forbidText(showOrder + paymentPortMapper + fulfillmentPortMapper, value, 'unsafe admin order detail owner-port mapping');
+  'error = ?error',
+  'internal_message = %error.message',
+  'internal_code = %error.code',
+  'order_id = %order_id',
+]) forbidText(showOrder, value, 'mounted order-detail direct/unsafe boundary');
+
+for (const [content, label, owner] of [
+  [paymentMapper, 'payment detail mapper', 'payment'],
+  [fulfillmentMapper, 'fulfillment detail mapper', 'fulfillment'],
+]) {
+  for (const value of [
+    'error = ?error',
+    'tenant_id = %tenant_id',
+    'order_id = %order_id',
+    'internal_code = %error.code',
+    'internal_message = %error.message',
+  ]) forbidText(content, value, `${label} raw diagnostic`);
+  for (const [value, name] of [
+    ['PortErrorKind::Validation', `${owner} validation mapping`],
+    ['PortErrorKind::NotFound', `${owner} not-found mapping`],
+    ['PortErrorKind::Conflict', `${owner} conflict mapping`],
+    ['PortErrorKind::Forbidden', `${owner} forbidden mapping`],
+    ['PortErrorKind::Unavailable | PortErrorKind::Timeout', `${owner} unavailable mapping`],
+    ['PortErrorKind::InvariantViolation', `${owner} invariant mapping`],
+    ['owner_code_length = error.code.chars().count()', `${owner} bounded code length`],
+    ['retryable = error.retryable', `${owner} retryability`],
+    ['owner_error_kind = port_error_kind(&error)', `${owner} bounded error kind`],
+    ['HttpError::new(status, code, message)', `${owner} static HTTP envelope`],
+  ]) requireText(content, value, name);
+}
+
+for (const [value, label] of [
+  ['tenant_id_non_nil = !tenant_id.is_nil()', 'payment tenant shape'],
+  ['order_id_non_nil = !order_id.is_nil()', 'payment/order shape'],
+  ['tenant_id_non_nil = !tenant_id.is_nil()', 'fulfillment tenant shape'],
+  ['commerce_admin_order_detail_http', 'order-detail HTTP boundary'],
+]) requireText(paymentMapper + fulfillmentMapper, value, label);
 
 if (failures.length > 0) {
   console.error('Commerce admin order-detail fulfillment error-safety verification failed:');
@@ -132,6 +97,4 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log(
-  '✔ Commerce admin order detail keeps fulfillment causes internal and returns static public envelopes',
-);
+console.log('✔ Commerce admin order detail uses owner read ports and bounded static HTTP error envelopes');
