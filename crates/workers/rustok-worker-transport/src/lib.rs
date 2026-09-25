@@ -193,7 +193,7 @@ impl WorkerAdmission {
         Self::new(listener.concurrency_limit, listener.admission_timeout)
     }
 
-    fn new(concurrency_limit: usize, admission_timeout: Duration) -> Result<Self, String> {
+    pub fn new(concurrency_limit: usize, admission_timeout: Duration) -> Result<Self, String> {
         if concurrency_limit == 0 || admission_timeout.is_zero() {
             return Err("worker admission limits must be positive".to_string());
         }

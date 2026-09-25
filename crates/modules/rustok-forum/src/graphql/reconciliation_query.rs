@@ -12,13 +12,14 @@ use uuid::Uuid;
 
 use crate::{
     ForumCounterDrift, ForumCounterReconciliationReport, ForumCounterReconciliationService,
-    ForumError, forum_graphql_runtime,
+    ForumError,
     services::{
         ForumAttachmentHoldReconciliationReport, ForumAttachmentHoldReconciliationService,
         ForumAttachmentHoldDrift, ForumSolutionDrift, ForumSolutionReconciliationReport,
         ForumSolutionReconciliationService,
     },
 };
+use super::forum_graphql_runtime;
 
 const MODULE_SLUG: &str = "forum";
 
@@ -47,8 +48,11 @@ pub struct GqlForumCounterReconciliationReport {
     pub drifts: Vec<GqlForumCounterDrift>,
 }
 
+/// Diagnostic attachment hold drift between Forum and Media: `orphan_media_hold`, `missing_media_hold`,
+/// or `media_reference_mismatch`.
 #[derive(Debug, Clone, SimpleObject)]
 pub struct GqlForumAttachmentHoldDrift {
+    /// Drift kind: `orphan_media_hold`, `missing_media_hold`, or `media_reference_mismatch`.
     pub kind: String,
     pub reference_id: Uuid,
     pub media_id: Uuid,

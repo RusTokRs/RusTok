@@ -8,7 +8,7 @@ use rustok_media::{
 };
 use sea_orm::{
     AccessMode, ColumnTrait, DatabaseBackend, DatabaseConnection, EntityTrait, IsolationLevel,
-    QueryFilter, TransactionTrait,
+    QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -268,22 +268,19 @@ impl ForumAttachmentHoldReconciliationService {
             .collect::<Vec<_>>();
         let mut relation_media_by_reference = HashMap::with_capacity(media_reference_ids.len());
         if !media_reference_ids.is_empty() {
-            let result = forum_attachment_relation::Entity::find()
+            let rows = match forum_attachment_relation::Entity::find()
                 .filter(forum_attachment_relation::Column::TenantId.eq(tenant_id))
                 .filter(forum_attachment_relation::Column::ReferenceId.is_in(media_reference_ids))
                 .all(transaction)
                 .await
-                .map(|rows| {
-                    relation_media_by_reference.extend(
-                        rows.into_iter()
-                            .map(|row| (row.reference_id, row.media_id)),
-                    );
-                    relation_media_by_reference
-                })
-                .map_err(ForumError::from);
-            if result.is_err() {
-                return (result, Ok(Vec::new()));
-            }
+            {
+                Ok(rows) => rows,
+                Err(err) => return (Err(ForumError::from(err)), Ok(Vec::new())),
+            };
+            relation_media_by_reference.extend(
+                rows.into_iter()
+                    .map(|row| (row.reference_id, row.media_id)),
+            );
         }
 
         let mut query = forum_attachment_relation::Entity::find()
@@ -620,7 +617,7 @@ mod tests {
         };
         let duplicate = rustok_media::MediaAssetReference {
             reference_id: first.reference_id,
-            ..first
+            ..first.clone()
         };
         let lower = rustok_media::MediaAssetReference {
             media_id: Uuid::new_v4(),
@@ -630,21 +627,21 @@ mod tests {
         };
 
         let too_large = MediaAssetReferenceListPage {
-            references: vec![first],
+            references: vec![first.clone()],
             next_reference_id: Some(first.reference_id),
             has_more: false,
         };
         assert!(validate_media_page(&too_large, 0, tenant_id).is_err());
 
         let duplicate_page = MediaAssetReferenceListPage {
-            references: vec![first, duplicate],
+            references: vec![first.clone(), duplicate],
             next_reference_id: Some(first.reference_id),
             has_more: false,
         };
         assert!(validate_media_page(&duplicate_page, 2, tenant_id).is_err());
 
         let unordered = MediaAssetReferenceListPage {
-            references: vec![first, lower],
+            references: vec![first.clone(), lower.clone()],
             next_reference_id: Some(lower.reference_id),
             has_more: false,
         };
@@ -671,7 +668,7 @@ mod tests {
             usage: "attachment".to_string(),
             position: 0,
             caption: None,
-            created_at: chrono::Utc::now(),
+            created_at: chrono::Utc::now().into(),
         };
 
         let unrequested = MediaAssetReferenceLookupResult {
@@ -682,16 +679,16 @@ mod tests {
                 reference_id: Uuid::new_v4(),
             }],
         };
-        assert!(validate_media_lookup(&unrequested, &[relation.clone()], tenant_id).is_err());
+        assert!(validate_media_lookup(&unrequested, std::slice::from_ref(&relation), tenant_id).is_err());
 
-        let duplicate = MediaAssetReference {
+        let duplicate = rustok_media::MediaAssetReference {
             media_id: relation.media_id,
             tenant_id,
             owner_module: "forum".to_string(),
             reference_id: relation.reference_id,
         };
         let duplicate_result = MediaAssetReferenceLookupResult {
-            references: vec![duplicate, duplicate],
+            references: vec![duplicate.clone(), duplicate],
         };
         assert!(validate_media_lookup(&duplicate_result, &[relation], tenant_id).is_err());
     }

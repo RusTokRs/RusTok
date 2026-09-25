@@ -16,8 +16,8 @@ use rustok_media::{
 use rustok_outbox::SysEventsMigration;
 use rustok_storage::StorageRuntime;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, Database, EntityTrait, PaginatorTrait,
-    QueryFilter,
+    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, EntityTrait,
+    PaginatorTrait, QueryFilter,
 };
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
@@ -26,9 +26,7 @@ type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 #[tokio::test]
 async fn sqlite_attachment_relation_migration_enforces_owner_invariants() -> TestResult<()> {
-    let db = Database::connect("sqlite::memory:").await?;
-    db.execute_unprepared("PRAGMA foreign_keys = ON").await?;
-    create_minimal_fixture(&db).await?;
+    let db = setup_sqlite("migration_invariants").await?;
 
     let migration = attachment_migration()?;
     let manager = SchemaManager::new(&db);
@@ -243,9 +241,7 @@ async fn sqlite_attachment_relation_migration_enforces_owner_invariants() -> Tes
 
 #[tokio::test]
 async fn sqlite_attachment_relation_service_coordinates_media_retention_and_cas() -> TestResult<()> {
-    let db = Database::connect("sqlite::memory:").await?;
-    db.execute_unprepared("PRAGMA foreign_keys = ON").await?;
-    create_minimal_fixture(&db).await?;
+    let db = setup_sqlite("service_coordinates").await?;
 
     let outbox_manager = SchemaManager::new(&db);
     SysEventsMigration.up(&outbox_manager).await?;
@@ -262,11 +258,14 @@ async fn sqlite_attachment_relation_service_coordinates_media_retention_and_cas(
     let blob_id = Uuid::new_v4();
 
     db.execute_unprepared(&format!(
-        "INSERT INTO tenants (id) VALUES ('{tenant_id}')"
+        "INSERT INTO tenants (id) VALUES (X'{}')",
+        tenant_id.simple()
     ))
     .await?;
     db.execute_unprepared(&format!(
-        "INSERT INTO forum_topics (id, tenant_id, updated_at) VALUES ('{topic_id}', '{tenant_id}', CURRENT_TIMESTAMP)"
+        "INSERT INTO forum_topics (id, tenant_id, updated_at) VALUES (X'{}', X'{}', CURRENT_TIMESTAMP)",
+        topic_id.simple(),
+        tenant_id.simple()
     ))
     .await?;
     seed_ready_media(&db, tenant_id, media_id, blob_id).await?;
@@ -444,7 +443,9 @@ async fn sqlite_attachment_relation_service_coordinates_media_retention_and_cas(
     );
 
     db.execute_unprepared(&format!(
-        "INSERT INTO forum_topic_revisions (id, tenant_id, topic_id) VALUES (1, '{tenant_id}', '{topic_id}')"
+        "INSERT INTO forum_topic_revisions (id, tenant_id, topic_id) VALUES (1, X'{}', X'{}')",
+        tenant_id.simple(),
+        topic_id.simple()
     ))
     .await?;
 
@@ -497,12 +498,14 @@ async fn create_minimal_fixture(db: &sea_orm::DatabaseConnection) -> TestResult<
         CREATE TABLE forum_topics (
             id TEXT PRIMARY KEY NOT NULL,
             tenant_id TEXT NOT NULL,
+            category_id TEXT,
             updated_at TEXT NOT NULL
         );
 
         CREATE TABLE forum_replies (
             id TEXT PRIMARY KEY NOT NULL,
             tenant_id TEXT NOT NULL,
+            topic_id TEXT,
             updated_at TEXT NOT NULL
         );
 
@@ -515,6 +518,23 @@ async fn create_minimal_fixture(db: &sea_orm::DatabaseConnection) -> TestResult<
     )
     .await?;
     Ok(())
+}
+
+async fn setup_sqlite(test_name: &str) -> TestResult<sea_orm::DatabaseConnection> {
+    let url = format!(
+        "sqlite:file:forum_attachment_{}_{}?mode=memory&cache=shared",
+        test_name,
+        Uuid::new_v4()
+    );
+    let mut options = ConnectOptions::new(url);
+    options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
+    let db = Database::connect(options).await?;
+    db.execute_unprepared("PRAGMA foreign_keys = ON").await?;
+    create_minimal_fixture(&db).await?;
+    Ok(db)
 }
 
 fn attachment_migration() -> TestResult<Box<dyn MigrationTrait>> {

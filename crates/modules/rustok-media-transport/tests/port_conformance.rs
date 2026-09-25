@@ -475,6 +475,7 @@ async fn embedded_and_loopback_grpc_providers_pass_the_same_port_suite() {
         MediaGrpcOperation::GetAsset,
         MediaGrpcOperation::GetAssetReferenceAdmission,
         MediaGrpcOperation::ListAssetReferences,
+        MediaGrpcOperation::LookupAssetReferences,
         MediaGrpcOperation::ListAssets,
         MediaGrpcOperation::GetImageDescriptor,
         MediaGrpcOperation::GetPublicImageAsset,

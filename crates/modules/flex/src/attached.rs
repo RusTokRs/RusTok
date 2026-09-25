@@ -303,7 +303,7 @@ where
             }
         }
 
-        let payload = (!shared_values.is_empty()).then(|| Value::Object(shared_values));
+        let payload = (!shared_values.is_empty()).then_some(Value::Object(shared_values));
         resolved.insert(input.entity_id, payload);
     }
 

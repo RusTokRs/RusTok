@@ -9,9 +9,10 @@ fn implementation_plan_tracks_contract_test_coverage() {
 
 #[test]
 fn attachment_relation_postgres_trigger_uses_valid_dollar_quoting() {
-    let migration = include_str!("../src/migrations/m20260924_000036_add_forum_attachment_relations.rs");
-    assert!(migration.contains(concat!("RETURNS trigger AS ", "$", "$", "\\nBEGIN")));
-    assert!(migration.contains(concat!("END;\\n", "$", "$", " LANGUAGE plpgsql;")));
+    let migration = include_str!("../src/migrations/m20260924_000036_add_forum_attachment_relations.rs")
+        .replace("\r\n", "\n");
+    assert!(migration.contains("RETURNS trigger AS $$\nBEGIN"));
+    assert!(migration.contains("END;\n$$ LANGUAGE plpgsql;"));
 }
 
 #[test]

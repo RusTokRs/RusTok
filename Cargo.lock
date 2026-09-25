@@ -14163,6 +14163,7 @@ dependencies = [
  "rustok-profiles",
  "rustok-reactions-api",
  "rustok-seo-targets",
+ "rustok-storage",
  "rustok-taxonomy",
  "rustok-telemetry",
  "rustok-tenant",

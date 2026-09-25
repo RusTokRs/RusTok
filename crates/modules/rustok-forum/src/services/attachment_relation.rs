@@ -7,7 +7,7 @@ use rustok_media::{MediaAssetReferenceInput, MediaAssetWritePort};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
     DatabaseConnection,
-    EntityTrait, QueryFilter, QueryOrder, TransactionTrait,
+    EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
 use sha2::{Digest, Sha256};
 use tracing::{error, instrument};
@@ -510,14 +510,20 @@ async fn ensure_forum_target_exists<C: ConnectionTrait>(
 ) -> ForumResult<()> {
     let exists = match target.kind() {
         ForumContentTargetKind::Topic => forum_topic::Entity::find()
+            .select_only()
+            .column(forum_topic::Column::Id)
             .filter(forum_topic::Column::TenantId.eq(tenant_id))
             .filter(forum_topic::Column::Id.eq(target.id()))
+            .into_tuple::<Uuid>()
             .one(connection)
             .await?
             .is_some(),
         ForumContentTargetKind::Reply => forum_reply::Entity::find()
+            .select_only()
+            .column(forum_reply::Column::Id)
             .filter(forum_reply::Column::TenantId.eq(tenant_id))
             .filter(forum_reply::Column::Id.eq(target.id()))
+            .into_tuple::<Uuid>()
             .one(connection)
             .await?
             .is_some(),
