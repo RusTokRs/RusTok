@@ -37,7 +37,8 @@ fn order_input() -> CreateOrderInput {
         line_items: vec![CreateOrderLineItemInput {
             product_id: None,
             variant_id: None,
-            shipping_profile_slug: "default".to_string(),
+            fulfillment_requirement: rustok_order::OrderLineFulfillmentRequirement::Physical,
+            shipping_profile_slug: Some("default".to_string()),
             seller_id: None,
             sku: Some("LIFECYCLE-SKU".to_string()),
             title: "Lifecycle item".to_string(),
