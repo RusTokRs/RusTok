@@ -81,6 +81,28 @@ if ((orders.match(/\.with_idempotency_key\(idempotency_key\)/g) ?? []).length !=
   failures.push('expected exactly one command-context propagation of caller-owned Idempotency-Key');
 }
 
+for (const value of [
+  'fn require_idempotency_key(headers: &HeaderMap)',
+  'let idempotency_key = require_idempotency_key(&headers)?;',
+  '.with_idempotency_key(idempotency_key)',
+  'owner_code_length = error.code.chars().count()',
+]) requireText(fulfillments, value, 'admin fulfillment replay/error boundary');
+
+for (const value of [
+  'Uuid::new_v4().to_string()',
+  'format!("admin-fulfillment:{fulfillment_id}:{operation}")',
+  'format!("admin-fulfillment:create:{order_id}:',
+  'internal_code = %error.code',
+  'error = ?error',
+]) forbidText(fulfillments, value, 'admin fulfillment unsafe/generated boundary');
+
+if ((fulfillments.match(/let idempotency_key = require_idempotency_key(&headers)?;/g) ?? []).length !== 6) {
+  failures.push('expected six admin fulfillment write handlers to require caller-owned Idempotency-Key');
+}
+if ((fulfillments.match(/.with_idempotency_key(idempotency_key)/g) ?? []).length !== 2) {
+  failures.push('expected create+command fulfillment context helpers to propagate the caller-owned key');
+}
+
 for (const [content, label] of [
   [changes, 'admin order changes'],
   [returns, 'admin order returns'],
