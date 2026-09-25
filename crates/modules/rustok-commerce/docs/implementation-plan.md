@@ -26,6 +26,18 @@ Last reviewed: 2026-09-25
 - [x] Extend `verify-commerce-fulfillment-requirement-boundary.mjs` with the Payment runtime-composition guard.
 - [ ] Execute the Commerce/server Rust test suites and the static verifier against a repository checkout; this environment cannot run the repository build because the GitHub source is not mounted locally.
 
+## Audit 2026-09-25: correlation-safe Cart Checkout diagnostics
+
+- [x] Replace raw Cart Checkout owner-boundary diagnostics with bounded correlation/context
+  facts and typed error-shape metadata; validation, database, tenant-context, local-owner,
+  and service-owner logs no longer emit tenant IDs, actor values, transport context,
+  PortError debug payloads, or arbitrary validation text.
+- [x] Extend the broad ecommerce public-port verifier with isolated Cart Checkout mapper
+  sections and source guards so the bounded diagnostic contract cannot regress.
+- [ ] Keep the broader correlation-safe mapper cleanup open for payment execution/
+  compensation, fulfillment, inventory, customer, tax, promotion, remaining ecommerce
+  adapters, and non-PortError public envelopes.
+
 ## Audit 2026-09-25: source-integrity blockers
 
 - [x] Repair the malformed `CommerceGraphqlRuntimeData` initializer so every composed owner runtime is separated correctly and the GraphQL runtime source remains compilable.
