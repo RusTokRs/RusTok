@@ -1,4 +1,5 @@
 use super::optional_value;
+use uuid::Uuid;
 
 pub struct OrderChangeActionCommand {
     pub change_id: String,
@@ -21,6 +22,7 @@ pub fn prepare_order_change_action_command(
         draft: crate::model::CommerceOrderChangeActionDraft {
             metadata_json: metadata_json.trim().to_string(),
             reason: reason.trim().to_string(),
+            idempotency_key: Uuid::new_v4().to_string(),
         },
     })
 }
@@ -135,6 +137,8 @@ mod tests {
         assert_eq!(command.change_id, "change-1");
         assert_eq!(command.draft.metadata_json, "{\"operator\":true}");
         assert_eq!(command.draft.reason, "cancelled");
+        assert!(!command.draft.idempotency_key.trim().is_empty());
+        assert!(Uuid::parse_str(command.draft.idempotency_key.as_str()).is_ok());
     }
 
     #[test]
