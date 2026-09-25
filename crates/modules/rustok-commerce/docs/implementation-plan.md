@@ -706,6 +706,11 @@ These are source-contract defects, not verification-only tasks.
 - [ ] Execute production-like Stripe, real signature, redelivery, restart, replica,
   degraded, reconciliation, observer replay, and operator evidence.
 - [ ] Prove adapters never own payment/refund lifecycle state.
+- [x] Harden Marketplace Payout ledger-boundary error mapping so internal owner messages
+  cannot cross the payout port boundary; preserve stable codes and classify forbidden,
+  unavailable/timeout, and invariant failures as safe public categories.
+- [x] Remove direct RegionService construction from mounted staged checkout; the checkout
+  plan builder now receives the RegionReadPort through the owner factory.
 
 ## Verification
 
