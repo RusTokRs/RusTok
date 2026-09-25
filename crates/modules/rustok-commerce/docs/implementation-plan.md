@@ -711,6 +711,9 @@ These are source-contract defects, not verification-only tasks.
   unavailable/timeout, and invariant failures as safe public categories.
 - [x] Extend the ecommerce public-port static verifier to cover Marketplace Payout
   ledger-boundary redaction and exact typed error-kind preservation.
+- [x] Extend the same fail-closed error-boundary treatment through Marketplace
+  Commission and Marketplace Ledger: foreign owner messages are redacted at each hop and
+  typed PortError kinds are preserved instead of being collapsed by retryability.
 - [x] Remove direct RegionService construction from mounted staged checkout; the checkout
   plan builder now receives the RegionReadPort through the owner factory.
 - [x] Move Marketplace Allocation, Commission, and Ledger checkout composition behind
