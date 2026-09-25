@@ -15,6 +15,30 @@ function put(root, relativePath, content) {
   writeFileSync(filePath, content);
 }
 
+function canonicalCartPromotion() {
+  return `
+struct CartPromotionOwnerErrorFacts {}
+fn cart_promotion_owner_error_facts() {}
+tracing::error!(
+  correlation_id = %context.correlation_id,
+  tenant_id_length = facts.tenant_id_length,
+  actor_kind = facts.actor_kind,
+  actor_id_length = facts.actor_id_length,
+  claim_count = facts.claim_count,
+  operation = owner_operation,
+  internal_code = %error.code,
+  internal_message_present = !error.message.trim().is_empty(),
+  internal_message_length = error.message.chars().count(),
+  boundary = CART_PROMOTION_CONTEXT_BOUNDARY,
+);
+tracing::warn!(code = "cart.promotion_context_invalid");
+"cart promotion request is invalid";
+"cart promotion conflicts with the current cart state";
+"cart promotion tax recalculation failed";
+"cart promotion shipping recalculation failed";
+`;
+}
+
 function canonicalPricing() {
   return `
 struct PricingPortContextFacts {}
@@ -375,6 +399,8 @@ function fixture(options = {}) {
   put(root, 'crates/modules/rustok-region/src/ports.rs', `tracing::error!();\n"region storage is temporarily unavailable";\n${options.regionAppend ?? ''}`);
   put(root, 'crates/modules/rustok-cart/src/checkout_snapshot.rs', `tracing::error!();\n"cart checkout request or projection is invalid";\n"cart checkout snapshot could not be encoded";\n${options.cartAppend ?? ''}`);
 
+  let cartPromotion = `${canonicalCartPromotion()}${options.cartPromotionAppend ?? ''}`;
+  put(root, 'crates/modules/rustok-cart/src/promotion_guard.rs', cartPromotion);
   let pricing = `${canonicalPricing()}${options.pricingAppend ?? ''}`;
   if (options.removePricingCorrelation) pricing = pricing.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
   put(root, 'crates/modules/rustok-pricing/src/ports.rs', pricing);
@@ -465,6 +491,9 @@ const failureCases = [
   ["payment provider operation diagnostics", { paymentAppend: 'provider_operation = %operation;' }, /payment collection payload diagnostics: forbidden/],
   ["payment transition diagnostics", { paymentAppend: 'from = %from;' }, /payment collection payload diagnostics: forbidden/],
   ["raw pricing validation cause", { pricingAppend: 'PortError::validation("pricing.validation", message);' }, /pricing public error mapping: forbidden/],
+  ["raw cart promotion validation cause", { cartPromotionAppend: 'PortError::validation("cart.promotion_validation", message);' }, /cart promotion payload\/public error mapping: forbidden/],
+  ["complete cart promotion error diagnostics", { cartPromotionAppend: 'tracing::error!(error = ?error);' }, /cart promotion payload\/public error mapping: forbidden/],
+  ["raw cart promotion tenant diagnostics", { cartPromotionAppend: 'tenant_id = %context.tenant_id;' }, /cart promotion payload\/public error mapping: forbidden/],
   ["dynamic pricing product message", { pricingAppend: 'format!("product {id} not found");' }, /pricing public error mapping: forbidden/],
   ["dynamic pricing mismatch message", { pricingAppend: 'format!("variant {variant_id} does not belong to product {product_id}");' }, /pricing public error mapping: forbidden/],
   ["complete pricing error diagnostics", { pricingAppend: 'tracing::error!(error = ?error);' }, /pricing payload diagnostics: forbidden/],
