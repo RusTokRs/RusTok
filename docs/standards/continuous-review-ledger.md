@@ -506,5 +506,14 @@ The ecommerce public-port verifier now guards the line-item resolution controlle
 the former raw owner error/context patterns.
 
 Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
+
+## 2026-09-25 Admin checkout-operation diagnostic safety
+
+Mounted Admin checkout-operation HTTP mapping used a redacted `Debug` wrapper and
+serialized shape-labeled identity fields. The shared mapper now takes no error value at all
+and emits only explicit tenant/actor/operation/payment/order/reservation state facts plus
+stable public policy data. The verifier now rejects the former redacted/raw patterns.
+
+Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
 ## Completed Rounds Archive
 _No completed rounds yet. Round 1 is currently in progress._
