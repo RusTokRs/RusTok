@@ -19,7 +19,7 @@ use axum::http::StatusCode;
 use rust_decimal::Decimal;
 use rustok_api::locale_tags_match;
 use rustok_api::{PortActor, PortContext, PortError, RequestContext};
-use rustok_cart::{CartStorefrontPort, CartStorefrontRepriceRequest};
+use rustok_cart::{CartStatus, CartStorefrontPort, CartStorefrontRepriceRequest};
 use rustok_channel::error::ChannelError;
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
 
@@ -378,7 +378,14 @@ pub(crate) fn ensure_store_cart_access(
 }
 
 pub(crate) fn ensure_cart_allows_payment_collection(cart: &CartResponse) -> HttpResult<()> {
-    if cart.status == "completed" {
+    let status = cart.lifecycle_status().map_err(|_| {
+        HttpError::bad_request(
+            "commerce_store_invalid",
+            "Cart lifecycle status is invalid".to_string(),
+        )
+    })?;
+
+    if status == CartStatus::Completed {
         return Err(HttpError::bad_request(
             "commerce_store_invalid",
             "Cannot create payment collection for completed cart".to_string(),
