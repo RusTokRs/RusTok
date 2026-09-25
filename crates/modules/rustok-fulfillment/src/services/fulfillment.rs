@@ -108,7 +108,7 @@ impl FulfillmentService {
             amount: Set(amount),
             provider_id: Set(provider_id),
             active: Set(true),
-            metadata: Set(strip_fulfillment_identity_metadata(metadata)),
+            metadata: Set(metadata),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
@@ -399,7 +399,7 @@ impl FulfillmentService {
             tracking_number: Set(tracking_number),
             delivered_note: Set(None),
             cancellation_reason: Set(None),
-            metadata: Set(metadata),
+            metadata: Set(strip_fulfillment_identity_metadata(metadata)),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
             shipped_at: Set(None),
