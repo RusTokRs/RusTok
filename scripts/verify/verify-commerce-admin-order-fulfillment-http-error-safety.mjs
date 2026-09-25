@@ -36,8 +36,6 @@ for (const [value, label] of [
   ['"commerce admin operation failed with bounded diagnostics"', 'bounded shared HTTP diagnostics'],
   ['owner,', 'owner logging'],
   ['error_kind,', 'error-kind logging'],
-  ['owner,', 'owner logging'],
-  ['error_kind,', 'error-kind logging'],
   ['public_code = code', 'public-code logging'],
   ['status = %status', 'status logging'],
   ['boundary = "commerce_admin_http"', 'admin HTTP boundary logging'],
