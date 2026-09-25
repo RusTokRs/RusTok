@@ -6,6 +6,30 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CartLineFulfillmentRequirement {
+    Digital,
+    Physical,
+}
+
+impl CartLineFulfillmentRequirement {
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "digital" => Ok(Self::Digital),
+            "physical" => Ok(Self::Physical),
+            _ => Err(format!("unknown cart fulfillment requirement `{value}`")),
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Digital => "digital",
+            Self::Physical => "physical",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreateCartInput {
     pub customer_id: Option<Uuid>,
@@ -27,6 +51,7 @@ pub struct CreateCartInput {
 pub struct AddCartLineItemInput {
     pub product_id: Option<Uuid>,
     pub variant_id: Option<Uuid>,
+    pub fulfillment_requirement: CartLineFulfillmentRequirement,
     #[validate(length(min = 1, max = 100))]
     pub shipping_profile_slug: Option<String>,
     #[validate(length(max = 100))]
