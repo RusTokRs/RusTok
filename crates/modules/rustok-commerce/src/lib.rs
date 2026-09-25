@@ -156,7 +156,6 @@ impl RusToKModule for CommerceModule {
             "inventory",
             "order",
             "payment",
-            "fulfillment",
         ]
     }
 
@@ -165,17 +164,14 @@ impl RusToKModule for CommerceModule {
         registry: &mut ModuleEventListenerRegistry,
         ctx: &ModuleEventListenerContext<'_>,
     ) {
-        let fulfillment_registry = ctx
-            .extensions
-            .get::<FulfillmentProviderRegistry>()
-            .cloned()
-            .expect(
-                "commerce module requires FulfillmentProviderRegistry in ModuleRuntimeExtensions",
-            );
-        registry.register(services::PaidOrderCreateLabelHandler::new(
-            ctx.db.clone(),
-            fulfillment_registry,
-        ));
+        if let Some(fulfillment_registry) =
+            ctx.extensions.get::<FulfillmentProviderRegistry>().cloned()
+        {
+            registry.register(services::PaidOrderCreateLabelHandler::new(
+                ctx.db.clone(),
+                fulfillment_registry,
+            ));
+        }
 
         #[cfg(feature = "marketplace-financial")]
         {
