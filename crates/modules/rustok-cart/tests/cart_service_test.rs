@@ -1,7 +1,8 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
 use rustok_cart::dto::{
-    AddCartLineItemInput, CartShippingSelectionInput, CreateCartInput, SetCartAdjustmentInput,
+    AddCartLineItemInput, CartLineFulfillmentRequirement, CartShippingSelectionInput,
+    CreateCartInput, SetCartAdjustmentInput,
     UpdateCartContextInput,
 };
 use rustok_cart::error::CartError;
@@ -91,6 +92,7 @@ fn line_item_input() -> AddCartLineItemInput {
     AddCartLineItemInput {
         product_id: Some(Uuid::new_v4()),
         variant_id: Some(Uuid::new_v4()),
+        fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
         shipping_profile_slug: None,
         sku: Some("SKU-CART-1".to_string()),
         title: "Cart product".to_string(),
@@ -1445,6 +1447,7 @@ async fn seller_aware_delivery_groups_split_same_shipping_profile() {
                 selected_shipping_option_id: None,
                 shipping_selections: Some(vec![
                     CartShippingSelectionInput {
+        fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                         shipping_profile_slug: "default".to_string(),
                         seller_id: Some(seller_a_id.to_string()),
                         seller_scope: None,
