@@ -58,54 +58,43 @@ impl AdminOrderErrorContext {
     }
 }
 
-struct AdminOrderReadDiagnosticContext {
-    tenant_id: &'static str,
-    actor_id: &'static str,
-    order_id: &'static str,
-    customer_id: &'static str,
+struct AdminOrderDiagnosticContext {
+    tenant_state: &'static str,
+    actor_state: &'static str,
+    order_state: &'static str,
+    customer_state: &'static str,
     operation: &'static str,
 }
 
-impl From<&AdminOrderErrorContext> for AdminOrderReadDiagnosticContext {
+impl From<&AdminOrderErrorContext> for AdminOrderDiagnosticContext {
     fn from(context: &AdminOrderErrorContext) -> Self {
         Self {
-            tenant_id: uuid_shape(context.tenant_id),
-            actor_id: uuid_shape(context.actor_id),
-            order_id: optional_uuid_shape(context.order_id),
-            customer_id: optional_uuid_shape(context.customer_id),
+            tenant_state: uuid_shape(context.tenant_id),
+            actor_state: uuid_shape(context.actor_id),
+            order_state: optional_uuid_shape(context.order_id),
+            customer_state: optional_uuid_shape(context.customer_id),
             operation: context.operation,
         }
     }
 }
 
-struct AdminOrderReadPortDiagnosticContext {
-    correlation_id: &'static str,
-    actor: &'static str,
-    channel: &'static str,
-    locale: usize,
+struct AdminOrderPortDiagnosticContext {
+    correlation_state: &'static str,
+    actor_state: &'static str,
+    channel_state: &'static str,
+    locale_length: usize,
     deadline_ms: Option<u64>,
 }
 
-impl From<&PortContext> for AdminOrderReadPortDiagnosticContext {
+impl From<&PortContext> for AdminOrderPortDiagnosticContext {
     fn from(context: &PortContext) -> Self {
         Self {
-            correlation_id: text_presence_shape(context.correlation_id.as_str()),
-            actor: text_presence_shape(context.actor.id.as_str()),
-            channel: optional_text_presence_shape(context.channel.as_deref()),
-            locale: context.locale.len(),
+            correlation_state: text_presence_shape(context.correlation_id.as_str()),
+            actor_state: text_presence_shape(context.actor.id.as_str()),
+            channel_state: optional_text_presence_shape(context.channel.as_deref()),
+            locale_length: context.locale.len(),
             deadline_ms: context.deadline_ms,
         }
-    }
-}
-
-struct AdminOrderReadPortDiagnosticError<'a> {
-    code: &'a str,
-    retryable: bool,
-}
-
-impl std::fmt::Debug for AdminOrderReadPortDiagnosticError<'_> {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("redacted")
     }
 }
 
@@ -203,33 +192,28 @@ fn map_admin_order_port_error(
             "invariant_violation",
         ),
     };
-    let context = AdminOrderReadDiagnosticContext::from(&context);
-    let port_context = AdminOrderReadPortDiagnosticContext::from(port_context);
-    let error = AdminOrderReadPortDiagnosticError {
-        code: error.code.as_str(),
-        retryable: error.retryable,
-    };
+    let context = AdminOrderDiagnosticContext::from(&context);
+    let port_context = AdminOrderPortDiagnosticContext::from(port_context);
     tracing::error!(
-        error = ?error,
         owner = ADMIN_ORDER_OWNER,
         owner_operation,
-        correlation_id = %port_context.correlation_id,
-        tenant_id = %context.tenant_id,
-        actor_id = %context.actor_id,
-        order_id = ?context.order_id,
-        customer_id = ?context.customer_id,
-        operation = %context.operation,
-        actor = ?port_context.actor,
-        channel = ?port_context.channel,
-        locale = %port_context.locale,
+        correlation_state = port_context.correlation_state,
+        tenant_state = context.tenant_state,
+        actor_state = context.actor_state,
+        order_state = context.order_state,
+        customer_state = context.customer_state,
+        operation = context.operation,
+        port_actor_state = port_context.actor_state,
+        channel_state = port_context.channel_state,
+        locale_length = port_context.locale_length,
         deadline_ms = ?port_context.deadline_ms,
-        internal_code = %error.code,
+        owner_error_kind = error_kind,
+        owner_code_length = error.code.chars().count(),
         retryable = error.retryable,
-        error_kind,
         public_code = code,
         status = %status,
         boundary = ADMIN_ORDER_BOUNDARY,
-        "commerce admin order owner-port operation failed"
+        "commerce admin order owner-port operation failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
