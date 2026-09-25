@@ -886,33 +886,22 @@ enum FailureDisposition {
 
 fn failure_disposition(error: &PostOrderOrchestrationError) -> FailureDisposition {
     match error {
-        PostOrderOrchestrationError::Payment(error) => payment_failure_disposition(error),
-        PostOrderOrchestrationError::PaymentOrchestration(error) => match error {
-            PaymentOrchestrationError::ProviderAfterRefundReservation { source, .. }
-            | PaymentOrchestrationError::Provider(source)
-            | PaymentOrchestrationError::Payment(source) => payment_failure_disposition(source),
-        },
-        PostOrderOrchestrationError::Order(OrderError::Database(_) | OrderError::Core(_)) => {
-            FailureDisposition::Retryable
+        PostOrderOrchestrationError::OwnerPort { error, .. } => {
+            port_failure_disposition(error)
         }
-        PostOrderOrchestrationError::Order(_) | PostOrderOrchestrationError::Validation(_) => {
-            FailureDisposition::Failed
-        }
+        PostOrderOrchestrationError::Order(_)
+        | PostOrderOrchestrationError::Payment(_)
+        | PostOrderOrchestrationError::PaymentOrchestration(_)
+        | PostOrderOrchestrationError::Validation(_) => FailureDisposition::Failed,
     }
 }
 
-fn payment_failure_disposition(error: &PaymentError) -> FailureDisposition {
-    if error.requires_provider_reconciliation() {
-        FailureDisposition::Reconciliation
-    } else if error.is_provider_retryable()
-        || matches!(
-            error,
-            PaymentError::Database(_) | PaymentError::ProviderConfiguration { .. }
-        )
-    {
-        FailureDisposition::Retryable
-    } else {
-        FailureDisposition::Failed
+fn port_failure_disposition(error: &PortError) -> FailureDisposition {
+    match error.kind {
+        PortErrorKind::InvariantViolation => FailureDisposition::Reconciliation,
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => FailureDisposition::Retryable,
+        _ if error.retryable => FailureDisposition::Retryable,
+        _ => FailureDisposition::Failed,
     }
 }
 
