@@ -20,6 +20,17 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ---
 
 
+## 2026-09-25 Commerce Admin shared HTTP error-envelope hardening
+
+The shared Commerce admin HTTP helper used to accept a generic Debug error and log
+`error = ?error`, and the post-order owner-port branch repeated the same full PortError
+payload. Both paths now retain only stable owner/error-kind/public-code/status facts while
+the public HTTP envelope remains unchanged. The existing admin order/fulfillment verifier
+now requires the bounded helper contract and explicitly rejects the removed generic raw
+error logging.
+
+Maintainer runtime evidence, Cargo build, tests, and verifier execution remain unrun.
+
 ## 2026-09-25 Commerce Tax validation detail hardening
 
 Tax request validation contained one dynamic public detail (`duplicate tax country rule for
