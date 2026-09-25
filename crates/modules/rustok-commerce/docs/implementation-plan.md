@@ -1179,6 +1179,18 @@ Source inspection is not execution evidence.
   construction/lifecycle calls and require the owner command handoff.
 - [ ] Apply the same owner-port cutover discipline to remaining mounted Commerce handlers
   still constructing foreign owner services directly.
+
+## Audit 2026-09-25: storefront line-item resolution error safety
+
+- [x] Remove raw Product and Pricing `PortError` diagnostics from the mounted line-item
+  resolution path; keep bounded owner kind/code-length, retryability, tenant/channel,
+  correlation, and resource-shape facts.
+- [x] Remove raw Inventory `CommerceError`, variant/product identifiers, channel values,
+  and locale values from the line-item HTTP error boundary.
+- [x] Extend `verify-ecommerce-public-port-error-safety-v2.mjs` with line-item resolution
+  guards for the formerly raw Product/Pricing/Inventory diagnostics.
+- [ ] Continue auditing mounted Commerce helper boundaries and provider adapters for raw
+  owner error/context serialization.
 ## Change rules
 
 1. Update this file with every completed or newly discovered ecommerce task.
