@@ -246,7 +246,7 @@ fn validate_tax_request(
                 context,
                 owner_operation,
                 "tax.duplicate_country_rule",
-                format!("duplicate tax country rule for {country_code}"),
+                "duplicate tax country rule",
             ));
         }
     }
@@ -398,7 +398,7 @@ fn tax_request_error(
     context: &PortContext,
     owner_operation: &'static str,
     code: &'static str,
-    detail: impl std::fmt::Display,
+    detail: &'static str,
 ) -> PortError {
     let detail = detail.to_string();
     let facts = tax_calculation_context_facts(context);
