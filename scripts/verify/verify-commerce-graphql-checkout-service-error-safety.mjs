@@ -13,6 +13,9 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const routing = read('crates/modules/rustok-commerce/src/graphql/mutations/mod.rs');
 const facade = read('crates/modules/rustok-commerce/src/graphql/mutations/safe_checkout.rs');
 const source = read('crates/modules/rustok-commerce/src/graphql/mutations/checkout.rs');
+const legacyHelpers = read(
+  'crates/modules/rustok-commerce/src/graphql/mutations/safe_legacy_helpers.rs',
+);
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -75,6 +78,24 @@ for (const [value, label] of [
   requireText(facade, value, label);
 }
 
+for (const [value, label] of [
+  ['PortErrorKind::Validation', 'legacy shipping-option validation kind mapping'],
+  ['async_graphql::Error::new(message)', 'legacy shipping-option sanitized public error'],
+  ['owner_message_length = error.message.chars().count()', 'legacy shipping-option bounded diagnostic length'],
+  ['commerce GraphQL legacy shipping-option owner error was sanitized', 'legacy shipping-option sanitation diagnostic'],
+]) {
+  requireText(legacyHelpers, value, label);
+}
+
+for (const value of [
+  'async_graphql::Error::new(error.message)',
+  'async_graphql::Error::new(error.to_string())',
+  'error.to_string()',
+  'error.message.clone()',
+]) {
+  forbidText(legacyHelpers, value, 'legacy shipping-option owner/public boundary');
+}
+
 for (const value of [
   'FulfillmentError',
   'error = ?error',
@@ -88,7 +109,6 @@ for (const value of [
   'format!("{error}")',
   'CommerceError::Validation(detail)',
   'detail.clone()',
-  'error.message.clone()',
 ]) {
   forbidText(facade, value, 'checkout facade public and diagnostic boundary');
 }
