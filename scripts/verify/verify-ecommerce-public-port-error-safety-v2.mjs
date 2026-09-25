@@ -42,6 +42,8 @@ const pricing = read('crates/modules/rustok-pricing/src/ports.rs');
 const payment = read('crates/modules/rustok-payment/src/ports.rs');
 const paymentCompensation = read('crates/modules/rustok-payment/src/checkout_compensation.rs');
 const fulfillment = read('crates/modules/rustok-fulfillment/src/ports.rs');
+const tax = read('crates/modules/rustok-tax/src/ports.rs');
+const taxCalculation = read('crates/modules/rustok-tax/src/calculation_context.rs');
 const customer = read('crates/modules/rustok-customer/src/ports.rs');
 const inventory = read('crates/modules/rustok-inventory/src/ports.rs');
 const order = read('crates/modules/rustok-order/src/ports.rs');
@@ -67,6 +69,7 @@ for (const [source, label] of [
   [payment, 'payment collection port'],
   [paymentCompensation, 'payment checkout compensation port'],
   [fulfillment, 'fulfillment shipping selection port'],
+  [tax, 'tax calculation port'],
   [customer, 'customer read port'],
   [inventory, 'inventory reservation port'],
   [order, 'order generic checkout port'],
@@ -261,6 +264,33 @@ forbidAll(fulfillment, [
   'to = %to',
   'tenant_id = %context.tenant_id',
 ], 'fulfillment payload diagnostics');
+
+forbidAll(tax, [
+  'PortError::validation("tax.validation", message)',
+], 'tax public error mapping');
+forbidAll(taxCalculation, [
+  'error = ?error',
+  'error = %error',
+  'tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+], 'tax calculation payload diagnostics');
+
+requireText(
+  tax,
+  'PortError::validation(
+                "tax.validation",
+                "tax calculation request is invalid",
+            )',
+  'tax stable validation envelope',
+);
+requireText(taxCalculation, 'error_message_present = !error.message.is_empty()', 'tax local error message presence');
+requireText(taxCalculation, 'error_message_length = error.message.chars().count()', 'tax local error message length');
+requireText(taxCalculation, 'correlation_id = %context.correlation_id', 'tax local correlation logging');
 
 forbidAll(customer, [
   'format!("customer storage unavailable: {error}")',
