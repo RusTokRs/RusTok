@@ -20,6 +20,16 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ---
 
 
+## 2026-09-25 Commerce Tax port error-envelope hardening
+
+The legacy TaxCalculationPort mapper could copy TaxError::Validation text into the
+public PortError message, while the canonical in-process adapter logged the full
+PortError debug payload. Validation now maps to a stable public message, and the
+canonical adapter logs only bounded context/error-shape facts. The ecommerce public
+port verifier and its regression fixture now explicitly cover this Tax boundary.
+
+Maintainer runtime evidence, Cargo build, tests, and verifier execution remain unrun.
+
 ## 2026-09-25 Commerce Fulfillment lifecycle status typing
 
 The Fulfillment owner command adapter had critical lifecycle checks expressed as raw
