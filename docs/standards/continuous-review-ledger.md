@@ -480,17 +480,17 @@ and rejects the former raw diagnostic patterns.
 
 Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
 
-## 2026-09-25 Admin Order command owner-port cutover
+## 2026-09-25 Admin Order audit correction
 
-Mounted Commerce Admin Order lifecycle commands previously constructed `OrderService`
-directly for mark-paid, ship, deliver, and cancel. The handlers now use the composed
-`OrderAdminCommandPort` with typed command requests and an explicit owner-port context.
-The legacy controller-local `OrderError` mutation mapper was removed in favor of the
-existing typed `PortError` HTTP envelope path.
+The repository mounts `controllers/admin/orders_owner_ports.rs` for the Admin Order routes;
+`controllers/admin/orders.rs` is legacy and unmounted. An accidental edit to the legacy file
+was reverted, so no legacy command migration is claimed.
 
-The admin order/fulfillment verification guard now forbids direct `OrderService`
-construction and lifecycle calls in the mounted controller and requires the typed command
-owner handoff.
+The active controller already used `OrderAdminCommandPort` for mark-paid, ship, deliver, and
+cancel. The real active defect was its generated per-request idempotency key. The command
+context now requires the caller-provided `Idempotency-Key` header, while read contexts carry
+no synthetic idempotency key. The order/fulfillment and order-detail verifiers were aligned
+to the mounted controller.
 
 Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
 
