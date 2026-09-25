@@ -28,6 +28,7 @@ use crate::dto::{
     CompleteOrderReturnInput, CreateOrderAdjustmentInput, CreateOrderChangeInput, CreateOrderInput,
     CreateOrderLineItemInput, CreateOrderReturnInput, CreateOrderTaxLineInput,
     ListOrderChangesInput, ListOrderReturnsInput, ListOrdersInput, OrderAdjustmentResponse,
+    OrderLineFulfillmentRequirement,
     OrderChangeResponse, OrderLineItemResponse, OrderResponse, OrderReturnItemResponse,
     OrderReturnResponse, OrderTaxLineResponse,
 };
@@ -50,6 +51,40 @@ const RETURN_RESOLUTION_STORE_CREDIT: &str = "store_credit";
 const ORDER_CHANGE_STATUS_PENDING: &str = "pending";
 const ORDER_CHANGE_STATUS_APPLIED: &str = "applied";
 const ORDER_CHANGE_STATUS_CANCELLED: &str = "cancelled";
+
+fn normalize_order_line_item_shipping_profile(
+    requirement: OrderLineFulfillmentRequirement,
+    value: Option<&str>,
+) -> OrderResult<Option<String>> {
+    let normalized = value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase());
+    match requirement {
+        OrderLineFulfillmentRequirement::Digital => {
+            if normalized.is_some() {
+                return Err(OrderError::Validation(
+                    "digital order lines must not have a shipping profile".to_string(),
+                ));
+            }
+            Ok(None)
+        }
+        OrderLineFulfillmentRequirement::Physical => normalized
+            .filter(|value| value.len() <= 100)
+            .map(Some)
+            .ok_or_else(|| {
+                OrderError::Validation(
+                    "physical order lines require a non-empty shipping profile".to_string(),
+                )
+            }),
+    }
+}
+
+fn order_line_item_fulfillment_requirement(
+    value: &str,
+) -> OrderResult<OrderLineFulfillmentRequirement> {
+    OrderLineFulfillmentRequirement::parse(value).map_err(OrderError::Validation)
+}
 
 async fn find_order_for_update_in_tx(
     txn: &DatabaseTransaction,
@@ -269,13 +304,18 @@ impl OrderService {
         let mut order_line_item_ids = Vec::with_capacity(input.line_items.len());
         for item in &input.line_items {
             let order_line_item_id = generate_id();
+            let shipping_profile_slug = normalize_order_line_item_shipping_profile(
+                item.fulfillment_requirement,
+                item.shipping_profile_slug.as_deref(),
+            )?;
             let item_metadata = sanitize_line_item_metadata(item.metadata.clone());
             entities::order_line_item::ActiveModel {
                 id: Set(order_line_item_id),
                 order_id: Set(order_id),
                 product_id: Set(item.product_id),
                 variant_id: Set(item.variant_id),
-                shipping_profile_slug: Set(item.shipping_profile_slug.clone()),
+                fulfillment_requirement: Set(item.fulfillment_requirement.as_str().to_string()),
+                shipping_profile_slug: Set(shipping_profile_slug.unwrap_or_default()),
                 seller_id: Set(normalize_seller_id(item.seller_id.as_deref())),
                 sku: Set(item.sku.clone()),
                 quantity: Set(item.quantity),
@@ -776,25 +816,57 @@ impl OrderService {
             shipped_at: order.shipped_at.map(|value| value.with_timezone(&Utc)),
             delivered_at: order.delivered_at.map(|value| value.with_timezone(&Utc)),
             cancelled_at: order.cancelled_at.map(|value| value.with_timezone(&Utc)),
-            line_items: line_items
-                .into_iter()
-                .map(|item| OrderLineItemResponse {
-                    id: item.id,
-                    order_id: item.order_id,
-                    product_id: item.product_id,
-                    variant_id: item.variant_id,
-                    shipping_profile_slug: item.shipping_profile_slug,
-                    seller_id: item.seller_id,
-                    sku: item.sku,
-                    title: title_map.get(&item.id).cloned().unwrap_or_default(),
-                    quantity: item.quantity,
-                    unit_price: item.unit_price,
-                    total_price: item.total_price,
-                    currency_code: item.currency_code,
-                    metadata: item.metadata,
-                    created_at: item.created_at.with_timezone(&Utc),
-                })
-                .collect(),
+            line_items: {
+                let mut projected = Vec::with_capacity(line_items.len());
+                for item in line_items {
+                    let fulfillment_requirement =
+                        order_line_item_fulfillment_requirement(&item.fulfillment_requirement)?;
+                    let shipping_profile_slug = match fulfillment_requirement {
+                        OrderLineFulfillmentRequirement::Digital => None,
+                        OrderLineFulfillmentRequirement::Physical => {
+                            Some(
+                                item.shipping_profile_slug
+                                    .trim()
+                                    .to_ascii_lowercase(),
+                            )
+                        }
+                    };
+                    if fulfillment_requirement == OrderLineFulfillmentRequirement::Physical
+                        && shipping_profile_slug.as_deref().is_none_or(str::is_empty)
+                    {
+                        return Err(OrderError::Validation(format!(
+                            "physical order line {} has no shipping profile",
+                            item.id
+                        )));
+                    }
+                    if fulfillment_requirement == OrderLineFulfillmentRequirement::Digital
+                        && !item.shipping_profile_slug.trim().is_empty()
+                    {
+                        return Err(OrderError::Validation(format!(
+                            "digital order line {} has a shipping profile",
+                            item.id
+                        )));
+                    }
+                    projected.push(OrderLineItemResponse {
+                        id: item.id,
+                        order_id: item.order_id,
+                        product_id: item.product_id,
+                        variant_id: item.variant_id,
+                        fulfillment_requirement,
+                        shipping_profile_slug,
+                        seller_id: item.seller_id,
+                        sku: item.sku,
+                        title: title_map.get(&item.id).cloned().unwrap_or_default(),
+                        quantity: item.quantity,
+                        unit_price: item.unit_price,
+                        total_price: item.total_price,
+                        currency_code: item.currency_code,
+                        metadata: item.metadata,
+                        created_at: item.created_at.with_timezone(&Utc),
+                    });
+                }
+                Ok::<_, OrderError>(projected)?
+            },
             adjustments: adjustments
                 .into_iter()
                 .map(|adjustment| OrderAdjustmentResponse {
@@ -832,6 +904,10 @@ impl OrderService {
     fn validate_line_item(item: &CreateOrderLineItemInput) -> OrderResult<()> {
         item.validate()
             .map_err(|error| OrderError::Validation(error.to_string()))?;
+        normalize_order_line_item_shipping_profile(
+            item.fulfillment_requirement,
+            item.shipping_profile_slug.as_deref(),
+        )?;
         if item.unit_price < Decimal::ZERO {
             return Err(OrderError::Validation(
                 "unit_price cannot be negative".to_string(),
