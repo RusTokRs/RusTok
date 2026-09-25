@@ -103,6 +103,21 @@ requireText(
 );
 requireText(contract, '"typed_identity_migration_required": false', 'contract migration completion');
 requireText(contract, '"identity_guard": "scripts/verify/verify-fulfillment-checkout-typed-identity.mjs"', 'contract identity guard');
+requireText(
+  migration,
+  'UPDATE fulfillment_items AS fi\n            SET metadata = jsonb_set(',
+  'PostgreSQL down migration restores fulfillment item checkout identity',
+);
+requireText(
+  migration,
+  "UPDATE fulfillment_items\n            SET metadata = json_set(",
+  'SQLite down migration restores fulfillment item checkout identity',
+);
+requireText(
+  migration,
+  "UPDATE fulfillment_items AS fi\n            JOIN fulfillments AS f",
+  'MySQL down migration restores fulfillment item checkout identity',
+);
 
 const uniquenessCount = (migration.match(/ux_fulfillments_checkout_identity/g) || []).length;
 if (uniquenessCount < 2) {
