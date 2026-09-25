@@ -123,8 +123,12 @@ for (const [source, label] of [
     'RecoveringStagedCheckoutService::new',
     'bind_in_process_atomic_cart_checkout_with_pricing',
     'PrepareCartCheckoutSnapshotRequest',
+    'rustok_region::RegionService::new(',
+    'rustok_marketplace_allocation::MarketplaceAllocationService::new(',
+    'rustok_marketplace_commission::MarketplaceCommissionService::new(',
+    'rustok_marketplace_ledger::MarketplaceLedgerService::new(',
   ]) {
-    forbidText(source, value, `${label} duplicate or legacy checkout construction`);
+    forbidText(source, value, `${label} duplicate, foreign-service, or legacy checkout construction`);
   }
 }
 
