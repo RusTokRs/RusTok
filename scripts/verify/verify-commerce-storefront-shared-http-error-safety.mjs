@@ -100,23 +100,38 @@ for (const [value, label] of [
   ['"tenant_boundary"', 'context tenant boundary error kind'],
   ['owner = "rustok_commerce.store_context"', 'context owner log'],
   ['operation = "resolve_store_context"', 'context operation log'],
-  ['tenant_id = %tenant_id', 'context tenant log'],
-  ['error = ?error', 'context raw internal error log'],
+  ['tenant_non_nil = !tenant_id.is_nil()', 'bounded context tenant diagnostic'],
+  ['"Store context request is invalid"', 'stable context validation message'],
+  ['"storefront context resolution failed with bounded diagnostics"', 'bounded context log'],
   ['HttpError::new(status, code, message)', 'context static envelope'],
 ]) {
   requireText(contextMapper, value, label);
+}
+
+for (const value of [
+  'tenant_id = %tenant_id',
+  'error = ?error',
+  'msg.clone()',
+  'err.to_string()',
+  'error.to_string()',
+]) forbidText(contextMapper, value, 'raw storefront context diagnostic/public detail');
+
+for (const value of ['error = ?error', 'tenant_id = %tenant_id', 'user_id = %user_id']) {
+  forbidText(customerMapper, value, 'raw storefront customer diagnostic');
 }
 
 for (const [value, label] of [
   ['let public = port_error_to_http_error(error.clone());', 'customer shared safe mapping'],
   ['owner = "rustok_customer"', 'customer owner log'],
   ['operation = "resolve_current_customer"', 'customer operation log'],
-  ['tenant_id = %tenant_id', 'customer tenant log'],
-  ['user_id = %user_id', 'customer user log'],
-  ['error_kind = ?error.kind', 'customer typed kind log'],
+  ['tenant_non_nil = !tenant_id.is_nil()', 'bounded customer tenant diagnostic'],
+  ['user_non_nil = !user_id.is_nil()', 'bounded customer user diagnostic'],
+  ['owner_error_kind = ?error.kind', 'customer typed kind log'],
+  ['owner_code_length = error.code.chars().count()', 'customer bounded code length'],
   ['retryable = error.retryable', 'customer retryability log'],
   ['public_code = %public.code', 'customer public code log'],
   ['status = %public.status', 'customer public status log'],
+  ['"storefront customer projection failed with bounded diagnostics"', 'bounded customer log'],
   ['public\n}', 'customer mapped error return'],
 ]) {
   requireText(customerMapper, value, label);
@@ -139,12 +154,20 @@ for (const [value, label] of [
   ['"commerce_store_channel_failed"', 'channel fail-closed code'],
   ['owner = "rustok_channel"', 'channel owner log'],
   ['operation = "ensure_storefront_channel_enabled"', 'channel operation log'],
-  ['channel_id = ?request_context.channel_id', 'channel ID log'],
-  ['channel_slug = ?request_context.channel_slug', 'channel slug log'],
+  ['channel_id_present = request_context.channel_id.is_some()', 'bounded channel ID diagnostic'],
+  ['channel_slug_present = request_context.channel_slug.is_some()', 'bounded channel slug diagnostic'],
+  ['channel_slug_length = request_context.channel_slug.as_deref().map(str::len)', 'bounded channel slug length'],
+  ['"storefront channel resolution failed with bounded diagnostics"', 'bounded channel log'],
   ['HttpError::new(status, code, message)', 'channel static envelope'],
 ]) {
   requireText(channelMapper, value, label);
 }
+
+for (const value of [
+  'error = ?error',
+  'channel_id = ?request_context.channel_id',
+  'channel_slug = ?request_context.channel_slug',
+]) forbidText(channelMapper, value, 'raw storefront channel diagnostic');
 
 for (const [value, label] of [
   ['StoreContextService::new(', 'context service construction'],
