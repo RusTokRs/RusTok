@@ -3,6 +3,17 @@ use uuid::Uuid;
 
 pub type MarketplacePayoutResult<T> = Result<T, MarketplacePayoutError>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MarketplaceLedgerBoundaryKind {
+    Validation,
+    NotFound,
+    Conflict,
+    Forbidden,
+    Unavailable,
+    Timeout,
+    InvariantViolation,
+}
+
 #[derive(Debug, Error)]
 pub enum MarketplacePayoutError {
     #[error("marketplace payout {0} was not found")]
@@ -22,6 +33,7 @@ pub enum MarketplacePayoutError {
         code: String,
         message: String,
         retryable: bool,
+        kind: MarketplaceLedgerBoundaryKind,
     },
     #[error(transparent)]
     Database(#[from] sea_orm::DbErr),
