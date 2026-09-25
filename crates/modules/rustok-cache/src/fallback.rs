@@ -156,7 +156,7 @@ fn validate_degraded_key(key: &str, operation: &str) -> rustok_core::Result<()> 
 /// state. Tracker capacity is never recovered by evicting a live mutation; new mutations surface
 /// the primary error when they cannot be retained safely. A fixed set of striped locks serializes
 /// operations for the same key without introducing an unbounded per-key registry.
-pub(crate) struct DegradationAwareFallbackBackend {
+pub struct DegradationAwareFallbackBackend {
     primary: Arc<dyn CacheBackend>,
     fallback: Arc<InMemoryCacheBackend>,
     degraded_writes: DegradedWriteTracker,
@@ -179,7 +179,7 @@ impl DegradationAwareFallbackBackend {
         }
     }
 
-    pub(crate) async fn reconcile_tombstones(&self) -> rustok_core::Result<()> {
+    pub async fn reconcile_tombstones(&self) -> rustok_core::Result<()> {
         self.pending_invalidations.clear().await;
         self.tombstone_saturation.store(false, Ordering::Release);
         Ok(())
