@@ -192,11 +192,11 @@ impl ReturnCompletionOrchestrationService {
         }
     }
 
+
     #[allow(clippy::too_many_arguments)]
     async fn execute_claimed(
         &self,
         journal: &ReturnCompletionOperationJournal,
-        order_service: &OrderService,
         tenant_id: Uuid,
         actor_id: Uuid,
         return_id: Uuid,
@@ -204,7 +204,7 @@ impl ReturnCompletionOrchestrationService {
         lease_owner: &str,
         input: CompleteReturnResolutionInput,
     ) -> PostOrderOrchestrationResult<OrderReturnResponse> {
-        let mut current_return = order_service.get_return(tenant_id, return_id).await?;
+        let mut current_return = self.read_return(tenant_id, actor_id, return_id).await?;
         if current_return.status == "completed" {
             return Ok(current_return);
         }
@@ -220,14 +220,16 @@ impl ReturnCompletionOrchestrationService {
         } = input;
         let mut stage = ReturnCompletionOperationStage::from_str(operation.stage.as_str())
             .map_err(map_journal_error)?;
+
         self.validate_explicit_resolution_links(
-            order_service,
             tenant_id,
+            actor_id,
             &current_return,
             refund_id,
             order_change_id,
         )
         .await?;
+
         let mut owner_input = CompleteOrderReturnInput {
             resolution_type,
             refund_id,
@@ -240,6 +242,7 @@ impl ReturnCompletionOrchestrationService {
                 .resolve_refund(
                     journal,
                     tenant_id,
+                    actor_id,
                     return_id,
                     &current_return,
                     &mut operation,
@@ -257,7 +260,6 @@ impl ReturnCompletionOrchestrationService {
             let order_change = self
                 .resolve_order_change(
                     journal,
-                    order_service,
                     tenant_id,
                     actor_id,
                     return_id,
@@ -280,7 +282,6 @@ impl ReturnCompletionOrchestrationService {
             let order_change = self
                 .resolve_order_change(
                     journal,
-                    order_service,
                     tenant_id,
                     actor_id,
                     return_id,
@@ -301,28 +302,23 @@ impl ReturnCompletionOrchestrationService {
             owner_input.order_change_id = Some(order_change.id);
         }
 
-        current_return = order_service.get_return(tenant_id, return_id).await?;
+        current_return = self.read_return(tenant_id, actor_id, return_id).await?;
         let completed = if current_return.status == "completed" {
             current_return
         } else {
-            match order_service
-                .complete_return(tenant_id, return_id, owner_input)
+            match self
+                .complete_owner_return(tenant_id, actor_id, return_id, owner_input)
                 .await
             {
                 Ok(value) => value,
-                Err(OrderError::InvalidTransition { .. }) => {
-                    let adopted = order_service.get_return(tenant_id, return_id).await?;
+                Err(error) => {
+                    let adopted = self.read_return(tenant_id, actor_id, return_id).await?;
                     if adopted.status == "completed" {
                         adopted
                     } else {
-                        return Err(OrderError::InvalidTransition {
-                            from: adopted.status,
-                            to: "completed".to_string(),
-                        }
-                        .into());
+                        return Err(error);
                     }
                 }
-                Err(error) => return Err(error.into()),
             }
         };
 
@@ -347,33 +343,33 @@ impl ReturnCompletionOrchestrationService {
 
     async fn validate_explicit_resolution_links(
         &self,
-        order_service: &OrderService,
         tenant_id: Uuid,
+        actor_id: Uuid,
         order_return: &OrderReturnResponse,
         refund_id: Option<Uuid>,
         order_change_id: Option<Uuid>,
     ) -> PostOrderOrchestrationResult<()> {
         if let Some(refund_id) = refund_id {
-            let payment_service = PaymentService::new(self.db.clone());
-            let refund = payment_service.get_refund(tenant_id, refund_id).await?;
-            let collection = payment_service
-                .get_collection(tenant_id, refund.payment_collection_id)
+            let refund = self.read_refund(tenant_id, actor_id, refund_id).await?;
+            let collection = self
+                .read_collection(tenant_id, actor_id, refund.payment_collection_id)
                 .await?;
             if collection.order_id != Some(order_return.order_id) {
                 return Err(PostOrderOrchestrationError::Validation(format!(
-                    "refund {refund_id} is not attached to order {}",
-                    order_return.order_id
+                    "refund {} is not attached to order {}",
+                    refund_id, order_return.order_id
                 )));
             }
         }
+
         if let Some(order_change_id) = order_change_id {
-            let order_change = order_service
-                .get_order_change(tenant_id, order_change_id)
+            let order_change = self
+                .read_order_change(tenant_id, actor_id, order_change_id)
                 .await?;
             if order_change.order_id != order_return.order_id {
                 return Err(PostOrderOrchestrationError::Validation(format!(
-                    "order change {order_change_id} is not attached to order {}",
-                    order_return.order_id
+                    "order change {} is not attached to order {}",
+                    order_change_id, order_return.order_id
                 )));
             }
         }
@@ -385,6 +381,7 @@ impl ReturnCompletionOrchestrationService {
         &self,
         journal: &ReturnCompletionOperationJournal,
         tenant_id: Uuid,
+        actor_id: Uuid,
         return_id: Uuid,
         order_return: &OrderReturnResponse,
         operation: &mut crate::entities::return_completion_operation::Model,
@@ -392,31 +389,32 @@ impl ReturnCompletionOrchestrationService {
         stage: ReturnCompletionOperationStage,
         input: CompleteReturnRefundInput,
     ) -> PostOrderOrchestrationResult<RefundResponse> {
-        let payment_service = PaymentService::new(self.db.clone());
-        let payment_orchestration = PaymentOrchestrationService::new(self.db.clone())
-            .with_provider_registry(self.payment_provider_registry.clone());
-
         let mut refund = if let Some(refund_id) = operation.refund_id {
-            payment_service.get_refund(tenant_id, refund_id).await?
+            self.read_refund(tenant_id, actor_id, refund_id).await?
         } else {
             if stage != ReturnCompletionOperationStage::Created {
                 return Err(PostOrderOrchestrationError::Validation(format!(
-                    "return completion operation {} reached `{}` without a refund identity",
+                    "return completion operation {} reached '{}' without a refund identity",
                     operation.id, operation.stage
                 )));
             }
+
             let collection_id = self
                 .resolve_payment_collection(
                     tenant_id,
+                    actor_id,
+                    operation.id,
                     order_return.order_id,
                     input.payment_collection_id,
                 )
                 .await?;
-            let created = payment_orchestration
-                .create_refund_idempotent(
+
+            let created = self
+                .create_refund(
                     tenant_id,
+                    actor_id,
                     collection_id,
-                    format!("order_return:{return_id}:refund"),
+                    format!("order_return:{}:refund", return_id),
                     CreateRefundInput {
                         amount: input.amount,
                         reason: input.reason,
@@ -424,6 +422,7 @@ impl ReturnCompletionOrchestrationService {
                     },
                 )
                 .await?;
+
             *operation = journal
                 .checkpoint(ReturnCompletionOperationCheckpoint {
                     tenant_id,
@@ -437,13 +436,15 @@ impl ReturnCompletionOrchestrationService {
                 })
                 .await
                 .map_err(map_journal_error)?;
+
             created
         };
 
         if input.complete && refund.status != "refunded" {
-            refund = payment_orchestration
+            refund = self
                 .complete_refund(
                     tenant_id,
+                    actor_id,
                     refund.id,
                     CompleteRefundInput {
                         metadata: serde_json::json!({
@@ -455,6 +456,7 @@ impl ReturnCompletionOrchestrationService {
                 )
                 .await?;
         }
+
         Ok(refund)
     }
 
@@ -462,7 +464,6 @@ impl ReturnCompletionOrchestrationService {
     async fn resolve_order_change(
         &self,
         journal: &ReturnCompletionOperationJournal,
-        order_service: &OrderService,
         tenant_id: Uuid,
         actor_id: Uuid,
         return_id: Uuid,
@@ -476,20 +477,19 @@ impl ReturnCompletionOrchestrationService {
         metadata: Value,
     ) -> PostOrderOrchestrationResult<OrderChangeResponse> {
         let order_change = if let Some(order_change_id) = operation.order_change_id {
-            order_service
-                .get_order_change(tenant_id, order_change_id)
-                .await?
+            self.read_order_change(tenant_id, actor_id, order_change_id).await?
         } else {
             if stage != ReturnCompletionOperationStage::Created {
                 return Err(PostOrderOrchestrationError::Validation(format!(
-                    "return completion operation {} reached `{}` without an order-change identity",
+                    "return completion operation {} reached '{}' without an order-change identity",
                     operation.id, operation.stage
                 )));
             }
+
             if let Some(existing) = self
                 .find_resolution_order_change(
-                    order_service,
                     tenant_id,
+                    actor_id,
                     order_return.order_id,
                     operation.id,
                     change_type,
@@ -498,21 +498,21 @@ impl ReturnCompletionOrchestrationService {
             {
                 existing
             } else {
-                order_service
-                    .create_order_change(
-                        tenant_id,
-                        actor_id,
-                        order_return.order_id,
-                        build_resolution_order_change(
-                            change_type,
-                            description,
-                            preview,
-                            metadata,
-                            return_id,
-                            operation.id,
-                        )?,
-                    )
-                    .await?
+                self.create_order_change(
+                    tenant_id,
+                    actor_id,
+                    operation.id,
+                    order_return.order_id,
+                    build_resolution_order_change(
+                        change_type,
+                        description,
+                        preview,
+                        metadata,
+                        return_id,
+                        operation.id,
+                    )?,
+                )
+                .await?
             }
         };
 
@@ -531,20 +531,22 @@ impl ReturnCompletionOrchestrationService {
                 .await
                 .map_err(map_journal_error)?;
         }
+
         Ok(order_change)
     }
 
     async fn find_resolution_order_change(
         &self,
-        order_service: &OrderService,
         tenant_id: Uuid,
+        actor_id: Uuid,
         order_id: Uuid,
         operation_id: Uuid,
         change_type: &str,
     ) -> PostOrderOrchestrationResult<Option<OrderChangeResponse>> {
-        let (changes, _) = order_service
+        let page = self
             .list_order_changes(
                 tenant_id,
+                actor_id,
                 ListOrderChangesInput {
                     page: 1,
                     per_page: 100,
@@ -554,8 +556,9 @@ impl ReturnCompletionOrchestrationService {
                 },
             )
             .await?;
+
         let operation_id = operation_id.to_string();
-        Ok(changes.into_iter().find(|change| {
+        Ok(page.items.into_iter().find(|change| {
             change
                 .metadata
                 .get("return_completion_operation_id")
@@ -567,31 +570,268 @@ impl ReturnCompletionOrchestrationService {
     async fn resolve_payment_collection(
         &self,
         tenant_id: Uuid,
+        actor_id: Uuid,
+        operation_id: Uuid,
         order_id: Uuid,
         explicit_collection_id: Option<Uuid>,
     ) -> PostOrderOrchestrationResult<Uuid> {
-        let payment_service = PaymentService::new(self.db.clone());
         if let Some(collection_id) = explicit_collection_id {
-            let collection = payment_service
-                .get_collection(tenant_id, collection_id)
+            let collection = self
+                .read_collection(tenant_id, actor_id, collection_id)
                 .await?;
             if collection.order_id != Some(order_id) {
                 return Err(PostOrderOrchestrationError::Validation(format!(
-                    "payment collection {collection_id} is not attached to order {order_id}"
+                    "payment collection {} is not attached to order {}",
+                    collection_id, order_id
                 )));
             }
             return Ok(collection_id);
         }
 
-        payment_service
-            .find_latest_collection_by_order(tenant_id, order_id)
-            .await?
+        let page = self
+            .payment_admin_read_port
+            .list_payment_collection_projections(
+                self.read_context(
+                    tenant_id,
+                    actor_id,
+                    "list_payment_collections",
+                    operation_id,
+                ),
+                ListPaymentCollectionProjectionsRequest {
+                    page: 1,
+                    per_page: 1,
+                    status: None,
+                    order_id: Some(order_id),
+                    cart_id: None,
+                    customer_id: None,
+                },
+            )
+            .await
+            .map_err(|error| self.owner_port_error("rustok_payment", error))?;
+
+        page.items
+            .first()
             .map(|collection| collection.id)
             .ok_or_else(|| {
                 PostOrderOrchestrationError::Validation(format!(
-                    "order {order_id} has no payment collection for return refund"
+                    "order {} has no payment collection for return refund",
+                    order_id
                 ))
             })
+    }
+
+    fn read_context(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        operation: &'static str,
+        resource_id: Uuid,
+    ) -> PortContext {
+        PortContext::new(
+            tenant_id.to_string(),
+            PortActor::user(actor_id.to_string()),
+            "en",
+            format!(
+                "commerce-return-completion:{}:{}",
+                operation, resource_id
+            ),
+        )
+        .with_deadline(std::time::Duration::from_secs(3))
+    }
+
+    fn write_context(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        operation: &'static str,
+        resource_id: Uuid,
+        idempotency_key: impl Into<String>,
+    ) -> PortContext {
+        self.read_context(tenant_id, actor_id, operation, resource_id)
+            .with_idempotency_key(idempotency_key)
+    }
+
+    fn owner_port_error(
+        &self,
+        owner: &'static str,
+        error: PortError,
+    ) -> PostOrderOrchestrationError {
+        PostOrderOrchestrationError::OwnerPort { owner, error }
+    }
+
+    async fn read_return(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        return_id: Uuid,
+    ) -> PostOrderOrchestrationResult<OrderReturnResponse> {
+        self.order_read_port
+            .read_order_return_projection(
+                self.read_context(tenant_id, actor_id, "read_order_return", return_id),
+                ReadOrderReturnProjectionRequest { return_id },
+            )
+            .await
+            .map_err(|error| self.owner_port_error("rustok_order", error))
+    }
+
+    async fn read_order_change(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        change_id: Uuid,
+    ) -> PostOrderOrchestrationResult<OrderChangeResponse> {
+        self.order_read_port
+            .read_order_change_projection(
+                self.read_context(tenant_id, actor_id, "read_order_change", change_id),
+                ReadOrderChangeProjectionRequest { change_id },
+            )
+            .await
+            .map_err(|error| self.owner_port_error("rustok_order", error))
+    }
+
+    async fn list_order_changes(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        input: ListOrderChangesInput,
+    ) -> PostOrderOrchestrationResult<rustok_order::OrderChangeProjectionPage> {
+        self.order_read_port
+            .list_order_change_projections(
+                self.read_context(tenant_id, actor_id, "list_order_changes", tenant_id),
+                ListOrderChangeProjectionsRequest {
+                    page: input.page,
+                    per_page: input.per_page,
+                    order_id: input.order_id,
+                    status: input.status,
+                    change_type: input.change_type,
+                },
+            )
+            .await
+            .map_err(|error| self.owner_port_error("rustok_order", error))
+    }
+
+    async fn create_order_change(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        operation_id: Uuid,
+        order_id: Uuid,
+        input: CreateOrderChangeInput,
+    ) -> PostOrderOrchestrationResult<OrderChangeResponse> {
+        self.order_post_order_command_port
+            .create_change(
+                self.write_context(
+                    tenant_id,
+                    actor_id,
+                    "create_order_change",
+                    order_id,
+                    format!("return-completion:{}:order-change", operation_id),
+                ),
+                CreateOrderChangeRequest { order_id, input },
+            )
+            .await
+            .map_err(|error| self.owner_port_error("rustok_order", error))
+    }
+
+    async fn complete_owner_return(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        return_id: Uuid,
+        input: CompleteOrderReturnInput,
+    ) -> PostOrderOrchestrationResult<OrderReturnResponse> {
+        self.order_post_order_command_port
+            .complete_return(
+                self.write_context(
+                    tenant_id,
+                    actor_id,
+                    "complete_order_return",
+                    return_id,
+                    format!("return-completion:{}:complete", return_id),
+                ),
+                CompleteOrderReturnRequest { return_id, input },
+            )
+            .await
+            .map_err(|error| self.owner_port_error("rustok_order", error))
+    }
+
+    async fn read_refund(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        refund_id: Uuid,
+    ) -> PostOrderOrchestrationResult<RefundResponse> {
+        self.payment_admin_read_port
+            .read_refund_projection(
+                self.read_context(tenant_id, actor_id, "read_refund", refund_id),
+                ReadRefundProjectionRequest { refund_id },
+            )
+            .await
+            .map_err(|error| self.owner_port_error("rustok_payment", error))
+    }
+
+    async fn read_collection(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        collection_id: Uuid,
+    ) -> PostOrderOrchestrationResult<PaymentCollectionResponse> {
+        self.payment_admin_read_port
+            .read_payment_collection_projection(
+                self.read_context(tenant_id, actor_id, "read_payment_collection", collection_id),
+                ReadPaymentCollectionProjectionRequest { collection_id },
+            )
+            .await
+            .map_err(|error| self.owner_port_error("rustok_payment", error))
+    }
+
+    async fn create_refund(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        collection_id: Uuid,
+        creation_key: String,
+        input: CreateRefundInput,
+    ) -> PostOrderOrchestrationResult<RefundResponse> {
+        self.payment_admin_refund_command_port
+            .create_refund(
+                self.write_context(
+                    tenant_id,
+                    actor_id,
+                    "create_admin_refund",
+                    collection_id,
+                    creation_key.clone(),
+                ),
+                CreateAdminRefundRequest {
+                    collection_id,
+                    creation_key,
+                    input,
+                },
+            )
+            .await
+            .map_err(|error| self.owner_port_error("rustok_payment", error))
+    }
+
+    async fn complete_refund(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        refund_id: Uuid,
+        input: CompleteRefundInput,
+    ) -> PostOrderOrchestrationResult<RefundResponse> {
+        self.payment_admin_refund_command_port
+            .complete_refund(
+                self.write_context(
+                    tenant_id,
+                    actor_id,
+                    "complete_admin_refund",
+                    refund_id,
+                    format!("return-completion:{}:complete-refund", refund_id),
+                ),
+                CompleteAdminRefundRequest { refund_id, input },
+            )
+            .await
+            .map_err(|error| self.owner_port_error("rustok_payment", error))
     }
 
     async fn record_failure(
