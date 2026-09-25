@@ -26,7 +26,17 @@ Last reviewed: 2026-09-25
 - [x] Extend `verify-commerce-fulfillment-requirement-boundary.mjs` with the Payment runtime-composition guard.
 - [ ] Execute the Commerce/server Rust test suites and the static verifier against a repository checkout; this environment cannot run the repository build because the GitHub source is not mounted locally.
 
-## Audit 2026-09-25: Tax port error-envelope hardening## Audit 2026-09-25: Tax validation detail hardening## Audit 2026-09-25: Admin shared HTTP error-envelope hardening## Audit 2026-09-25: Order owner port diagnostic hardening## Audit 2026-09-25: Mounted Admin Order Detail owner-port cutover## Audit 2026-09-25: Mounted Store Product runtime capability integrity
+## Audit 2026-09-25: Tax port error-envelope hardening## Audit 2026-09-25: Tax validation detail hardening## Audit 2026-09-25: Admin shared HTTP error-envelope hardening## Audit 2026-09-25: Order owner port diagnostic hardening## Audit 2026-09-25: Mounted Admin Order Detail owner-port cutover## Audit 2026-09-25: Mounted Store Product runtime capability integrity## Audit 2026-09-25: Store shared HTTP error-envelope hardening
+
+- [x] Replace StoreContext validation/currency public messages with stable envelopes; internal
+  `StoreContextError` details are no longer exposed by the mounted shared HTTP mapper.
+- [x] Remove full StoreContextError, Customer PortError, tenant/user identities, and channel
+  identifiers/slugs from shared storefront diagnostics; retain only bounded shape/kind facts.
+- [x] Update `verify-commerce-storefront-shared-http-error-safety.mjs` to require the bounded
+  diagnostic contract and explicitly forbid the removed raw payload patterns.
+- [ ] Continue the mounted Store/Admin non-PortError envelope audit across remaining controllers.
+
+
 
 - [x] Restore `crates/modules/rustok-commerce/src/controllers/store/products.rs` to its
   explicit legacy compatibility source; the mounted route remains `products_owner_list.rs`.
