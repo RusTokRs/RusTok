@@ -7,10 +7,10 @@ use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
     TenantContext,
 };
-use rustok_fulfillment::{FulfillmentError, FulfillmentService};
+use rustok_fulfillment::FulfillmentError;
 use rustok_order::error::OrderError;
 use rustok_order::{ListOrderProjectionsRequest, OrderService, ReadOrderProjectionRequest};
-use rustok_payment::{PaymentError, PaymentService};
+use rustok_payment::PaymentError;
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
@@ -569,20 +569,149 @@ pub async fn show_order(
                 error,
             )
         })?;
-    let payment_collection = PaymentService::new(runtime.db_clone())
-        .find_latest_collection_by_order(tenant.id, id)
+    let payment_context =
+        admin_order_read_port_context(tenant.id, &auth, &request_context, Some(id), "get_order_payment");
+    let payment_collection = runtime
+        .payment_order_read_port()
+        .find_latest_collection_by_order(
+            payment_context.clone(),
+            rustok_payment::LatestPaymentCollectionByOrderRequest { order_id: id },
+        )
         .await
-        .map_err(|error| map_order_detail_payment_error(tenant.id, id, error))?;
-    let fulfillment = FulfillmentService::new(runtime.db_clone())
-        .find_by_order(tenant.id, id)
+        .map_err(|error| map_order_detail_payment_port_error(id, error))?;
+
+    let fulfillment_context = admin_order_read_port_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        Some(id),
+        "get_order_fulfillment",
+    );
+    let fulfillment = runtime
+        .fulfillment_read_port()
+        .find_latest_fulfillment_by_order_projection(
+            fulfillment_context.clone(),
+            rustok_fulfillment::FindLatestFulfillmentByOrderProjectionRequest { order_id: id },
+        )
         .await
-        .map_err(|error| map_order_detail_fulfillment_error(tenant.id, id, error))?;
+        .map_err(|error| map_order_detail_fulfillment_port_error(id, error))?;
 
     Ok(Json(AdminOrderDetailResponse {
         order,
         payment_collection,
         fulfillment,
     }))
+}
+
+fn map_order_detail_payment_port_error(order_id: Uuid, error: PortError) -> HttpError {
+    let (status, code, message, error_kind) = match error.kind {
+        PortErrorKind::Validation => (
+            axum::http::StatusCode::BAD_REQUEST,
+            "commerce_admin_payment_invalid",
+            "Payment request is invalid",
+            "validation",
+        ),
+        PortErrorKind::NotFound => (
+            axum::http::StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        PortErrorKind::Conflict => (
+            axum::http::StatusCode::CONFLICT,
+            "commerce_admin_payment_state_conflict",
+            "Payment operation conflicts with the current state",
+            "state_conflict",
+        ),
+        PortErrorKind::Forbidden => (
+            axum::http::StatusCode::UNAUTHORIZED,
+            "commerce_permission_denied",
+            "Permission denied",
+            "forbidden",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_payment_storage_unavailable",
+            "Payment storage is temporarily unavailable",
+            "unavailable",
+        ),
+        PortErrorKind::InvariantViolation => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_payment_failed",
+            "Payment data could not be read safely",
+            "invariant_violation",
+        ),
+    };
+    tracing::error!(
+        owner = ADMIN_ORDER_DETAIL_PAYMENT_OWNER,
+        order_id = uuid_shape(order_id),
+        operation = ADMIN_ORDER_DETAIL_PAYMENT_OPERATION,
+        error_kind,
+        internal_code_length = error.code.chars().count(),
+        retryable = error.retryable,
+        public_code = code,
+        status = %status,
+        boundary = "commerce_admin_order_detail_http",
+        "commerce admin order detail payment owner-port lookup failed with bounded diagnostics"
+    );
+    HttpError::new(status, code, message)
+}
+
+fn map_order_detail_fulfillment_port_error(
+    order_id: Uuid,
+    error: PortError,
+) -> HttpError {
+    let (status, code, message, error_kind) = match error.kind {
+        PortErrorKind::Validation => (
+            axum::http::StatusCode::BAD_REQUEST,
+            "commerce_admin_fulfillment_invalid",
+            "Fulfillment request is invalid",
+            "validation",
+        ),
+        PortErrorKind::NotFound => (
+            axum::http::StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        PortErrorKind::Conflict => (
+            axum::http::StatusCode::CONFLICT,
+            "commerce_admin_fulfillment_state_conflict",
+            "Fulfillment operation conflicts with the current state",
+            "state_conflict",
+        ),
+        PortErrorKind::Forbidden => (
+            axum::http::StatusCode::UNAUTHORIZED,
+            "commerce_permission_denied",
+            "Permission denied",
+            "forbidden",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_fulfillment_storage_unavailable",
+            "Fulfillment storage is temporarily unavailable",
+            "unavailable",
+        ),
+        PortErrorKind::InvariantViolation => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_fulfillment_failed",
+            "Fulfillment data could not be read safely",
+            "invariant_violation",
+        ),
+    };
+    tracing::error!(
+        owner = ADMIN_ORDER_DETAIL_FULFILLMENT_OWNER,
+        order_id = uuid_shape(order_id),
+        operation = ADMIN_ORDER_DETAIL_FULFILLMENT_OPERATION,
+        error_kind,
+        internal_code_length = error.code.chars().count(),
+        retryable = error.retryable,
+        public_code = code,
+        status = %status,
+        boundary = "commerce_admin_order_detail_http",
+        "commerce admin order detail fulfillment owner-port lookup failed with bounded diagnostics"
+    );
+    HttpError::new(status, code, message)
 }
 
 fn map_order_detail_payment_error(
