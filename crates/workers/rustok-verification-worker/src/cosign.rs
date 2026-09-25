@@ -48,6 +48,42 @@ impl CosignTrustVerifier {
         Ok(output.stdout)
     }
 
+    async fn run_signature_verify(
+        &self,
+        reference: &str,
+        flags: &[String],
+    ) -> Result<Vec<u8>, String> {
+        let mut signature = vec![
+            "verify".to_string(),
+            "--output".to_string(),
+            "json".to_string(),
+        ];
+        signature.extend(flags.iter().cloned());
+        signature.push(reference.to_string());
+        self.run(signature).await
+    }
+
+    async fn run_attestations_verify(
+        &self,
+        reference: &str,
+        flags: &[String],
+    ) -> Result<Vec<Vec<u8>>, String> {
+        let mut attestations = Vec::new();
+        for predicate in REQUIRED_ATTESTATION_TYPES {
+            let mut command = vec![
+                "verify-attestation".to_string(),
+                "--type".to_string(),
+                predicate.to_string(),
+                "--output".to_string(),
+                "json".to_string(),
+            ];
+            command.extend(flags.iter().cloned());
+            command.push(reference.to_string());
+            attestations.push(self.run(command).await?);
+        }
+        Ok(attestations)
+    }
+
     async fn verify_with_flags(
         &self,
         request: &TrustVerificationRequest,
@@ -59,28 +95,9 @@ impl CosignTrustVerifier {
             flags.push("--offline".to_string());
         }
 
-        let mut signature = vec![
-            "verify".to_string(),
-            "--output".to_string(),
-            "json".to_string(),
-        ];
-        signature.extend(flags.clone());
-        signature.push(reference.clone());
-        let signature = self.run(signature).await?;
+        let signature = self.run_signature_verify(&reference, &flags).await?;
+        let attestations = self.run_attestations_verify(&reference, &flags).await?;
 
-        let mut attestations = Vec::new();
-        for predicate in REQUIRED_ATTESTATION_TYPES {
-            let mut command = vec![
-                "verify-attestation".to_string(),
-                "--type".to_string(),
-                predicate.to_string(),
-                "--output".to_string(),
-                "json".to_string(),
-            ];
-            command.extend(flags.clone());
-            command.push(reference.clone());
-            attestations.push(self.run(command).await?);
-        }
         let expected_digest = expected_manifest_sha256(&request.reference)?;
         validate_slsa_with_alloy(
             &attestations[0],
@@ -95,6 +112,29 @@ impl CosignTrustVerifier {
         Ok([signature, provenance, sbom])
     }
 
+    async fn verify_keyless_sigstore(
+        &self,
+        request: &TrustVerificationRequest,
+        trust_root: &VerificationTrustRoot,
+        allowed_signer_identities: &[String],
+        allowed_oidc_issuers: &[String],
+    ) -> Result<(String, [Vec<u8>; 3]), String> {
+        for identity in allowed_signer_identities {
+            for issuer in allowed_oidc_issuers {
+                let flags = vec![
+                    "--certificate-identity".to_string(),
+                    identity.clone(),
+                    "--certificate-oidc-issuer".to_string(),
+                    issuer.clone(),
+                ];
+                if let Ok(evidence) = self.verify_with_flags(request, trust_root, flags).await {
+                    return Ok((identity.clone(), evidence));
+                }
+            }
+        }
+        Err("no configured Cosign signer identity and OIDC issuer verified the artifact".to_string())
+    }
+
     async fn verify_trust_root(
         &self,
         request: &TrustVerificationRequest,
@@ -106,25 +146,13 @@ impl CosignTrustVerifier {
                 allowed_oidc_issuers,
                 ..
             } => {
-                for identity in allowed_signer_identities {
-                    for issuer in allowed_oidc_issuers {
-                        let flags = vec![
-                            "--certificate-identity".to_string(),
-                            identity.clone(),
-                            "--certificate-oidc-issuer".to_string(),
-                            issuer.clone(),
-                        ];
-                        if let Ok(evidence) =
-                            self.verify_with_flags(request, trust_root, flags).await
-                        {
-                            return Ok((identity.clone(), evidence));
-                        }
-                    }
-                }
-                Err(
-                    "no configured Cosign signer identity and OIDC issuer verified the artifact"
-                        .to_string(),
+                self.verify_keyless_sigstore(
+                    request,
+                    trust_root,
+                    allowed_signer_identities,
+                    allowed_oidc_issuers,
                 )
+                .await
             }
             VerificationTrustRoot::KmsKey {
                 key_reference,
@@ -141,6 +169,21 @@ impl CosignTrustVerifier {
                 Ok((signer_identity.clone(), evidence))
             }
         }
+    }
+
+    async fn find_verified_trust_root(
+        &self,
+        request: &TrustVerificationRequest,
+    ) -> Result<(String, [Vec<u8>; 3]), String> {
+        for trust_root in self
+            .policy
+            .trust_roots_at(VerificationPolicy::current_unix_seconds())
+        {
+            if let Ok(result) = self.verify_trust_root(request, trust_root).await {
+                return Ok(result);
+            }
+        }
+        Err("no active or unexpired retiring Cosign trust root verified the artifact".to_string())
     }
 }
 
@@ -381,19 +424,9 @@ impl TrustVerifier for CosignTrustVerifier {
         request: TrustVerificationRequest,
     ) -> Result<TrustVerificationDecision, String> {
         self.policy.validate()?;
-        let mut verified = None;
-        for trust_root in self
-            .policy
-            .trust_roots_at(VerificationPolicy::current_unix_seconds())
-        {
-            if let Ok(result) = self.verify_trust_root(&request, trust_root).await {
-                verified = Some(result);
-                break;
-            }
-        }
-        let (signer_identity, verified_evidence) = verified.ok_or_else(|| {
-            "no active or unexpired retiring Cosign trust root verified the artifact".to_string()
-        })?;
+        let (signer_identity, verified_evidence) = self.find_verified_trust_root(&request).await?;
+        let evidence =
+            build_evidence_references(&request.reference.canonical(), &verified_evidence);
         Ok(TrustVerificationDecision {
             signer_identity,
             trust_policy_revision: request.trust_policy_revision,
@@ -403,30 +436,35 @@ impl TrustVerifier for CosignTrustVerifier {
             sbom_verified: true,
             license_policy_verified: true,
             vulnerability_policy_verified: true,
-            evidence: [
-                (
-                    TrustEvidenceKind::Signature,
-                    "cosign-signature",
-                    &verified_evidence[0],
-                ),
-                (
-                    TrustEvidenceKind::Provenance,
-                    "slsa-provenance",
-                    &verified_evidence[1],
-                ),
-                (
-                    TrustEvidenceKind::Sbom,
-                    "cyclonedx-sbom",
-                    &verified_evidence[2],
-                ),
-            ]
-            .into_iter()
-            .map(|(kind, fragment, bytes)| {
-                verified_evidence_reference(&request.reference.canonical(), kind, fragment, bytes)
-            })
-            .collect(),
+            evidence,
         })
     }
+}
+
+fn build_evidence_references(
+    reference: &str,
+    verified_evidence: &[Vec<u8>; 3],
+) -> Vec<TrustEvidenceReference> {
+    [
+        (
+            TrustEvidenceKind::Signature,
+            "cosign-signature",
+            &verified_evidence[0],
+        ),
+        (
+            TrustEvidenceKind::Provenance,
+            "slsa-provenance",
+            &verified_evidence[1],
+        ),
+        (
+            TrustEvidenceKind::Sbom,
+            "cyclonedx-sbom",
+            &verified_evidence[2],
+        ),
+    ]
+    .into_iter()
+    .map(|(kind, fragment, bytes)| verified_evidence_reference(reference, kind, fragment, bytes))
+    .collect()
 }
 
 fn requires_transparency_bundle(trust_root: &VerificationTrustRoot) -> bool {
