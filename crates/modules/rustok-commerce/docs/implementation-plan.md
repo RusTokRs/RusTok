@@ -26,7 +26,19 @@ Last reviewed: 2026-09-25
 - [x] Extend `verify-commerce-fulfillment-requirement-boundary.mjs` with the Payment runtime-composition guard.
 - [ ] Execute the Commerce/server Rust test suites and the static verifier against a repository checkout; this environment cannot run the repository build because the GitHub source is not mounted locally.
 
-## Audit 2026-09-25: Tax port error-envelope hardening## Audit 2026-09-25: Tax validation detail hardening## Audit 2026-09-25: Admin shared HTTP error-envelope hardening## Audit 2026-09-25: Order owner port diagnostic hardening
+## Audit 2026-09-25: Tax port error-envelope hardening## Audit 2026-09-25: Tax validation detail hardening## Audit 2026-09-25: Admin shared HTTP error-envelope hardening## Audit 2026-09-25: Order owner port diagnostic hardening## Audit 2026-09-25: Mounted Admin Order Detail owner-port cutover
+
+- [x] Replace the mounted `show_order` PaymentService/FulfillmentService direct constructions
+  with the existing `PaymentOrderReadPort` and `FulfillmentReadPort` capabilities from
+  `CommerceHttpRuntime`, preserving the existing optional payment/fulfillment read semantics.
+- [x] Remove the now-orphaned domain-level order-detail PaymentError/FulfillmentError
+  mappers and their diagnostic facts rather than retaining a divergent second mapping path.
+- [x] Extend `verify-commerce-admin-order-detail-fulfillment-error-safety.mjs` to require
+  owner read-port handoffs and forbid direct foreign owner construction and obsolete mappers.
+- [ ] Audit the remaining mounted Commerce controllers for direct foreign owner service
+  construction and migrate each live path to its canonical owner capability.
+
+
 
 - [x] Remove complete `DbErr`/`OrderError` debug payloads and raw tenant/transition/validation
   values from checkout-identity and checkout-completion owner-port diagnostics.
@@ -311,7 +323,6 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   matching from critical checkout, compensation, order, payment, and fulfillment paths.
   The 2026-09-25 slice now covers FulfillmentAdminCommandPort plus Commerce fulfillment
   orchestration/facade lifecycle checks; remaining critical paths still require cutover.
-  matching from critical checkout, compensation, order, payment, and fulfillment paths.
 
 ## Audit 2026-07-27: standalone dependency and topology P0
 
