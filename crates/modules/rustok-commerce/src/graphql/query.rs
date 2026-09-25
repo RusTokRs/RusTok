@@ -27,7 +27,7 @@ use rustok_pricing::{
     ResolveProductPriceRequest, StorefrontProductPricingProjectionRequest,
     in_process_pricing_read_port,
 };
-use rustok_region::{RegionListRequest, RegionReadPort, RegionService};
+use rustok_region::{in_process_region_read_port, RegionListRequest, RegionReadPort};
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -366,8 +366,8 @@ impl CommerceQuery {
         let tenant_id = tenant_id.unwrap_or(tenant.id);
         let requested_locale =
             resolve_commerce_graphql_locale(ctx, locale.as_deref(), tenant.default_locale.as_str());
-        let region_service = RegionService::new(db.clone());
-        let regions = region_service
+        let region_read_port = in_process_region_read_port(db.clone());
+        let regions = region_read_port
             .list_regions_for_tenant(
                 rustok_api::PortContext::new(
                     tenant_id.to_string(),
@@ -2537,7 +2537,7 @@ async fn resolve_storefront_context(
     ));
     StoreContextService::new(
         db.clone(),
-        std::sync::Arc::new(RegionService::new(db.clone())),
+        in_process_region_read_port(db.clone()),
     )
     .resolve_context(
         tenant_id,
