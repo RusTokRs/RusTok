@@ -338,8 +338,34 @@ pub(crate) async fn validate_selected_shipping_option(
     }
 
     let selections = if let Some(shipping_selections) = shipping_selections {
+        if cart.delivery_groups.is_empty() && !shipping_selections.is_empty() {
+            return Err(shipping_option_graphql_error(
+                ShippingOptionFailure::profile_incompatible(Uuid::nil(), "none"),
+                &owner_context,
+                cart.id,
+                shipping_selections.len(),
+                0,
+                requested_currency_code_length,
+                public_channel_slug,
+                requested_locale,
+                tenant_default_locale,
+            ));
+        }
         shipping_selections.to_vec()
     } else if let Some(selected_shipping_option_id) = selected_shipping_option_id {
+        if cart.delivery_groups.is_empty() {
+            return Err(shipping_option_graphql_error(
+                ShippingOptionFailure::profile_incompatible(selected_shipping_option_id, "none"),
+                &owner_context,
+                cart.id,
+                requested_selection_count,
+                0,
+                requested_currency_code_length,
+                public_channel_slug,
+                requested_locale,
+                tenant_default_locale,
+            ));
+        }
         cart.delivery_groups
             .first()
             .map(|group| {
@@ -360,6 +386,28 @@ pub(crate) async fn validate_selected_shipping_option(
         let Some(shipping_option_id) = selection.selected_shipping_option_id else {
             continue;
         };
+        let normalized_profile =
+            normalize_shipping_profile_slug(selection.shipping_profile_slug.as_str())
+                .unwrap_or_else(|| "default".to_string());
+        if !cart.delivery_groups.iter().any(|group| {
+            group.shipping_profile_slug == normalized_profile
+                && group.seller_id == selection.seller_id
+        }) {
+            return Err(shipping_option_graphql_error(
+                ShippingOptionFailure::profile_incompatible(
+                    shipping_option_id,
+                    selection.shipping_profile_slug.as_str(),
+                ),
+                &owner_context,
+                cart.id,
+                selection_count,
+                cart.delivery_groups.len(),
+                requested_currency_code_length,
+                public_channel_slug,
+                requested_locale,
+                tenant_default_locale,
+            ));
+        }
         let option = shipping_option_read_port
             .read_shipping_option_projection(
                 owner_context.clone(),
