@@ -199,6 +199,9 @@ impl CheckoutFulfillmentStageExecutor {
                 "immutable order plan contains disabled fulfillment work".to_string(),
             ));
         }
+        if plans.is_empty() {
+            return Ok(Vec::new());
+        }
         let fulfillment_context = fulfillment_write_context(
             tenant_id,
             state.operation_id,
