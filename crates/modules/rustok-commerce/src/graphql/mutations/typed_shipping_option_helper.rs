@@ -18,6 +18,7 @@ const STOREFRONT_SHIPPING_OPTION_GRAPHQL_BOUNDARY: &str =
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ShippingOptionFailureKind {
     MultipleDeliveryGroups,
+    NoDeliveryGroups,
     OwnerValidation,
     OwnerNotFound,
     OwnerConflict,
@@ -57,6 +58,21 @@ impl ShippingOptionFailure {
                 "shipping_selection.multiple_delivery_groups",
                 "validation",
                 Some(shipping_option_id),
+            )
+        }
+    }
+
+    fn no_delivery_groups(shipping_option_id: Option<Uuid>) -> Self {
+        Self {
+            message: Some(
+                "shipping selection is not valid for a cart without delivery groups".to_string(),
+            ),
+            ..Self::local(
+                ShippingOptionFailureKind::NoDeliveryGroups,
+                "validate_delivery_groups",
+                "shipping_selection.no_delivery_groups",
+                "validation",
+                shipping_option_id,
             )
         }
     }
@@ -340,7 +356,7 @@ pub(crate) async fn validate_selected_shipping_option(
     let selections = if let Some(shipping_selections) = shipping_selections {
         if cart.delivery_groups.is_empty() && !shipping_selections.is_empty() {
             return Err(shipping_option_graphql_error(
-                ShippingOptionFailure::profile_incompatible(Uuid::nil(), "none"),
+                ShippingOptionFailure::no_delivery_groups(None),
                 &owner_context,
                 cart.id,
                 shipping_selections.len(),
@@ -355,7 +371,7 @@ pub(crate) async fn validate_selected_shipping_option(
     } else if let Some(selected_shipping_option_id) = selected_shipping_option_id {
         if cart.delivery_groups.is_empty() {
             return Err(shipping_option_graphql_error(
-                ShippingOptionFailure::profile_incompatible(selected_shipping_option_id, "none"),
+                ShippingOptionFailure::no_delivery_groups(Some(selected_shipping_option_id)),
                 &owner_context,
                 cart.id,
                 requested_selection_count,
