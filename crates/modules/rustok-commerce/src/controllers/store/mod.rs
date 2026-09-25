@@ -627,6 +627,7 @@ pub(crate) fn build_store_pricing_context(
 }
 
 pub(crate) struct StoreLineItemResolution<'a> {
+    pub(crate) product_catalog_read_port: &'a dyn rustok_product::ProductCatalogReadPort,
     pub(crate) pricing_read_port: &'a dyn PricingReadPort,
     pub(crate) pricing_context: &'a PriceResolutionContext,
     pub(crate) locale: &'a str,
