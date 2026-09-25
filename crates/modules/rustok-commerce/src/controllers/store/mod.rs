@@ -343,10 +343,7 @@ pub(crate) async fn ensure_storefront_channel_enabled_for_db(
     if !enabled {
         return Err(HttpError::unauthorized(
             "commerce_store_denied",
-            format!(
-                "Module '{MODULE_SLUG}' is not enabled for channel '{}'",
-                request_context.channel_slug.as_deref().unwrap_or("current"),
-            ),
+            "The commerce module is not available for the current channel".to_string(),
         ));
     }
 
