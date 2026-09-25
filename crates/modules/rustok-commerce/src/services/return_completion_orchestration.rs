@@ -115,14 +115,9 @@ impl ReturnCompletionOrchestrationService {
             })
             .await
             .map_err(map_journal_error)?;
-        let order_service = OrderService::new(self.db.clone(), self.event_bus.clone());
-
         match operation.status.as_str() {
             "completed" => {
-                return order_service
-                    .get_return(tenant_id, return_id)
-                    .await
-                    .map_err(Into::into);
+                return self.read_return(tenant_id, actor_id, return_id).await;
             }
             "reconciliation_required" => {
                 return Err(PostOrderOrchestrationError::Validation(format!(
@@ -155,10 +150,7 @@ impl ReturnCompletionOrchestrationService {
                 .await
                 .map_err(map_journal_error)?;
             if current.status == "completed" {
-                return order_service
-                    .get_return(tenant_id, return_id)
-                    .await
-                    .map_err(Into::into);
+                return self.read_return(tenant_id, actor_id, return_id).await;
             }
             return Err(PostOrderOrchestrationError::Validation(format!(
                 "return completion operation {} is already executing or requires operator action",
@@ -169,7 +161,6 @@ impl ReturnCompletionOrchestrationService {
         let result = self
             .execute_claimed(
                 &journal,
-                &order_service,
                 tenant_id,
                 actor_id,
                 return_id,
