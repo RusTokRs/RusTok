@@ -91,7 +91,7 @@ fn cart_checkout_context_facts(context: &PortContext) -> CartCheckoutContextFact
 }
 
 fn cart_checkout_port_error_facts(error: &PortError) -> CartCheckoutPortErrorFacts {
-    let error_kind = match error.kind {
+    let error_kind = match &error.kind {
         PortErrorKind::Validation => "validation",
         PortErrorKind::NotFound => "not_found",
         PortErrorKind::Conflict => "conflict",
@@ -124,7 +124,7 @@ fn cart_checkout_service_error_facts(error: &CartError) -> CartCheckoutServiceEr
             text_field_count: 0,
             text_total_length: 0,
             uuid_field_count: 1,
-            uuid_non_nil_count: usize::from(!id.is_nil()),
+            uuid_non_nil_count: if id.is_nil() { 0 } else { 1 },
             opaque_payload_present: false,
         },
         CartError::CartLineItemNotFound(id) => CartCheckoutServiceErrorFacts {
@@ -255,7 +255,7 @@ fn log_cart_checkout_service_error(
     owner_operation: &'static str,
     service_operation: &'static str,
     error: &CartError,
-    public_code: &'static str,
+    public_code: &str,
     public_retryable: bool,
     technical_failure: bool,
 ) {
