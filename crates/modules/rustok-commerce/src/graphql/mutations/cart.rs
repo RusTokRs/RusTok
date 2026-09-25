@@ -13,6 +13,7 @@ use rustok_pricing::{ResolveProductPriceRequest, in_process_pricing_read_port};
 
 use super::super::{MODULE_SLUG, current_tenant_scope, types::*};
 use super::helpers::*;
+use super::typed_shipping_option_helper::validate_selected_shipping_option;
 
 #[derive(Default)]
 pub struct CommerceCartMutation;
