@@ -20,6 +20,17 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ---
 
 
+## 2026-09-25 Commerce Mounted Admin Order Detail owner-port cutover
+
+The mounted `show_order` endpoint was still constructing `PaymentService` and
+`FulfillmentService` directly even though `CommerceHttpRuntime` already mounted the
+canonical `PaymentOrderReadPort` and `FulfillmentReadPort` capabilities. The route now
+uses those owner ports, preserving optional collection/fulfillment reads, and the old
+domain-error mappers were removed after becoming orphaned. The dedicated source verifier
+now requires the typed owner-port handoffs and rejects direct foreign service construction.
+
+Maintainer runtime evidence, Cargo build, tests, and verifier execution remain unrun.
+
 ## 2026-09-25 Commerce Order owner-port diagnostic hardening
 
 The Order owner port still emitted complete database/core `Debug` payloads, raw tenant IDs,
