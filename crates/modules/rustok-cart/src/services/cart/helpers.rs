@@ -1067,6 +1067,12 @@ where
                 normalized_seller_id.as_deref(),
                 None,
             );
+            if matching_keys.is_empty() {
+                return Err(CartError::Validation(format!(
+                    "shipping selection references unavailable delivery group {}",
+                    selection.shipping_profile_slug
+                )));
+            }
             for key in matching_keys {
                 desired.insert(key, selection.selected_shipping_option_id);
             }
