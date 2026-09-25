@@ -207,7 +207,6 @@ fn map_tax_calculation_local_port_error(
 
     if technical_failure {
         tracing::error!(
-            error = ?error,
             owner = TAX_OWNER,
             operation = CALCULATE_TAX_OPERATION,
             local_operation,
@@ -241,13 +240,14 @@ fn map_tax_calculation_local_port_error(
             country_code_length = ?facts.country_code_length,
             internal_code = %error.code,
             error_kind = ?error.kind,
+            error_message_present = !error.message.is_empty(),
+            error_message_length = error.message.chars().count(),
             retryable = error.retryable,
             boundary = TAX_CALCULATION_BOUNDARY,
             "tax calculation local technical outcome retained safe delegated context"
         );
     } else {
         tracing::warn!(
-            error = ?error,
             owner = TAX_OWNER,
             operation = CALCULATE_TAX_OPERATION,
             local_operation,
@@ -281,6 +281,8 @@ fn map_tax_calculation_local_port_error(
             country_code_length = ?facts.country_code_length,
             internal_code = %error.code,
             error_kind = ?error.kind,
+            error_message_present = !error.message.is_empty(),
+            error_message_length = error.message.chars().count(),
             retryable = error.retryable,
             boundary = TAX_CALCULATION_BOUNDARY,
             "tax calculation local outcome retained safe delegated context"
