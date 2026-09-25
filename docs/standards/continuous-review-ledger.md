@@ -69,6 +69,10 @@ Profiles now enforces its own 64-handle batch limit before any database work. Th
 
 Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
 
+## 2026-09-25 Commerce post-order mutation idempotency
+
+The Order owner now durably admits post-order change/return mutations through `order_command_receipts`, commits receipts atomically with the mutation, replays stored responses for the same caller identity, and classifies payload conflicts/corrupt receipts as typed failures. Mounted admin REST write routes now require a caller-owned `Idempotency-Key`; generated per-request keys were removed from the covered routes. Repository Rust compilation, targeted tests, migration replay, contention, and static verification remain unrun in this continuation.
+
 ## 2026-09-25 Commerce mounted owner-runtime composition
 
 A mounted Commerce GraphQL composition audit found that mandatory Payment owner wrappers could be silently synthesized inside the schema factory when host composition was incomplete. Commerce now requires the host-composed Payment provider registry, read runtime, and command runtime; the server composition layer explicitly assembles and preserves those wrapper runtimes. Fulfillment remains an optional Commerce capability and retains its separate owner-owned fallback path. Obsolete duplicate order-change and order-return REST implementations were removed so each route has one canonical adapter path.
