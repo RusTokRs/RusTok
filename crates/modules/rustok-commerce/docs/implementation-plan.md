@@ -78,15 +78,18 @@ the explicit `rustok-marketplace-*` family and must never be folded into
 
 ### Accepted fulfillment capability cutover
 
-The current static `commerce -> fulfillment` edge is an over-constraint. Commerce has
-a valid digital-only operating mode without shipping or Fulfillment. The source/runtime
-cutover remains open and must remove that edge atomically while adding typed
-digital/physical fulfillment requirements through Product, Cart, checkout-plan, and
-Order snapshots. Digital lines must never receive synthetic shipping profiles,
-delivery groups, shipping charges, fulfillment items, or fulfillment rows; mixed flows
-must invoke Fulfillment only for the physical subset. Existing in-flight physical
-work may block provider disable or require explicit reconciliation, while historical
-completed state remains readable under Fulfillment ownership.
+The static `commerce -> fulfillment` module edge and unconditional startup requirement
+are removed. Commerce now supports a digital-only operating mode without shipping or
+Fulfillment. Product publishes the canonical typed requirement; Cart and Order persist
+the immutable line snapshot; checkout validates that snapshot against current Product
+state; digital lines receive no shipping profile, delivery group, shipping charge,
+fulfillment item, or fulfillment row; mixed checkout invokes Fulfillment only for the
+physical subset. Existing in-flight physical work may block provider disable or require
+explicit reconciliation, while historical completed state remains readable under
+Fulfillment ownership.
+
+The remaining Commerce gap is owner-port parity on non-checkout mounted/admin paths;
+that is separate from the completed typed fulfillment requirement cutover.
 
 The canonical state matrix and disable rules are in
 [`docs/architecture/settings.md`](../../../../docs/architecture/settings.md). No
