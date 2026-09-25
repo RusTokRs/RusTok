@@ -26,6 +26,18 @@ Last reviewed: 2026-09-25
 - [x] Extend `verify-commerce-fulfillment-requirement-boundary.mjs` with the Payment runtime-composition guard.
 - [ ] Execute the Commerce/server Rust test suites and the static verifier against a repository checkout; this environment cannot run the repository build because the GitHub source is not mounted locally.
 
+## Audit 2026-09-25: Fulfillment lifecycle status typing
+
+- [x] Replace raw string comparisons in the Fulfillment admin command owner adapter with
+  FulfillmentStatusKind accessors, including ship admission, reship replay/transition,
+  and cancel replay/transition.
+- [x] Replace the remaining Commerce fulfillment orchestration/facade lifecycle filters
+  with the Fulfillment-owned typed status view.
+- [x] Extend verify-ecommerce-typed-lifecycle-statuses.mjs to assert these Fulfillment
+  surfaces and reject their former raw lifecycle comparisons.
+- [ ] Continue the broader typed-status cutover for remaining critical checkout,
+  compensation, order, payment, fulfillment, and durable journal state-machine paths.
+
 ## Audit 2026-09-25: correlation-safe Cart Checkout diagnostics
 
 - [x] Replace raw Cart Checkout owner-boundary diagnostics with bounded correlation/context
@@ -254,6 +266,9 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [ ] Replace remaining direct foreign owner service construction outside the mounted
   staged checkout path with typed owner ports or explicit owner-provided adapters.
 - [ ] Propagate typed lifecycle statuses through owner ports and remove string status
+  matching from critical checkout, compensation, order, payment, and fulfillment paths.
+  The 2026-09-25 slice now covers FulfillmentAdminCommandPort plus Commerce fulfillment
+  orchestration/facade lifecycle checks; remaining critical paths still require cutover.
   matching from critical checkout, compensation, order, payment, and fulfillment paths.
 
 ## Audit 2026-07-27: standalone dependency and topology P0
