@@ -1,3 +1,10 @@
+use super::{
+    error::FulfillmentError, with_current_graphql_public_channel,
+    GRAPHQL_QUERY_FULFILLMENT_BOUNDARY, ShippingOptionAdminQueryError,
+};
+use ::rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
+use ::uuid::Uuid;
+
 fn shipping_option_query_context(
     tenant_id: Uuid,
     query_field: &'static str,
