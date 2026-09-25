@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
@@ -86,27 +86,59 @@ impl AdminOrderReturnOrchestrationErrorContext {
     }
 }
 
+fn require_idempotency_key(headers: &HeaderMap) -> Result<String, HttpError> {
+    let value = headers
+        .get("Idempotency-Key")
+        .ok_or_else(|| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_admin_idempotency_key_required",
+                "Idempotency-Key header is required for this write operation",
+            )
+        })?
+        .to_str()
+        .map_err(|_| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_admin_idempotency_key_invalid",
+                "Idempotency-Key header is invalid",
+            )
+        })?
+        .trim()
+        .to_string();
+
+    if value.is_empty() || value.len() > 191 {
+        return Err(HttpError::new(
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_idempotency_key_invalid",
+            "Idempotency-Key header must contain 1 to 191 bytes",
+        ));
+    }
+
+    Ok(value)
+}
+
 fn admin_return_decision_order_context(
     tenant: &TenantContext,
     auth: &AuthContext,
     request_context: &RequestContext,
     order_id: Uuid,
+    idempotency_key: String,
 ) -> PortContext {
-    let context = PortContext::new(
+    let mut context = PortContext::new(
         tenant.id.to_string(),
         PortActor::user(auth.user_id.to_string()),
         request_context.locale.as_str(),
         format!("commerce-admin-return-decision:{order_id}"),
     )
-    // This legacy route has no caller idempotency header. The generated root is
-    // write-admission metadata only; the orchestration derives a distinct identity
-    // for each Order owner operation without claiming durable request replay.
-    .with_idempotency_key(Uuid::new_v4().to_string())
+    .with_idempotency_key(idempotency_key)
     .with_deadline(std::time::Duration::from_secs(2));
-    match request_context.channel_slug.as_deref() {
-        Some(channel) => context.with_channel(channel),
-        None => context,
+
+    if let Some(channel) = request_context.channel_slug.as_deref() {
+        context = context.with_channel(channel);
     }
+
+    context
 }
 
 fn admin_order_error_policy(error: &OrderError) -> AdminOrderReturnHttpPolicy {
@@ -504,7 +536,10 @@ fn map_admin_order_return_orchestration_error(
     post,
     path = "/admin/orders/{id}/returns/decision",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Order ID")),
+    params(
+        ("id" = Uuid, Path, description = "Order ID"),
+        ("Idempotency-Key" = String, Header, description = "Caller-owned idempotency key")
+    ),
     request_body = CreateReturnDecisionInput,
     responses(
         (status = 201, description = "Return decision created", body = ReturnDecisionResponse),
@@ -517,6 +552,7 @@ pub async fn create_order_return_decision(
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
     Json(input): Json<CreateReturnDecisionInput>,
 ) -> HttpResult<(StatusCode, Json<ReturnDecisionResponse>)> {
@@ -536,7 +572,14 @@ pub async fn create_order_return_decision(
         )?;
     }
 
-    let context = admin_return_decision_order_context(&tenant, &auth, &request_context, id);
+    let idempotency_key = require_idempotency_key(&headers)?;
+    let context = admin_return_decision_order_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        idempotency_key,
+    );
     let service = ReturnDecisionOwnerOrchestrationService::new(
         runtime.db_clone(),
         runtime.order_post_order_command_port(),

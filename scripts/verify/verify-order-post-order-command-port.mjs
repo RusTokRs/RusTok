@@ -27,14 +27,20 @@ for (const marker of [
   'pub struct OrderPostOrderCommandRuntime',
   'context.require_policy(PortCallPolicy::write())',
   '"order.post_order_complete_return_unavailable"',
-  '.create_order_change(tenant_id, actor_id, request.order_id, request.input)',
-  '.apply_order_change(tenant_id, request.change_id, request.input)',
-  '.cancel_order_change(tenant_id, request.change_id, request.input)',
-  '.create_return(tenant_id, request.order_id, request.input)',
-  '.complete_return(tenant_id, request.return_id, request.input)',
-  '.cancel_return(tenant_id, request.return_id, request.input)',
+  '.create_order_change(',
+  '.apply_order_change('
+  '.cancel_order_change('
+  '.create_return('
+  '.complete_return('
+  '.cancel_return('
   'PortErrorKind::Unavailable',
   'PortErrorKind::InvariantViolation',
+  'CommandReceiptAdmission::Replay',
+  'complete_command(receipt, "order_change",',
+  'complete_command(receipt, "order_return",',
+  'context.idempotency_key',
+  'OrderError::IdempotencyConflict',
+  'OrderError::CommandReceiptCorrupt',
 ]) {
   requireText(port, marker, `${portPath}: missing ${marker}`);
 }
@@ -66,7 +72,7 @@ requireText(
 );
 requireText(
   record,
-  'does not claim durable replay receipts',
+  'durable idempotency receipts',
   `${recordPath}: replay limitation must remain explicit`,
 );
 

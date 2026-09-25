@@ -477,7 +477,7 @@ These are source-contract defects, not verification-only tasks.
 - [ ] Remove private legacy checkout completion and journal facade source after
   compile/replay/upgraded evidence, then migrate compatibility tests to the staged
   harness and remove public re-exports.
-- [ ] Replace fulfillment metadata identity with owner-owned typed persistence and a
+- [x] Replace fulfillment metadata identity with owner-owned typed persistence and a
   concurrency-safe uniqueness constraint.
 - [ ] Remove temporary metadata write/adoption bridges and old executor/compensation/
   pipeline source after upgraded/restart evidence proves every recovery path uses typed
@@ -1002,6 +1002,7 @@ Source inspection is not execution evidence.
   pagination, title/shipping fallback, tags, telemetry, projection, and stable errors.
 - [x] Cut mounted legacy storefront Product detail/list reads to host-selected Product
   capabilities with lifecycle/channel/inventory/localization and legacy list parity.
+- [x] Make the Order post-order command boundary durable and replay-safe for change/return mutations, with caller-owned REST `Idempotency-Key` admission and typed conflict/corrupt-receipt failures; runtime and database evidence remains open.
 - [x] Cut mounted REST Product delete/publish/unpublish lifecycle commands to the
   host-composed Product command runtime with required caller idempotency identity.
 - [x] Cut mounted GraphQL Product create/update/publish/delete execution to the

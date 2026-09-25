@@ -337,6 +337,104 @@ async fn invalid_transition_is_rejected() {
     }
 }
 
+
+#[tokio::test]
+async fn post_order_command_replay_is_stable_and_conflicts_are_typed() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let order = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order should be created");
+
+    let input = CreateOrderChangeInput {
+        change_type: "exchange".to_string(),
+        description: Some("replay-safe change".to_string()),
+        preview: serde_json::json!({"quantity": 1}),
+        metadata: serde_json::json!({"source": "idempotency-test"}),
+    };
+
+    let created = service
+        .create_order_change(
+            tenant_id,
+            actor_id,
+            order.id,
+            "order-service-test-replay-create",
+            input.clone(),
+        )
+        .await
+        .expect("first command should create the order change");
+
+    let replayed = service
+        .create_order_change(
+            tenant_id,
+            actor_id,
+            order.id,
+            "order-service-test-replay-create",
+            input,
+        )
+        .await
+        .expect("same command should replay");
+
+    assert_eq!(replayed, created);
+
+    let conflict = service
+        .create_order_change(
+            tenant_id,
+            actor_id,
+            order.id,
+            "order-service-test-replay-create",
+            CreateOrderChangeInput {
+                description: Some("different payload".to_string()),
+                ..CreateOrderChangeInput {
+                    change_type: "exchange".to_string(),
+                    description: None,
+                    preview: serde_json::json!({"quantity": 1}),
+                    metadata: serde_json::json!({"source": "idempotency-test"}),
+                }
+            },
+        )
+        .await
+        .expect_err("same key with a different payload must conflict");
+
+    assert!(matches!(conflict, OrderError::IdempotencyConflict));
+
+    let created_return = service
+        .create_return(
+            tenant_id,
+            actor_id,
+            order.id,
+            "order-service-test-replay-return",
+            CreateOrderReturnInput {
+                reason: Some("damaged".to_string()),
+                note: None,
+                items: Vec::new(),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect("return should be created");
+
+    let replayed_return = service
+        .create_return(
+            tenant_id,
+            actor_id,
+            order.id,
+            "order-service-test-replay-return",
+            CreateOrderReturnInput {
+                reason: Some("damaged".to_string()),
+                note: None,
+                items: Vec::new(),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect("return should replay");
+
+    assert_eq!(replayed_return, created_return);
+}
+
 #[tokio::test]
 async fn create_list_apply_and_cancel_order_changes() {
     let service = setup().await;
@@ -393,6 +491,7 @@ async fn create_list_apply_and_cancel_order_changes() {
     let applied = service
         .apply_order_change(
             tenant_id,
+            actor_id,
             created.id,
             "order-service-test-apply_order_change-1",
             ApplyOrderChangeInput {
@@ -427,6 +526,7 @@ async fn create_list_apply_and_cancel_order_changes() {
     let cancelled = service
         .cancel_order_change(
             tenant_id,
+            actor_id,
             second.id,
             "order-service-test-cancel_order_change-1",
             CancelOrderChangeInput {
@@ -491,6 +591,7 @@ async fn order_change_rejects_invalid_payloads_and_transitions() {
     service
         .apply_order_change(
             tenant_id,
+            actor_id,
             change.id,
             "order-service-test-apply_order_change-2",
             ApplyOrderChangeInput {
@@ -502,6 +603,7 @@ async fn order_change_rejects_invalid_payloads_and_transitions() {
     let error = service
         .cancel_order_change(
             tenant_id,
+            actor_id,
             change.id,
             "order-service-test-cancel_order_change-2",
             CancelOrderChangeInput {
@@ -533,6 +635,7 @@ async fn create_and_list_order_returns() {
     let created_return = service
         .create_return(
             tenant_id,
+            actor_id,
             created_order.id,
             "order-service-test-create_return-1",
             CreateOrderReturnInput {
@@ -600,6 +703,7 @@ async fn create_order_return_rejects_duplicate_line_items_and_excess_quantity() 
     let duplicate_error = service
         .create_return(
             tenant_id,
+            actor_id,
             order.id,
             "order-service-test-create_return-2",
             CreateOrderReturnInput {
@@ -633,6 +737,7 @@ async fn create_order_return_rejects_duplicate_line_items_and_excess_quantity() 
     let quantity_error = service
         .create_return(
             tenant_id,
+            actor_id,
             order.id,
             "order-service-test-create_return-3",
             CreateOrderReturnInput {
@@ -668,6 +773,7 @@ async fn create_order_return_rejects_cumulative_quantity_above_ordered_quantity(
     service
         .create_return(
             tenant_id,
+            actor_id,
             order.id,
             "order-service-test-create_return-4",
             CreateOrderReturnInput {
@@ -689,6 +795,7 @@ async fn create_order_return_rejects_cumulative_quantity_above_ordered_quantity(
     let error = service
         .create_return(
             tenant_id,
+            actor_id,
             order.id,
             "order-service-test-create_return-5",
             CreateOrderReturnInput {
@@ -724,6 +831,7 @@ async fn complete_order_return_rejects_unknown_resolution_type() {
     let created_return = service
         .create_return(
             tenant_id,
+            actor_id,
             order.id,
             "order-service-test-create_return-6",
             CreateOrderReturnInput {
@@ -739,6 +847,7 @@ async fn complete_order_return_rejects_unknown_resolution_type() {
     let error = service
         .complete_return(
             tenant_id,
+            actor_id,
             created_return.id,
             "order-service-test-complete_return-1",
             rustok_order::dto::CompleteOrderReturnInput {
@@ -768,6 +877,7 @@ async fn complete_order_return_validates_resolution_link_requirements() {
     let created_return = service
         .create_return(
             tenant_id,
+            actor_id,
             order.id,
             "order-service-test-create_return-7",
             CreateOrderReturnInput {
@@ -783,6 +893,7 @@ async fn complete_order_return_validates_resolution_link_requirements() {
     let error = service
         .complete_return(
             tenant_id,
+            actor_id,
             created_return.id,
             "order-service-test-complete_return-2",
             rustok_order::dto::CompleteOrderReturnInput {
@@ -801,6 +912,7 @@ async fn complete_order_return_validates_resolution_link_requirements() {
     let error = service
         .complete_return(
             tenant_id,
+            actor_id,
             created_return.id,
             "order-service-test-complete_return-3",
             rustok_order::dto::CompleteOrderReturnInput {
@@ -844,6 +956,7 @@ async fn complete_order_return_supports_claim_resolution_with_order_change() {
     let created_return = service
         .create_return(
             tenant_id,
+            actor_id,
             order.id,
             "order-service-test-create_return-8",
             CreateOrderReturnInput {
@@ -859,6 +972,7 @@ async fn complete_order_return_supports_claim_resolution_with_order_change() {
     let completed = service
         .complete_return(
             tenant_id,
+            actor_id,
             created_return.id,
             "order-service-test-complete_return-4",
             rustok_order::dto::CompleteOrderReturnInput {
@@ -936,6 +1050,7 @@ async fn list_order_returns_clamps_pagination_bounds() {
     service
         .create_return(
             tenant_id,
+            actor_id,
             order.id,
             "order-service-test-create_return-10",
             CreateOrderReturnInput {
@@ -951,6 +1066,7 @@ async fn list_order_returns_clamps_pagination_bounds() {
     service
         .create_return(
             tenant_id,
+            actor_id,
             order.id,
             "order-service-test-create_return-11",
             CreateOrderReturnInput {
@@ -1011,6 +1127,7 @@ async fn list_order_returns_ignores_blank_status_filter() {
     let created_return = service
         .create_return(
             tenant_id,
+            actor_id,
             order.id,
             "order-service-test-create_return-12",
             CreateOrderReturnInput {
@@ -1060,6 +1177,7 @@ async fn list_order_returns_applies_status_trim_and_tenant_isolation() {
     let return_a = service
         .create_return(
             tenant_a,
+            actor_id,
             order_a.id,
             "order-service-test-create_return-13",
             CreateOrderReturnInput {
@@ -1075,6 +1193,7 @@ async fn list_order_returns_applies_status_trim_and_tenant_isolation() {
     service
         .create_return(
             tenant_b,
+            actor_id,
             order_b.id,
             "order-service-test-create_return-14",
             CreateOrderReturnInput {
@@ -1304,6 +1423,7 @@ async fn order_return_lifecycle_completes_and_rejects_second_transition() {
     let created_return = service
         .create_return(
             tenant_id,
+            actor_id,
             order.id,
             "order-service-test-create_return-15",
             CreateOrderReturnInput {
@@ -1319,6 +1439,7 @@ async fn order_return_lifecycle_completes_and_rejects_second_transition() {
     let completed = service
         .complete_return(
             tenant_id,
+            actor_id,
             created_return.id,
             "order-service-test-complete_return-5",
             rustok_order::dto::CompleteOrderReturnInput {
@@ -1342,6 +1463,7 @@ async fn order_return_lifecycle_completes_and_rejects_second_transition() {
     let error = service
         .cancel_return(
             tenant_id,
+            actor_id,
             created_return.id,
             "order-service-test-cancel_return-1",
             rustok_order::dto::CancelOrderReturnInput {
@@ -1373,6 +1495,7 @@ async fn order_return_lifecycle_cancels_and_show_is_tenant_scoped() {
     let created_return = service
         .create_return(
             tenant_id,
+            actor_id,
             order.id,
             "order-service-test-create_return-16",
             CreateOrderReturnInput {
@@ -1394,6 +1517,7 @@ async fn order_return_lifecycle_cancels_and_show_is_tenant_scoped() {
     let cancelled = service
         .cancel_return(
             tenant_id,
+            actor_id,
             created_return.id,
             "order-service-test-cancel_return-2",
             rustok_order::dto::CancelOrderReturnInput {

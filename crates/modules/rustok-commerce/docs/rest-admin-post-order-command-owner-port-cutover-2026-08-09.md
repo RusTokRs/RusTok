@@ -74,7 +74,8 @@ or exposed by the new mounted boundary.
 ## Deliberately unchanged
 
 Payment-coupled post-order orchestration is outside this owner-command slice and stays
-on its existing Commerce services:
+on its existing Commerce services; those routes now also consume the caller-owned
+idempotency boundary when entering Order owner commands:
 
 - return decision creation;
 - order-change apply;

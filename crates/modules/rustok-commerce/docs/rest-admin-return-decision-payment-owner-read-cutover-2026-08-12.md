@@ -10,7 +10,7 @@ The mounted `POST /admin/orders/{id}/returns/decision` refund branch no longer c
 
 `ReturnDecisionOwnerOrchestrationService` now receives the host-selected `PaymentAdminReadPort` from `CommerceHttpRuntime` and calls `list_payment_collection_projections` with the legacy lookup shape: page 1, one item, `status = captured`, and the current order id. An explicitly supplied payment collection id still bypasses the lookup exactly as before.
 
-The Payment read context is derived from the authenticated return-decision root `PortContext`, retains tenant, actor, locale, channel and deadline, receives an operation-bound correlation id, and clears write-only idempotency metadata before the read call.
+The Payment read context is derived from the authenticated return-decision root `PortContext`, retains tenant, actor, locale, channel and deadline, receives an operation-bound correlation id, and clears write-only idempotency metadata before the read call. The mounted write route now requires a caller-owned `Idempotency-Key` before entering the Order owner command boundary.
 
 Payment read failures cross the mounted REST boundary as bounded `PortError` diagnostics. Raw owner messages are not logged by the new mapper.
 

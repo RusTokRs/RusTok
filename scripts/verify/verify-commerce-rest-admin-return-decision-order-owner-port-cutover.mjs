@@ -84,10 +84,13 @@ for (const [value, label] of [
 
 for (const [value, label] of [
   ['request_context: RequestContext,', 'request context extractor'],
+  ['headers: HeaderMap,', 'caller idempotency header'],
+  ['fn require_idempotency_key(headers: &HeaderMap)', 'caller idempotency admission'],
   ['[Permission::ORDERS_UPDATE]', 'orders:update admission'],
   ['super::decision_requires_payments_update(', 'conditional payment admission'],
   ['[Permission::PAYMENTS_UPDATE]', 'payments:update admission'],
-  ['admin_return_decision_order_context(&tenant, &auth, &request_context, id)', 'owner base context'],
+  ['admin_return_decision_order_context(', 'owner base context'],
+  ['.with_idempotency_key(idempotency_key)', 'caller-owned write identity'],
   ['runtime.order_post_order_command_port()', 'host-selected Order command port'],
   ['runtime.payment_admin_read_port()', 'host-selected Payment read port'],
   ['.create_return_decision(context.clone(), tenant.id, id, input)', 'owner-backed decision call'],

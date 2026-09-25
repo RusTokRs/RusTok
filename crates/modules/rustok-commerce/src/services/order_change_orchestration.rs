@@ -241,12 +241,15 @@ impl OrderChangeOrchestrationService {
     pub async fn apply_order_change(
         &self,
         tenant_id: Uuid,
+        actor_id: Uuid,
         change_id: Uuid,
+        idempotency_key: impl Into<String>,
         difference_refund: Option<ExchangeDifferenceRefundInput>,
         metadata: Value,
     ) -> PostOrderOrchestrationResult<ApplyOrderChangeResult> {
         let order_service = OrderService::new(self.db.clone(), self.event_bus.clone());
         let order_change = order_service.get_order_change(tenant_id, change_id).await?;
+        let idempotency_key = idempotency_key.into();
 
         let post_order =
             PostOrderOrchestrationService::new(self.db.clone(), self.event_bus.clone())
@@ -257,8 +260,10 @@ impl OrderChangeOrchestrationService {
                 post_order
                     .apply_exchange_order_change(
                         tenant_id,
+                        actor_id,
                         order_change.order_id,
                         change_id,
+                        idempotency_key.clone(),
                         difference_refund,
                         metadata,
                     )
@@ -271,7 +276,13 @@ impl OrderChangeOrchestrationService {
             }
             _ => {
                 let order_change = order_service
-                    .apply_order_change(tenant_id, change_id, ApplyOrderChangeInput { metadata })
+                    .apply_order_change(
+                        tenant_id,
+                        actor_id,
+                        change_id,
+                        idempotency_key,
+                        ApplyOrderChangeInput { metadata },
+                    )
                     .await?;
                 Ok(ApplyOrderChangeResult {
                     order_change,

@@ -26,6 +26,7 @@
 - Publish transactional order lifecycle events through the outbox.
 - Publish a module-owned Leptos admin UI package in `admin/` for order
   operations and lifecycle handling.
+- Persist owner-owned `order_command_receipts` for post-order mutation replay, payload-conflict detection, and fail-closed receipt recovery.
 
 ## Interactions
 

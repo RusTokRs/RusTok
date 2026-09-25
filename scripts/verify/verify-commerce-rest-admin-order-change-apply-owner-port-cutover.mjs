@@ -87,11 +87,13 @@ for (const [value, label] of [
   ['PortActor::user(auth.user_id.to_string())', 'authenticated owner actor'],
   ['format!("commerce-admin-order-change:read:{change_id}")', 'read correlation identity'],
   ['format!("commerce-admin-order-change:apply:{change_id}")', 'write correlation identity'],
-  ['.with_idempotency_key(Uuid::new_v4().to_string())', 'write admission identity'],
+  ['.with_idempotency_key(idempotency_key)', 'caller-owned write identity'],
 ]) requireText(controller, value, label);
 
 for (const [value, label] of [
   ['request_context: RequestContext,', 'request context extractor'],
+  ['headers: HeaderMap,', 'caller idempotency header'],
+  ['fn require_idempotency_key(headers: &HeaderMap)', 'caller idempotency admission'],
   ['OrderChangeOrchestrationService::from_order_ports(', 'host-composed orchestration'],
   ['runtime.order_read_port()', 'host-selected Order read'],
   ['runtime.order_post_order_command_port()', 'host-selected Order command'],

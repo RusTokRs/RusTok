@@ -190,6 +190,7 @@ disable/reconciliation matrix in
 - [x] Route cancelled and unknown lifecycle states to manual reconciliation.
 - [x] Guard mounted Commerce against direct construction of the legacy execution
   adapter.
+- [x] Guard typed checkout identity against metadata fallback and schema drift.
 - [ ] Replace metadata identity with owner-owned typed persistence and a
   concurrency-safe uniqueness constraint.
 - [ ] Execute compile, create/adopt/read, duplicate identity, lifecycle,
@@ -279,21 +280,14 @@ disable/reconciliation matrix in
    **Done when:** one immutable plan produces one exact fulfillment set and every
    conflicting, cancelled, unknown, or duplicate identity fails closed.
 
-2. **Replace metadata identity with typed persistence.** Add owner-owned checkout
-   fulfillment identity and uniqueness without a foreign key to Commerce checkout
-   tables.
-   **Depends on:** upgraded compatibility evidence for current keys.
-   **Done when:** recovery no longer scans metadata and concurrent creation cannot
-   commit duplicate fulfillment indices.
-
-3. **Prove mixed-cart and multi-fulfillment edge cases.** Cover seller-aware
+2. **Prove mixed-cart and multi-fulfillment edge cases.** Cover seller-aware
    selection, partial shipment/delivery, reopen/reship recovery, remaining
    quantity, and grouped checkout interactions.
    **Depends on:** order-line and Commerce delivery-group contracts.
    **Done when:** targeted tests cover valid and rejected transitions for mixed
    carts and multiple fulfillment records.
 
-4. **Wire production carrier adapters through the provider registry.** Add
+3. **Wire production carrier adapters through the provider registry.** Add
    production-like quote, label, cancellation, tracking-webhook, and replay-safe
    behavior through guarded provider seams.
    **Depends on:** approved credentials, webhook ingress, and deployment secret
@@ -301,7 +295,7 @@ disable/reconciliation matrix in
    **Done when:** execution proves degraded fallback and typed adapter errors while
    `FulfillmentService` remains the lifecycle owner.
 
-5. **Prove mounted shipping-option transport parity.** Execute active list,
+4. **Prove mounted shipping-option transport parity.** Execute active list,
    administrative list-all, and lookup through mounted GraphQL and REST consumers
    against the same owner projections. Native seller/cart selection remains a
    separate contract and needs no complete projection surface without a consumer.
@@ -312,7 +306,7 @@ disable/reconciliation matrix in
    envelopes, and no mounted projection transport constructs a concrete read
    service or provider.
 
-6. **Prove mounted lifecycle read parity.** Run the locked capture contract against
+5. **Prove mounted lifecycle read parity.** Run the locked capture contract against
    GraphQL lookup/list/latest-by-order and admin REST list/detail through the
    host-selected `CommerceFulfillmentLifecycleReadRuntime`. Retain the immutable
    projection-parity packet, execute the deterministic deadline/failure harness,
@@ -325,7 +319,7 @@ disable/reconciliation matrix in
    runtime behavior is promoted, without concrete Commerce read construction or
    secret/raw-payload retention.
 
-7. **Execute remote contracts.** Turn shipping-selection and checkout-execution
+6. **Execute remote contracts.** Turn shipping-selection and checkout-execution
    matrices into provider execution before promoting beyond `boundary_ready`.
    **Depends on:** a remote adapter environment and a Commerce consumer.
    **Done when:** deadline, idempotency, typed-error, identity, and fallback parity
