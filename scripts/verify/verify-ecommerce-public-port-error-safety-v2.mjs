@@ -44,6 +44,7 @@ const storefrontProductsLegacy = read('crates/modules/rustok-commerce/src/contro
 const storefrontCarts = read('crates/modules/rustok-commerce/src/controllers/store/carts.rs');
 const storefrontOrders = read('crates/modules/rustok-commerce/src/controllers/store/orders.rs');
 const storefrontLineItemResolution = read('crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs');
+const storefrontStore = read('crates/modules/rustok-commerce/src/controllers/store/mod.rs');
 const adminCheckoutOperations = read('crates/modules/rustok-commerce/src/controllers/admin/checkout_operations.rs');
 const pricing = read('crates/modules/rustok-pricing/src/ports.rs');
 const payment = read('crates/modules/rustok-payment/src/ports.rs');
@@ -86,6 +87,7 @@ for (const [source, label] of [
   [storefrontCarts, 'storefront cart controller'],
   [storefrontOrders, 'storefront order controller'],
   [storefrontLineItemResolution, 'storefront line-item resolution'],
+  [storefrontStore, 'storefront shared store controller'],
   [adminCheckoutOperations, 'admin checkout operations controller'],
   [orderCompensation, 'order checkout compensation port'],
   [orderPaymentSettlement, 'order checkout payment settlement port'],
@@ -692,6 +694,18 @@ requireAll(adminCheckoutOperations, [
   '"storefront auxiliary operation failed with bounded diagnostics"',
 ], 'admin checkout operation bounded diagnostics');
 
+forbidAll(storefrontStore, [
+  'Module \'{MODULE_SLUG}\' is not enabled for channel',
+  'format!("Module',
+  'request_context.channel_slug.as_deref().unwrap_or("current")',
+], 'storefront dynamic channel denial envelope');
+
+requireAll(storefrontStore, [
+  'The commerce module is not available for the current channel',
+  'fn map_storefront_channel_error(',
+  '"storefront channel resolution failed with bounded diagnostics"',
+], 'storefront channel denial envelope');
+
 const required = [
   [pricing, [
     'correlation_id = %context.correlation_id',
@@ -1056,5 +1070,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Channel, region, cart, product, storefront auxiliary, storefront cart/order/line-item, admin checkout operations, pricing, payment collection/compensation, fulfillment, customer, inventory, order checkout, and marketplace payout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
+  '✔ Channel, region, cart, product, storefront auxiliary, storefront cart/order/line-item, admin checkout operations, storefront channel denial, pricing, payment collection/compensation, fulfillment, customer, inventory, order checkout, and marketplace payout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
 );
