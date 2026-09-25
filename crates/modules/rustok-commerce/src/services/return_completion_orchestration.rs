@@ -1,16 +1,22 @@
 use rust_decimal::Decimal;
 use rustok_core::generate_id;
 use rustok_order::OrderService;
-use rustok_order::dto::{
-    CompleteOrderReturnInput, CreateOrderChangeInput, ListOrderChangesInput, OrderChangeResponse,
-    OrderReturnResponse,
+use rustok_order::{
+    CompleteOrderReturnRequest, CreateOrderChangeRequest, ListOrderChangeProjectionsRequest,
+    OrderPostOrderCommandPort, OrderReadPort, ReadOrderChangeProjectionRequest,
+    ReadOrderReturnProjectionRequest,
 };
-use rustok_order::error::OrderError;
-use rustok_outbox::TransactionalEventBus;
-use rustok_payment::PaymentService;
-use rustok_payment::dto::{CompleteRefundInput, CreateRefundInput, RefundResponse};
-use rustok_payment::error::PaymentError;
-use rustok_payment::providers::PaymentProviderRegistry;
+use rustok_order::dto::{
+    CompleteOrderReturnInput, CreateOrderChangeInput, OrderChangeResponse, OrderReturnResponse,
+};
+use rustok_payment::{
+    CompleteAdminRefundRequest, CreateAdminRefundRequest, ListPaymentCollectionProjectionsRequest,
+    PaymentAdminReadPort, PaymentAdminRefundCommandPort, ReadPaymentCollectionProjectionRequest,
+    ReadRefundProjectionRequest,
+};
+use rustok_payment::dto::{
+    CompleteRefundInput, CreateRefundInput, PaymentCollectionResponse, RefundResponse,
+};
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -68,25 +74,27 @@ pub struct CompleteReturnClaimInput {
 /// identities and a completed owner return.
 pub struct ReturnCompletionOrchestrationService {
     db: DatabaseConnection,
-    event_bus: TransactionalEventBus,
-    payment_provider_registry: PaymentProviderRegistry,
+    order_read_port: std::sync::Arc<dyn OrderReadPort>,
+    order_post_order_command_port: std::sync::Arc<dyn OrderPostOrderCommandPort>,
+    payment_admin_read_port: std::sync::Arc<dyn PaymentAdminReadPort>,
+    payment_admin_refund_command_port: std::sync::Arc<dyn PaymentAdminRefundCommandPort>,
 }
 
 impl ReturnCompletionOrchestrationService {
-    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+    pub fn new(
+        db: DatabaseConnection,
+        order_read_port: std::sync::Arc<dyn OrderReadPort>,
+        order_post_order_command_port: std::sync::Arc<dyn OrderPostOrderCommandPort>,
+        payment_admin_read_port: std::sync::Arc<dyn PaymentAdminReadPort>,
+        payment_admin_refund_command_port: std::sync::Arc<dyn PaymentAdminRefundCommandPort>,
+    ) -> Self {
         Self {
             db,
-            event_bus,
-            payment_provider_registry: PaymentProviderRegistry::with_manual_provider(),
+            order_read_port,
+            order_post_order_command_port,
+            payment_admin_read_port,
+            payment_admin_refund_command_port,
         }
-    }
-
-    pub fn with_payment_provider_registry(
-        mut self,
-        payment_provider_registry: PaymentProviderRegistry,
-    ) -> Self {
-        self.payment_provider_registry = payment_provider_registry;
-        self
     }
 
     pub async fn complete_return(
