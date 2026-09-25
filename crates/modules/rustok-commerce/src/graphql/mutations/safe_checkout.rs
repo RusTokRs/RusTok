@@ -45,12 +45,8 @@ mod checkout_boundary {
         error: &CommerceError,
     ) -> (String, &'static str, bool, &'static str) {
         match error {
-            CommerceError::Validation(detail) => (
-                if detail.is_empty() {
-                    "Shipping profile request is invalid".to_string()
-                } else {
-                    detail.clone()
-                },
+            CommerceError::Validation(_) => (
+                "Shipping profile request is invalid".to_string(),
                 "SHIPPING_PROFILE_REQUEST_INVALID",
                 false,
                 "validation",
@@ -102,11 +98,7 @@ mod checkout_boundary {
     ) -> (String, &'static str, bool, &'static str) {
         match &error.kind {
             PortErrorKind::Validation => (
-                if error.message.is_empty() {
-                    "Shipping option request is invalid".to_string()
-                } else {
-                    error.message.clone()
-                },
+                "Shipping option request is invalid".to_string(),
                 "SHIPPING_OPTION_REQUEST_INVALID",
                 false,
                 "validation",
