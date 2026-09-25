@@ -40,6 +40,7 @@ const region = read('crates/modules/rustok-region/src/ports.rs');
 const cart = read('crates/modules/rustok-cart/src/checkout_snapshot.rs');
 const cartPromotion = read('crates/modules/rustok-cart/src/promotion_guard.rs');
 const product = read('crates/modules/rustok-product/src/ports.rs');
+const storefrontProductsLegacy = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
 const pricing = read('crates/modules/rustok-pricing/src/ports.rs');
 const payment = read('crates/modules/rustok-payment/src/ports.rs');
 const paymentCompensation = read('crates/modules/rustok-payment/src/checkout_compensation.rs');
@@ -77,6 +78,7 @@ for (const [source, label] of [
   [inventory, 'inventory reservation port'],
   [order, 'order generic checkout port'],
   [product, 'product catalog read port'],
+  [storefrontProductsLegacy, 'storefront auxiliary product controller'],
   [orderCompensation, 'order checkout compensation port'],
   [orderPaymentSettlement, 'order checkout payment settlement port'],
   [orderRecovery, 'order checkout recovery adapter'],
@@ -547,6 +549,36 @@ requireAny(orderRecovery, [
   'code = "order.checkout_recovery_validation"',
 ], 'order recovery validation code');
 
+forbidAll(storefrontProductsLegacy, [
+  'error = ?error',
+  'error = %error',
+  'tenant_id = %tenant_id',
+  'cart_id = ?cart_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'deadline_ms = ?context.deadline_ms',
+  'internal_code = %error.code',
+  'internal_message = %error.message',
+  'E: std::fmt::Debug',
+], 'storefront auxiliary payload diagnostics');
+
+requireAll(storefrontProductsLegacy, [
+  'fn storefront_port_error_kind(',
+  'tenant_non_nil = !tenant_id.is_nil()',
+  'cart_id_present = cart_id.is_some()',
+  'owner_error_kind = error_kind',
+  'owner_code_length = error.code.chars().count()',
+  'fn storefront_auxiliary_public_error(',
+  '"storefront auxiliary operation failed with bounded diagnostics"',
+  'error_kind = "database"',
+  'error_kind = "validation"',
+  'error_kind = "not_found"',
+  'error_kind = "unexpected_owner_error"',
+  '"storefront product operation failed with bounded diagnostics"',
+  '"storefront shipping-option owner read failed with bounded diagnostics"',
+], 'storefront auxiliary bounded diagnostics');
+
 const required = [
   [pricing, [
     'correlation_id = %context.correlation_id',
@@ -911,5 +943,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Channel, region, cart, product, pricing, payment collection/compensation, fulfillment, customer, inventory, order checkout, and marketplace payout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
+  '✔ Channel, region, cart, product, storefront auxiliary, pricing, payment collection/compensation, fulfillment, customer, inventory, order checkout, and marketplace payout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
 );
