@@ -38,6 +38,7 @@ const between = (source, start, end) => {
 const channel = read('crates/modules/rustok-channel/src/ports.rs');
 const region = read('crates/modules/rustok-region/src/ports.rs');
 const cart = read('crates/modules/rustok-cart/src/checkout_snapshot.rs');
+const cartPromotion = read('crates/modules/rustok-cart/src/promotion_guard.rs');
 const pricing = read('crates/modules/rustok-pricing/src/ports.rs');
 const payment = read('crates/modules/rustok-payment/src/ports.rs');
 const paymentCompensation = read('crates/modules/rustok-payment/src/checkout_compensation.rs');
@@ -65,6 +66,7 @@ for (const [source, label] of [
   [channel, 'channel port'],
   [region, 'region port'],
   [cart, 'cart checkout port'],
+  [cartPromotion, 'cart promotion port'],
   [pricing, 'pricing port'],
   [payment, 'payment collection port'],
   [paymentCompensation, 'payment checkout compensation port'],
@@ -172,6 +174,34 @@ requireAll(cart, [
 ], 'cart checkout bounded diagnostics');
 
 
+
+forbidAll(cartPromotion, [
+  'PortError::validation(error.code, error.message)',
+  'PortError::validation("cart.promotion_validation", message)',
+  'error = ?error',
+  'error = %error',
+  'tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'channel = ?context.channel',
+  'locale = %context.locale',
+  'causation_id = ?context.causation_id',
+  'traceparent = ?context.traceparent',
+  'idempotency_key = ?context.idempotency_key',
+  'message = %message',
+  'cause = %message',
+], 'cart promotion payload/public error mapping');
+requireAll(cartPromotion, [
+  'struct CartPromotionOwnerErrorFacts',
+  'fn cart_promotion_owner_error_facts(',
+  'cart promotion request is invalid',
+  'cart promotion conflicts with the current cart state',
+  'cart promotion tax recalculation failed',
+  'cart promotion shipping recalculation failed',
+  'cart_promotion_port_error_kind(&error.kind)',
+  'internal_message_present = !error.message.trim().is_empty()',
+  'internal_message_length = error.message.chars().count()',
+  'correlation_id = %context.correlation_id',
+], 'cart promotion bounded diagnostics');
 
 forbidAll(pricing, [
   'format!("pricing storage unavailable: {error}")',
