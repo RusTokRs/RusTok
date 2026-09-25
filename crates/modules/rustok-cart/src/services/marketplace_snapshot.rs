@@ -3,6 +3,9 @@ use std::sync::Arc;
 use chrono::Utc;
 use rust_decimal::{Decimal, prelude::ToPrimitive};
 use rustok_core::generate_id;
+use rustok_fulfillment::{
+    ShippingOptionReadPort, in_process_shipping_option_read_port,
+};
 use rustok_tax::{TaxCalculationPort, in_process_tax_calculation_port};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
@@ -31,14 +34,24 @@ use super::cart::helpers::{
 pub struct CartMarketplaceSnapshotService {
     db: DatabaseConnection,
     tax_calculation_port: Arc<dyn TaxCalculationPort>,
+    shipping_option_read_port: Arc<dyn ShippingOptionReadPort>,
 }
 
 impl CartMarketplaceSnapshotService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
+            shipping_option_read_port: in_process_shipping_option_read_port(db.clone()),
             db,
             tax_calculation_port: in_process_tax_calculation_port(),
         }
+    }
+
+    pub fn with_shipping_option_read_port(
+        mut self,
+        shipping_option_read_port: Arc<dyn ShippingOptionReadPort>,
+    ) -> Self {
+        self.shipping_option_read_port = shipping_option_read_port;
+        self
     }
 
     pub fn with_tax_calculation_port(
@@ -130,7 +143,7 @@ impl CartMarketplaceSnapshotService {
         .await?;
         let snapshot_model = insert_snapshot(&transaction, line_item_id, snapshot).await?;
 
-        recalculate_totals(&transaction, self.tax_calculation_port.as_ref(), cart).await?;
+        recalculate_totals(&transaction, self.tax_calculation_port.as_ref(), self.shipping_option_read_port.as_ref(), cart).await?;
         reconcile_cart_shipping_state(&transaction, cart_id).await?;
         transaction.commit().await?;
 
