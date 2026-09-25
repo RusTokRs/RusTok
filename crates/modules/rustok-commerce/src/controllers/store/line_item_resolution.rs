@@ -309,6 +309,10 @@ pub(crate) async fn resolve_store_line_item_input(
         add_line_item: AddCartLineItemInput {
             product_id: Some(product_model.id),
             variant_id: Some(variant.id),
+            fulfillment_requirement: match rustok_product::ProductFulfillmentRequirement::from_product_type(product_model.product_type.as_deref()) {
+                rustok_product::ProductFulfillmentRequirement::Digital => rustok_cart::CartLineFulfillmentRequirement::Digital,
+                rustok_product::ProductFulfillmentRequirement::Physical => rustok_cart::CartLineFulfillmentRequirement::Physical,
+            },
             shipping_profile_slug: Some(effective_shipping_profile_slug(
                 product_model.shipping_profile_slug.as_deref(),
                 &product_model.metadata,
