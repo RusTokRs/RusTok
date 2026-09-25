@@ -44,6 +44,7 @@ const storefrontProductsLegacy = read('crates/modules/rustok-commerce/src/contro
 const storefrontCarts = read('crates/modules/rustok-commerce/src/controllers/store/carts.rs');
 const storefrontOrders = read('crates/modules/rustok-commerce/src/controllers/store/orders.rs');
 const storefrontLineItemResolution = read('crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs');
+const adminCheckoutOperations = read('crates/modules/rustok-commerce/src/controllers/admin/checkout_operations.rs');
 const pricing = read('crates/modules/rustok-pricing/src/ports.rs');
 const payment = read('crates/modules/rustok-payment/src/ports.rs');
 const paymentCompensation = read('crates/modules/rustok-payment/src/checkout_compensation.rs');
@@ -85,6 +86,7 @@ for (const [source, label] of [
   [storefrontCarts, 'storefront cart controller'],
   [storefrontOrders, 'storefront order controller'],
   [storefrontLineItemResolution, 'storefront line-item resolution'],
+  [adminCheckoutOperations, 'admin checkout operations controller'],
   [orderCompensation, 'order checkout compensation port'],
   [orderPaymentSettlement, 'order checkout payment settlement port'],
   [orderRecovery, 'order checkout recovery adapter'],
@@ -658,6 +660,38 @@ requireAll(storefrontLineItemResolution, [
   'storefront line item inventory operation failed with bounded diagnostics',
 ], 'storefront line-item bounded diagnostics');
 
+forbidAll(adminCheckoutOperations, [
+  'let error = "redacted"',
+  'error = ?error',
+  'E: std::fmt::Debug',
+  'tenant_id = %context.tenant_id',
+  'actor_id = %context.actor_id',
+  'checkout_operation_id = ?context.checkout_operation_id',
+  'reservation_id = ?context.reservation_id',
+  'payment_collection_id = ?context.payment_collection_id',
+  'payment_id = ?context.payment_id',
+  'refund_id = ?context.refund_id',
+  'order_id = ?context.order_id',
+  'order_return_id = ?context.order_return_id',
+  'order_change_id = ?context.order_change_id',
+], 'admin checkout operation payload diagnostics');
+
+requireAll(adminCheckoutOperations, [
+  'struct AdminCheckoutOperationDiagnosticContext',
+  'tenant_state = context.tenant_state',
+  'actor_state = context.actor_state',
+  'checkout_operation_state = context.checkout_operation_state',
+  'reservation_state = context.reservation_state',
+  'payment_collection_state = context.payment_collection_state',
+  'payment_state = context.payment_state',
+  'refund_state = context.refund_state',
+  'order_state = context.order_state',
+  'order_return_state = context.order_return_state',
+  'order_change_state = context.order_change_state',
+  'fn admin_checkout_operation_http_error(',
+  '"storefront auxiliary operation failed with bounded diagnostics"',
+], 'admin checkout operation bounded diagnostics');
+
 const required = [
   [pricing, [
     'correlation_id = %context.correlation_id',
@@ -1022,5 +1056,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Channel, region, cart, product, storefront auxiliary, storefront cart/order/line-item, pricing, payment collection/compensation, fulfillment, customer, inventory, order checkout, and marketplace payout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
+  '✔ Channel, region, cart, product, storefront auxiliary, storefront cart/order/line-item, admin checkout operations, pricing, payment collection/compensation, fulfillment, customer, inventory, order checkout, and marketplace payout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
 );
