@@ -568,13 +568,21 @@ pub struct GqlCart {
     pub delivery_groups: Vec<GqlCartDeliveryGroup>,
 }
 
+#[derive(async_graphql::Enum, Copy, Clone, Eq, PartialEq)]
+#[graphql(rename_items = "snake_case")]
+pub enum GqlCartFulfillmentRequirement {
+    Digital,
+    Physical,
+}
+
 #[derive(SimpleObject)]
 pub struct GqlCartLineItem {
     pub id: Uuid,
     pub cart_id: Uuid,
     pub product_id: Option<Uuid>,
     pub variant_id: Option<Uuid>,
-    pub shipping_profile_slug: String,
+    pub fulfillment_requirement: GqlCartFulfillmentRequirement,
+    pub shipping_profile_slug: Option<String>,
     pub seller_id: Option<String>,
     pub sku: Option<String>,
     pub title: String,
@@ -2332,6 +2340,10 @@ impl From<dto::CartLineItemResponse> for GqlCartLineItem {
             cart_id: value.cart_id,
             product_id: value.product_id,
             variant_id: value.variant_id,
+            fulfillment_requirement: match value.fulfillment_requirement {
+                dto::CartLineFulfillmentRequirement::Digital => GqlCartFulfillmentRequirement::Digital,
+                dto::CartLineFulfillmentRequirement::Physical => GqlCartFulfillmentRequirement::Physical,
+            },
             shipping_profile_slug: value.shipping_profile_slug,
             seller_id: value.seller_id,
             sku: value.sku,
