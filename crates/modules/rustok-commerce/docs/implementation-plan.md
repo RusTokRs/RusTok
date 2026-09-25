@@ -30,6 +30,7 @@ Last reviewed: 2026-09-25
 
 - [x] Repair the malformed `CommerceGraphqlRuntimeData` initializer so every composed owner runtime is separated correctly and the GraphQL runtime source remains compilable.
 - [x] Repair the malformed marker array in `verify-order-post-order-command-port.mjs` so the post-order owner-boundary guard is valid JavaScript.
+- [x] Sanitize Commerce GraphQL checkout validation envelopes so `CommerceError` and owner `PortError` diagnostics cannot leak raw validation text to clients; add a static guard for both paths.
 - [ ] Run the Rust compiler and static verification suite after this repair; runtime, migration, and test evidence remains maintainer-owned for this continuation.
 
 

@@ -48,6 +48,9 @@ for (const [value, label] of [
   ['pub(crate) fn shipping_option_port_error(', 'shipping option port mapper'],
   ['fn shipping_option_port_error_envelope(', 'shipping option envelope mapper'],
   ['PortErrorKind::Validation', 'shipping option validation mapping'],
+  ['CommerceError::Validation(_)', 'sanitized shipping profile validation mapping'],
+  ['"Shipping profile request is invalid".to_string()', 'static shipping profile validation message'],
+  ['"Shipping option request is invalid".to_string()', 'static shipping option validation message'],
   ['PortErrorKind::NotFound if error.code == "fulfillment.shipping_option_not_found"', 'shipping option not-found mapping'],
   ['PortErrorKind::Conflict', 'shipping option conflict mapping'],
   ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'shipping option temporary mapping'],
@@ -83,6 +86,9 @@ for (const value of [
   'Error::new(error.to_string())',
   'Error::new(err.to_string())',
   'format!("{error}")',
+  'CommerceError::Validation(detail)',
+  'detail.clone()',
+  'error.message.clone()',
 ]) {
   forbidText(facade, value, 'checkout facade public and diagnostic boundary');
 }

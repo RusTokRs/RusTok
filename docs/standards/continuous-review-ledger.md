@@ -22,6 +22,9 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 
 ## 2026-09-25 Commerce source-integrity blockers
 
+## 2026-09-25 Commerce GraphQL validation envelope hardening
+
+The Commerce GraphQL checkout compatibility boundary previously copied raw validation details from `CommerceError` and owner `PortError` into public GraphQL messages. Both validation branches now emit stable public text while retaining only bounded diagnostic facts internally, and the existing checkout source verifier explicitly forbids the raw-message forwarding patterns.
 A fresh Commerce continuity audit found two hard source blockers on `main`: the mounted GraphQL runtime initializer was missing field separators in `CommerceGraphqlRuntimeData`, and the Order post-order static verifier contained adjacent string literals without commas. Both are corrected in one atomic source-integrity commit. Rust compilation, static verifier execution, migrations, and tests were not run in this continuation; maintainer verification remains outstanding.
 
 ## 2026-09-24 Media public URL owner hardening
