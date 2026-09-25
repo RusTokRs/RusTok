@@ -118,6 +118,21 @@ requireText(
   "UPDATE fulfillment_items AS fi\n            JOIN fulfillments AS f",
   'MySQL down migration restores fulfillment item checkout identity',
 );
+requireText(
+  migration,
+  "btrim(fi.metadata #>> '{checkout,operation_id}') = f.checkout_operation_id::text",
+  'PostgreSQL item cleanup requires owner identity match',
+);
+requireText(
+  migration,
+  "AND trim(json_extract(fulfillment_items.metadata, '$.checkout.operation_id'))",
+  'SQLite item cleanup is parent-bound',
+);
+requireText(
+  migration,
+  "= LOWER(f.checkout_operation_id)",
+  'MySQL item cleanup requires owner identity match',
+);
 
 const uniquenessCount = (migration.match(/ux_fulfillments_checkout_identity/g) || []).length;
 if (uniquenessCount < 2) {
