@@ -1218,6 +1218,21 @@ Source inspection is not execution evidence.
   `orders_owner_ports.rs` controller.
 - [ ] Continue the same caller-owned idempotency and typed-lifecycle audit in remaining
   mounted Commerce write boundaries.
+
+## Audit 2026-09-25: caller-owned Payment and Fulfillment idempotency
+
+- [x] Require and propagate caller-owned `Idempotency-Key` headers for all mounted Admin
+  Fulfillment writes: create, ship, deliver, reopen, reship, and cancel.
+- [x] Remove payload-hash and resource/operation-derived synthetic Fulfillment idempotency
+  keys; retry identity is now supplied explicitly by the caller.
+- [x] Require and propagate caller-owned `Idempotency-Key` headers for mounted Admin Payment
+  collection transitions (authorize/capture/cancel) and refund transitions (complete/cancel).
+- [x] Keep existing caller-owned refund-creation idempotency and normalize Payment HTTP
+  diagnostics to bounded owner-code length rather than internal code serialization.
+- [x] Extend the ecommerce public-port verifier to reject generated Payment/Fulfillment keys
+  and require caller-owned replay propagation.
+- [ ] Continue the same idempotency review for any remaining mounted Commerce write boundary
+  that crosses an owner port or provider.
 ## Change rules
 
 1. Update this file with every completed or newly discovered ecommerce task.
