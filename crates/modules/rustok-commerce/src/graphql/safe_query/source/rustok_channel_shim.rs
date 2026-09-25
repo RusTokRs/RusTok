@@ -1,5 +1,9 @@
-use ::rustok_channel::{ChannelError, ChannelResponse};
+use ::rustok_channel::{
+    in_process_channel_read_port, ChannelListRequest, ChannelReadPort, ChannelResponse,
+};
+use ::rustok_api::{PortActor, PortCallPolicy, PortContext, PortError, PortErrorKind};
 use ::sea_orm::DatabaseConnection;
+use ::uuid::Uuid;
 
 use super::super::query_error_boundary::{BoundaryError, QueryGraphqlMessage};
 
@@ -13,99 +17,71 @@ impl std::fmt::Debug for ChannelQueryDiagnosticError {
     }
 }
 
-fn text_shape(value: &str) -> &'static str {
-    if value.is_empty() { "empty" } else { "present" }
-}
-
-fn uuid_shape(value: &::uuid::Uuid) -> &'static str {
-    if value.is_nil() {
-        "uuid_nil"
-    } else {
-        "uuid_non_nil"
-    }
-}
-
-fn owner_detail(error: &ChannelError) -> (&'static str, usize) {
-    match error {
-        ChannelError::SlugAlreadyExists(value)
-        | ChannelError::InvalidTargetType(value)
-        | ChannelError::InvalidTargetValue(value)
-        | ChannelError::InvalidPolicyDefinition(value)
-        | ChannelError::PolicySetSlugAlreadyExists(value)
-        | ChannelError::InvalidPolicyOperation(value) => (text_shape(value), value.chars().count()),
-        ChannelError::TargetAlreadyExists(target_type, value) => (
-            "two_text_values",
-            target_type
-                .chars()
-                .count()
-                .saturating_add(value.chars().count()),
-        ),
-        ChannelError::NotFound(value) | ChannelError::InactiveChannel(value) => {
-            (uuid_shape(value), 0)
-        }
-        ChannelError::Database(_) => ("database_redacted", 0),
-        ChannelError::Serialization(_) => ("serialization_redacted", 0),
+fn port_error_kind(kind: &PortErrorKind) -> &'static str {
+    match kind {
+        PortErrorKind::Validation => "validation",
+        PortErrorKind::NotFound => "not_found",
+        PortErrorKind::Conflict => "conflict",
+        PortErrorKind::Forbidden => "forbidden",
+        PortErrorKind::Unavailable => "unavailable",
+        PortErrorKind::Timeout => "timeout",
+        PortErrorKind::InvariantViolation => "invariant_violation",
     }
 }
 
 pub(crate) struct ChannelGraphqlMessage {
-    error: ChannelError,
+    error: PortError,
 }
 
 impl QueryGraphqlMessage for ChannelGraphqlMessage {
     fn into_query_boundary(self) -> BoundaryError {
-        let (message, code, retryable, error_kind, technical) = match &self.error {
-            ChannelError::InvalidTargetType(_)
-            | ChannelError::InvalidTargetValue(_)
-            | ChannelError::InvalidPolicyDefinition(_)
-            | ChannelError::InvalidPolicyOperation(_) => (
+        let (message, code, retryable, technical) = match &self.error.kind {
+            PortErrorKind::Validation => (
                 "Channel query is invalid",
                 "CHANNEL_REQUEST_INVALID",
                 false,
-                "validation",
                 false,
             ),
-            ChannelError::NotFound(_) => (
+            PortErrorKind::NotFound => (
                 "Channel data was not found",
                 "CHANNEL_RESOURCE_NOT_FOUND",
                 false,
-                "not_found",
                 false,
             ),
-            ChannelError::InactiveChannel(_)
-            | ChannelError::SlugAlreadyExists(_)
-            | ChannelError::TargetAlreadyExists(_, _)
-            | ChannelError::PolicySetSlugAlreadyExists(_) => (
+            PortErrorKind::Conflict => (
                 "Channel state conflicts with this query",
                 "CHANNEL_STATE_CONFLICT",
                 false,
-                "conflict",
                 false,
             ),
-            ChannelError::Database(_) => (
+            PortErrorKind::Forbidden => (
+                "Channel query is not permitted",
+                "CHANNEL_ACCESS_DENIED",
+                false,
+                false,
+            ),
+            PortErrorKind::Unavailable | PortErrorKind::Timeout => (
                 "Channel data is temporarily unavailable",
                 "CHANNEL_TEMPORARILY_UNAVAILABLE",
                 true,
-                "database",
                 true,
             ),
-            ChannelError::Serialization(_) => (
+            PortErrorKind::InvariantViolation => (
                 "Channel query could not be completed safely",
                 "CHANNEL_OPERATION_FAILED",
                 false,
-                "serialization",
                 true,
             ),
         };
-        let (owner_detail_shape, owner_detail_length) = owner_detail(&self.error);
+        let error_kind = port_error_kind(&self.error.kind);
         let diagnostic_error = ChannelQueryDiagnosticError;
         if technical {
             tracing::error!(
                 error = ?diagnostic_error,
                 owner = "rustok_channel",
                 error_kind,
-                owner_detail_shape,
-                owner_detail_length,
+                owner_code = %self.error.code,
+                owner_retryable = self.error.retryable,
                 public_code = code,
                 retryable,
                 boundary = GRAPHQL_QUERY_CHANNEL_BOUNDARY,
@@ -116,8 +92,8 @@ impl QueryGraphqlMessage for ChannelGraphqlMessage {
                 error = ?diagnostic_error,
                 owner = "rustok_channel",
                 error_kind,
-                owner_detail_shape,
-                owner_detail_length,
+                owner_code = %self.error.code,
+                owner_retryable = self.error.retryable,
                 public_code = code,
                 retryable,
                 boundary = GRAPHQL_QUERY_CHANNEL_BOUNDARY,
@@ -133,44 +109,74 @@ impl QueryGraphqlMessage for ChannelGraphqlMessage {
 }
 
 pub(crate) struct ChannelQueryError {
-    error: ChannelError,
+    error: PortError,
 }
 
-impl From<ChannelError> for ChannelQueryError {
-    fn from(error: ChannelError) -> Self {
+impl From<PortError> for ChannelQueryError {
+    fn from(error: PortError) -> Self {
         Self { error }
     }
 }
 
 impl ChannelQueryError {
-    /// Preserve the unchanged resolver expression `err.to_string()` while retaining
-    /// the typed Channel owner error until the transport-owned GraphQL mapper.
-    #[allow(clippy::wrong_self_convention)]
     pub(crate) fn to_string(self) -> ChannelGraphqlMessage {
         ChannelGraphqlMessage { error: self.error }
     }
 }
 
 pub(crate) struct ChannelService {
-    inner: ::rustok_channel::ChannelService,
+    reads: std::sync::Arc<dyn ChannelReadPort>,
 }
 
 impl ChannelService {
     pub(crate) fn new(db: DatabaseConnection) -> Self {
         Self {
-            inner: ::rustok_channel::ChannelService::new(db),
+            reads: in_process_channel_read_port(db),
         }
     }
 
     pub(crate) async fn list_channels(
         &self,
-        tenant_id: ::uuid::Uuid,
+        tenant_id: Uuid,
         page: u64,
         per_page: u64,
     ) -> Result<(Vec<ChannelResponse>, u64), ChannelQueryError> {
-        self.inner
-            .list_channels(tenant_id, page, per_page)
-            .await
-            .map_err(Into::into)
+        if page == 0 || per_page == 0 {
+            return Err(PortError::validation(
+                "channel.pagination_invalid",
+                "channel query pagination requires non-zero page and per_page",
+            )
+            .into());
+        }
+
+        let context = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::service("rustok-commerce.graphql-query-channels"),
+            "en",
+            format!("commerce-graphql-channels:list:{tenant_id}:{page}:{per_page}"),
+        )
+        .with_deadline(std::time::Duration::from_secs(2));
+        context.require_policy(PortCallPolicy::read())?;
+
+        let result = self
+            .reads
+            .list_channels_for_tenant(
+                context,
+                ChannelListRequest {
+                    page,
+                    per_page,
+                    include_inactive: false,
+                },
+            )
+            .await?;
+
+        Ok((
+            result
+                .items
+                .into_iter()
+                .map(|projection| projection.detail.channel)
+                .collect(),
+            result.total,
+        ))
     }
 }
