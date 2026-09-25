@@ -3,7 +3,6 @@ use rust_decimal::Decimal;
 use rustok_api::locale_tags_match;
 use rustok_api::{AuthContext, PortActor, PortContext, RequestContext, graphql::GraphQLError};
 use rustok_cart::{CartStorefrontPort, CartStorefrontRepriceRequest};
-use rustok_fulfillment::FulfillmentService;
 use rustok_inventory::{
     PublicChannelInventoryVariantProjectionInput, check_variant_availability_for_public_channel,
 };
@@ -25,7 +24,7 @@ use crate::{
     storefront_channel::{is_metadata_visible_for_public_channel, normalize_public_channel_slug},
     storefront_shipping::{
         effective_shipping_profile_slug, enrich_cart_delivery_groups,
-        is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
+        is_shipping_option_compatible_with_profiles,
     },
 };
 
@@ -572,81 +571,6 @@ pub(crate) fn storefront_public_channel_slug_for_cart(
 ) -> Option<String> {
     normalize_public_channel_slug(cart.channel_slug.as_deref())
         .or_else(|| request_public_channel_slug(ctx))
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn validate_selected_shipping_option(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    cart: &crate::dto::CartResponse,
-    selected_shipping_option_id: Option<Uuid>,
-    shipping_selections: Option<&[crate::dto::CartShippingSelectionInput]>,
-    currency_code: &str,
-    public_channel_slug: Option<&str>,
-    requested_locale: Option<&str>,
-    tenant_default_locale: Option<&str>,
-) -> Result<()> {
-    let selections = if let Some(shipping_selections) = shipping_selections {
-        shipping_selections.to_vec()
-    } else if let Some(selected_shipping_option_id) = selected_shipping_option_id {
-        if cart.delivery_groups.len() > 1 {
-            return Err(async_graphql::Error::new(
-                "selectedShippingOptionId can only be used for carts with a single delivery group",
-            ));
-        }
-        cart.delivery_groups
-            .first()
-            .map(|group| {
-                vec![crate::dto::CartShippingSelectionInput {
-                    shipping_profile_slug: group.shipping_profile_slug.clone(),
-                    seller_id: group.seller_id.clone(),
-                    seller_scope: None,
-                    selected_shipping_option_id: Some(selected_shipping_option_id),
-                }]
-            })
-            .unwrap_or_default()
-    } else {
-        current_shipping_selections(cart)
-    };
-
-    for selection in selections {
-        let Some(selected_shipping_option_id) = selection.selected_shipping_option_id else {
-            continue;
-        };
-        let option = FulfillmentService::new(db.clone())
-            .get_shipping_option(
-                tenant_id,
-                selected_shipping_option_id,
-                requested_locale,
-                tenant_default_locale,
-            )
-            .await?;
-        if !option.currency_code.eq_ignore_ascii_case(currency_code) {
-            return Err(async_graphql::Error::new(format!(
-                "Shipping option {} uses currency {}, expected {}",
-                option.id, option.currency_code, currency_code
-            )));
-        }
-        if !is_metadata_visible_for_public_channel(&option.metadata, public_channel_slug) {
-            return Err(async_graphql::Error::new(format!(
-                "Shipping option {} is not available for the current channel",
-                option.id
-            )));
-        }
-        let required_shipping_profiles =
-            std::collections::BTreeSet::from([normalize_shipping_profile_slug(
-                selection.shipping_profile_slug.as_str(),
-            )
-            .unwrap_or_else(|| "default".to_string())]);
-        if !is_shipping_option_compatible_with_profiles(&option, &required_shipping_profiles) {
-            return Err(async_graphql::Error::new(format!(
-                "Shipping option {} is not compatible with shipping profile {}",
-                option.id, selection.shipping_profile_slug
-            )));
-        }
-    }
-
-    Ok(())
 }
 
 pub(crate) fn current_shipping_selections(
