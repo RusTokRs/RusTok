@@ -306,10 +306,12 @@ pub async fn add_cart_line_item(
         super::build_store_pricing_context(&existing, &request_context, input.quantity);
     let public_channel_slug =
         super::storefront_public_channel_slug_for_cart(&existing, &request_context);
+    let product_catalog_read_port = runtime.product_catalog_read_port();
     let resolved_input = line_item_resolution::resolve_store_line_item_input(
         runtime.db(),
         tenant.id,
         super::StoreLineItemResolution {
+            product_catalog_read_port: product_catalog_read_port.as_ref(),
             pricing_read_port: pricing_read_port.as_ref(),
             pricing_context: &pricing_context,
             locale: existing
