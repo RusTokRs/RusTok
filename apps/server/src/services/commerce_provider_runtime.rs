@@ -56,6 +56,108 @@ pub fn attach_commerce_provider_registries(
         host.with_shared_value(runtime)
     };
 
+    #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
+    let host = {
+        let runtime = host
+            .shared_get::<rustok_payment::PaymentAdminReadRuntime>()
+            .or_else(|| server.shared_get::<rustok_payment::PaymentAdminReadRuntime>())
+            .unwrap_or_else(|| {
+                rustok_payment::PaymentAdminReadRuntime::in_process(server.db_clone())
+            });
+        server.shared_insert(runtime.clone());
+        host.with_shared_value(runtime)
+    };
+
+    #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
+    let host = {
+        let runtime = host
+            .shared_get::<rustok_payment::PaymentAdminCollectionCommandRuntime>()
+            .or_else(|| {
+                server.shared_get::<rustok_payment::PaymentAdminCollectionCommandRuntime>()
+            })
+            .unwrap_or_else(|| {
+                rustok_payment::PaymentAdminCollectionCommandRuntime::in_process(
+                    server.db_clone(),
+                    server
+                        .shared_get::<rustok_payment::providers::PaymentProviderRegistry>()
+                        .unwrap_or_else(rustok_payment::providers::PaymentProviderRegistry::with_manual_provider),
+                )
+            });
+        server.shared_insert(runtime.clone());
+        host.with_shared_value(runtime)
+    };
+
+    #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
+    let host = {
+        let runtime = host
+            .shared_get::<rustok_payment::PaymentAdminRefundCommandRuntime>()
+            .or_else(|| server.shared_get::<rustok_payment::PaymentAdminRefundCommandRuntime>())
+            .unwrap_or_else(|| {
+                rustok_payment::PaymentAdminRefundCommandRuntime::in_process(
+                    server.db_clone(),
+                    server
+                        .shared_get::<rustok_payment::providers::PaymentProviderRegistry>()
+                        .unwrap_or_else(rustok_payment::providers::PaymentProviderRegistry::with_manual_provider),
+                )
+            });
+        server.shared_insert(runtime.clone());
+        host.with_shared_value(runtime)
+    };
+
+    #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
+    let host = {
+        let runtime = host
+            .shared_get::<rustok_commerce::graphql_runtime::CommercePaymentReadRuntime>()
+            .or_else(|| {
+                server.shared_get::<rustok_commerce::graphql_runtime::CommercePaymentReadRuntime>()
+            })
+            .unwrap_or_else(|| {
+                let admin_reads = server
+                    .shared_get::<rustok_payment::PaymentAdminReadRuntime>()
+                    .expect("PaymentAdminReadRuntime must be initialized before CommercePaymentReadRuntime");
+                let order_reads = server
+                    .shared_get::<rustok_payment::PaymentOrderReadRuntime>()
+                    .expect("PaymentOrderReadRuntime must be initialized before CommercePaymentReadRuntime");
+                let cart_reads = server
+                    .shared_get::<rustok_payment::PaymentCartReadRuntime>()
+                    .expect("PaymentCartReadRuntime must be initialized before CommercePaymentReadRuntime");
+                rustok_commerce::graphql_runtime::CommercePaymentReadRuntime::new(
+                    admin_reads,
+                    order_reads,
+                    cart_reads,
+                )
+            });
+        server.shared_insert(runtime.clone());
+        host.with_shared_value(runtime)
+    };
+
+    #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
+    let host = {
+        let runtime = host
+            .shared_get::<rustok_commerce::graphql_runtime::CommercePaymentCommandRuntime>()
+            .or_else(|| {
+                server.shared_get::<rustok_commerce::graphql_runtime::CommercePaymentCommandRuntime>()
+            })
+            .unwrap_or_else(|| {
+                let collection_create_or_reuse = server
+                    .shared_get::<rustok_payment::PaymentCollectionRuntime>()
+                    .expect("PaymentCollectionRuntime must be initialized before CommercePaymentCommandRuntime");
+                let collection_commands = server
+                    .shared_get::<rustok_payment::PaymentAdminCollectionCommandRuntime>()
+                    .expect("PaymentAdminCollectionCommandRuntime must be initialized before CommercePaymentCommandRuntime");
+                let refund_commands = server
+                    .shared_get::<rustok_payment::PaymentAdminRefundCommandRuntime>()
+                    .expect("PaymentAdminRefundCommandRuntime must be initialized before CommercePaymentCommandRuntime");
+                rustok_commerce::graphql_runtime::CommercePaymentCommandRuntime::new(
+                    collection_create_or_reuse,
+                    collection_commands,
+                    refund_commands,
+                )
+            });
+        server.shared_insert(runtime.clone());
+        host.with_shared_value(runtime)
+    };
+
     #[cfg(feature = "mod-fulfillment")]
     let host = {
         let registry = server
