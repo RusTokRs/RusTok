@@ -546,7 +546,7 @@ impl ReturnCompletionOrchestrationService {
             .list_order_changes(
                 tenant_id,
                 actor_id,
-                ListOrderChangesInput {
+                ListOrderChangeProjectionsRequest {
                     page: 1,
                     per_page: 100,
                     order_id: Some(order_id),
@@ -692,18 +692,17 @@ impl ReturnCompletionOrchestrationService {
         &self,
         tenant_id: Uuid,
         actor_id: Uuid,
-        input: ListOrderChangesInput,
+        request: ListOrderChangeProjectionsRequest,
     ) -> PostOrderOrchestrationResult<rustok_order::OrderChangeProjectionPage> {
         self.order_read_port
             .list_order_change_projections(
-                self.read_context(tenant_id, actor_id, "list_order_changes", tenant_id),
-                ListOrderChangeProjectionsRequest {
-                    page: input.page,
-                    per_page: input.per_page,
-                    order_id: input.order_id,
-                    status: input.status,
-                    change_type: input.change_type,
-                },
+                self.read_context(
+                    tenant_id,
+                    actor_id,
+                    "list_order_changes",
+                    request.order_id.unwrap_or(tenant_id),
+                ),
+                request,
             )
             .await
             .map_err(|error| self.owner_port_error("rustok_order", error))
