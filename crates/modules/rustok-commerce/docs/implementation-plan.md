@@ -247,6 +247,9 @@ These are source-contract defects, not verification-only tasks.
   the new topology guard, then retain evidence when validation policy allows it.
 - [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,
   Payment, and Fulfillment concrete services behind host-composed owner ports.
+- [x] Route checkout-plan shipping-option reads through the typed
+  `ShippingOptionReadPort`; the builder no longer constructs `FulfillmentService`
+  and accepts a host-selected shipping-option read port.
 - [x] Publish Product-owned `ProductCatalogCommandPort` / `ProductCatalogCommandRuntime`,
   host-compose embedded or external command providers, and cut mounted admin REST
   product create/update over to the owner port with deadline, payload-bound deterministic

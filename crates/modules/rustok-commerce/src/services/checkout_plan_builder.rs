@@ -7,7 +7,9 @@ use rustok_cart::{
     MarketplaceCartSnapshotReadPort, PreparedCartCheckoutSnapshot,
     in_process_marketplace_cart_snapshot_read_port,
 };
-use rustok_fulfillment::FulfillmentService;
+use rustok_fulfillment::{
+    in_process_shipping_option_read_port, ReadShippingOptionProjectionRequest, ShippingOptionReadPort,
+};
 use rustok_inventory::{InventoryAvailabilityRequest, InventoryReservationPort};
 use rustok_product::{
     ProductCatalogReadPort, ProductProjectionRequest, VariantProductProjectionRequest,
@@ -56,7 +58,7 @@ pub struct CheckoutPlanBuilder {
     inventory_availability_port: Arc<dyn InventoryReservationPort>,
     product_catalog_read_port: Arc<dyn ProductCatalogReadPort>,
     marketplace_snapshot_read_port: Arc<dyn MarketplaceCartSnapshotReadPort>,
-    fulfillment_service: FulfillmentService,
+    shipping_option_read_port: Arc<dyn ShippingOptionReadPort>,
     context_service: StoreContextService,
 }
 
@@ -74,7 +76,7 @@ impl CheckoutPlanBuilder {
             marketplace_snapshot_read_port: in_process_marketplace_cart_snapshot_read_port(
                 db.clone(),
             ),
-            fulfillment_service: FulfillmentService::new(db.clone()),
+            shipping_option_read_port: in_process_shipping_option_read_port(db.clone()),
             context_service: StoreContextService::new(db, region_read_port),
         }
     }
@@ -84,6 +86,14 @@ impl CheckoutPlanBuilder {
         marketplace_snapshot_read_port: Arc<dyn MarketplaceCartSnapshotReadPort>,
     ) -> Self {
         self.marketplace_snapshot_read_port = marketplace_snapshot_read_port;
+        self
+    }
+
+    pub fn with_shipping_option_read_port(
+        mut self,
+        shipping_option_read_port: Arc<dyn ShippingOptionReadPort>,
+    ) -> Self {
+        self.shipping_option_read_port = shipping_option_read_port;
         self
     }
 
@@ -153,6 +163,7 @@ impl CheckoutPlanBuilder {
             .map_err(stage_error("resolve_context"))?;
         self.validate_delivery_groups(
             tenant_id,
+            actor_id,
             cart,
             context.locale.as_str(),
             Some(context.default_locale.as_str()),
@@ -343,6 +354,7 @@ impl CheckoutPlanBuilder {
     async fn validate_delivery_groups(
         &self,
         tenant_id: Uuid,
+        actor_id: Uuid,
         cart: &CartResponse,
         requested_locale: &str,
         tenant_default_locale: Option<&str>,
@@ -356,16 +368,27 @@ impl CheckoutPlanBuilder {
                         delivery_group.shipping_profile_slug
                     ))
                 })?;
+            let context = port_context(
+                tenant_id,
+                actor_id,
+                cart,
+                public_channel_slug.as_deref(),
+                "shipping-option",
+            );
             let option = self
-                .fulfillment_service
-                .get_shipping_option(
-                    tenant_id,
-                    selected_shipping_option_id,
-                    Some(requested_locale),
-                    tenant_default_locale,
+                .shipping_option_read_port
+                .read_shipping_option_projection(
+                    context.clone(),
+                    ReadShippingOptionProjectionRequest {
+                        shipping_option_id: selected_shipping_option_id,
+                        requested_locale: Some(requested_locale.to_string()),
+                        tenant_default_locale: tenant_default_locale.map(str::to_string),
+                    },
                 )
                 .await
-                .map_err(stage_error("load_shipping_option"))?;
+                .map_err(|error| {
+                    checkout_plan_shipping_option_boundary_error(&context, error)
+                })?;
             if !option
                 .currency_code
                 .eq_ignore_ascii_case(&cart.currency_code)
@@ -771,6 +794,68 @@ fn checkout_plan_inventory_boundary_error(
 ) -> CheckoutError {
     log_checkout_plan_inventory_boundary_failure(context, &error);
     boundary_error("check_inventory_availability", error)
+}
+
+fn checkout_plan_shipping_option_boundary_error(
+    context: &PortContext,
+    error: PortError,
+) -> CheckoutError {
+    log_checkout_plan_shipping_option_boundary_failure(context, error);
+    boundary_error("load_shipping_option", error)
+}
+
+fn log_checkout_plan_shipping_option_boundary_failure(
+    context: &PortContext,
+    error: &PortError,
+) {
+    match &error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
+            tracing::error!(
+                error = ?error,
+                owner = "rustok_fulfillment",
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = "read_shipping_option_projection",
+                stage = "load_shipping_option",
+                code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = "commerce_checkout_plan_shipping_option",
+                "checkout plan shipping-option owner boundary failed"
+            );
+        }
+        _ => {
+            tracing::warn!(
+                error = ?error,
+                owner = "rustok_fulfillment",
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                actor = ?context.actor,
+                channel = ?context.channel,
+                locale = %context.locale,
+                causation_id = ?context.causation_id,
+                traceparent = ?context.traceparent,
+                idempotency_key = ?context.idempotency_key,
+                deadline_ms = ?context.deadline_ms,
+                operation = "read_shipping_option_projection",
+                stage = "load_shipping_option",
+                code = %error.code,
+                internal_message = %error.message,
+                error_kind = ?error.kind,
+                retryable = error.retryable,
+                boundary = "commerce_checkout_plan_shipping_option",
+                "checkout plan shipping-option owner boundary was rejected"
+            );
+        }
+    }
 }
 
 fn log_checkout_plan_inventory_boundary_failure(context: &PortContext, error: &PortError) {
