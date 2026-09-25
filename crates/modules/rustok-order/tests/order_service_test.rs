@@ -352,6 +352,7 @@ async fn create_list_apply_and_cancel_order_changes() {
             tenant_id,
             actor_id,
             order.id,
+            "order-service-test-create_order_change-1",
             CreateOrderChangeInput {
                 change_type: "  Draft-Edit  ".to_string(),
                 description: Some("  update line quantity  ".to_string()),
@@ -393,6 +394,7 @@ async fn create_list_apply_and_cancel_order_changes() {
         .apply_order_change(
             tenant_id,
             created.id,
+            "order-service-test-apply_order_change-1",
             ApplyOrderChangeInput {
                 metadata: serde_json::json!({"applied_by": "test"}),
             },
@@ -412,6 +414,7 @@ async fn create_list_apply_and_cancel_order_changes() {
             tenant_id,
             actor_id,
             order.id,
+            "order-service-test-create_order_change-2",
             CreateOrderChangeInput {
                 change_type: "claim".to_string(),
                 description: None,
@@ -425,6 +428,7 @@ async fn create_list_apply_and_cancel_order_changes() {
         .cancel_order_change(
             tenant_id,
             second.id,
+            "order-service-test-cancel_order_change-1",
             CancelOrderChangeInput {
                 reason: Some(" duplicate request ".to_string()),
                 metadata: serde_json::json!({"cancelled_by": "test"}),
@@ -455,6 +459,7 @@ async fn order_change_rejects_invalid_payloads_and_transitions() {
             tenant_id,
             actor_id,
             order.id,
+            "order-service-test-create_order_change-3",
             CreateOrderChangeInput {
                 change_type: "draft_edit".to_string(),
                 description: None,
@@ -473,6 +478,7 @@ async fn order_change_rejects_invalid_payloads_and_transitions() {
             tenant_id,
             actor_id,
             order.id,
+            "order-service-test-create_order_change-4",
             CreateOrderChangeInput {
                 change_type: "exchange".to_string(),
                 description: None,
@@ -486,6 +492,7 @@ async fn order_change_rejects_invalid_payloads_and_transitions() {
         .apply_order_change(
             tenant_id,
             change.id,
+            "order-service-test-apply_order_change-2",
             ApplyOrderChangeInput {
                 metadata: serde_json::json!({}),
             },
@@ -496,6 +503,7 @@ async fn order_change_rejects_invalid_payloads_and_transitions() {
         .cancel_order_change(
             tenant_id,
             change.id,
+            "order-service-test-cancel_order_change-2",
             CancelOrderChangeInput {
                 reason: None,
                 metadata: serde_json::json!({}),
@@ -526,6 +534,7 @@ async fn create_and_list_order_returns() {
         .create_return(
             tenant_id,
             created_order.id,
+            "order-service-test-create_return-1",
             CreateOrderReturnInput {
                 reason: Some("  damaged  ".to_string()),
                 note: Some("   ".to_string()),
@@ -592,6 +601,7 @@ async fn create_order_return_rejects_duplicate_line_items_and_excess_quantity() 
         .create_return(
             tenant_id,
             order.id,
+            "order-service-test-create_return-2",
             CreateOrderReturnInput {
                 reason: Some("damaged".to_string()),
                 note: None,
@@ -624,6 +634,7 @@ async fn create_order_return_rejects_duplicate_line_items_and_excess_quantity() 
         .create_return(
             tenant_id,
             order.id,
+            "order-service-test-create_return-3",
             CreateOrderReturnInput {
                 reason: Some("damaged".to_string()),
                 note: None,
@@ -658,6 +669,7 @@ async fn create_order_return_rejects_cumulative_quantity_above_ordered_quantity(
         .create_return(
             tenant_id,
             order.id,
+            "order-service-test-create_return-4",
             CreateOrderReturnInput {
                 reason: Some("partial".to_string()),
                 note: None,
@@ -678,6 +690,7 @@ async fn create_order_return_rejects_cumulative_quantity_above_ordered_quantity(
         .create_return(
             tenant_id,
             order.id,
+            "order-service-test-create_return-5",
             CreateOrderReturnInput {
                 reason: Some("over-return".to_string()),
                 note: None,
@@ -712,6 +725,7 @@ async fn complete_order_return_rejects_unknown_resolution_type() {
         .create_return(
             tenant_id,
             order.id,
+            "order-service-test-create_return-6",
             CreateOrderReturnInput {
                 reason: Some("damaged".to_string()),
                 note: None,
@@ -726,6 +740,7 @@ async fn complete_order_return_rejects_unknown_resolution_type() {
         .complete_return(
             tenant_id,
             created_return.id,
+            "order-service-test-complete_return-1",
             rustok_order::dto::CompleteOrderReturnInput {
                 resolution_type: Some("replacement_without_exchange".to_string()),
                 refund_id: None,
@@ -754,6 +769,7 @@ async fn complete_order_return_validates_resolution_link_requirements() {
         .create_return(
             tenant_id,
             order.id,
+            "order-service-test-create_return-7",
             CreateOrderReturnInput {
                 reason: Some("damaged".to_string()),
                 note: None,
@@ -768,6 +784,7 @@ async fn complete_order_return_validates_resolution_link_requirements() {
         .complete_return(
             tenant_id,
             created_return.id,
+            "order-service-test-complete_return-2",
             rustok_order::dto::CompleteOrderReturnInput {
                 resolution_type: Some("refund".to_string()),
                 refund_id: None,
@@ -785,6 +802,7 @@ async fn complete_order_return_validates_resolution_link_requirements() {
         .complete_return(
             tenant_id,
             created_return.id,
+            "order-service-test-complete_return-3",
             rustok_order::dto::CompleteOrderReturnInput {
                 resolution_type: None,
                 refund_id: Some(Uuid::new_v4()),
@@ -813,6 +831,7 @@ async fn complete_order_return_supports_claim_resolution_with_order_change() {
             tenant_id,
             actor_id,
             order.id,
+            "order-service-test-create_order_change-5",
             CreateOrderChangeInput {
                 change_type: "claim".to_string(),
                 description: Some("Damaged item claim".to_string()),
@@ -826,6 +845,7 @@ async fn complete_order_return_supports_claim_resolution_with_order_change() {
         .create_return(
             tenant_id,
             order.id,
+            "order-service-test-create_return-8",
             CreateOrderReturnInput {
                 reason: Some("damaged".to_string()),
                 note: None,
@@ -840,6 +860,7 @@ async fn complete_order_return_supports_claim_resolution_with_order_change() {
         .complete_return(
             tenant_id,
             created_return.id,
+            "order-service-test-complete_return-4",
             rustok_order::dto::CompleteOrderReturnInput {
                 resolution_type: Some("claim".to_string()),
                 refund_id: None,
@@ -872,6 +893,7 @@ async fn list_order_returns_clamps_per_page_upper_bound_to_100() {
             .create_return(
                 tenant_id,
                 order.id,
+                "order-service-test-create_return-9",
                 CreateOrderReturnInput {
                     reason: Some(format!("reason-{index}")),
                     note: None,
@@ -915,6 +937,7 @@ async fn list_order_returns_clamps_pagination_bounds() {
         .create_return(
             tenant_id,
             order.id,
+            "order-service-test-create_return-10",
             CreateOrderReturnInput {
                 reason: Some("damaged".to_string()),
                 note: None,
@@ -929,6 +952,7 @@ async fn list_order_returns_clamps_pagination_bounds() {
         .create_return(
             tenant_id,
             order.id,
+            "order-service-test-create_return-11",
             CreateOrderReturnInput {
                 reason: Some("wrong-size".to_string()),
                 note: None,
@@ -988,6 +1012,7 @@ async fn list_order_returns_ignores_blank_status_filter() {
         .create_return(
             tenant_id,
             order.id,
+            "order-service-test-create_return-12",
             CreateOrderReturnInput {
                 reason: Some("damaged".to_string()),
                 note: None,
@@ -1036,6 +1061,7 @@ async fn list_order_returns_applies_status_trim_and_tenant_isolation() {
         .create_return(
             tenant_a,
             order_a.id,
+            "order-service-test-create_return-13",
             CreateOrderReturnInput {
                 reason: Some("damaged".to_string()),
                 note: None,
@@ -1050,6 +1076,7 @@ async fn list_order_returns_applies_status_trim_and_tenant_isolation() {
         .create_return(
             tenant_b,
             order_b.id,
+            "order-service-test-create_return-14",
             CreateOrderReturnInput {
                 reason: Some("wrong-size".to_string()),
                 note: None,
@@ -1278,6 +1305,7 @@ async fn order_return_lifecycle_completes_and_rejects_second_transition() {
         .create_return(
             tenant_id,
             order.id,
+            "order-service-test-create_return-15",
             CreateOrderReturnInput {
                 reason: Some("damaged".to_string()),
                 note: None,
@@ -1292,6 +1320,7 @@ async fn order_return_lifecycle_completes_and_rejects_second_transition() {
         .complete_return(
             tenant_id,
             created_return.id,
+            "order-service-test-complete_return-5",
             rustok_order::dto::CompleteOrderReturnInput {
                 resolution_type: Some(" refund ".to_string()),
                 refund_id: Some(Uuid::new_v4()),
@@ -1314,6 +1343,7 @@ async fn order_return_lifecycle_completes_and_rejects_second_transition() {
         .cancel_return(
             tenant_id,
             created_return.id,
+            "order-service-test-cancel_return-1",
             rustok_order::dto::CancelOrderReturnInput {
                 reason: Some("duplicate".to_string()),
                 metadata: serde_json::json!({}),
@@ -1344,6 +1374,7 @@ async fn order_return_lifecycle_cancels_and_show_is_tenant_scoped() {
         .create_return(
             tenant_id,
             order.id,
+            "order-service-test-create_return-16",
             CreateOrderReturnInput {
                 reason: Some("wrong size".to_string()),
                 note: None,
@@ -1364,6 +1395,7 @@ async fn order_return_lifecycle_cancels_and_show_is_tenant_scoped() {
         .cancel_return(
             tenant_id,
             created_return.id,
+            "order-service-test-cancel_return-2",
             rustok_order::dto::CancelOrderReturnInput {
                 reason: Some(" customer withdrew ".to_string()),
                 metadata: serde_json::json!({ "cancelled_by": "admin" }),
