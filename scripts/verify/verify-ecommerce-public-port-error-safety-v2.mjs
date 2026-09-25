@@ -43,6 +43,7 @@ const orderCompensation = read('crates/modules/rustok-order/src/checkout_compens
 const orderPaymentSettlement = read('crates/modules/rustok-order/src/checkout_payment_settlement.rs');
 const orderRecovery = read('crates/modules/rustok-order/src/checkout_order_recovery.rs');
 const orderCheckoutAdapters = orderCompensation + orderPaymentSettlement + orderRecovery;
+const marketplacePayoutService = read('crates/modules/rustok-marketplace-payout/src/service.rs');
 
 for (const [source, label] of [
   [channel, 'channel port'],
@@ -239,6 +240,11 @@ forbidAll(orderCheckoutAdapters, [
   '"PortContext.actor.id must be a UUID for order write ports"',
   'format!(\n                "{field} must be a lowercase hexadecimal value',
 ], 'order checkout adapter public error mapping');
+
+forbidAll(marketplacePayoutService, [
+  'MarketplacePayoutError::LedgerBoundary {',
+  'message: error.message,',
+], 'marketplace payout ledger-boundary public error mapping');
 
 requireText(pricing, 'correlation_id = %context.correlation_id', 'pricing correlation logging');
 requireText(payment, 'operation = owner_operation', 'payment owner operation logging');
@@ -537,6 +543,17 @@ requireText(region, '"region storage is temporarily unavailable"', 'region stabl
 requireText(cart, '"cart checkout request or projection is invalid"', 'cart stable validation message');
 requireText(cart, '"cart checkout snapshot could not be encoded"', 'cart stable encoding message');
 
+requireAll(marketplacePayoutService, [
+  'rustok_api::PortErrorKind::Validation',
+  'rustok_api::PortErrorKind::Forbidden',
+  'rustok_api::PortErrorKind::Unavailable',
+  'rustok_api::PortErrorKind::Timeout',
+  'rustok_api::PortErrorKind::InvariantViolation',
+  '"marketplace ledger permission was denied"',
+  '"marketplace ledger is temporarily unavailable"',
+  '"marketplace ledger requires operator review"',
+], 'marketplace payout ledger-boundary classification');
+
 if (failures.length > 0) {
   console.error('Scoped ecommerce public port error safety verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
@@ -544,5 +561,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Channel, region, cart, pricing, payment collection/compensation, fulfillment, customer, inventory, and order checkout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
+  '✔ Channel, region, cart, pricing, payment collection/compensation, fulfillment, customer, inventory, order checkout, and marketplace payout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
 );
