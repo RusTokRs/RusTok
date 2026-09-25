@@ -192,10 +192,12 @@ END;
             db.execute_unprepared(
                 r#"
 DROP TRIGGER IF EXISTS forum_00_reject_nonempty_category_delete ON forum_categories;
+DROP TRIGGER IF EXISTS forum_categories_depth_guard ON forum_categories;
 DROP TRIGGER IF EXISTS forum_categories_parent_lifecycle_guard ON forum_categories;
 DROP TRIGGER IF EXISTS forum_category_lifecycle_write_guard ON forum_category_lifecycle;
 DROP TRIGGER IF EXISTS forum_category_lifecycle_delete_guard ON forum_category_lifecycle;
 DROP FUNCTION IF EXISTS forum_reject_nonempty_category_delete();
+DROP FUNCTION IF EXISTS forum_validate_category_depth();
 DROP FUNCTION IF EXISTS forum_validate_category_parent_lifecycle();
 DROP FUNCTION IF EXISTS forum_validate_category_lifecycle_write();
 DROP FUNCTION IF EXISTS forum_validate_category_lifecycle_delete();
@@ -203,10 +205,10 @@ DROP FUNCTION IF EXISTS forum_validate_category_lifecycle_delete();
 DROP INDEX IF EXISTS idx_forum_categories_tenant_parent_position;
 ALTER TABLE forum_categories DROP CONSTRAINT IF EXISTS fk_forum_categories_parent_tenant;
 ALTER TABLE forum_categories DROP CONSTRAINT IF EXISTS fk_forum_categories_parent;
-ALTER TABLE forum_categories DROP COLUMN IF EXISTS parent_id;
-ALTER TABLE forum_categories DROP COLUMN IF EXISTS position;
-ALTER TABLE forum_categories DROP COLUMN IF EXISTS icon;
-ALTER TABLE forum_categories DROP COLUMN IF EXISTS color;
+ALTER TABLE forum_categories DROP COLUMN IF EXISTS parent_id CASCADE;
+ALTER TABLE forum_categories DROP COLUMN IF EXISTS position CASCADE;
+ALTER TABLE forum_categories DROP COLUMN IF EXISTS icon CASCADE;
+ALTER TABLE forum_categories DROP COLUMN IF EXISTS color CASCADE;
 
 CREATE OR REPLACE FUNCTION forum_reject_nonempty_category_delete()
 RETURNS trigger AS $$

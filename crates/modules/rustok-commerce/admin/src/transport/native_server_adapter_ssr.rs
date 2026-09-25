@@ -712,6 +712,19 @@ fn order_change_owner_error_facts(
             database_cause_present: false,
             core_cause_present: true,
         },
+        rustok_order::error::OrderError::IdempotencyConflict
+        | rustok_order::error::OrderError::CommandReceiptCorrupt => {
+            OrderChangeOwnerErrorFacts {
+                validation_detail_present: false,
+                validation_detail_length: None,
+                resource_id_present: false,
+                resource_id_non_nil: None,
+                transition_from_length: None,
+                transition_to_length: None,
+                database_cause_present: false,
+                core_cause_present: false,
+            }
+        }
     }
 }
 
@@ -888,6 +901,18 @@ fn order_change_owner_error(
             "commerce.admin_order_change_failed",
             "Order change could not be completed safely",
             "core",
+            true,
+        ),
+        rustok_order::error::OrderError::IdempotencyConflict => (
+            "commerce.admin_order_change_idempotency_conflict",
+            "Order change operation has already been processed or is conflicting",
+            "idempotency_conflict",
+            false,
+        ),
+        rustok_order::error::OrderError::CommandReceiptCorrupt => (
+            "commerce.admin_order_change_command_receipt_corrupt",
+            "Order command receipt requires operator review",
+            "command_receipt_corrupt",
             true,
         ),
     };
@@ -1086,6 +1111,7 @@ async fn apply_order_change_native_with_context(
     let order_change_id = parse_uuid(id.as_str(), "order_change_id")?;
     let metadata = parse_metadata_json(&draft.metadata_json)?;
 
+    let idempotency_key = format!("commerce-admin:{APPLY_ORDER_CHANGE_OPERATION}:{correlation_id}:{order_change_id}");
     let change = order_service_from_context(
         app_ctx,
         APPLY_ORDER_CHANGE_OPERATION,
@@ -1096,7 +1122,9 @@ async fn apply_order_change_native_with_context(
     )?
     .apply_order_change(
         tenant.id,
+        auth.user_id,
         order_change_id,
+        idempotency_key,
         rustok_order::dto::ApplyOrderChangeInput { metadata },
     )
     .await
@@ -1144,6 +1172,7 @@ async fn cancel_order_change_native_with_context(
     let order_change_id = parse_uuid(id.as_str(), "order_change_id")?;
     let metadata = parse_metadata_json(&draft.metadata_json)?;
 
+    let idempotency_key = format!("commerce-admin:{CANCEL_ORDER_CHANGE_OPERATION}:{correlation_id}:{order_change_id}");
     let change = order_service_from_context(
         app_ctx,
         CANCEL_ORDER_CHANGE_OPERATION,
@@ -1154,7 +1183,9 @@ async fn cancel_order_change_native_with_context(
     )?
     .cancel_order_change(
         tenant.id,
+        auth.user_id,
         order_change_id,
+        idempotency_key,
         rustok_order::dto::CancelOrderChangeInput {
             reason: optional_text(draft.reason.as_str()),
             metadata,

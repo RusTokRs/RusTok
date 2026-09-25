@@ -179,6 +179,7 @@ impl PostOrderOrchestrationService {
                     Some(refund.id),
                     None,
                     decision_metadata.clone(),
+                    idempotency_key.as_str(),
                 )
                 .await?;
                 (order_return, Some(refund), None)
@@ -217,6 +218,7 @@ impl PostOrderOrchestrationService {
                     None,
                     Some(order_change.id),
                     decision_metadata.clone(),
+                    idempotency_key.as_str(),
                 )
                 .await?;
                 (order_return, None, Some(order_change))
@@ -232,6 +234,11 @@ impl PostOrderOrchestrationService {
                         tenant_id,
                         actor_id,
                         order_id,
+                        derive_command_idempotency_key(
+                            idempotency_key.as_str(),
+                            "create_order_change",
+                            order_id,
+                        ),
                         build_return_order_change_input(
                             "claim",
                             claim_input.description.clone(),
@@ -250,6 +257,7 @@ impl PostOrderOrchestrationService {
                     None,
                     Some(order_change.id),
                     decision_metadata.clone(),
+                    idempotency_key.as_str(),
                 )
                 .await?;
                 (order_return, None, Some(order_change))

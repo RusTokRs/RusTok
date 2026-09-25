@@ -516,10 +516,9 @@ fn compensation_boundary_owner(stage: &str) -> &'static str {
     }
 }
 
-fn map_sweep_error(context: AdminCheckoutOperationErrorContext, error: DbErr) -> HttpError {
+fn map_sweep_error(context: AdminCheckoutOperationErrorContext, _error: DbErr) -> HttpError {
     admin_checkout_operation_http_error(
         &context,
-        &error,
         "rustok_commerce.checkout_compensation_sweep",
         (
             StatusCode::INTERNAL_SERVER_ERROR,

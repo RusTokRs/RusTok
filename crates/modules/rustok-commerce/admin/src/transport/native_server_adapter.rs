@@ -442,10 +442,14 @@ async fn apply_order_change_native_with_context(
         ));
     }
 
+    let change_id = parse_uuid(id.as_str(), "order_change_id")?;
+    let idempotency_key = format!("commerce-admin:apply_order_change:{id}");
     let change = order_service_from_context(app_ctx)?
         .apply_order_change(
             tenant.id,
-            parse_uuid(id.as_str(), "order_change_id")?,
+            auth.user_id,
+            change_id,
+            idempotency_key,
             rustok_order::dto::ApplyOrderChangeInput {
                 metadata: parse_metadata_json(&draft.metadata_json)?,
             },
@@ -479,10 +483,14 @@ async fn cancel_order_change_native_with_context(
         ));
     }
 
+    let change_id = parse_uuid(id.as_str(), "order_change_id")?;
+    let idempotency_key = format!("commerce-admin:cancel_order_change:{id}");
     let change = order_service_from_context(app_ctx)?
         .cancel_order_change(
             tenant.id,
-            parse_uuid(id.as_str(), "order_change_id")?,
+            auth.user_id,
+            change_id,
+            idempotency_key,
             rustok_order::dto::CancelOrderChangeInput {
                 reason: optional_text(draft.reason.as_str()),
                 metadata: parse_metadata_json(&draft.metadata_json)?,
