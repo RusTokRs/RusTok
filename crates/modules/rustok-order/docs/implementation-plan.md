@@ -138,6 +138,13 @@ digital order creation or historical reads. The canonical matrix is in
   migrations, compile/tests, contention, restart, and remote-profile evidence
   remain missing.
 
+## Post-order command idempotency workstream
+
+- [x] Persist owner-owned `order_command_receipts` with tenant/actor/key/command/request-hash identity and a constrained pending/completed state.
+- [x] Admit create/apply/cancel order-change and create/complete/cancel return commands through the durable receipt before mutation and commit the receipt with the mutation.
+- [x] Replay the exact stored response for the same caller identity and classify conflicting payloads as typed idempotency conflicts.
+- [x] Fail closed on incomplete or corrupt receipts instead of executing the command again.
+- [ ] Execute replay, conflict, crash/restart, contention, and clean/upgraded/down/reapply migration evidence on SQLite, PostgreSQL, and MySQL.
 ## Checkout identity, completion, compensation, and settlement workstream
 
 - [x] Create owner-owned `order_checkout_identities` persistence without a
