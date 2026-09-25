@@ -838,7 +838,7 @@ fn checkout_plan_shipping_option_boundary_error(
     context: &PortContext,
     error: PortError,
 ) -> CheckoutError {
-    log_checkout_plan_shipping_option_boundary_failure(context, error);
+    log_checkout_plan_shipping_option_boundary_failure(context, &error);
     boundary_error("load_shipping_option", error)
 }
 

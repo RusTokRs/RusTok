@@ -157,13 +157,13 @@ fn admin_order_error_policy(error: &OrderError) -> AdminOrderReturnHttpPolicy {
             "Commerce resource not found",
             "not_found",
         ),
-        OrderError::InvalidTransition { .. } => (
+        OrderError::InvalidTransition { .. } | OrderError::IdempotencyConflict => (
             StatusCode::CONFLICT,
             "commerce_admin_order_state_conflict",
             "Order operation conflicts with the current state",
             "state_conflict",
         ),
-        OrderError::Database(_) => (
+        OrderError::Database(_) | OrderError::CommandReceiptCorrupt => (
             StatusCode::SERVICE_UNAVAILABLE,
             "commerce_admin_order_storage_unavailable",
             "Order storage is temporarily unavailable",

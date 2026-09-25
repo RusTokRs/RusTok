@@ -51,12 +51,12 @@ fn order_error_envelope(error: &OrderError) -> (&'static str, &'static str, bool
             "ORDER_RESOURCE_NOT_FOUND",
             false,
         ),
-        OrderError::InvalidTransition { .. } => (
+        OrderError::InvalidTransition { .. } | OrderError::IdempotencyConflict => (
             "Order operation conflicts with the current state",
             "ORDER_STATE_CONFLICT",
             false,
         ),
-        OrderError::Database(_) => (
+        OrderError::Database(_) | OrderError::CommandReceiptCorrupt => (
             "Order service is temporarily unavailable",
             "ORDER_TEMPORARILY_UNAVAILABLE",
             true,
@@ -332,6 +332,10 @@ fn post_order_graphql_error(
             "POST_ORDER_REQUEST_INVALID",
             false,
         ),
+        PostOrderOrchestrationError::OwnerPort { error, .. } => {
+            let (message, code, retryable, _) = order_port_error_envelope(error);
+            (message, code, retryable)
+        }
     };
     public_fulfillment_graphql_error(message, code, retryable)
 }

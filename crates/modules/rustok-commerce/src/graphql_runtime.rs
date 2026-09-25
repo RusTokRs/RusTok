@@ -649,6 +649,28 @@ pub(crate) fn return_completion_orchestration_from_context(
     db: DatabaseConnection,
     event_bus: rustok_outbox::TransactionalEventBus,
 ) -> crate::ReturnCompletionOrchestrationService {
-    crate::ReturnCompletionOrchestrationService::new(db, event_bus)
-        .with_payment_provider_registry(payment_provider_registry_from_context(ctx))
+    match ctx.data_opt::<CommerceGraphqlRuntimeData>() {
+        Some(runtime) => crate::ReturnCompletionOrchestrationService::new(
+            db,
+            runtime.order_read_runtime().order_read_port(),
+            runtime.order_post_order_command_runtime().command_port(),
+            runtime.payment_read_runtime().admin_read_port(),
+            runtime.payment_command_runtime().refund_command_port(),
+        ),
+        None => {
+            let order_read_runtime =
+                CommerceOrderReadRuntime::in_process(db.clone(), event_bus.clone());
+            let order_command_runtime =
+                OrderPostOrderCommandRuntime::in_process(db.clone(), event_bus);
+            let payment_read_runtime = CommercePaymentReadRuntime::in_process(db.clone());
+            let payment_command_runtime = payment_command_runtime_from_context(ctx, db.clone());
+            crate::ReturnCompletionOrchestrationService::new(
+                db,
+                order_read_runtime.order_read_port(),
+                order_command_runtime.command_port(),
+                payment_read_runtime.admin_read_port(),
+                payment_command_runtime.refund_command_port(),
+            )
+        }
+    }
 }

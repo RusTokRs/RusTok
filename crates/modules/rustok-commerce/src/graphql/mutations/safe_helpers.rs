@@ -423,7 +423,7 @@ pub(crate) async fn validate_selected_shipping_option(
     requested_locale: Option<&str>,
     tenant_default_locale: Option<&str>,
 ) -> Result<()> {
-    super::legacy_helpers::validate_selected_shipping_option(
+    super::typed_shipping_option_helper::validate_selected_shipping_option(
         db,
         tenant_id,
         cart,

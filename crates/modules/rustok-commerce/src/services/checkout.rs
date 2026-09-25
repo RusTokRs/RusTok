@@ -720,9 +720,11 @@ impl CheckoutService {
                 &product.metadata,
                 variant.shipping_profile_slug.as_deref(),
             );
-            if current_shipping_profile_slug != line_item.shipping_profile_slug {
+            if line_item.shipping_profile_slug.as_deref()
+                != Some(current_shipping_profile_slug.as_str())
+            {
                 return Err(CheckoutError::Validation(format!(
-                    "Line item {} uses stale shipping profile snapshot {} (current: {})",
+                    "Line item {} uses stale shipping profile snapshot {:?} (current: {})",
                     line_item.id, line_item.shipping_profile_slug, current_shipping_profile_slug
                 )));
             }

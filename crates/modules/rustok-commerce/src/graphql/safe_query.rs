@@ -34,4 +34,4 @@ pub(crate) async fn require_storefront_channel_enabled(
 #[path = "safe_query/source.rs"]
 mod source;
 
-pub use source::CommerceQuery;
+pub(crate) use source::CommerceQuery;

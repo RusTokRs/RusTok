@@ -135,6 +135,12 @@ fn map_storefront_channel_error(
             "Store channel was not found",
             "not_found",
         ),
+        ChannelError::Validation(_) => (
+            StatusCode::BAD_REQUEST,
+            "commerce_store_channel_invalid",
+            "Store channel request is invalid",
+            "validation",
+        ),
         ChannelError::Database(_) => (
             StatusCode::SERVICE_UNAVAILABLE,
             "commerce_store_channel_unavailable",

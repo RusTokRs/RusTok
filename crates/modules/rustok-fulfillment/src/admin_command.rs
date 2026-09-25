@@ -15,7 +15,7 @@ use crate::dto::{
 use crate::entities::provider_operation;
 use crate::error::FulfillmentError;
 use crate::status::FulfillmentStatusKind;
-use crate::providers {
+use crate::providers::{
     FulfillmentProviderOperationRequest, FulfillmentProviderOperationResult,
     FulfillmentProviderRegistry, MANUAL_FULFILLMENT_PROVIDER_ID,
 };

@@ -205,8 +205,9 @@ fn placeholder_sql(backend: DatabaseBackend, template: &str, value_count: usize)
     sql
 }
 
-#[derive(DeriveIden)]
+#[derive(Iden)]
 enum OAuthAppTranslationChangeJournal {
+    #[iden = "oauth_app_translation_change_journal"]
     Table,
     ChangeSeq,
     OperationId,

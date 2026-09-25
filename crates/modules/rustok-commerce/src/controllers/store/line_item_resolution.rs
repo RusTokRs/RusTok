@@ -57,10 +57,10 @@ fn map_storefront_line_item_product_port_error(
 }
 
 fn pick_product_translation_response<'a>(
-    translations: &'a [rustok_product::ProductTranslationResponse],
+    translations: &'a [crate::dto::ProductTranslationResponse],
     locale: &str,
     default_locale: &str,
-) -> Option<&'a rustok_product::ProductTranslationResponse> {
+) -> Option<&'a crate::dto::ProductTranslationResponse> {
     translations
         .iter()
         .find(|translation| rustok_api::locale_tags_match(&translation.locale, locale))
@@ -78,10 +78,10 @@ fn pick_product_translation_response<'a>(
 }
 
 fn pick_variant_translation_response<'a>(
-    translations: &'a [rustok_product::VariantTranslationResponse],
+    translations: &'a [crate::dto::VariantTranslationResponse],
     locale: &str,
     default_locale: &str,
-) -> Option<&'a rustok_product::VariantTranslationResponse> {
+) -> Option<&'a crate::dto::VariantTranslationResponse> {
     translations
         .iter()
         .find(|translation| rustok_api::locale_tags_match(&translation.locale, locale))
@@ -233,7 +233,7 @@ pub(crate) async fn resolve_store_line_item_input(
             "Commerce resource not found",
         ))?;
 
-    let variant
+    let variant = product
         .variants
         .iter()
         .find(|variant| variant.id == input.variant_id)
@@ -384,7 +384,7 @@ pub(crate) async fn validate_store_line_item_quantity(
             "Commerce resource not found",
         ))?;
 
-    let variant
+    let variant = product
         .variants
         .iter()
         .find(|variant| variant.id == variant_id)

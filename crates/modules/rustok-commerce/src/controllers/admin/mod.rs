@@ -443,13 +443,13 @@ pub(crate) fn map_order_error(error: OrderError) -> HttpError {
             "Commerce resource not found",
             "not_found",
         ),
-        OrderError::InvalidTransition { .. } => (
+        OrderError::InvalidTransition { .. } | OrderError::IdempotencyConflict => (
             axum::http::StatusCode::CONFLICT,
             "commerce_admin_order_state_conflict",
             "Order operation conflicts with the current state",
             "state_conflict",
         ),
-        OrderError::Database(_) => (
+        OrderError::Database(_) | OrderError::CommandReceiptCorrupt => (
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
             "commerce_admin_order_storage_unavailable",
             "Order storage is temporarily unavailable",
@@ -473,7 +473,7 @@ pub(crate) fn map_post_order_orchestration_error(error: PostOrderOrchestrationEr
             map_payment_orchestration_error(error)
         }
         PostOrderOrchestrationError::OwnerPort { owner, error } => {
-            let (status, code, message, error_kind) = match error.kind {
+            let (status, code, message, _error_kind) = match error.kind {
                 PortErrorKind::Validation => (
                     axum::http::StatusCode::BAD_REQUEST,
                     "commerce_admin_owner_request_invalid",
@@ -524,7 +524,7 @@ pub(crate) fn map_post_order_orchestration_error(error: PostOrderOrchestrationEr
             );
             HttpError::new(status, code, message)
         }
-        error @ PostOrderOrchestrationError::Validation(_) => admin_public_error(
+        PostOrderOrchestrationError::Validation(_) => admin_public_error(
             "rustok_commerce",
             "validation",
             axum::http::StatusCode::BAD_REQUEST,

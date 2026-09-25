@@ -1,0 +1,1762 @@
+﻿cargo :     Checking rustok-commerce v0.1.0 (D:\RusTok\crates\modules\rustok-commerce)
+строка:1 знак:1
++ cargo check -p rustok-commerce 2>&1 | Out-File -FilePath .\scratch_er ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Checking ru...ustok-commerce):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+error[E0364]: `CommerceQuery` is only public within the crate, and cannot be re-exported outside
+  --> crates\modules\rustok-commerce\src\graphql\safe_query.rs:37:9
+   |
+37 | pub use source::CommerceQuery;
+   |         ^^^^^^^^^^^^^^^^^^^^^
+   |
+note: consider marking `CommerceQuery` as `pub` in the imported module
+  --> crates\modules\rustok-commerce\src\graphql\safe_query.rs:37:9
+   |
+37 | pub use source::CommerceQuery;
+   |         ^^^^^^^^^^^^^^^^^^^^^
+
+error[E0425]: cannot find type `AdminOrderChangeOrchestrationErrorContext` in this scope
+   --> crates\modules\rustok-commerce\src\controllers\admin\changes.rs:230:19
+    |
+230 |     context: &mut AdminOrderChangeOrchestrationErrorContext,
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: crates\modules\rustok-commerce\src\services\order_change_orchestration.rs:24:1
+    |
+ 24 | pub enum OrderChangeOrchestrationError {
+    | -------------------------------------- similarly named enum `OrderChangeOrchestrationError` defined here
+    |
+help: an enum with a similar name exists
+    |
+230 -     context: &mut AdminOrderChangeOrchestrationErrorContext,
+230 +     context: &mut OrderChangeOrchestrationError,
+    |
+
+error[E0425]: cannot find type `AdminOrderChangeOrchestrationErrorContext` in this scope
+   --> crates\modules\rustok-commerce\src\controllers\admin\changes.rs:241:19
+    |
+241 |     context: &mut AdminOrderChangeOrchestrationErrorContext,
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: crates\modules\rustok-commerce\src\services\order_change_orchestration.rs:24:1
+    |
+ 24 | pub enum OrderChangeOrchestrationError {
+    | -------------------------------------- similarly named enum `OrderChangeOrchestrationError` defined here
+    |
+help: an enum with a similar name exists
+    |
+241 -     context: &mut AdminOrderChangeOrchestrationErrorContext,
+241 +     context: &mut OrderChangeOrchestrationError,
+    |
+
+error[E0425]: cannot find type `AdminOrderChangeOrchestrationErrorContext` in this scope
+   --> crates\modules\rustok-commerce\src\controllers\admin\changes.rs:281:18
+    |
+281 |     mut context: AdminOrderChangeOrchestrationErrorContext,
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: crates\modules\rustok-commerce\src\services\order_change_orchestration.rs:24:1
+    |
+ 24 | pub enum OrderChangeOrchestrationError {
+    | -------------------------------------- similarly named enum `OrderChangeOrchestrationError` defined here
+    |
+help: an enum with a similar name exists
+    |
+281 -     mut context: AdminOrderChangeOrchestrationErrorContext,
+281 +     mut context: OrderChangeOrchestrationError,
+    |
+
+error[E0425]: cannot find type `AdminOrderChangeOrchestrationErrorContext` in this scope
+   --> crates\modules\rustok-commerce\src\controllers\admin\changes.rs:341:14
+    |
+341 |     context: AdminOrderChangeOrchestrationErrorContext,
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: crates\modules\rustok-commerce\src\services\order_change_orchestration.rs:24:1
+    |
+ 24 | pub enum OrderChangeOrchestrationError {
+    | -------------------------------------- similarly named enum `OrderChangeOrchestrationError` defined here
+    |
+help: an enum with a similar name exists
+    |
+341 -     context: AdminOrderChangeOrchestrationErrorContext,
+341 +     context: OrderChangeOrchestrationError,
+    |
+
+error[E0425]: cannot find type `ProductTranslationResponse` in crate `rustok_product`
+  --> crates\modules\rustok-commerce\src\controllers\store\line_item_resolution.rs:60:40
+   |
+60 |     translations: &'a [rustok_product::ProductTranslationResponse],
+   |                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in `rustok_product`
+
+error[E0425]: cannot find type `ProductTranslationResponse` in crate `rustok_product`
+  --> crates\modules\rustok-commerce\src\controllers\store\line_item_resolution.rs:63:33
+   |
+63 | ) -> Option<&'a rustok_product::ProductTranslationResponse> {
+   |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in `rustok_product`
+
+error[E0425]: cannot find type `VariantTranslationResponse` in crate `rustok_product`
+  --> crates\modules\rustok-commerce\src\controllers\store\line_item_resolution.rs:81:40
+   |
+81 |     translations: &'a [rustok_product::VariantTranslationResponse],
+   |                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in `rustok_product`
+
+error[E0425]: cannot find type `VariantTranslationResponse` in crate `rustok_product`
+  --> crates\modules\rustok-commerce\src\controllers\store\line_item_resolution.rs:84:33
+   |
+84 | ) -> Option<&'a rustok_product::VariantTranslationResponse> {
+   |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in `rustok_product`
+
+error[E0425]: cannot find function `validate_selected_shipping_option` in module `super::legacy_helpers`
+   --> crates\modules\rustok-commerce\src\graphql\mutations\safe_helpers.rs:426:28
+    |
+426 |     super::legacy_helpers::validate_selected_shipping_option(
+    |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in `super::legacy_helpers`
+    |
+note: function `crate::controllers::store::carts::shipping_owner_reads::validate_selected_shipping_option` exists but i
+s inaccessible
+   --> crates\modules\rustok-commerce\src\controllers\store\carts\shipping_owner_reads.rs:173:1
+    |
+173 | / async fn validate_selected_shipping_option(
+174 | |     shipping_option_read_port: &dyn ShippingOptionReadPort,
+175 | |     tenant_id: Uuid,
+176 | |     request_context: &RequestContext,
+...   |
+273 | |     Ok(())
+274 | | }
+    | |_^ not accessible
+help: consider importing one of these functions
+    |
+  1 + use crate::graphql::mutations::safe_order_helpers_impl::validate_selected_shipping_option;
+    |
+  1 + use crate::graphql::mutations::typed_shipping_option_helper::validate_selected_shipping_option;
+    |
+help: if you import `validate_selected_shipping_option`, refer to it directly
+    |
+426 -     super::legacy_helpers::validate_selected_shipping_option(
+426 +     validate_selected_shipping_option(
+    |
+
+error[E0433]: cannot find type `BoundaryError` in this scope
+  --> crates\modules\rustok-commerce\src\graphql\safe_query\source\fulfillment_query_boundary.rs:92:34
+   |
+92 |         FulfillmentError::Public(BoundaryError::Public {
+   |                                  ^^^^^^^^^^^^^ use of undeclared type `BoundaryError`
+   |
+note: these enums exist but are inaccessible
+  --> crates\modules\rustok-commerce\src\graphql\mutations\safe_cart.rs:7:5
+   |
+ 7 |     pub(crate) enum BoundaryError {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `crate::graphql::mutations::cart::cart_context_boundary::BoundaryError`: not acc
+essible
+   |
+  ::: crates\modules\rustok-commerce\src\graphql\mutations\safe_checkout.rs:18:5
+   |
+18 |     pub(crate) enum BoundaryError {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `crate::graphql::mutations::checkout::checkout_boundary::BoundaryError`: not acc
+essible
+help: consider importing this enum through its public re-export
+   |
+ 1 + use crate::graphql::query::source::rustok_fulfillment_shim::BoundaryError;
+   |
+
+error[E0425]: cannot find type `BoundaryError` in this scope
+   --> crates\modules\rustok-commerce\src\graphql\safe_query\source\fulfillment_query_boundary.rs:109:6
+    |
+109 | ) -> BoundaryError {
+    |      ^^^^^^^^^^^^^ not found in this scope
+    |
+note: these enums exist but are inaccessible
+   --> crates\modules\rustok-commerce\src\graphql\mutations\safe_cart.rs:7:5
+    |
+  7 |     pub(crate) enum BoundaryError {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `crate::graphql::mutations::cart::cart_context_boundary::BoundaryError`: not ac
+cessible
+    |
+   ::: crates\modules\rustok-commerce\src\graphql\mutations\safe_checkout.rs:18:5
+    |
+ 18 |     pub(crate) enum BoundaryError {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `crate::graphql::mutations::checkout::checkout_boundary::BoundaryError`: not ac
+cessible
+help: consider importing this enum through its public re-export
+    |
+  1 + use crate::graphql::query::source::rustok_fulfillment_shim::BoundaryError;
+    |
+
+error[E0433]: cannot find type `BoundaryError` in this scope
+   --> crates\modules\rustok-commerce\src\graphql\safe_query\source\fulfillment_query_boundary.rs:127:5
+    |
+127 |     BoundaryError::Public {
+    |     ^^^^^^^^^^^^^ use of undeclared type `BoundaryError`
+    |
+note: these enums exist but are inaccessible
+   --> crates\modules\rustok-commerce\src\graphql\mutations\safe_cart.rs:7:5
+    |
+  7 |     pub(crate) enum BoundaryError {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `crate::graphql::mutations::cart::cart_context_boundary::BoundaryError`: not ac
+cessible
+    |
+   ::: crates\modules\rustok-commerce\src\graphql\mutations\safe_checkout.rs:18:5
+    |
+ 18 |     pub(crate) enum BoundaryError {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `crate::graphql::mutations::checkout::checkout_boundary::BoundaryError`: not ac
+cessible
+help: consider importing this enum through its public re-export
+    |
+  1 + use crate::graphql::query::source::rustok_fulfillment_shim::BoundaryError;
+    |
+
+error[E0433]: cannot find type `BoundaryError` in this scope
+   --> crates\modules\rustok-commerce\src\graphql\safe_query\source\fulfillment_query_boundary.rs:158:34
+    |
+158 |         FulfillmentError::Public(BoundaryError::Public {
+    |                                  ^^^^^^^^^^^^^ use of undeclared type `BoundaryError`
+    |
+note: these enums exist but are inaccessible
+   --> crates\modules\rustok-commerce\src\graphql\mutations\safe_cart.rs:7:5
+    |
+  7 |     pub(crate) enum BoundaryError {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `crate::graphql::mutations::cart::cart_context_boundary::BoundaryError`: not ac
+cessible
+    |
+   ::: crates\modules\rustok-commerce\src\graphql\mutations\safe_checkout.rs:18:5
+    |
+ 18 |     pub(crate) enum BoundaryError {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `crate::graphql::mutations::checkout::checkout_boundary::BoundaryError`: not ac
+cessible
+help: consider importing this enum through its public re-export
+    |
+  1 + use crate::graphql::query::source::rustok_fulfillment_shim::BoundaryError;
+    |
+
+error[E0425]: cannot find type `FulfillmentResult` in this scope
+  --> crates\modules\rustok-commerce\src\graphql\safe_query\source\fulfillment_query_service.rs:48:10
+   |
+48 |     ) -> FulfillmentResult<ShippingOptionResponse> {
+   |          ^^^^^^^^^^^^^^^^^
+   |
+  ::: crates\modules\rustok-fulfillment\src\fulfillment_read.rs:15:1
+   |
+15 | pub trait FulfillmentReadPort: Send + Sync {
+   | ------------------------------------------ similarly named trait `FulfillmentReadPort` defined here
+   |
+help: a trait with a similar name exists
+   |
+48 -     ) -> FulfillmentResult<ShippingOptionResponse> {
+48 +     ) -> FulfillmentReadPort<ShippingOptionResponse> {
+   |
+help: consider importing this type alias
+   |
+ 1 + use crate::graphql::query::source::rustok_fulfillment_shim::FulfillmentResult;
+   |
+
+error[E0425]: cannot find type `FulfillmentResult` in this scope
+   --> crates\modules\rustok-commerce\src\graphql\safe_query\source\fulfillment_query_service.rs:153:10
+    |
+153 |     ) -> FulfillmentResult<FulfillmentResponse> {
+    |          ^^^^^^^^^^^^^^^^^
+    |
+   ::: crates\modules\rustok-fulfillment\src\fulfillment_read.rs:15:1
+    |
+ 15 | pub trait FulfillmentReadPort: Send + Sync {
+    | ------------------------------------------ similarly named trait `FulfillmentReadPort` defined here
+    |
+help: a trait with a similar name exists
+    |
+153 -     ) -> FulfillmentResult<FulfillmentResponse> {
+153 +     ) -> FulfillmentReadPort<FulfillmentResponse> {
+    |
+help: consider importing this type alias
+    |
+  1 + use crate::graphql::query::source::rustok_fulfillment_shim::FulfillmentResult;
+    |
+
+error[E0425]: cannot find type `FulfillmentResult` in this scope
+   --> crates\modules\rustok-commerce\src\graphql\safe_query\source\fulfillment_query_service.rs:183:10
+    |
+183 |     ) -> FulfillmentResult<(Vec<FulfillmentResponse>, u64)> {
+    |          ^^^^^^^^^^^^^^^^^
+    |
+   ::: crates\modules\rustok-fulfillment\src\fulfillment_read.rs:15:1
+    |
+ 15 | pub trait FulfillmentReadPort: Send + Sync {
+    | ------------------------------------------ similarly named trait `FulfillmentReadPort` defined here
+    |
+help: a trait with a similar name exists
+    |
+183 -     ) -> FulfillmentResult<(Vec<FulfillmentResponse>, u64)> {
+183 +     ) -> FulfillmentReadPort<(Vec<FulfillmentResponse>, u64)> {
+    |
+help: consider importing this type alias
+    |
+  1 + use crate::graphql::query::source::rustok_fulfillment_shim::FulfillmentResult;
+    |
+
+error[E0425]: cannot find type `FulfillmentResult` in this scope
+   --> crates\modules\rustok-commerce\src\graphql\safe_query\source\fulfillment_query_service.rs:228:10
+    |
+228 |     ) -> FulfillmentResult<Option<FulfillmentResponse>> {
+    |          ^^^^^^^^^^^^^^^^^
+    |
+   ::: crates\modules\rustok-fulfillment\src\fulfillment_read.rs:15:1
+    |
+ 15 | pub trait FulfillmentReadPort: Send + Sync {
+    | ------------------------------------------ similarly named trait `FulfillmentReadPort` defined here
+    |
+help: a trait with a similar name exists
+    |
+228 -     ) -> FulfillmentResult<Option<FulfillmentResponse>> {
+228 +     ) -> FulfillmentReadPort<Option<FulfillmentResponse>> {
+    |
+help: consider importing this type alias
+    |
+  1 + use crate::graphql::query::source::rustok_fulfillment_shim::FulfillmentResult;
+    |
+
+error[E0433]: cannot find `__path_create_order_return` in `admin`
+  --> crates\modules\rustok-commerce\src\openapi.rs:11:10
+   |
+11 | #[derive(OpenApi)]
+   |          ^^^^^^^ could not find `__path_create_order_return` in `admin`
+   |
+   = note: this error originates in the derive macro `OpenApi` (in Nightly builds, run with -Z macro-backtrace for more
+ info)
+help: consider importing one of these structs
+   |
+ 1 + use crate::controllers::admin::post_order_commands::__path_create_order_return;
+   |
+ 1 + use crate::controllers::store::__path_create_order_return;
+   |
+
+error[E0425]: cannot find type `__path_create_order_return` in module `crate::controllers::admin`
+   --> crates\modules\rustok-commerce\src\openapi.rs:11:10
+    |
+ 11 |   #[derive(OpenApi)]
+    |            ^^^^^^^
+    |
+   ::: crates\modules\rustok-commerce\src\controllers\admin\returns.rs:627:1
+    |
+627 | / #[utoipa::path(
+628 | |     post,
+629 | |     path = "/admin/returns/{id}/complete",
+630 | |     tag = "admin",
+...   |
+638 | | )]
+    | |__- similarly named struct `__path_complete_order_return` defined here
+    |
+    = note: this error originates in the derive macro `OpenApi` (in Nightly builds, run with -Z macro-backtrace for mor
+e info)
+help: consider importing one of these structs
+    |
+  1 + use crate::controllers::admin::post_order_commands::__path_create_order_return;
+    |
+  1 + use crate::controllers::store::__path_create_order_return;
+    |
+
+error[E0433]: cannot find `__path_create_order_change` in `admin`
+  --> crates\modules\rustok-commerce\src\openapi.rs:11:10
+   |
+11 | #[derive(OpenApi)]
+   |          ^^^^^^^ could not find `__path_create_order_change` in `admin`
+   |
+   = note: this error originates in the derive macro `OpenApi` (in Nightly builds, run with -Z macro-backtrace for more
+ info)
+help: consider importing this struct
+   |
+ 1 + use crate::controllers::admin::post_order_commands::__path_create_order_change;
+   |
+
+error[E0425]: cannot find type `__path_create_order_change` in module `crate::controllers::admin`
+   --> crates\modules\rustok-commerce\src\openapi.rs:11:10
+    |
+ 11 |   #[derive(OpenApi)]
+    |            ^^^^^^^
+    |
+   ::: crates\modules\rustok-commerce\src\controllers\admin\changes.rs:375:1
+    |
+375 | / #[utoipa::path(
+376 | |     post,
+377 | |     path = "/admin/order-changes/{id}/apply",
+378 | |     tag = "admin",
+...   |
+389 | | )]
+    | |__- similarly named struct `__path_apply_order_change` defined here
+    |
+    = note: this error originates in the derive macro `OpenApi` (in Nightly builds, run with -Z macro-backtrace for mor
+e info)
+help: consider importing this struct
+    |
+  1 + use crate::controllers::admin::post_order_commands::__path_create_order_change;
+    |
+
+error[E0433]: cannot find `__path_list_order_changes` in `admin`
+  --> crates\modules\rustok-commerce\src\openapi.rs:11:10
+   |
+11 | #[derive(OpenApi)]
+   |          ^^^^^^^ could not find `__path_list_order_changes` in `admin`
+   |
+   = note: this error originates in the derive macro `OpenApi` (in Nightly builds, run with -Z macro-backtrace for more
+ info)
+help: consider importing one of these structs
+   |
+ 1 + use crate::controllers::admin::post_order_reads::__path_list_order_changes;
+   |
+ 1 + use crate::controllers::store::__path_list_order_changes;
+   |
+
+error[E0425]: cannot find type `__path_list_order_changes` in module `crate::controllers::admin`
+   --> crates\modules\rustok-commerce\src\openapi.rs:11:10
+    |
+ 11 |   #[derive(OpenApi)]
+    |            ^^^^^^^
+    |
+   ::: crates\modules\rustok-commerce\src\controllers\admin\changes.rs:375:1
+    |
+375 | / #[utoipa::path(
+376 | |     post,
+377 | |     path = "/admin/order-changes/{id}/apply",
+378 | |     tag = "admin",
+...   |
+389 | | )]
+    | |__- similarly named struct `__path_apply_order_change` defined here
+    |
+    = note: this error originates in the derive macro `OpenApi` (in Nightly builds, run with -Z macro-backtrace for mor
+e info)
+help: consider importing one of these structs
+    |
+  1 + use crate::controllers::admin::post_order_reads::__path_list_order_changes;
+    |
+  1 + use crate::controllers::store::__path_list_order_changes;
+    |
+
+error[E0433]: cannot find `__path_show_order_change` in `admin`
+  --> crates\modules\rustok-commerce\src\openapi.rs:11:10
+   |
+11 | #[derive(OpenApi)]
+   |          ^^^^^^^ could not find `__path_show_order_change` in `admin`
+   |
+   = note: this error originates in the derive macro `OpenApi` (in Nightly builds, run with -Z macro-backtrace for more
+ info)
+help: consider importing this struct
+   |
+ 1 + use crate::controllers::admin::post_order_reads::__path_show_order_change;
+   |
+
+error[E0425]: cannot find type `__path_show_order_change` in module `crate::controllers::admin`
+   --> crates\modules\rustok-commerce\src\openapi.rs:11:10
+    |
+ 11 |   #[derive(OpenApi)]
+    |            ^^^^^^^
+    |
+   ::: crates\modules\rustok-commerce\src\controllers\admin\changes.rs:375:1
+    |
+375 | / #[utoipa::path(
+376 | |     post,
+377 | |     path = "/admin/order-changes/{id}/apply",
+378 | |     tag = "admin",
+...   |
+389 | | )]
+    | |__- similarly named struct `__path_apply_order_change` defined here
+    |
+    = note: this error originates in the derive macro `OpenApi` (in Nightly builds, run with -Z macro-backtrace for mor
+e info)
+help: consider importing this struct
+    |
+  1 + use crate::controllers::admin::post_order_reads::__path_show_order_change;
+    |
+
+error[E0433]: cannot find `__path_cancel_order_change` in `admin`
+  --> crates\modules\rustok-commerce\src\openapi.rs:11:10
+   |
+11 | #[derive(OpenApi)]
+   |          ^^^^^^^ could not find `__path_cancel_order_change` in `admin`
+   |
+   = note: this error originates in the derive macro `OpenApi` (in Nightly builds, run with -Z macro-backtrace for more
+ info)
+help: consider importing this struct
+   |
+ 1 + use crate::controllers::admin::post_order_commands::__path_cancel_order_change;
+   |
+
+error[E0425]: cannot find type `__path_cancel_order_change` in module `crate::controllers::admin`
+   --> crates\modules\rustok-commerce\src\openapi.rs:11:10
+    |
+ 11 |   #[derive(OpenApi)]
+    |            ^^^^^^^
+    |
+   ::: crates\modules\rustok-commerce\src\controllers\admin\changes.rs:375:1
+    |
+375 | / #[utoipa::path(
+376 | |     post,
+377 | |     path = "/admin/order-changes/{id}/apply",
+378 | |     tag = "admin",
+...   |
+389 | | )]
+    | |__- similarly named struct `__path_apply_order_change` defined here
+    |
+    = note: this error originates in the derive macro `OpenApi` (in Nightly builds, run with -Z macro-backtrace for mor
+e info)
+help: consider importing this struct
+    |
+  1 + use crate::controllers::admin::post_order_commands::__path_cancel_order_change;
+    |
+
+error[E0433]: cannot find `__path_list_order_returns` in `admin`
+  --> crates\modules\rustok-commerce\src\openapi.rs:11:10
+   |
+11 | #[derive(OpenApi)]
+   |          ^^^^^^^ could not find `__path_list_order_returns` in `admin`
+   |
+   = note: this error originates in the derive macro `OpenApi` (in Nightly builds, run with -Z macro-backtrace for more
+ info)
+help: consider importing one of these structs
+   |
+ 1 + use crate::controllers::admin::post_order_reads::__path_list_order_returns;
+   |
+ 1 + use crate::controllers::store::__path_list_order_returns;
+   |
+
+error[E0425]: cannot find type `__path_list_order_returns` in module `crate::controllers::admin`
+   --> crates\modules\rustok-commerce\src\openapi.rs:11:10
+    |
+ 11 |   #[derive(OpenApi)]
+    |            ^^^^^^^
+    |
+   ::: crates\modules\rustok-commerce\src\controllers\admin\orders_owner_ports.rs:241:1
+    |
+241 | / #[utoipa::path(
+242 | |     get,
+243 | |     path = "/admin/orders",
+244 | |     tag = "admin",
+...   |
+250 | | )]
+    | |__- similarly named struct `__path_list_orders` defined here
+    |
+    = note: this error originates in the derive macro `OpenApi` (in Nightly builds, run with -Z macro-backtrace for mor
+e info)
+help: consider importing one of these structs
+    |
+  1 + use crate::controllers::admin::post_order_reads::__path_list_order_returns;
+    |
+  1 + use crate::controllers::store::__path_list_order_returns;
+    |
+
+error[E0433]: cannot find `__path_show_order_return` in `admin`
+  --> crates\modules\rustok-commerce\src\openapi.rs:11:10
+   |
+11 | #[derive(OpenApi)]
+   |          ^^^^^^^ could not find `__path_show_order_return` in `admin`
+   |
+   = note: this error originates in the derive macro `OpenApi` (in Nightly builds, run with -Z macro-backtrace for more
+ info)
+help: consider importing this struct
+   |
+ 1 + use crate::controllers::admin::post_order_reads::__path_show_order_return;
+   |
+
+error[E0425]: cannot find type `__path_show_order_return` in module `crate::controllers::admin`
+   --> crates\modules\rustok-commerce\src\openapi.rs:11:10
+    |
+ 11 |   #[derive(OpenApi)]
+    |            ^^^^^^^
+    |
+   ::: crates\modules\rustok-commerce\src\controllers\admin\orders_owner_ports.rs:301:1
+    |
+301 | / #[utoipa::path(
+302 | |     get,
+303 | |     path = "/admin/orders/{id}",
+304 | |     tag = "admin",
+...   |
+311 | | )]
+    | |__- similarly named struct `__path_show_order` defined here
+    |
+    = note: this error originates in the derive macro `OpenApi` (in Nightly builds, run with -Z macro-backtrace for mor
+e info)
+help: consider importing this struct
+    |
+  1 + use crate::controllers::admin::post_order_reads::__path_show_order_return;
+    |
+
+error[E0433]: cannot find `__path_cancel_order_return` in `admin`
+  --> crates\modules\rustok-commerce\src\openapi.rs:11:10
+   |
+11 | #[derive(OpenApi)]
+   |          ^^^^^^^ could not find `__path_cancel_order_return` in `admin`
+   |
+   = note: this error originates in the derive macro `OpenApi` (in Nightly builds, run with -Z macro-backtrace for more
+ info)
+help: consider importing this struct
+   |
+ 1 + use crate::controllers::admin::post_order_commands::__path_cancel_order_return;
+   |
+
+error[E0425]: cannot find type `__path_cancel_order_return` in module `crate::controllers::admin`
+   --> crates\modules\rustok-commerce\src\openapi.rs:11:10
+    |
+ 11 |   #[derive(OpenApi)]
+    |            ^^^^^^^
+    |
+   ::: crates\modules\rustok-commerce\src\controllers\admin\returns.rs:627:1
+    |
+627 | / #[utoipa::path(
+628 | |     post,
+629 | |     path = "/admin/returns/{id}/complete",
+630 | |     tag = "admin",
+...   |
+638 | | )]
+    | |__- similarly named struct `__path_complete_order_return` defined here
+    |
+    = note: this error originates in the derive macro `OpenApi` (in Nightly builds, run with -Z macro-backtrace for mor
+e info)
+help: consider importing this struct
+    |
+  1 + use crate::controllers::admin::post_order_commands::__path_cancel_order_return;
+    |
+
+warning: unused import: `OrderChangeResponse`
+  --> crates\modules\rustok-commerce\src\controllers\admin\changes.rs:26:9
+   |
+26 |         OrderChangeResponse,
+   |         ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `ReturnCompletionOrchestrationService`
+  --> crates\modules\rustok-commerce\src\controllers\admin\returns.rs:25:34
+   |
+25 |     PostOrderOrchestrationError, ReturnCompletionOrchestrationService,
+   |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ReturnCompletionOrchestrationService`
+  --> crates\modules\rustok-commerce\src\controllers\return_completion_operations.rs:18:42
+   |
+18 | use crate::{PostOrderOrchestrationError, ReturnCompletionOrchestrationService};
+   |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `super::typed_shipping_option_helper::validate_selected_shipping_option`
+ --> crates\modules\rustok-commerce\src\graphql\mutations\layered_order_helpers.rs:9:16
+  |
+9 | pub(crate) use super::typed_shipping_option_helper::validate_selected_shipping_option;
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `self::rustok_fulfillment_shim as rustok_fulfillment`
+   --> crates\modules\rustok-commerce\src\graphql\mutations\safe_legacy_helpers.rs:108:5
+    |
+108 | use self::rustok_fulfillment_shim as rustok_fulfillment;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `is_shipping_option_compatible_with_profiles`
+  --> crates\modules\rustok-commerce\src\graphql\mutations\helpers.rs:27:9
+   |
+27 |         is_shipping_option_compatible_with_profiles,
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `self::async_graphql_shim as async_graphql`
+ --> crates\modules\rustok-commerce\src\graphql\safe_query\source.rs:9:5
+  |
+9 | use self::async_graphql_shim as async_graphql;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::sync::Arc`
+ --> crates\modules\rustok-commerce\src\graphql\safe_query\source\rustok_fulfillment_shim.rs:1:5
+  |
+1 | use std::sync::Arc;
+  |     ^^^^^^^^^^^^^^
+
+warning: unused imports: `PortActor`, `PortContext`, `PortErrorKind`, and `PortError`
+ --> crates\modules\rustok-commerce\src\graphql\safe_query\source\rustok_fulfillment_shim.rs:3:20
+  |
+3 | use ::rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
+  |                    ^^^^^^^^^  ^^^^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^
+
+warning: unused imports: `FindLatestFulfillmentByOrderProjectionRequest`, `FulfillmentReadPort`, `FulfillmentResponse`,
+ `ListAllShippingOptionProjectionsRequest`, `ListFulfillmentProjectionsRequest`, `ListFulfillmentsInput`, `ListShipping
+OptionProjectionsRequest`, `ReadFulfillmentProjectionRequest`, `ReadShippingOptionProjectionRequest`, `ShippingOptionAd
+minReadPort`, `ShippingOptionReadPort`, and `ShippingOptionResponse`
+ --> crates\modules\rustok-commerce\src\graphql\safe_query\source\rustok_fulfillment_shim.rs:5:5
+  |
+5 |     FindLatestFulfillmentByOrderProjectionRequest, FulfillmentReadPort, FulfillmentResponse,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^
+6 |     ListAllShippingOptionProjectionsRequest, ListFulfillmentProjectionsRequest,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+7 |     ListFulfillmentsInput, ListShippingOptionProjectionsRequest, ReadFulfillmentProjectionRequest,
+  |     ^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+8 |     ReadShippingOptionProjectionRequest, ShippingOptionAdminReadPort, ShippingOptionReadPort,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^
+9 |     ShippingOptionResponse,
+  |     ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `::sea_orm::DatabaseConnection`
+  --> crates\modules\rustok-commerce\src\graphql\safe_query\source\rustok_fulfillment_shim.rs:11:5
+   |
+11 | use ::sea_orm::DatabaseConnection;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `::uuid::Uuid`
+  --> crates\modules\rustok-commerce\src\graphql\safe_query\source\rustok_fulfillment_shim.rs:12:5
+   |
+12 | use ::uuid::Uuid;
+   |     ^^^^^^^^^^^^
+
+warning: unused import: `ShippingOptionAdminQueryError`
+ --> crates\modules\rustok-commerce\src\graphql\safe_query\source\fulfillment_query_boundary.rs:2:66
+  |
+2 |     error::FulfillmentError, GRAPHQL_QUERY_FULFILLMENT_BOUNDARY, ShippingOptionAdminQueryError,
+  |                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `error::FulfillmentError`
+ --> crates\modules\rustok-commerce\src\graphql\safe_query\source\fulfillment_query_service.rs:3:13
+  |
+3 | use super::{error::FulfillmentError, BoundaryError, ShippingOptionAdminQueryError};
+  |             ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `self::rustok_api_shim as rustok_api`
+  --> crates\modules\rustok-commerce\src\graphql\safe_query\source.rs:89:5
+   |
+89 | use self::rustok_api_shim as rustok_api;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `self::rustok_cart_shim as rustok_cart`
+  --> crates\modules\rustok-commerce\src\graphql\safe_query\source.rs:90:5
+   |
+90 | use self::rustok_cart_shim as rustok_cart;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `self::rustok_channel_shim as rustok_channel`
+  --> crates\modules\rustok-commerce\src\graphql\safe_query\source.rs:91:5
+   |
+91 | use self::rustok_channel_shim as rustok_channel;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `self::rustok_customer_shim as rustok_customer`
+  --> crates\modules\rustok-commerce\src\graphql\safe_query\source.rs:92:5
+   |
+92 | use self::rustok_customer_shim as rustok_customer;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `self::rustok_fulfillment_shim as rustok_fulfillment`
+  --> crates\modules\rustok-commerce\src\graphql\safe_query\source.rs:93:5
+   |
+93 | use self::rustok_fulfillment_shim as rustok_fulfillment;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `self::rustok_order_shim as rustok_order`
+  --> crates\modules\rustok-commerce\src\graphql\safe_query\source.rs:94:5
+   |
+94 | use self::rustok_order_shim as rustok_order;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `self::rustok_payment_shim as rustok_payment`
+  --> crates\modules\rustok-commerce\src\graphql\safe_query\source.rs:95:5
+   |
+95 | use self::rustok_payment_shim as rustok_payment;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `self::rustok_pricing_shim as rustok_pricing`
+  --> crates\modules\rustok-commerce\src\graphql\safe_query\source.rs:96:5
+   |
+96 | use self::rustok_pricing_shim as rustok_pricing;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no associated function or constant named `new` found for struct `StoreContextService` in the current scop
+e
+  --> crates\modules\rustok-commerce\src\graphql\mutations\cart.rs:39:44
+   |
+39 |         let context = StoreContextService::new(
+   |                                            ^^^ associated function or constant not found in `StoreContextService`
+   |
+  ::: crates\modules\rustok-commerce\src\services\context.rs:44:1
+   |
+44 | pub struct StoreContextService {
+   | ------------------------------ associated function or constant `new` not found for this struct
+   |
+note: if you're trying to build a new `StoreContextService`, consider using `StoreContextService::with_ports` which ret
+urns `StoreContextService`
+  --> crates\modules\rustok-commerce\src\services\context.rs:51:5
+   |
+51 | /     pub fn with_ports(
+52 | |         tenant_read_port: Arc<dyn TenantReadPort>,
+53 | |         tenant_locale_policy_port: Arc<dyn TenantLocalePolicyPort>,
+54 | |         region_read_port: Arc<dyn RegionReadPort>,
+55 | |     ) -> Self {
+   | |_____________^
+   = help: items from traits can only be used if the trait is implemented and in scope
+   = note: the following traits define an item `new`, perhaps you need to implement one of them:
+           candidate #1: `KeyInit`
+           candidate #2: `KeyIvInit`
+           candidate #3: `TryKeyInit`
+           candidate #4: `VariableOutputCore`
+           candidate #5: `aligned_vec::Alignment`
+           candidate #6: `aws_lc_rs::aead::BoundKey`
+           candidate #7: `crypto_common::KeyInit`
+           candidate #8: `crypto_common::KeyIvInit`
+           candidate #9: `digest::VariableOutput`
+           candidate #10: `digest::core_api::VariableOutputCore`
+           candidate #11: `digest::digest::Digest`
+           candidate #12: `futures_intrusive::buffer::ring_buffer::RingBuf`
+           candidate #13: `itertools::adaptors::coalesce::CountItem`
+           candidate #14: `num_modular::Reducer`
+           candidate #15: `parking_lot_core::thread_parker::ThreadParkerT`
+           candidate #16: `prometheus::atomic64::Atomic`
+           candidate #17: `protobuf::message::Message`
+           candidate #18: `rand::distr::uniform::UniformSampler`
+           candidate #19: `rand::distr::uniform::UniformSampler`
+           candidate #20: `ring::aead::BoundKey`
+           candidate #21: `sea_orm::ActiveModelBehavior`
+           candidate #22: `sha2::Digest`
+           candidate #23: `sha2::digest::typenum::Bit`
+           candidate #24: `v_escape_base::escapes::EscapesBuilder`
+
+error[E0063]: missing field `fulfillment_requirement` in initializer of `rustok_cart::AddCartLineItemInput`
+   --> crates\modules\rustok-commerce\src\graphql\mutations\typed_line_item_helpers.rs:459:24
+    |
+459 |         add_line_item: crate::dto::AddCartLineItemInput {
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `fulfillment_requirement`
+
+error[E0599]: no associated function or constant named `new` found for struct `StoreContextService` in the current scop
+e
+   --> crates\modules\rustok-commerce\src\graphql\mutations\cart.rs:260:44
+    |
+260 |         let context = StoreContextService::new(
+    |                                            ^^^ associated function or constant not found in `StoreContextService`
+    |
+   ::: crates\modules\rustok-commerce\src\services\context.rs:44:1
+    |
+ 44 | pub struct StoreContextService {
+    | ------------------------------ associated function or constant `new` not found for this struct
+    |
+note: if you're trying to build a new `StoreContextService`, consider using `StoreContextService::with_ports` which ret
+urns `StoreContextService`
+   --> crates\modules\rustok-commerce\src\services\context.rs:51:5
+    |
+ 51 | /     pub fn with_ports(
+ 52 | |         tenant_read_port: Arc<dyn TenantReadPort>,
+ 53 | |         tenant_locale_policy_port: Arc<dyn TenantLocalePolicyPort>,
+ 54 | |         region_read_port: Arc<dyn RegionReadPort>,
+ 55 | |     ) -> Self {
+    | |_____________^
+    = help: items from traits can only be used if the trait is implemented and in scope
+    = note: the following traits define an item `new`, perhaps you need to implement one of them:
+            candidate #1: `KeyInit`
+            candidate #2: `KeyIvInit`
+            candidate #3: `TryKeyInit`
+            candidate #4: `VariableOutputCore`
+            candidate #5: `aligned_vec::Alignment`
+            candidate #6: `aws_lc_rs::aead::BoundKey`
+            candidate #7: `crypto_common::KeyInit`
+            candidate #8: `crypto_common::KeyIvInit`
+            candidate #9: `digest::VariableOutput`
+            candidate #10: `digest::core_api::VariableOutputCore`
+            candidate #11: `digest::digest::Digest`
+            candidate #12: `futures_intrusive::buffer::ring_buffer::RingBuf`
+            candidate #13: `itertools::adaptors::coalesce::CountItem`
+            candidate #14: `num_modular::Reducer`
+            candidate #15: `parking_lot_core::thread_parker::ThreadParkerT`
+            candidate #16: `prometheus::atomic64::Atomic`
+            candidate #17: `protobuf::message::Message`
+            candidate #18: `rand::distr::uniform::UniformSampler`
+            candidate #19: `rand::distr::uniform::UniformSampler`
+            candidate #20: `ring::aead::BoundKey`
+            candidate #21: `sea_orm::ActiveModelBehavior`
+            candidate #22: `sha2::Digest`
+            candidate #23: `sha2::digest::typenum::Bit`
+            candidate #24: `v_escape_base::escapes::EscapesBuilder`
+
+error[E0599]: no associated function or constant named `new` found for struct `StoreContextService` in the current scop
+e
+   --> crates\modules\rustok-commerce\src\graphql\mutations\checkout.rs:154:57
+    |
+154 |         let store_context = crate::StoreContextService::new(
+    |                                                         ^^^ associated function or constant not found in `StoreCo
+ntextService`
+    |
+   ::: crates\modules\rustok-commerce\src\services\context.rs:44:1
+    |
+ 44 | pub struct StoreContextService {
+    | ------------------------------ associated function or constant `new` not found for this struct
+    |
+note: if you're trying to build a new `StoreContextService`, consider using `StoreContextService::with_ports` which ret
+urns `StoreContextService`
+   --> crates\modules\rustok-commerce\src\services\context.rs:51:5
+    |
+ 51 | /     pub fn with_ports(
+ 52 | |         tenant_read_port: Arc<dyn TenantReadPort>,
+ 53 | |         tenant_locale_policy_port: Arc<dyn TenantLocalePolicyPort>,
+ 54 | |         region_read_port: Arc<dyn RegionReadPort>,
+ 55 | |     ) -> Self {
+    | |_____________^
+    = help: items from traits can only be used if the trait is implemented and in scope
+    = note: the following traits define an item `new`, perhaps you need to implement one of them:
+            candidate #1: `KeyInit`
+            candidate #2: `KeyIvInit`
+            candidate #3: `TryKeyInit`
+            candidate #4: `VariableOutputCore`
+            candidate #5: `aligned_vec::Alignment`
+            candidate #6: `aws_lc_rs::aead::BoundKey`
+            candidate #7: `crypto_common::KeyInit`
+            candidate #8: `crypto_common::KeyIvInit`
+            candidate #9: `digest::VariableOutput`
+            candidate #10: `digest::core_api::VariableOutputCore`
+            candidate #11: `digest::digest::Digest`
+            candidate #12: `futures_intrusive::buffer::ring_buffer::RingBuf`
+            candidate #13: `itertools::adaptors::coalesce::CountItem`
+            candidate #14: `num_modular::Reducer`
+            candidate #15: `parking_lot_core::thread_parker::ThreadParkerT`
+            candidate #16: `prometheus::atomic64::Atomic`
+            candidate #17: `protobuf::message::Message`
+            candidate #18: `rand::distr::uniform::UniformSampler`
+            candidate #19: `rand::distr::uniform::UniformSampler`
+            candidate #20: `ring::aead::BoundKey`
+            candidate #21: `sea_orm::ActiveModelBehavior`
+            candidate #22: `sha2::Digest`
+            candidate #23: `sha2::digest::typenum::Bit`
+            candidate #24: `v_escape_base::escapes::EscapesBuilder`
+
+error[E0599]: no method named `as_str` found for enum `std::option::Option<T>` in the current scope
+    --> crates\modules\rustok-commerce\src\services\admin_manual_fulfillment_orchestration.rs:104:57
+     |
+ 104 |                         line_item.shipping_profile_slug.as_str(),
+     |                                                         ^^^^^^ method not found in `std::option::Option<std::str
+ing::String>`
+     |
+note: the method `as_str` exists on the type `std::string::String`
+    --> C:\Users\user\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\alloc\src\string.rs
+:1061:5
+     |
+1061 |     pub const fn as_str(&self) -> &str {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: consider using `Option::expect` to unwrap the `std::string::String` value, panicking if the value is an `Option::
+None`
+     |
+ 104 |                         line_item.shipping_profile_slug.expect("REASON").as_str(),
+     |                                                        +++++++++++++++++
+
+error[E0599]: no method named `as_str` found for enum `std::option::Option<T>` in the current scope
+    --> crates\modules\rustok-commerce\src\storefront_shipping.rs:120:87
+     |
+ 120 |         .filter_map(|item| normalize_shipping_profile_slug(item.shipping_profile_slug.as_str()))
+     |                                                                                       ^^^^^^ method not found in
+ `std::option::Option<std::string::String>`
+     |
+note: the method `as_str` exists on the type `std::string::String`
+    --> C:\Users\user\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\alloc\src\string.rs
+:1061:5
+     |
+1061 |     pub const fn as_str(&self) -> &str {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: use the `?` operator to extract the `std::string::String` value, propagating an `Option::None` value to the calle
+r
+     |
+ 120 |         .filter_map(|item| normalize_shipping_profile_slug(item.shipping_profile_slug?.as_str()))
+     |                                                                                      +
+
+error[E0599]: no associated function or constant named `new` found for struct `StoreContextService` in the current scop
+e
+    --> crates\modules\rustok-commerce\src\graphql\safe_query\..\query.rs:2538:26
+     |
+2538 |     StoreContextService::new(
+     |                          ^^^ associated function or constant not found in `StoreContextService`
+     |
+    ::: crates\modules\rustok-commerce\src\services\context.rs:44:1
+     |
+  44 | pub struct StoreContextService {
+     | ------------------------------ associated function or constant `new` not found for this struct
+     |
+note: if you're trying to build a new `StoreContextService`, consider using `StoreContextService::with_ports` which ret
+urns `StoreContextService`
+    --> crates\modules\rustok-commerce\src\services\context.rs:51:5
+     |
+  51 | /     pub fn with_ports(
+  52 | |         tenant_read_port: Arc<dyn TenantReadPort>,
+  53 | |         tenant_locale_policy_port: Arc<dyn TenantLocalePolicyPort>,
+  54 | |         region_read_port: Arc<dyn RegionReadPort>,
+  55 | |     ) -> Self {
+     | |_____________^
+     = help: items from traits can only be used if the trait is implemented and in scope
+     = note: the following traits define an item `new`, perhaps you need to implement one of them:
+             candidate #1: `KeyInit`
+             candidate #2: `KeyIvInit`
+             candidate #3: `TryKeyInit`
+             candidate #4: `VariableOutputCore`
+             candidate #5: `aligned_vec::Alignment`
+             candidate #6: `aws_lc_rs::aead::BoundKey`
+             candidate #7: `crypto_common::KeyInit`
+             candidate #8: `crypto_common::KeyIvInit`
+             candidate #9: `digest::VariableOutput`
+             candidate #10: `digest::core_api::VariableOutputCore`
+             candidate #11: `digest::digest::Digest`
+             candidate #12: `futures_intrusive::buffer::ring_buffer::RingBuf`
+             candidate #13: `itertools::adaptors::coalesce::CountItem`
+             candidate #14: `num_modular::Reducer`
+             candidate #15: `parking_lot_core::thread_parker::ThreadParkerT`
+             candidate #16: `prometheus::atomic64::Atomic`
+             candidate #17: `protobuf::message::Message`
+             candidate #18: `rand::distr::uniform::UniformSampler`
+             candidate #19: `rand::distr::uniform::UniformSampler`
+             candidate #20: `ring::aead::BoundKey`
+             candidate #21: `sea_orm::ActiveModelBehavior`
+             candidate #22: `sha2::Digest`
+             candidate #23: `sha2::digest::typenum::Bit`
+             candidate #24: `v_escape_base::escapes::EscapesBuilder`
+
+error[E0433]: cannot find type `AdminOrderChangeOrchestrationErrorContext` in this scope
+   --> crates\modules\rustok-commerce\src\controllers\admin\changes.rs:433:13
+    |
+433 |             AdminOrderChangeOrchestrationErrorContext::new(
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use of undeclared type `AdminOrderChangeOrchestrationErrorC
+ontext`
+    |
+help: an enum with a similar name exists
+    |
+433 -             AdminOrderChangeOrchestrationErrorContext::new(
+433 +             OrderChangeOrchestrationError::new(
+    |
+
+error[E0382]: borrow of moved value: `context`
+  --> crates\modules\rustok-commerce\src\graphql\mutations\safe_legacy_helpers.rs:60:26
+   |
+45 |             let context = call_context
+   |                 ------- move occurs because `context` has type `PortContext`, which does not implement the `Copy` 
+trait
+...
+52 |                     context,
+   |                     ------- value moved here
+...
+60 |                 .map_err(|error| {
+   |                          ^^^^^^^ value borrowed here after move
+...
+87 |                         correlation_id = %context.correlation_id,
+   |                                           ---------------------- borrow occurs due to use in closure
+   |
+help: consider cloning the value if the performance cost is acceptable
+   |
+52 |                     context.clone(),
+   |                            ++++++++
+
+error[E0063]: missing field `fulfillment_requirement` in initializer of `rustok_order::CreateOrderLineItemInput`
+   --> crates\modules\rustok-commerce\src\services\checkout.rs:282:41
+    |
+282 | ...                   .map(|item| CreateOrderLineItemInput {
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^ missing `fulfillment_requirement`
+
+error[E0277]: can't compare `std::string::String` with `std::option::Option<std::string::String>`
+   --> crates\modules\rustok-commerce\src\services\checkout.rs:723:46
+    |
+723 |             if current_shipping_profile_slug != line_item.shipping_profile_slug {
+    |                                              ^^ no implementation for `std::string::String == std::option::Option
+<std::string::String>`
+    |
+    = help: the trait `PartialEq<std::option::Option<std::string::String>>` is not implemented for `std::string::String
+`
+    = help: the following other types implement trait `PartialEq<Rhs>`:
+              `&std::string::String` implements `PartialEq<windows_strings::hstring::HSTRING>`
+              `std::string::String` implements `PartialEq<&str>`
+              `std::string::String` implements `PartialEq<&windows_strings::hstring::HSTRING>`
+              `std::string::String` implements `PartialEq<Authority>`
+              `std::string::String` implements `PartialEq<ByteStr>`
+              `std::string::String` implements `PartialEq<ByteString>`
+              `std::string::String` implements `PartialEq<Cow<'_, str>>`
+              `std::string::String` implements `PartialEq<HeaderValue>`
+            and 14 others
+
+error[E0277]: `std::option::Option<std::string::String>` doesn't implement `std::fmt::Display`
+   --> crates\modules\rustok-commerce\src\services\checkout.rs:726:35
+    |
+725 |                     "Line item {} uses stale shipping profile snapshot {} (current: {})",
+    |                                                                        -- required by this formatting parameter
+726 |                     line_item.id, line_item.shipping_profile_slug, current_shipping_profile_slug
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `std::option::Option<std::string::String>` cann
+ot be formatted with the default formatter
+    |
+    = help: the trait `std::fmt::Display` is not implemented for `std::option::Option<std::string::String>`
+    = note: in format strings you may be able to use `{:?}` (or {:#?} for pretty-print) instead
+
+error[E0061]: this method takes 5 arguments but 3 arguments were supplied
+   --> crates\modules\rustok-commerce\src\services\order_change_orchestration.rs:274:22
+    |
+274 |                     .apply_claim_order_change(tenant_id, change_id, metadata)
+    |                      ^^^^^^^^^^^^^^^^^^^^^^^^--------------------------------
+    |                                              |                      |
+    |                                              |                      argument #3 of type `uuid::Uuid` is missing
+    |                                              argument #5 of type `JsonValue` is missing
+    |
+note: method defined here
+   --> crates\modules\rustok-commerce\src\services\post_order.rs:414:18
+    |
+414 |     pub async fn apply_claim_order_change(
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+418 |         change_id: Uuid,
+    |         ---------------
+419 |         idempotency_key: impl Into<String>,
+420 |         metadata: Value,
+    |         ---------------
+help: provide the arguments
+    |
+274 -                     .apply_claim_order_change(tenant_id, change_id, metadata)
+274 +                     .apply_claim_order_change(tenant_id, change_id, /* uuid::Uuid */, metadata, /* JsonValue */)
+    |
+
+error[E0061]: this function takes 9 arguments but 8 arguments were supplied
+   --> crates\modules\rustok-commerce\src\services\post_order.rs:173:36
+    |
+173 |                   let order_return = complete_return_decision(
+    |  ____________________________________^^^^^^^^^^^^^^^^^^^^^^^^-
+174 | |                     &order_service,
+175 | |                     tenant_id,
+176 | |                     actor_id,
+...   |
+181 | |                     decision_metadata.clone(),
+182 | |                 )
+    | |_________________- argument #9 of type `&str` is missing
+    |
+note: function defined here
+   --> crates\modules\rustok-commerce\src\services\post_order.rs:509:10
+    |
+509 | async fn complete_return_decision(
+    |          ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+518 |     root_idempotency_key: &str,
+    |     --------------------------
+help: provide the argument
+    |
+173 |                 let order_return = complete_return_decision(
+...
+181 |                     decision_metadata.clone(),
+182 ~                     /* &str */,
+183 ~                 )
+    |
+
+error[E0061]: this function takes 9 arguments but 8 arguments were supplied
+   --> crates\modules\rustok-commerce\src\services\post_order.rs:211:36
+    |
+211 |                   let order_return = complete_return_decision(
+    |  ____________________________________^^^^^^^^^^^^^^^^^^^^^^^^-
+212 | |                     &order_service,
+213 | |                     tenant_id,
+214 | |                     actor_id,
+...   |
+219 | |                     decision_metadata.clone(),
+220 | |                 )
+    | |_________________- argument #9 of type `&str` is missing
+    |
+note: function defined here
+   --> crates\modules\rustok-commerce\src\services\post_order.rs:509:10
+    |
+509 | async fn complete_return_decision(
+    |          ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+518 |     root_idempotency_key: &str,
+    |     --------------------------
+help: provide the argument
+    |
+211 |                 let order_return = complete_return_decision(
+...
+219 |                     decision_metadata.clone(),
+220 ~                     /* &str */,
+221 ~                 )
+    |
+
+error[E0277]: the trait bound `std::string::String: From<rustok_order::CreateOrderChangeInput>` is not satisfied
+    --> crates\modules\rustok-commerce\src\services\post_order.rs:235:25
+     |
+ 231 |                       .create_order_change(
+     |                        ------------------- required by a bound introduced by this call
+...
+ 235 | /                         build_return_order_change_input(
+ 236 | |                             "claim",
+ 237 | |                             claim_input.description.clone(),
+ 238 | |                             claim_input.preview.clone(),
+ 239 | |                             claim_input.metadata.clone(),
+ 240 | |                             order_return.id,
+ 241 | |                         )?,
+     | |__________________________^ the trait `From<rustok_order::CreateOrderChangeInput>` is not implemented for `std:
+:string::String`
+     |
+     = help: `std::string::String` implements trait `From<T>`:
+               From<&mut str>
+               From<&std::string::String>
+               From<&str>
+               From<Box<str>>
+               From<Cow<'_, str>>
+               From<ID>
+               From<OpaqueRevision>
+               From<OwnerSlug>
+             and 15 others
+     = note: required for `rustok_order::CreateOrderChangeInput` to implement `Into<std::string::String>`
+note: required by a bound in `rustok_order::OrderService::create_order_change`
+    --> crates\modules\rustok-order\src\services\order.rs:1543:31
+     |
+1538 |     pub async fn create_order_change(
+     |                  ------------------- required by a bound in this associated function
+...
+1543 |         idempotency_key: impl Into<String>,
+     |                               ^^^^^^^^^^^^ required by this bound in `OrderService::create_order_change`
+
+error[E0061]: this method takes 5 arguments but 4 arguments were supplied
+    --> crates\modules\rustok-commerce\src\services\post_order.rs:231:22
+     |
+ 231 |                       .create_order_change(
+     |  ______________________^^^^^^^^^^^^^^^^^^^-
+ 232 | |                         tenant_id,
+ 233 | |                         actor_id,
+ 234 | |                         order_id,
+...    |
+ 241 | |                         )?,
+ 242 | |                     )
+     | |_____________________- argument #5 of type `rustok_order::CreateOrderChangeInput` is missing
+     |
+note: method defined here
+    --> crates\modules\rustok-order\src\services\order.rs:1538:18
+     |
+1538 |     pub async fn create_order_change(
+     |                  ^^^^^^^^^^^^^^^^^^^
+help: provide the argument
+     |
+ 231 |                     .create_order_change(
+ ...
+ 241 |                         )?,
+ 242 ~                         /* rustok_order::CreateOrderChangeInput */,
+ 243 ~                     )
+     |
+
+error[E0277]: the trait bound `std::string::String: From<rustok_order::CreateOrderChangeInput>` is not satisfied
+    --> crates\modules\rustok-commerce\src\services\post_order.rs:230:36
+     |
+ 230 |                   let order_change = order_service
+     |  ____________________________________^
+ 231 | |                     .create_order_change(
+ 232 | |                         tenant_id,
+ 233 | |                         actor_id,
+...    |
+ 241 | |                         )?,
+ 242 | |                     )
+     | |_____________________^ the trait `From<rustok_order::CreateOrderChangeInput>` is not implemented for `std::stri
+ng::String`
+     |
+     = help: `std::string::String` implements trait `From<T>`:
+               From<&mut str>
+               From<&std::string::String>
+               From<&str>
+               From<Box<str>>
+               From<Cow<'_, str>>
+               From<ID>
+               From<OpaqueRevision>
+               From<OwnerSlug>
+             and 15 others
+     = note: required for `rustok_order::CreateOrderChangeInput` to implement `Into<std::string::String>`
+note: required by a bound in `rustok_order::OrderService::create_order_change`
+    --> crates\modules\rustok-order\src\services\order.rs:1543:31
+     |
+1538 |     pub async fn create_order_change(
+     |                  ------------------- required by a bound in this associated function
+...
+1543 |         idempotency_key: impl Into<String>,
+     |                               ^^^^^^^^^^^^ required by this bound in `OrderService::create_order_change`
+
+error[E0277]: the trait bound `std::string::String: From<rustok_order::CreateOrderChangeInput>` is not satisfied
+    --> crates\modules\rustok-commerce\src\services\post_order.rs:243:22
+     |
+ 243 |                     .await?;
+     |                      ^^^^^ the trait `From<rustok_order::CreateOrderChangeInput>` is not implemented for `std::s
+tring::String`
+     |
+     = help: `std::string::String` implements trait `From<T>`:
+               From<&mut str>
+               From<&std::string::String>
+               From<&str>
+               From<Box<str>>
+               From<Cow<'_, str>>
+               From<ID>
+               From<OpaqueRevision>
+               From<OwnerSlug>
+             and 15 others
+     = note: required for `rustok_order::CreateOrderChangeInput` to implement `Into<std::string::String>`
+note: required by a bound in `rustok_order::OrderService::create_order_change`
+    --> crates\modules\rustok-order\src\services\order.rs:1543:31
+     |
+1538 |     pub async fn create_order_change(
+     |                  ------------------- required by a bound in this associated function
+...
+1543 |         idempotency_key: impl Into<String>,
+     |                               ^^^^^^^^^^^^ required by this bound in `OrderService::create_order_change`
+
+error[E0061]: this function takes 9 arguments but 8 arguments were supplied
+   --> crates\modules\rustok-commerce\src\services\post_order.rs:244:36
+    |
+244 |                   let order_return = complete_return_decision(
+    |  ____________________________________^^^^^^^^^^^^^^^^^^^^^^^^-
+245 | |                     &order_service,
+246 | |                     tenant_id,
+247 | |                     actor_id,
+...   |
+252 | |                     decision_metadata.clone(),
+253 | |                 )
+    | |_________________- argument #9 of type `&str` is missing
+    |
+note: function defined here
+   --> crates\modules\rustok-commerce\src\services\post_order.rs:509:10
+    |
+509 | async fn complete_return_decision(
+    |          ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+518 |     root_idempotency_key: &str,
+    |     --------------------------
+help: provide the argument
+    |
+244 |                 let order_return = complete_return_decision(
+...
+252 |                     decision_metadata.clone(),
+253 ~                     /* &str */,
+254 ~                 )
+    |
+
+error[E0599]: no associated function or constant named `new` found for struct `StoreContextService` in the current scop
+e
+   --> crates\modules\rustok-commerce\src\storefront_checkout_runtime.rs:203:47
+    |
+203 |     let context = crate::StoreContextService::new(
+    |                                               ^^^ associated function or constant not found in `StoreContextServi
+ce`
+    |
+   ::: crates\modules\rustok-commerce\src\services\context.rs:44:1
+    |
+ 44 | pub struct StoreContextService {
+    | ------------------------------ associated function or constant `new` not found for this struct
+    |
+note: if you're trying to build a new `StoreContextService`, consider using `StoreContextService::with_ports` which ret
+urns `StoreContextService`
+   --> crates\modules\rustok-commerce\src\services\context.rs:51:5
+    |
+ 51 | /     pub fn with_ports(
+ 52 | |         tenant_read_port: Arc<dyn TenantReadPort>,
+ 53 | |         tenant_locale_policy_port: Arc<dyn TenantLocalePolicyPort>,
+ 54 | |         region_read_port: Arc<dyn RegionReadPort>,
+ 55 | |     ) -> Self {
+    | |_____________^
+    = help: items from traits can only be used if the trait is implemented and in scope
+    = note: the following traits define an item `new`, perhaps you need to implement one of them:
+            candidate #1: `KeyInit`
+            candidate #2: `KeyIvInit`
+            candidate #3: `TryKeyInit`
+            candidate #4: `VariableOutputCore`
+            candidate #5: `aligned_vec::Alignment`
+            candidate #6: `aws_lc_rs::aead::BoundKey`
+            candidate #7: `crypto_common::KeyInit`
+            candidate #8: `crypto_common::KeyIvInit`
+            candidate #9: `digest::VariableOutput`
+            candidate #10: `digest::core_api::VariableOutputCore`
+            candidate #11: `digest::digest::Digest`
+            candidate #12: `futures_intrusive::buffer::ring_buffer::RingBuf`
+            candidate #13: `itertools::adaptors::coalesce::CountItem`
+            candidate #14: `num_modular::Reducer`
+            candidate #15: `parking_lot_core::thread_parker::ThreadParkerT`
+            candidate #16: `prometheus::atomic64::Atomic`
+            candidate #17: `protobuf::message::Message`
+            candidate #18: `rand::distr::uniform::UniformSampler`
+            candidate #19: `rand::distr::uniform::UniformSampler`
+            candidate #20: `ring::aead::BoundKey`
+            candidate #21: `sea_orm::ActiveModelBehavior`
+            candidate #22: `sha2::Digest`
+            candidate #23: `sha2::digest::typenum::Bit`
+            candidate #24: `v_escape_base::escapes::EscapesBuilder`
+
+error[E0425]: cannot find function `admin_order_change_order_error_policy` in this scope
+   --> crates\modules\rustok-commerce\src\controllers\admin\changes.rs:287:55
+    |
+112 | fn admin_order_change_port_error_policy(error: &PortError) -> AdminOrderChangeHttpPolicy {
+    | ---------------------------------------------------------------------------------------- similarly named function
+ `admin_order_change_port_error_policy` defined here
+...
+287 |             let (status, code, message, error_kind) = admin_order_change_order_error_policy(source);
+    |                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+help: a function with a similar name exists
+    |
+287 -             let (status, code, message, error_kind) = admin_order_change_order_error_policy(source);
+287 +             let (status, code, message, error_kind) = admin_order_change_port_error_policy(source);
+    |
+
+error[E0308]: `match` arms have incompatible types
+   --> crates\modules\rustok-commerce\src\controllers\admin\returns.rs:506:13
+    |
+471 |       let (status, code, message, error_kind, source_owner) = match &error {
+    |                                                               ------------ `match` arms have incompatible types
+...
+479 |               (status, code, message, error_kind, "rustok_order")
+    |               --------------------------------------------------- this is found to be of type `(StatusCode, &str,
+ &str, &str, &str)`
+...
+486 |               (status, code, message, error_kind, "rustok_payment")
+    |               ----------------------------------------------------- this is found to be of type `(StatusCode, &st
+r, &str, &str, &str)`
+487 |           }
+488 |           PostOrderOrchestrationError::PaymentOrchestration(source) => match source {
+    |  ______________________________________________________________________-
+489 | |             PaymentOrchestrationError::Provider(source)
+490 | |             | PaymentOrchestrationError::Payment(source) => {
+491 | |                 if let PaymentError::RefundNotFound(id) = source {
+...   |
+503 | |         },
+    | |_________- this is found to be of type `(StatusCode, &str, &str, &str, &str)`
+...
+506 |               (status, code, message, error_kind, owner)
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `(StatusCode, &str, &str, &str, &str)`, found `
+(StatusCode, &str, &str, &str, &&str)`
+    |
+    = note: expected tuple `(StatusCode, &_, &_, &_, &_)`
+               found tuple `(StatusCode, &_, &_, &_, &&_)`
+
+error[E0061]: this function takes 5 arguments but 2 arguments were supplied
+   --> crates\modules\rustok-commerce\src\graphql_runtime.rs:652:5
+    |
+652 |     crate::ReturnCompletionOrchestrationService::new(db, event_bus)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^--------------- three arguments of type `Arc<(dyn OrderPostOr
+derCommandPort + 'static)>`, `Arc<(dyn PaymentAdminReadPort + 'static)>`, and `Arc<(dyn PaymentAdminRefundCommandPort +
+ 'static)>` are missing
+    |
+note: expected `Arc<dyn OrderReadPort>`, found `TransactionalEventBus`
+   --> crates\modules\rustok-commerce\src\graphql_runtime.rs:652:58
+    |
+652 |     crate::ReturnCompletionOrchestrationService::new(db, event_bus)
+    |                                                          ^^^^^^^^^
+    = note: expected struct `Arc<(dyn OrderReadPort + 'static)>`
+               found struct `TransactionalEventBus`
+note: associated function defined here
+   --> crates\modules\rustok-commerce\src\services\return_completion_recovery.rs:75:12
+    |
+ 75 |     pub fn new(
+    |            ^^^
+ 76 |         db: DatabaseConnection,
+ 77 |         order_read_port: std::sync::Arc<dyn OrderReadPort>,
+    |         --------------------------------------------------
+ 78 |         order_post_order_command_port: std::sync::Arc<dyn rustok_order::OrderPostOrderCommandPort>,
+    |         ------------------------------------------------------------------------------------------
+ 79 |         payment_admin_read_port: std::sync::Arc<dyn PaymentAdminReadPort>,
+    |         -----------------------------------------------------------------
+ 80 |         payment_admin_refund_command_port: std::sync::Arc<dyn PaymentAdminRefundCommandPort>,
+    |         ------------------------------------------------------------------------------------
+help: provide the arguments
+    |
+652 -     crate::ReturnCompletionOrchestrationService::new(db, event_bus)
+652 +     crate::ReturnCompletionOrchestrationService::new(db, /* Arc<(dyn OrderReadPort + 'static)> */, /* Arc<(dyn Or
+derPostOrderCommandPort + 'static)> */, /* Arc<(dyn PaymentAdminReadPort + 'static)> */, /* Arc<(dyn PaymentAdminRefund
+CommandPort + 'static)> */)
+    |
+
+error[E0599]: no method named `with_payment_provider_registry` found for struct `return_completion_recovery::ReturnComp
+letionOrchestrationService` in the current scope
+   --> crates\modules\rustok-commerce\src\graphql_runtime.rs:653:10
+    |
+652 | /     crate::ReturnCompletionOrchestrationService::new(db, event_bus)
+653 | |         .with_payment_provider_registry(payment_provider_registry_from_context(ctx))
+    | |         -^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method not found in `return_completion_recovery::ReturnCompletionOrches
+trationService`
+    | |_________|
+    |
+    |
+   ::: crates\modules\rustok-commerce\src\services\return_completion_recovery.rs:66:1
+    |
+ 66 |   pub struct ReturnCompletionOrchestrationService {
+    |   ----------------------------------------------- method `with_payment_provider_registry` not found for this stru
+ct
+
+error[E0599]: no associated function or constant named `new` found for struct `StoreContextService` in the current scop
+e
+   --> crates\modules\rustok-commerce\src\services\checkout.rs:105:51
+    |
+105 |             context_service: StoreContextService::new(db, region_read_port),
+    |                                                   ^^^ associated function or constant not found in `StoreContextS
+ervice`
+    |
+   ::: crates\modules\rustok-commerce\src\services\context.rs:44:1
+    |
+ 44 | pub struct StoreContextService {
+    | ------------------------------ associated function or constant `new` not found for this struct
+    |
+note: if you're trying to build a new `StoreContextService`, consider using `StoreContextService::with_ports` which ret
+urns `StoreContextService`
+   --> crates\modules\rustok-commerce\src\services\context.rs:51:5
+    |
+ 51 | /     pub fn with_ports(
+ 52 | |         tenant_read_port: Arc<dyn TenantReadPort>,
+ 53 | |         tenant_locale_policy_port: Arc<dyn TenantLocalePolicyPort>,
+ 54 | |         region_read_port: Arc<dyn RegionReadPort>,
+ 55 | |     ) -> Self {
+    | |_____________^
+    = help: items from traits can only be used if the trait is implemented and in scope
+    = note: the following traits define an item `new`, perhaps you need to implement one of them:
+            candidate #1: `KeyInit`
+            candidate #2: `KeyIvInit`
+            candidate #3: `TryKeyInit`
+            candidate #4: `VariableOutputCore`
+            candidate #5: `aligned_vec::Alignment`
+            candidate #6: `aws_lc_rs::aead::BoundKey`
+            candidate #7: `crypto_common::KeyInit`
+            candidate #8: `crypto_common::KeyIvInit`
+            candidate #9: `digest::VariableOutput`
+            candidate #10: `digest::core_api::VariableOutputCore`
+            candidate #11: `digest::digest::Digest`
+            candidate #12: `futures_intrusive::buffer::ring_buffer::RingBuf`
+            candidate #13: `itertools::adaptors::coalesce::CountItem`
+            candidate #14: `num_modular::Reducer`
+            candidate #15: `parking_lot_core::thread_parker::ThreadParkerT`
+            candidate #16: `prometheus::atomic64::Atomic`
+            candidate #17: `protobuf::message::Message`
+            candidate #18: `rand::distr::uniform::UniformSampler`
+            candidate #19: `rand::distr::uniform::UniformSampler`
+            candidate #20: `ring::aead::BoundKey`
+            candidate #21: `sea_orm::ActiveModelBehavior`
+            candidate #22: `sha2::Digest`
+            candidate #23: `sha2::digest::typenum::Bit`
+            candidate #24: `v_escape_base::escapes::EscapesBuilder`
+
+error[E0599]: no associated function or constant named `new` found for struct `StoreContextService` in the current scop
+e
+  --> crates\modules\rustok-commerce\src\services\checkout_plan_builder.rs:80:51
+   |
+80 |             context_service: StoreContextService::new(db, region_read_port),
+   |                                                   ^^^ associated function or constant not found in `StoreContextSe
+rvice`
+   |
+  ::: crates\modules\rustok-commerce\src\services\context.rs:44:1
+   |
+44 | pub struct StoreContextService {
+   | ------------------------------ associated function or constant `new` not found for this struct
+   |
+note: if you're trying to build a new `StoreContextService`, consider using `StoreContextService::with_ports` which ret
+urns `StoreContextService`
+  --> crates\modules\rustok-commerce\src\services\context.rs:51:5
+   |
+51 | /     pub fn with_ports(
+52 | |         tenant_read_port: Arc<dyn TenantReadPort>,
+53 | |         tenant_locale_policy_port: Arc<dyn TenantLocalePolicyPort>,
+54 | |         region_read_port: Arc<dyn RegionReadPort>,
+55 | |     ) -> Self {
+   | |_____________^
+   = help: items from traits can only be used if the trait is implemented and in scope
+   = note: the following traits define an item `new`, perhaps you need to implement one of them:
+           candidate #1: `KeyInit`
+           candidate #2: `KeyIvInit`
+           candidate #3: `TryKeyInit`
+           candidate #4: `VariableOutputCore`
+           candidate #5: `aligned_vec::Alignment`
+           candidate #6: `aws_lc_rs::aead::BoundKey`
+           candidate #7: `crypto_common::KeyInit`
+           candidate #8: `crypto_common::KeyIvInit`
+           candidate #9: `digest::VariableOutput`
+           candidate #10: `digest::core_api::VariableOutputCore`
+           candidate #11: `digest::digest::Digest`
+           candidate #12: `futures_intrusive::buffer::ring_buffer::RingBuf`
+           candidate #13: `itertools::adaptors::coalesce::CountItem`
+           candidate #14: `num_modular::Reducer`
+           candidate #15: `parking_lot_core::thread_parker::ThreadParkerT`
+           candidate #16: `prometheus::atomic64::Atomic`
+           candidate #17: `protobuf::message::Message`
+           candidate #18: `rand::distr::uniform::UniformSampler`
+           candidate #19: `rand::distr::uniform::UniformSampler`
+           candidate #20: `ring::aead::BoundKey`
+           candidate #21: `sea_orm::ActiveModelBehavior`
+           candidate #22: `sha2::Digest`
+           candidate #23: `sha2::digest::typenum::Bit`
+           candidate #24: `v_escape_base::escapes::EscapesBuilder`
+
+error[E0308]: mismatched types
+   --> crates\modules\rustok-commerce\src\services\checkout_plan_builder.rs:841:65
+    |
+841 |     log_checkout_plan_shipping_option_boundary_failure(context, error);
+    |     --------------------------------------------------          ^^^^^ expected `&PortError`, found `PortError`
+    |     |
+    |     arguments to this function are incorrect
+    |
+note: function defined here
+   --> crates\modules\rustok-commerce\src\services\checkout_plan_builder.rs:845:4
+    |
+845 | fn log_checkout_plan_shipping_option_boundary_failure(
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+846 |     context: &PortContext,
+847 |     error: &PortError,
+    |     -----------------
+help: consider borrowing here
+    |
+841 |     log_checkout_plan_shipping_option_boundary_failure(context, &error);
+    |                                                                 +
+
+error[E0004]: non-exhaustive patterns: `&rustok_order::OrderError::IdempotencyConflict` and `&rustok_order::OrderError:
+:CommandReceiptCorrupt` not covered
+   --> crates\modules\rustok-commerce\src\controllers\admin\returns.rs:145:11
+    |
+145 |     match error {
+    |           ^^^^^ patterns `&rustok_order::OrderError::IdempotencyConflict` and `&rustok_order::OrderError::Command
+ReceiptCorrupt` not covered
+    |
+note: `rustok_order::OrderError` defined here
+   --> crates\modules\rustok-order\src\error.rs:8:1
+    |
+  8 | pub enum OrderError {
+    | ^^^^^^^^^^^^^^^^^^^
+...
+ 20 |     IdempotencyConflict,
+    |     ------------------- not covered
+ 21 |     #[error("order command receipt requires operator review")]
+ 22 |     CommandReceiptCorrupt,
+    |     --------------------- not covered
+    = note: the matched value is of type `&rustok_order::OrderError`
+help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern, a match arm with 
+multiple or-patterns as shown, or multiple match arms
+    |
+177 ~         ),
+178 ~         &rustok_order::OrderError::IdempotencyConflict | &rustok_order::OrderError::CommandReceiptCorrupt => todo
+!(),
+    |
+
+error[E0004]: non-exhaustive patterns: `&rustok_order::OrderError::IdempotencyConflict` and `&rustok_order::OrderError:
+:CommandReceiptCorrupt` not covered
+   --> crates\modules\rustok-commerce\src\controllers\admin\mod.rs:431:53
+    |
+431 |     let (status, code, message, error_kind) = match &error {
+    |                                                     ^^^^^^ patterns `&rustok_order::OrderError::IdempotencyConfli
+ct` and `&rustok_order::OrderError::CommandReceiptCorrupt` not covered
+    |
+note: `rustok_order::OrderError` defined here
+   --> crates\modules\rustok-order\src\error.rs:8:1
+    |
+  8 | pub enum OrderError {
+    | ^^^^^^^^^^^^^^^^^^^
+...
+ 20 |     IdempotencyConflict,
+    |     ------------------- not covered
+ 21 |     #[error("order command receipt requires operator review")]
+ 22 |     CommandReceiptCorrupt,
+    |     --------------------- not covered
+    = note: the matched value is of type `&rustok_order::OrderError`
+help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern, a match arm with 
+multiple or-patterns as shown, or multiple match arms
+    |
+463 ~         ),
+464 ~         &rustok_order::OrderError::IdempotencyConflict | &rustok_order::OrderError::CommandReceiptCorrupt => todo
+!(),
+    |
+
+warning: unused variable: `error_kind`
+   --> crates\modules\rustok-commerce\src\controllers\admin\mod.rs:476:41
+    |
+476 |             let (status, code, message, error_kind) = match error.kind {
+    |                                         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_
+error_kind`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `error`
+   --> crates\modules\rustok-commerce\src\controllers\admin\mod.rs:527:9
+    |
+527 |         error @ PostOrderOrchestrationError::Validation(_) => admin_public_error(
+    |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_error`
+
+error[E0004]: non-exhaustive patterns: `&ChannelError::Validation(_)` not covered
+   --> crates\modules\rustok-commerce\src\controllers\store\mod.rs:131:53
+    |
+131 |     let (status, code, message, error_kind) = match &error {
+    |                                                     ^^^^^^ pattern `&ChannelError::Validation(_)` not covered
+    |
+note: `ChannelError` defined here
+   --> crates\modules\rustok-channel\src\error.rs:9:1
+    |
+  9 | pub enum ChannelError {
+    | ^^^^^^^^^^^^^^^^^^^^^
+ 10 |     #[error("channel validation error: {0}")]
+ 11 |     Validation(String),
+    |     ---------- not covered
+    = note: the matched value is of type `&ChannelError`
+help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pat
+tern as shown
+    |
+156 ~         ),
+157 ~         &ChannelError::Validation(_) => todo!(),
+    |
+
+error[E0004]: non-exhaustive patterns: `&rustok_order::OrderError::IdempotencyConflict` and `&rustok_order::OrderError:
+:CommandReceiptCorrupt` not covered
+  --> crates\modules\rustok-commerce\src\graphql\mutations\fulfillment.rs:45:11
+   |
+45 |     match error {
+   |           ^^^^^ patterns `&rustok_order::OrderError::IdempotencyConflict` and `&rustok_order::OrderError::CommandR
+eceiptCorrupt` not covered
+   |
+note: `rustok_order::OrderError` defined here
+  --> crates\modules\rustok-order\src\error.rs:8:1
+   |
+ 8 | pub enum OrderError {
+   | ^^^^^^^^^^^^^^^^^^^
+...
+20 |     IdempotencyConflict,
+   |     ------------------- not covered
+21 |     #[error("order command receipt requires operator review")]
+22 |     CommandReceiptCorrupt,
+   |     --------------------- not covered
+   = note: the matched value is of type `&rustok_order::OrderError`
+help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern, a match arm with 
+multiple or-patterns as shown, or multiple match arms
+   |
+68 ~         ),
+69 ~         &rustok_order::OrderError::IdempotencyConflict | &rustok_order::OrderError::CommandReceiptCorrupt => todo!
+(),
+   |
+
+error[E0004]: non-exhaustive patterns: `&PostOrderOrchestrationError::OwnerPort { .. }` not covered
+   --> crates\modules\rustok-commerce\src\graphql\mutations\fulfillment.rs:324:44
+    |
+324 |     let (message, code, retryable) = match &error {
+    |                                            ^^^^^^ pattern `&PostOrderOrchestrationError::OwnerPort { .. }` not co
+vered
+    |
+note: `PostOrderOrchestrationError` defined here
+   --> crates\modules\rustok-commerce\src\services\post_order.rs:25:10
+    |
+ 25 | pub enum PostOrderOrchestrationError {
+    |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 33 |     OwnerPort {
+    |     --------- not covered
+    = note: the matched value is of type `&PostOrderOrchestrationError`
+help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pat
+tern as shown
+    |
+334 ~         ),
+335 ~         &PostOrderOrchestrationError::OwnerPort { .. } => todo!(),
+    |
+
+error[E0004]: non-exhaustive patterns: `&rustok_order::OrderError::IdempotencyConflict` and `&rustok_order::OrderError:
+:CommandReceiptCorrupt` not covered
+   --> crates\modules\rustok-commerce\src\graphql\safe_query\query_error_boundary.rs:315:60
+    |
+315 |         let (message, code, retryable, error_kind) = match &error {
+    |                                                            ^^^^^^ patterns `&rustok_order::OrderError::Idempotenc
+yConflict` and `&rustok_order::OrderError::CommandReceiptCorrupt` not covered
+    |
+note: `rustok_order::OrderError` defined here
+   --> crates\modules\rustok-order\src\error.rs:8:1
+    |
+  8 | pub enum OrderError {
+    | ^^^^^^^^^^^^^^^^^^^
+...
+ 20 |     IdempotencyConflict,
+    |     ------------------- not covered
+ 21 |     #[error("order command receipt requires operator review")]
+ 22 |     CommandReceiptCorrupt,
+    |     --------------------- not covered
+    = note: the matched value is of type `&rustok_order::OrderError`
+help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern, a match arm with 
+multiple or-patterns as shown, or multiple match arms
+    |
+347 ~             ),
+348 ~             &rustok_order::OrderError::IdempotencyConflict | &rustok_order::OrderError::CommandReceiptCorrupt => 
+todo!(),
+    |
+
+Some errors have detailed explanations: E0004, E0061, E0063, E0277, E0308, E0364, E0382, E0425, E0433...
+For more information about an error, try `rustc --explain E0004`.
+warning: `rustok-commerce` (lib) generated 24 warnings
+error: could not compile `rustok-commerce` (lib) due to 68 previous errors; 24 warnings emitted

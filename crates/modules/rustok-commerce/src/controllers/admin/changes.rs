@@ -226,6 +226,74 @@ fn admin_order_change_reserved_refund_error_policy(
     }
 }
 
+fn admin_order_change_order_error_policy(error: &OrderError) -> AdminOrderChangeHttpPolicy {
+    match error {
+        OrderError::Validation(_) => (
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_order_invalid",
+            "Order request is invalid",
+            "validation",
+        ),
+        OrderError::OrderNotFound(_)
+        | OrderError::OrderReturnNotFound(_)
+        | OrderError::OrderChangeNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        OrderError::InvalidTransition { .. } | OrderError::IdempotencyConflict => (
+            StatusCode::CONFLICT,
+            "commerce_admin_order_state_conflict",
+            "Order operation conflicts with the current state",
+            "state_conflict",
+        ),
+        OrderError::Database(_) | OrderError::CommandReceiptCorrupt => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_order_storage_unavailable",
+            "Order storage is temporarily unavailable",
+            "database",
+        ),
+        OrderError::Core(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_order_failed",
+            "Order operation could not be completed safely",
+            "core",
+        ),
+    }
+}
+
+struct AdminOrderChangeOrchestrationErrorContext {
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    order_id: Option<Uuid>,
+    order_change_id: Option<Uuid>,
+    payment_collection_id: Option<Uuid>,
+    payment_id: Option<Uuid>,
+    refund_id: Option<Uuid>,
+    operation: &'static str,
+}
+
+impl AdminOrderChangeOrchestrationErrorContext {
+    fn new(
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        order_change_id: Uuid,
+        operation: &'static str,
+    ) -> Self {
+        Self {
+            tenant_id,
+            actor_id,
+            order_id: None,
+            order_change_id: Some(order_change_id),
+            payment_collection_id: None,
+            payment_id: None,
+            refund_id: None,
+            operation,
+        }
+    }
+}
+
 fn adopt_order_change_order_error_identity(
     context: &mut AdminOrderChangeOrchestrationErrorContext,
     error: &OrderError,
