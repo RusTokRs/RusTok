@@ -20,6 +20,17 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ---
 
 
+## 2026-09-25 Commerce Mounted Store Product runtime capability integrity
+
+`products.rs` is intentionally retained as the compiled legacy Product compatibility source;
+the mounted `/store/products` handler lives in `products_owner_list.rs` and already called
+`runtime.product_storefront_http_read_port()`. The Commerce runtime was missing that delegation,
+leaving an existing owner-read path without its host accessor. The missing delegation is now
+present, and the owner-read verifier explicitly requires it. The legacy source was restored
+exactly to its pre-audit state; no compatibility behavior was changed.
+
+Maintainer runtime evidence, Cargo build, tests, and verifier execution remain unrun.
+
 ## 2026-09-25 Commerce Mounted Admin Order Detail owner-port cutover
 
 The mounted `show_order` endpoint was still constructing `PaymentService` and
