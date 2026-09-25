@@ -148,7 +148,7 @@ pub async fn exercise_category_subtree_lifecycle(db: &DatabaseConnection) -> Tes
 
     assert_validation_contains(
         service.archive_subtree(tenant_id, root_id, security).await,
-        "missing its canonical Taxonomy hierarchy row",
+        "Forum Category Taxonomy hierarchy read failed",
     )?;
 
     Ok(())

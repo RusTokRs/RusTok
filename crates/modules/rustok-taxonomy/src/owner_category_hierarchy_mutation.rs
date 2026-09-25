@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::{
     TaxonomyError, TaxonomyResult, TaxonomyScopeType, TaxonomyTermKind,
+    category_hierarchy::validate_candidate_hierarchy,
     entities::{taxonomy_category_hierarchy, taxonomy_term},
     lock_category_hierarchy_writer_in_tx,
 };

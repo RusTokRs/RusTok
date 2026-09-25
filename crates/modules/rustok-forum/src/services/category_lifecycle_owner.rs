@@ -2,9 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-    Statement, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, QueryFilter, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -14,7 +13,7 @@ use rustok_core::SecurityContext;
 use crate::dto::{
     CategorySubtreeLifecycleResponse, MAX_FORUM_CATEGORY_TREE_DEPTH, MAX_FORUM_CATEGORY_TREE_NODES,
 };
-use crate::entities::{forum_category, forum_category_lifecycle};
+use crate::entities::forum_category_lifecycle;
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
 

@@ -56,9 +56,6 @@ impl CategoryProjectionOwnerService {
             }
         }
 
-        shift_siblings_for_insert_in_tx(&txn, tenant_id, input.parent_id, requested_position)
-            .await?;
-
         forum_category::ActiveModel {
             id: Set(id),
             tenant_id: Set(tenant_id),
@@ -83,6 +80,14 @@ impl CategoryProjectionOwnerService {
             canonical_name,
             slug,
             canonical_description,
+        )
+        .await?;
+        taxonomy_sync::shift_category_siblings_for_insert_in_tx(
+            &txn,
+            tenant_id,
+            id,
+            input.parent_id,
+            requested_position,
         )
         .await?;
         super::projection_invalidation::publish_forum_projection_scope_direct_in_tx(

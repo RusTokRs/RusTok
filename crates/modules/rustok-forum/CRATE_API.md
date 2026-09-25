@@ -51,8 +51,6 @@
 - `ModerationService::with_audience_facts(db, event_bus, SharedForumAudienceFactsPort) -> ModerationService`
 - `ModerationService::*_with_audience_context(..., PortContext) -> ForumResult<()>` for reply status, topic pin/lock/status, and solution commands
 - `TaxonomyOwnerCategory`, Taxonomy-backed Category owner mutation adapters and Media owner-reference retention
-- `resolve_category_cover_for_write(media_port, context, media_id, alt) -> ForumResult<MediaImageDescriptor>`
-- `hydrate_category_cover_for_read(media_port, context, media_id, alt) -> ForumResult<Option<MediaImageDescriptor>>`
 - `extract_forum_mention_candidates(document: &RichTextDocument, policy) -> ForumResult<ForumMentionCandidates>`
 - `resolve_forum_mentions(profiles, tenant_id, candidates, requested_locale, tenant_default_locale) -> ForumResult<ForumResolvedMentions>`
 - `validate_forum_quote_references(source, references) -> ForumResult<Vec<ForumQuoteReference>>`

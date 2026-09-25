@@ -20,7 +20,7 @@ function fixture(options = {}) {
   writeFixture(
     root,
     "crates/modules/rustok-forum/src/lib.rs",
-    options.legacy ? "pub mod category_presentation; ["content", "media", "taxonomy", "tenant"]" : "dependencies ["content", "media", "taxonomy"]",
+    options.legacy ? 'pub mod category_presentation; ["content", "media", "taxonomy", "tenant"]' : 'dependencies ["content", "media", "taxonomy"]',
   );
   writeFixture(
     root,
@@ -55,7 +55,9 @@ function fixture(options = {}) {
   writeFixture(
     root,
     "crates/modules/rustok-forum/docs/implementation-plan.md",
-    options.stalePlan ? "#### Delivered in \`FORUM-13A\` CategoryCoverMediaCandidate" : "Forum-specific Category presentation ownership was superseded",
+    options.stalePlan
+      ? "Forum-specific Category presentation ownership was superseded #### Delivered in `FORUM-13A` CategoryCoverMediaCandidate"
+      : "Forum-specific Category presentation ownership was superseded",
   );
   writeFixture(
     root,

@@ -57,8 +57,10 @@ impl CategoryCommandProjectionOwnerService {
                 }
             }
         }
+        let position = i32::try_from(input.position)
+            .map_err(|_| ForumError::Validation("Category sibling position exceeds i32 range".to_string()))?;
         let updated = super::category::taxonomy_sync::move_category_in_tx(
-            &txn, tenant_id, category_id, input.parent_id, input.position
+            &txn, tenant_id, category_id, input.parent_id, position
         ).await?;
         let moved = updated.iter().find(|p| p.id == category_id).cloned().ok_or_else(||
             ForumError::Validation("Moved category was not persisted in sibling order".to_string()))?;

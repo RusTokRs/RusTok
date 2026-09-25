@@ -70,7 +70,7 @@ requireText(api, "### Category presentation ownership", "Forum API contract must
 reject(api, /CategoryCoverMediaCandidate|resolve_category_cover_for_write|hydrate_category_cover_for_read|normalize_category_icon_key/, "Forum API contract must not describe retired Forum-local Category presentation APIs");
 
 requireText(plan, "Forum-specific Category presentation ownership was superseded", "Forum roadmap must record Category presentation cutover");
-reject(plan, /#### Delivered in `FORUM-13A`[sS]*CategoryCoverMediaCandidate/, "Forum roadmap must not retain retired Category presentation implementation details");
+reject(plan, /#### Delivered in `FORUM-13A`[\s\S]*CategoryCoverMediaCandidate/, "Forum roadmap must not retain retired Category presentation implementation details");
 
 const retiredPresentation = path.join(repoRoot, "crates/modules/rustok-forum/src/category_presentation.rs");
 if (existsSync(retiredPresentation)) failures.push("retired Forum Category presentation source must not exist");

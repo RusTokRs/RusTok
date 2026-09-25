@@ -8,7 +8,7 @@ pub(super) async fn ensure_category_tree_target_is_active_in_tx(
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> ForumResult<()> {
-    let categories = load_categories_in_tx(txn, tenant_id).await?;
+    let categories = super::category::CategoryService::load_categories_in_tx(txn, tenant_id).await?;
     let category_ids = categories.iter().map(|category| category.id).collect::<Vec<_>>();
     let parent_by_id = load_category_parents_in_tx(txn, tenant_id, &category_ids).await?;
     validate_parent_map(&parent_by_id)?;
@@ -29,6 +29,15 @@ pub(super) async fn ensure_category_tree_target_is_active_in_tx(
     }
 
     ensure_restore_ancestors_are_active(&parent_by_id, &lifecycle_by_category, category_id)
+}
+
+/// Verify that a deleted topic/reply can be restored into its category tree.
+pub(super) async fn ensure_category_restore_target_is_active_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    category_id: Uuid,
+) -> ForumResult<()> {
+    ensure_category_tree_target_is_active_in_tx(txn, tenant_id, category_id).await
 }
 
 async fn load_category_parents_in_tx(
