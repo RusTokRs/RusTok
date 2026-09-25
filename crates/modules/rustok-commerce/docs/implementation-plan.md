@@ -1123,6 +1123,19 @@ Source inspection is not execution evidence.
   complete Product Admin retry identity retention, and require non-null explicit caller
   idempotency with no compatibility-generated lifecycle identity.
 
+## Audit 2026-09-25: Product owner-port diagnostic hardening
+
+- [x] Remove raw Product owner-port error, tenant, variant, and context values from
+  `rustok-product/src/ports.rs`; owner failures now retain bounded error-shape facts and
+  correlation-safe context facts while exposing stable public `PortError` messages.
+- [x] Account for every current `CommerceError` variant in the Product owner-port mapper,
+  including an explicit `DuplicateSku` conflict envelope instead of an accidental fallback.
+- [x] Extend `verify-ecommerce-public-port-error-safety-v2.mjs` with Product owner-port
+  diagnostic guards and require the bounded context/error fact contract.
+- [ ] Continue the broader correlation-safe mapper cleanup for remaining payment execution/
+  compensation, fulfillment, inventory, customer, tax, promotion, remaining ecommerce
+  adapters, and non-`PortError` public envelopes; compiler/runtime/test evidence remains
+  maintainer-owned.
 ## Change rules
 
 1. Update this file with every completed or newly discovered ecommerce task.
