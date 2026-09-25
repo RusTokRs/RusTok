@@ -697,8 +697,7 @@ pub async fn complete_order_return(
         }),
         metadata: input.metadata,
     };
-    let item = ReturnCompletionOrchestrationService::new(runtime.db_clone(), runtime.event_bus())
-        .with_payment_provider_registry(runtime.payment_provider_registry())
+    let item = runtime.return_completion_orchestration()
         .complete_return(tenant.id, auth.user_id, id, command)
         .await
         .map_err(|error| {
