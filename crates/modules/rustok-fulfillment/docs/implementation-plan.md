@@ -1,6 +1,6 @@
 # Implementation plan for `rustok-fulfillment`
 
-Last reviewed: 2026-07-31
+Last reviewed: 2026-09-25
 
 ## Current state
 
@@ -25,8 +25,8 @@ checkout no longer queries fulfillment persistence or constructs the service.
 The root in-process checkout factory mounts
 `TypedCheckoutFulfillmentExecutionPort`. Ensure and recovery reads accept
 `Pending`, `Shipped`, and `Delivered`. `Cancelled` and unknown lifecycle values
-fail closed with typed manual reconciliation. Durable typed checkout fulfillment
-identity and a concurrency-safe uniqueness constraint remain open.
+fail closed with typed manual reconciliation. Durable typed checkout fulfillment identity and a concurrency-safe uniqueness constraint are source-complete;
+cross-backend migration, rollback/reapply, contention, restart, and mounted parity evidence remains maintainer-owned.
 
 Complete shipping-option active list and lookup use `ShippingOptionReadPort`;
 administrative list-all uses the separate `ShippingOptionAdminReadPort`. Root
