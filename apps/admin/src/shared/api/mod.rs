@@ -3,7 +3,6 @@ pub mod queries;
 
 #[cfg(target_arch = "wasm32")]
 use gloo_storage::Storage as GlooStorage;
-#[cfg(not(all(target_arch = "wasm32", not(feature = "hydrate"))))]
 use leptos::prelude::ServerFnError;
 #[cfg(not(any(
     all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")),
@@ -154,14 +153,12 @@ async fn execute_admin_graphql(request: ServerGraphqlRequest) -> Result<Value, A
     }
 }
 
-#[cfg(not(all(target_arch = "wasm32", not(feature = "hydrate"))))]
 pub(crate) fn map_server_fn_error(error: ServerFnError) -> ApiError {
     let message = error.to_string();
 
     normalize_server_fn_error_message(&message)
 }
 
-#[cfg(not(all(target_arch = "wasm32", not(feature = "hydrate"))))]
 fn normalize_server_fn_error_message(message: &str) -> ApiError {
     let mut clean_msg = message;
     if let Some(stripped) = clean_msg.strip_prefix("error running server function: ") {

@@ -10,8 +10,7 @@
 
 use rustok_telemetry::{LogFormat, TelemetryConfig};
 
-#[tokio::main]
-async fn main() -> eyre::Result<()> {
+fn main() -> eyre::Result<()> {
     let telemetry_cfg = telemetry_config();
     let has_otel = telemetry_cfg.otel.is_some();
     let _telemetry = if has_otel {
@@ -19,9 +18,17 @@ async fn main() -> eyre::Result<()> {
     } else {
         rustok_telemetry::init_metrics(telemetry_cfg.metrics)?
     };
-    let result = rustok_server::host::run().await;
+    let stack_size = std::env::var("RUSTOK_THREAD_STACK_SIZE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(8 * 1024 * 1024);
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_stack_size(stack_size)
+        .build()?;
+    let result = runtime.block_on(rustok_server::host::run());
     if has_otel {
-        rustok_telemetry::otel::shutdown().await;
+        runtime.block_on(rustok_telemetry::otel::shutdown());
     }
     Ok(result?)
 }

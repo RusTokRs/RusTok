@@ -26,7 +26,7 @@ const result = spawnSync(executable, ["-i", "input.css", "-o", output, "--minify
   cwd: adminRoot,
   env: process.env,
   stdio: "inherit",
-  shell: false,
+  shell: process.platform === "win32",
 });
 
 if (result.error) {
