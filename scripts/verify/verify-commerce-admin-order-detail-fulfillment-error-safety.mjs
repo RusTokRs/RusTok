@@ -32,14 +32,20 @@ const between = (content, start, end, label) => {
 const showOrder = between(
   source,
   'pub async fn show_order(',
-  'fn map_order_detail_fulfillment_error(',
+  '/// Mark admin ecommerce order as paid',
   'admin order detail handler',
 );
-const mapper = between(
+const paymentPortMapper = between(
   source,
-  'fn map_order_detail_fulfillment_error(',
+  'fn map_order_detail_payment_port_error(',
+  'fn map_order_detail_fulfillment_port_error(',
+  'admin order detail payment owner-port mapper',
+);
+const fulfillmentPortMapper = between(
+  source,
+  'fn map_order_detail_fulfillment_port_error(',
   '/// Mark admin ecommerce order as paid',
-  'admin order detail fulfillment mapper',
+  'admin order detail fulfillment owner-port mapper',
 );
 
 for (const [value, label] of [
@@ -51,19 +57,30 @@ for (const [value, label] of [
     'const ADMIN_ORDER_DETAIL_FULFILLMENT_OPERATION: &str = "find_fulfillment_by_order";',
     'fulfillment operation constant',
   ],
-  ['use rustok_fulfillment::{FulfillmentError, FulfillmentService};', 'typed fulfillment error import'],
+  ['use rustok_fulfillment::FulfillmentError;', 'typed fulfillment compatibility error import'],
   ['use rustok_web::{HttpError, HttpResult};', 'typed HTTP error import'],
 ]) requireText(source, value, label);
 
 for (const [value, label] of [
-  [
-    '.map_err(|error| map_order_detail_fulfillment_error(tenant.id, id, error))?',
-    'order-detail mapper handoff',
-  ],
+  ['.payment_order_read_port()', 'payment owner read port handoff'],
+  ['find_latest_collection_by_order(', 'payment owner latest-collection operation'],
+  ['LatestPaymentCollectionByOrderRequest { order_id: id }', 'payment owner request'],
+  ['.fulfillment_read_port()', 'fulfillment owner read port handoff'],
+  ['find_latest_fulfillment_by_order_projection(', 'fulfillment owner latest-fulfillment operation'],
+  ['FindLatestFulfillmentByOrderProjectionRequest { order_id: id }', 'fulfillment owner request'],
+  ['map_order_detail_payment_port_error(id, error)', 'payment port error mapper handoff'],
+  ['map_order_detail_fulfillment_port_error(id, error)', 'fulfillment port error mapper handoff'],
   ['[Permission::ORDERS_READ]', 'order read permission'],
   ['Path(id): Path<Uuid>', 'typed order path'],
   ['HttpResult<Json<AdminOrderDetailResponse>>', 'order detail result contract'],
 ]) requireText(showOrder, value, label);
+
+for (const value of [
+  'PaymentService::new(runtime.db_clone())',
+  'FulfillmentService::new(runtime.db_clone())',
+  'map_order_detail_payment_error(',
+  'map_order_detail_fulfillment_error(',
+]) forbidText(showOrder, value, 'mounted order-detail direct owner construction/obsolete mapper');
 
 for (const [value, label] of [
   ['FulfillmentError::Validation(_)', 'validation variant'],
