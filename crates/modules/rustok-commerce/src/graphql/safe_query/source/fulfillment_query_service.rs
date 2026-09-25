@@ -1,3 +1,18 @@
+use std::sync::Arc;
+
+use super::{
+    error::FulfillmentError, BoundaryError, ShippingOptionAdminQueryError,
+};
+use ::rustok_fulfillment::{
+    FindLatestFulfillmentByOrderProjectionRequest, FulfillmentReadPort, FulfillmentResponse,
+    ListAllShippingOptionProjectionsRequest, ListFulfillmentProjectionsRequest,
+    ListFulfillmentsInput, ListShippingOptionProjectionsRequest, ReadFulfillmentProjectionRequest,
+    ReadShippingOptionProjectionRequest, ShippingOptionAdminReadPort, ShippingOptionReadPort,
+    ShippingOptionResponse,
+};
+use ::sea_orm::DatabaseConnection;
+use ::uuid::Uuid;
+
 pub struct FulfillmentService {
     shipping_option_reads: Arc<dyn ShippingOptionReadPort>,
     shipping_option_admin_reads: Arc<dyn ShippingOptionAdminReadPort>,
