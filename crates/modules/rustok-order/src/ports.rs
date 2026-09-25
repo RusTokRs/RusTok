@@ -450,7 +450,7 @@ impl CheckoutOrderIdentityPort for InProcessCheckoutOrderIdentityPort {
                 opaque_payload_present: true,
             };
             log_order_port_failure(
-                context,
+                &context,
                 owner_operation,
                 "order.checkout_identity_storage_unavailable",
                 &facts,
@@ -1348,7 +1348,7 @@ fn hash_json(
     })?;
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hex::encode(hasher.finalize()))
 }
 
 

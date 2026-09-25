@@ -48,6 +48,15 @@ pub struct StoreContextService {
 }
 
 impl StoreContextService {
+    pub fn new(
+        db: sea_orm::DatabaseConnection,
+        region_read_port: Arc<dyn RegionReadPort>,
+    ) -> Self {
+        let (tenant_read_port, tenant_locale_policy_port) =
+            rustok_tenant::in_process_tenant_storefront_ports(db);
+        Self::with_ports(tenant_read_port, tenant_locale_policy_port, region_read_port)
+    }
+
     pub fn with_ports(
         tenant_read_port: Arc<dyn TenantReadPort>,
         tenant_locale_policy_port: Arc<dyn TenantLocalePolicyPort>,

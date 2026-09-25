@@ -242,6 +242,48 @@ fn cart_error(
                 true,
             ),
         },
+        CartError::ShippingBoundary {
+            kind,
+            retryable: owner_retryable,
+            ..
+        } => match kind {
+            PortErrorKind::Validation => (
+                "Cart shipping request is invalid",
+                "cart.storefront_shipping_invalid",
+                false,
+                false,
+            ),
+            PortErrorKind::NotFound => (
+                "Cart shipping option was not found",
+                "cart.storefront_shipping_not_found",
+                false,
+                false,
+            ),
+            PortErrorKind::Conflict => (
+                "Cart shipping calculation conflicts with the current state",
+                "cart.storefront_shipping_conflict",
+                false,
+                false,
+            ),
+            PortErrorKind::Forbidden => (
+                "Cart shipping calculation is not permitted",
+                "cart.storefront_shipping_forbidden",
+                false,
+                false,
+            ),
+            PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+                "Cart shipping calculation is temporarily unavailable",
+                "cart.storefront_shipping_unavailable",
+                *owner_retryable,
+                true,
+            ),
+            PortErrorKind::InvariantViolation => (
+                "Cart shipping calculation could not be completed safely",
+                "cart.storefront_shipping_failed",
+                false,
+                true,
+            ),
+        },
     };
 
     let error_type = std::any::type_name_of_val(&error);

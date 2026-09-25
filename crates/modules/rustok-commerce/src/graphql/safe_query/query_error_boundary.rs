@@ -327,13 +327,13 @@ impl From<OrderError> for BoundaryError {
                 false,
                 "not_found",
             ),
-            OrderError::InvalidTransition { .. } => (
+            OrderError::InvalidTransition { .. } | OrderError::IdempotencyConflict => (
                 "Order state conflicts with this query",
                 "ORDER_STATE_CONFLICT",
                 false,
                 "invalid_transition",
             ),
-            OrderError::Database(_) => (
+            OrderError::Database(_) | OrderError::CommandReceiptCorrupt => (
                 "Order data is temporarily unavailable",
                 "ORDER_TEMPORARILY_UNAVAILABLE",
                 true,
