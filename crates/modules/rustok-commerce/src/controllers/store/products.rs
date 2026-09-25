@@ -194,6 +194,7 @@ fn map_storefront_auxiliary_port_error(
 ) -> HttpError {
     let error_kind = storefront_port_error_kind(&error.kind);
     let owner_code_length = error.code.chars().count();
+    let retryable = error.retryable;
     let public = port_error_to_http_error(error);
     tracing::error!(
         owner,
@@ -202,8 +203,7 @@ fn map_storefront_auxiliary_port_error(
         cart_id_present = cart_id.is_some(),
         owner_error_kind = error_kind,
         owner_code_length,
-        retryable = public.status == StatusCode::SERVICE_UNAVAILABLE
-            || public.status == StatusCode::GATEWAY_TIMEOUT,
+        retryable,
         public_status = %public.status,
         boundary = "commerce_storefront_auxiliary_http",
         "storefront auxiliary port operation failed with bounded diagnostics"
