@@ -47,6 +47,7 @@ const storefrontOrderController = storefrontOrders;
 const storefrontLineItemResolution = read('crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs');
 const storefrontStore = read('crates/modules/rustok-commerce/src/controllers/store/mod.rs');
 const adminCheckoutOperations = read('crates/modules/rustok-commerce/src/controllers/admin/checkout_operations.rs');
+const adminPayments = read('crates/modules/rustok-commerce/src/controllers/admin/payments_owner_reads.rs');
 const pricing = read('crates/modules/rustok-pricing/src/ports.rs');
 const payment = read('crates/modules/rustok-payment/src/ports.rs');
 const paymentCompensation = read('crates/modules/rustok-payment/src/checkout_compensation.rs');
@@ -91,6 +92,7 @@ for (const [source, label] of [
   [storefrontLineItemResolution, 'storefront line-item resolution'],
   [storefrontStore, 'storefront shared store controller'],
   [adminCheckoutOperations, 'admin checkout operations controller'],
+  [adminPayments, 'admin payment command controller'],
   [orderCompensation, 'order checkout compensation port'],
   [orderPaymentSettlement, 'order checkout payment settlement port'],
   [orderRecovery, 'order checkout recovery adapter'],
@@ -719,6 +721,23 @@ requireAll(storefrontOrderController, [
 forbidAll(storefrontOrderController, [
   'Uuid::new_v4().to_string()',
 ], 'storefront order synthetic idempotency');
+requireAll(adminPayments, [
+  'fn require_command_idempotency_key(headers: &HeaderMap)',
+  'let idempotency_key = require_command_idempotency_key(&headers)?;',
+  '.with_idempotency_key(idempotency_key)',
+  'owner_code_length = error.code.chars().count()',
+], 'admin payment replay/error boundary');
+
+forbidAll(adminPayments, [
+  'format!("admin-payment-collection:{collection_id}:{operation}")',
+  'format!("admin-refund:{refund_id}:{operation}")',
+  'internal_code = %error.code',
+  'error = ?error',
+], 'admin payment unsafe/generated boundary');
+
+if ((adminPayments.match(/let idempotency_key = require_command_idempotency_key\(&headers\)\?;/g) ?? []).length !== 5) {
+  throw new Error('expected five admin payment collection/refund transitions to require caller-owned Idempotency-Key');
+}
 const required = [
   [pricing, [
     'correlation_id = %context.correlation_id',
@@ -1083,5 +1102,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Channel, region, cart, product, storefront auxiliary, storefront cart/order/line-item, admin checkout operations, storefront channel denial, pricing, payment collection/compensation, fulfillment, customer, inventory, order checkout, and marketplace payout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
+  '✔ Channel, region, cart, product, storefront auxiliary, storefront cart/order/line-item, admin checkout operations, admin payment commands, storefront channel denial, pricing, payment collection/compensation, fulfillment, customer, inventory, order checkout, and marketplace payout adapters keep raw owner errors out of public PortError messages and retain correlation-safe bounded technical logs',
 );
