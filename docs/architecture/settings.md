@@ -290,6 +290,13 @@ That dependency cutover is complete, while the tenant Blog comment-surface polic
 still open. Commerce must support a digital-only flow without Fulfillment; its current
 static edge remains executable truth to remove, not an example to preserve.
 
+As of 2026-09-25, the Commerce module graph no longer requires Fulfillment for startup:
+the module manifest, root composition, and server feature no longer make it an
+unconditional Commerce dependency, and the paid-order label listener is registered only
+when the Fulfillment provider registry is composed. The typed per-line fulfillment
+requirement and removal of synthetic digital shipping state remain the next Commerce
+capability cutover.
+
 #### Blog comment capability matrix
 
 These are semantic policy states; the owning Blog contract chooses the final field
