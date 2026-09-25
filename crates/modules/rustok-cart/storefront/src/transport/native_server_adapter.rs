@@ -185,6 +185,7 @@ fn map_native_cart(value: rustok_cart::CartResponse) -> StorefrontCart {
                 unit_price: item.unit_price.normalize().to_string(),
                 total_price: item.total_price.normalize().to_string(),
                 currency_code: item.currency_code,
+                fulfillment_requirement: item.fulfillment_requirement.as_str().to_string(),
                 shipping_profile_slug: item.shipping_profile_slug,
                 seller_id: item.seller_id,
             })
