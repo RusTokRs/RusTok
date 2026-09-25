@@ -35,6 +35,12 @@ for (const marker of [
   '.cancel_return('
   'PortErrorKind::Unavailable',
   'PortErrorKind::InvariantViolation',
+  'CommandReceiptAdmission::Replay',
+  'complete_command(receipt, "order_change",',
+  'complete_command(receipt, "order_return",',
+  'context.idempotency_key',
+  'OrderError::IdempotencyConflict',
+  'OrderError::CommandReceiptCorrupt',
 ]) {
   requireText(port, marker, `${portPath}: missing ${marker}`);
 }
