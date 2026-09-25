@@ -56,7 +56,9 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                     ELSE NULL
                 END,
                 checkout_fulfillment_index = CASE
-                    WHEN btrim(metadata #>> '{checkout,fulfillment_index}') ~ '^[0-9]+
+                    WHEN btrim(metadata #>> '{checkout,fulfillment_index}') ~ '^[0-9]+$'
+                    THEN (btrim(metadata #>> '{checkout,fulfillment_index}'))::bigint
+                    ELSE NULL
                 END,
                 checkout_plan_hash = CASE
                     WHEN btrim(metadata #>> '{checkout,order_plan_hash}')
@@ -82,7 +84,10 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                         AND lower(btrim(metadata #>> '{checkout,order_id}')) = order_id::text
                         AND btrim(metadata #>> '{checkout,order_plan_hash}') = checkout_plan_hash
                         AND CASE
-                            WHEN btrim(metadata #>> '{checkout,fulfillment_index}') ~ '^[0-9]+
+                            WHEN btrim(metadata #>> '{checkout,fulfillment_index}') ~ '^[0-9]+$'
+                            THEN (btrim(metadata #>> '{checkout,fulfillment_index}'))::bigint = checkout_fulfillment_index
+                            ELSE false
+                        END
                         AND metadata #>> '{checkout,fulfillment_key}' = format(
                             'checkout:%s:fulfillment:%s',
                             checkout_operation_id,
@@ -112,7 +117,7 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             WHERE metadata #>> '{checkout,fulfillment_key}' IS NOT NULL;
 
             UPDATE fulfillment_items AS fi
-            SET metadata = metadata
+            SET metadata = fi.metadata
                 #- '{checkout,operation_id}'
                 #- '{checkout,order_plan_hash}'
                 #- '{checkout,fulfillment_index}'

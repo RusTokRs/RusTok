@@ -195,10 +195,12 @@ pub async fn compose_artifact_binding_executor(
         })
         .map_err(|error| Error::Message(format!("artifact capability route failed: {error}")))?;
     let mut executors = ExecutorRegistry::new();
-    let rhai = sandbox_rhai_executor(ctx).await?;
-    executors
-        .register_isolated_worker(rhai)
-        .map_err(|error| Error::Message(format!("artifact Rhai executor failed: {error}")))?;
+    if std::env::var("RUSTOK_SANDBOX_WORKER_ENDPOINT").is_ok() {
+        let rhai = sandbox_rhai_executor(ctx).await?;
+        executors
+            .register_isolated_worker(rhai)
+            .map_err(|error| Error::Message(format!("artifact Rhai executor failed: {error}")))?;
+    }
     executors
         .register_in_process(rustok_sandbox::wasm::WasmComponentExecutor::new())
         .map_err(|error| Error::Message(format!("artifact WASM executor failed: {error}")))?;

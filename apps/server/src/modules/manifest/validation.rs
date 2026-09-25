@@ -95,12 +95,13 @@ pub fn validate_ui_i18n_bundle_dir(
     }
 
     for locale in supported_locales {
-        let locale_file = dir.join(format!("{locale}.json"));
-        if !locale_file.is_file() {
+        let json_file = dir.join(format!("{locale}.json"));
+        let ftl_file = dir.join(format!("{locale}.ftl"));
+        if !json_file.is_file() && !ftl_file.is_file() {
             return Err(ManifestError::InvalidModuleUiWiring {
                 slug: slug.to_string(),
                 surface: surface.to_string(),
-                reason: format!("{field} is missing locale bundle {}", locale_file.display()),
+                reason: format!("{field} is missing locale bundle {}", json_file.display()),
             });
         }
     }

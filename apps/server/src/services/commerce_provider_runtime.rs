@@ -71,6 +71,18 @@ pub fn attach_commerce_provider_registries(
     #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
     let host = {
         let runtime = host
+            .shared_get::<rustok_payment::PaymentOrderReadRuntime>()
+            .or_else(|| server.shared_get::<rustok_payment::PaymentOrderReadRuntime>())
+            .unwrap_or_else(|| {
+                rustok_payment::PaymentOrderReadRuntime::in_process(server.db_clone())
+            });
+        server.shared_insert(runtime.clone());
+        host.with_shared_value(runtime)
+    };
+
+    #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
+    let host = {
+        let runtime = host
             .shared_get::<rustok_payment::PaymentAdminCollectionCommandRuntime>()
             .or_else(|| {
                 server.shared_get::<rustok_payment::PaymentAdminCollectionCommandRuntime>()
@@ -284,18 +296,6 @@ pub fn attach_commerce_provider_registries(
             }
             None => host,
         }
-    };
-
-    #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
-    let host = {
-        let runtime = host
-            .shared_get::<rustok_payment::PaymentOrderReadRuntime>()
-            .or_else(|| server.shared_get::<rustok_payment::PaymentOrderReadRuntime>())
-            .unwrap_or_else(|| {
-                rustok_payment::PaymentOrderReadRuntime::in_process(server.db_clone())
-            });
-        server.shared_insert(runtime.clone());
-        host.with_shared_value(runtime)
     };
 
     #[cfg(feature = "commerce-marketplace-financial")]
