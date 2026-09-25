@@ -57,16 +57,10 @@ fn map_storefront_context_error(error: StoreContextError, tenant_id: Uuid) -> Ht
             "Store context was not found".to_string(),
             "tenant_not_found",
         ),
-        StoreContextError::Validation(msg) => (
+        StoreContextError::Validation(_) | StoreContextError::CurrencyRegionMismatch { .. } => (
             StatusCode::BAD_REQUEST,
             "commerce_store_context_invalid",
-            msg.clone(),
-            "validation",
-        ),
-        err @ StoreContextError::CurrencyRegionMismatch { .. } => (
-            StatusCode::BAD_REQUEST,
-            "commerce_store_context_invalid",
-            err.to_string(),
+            "Store context request is invalid".to_string(),
             "validation",
         ),
         StoreContextError::TenantBoundary { .. } => (
@@ -89,15 +83,14 @@ fn map_storefront_context_error(error: StoreContextError, tenant_id: Uuid) -> Ht
         ),
     };
     tracing::error!(
-        error = ?error,
         owner = "rustok_commerce.store_context",
         operation = "resolve_store_context",
-        tenant_id = %tenant_id,
+        tenant_non_nil = !tenant_id.is_nil(),
         error_kind,
         public_code = code,
         status = %status,
         boundary = "commerce_storefront_shared_http",
-        "storefront context resolution failed"
+        "storefront context resolution failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
@@ -109,17 +102,17 @@ fn map_storefront_customer_port_error(
 ) -> HttpError {
     let public = port_error_to_http_error(error.clone());
     tracing::error!(
-        error = ?error,
         owner = "rustok_customer",
         operation = "resolve_current_customer",
-        tenant_id = %tenant_id,
-        user_id = %user_id,
-        error_kind = ?error.kind,
+        tenant_non_nil = !tenant_id.is_nil(),
+        user_non_nil = !user_id.is_nil(),
+        owner_error_kind = ?error.kind,
+        owner_code_length = error.code.chars().count(),
         retryable = error.retryable,
         public_code = %public.code,
         status = %public.status,
         boundary = "commerce_storefront_shared_http",
-        "storefront customer projection failed"
+        "storefront customer projection failed with bounded diagnostics"
     );
     public
 }
@@ -156,16 +149,16 @@ fn map_storefront_channel_error(
         ),
     };
     tracing::error!(
-        error = ?error,
         owner = "rustok_channel",
         operation = "ensure_storefront_channel_enabled",
-        channel_id = ?request_context.channel_id,
-        channel_slug = ?request_context.channel_slug,
+        channel_id_present = request_context.channel_id.is_some(),
+        channel_slug_present = request_context.channel_slug.is_some(),
+        channel_slug_length = request_context.channel_slug.as_deref().map(str::len),
         error_kind,
         public_code = code,
         status = %status,
         boundary = "commerce_storefront_shared_http",
-        "storefront channel resolution failed"
+        "storefront channel resolution failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
