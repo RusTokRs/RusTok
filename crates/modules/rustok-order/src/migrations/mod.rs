@@ -18,6 +18,7 @@ mod m20260721_000117_add_order_change_source_locale;
 mod m20260722_000118_create_order_checkout_identities;
 mod m20260722_000119_extend_order_checkout_identity_result;
 mod m20260925_000120_add_order_line_fulfillment_requirement;
+mod m20260925_000121_create_order_command_receipts;
 
 use sea_orm_migration::MigrationTrait;
 
@@ -43,5 +44,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260722_000118_create_order_checkout_identities::Migration),
         Box::new(m20260722_000119_extend_order_checkout_identity_result::Migration),
         Box::new(m20260925_000120_add_order_line_fulfillment_requirement::Migration),
+        Box::new(m20260925_000121_create_order_command_receipts::Migration),
     ]
 }
