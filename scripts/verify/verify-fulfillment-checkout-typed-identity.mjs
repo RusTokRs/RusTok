@@ -91,6 +91,16 @@ for (const value of [
 }
 
 requireText(migration, 'CREATE UNIQUE INDEX ux_fulfillments_checkout_identity', 'typed identity uniqueness');
+requireText(
+  migration,
+  "length(btrim(metadata #>> '{checkout,fulfillment_index}')) <= 10",
+  'PostgreSQL legacy fulfillment index cast is length-bounded',
+);
+requireText(
+  migration,
+  "THEN (btrim(metadata #>> '{checkout,fulfillment_index}'))::bigint = checkout_fulfillment_index",
+  'PostgreSQL legacy fulfillment index comparison uses a guarded cast',
+);
 requireText(contract, '"typed_identity_migration_required": false', 'contract migration completion');
 requireText(contract, '"identity_guard": "scripts/verify/verify-fulfillment-checkout-typed-identity.mjs"', 'contract identity guard');
 
