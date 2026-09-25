@@ -195,7 +195,20 @@ parse_port_tenant_id(&context, "select_shipping_option");
 `;
 }
 
-function canonicalTax() {
+function canonicalTaxPort() {
+  return `
+"tax.currency_code_invalid";
+"tax.negative_policy_rate";
+"tax.validation";
+"tax calculation request is invalid";
+PortError::validation(
+  "tax.validation",
+  "tax calculation request is invalid",
+);
+`;
+}
+
+function canonicalTaxCalculation() {
   return `
 struct TaxCalculationContextFacts {}
 fn tax_calculation_context_facts() {}
@@ -210,18 +223,8 @@ tracing::error!(
   error_message_present = !error.message.is_empty(),
   error_message_length = error.message.chars().count(),
 );
-tracing::warn!(code = "tax.validation");
-"tax.currency_code_invalid";
-"tax.negative_policy_rate";
-"tax.validation";
-"tax calculation request is invalid";
-PortError::validation(
-  "tax.validation",
-  "tax calculation request is invalid",
-);
 `;
 }
-
 function canonicalCustomer() {
   return `
 struct CustomerReadContextFacts {}
@@ -475,11 +478,10 @@ function fixture(options = {}) {
   if (options.removeFulfillmentCorrelation) fulfillment = fulfillment.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
   put(root, 'crates/modules/rustok-fulfillment/src/ports.rs', fulfillment);
 
-  let tax = `${canonicalTax()}${options.taxAppend ?? ''}`;
+  let tax = `${canonicalTaxPort()}${options.taxAppend ?? ''}`;
   put(root, 'crates/modules/rustok-tax/src/ports.rs', tax);
-  let taxCalculation = `${canonicalTax()}${options.taxAppend ?? ''}`;
+  let taxCalculation = `${canonicalTaxCalculation()}${options.taxCalculationAppend ?? ''}`;
   put(root, 'crates/modules/rustok-tax/src/calculation_context.rs', taxCalculation);
-
   let customer = `${canonicalCustomer()}${options.customerAppend ?? ''}`;
   if (options.removeCustomerCorrelation) customer = customer.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
   put(root, 'crates/modules/rustok-customer/src/ports.rs', customer);
@@ -565,7 +567,7 @@ const failureCases = [
   ["raw tax validation cause", { taxAppend: 'PortError::validation("tax.validation", message);' }, /tax public error mapping: forbidden/],
   ["dynamic tax country validation detail", { taxAppend: 'format!("duplicate tax country rule for {country_code}");' }, /tax public error mapping: forbidden/],
   ["display-based tax validation helper", { taxAppend: 'detail: impl std::fmt::Display' }, /tax public error mapping: forbidden/],
-  ["complete tax error diagnostics", { taxAppend: 'tracing::error!(error = ?error);' }, /tax calculation payload diagnostics: forbidden/],
+  ["complete tax error diagnostics", { taxCalculationAppend: 'tracing::error!(error = ?error);' }, /tax calculation payload diagnostics: forbidden/],
   ["raw fulfillment storage cause", { fulfillmentAppend: 'format!("fulfillment storage unavailable: {error}");' }, /fulfillment public error mapping: forbidden/],
   ["complete fulfillment error diagnostics", { fulfillmentAppend: 'tracing::error!(error = ?error);' }, /fulfillment payload diagnostics: forbidden/],
   ["raw fulfillment tenant diagnostics", { fulfillmentAppend: 'tenant_id = %context.tenant_id;' }, /fulfillment payload diagnostics: forbidden/],
