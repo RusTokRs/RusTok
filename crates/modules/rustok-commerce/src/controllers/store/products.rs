@@ -105,6 +105,55 @@ fn storefront_product_list_port_context(
     }
 }
 
+fn map_storefront_product_list_port_error(
+    error: PortError,
+    context: &PortContext,
+    operation: &'static str,
+    tenant_id: Uuid,
+) -> HttpError {
+    let (status, code, message, error_kind) = match &error.kind {
+        PortErrorKind::Validation => (
+            StatusCode::BAD_REQUEST,
+            "commerce_store_product_invalid",
+            "Product request is invalid",
+            "validation",
+        ),
+        PortErrorKind::NotFound => (
+            StatusCode::NOT_FOUND,
+            "commerce_store_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_store_product_unavailable",
+            "Product service is temporarily unavailable",
+            "unavailable",
+        ),
+        PortErrorKind::Conflict | PortErrorKind::Forbidden | PortErrorKind::InvariantViolation => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_store_product_failed",
+            "Product operation could not be completed safely",
+            "owner_failure",
+        ),
+    };
+    tracing::error!(
+        owner = "rustok_product",
+        owner_operation = operation,
+        correlation_id = %context.correlation_id,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        owner_error_kind = ?error.kind,
+        owner_code_length = error.code.chars().count(),
+        retryable = error.retryable,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = "commerce_storefront_product_http",
+        "storefront product list owner read failed with bounded diagnostics"
+    );
+    HttpError::new(status, code, message)
+}
+
 fn storefront_product_port_context(
     tenant_id: Uuid,
     request_context: &RequestContext,
