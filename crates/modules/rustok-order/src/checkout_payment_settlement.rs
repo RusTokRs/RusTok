@@ -364,6 +364,22 @@ fn order_payment_settlement_order_error_facts(
             uuid_non_nil_count: 0,
             opaque_payload_present: true,
         },
+        OrderError::IdempotencyConflict => OrderPaymentSettlementOwnerErrorFacts {
+            error_variant: "idempotency_conflict",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: false,
+        },
+        OrderError::CommandReceiptCorrupt => OrderPaymentSettlementOwnerErrorFacts {
+            error_variant: "command_receipt_corrupt",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: true,
+        },
     }
 }
 
@@ -927,6 +943,34 @@ fn order_error_to_port_error(
             PortError::invariant_violation(
                 "order.invariant_violation",
                 "order payment settlement failed an internal invariant",
+            )
+        }
+        OrderError::IdempotencyConflict => {
+            log_order_payment_owner_warning(
+                context,
+                operation,
+                "idempotency_conflict",
+                "order.idempotency_conflict",
+                None,
+                None,
+                &error_facts,
+            );
+            PortError::conflict(
+                "order.idempotency_conflict",
+                "order operation conflicts with an existing idempotency key",
+            )
+        }
+        OrderError::CommandReceiptCorrupt => {
+            log_order_payment_owner_error(
+                context,
+                operation,
+                "command_receipt_corrupt",
+                "order.command_receipt_corrupt",
+                &error_facts,
+            );
+            PortError::invariant_violation(
+                "order.command_receipt_corrupt",
+                "order command receipt requires operator review",
             )
         }
     }

@@ -294,7 +294,7 @@ pub struct OrderTaxLineResponse {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct OrderChangeResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -311,7 +311,7 @@ pub struct OrderChangeResponse {
     pub cancelled_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct OrderReturnResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -330,7 +330,7 @@ pub struct OrderReturnResponse {
     pub cancelled_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct OrderReturnItemResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,

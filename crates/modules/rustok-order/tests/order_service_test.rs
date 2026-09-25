@@ -5,6 +5,7 @@ use rustok_order::dto::{
     ApplyOrderChangeInput, CancelOrderChangeInput, CreateOrderAdjustmentInput,
     CreateOrderChangeInput, CreateOrderInput, CreateOrderLineItemInput, CreateOrderReturnInput,
     CreateOrderReturnItemInput, ListOrderChangesInput, ListOrderReturnsInput,
+    OrderLineFulfillmentRequirement,
 };
 use rustok_order::entities::{order, order_tax_line};
 use rustok_order::error::OrderError;
@@ -38,7 +39,7 @@ fn create_order_input() -> CreateOrderInput {
             CreateOrderLineItemInput {
                 product_id: Some(Uuid::new_v4()),
                 variant_id: Some(Uuid::new_v4()),
-            fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: Some("default".to_string()),
                 seller_id: None,
                 sku: Some("SKU-1".to_string()),
@@ -50,7 +51,8 @@ fn create_order_input() -> CreateOrderInput {
             CreateOrderLineItemInput {
                 product_id: None,
                 variant_id: None,
-                shipping_profile_slug: "gift".to_string(),
+                fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                shipping_profile_slug: Some("gift".to_string()),
                 seller_id: None,
                 sku: Some("SKU-2".to_string()),
                 title: "Gift wrap".to_string(),
@@ -336,7 +338,6 @@ async fn invalid_transition_is_rejected() {
         other => panic!("expected invalid transition, got {other:?}"),
     }
 }
-
 
 #[tokio::test]
 async fn post_order_command_replay_is_stable_and_conflicts_are_typed() {
@@ -1006,8 +1007,9 @@ async fn list_order_returns_clamps_per_page_upper_bound_to_100() {
         service
             .create_return(
                 tenant_id,
+                actor_id,
                 order.id,
-                "order-service-test-create_return-9",
+                format!("order-service-test-create_return-9-{index}"),
                 CreateOrderReturnInput {
                     reason: Some(format!("reason-{index}")),
                     note: None,

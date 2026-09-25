@@ -32,9 +32,8 @@ use crate::dto::{
     CompleteOrderReturnInput, CreateOrderAdjustmentInput, CreateOrderChangeInput, CreateOrderInput,
     CreateOrderLineItemInput, CreateOrderReturnInput, CreateOrderTaxLineInput,
     ListOrderChangesInput, ListOrderReturnsInput, ListOrdersInput, OrderAdjustmentResponse,
-    OrderLineFulfillmentRequirement,
-    OrderChangeResponse, OrderLineItemResponse, OrderResponse, OrderReturnItemResponse,
-    OrderReturnResponse, OrderTaxLineResponse,
+    OrderChangeResponse, OrderLineFulfillmentRequirement, OrderLineItemResponse, OrderResponse,
+    OrderReturnItemResponse, OrderReturnResponse, OrderTaxLineResponse,
 };
 use crate::entities;
 use crate::error::{OrderError, OrderResult};
@@ -670,8 +669,7 @@ impl OrderService {
         F: FnOnce(&mut entities::order::ActiveModel, chrono::DateTime<Utc>),
     {
         let txn = self.db.begin().await?;
-        let existing =
-            find_order_for_update_in_tx(&txn, tenant_id, order_id).await?;
+        let existing = find_order_for_update_in_tx(&txn, tenant_id, order_id).await?;
         let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata)
             .unwrap_or(load_tenant_default_locale(&txn, tenant_id).await?);
         if existing.status != expected_from {
@@ -828,11 +826,7 @@ impl OrderService {
                     let shipping_profile_slug = match fulfillment_requirement {
                         OrderLineFulfillmentRequirement::Digital => None,
                         OrderLineFulfillmentRequirement::Physical => {
-                            Some(
-                                item.shipping_profile_slug
-                                    .trim()
-                                    .to_ascii_lowercase(),
-                            )
+                            Some(item.shipping_profile_slug.trim().to_ascii_lowercase())
                         }
                     };
                     if fulfillment_requirement == OrderLineFulfillmentRequirement::Physical
@@ -934,12 +928,12 @@ impl OrderService {
                     "adjustment amount must be greater than zero".to_string(),
                 ));
             }
-            if let Some(index) = adjustment.line_item_index
-                && index >= line_item_count
-            {
-                return Err(OrderError::Validation(format!(
-                    "adjustment line_item_index {index} is out of range"
-                )));
+            if let Some(index) = adjustment.line_item_index {
+                if index >= line_item_count {
+                    return Err(OrderError::Validation(format!(
+                        "adjustment line_item_index {index} is out of range"
+                    )));
+                }
             }
             adjustment_total += adjustment.amount;
         }
@@ -966,12 +960,12 @@ impl OrderService {
                     "tax line rate must be zero or greater".to_string(),
                 ));
             }
-            if let Some(index) = tax_line.line_item_index
-                && index >= line_item_count
-            {
-                return Err(OrderError::Validation(format!(
-                    "tax line line_item_index {index} is out of range"
-                )));
+            if let Some(index) = tax_line.line_item_index {
+                if index >= line_item_count {
+                    return Err(OrderError::Validation(format!(
+                        "tax line line_item_index {index} is out of range"
+                    )));
+                }
             }
             if tax_line.currency_code.trim().to_ascii_uppercase() != currency_code {
                 return Err(OrderError::Validation(
@@ -1695,12 +1689,9 @@ impl OrderService {
         )
         .await?
         {
-            CommandReceiptAdmission::Replay(receipt) => replay_command(
-                receipt,
-                "apply_order_change",
-                hash.as_str(),
-                "order_change",
-            ),
+            CommandReceiptAdmission::Replay(receipt) => {
+                replay_command(receipt, "apply_order_change", hash.as_str(), "order_change")
+            }
             CommandReceiptAdmission::New(receipt) => {
                 let result = self
                     .transition_order_change(
@@ -1737,10 +1728,10 @@ impl OrderService {
             .map_err(|error| OrderError::Validation(error.to_string()))?;
         let reason = trim_optional_text(input.reason);
         let mut metadata = normalize_json_object(input.metadata, "metadata")?;
-        if let Some(reason) = reason.clone()
-            && let Value::Object(ref mut object) = metadata
-        {
-            object.insert("cancellation_reason".to_string(), Value::String(reason));
+        if let Some(reason) = reason.clone() {
+            if let Value::Object(ref mut object) = metadata {
+                object.insert("cancellation_reason".to_string(), Value::String(reason));
+            }
         }
         let key = normalize_idempotency_key(idempotency_key)?;
         let hash = command_request_hash(
@@ -1870,20 +1861,12 @@ impl OrderService {
         )
         .await?
         {
-            CommandReceiptAdmission::Replay(receipt) => replay_command(
-                receipt,
-                "create_return",
-                hash.as_str(),
-                "order_return",
-            ),
+            CommandReceiptAdmission::Replay(receipt) => {
+                replay_command(receipt, "create_return", hash.as_str(), "order_return")
+            }
             CommandReceiptAdmission::New(receipt) => {
                 let result = self
-                    .create_return_in_transaction(
-                        &receipt.transaction,
-                        tenant_id,
-                        order_id,
-                        input,
-                    )
+                    .create_return_in_transaction(&receipt.transaction, tenant_id, order_id, input)
                     .await;
                 match result {
                     Ok(response) => complete_command(receipt, "order_return", &response).await,
@@ -1928,10 +1911,7 @@ impl OrderService {
             if !active_return_ids.is_empty() {
                 for existing_item in entities::order_return_item::Entity::find()
                     .filter(entities::order_return_item::Column::TenantId.eq(tenant_id))
-                    .filter(
-                        entities::order_return_item::Column::ReturnId
-                            .is_in(active_return_ids),
-                    )
+                    .filter(entities::order_return_item::Column::ReturnId.is_in(active_return_ids))
                     .filter(
                         entities::order_return_item::Column::LineItemId
                             .is_in(requested_line_item_ids),
@@ -2070,12 +2050,9 @@ impl OrderService {
         )
         .await?
         {
-            CommandReceiptAdmission::Replay(receipt) => replay_command(
-                receipt,
-                "complete_return",
-                hash.as_str(),
-                "order_return",
-            ),
+            CommandReceiptAdmission::Replay(receipt) => {
+                replay_command(receipt, "complete_return", hash.as_str(), "order_return")
+            }
             CommandReceiptAdmission::New(receipt) => {
                 let result = self
                     .transition_return(
@@ -2136,12 +2113,9 @@ impl OrderService {
         )
         .await?
         {
-            CommandReceiptAdmission::Replay(receipt) => replay_command(
-                receipt,
-                "cancel_return",
-                hash.as_str(),
-                "order_return",
-            ),
+            CommandReceiptAdmission::Replay(receipt) => {
+                replay_command(receipt, "cancel_return", hash.as_str(), "order_return")
+            }
             CommandReceiptAdmission::New(receipt) => {
                 let result = self
                     .transition_return(

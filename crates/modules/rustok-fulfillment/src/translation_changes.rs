@@ -1,6 +1,4 @@
-use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult, Statement,
-};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult, Statement};
 use uuid::Uuid;
 
 use crate::{
@@ -104,7 +102,8 @@ impl ShippingOptionTranslationService {
         after_seq: u64,
         through_seq: u64,
         limit: u16,
-    ) -> ShippingOptionTranslationExactLocaleResult<Vec<ShippingOptionTranslationChangeRecord>> {
+    ) -> ShippingOptionTranslationExactLocaleResult<Vec<ShippingOptionTranslationChangeRecord>>
+    {
         validate_tenant(tenant_id)?;
         if through_seq == 0 || after_seq > through_seq {
             return Err(ShippingOptionTranslationExactLocaleError::Validation(
@@ -112,9 +111,11 @@ impl ShippingOptionTranslationService {
             ));
         }
         if limit == 0 || limit > MAX_SHIPPING_OPTION_TRANSLATION_CHANGE_PAGE {
-            return Err(ShippingOptionTranslationExactLocaleError::Validation(format!(
-                "Fulfillment translation change page size must be between 1 and {MAX_SHIPPING_OPTION_TRANSLATION_CHANGE_PAGE}"
-            )));
+            return Err(ShippingOptionTranslationExactLocaleError::Validation(
+                format!(
+                    "Fulfillment translation change page size must be between 1 and {MAX_SHIPPING_OPTION_TRANSLATION_CHANGE_PAGE}"
+                ),
+            ));
         }
 
         let backend = self.database().get_database_backend();
@@ -287,13 +288,12 @@ fn optional_positive_sequence(
     value: Option<i64>,
     field: &str,
 ) -> ShippingOptionTranslationExactLocaleResult<Option<u64>> {
-    value.map(|value| positive_sequence(value, field)).transpose()
+    value
+        .map(|value| positive_sequence(value, field))
+        .transpose()
 }
 
-fn positive_sequence(
-    value: i64,
-    field: &str,
-) -> ShippingOptionTranslationExactLocaleResult<u64> {
+fn positive_sequence(value: i64, field: &str) -> ShippingOptionTranslationExactLocaleResult<u64> {
     let value = u64::try_from(value).map_err(|_| invalid_sequence(field))?;
     if value == 0 {
         return Err(invalid_sequence(field));

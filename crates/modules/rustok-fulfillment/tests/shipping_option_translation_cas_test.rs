@@ -52,7 +52,10 @@ async fn exact_locale_apply_updates_only_target_and_preserves_other_locales() {
         .read_exact_locale(tenant_id, option.id, "en", "de")
         .await
         .expect("source snapshot should load");
-    assert_eq!(before.exact_locales, vec!["en".to_string(), "fr".to_string()]);
+    assert_eq!(
+        before.exact_locales,
+        vec!["en".to_string(), "fr".to_string()]
+    );
     assert!(before.target.is_none());
 
     let applied = translations
@@ -82,7 +85,10 @@ async fn exact_locale_apply_updates_only_target_and_preserves_other_locales() {
         vec!["de".to_string(), "en".to_string(), "fr".to_string()]
     );
     assert_eq!(after.source.name, "Express");
-    assert_eq!(after.target.as_ref().map(|value| value.name.as_str()), Some("Express DE"));
+    assert_eq!(
+        after.target.as_ref().map(|value| value.name.as_str()),
+        Some("Express DE")
+    );
     assert_ne!(after.resource_revision, before.resource_revision);
 }
 

@@ -156,12 +156,8 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
         let status_length = request.status.as_deref().map(str::len);
         let order_id = request.order_id;
         let customer_id = request.customer_id;
-        let request_facts = fulfillment_lifecycle_read_request_facts(
-            None,
-            order_id,
-            status_length,
-            customer_id,
-        );
+        let request_facts =
+            fulfillment_lifecycle_read_request_facts(None, order_id, status_length, customer_id);
         let (items, total) = self
             .inner
             .list_fulfillments(
@@ -194,12 +190,8 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
     ) -> Result<Option<FulfillmentResponse>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context, "find_latest_fulfillment_by_order_projection")?;
-        let request_facts = fulfillment_lifecycle_read_request_facts(
-            None,
-            Some(request.order_id),
-            None,
-            None,
-        );
+        let request_facts =
+            fulfillment_lifecycle_read_request_facts(None, Some(request.order_id), None, None);
 
         self.inner
             .find_by_order(tenant_id, request.order_id)

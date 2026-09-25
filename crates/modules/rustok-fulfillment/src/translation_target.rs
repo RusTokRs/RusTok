@@ -51,8 +51,9 @@ impl ShippingOptionTranslationTargetProvider {
         TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
                 .expect("static Fulfillment owner slug must satisfy the target contract"),
-            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static Shipping Option Copy resource kind must satisfy the target contract"),
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
+                "static Shipping Option Copy resource kind must satisfy the target contract",
+            ),
             display_name: "Shipping Options".to_string(),
             capabilities: BTreeSet::from([
                 TranslationTargetCapability::ListResources,
@@ -673,12 +674,10 @@ fn fulfillment_translation_error_to_port_error(
                 "Shipping Option exact target locale is missing after owner apply",
             )
         }
-        ShippingOptionTranslationExactLocaleError::RevisionConflict { .. } => {
-            PortError::conflict(
-                "fulfillment.translation_revision_conflict",
-                "Fulfillment translation state conflicts with the request",
-            )
-        }
+        ShippingOptionTranslationExactLocaleError::RevisionConflict { .. } => PortError::conflict(
+            "fulfillment.translation_revision_conflict",
+            "Fulfillment translation state conflicts with the request",
+        ),
         ShippingOptionTranslationExactLocaleError::ShippingOptionNotFound(_) => {
             PortError::not_found(
                 "fulfillment.translation_resource_not_found",

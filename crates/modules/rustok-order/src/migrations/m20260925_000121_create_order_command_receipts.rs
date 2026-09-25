@@ -18,8 +18,16 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(OrderCommandReceipts::TenantId).uuid().not_null())
-                    .col(ColumnDef::new(OrderCommandReceipts::ActorId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(OrderCommandReceipts::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(OrderCommandReceipts::ActorId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(OrderCommandReceipts::IdempotencyKey)
                             .string_len(191)
@@ -48,7 +56,10 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
-                    .col(ColumnDef::new(OrderCommandReceipts::CompletedAt).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(OrderCommandReceipts::CompletedAt)
+                            .timestamp_with_time_zone(),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -84,11 +95,7 @@ impl MigrationTrait for Migration {
         match manager.get_database_backend() {
             DatabaseBackend::Postgres | DatabaseBackend::MySql | DatabaseBackend::Sqlite => {
                 manager
-                    .drop_table(
-                        Table::drop()
-                            .table(OrderCommandReceipts::Table)
-                            .to_owned(),
-                    )
+                    .drop_table(Table::drop().table(OrderCommandReceipts::Table).to_owned())
                     .await
             }
             backend => Err(DbErr::Custom(format!(

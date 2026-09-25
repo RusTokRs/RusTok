@@ -352,6 +352,8 @@ fn order_compensation_order_error_facts(error: &OrderError) -> OrderCompensation
             false,
         ),
         OrderError::Core(_) => ("core", 0, 0, 0, 0, true),
+        OrderError::IdempotencyConflict => ("idempotency_conflict", 0, 0, 0, 0, false),
+        OrderError::CommandReceiptCorrupt => ("command_receipt_corrupt", 0, 0, 0, 0, true),
     };
     OrderCompensationOrderErrorFacts {
         error_variant,
@@ -848,6 +850,33 @@ fn order_error_to_port_error(
             PortError::invariant_violation(
                 "order.invariant_violation",
                 "order compensation failed an internal invariant",
+            )
+        }
+        OrderError::IdempotencyConflict => {
+            log_order_owner_warning(
+                context,
+                operation,
+                "idempotency_conflict",
+                "order.idempotency_conflict",
+                None,
+                error_facts,
+            );
+            PortError::conflict(
+                "order.idempotency_conflict",
+                "order operation conflicts with an existing idempotency key",
+            )
+        }
+        OrderError::CommandReceiptCorrupt => {
+            log_order_owner_error(
+                context,
+                operation,
+                "command_receipt_corrupt",
+                "order.command_receipt_corrupt",
+                error_facts,
+            );
+            PortError::invariant_violation(
+                "order.command_receipt_corrupt",
+                "order command receipt requires operator review",
             )
         }
     }

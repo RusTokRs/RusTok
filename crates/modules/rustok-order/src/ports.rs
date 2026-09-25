@@ -1286,5 +1286,33 @@ fn order_error_to_port_error(
                 false,
             )
         }
+        OrderError::IdempotencyConflict => {
+            tracing::warn!(
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "order.idempotency_conflict",
+                "order operation conflicts with an existing idempotency key"
+            );
+            PortError::conflict(
+                "order.idempotency_conflict",
+                "order operation conflicts with an existing idempotency key",
+            )
+        }
+        OrderError::CommandReceiptCorrupt => {
+            tracing::error!(
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "order.command_receipt_corrupt",
+                "order command receipt requires operator review"
+            );
+            PortError::new(
+                rustok_api::PortErrorKind::InvariantViolation,
+                "order.command_receipt_corrupt",
+                "order command receipt requires operator review",
+                false,
+            )
+        }
     }
 }

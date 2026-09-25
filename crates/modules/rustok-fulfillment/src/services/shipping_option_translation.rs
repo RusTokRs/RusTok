@@ -14,8 +14,7 @@ use uuid::Uuid;
 use crate::{
     entities::{shipping_option, shipping_option_translation},
     translation_changes::{
-        ShippingOptionTranslationChangeLifecycle,
-        record_shipping_option_translation_change_in_tx,
+        ShippingOptionTranslationChangeLifecycle, record_shipping_option_translation_change_in_tx,
     },
 };
 
@@ -141,9 +140,11 @@ impl ShippingOptionTranslationService {
         let target_locale = canonical_locale(target_locale)?;
         validate_locale_pair(&source_locale, &target_locale)?;
         if limit == 0 || limit > MAX_SHIPPING_OPTION_TRANSLATION_RESOURCE_PAGE {
-            return Err(ShippingOptionTranslationExactLocaleError::Validation(format!(
-                "Fulfillment translation resource page size must be between 1 and {MAX_SHIPPING_OPTION_TRANSLATION_RESOURCE_PAGE}"
-            )));
+            return Err(ShippingOptionTranslationExactLocaleError::Validation(
+                format!(
+                    "Fulfillment translation resource page size must be between 1 and {MAX_SHIPPING_OPTION_TRANSLATION_RESOURCE_PAGE}"
+                ),
+            ));
         }
 
         let source_shipping_option_ids = sea_orm::sea_query::Query::select()
@@ -273,9 +274,11 @@ impl ShippingOptionTranslationService {
             .lock_exclusive()
             .one(&txn)
             .await?
-            .ok_or(ShippingOptionTranslationExactLocaleError::ShippingOptionNotFound(
-                shipping_option_id,
-            ))?;
+            .ok_or(
+                ShippingOptionTranslationExactLocaleError::ShippingOptionNotFound(
+                    shipping_option_id,
+                ),
+            )?;
         let translations = load_translations(&txn, shipping_option_id).await?;
         let source = exact_locale_row(&translations, &source_locale).ok_or_else(|| {
             ShippingOptionTranslationExactLocaleError::SourceLocaleNotFound {
@@ -297,9 +300,9 @@ impl ShippingOptionTranslationService {
         )?;
         let current_target_revision = target.map(locale_revision);
         if request.expected_target_revision != current_target_revision {
-            return Err(ShippingOptionTranslationExactLocaleError::RevisionConflict {
-                revision: "target",
-            });
+            return Err(
+                ShippingOptionTranslationExactLocaleError::RevisionConflict { revision: "target" },
+            );
         }
 
         let unchanged = target.is_some_and(|existing| existing.name == target_name);
@@ -372,9 +375,9 @@ where
         .filter(shipping_option::Column::TenantId.eq(tenant_id))
         .one(db)
         .await?
-        .ok_or(ShippingOptionTranslationExactLocaleError::ShippingOptionNotFound(
-            shipping_option_id,
-        ))
+        .ok_or(
+            ShippingOptionTranslationExactLocaleError::ShippingOptionNotFound(shipping_option_id),
+        )
 }
 
 async fn load_translations<C>(
@@ -420,10 +423,12 @@ fn build_snapshot(
 ) -> ShippingOptionTranslationExactLocaleResult<ShippingOptionTranslationExactLocaleSnapshot> {
     let source = exact_locale_row(&translations, &source_locale)
         .cloned()
-        .ok_or_else(|| ShippingOptionTranslationExactLocaleError::SourceLocaleNotFound {
-            shipping_option_id: option.id,
-            locale: source_locale.clone(),
-        })?;
+        .ok_or_else(
+            || ShippingOptionTranslationExactLocaleError::SourceLocaleNotFound {
+                shipping_option_id: option.id,
+                locale: source_locale.clone(),
+            },
+        )?;
     let target = exact_locale_row(&translations, &target_locale).cloned();
     let resource_revision = resource_revision(&option, &translations);
     let source_revision = locale_revision(&source);

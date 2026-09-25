@@ -8,11 +8,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::services::fulfillment::CheckoutFulfillmentRecord;
 use crate::{
     CreateFulfillmentInput, CreateFulfillmentItemInput, FulfillmentError, FulfillmentResponse,
     FulfillmentService,
 };
-use crate::services::fulfillment::CheckoutFulfillmentRecord;
 
 const CHECKOUT_FULFILLMENT_OWNER: &str = "rustok_fulfillment";
 const CHECKOUT_FULFILLMENT_BOUNDARY: &str = "checkout_fulfillment_execution_port";
@@ -313,11 +313,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
         checkout_fulfillment_index: u32,
     ) -> Result<Option<CheckoutFulfillmentRecord>, PortError> {
         self.service
-            .find_checkout_fulfillment(
-                tenant_id,
-                checkout_operation_id,
-                checkout_fulfillment_index,
-            )
+            .find_checkout_fulfillment(tenant_id, checkout_operation_id, checkout_fulfillment_index)
             .await
             .map_err(|error| fulfillment_error_to_port_error(context, service_operation, error))
             .map(|record| {
@@ -330,6 +326,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
                 record
             })
     }
+}
 
 fn map_checkout_fulfillment_local_port_error(
     context: &PortContext,
@@ -686,19 +683,6 @@ fn build_input(
 }
 
 struct FulfillmentExpectation<'a> {
-    tenant_id: Uuid,
-    checkout_operation_id: Uuid,
-    order_id: Uuid,
-    customer_id: Option<Uuid>,
-    plan_hash: &'a str,
-    plan: &'a CheckoutFulfillmentCommand,
-    key: &'a str,
-}
-
-fn validate_fulfillment(
-    fulfillment: &FulfillmentResponse,
-    expected: FulfillmentExpectation<'_>,
-) -> Result<(struct FulfillmentExpectation<'a> {
     tenant_id: Uuid,
     order_id: Uuid,
     customer_id: Option<Uuid>,

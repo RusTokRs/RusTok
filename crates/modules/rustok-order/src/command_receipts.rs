@@ -4,7 +4,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
     QueryFilter, Set, TransactionTrait,
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -114,7 +114,8 @@ pub(crate) fn replay_command<R: DeserializeOwned>(
     expected_request_hash: &str,
     expected_response_kind: &str,
 ) -> OrderResult<R> {
-    if receipt.command_kind != expected_command_kind || receipt.request_hash != expected_request_hash
+    if receipt.command_kind != expected_command_kind
+        || receipt.request_hash != expected_request_hash
     {
         return Err(OrderError::IdempotencyConflict);
     }
@@ -124,7 +125,9 @@ pub(crate) fn replay_command<R: DeserializeOwned>(
     {
         return Err(OrderError::CommandReceiptCorrupt);
     }
-    let response = receipt.response_json.ok_or(OrderError::CommandReceiptCorrupt)?;
+    let response = receipt
+        .response_json
+        .ok_or(OrderError::CommandReceiptCorrupt)?;
     serde_json::from_value(response).map_err(|_| OrderError::CommandReceiptCorrupt)
 }
 

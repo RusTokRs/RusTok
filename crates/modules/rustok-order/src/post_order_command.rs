@@ -149,7 +149,8 @@ impl OrderPostOrderCommandPort for InProcessOrderPostOrderCommandPort {
         request: CreateOrderChangeRequest,
     ) -> Result<OrderChangeResponse, PortError> {
         const OPERATION: &str = "create_change";
-        let (tenant_id, actor_id, idempotency_key) = require_post_order_command_context(&context, OPERATION)?;
+        let (tenant_id, actor_id, idempotency_key) =
+            require_post_order_command_context(&context, OPERATION)?;
         self.inner
             .create_order_change(
                 tenant_id,
@@ -168,7 +169,8 @@ impl OrderPostOrderCommandPort for InProcessOrderPostOrderCommandPort {
         request: ApplyOrderChangeRequest,
     ) -> Result<OrderChangeResponse, PortError> {
         const OPERATION: &str = "apply_change";
-        let (tenant_id, actor_id, idempotency_key) = require_post_order_command_context(&context, OPERATION)?;
+        let (tenant_id, actor_id, idempotency_key) =
+            require_post_order_command_context(&context, OPERATION)?;
         self.inner
             .apply_order_change(
                 tenant_id,
@@ -187,7 +189,8 @@ impl OrderPostOrderCommandPort for InProcessOrderPostOrderCommandPort {
         request: CancelOrderChangeRequest,
     ) -> Result<OrderChangeResponse, PortError> {
         const OPERATION: &str = "cancel_change";
-        let (tenant_id, actor_id, idempotency_key) = require_post_order_command_context(&context, OPERATION)?;
+        let (tenant_id, actor_id, idempotency_key) =
+            require_post_order_command_context(&context, OPERATION)?;
         self.inner
             .cancel_order_change(
                 tenant_id,
@@ -206,7 +209,8 @@ impl OrderPostOrderCommandPort for InProcessOrderPostOrderCommandPort {
         request: CreateOrderReturnRequest,
     ) -> Result<OrderReturnResponse, PortError> {
         const OPERATION: &str = "create_return";
-        let (tenant_id, actor_id, idempotency_key) = require_post_order_command_context(&context, OPERATION)?;
+        let (tenant_id, actor_id, idempotency_key) =
+            require_post_order_command_context(&context, OPERATION)?;
         self.inner
             .create_return(
                 tenant_id,
@@ -225,7 +229,8 @@ impl OrderPostOrderCommandPort for InProcessOrderPostOrderCommandPort {
         request: CompleteOrderReturnRequest,
     ) -> Result<OrderReturnResponse, PortError> {
         const OPERATION: &str = "complete_return";
-        let (tenant_id, actor_id, idempotency_key) = require_post_order_command_context(&context, OPERATION)?;
+        let (tenant_id, actor_id, idempotency_key) =
+            require_post_order_command_context(&context, OPERATION)?;
         self.inner
             .complete_return(
                 tenant_id,
@@ -244,7 +249,8 @@ impl OrderPostOrderCommandPort for InProcessOrderPostOrderCommandPort {
         request: CancelOrderReturnRequest,
     ) -> Result<OrderReturnResponse, PortError> {
         const OPERATION: &str = "cancel_return";
-        let (tenant_id, actor_id, idempotency_key) = require_post_order_command_context(&context, OPERATION)?;
+        let (tenant_id, actor_id, idempotency_key) =
+            require_post_order_command_context(&context, OPERATION)?;
         self.inner
             .cancel_return(
                 tenant_id,

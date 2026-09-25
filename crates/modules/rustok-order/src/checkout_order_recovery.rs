@@ -902,6 +902,8 @@ fn checkout_order_recovery_owner_error_facts(
             false,
         ),
         OrderError::Core(_) => ("core", 0, 0, 0, 0, true),
+        OrderError::IdempotencyConflict => ("idempotency_conflict", 0, 0, 0, 0, false),
+        OrderError::CommandReceiptCorrupt => ("command_receipt_corrupt", 0, 0, 0, 0, true),
     };
     CheckoutOrderRecoveryOwnerErrorFacts {
         error_variant,
@@ -923,11 +925,16 @@ fn checkout_order_recovery_owner_error_code(error: &OrderError) -> &'static str 
             "order.related_resource_not_found"
         }
         OrderError::Core(_) => "order.invariant_violation",
+        OrderError::IdempotencyConflict => "order.idempotency_conflict",
+        OrderError::CommandReceiptCorrupt => "order.command_receipt_corrupt",
     }
 }
 
 fn checkout_order_recovery_owner_error_is_technical(error: &OrderError) -> bool {
-    matches!(error, OrderError::Database(_) | OrderError::Core(_))
+    matches!(
+        error,
+        OrderError::Database(_) | OrderError::Core(_) | OrderError::CommandReceiptCorrupt
+    )
 }
 
 fn log_checkout_order_recovery_owner_error(
@@ -1041,6 +1048,14 @@ fn order_error_to_port_error(
         OrderError::Core(_) => PortError::invariant_violation(
             "order.invariant_violation",
             "order operation failed an internal invariant",
+        ),
+        OrderError::IdempotencyConflict => PortError::conflict(
+            "order.idempotency_conflict",
+            "order operation conflicts with an existing idempotency key",
+        ),
+        OrderError::CommandReceiptCorrupt => PortError::invariant_violation(
+            "order.command_receipt_corrupt",
+            "order command receipt requires operator review",
         ),
     }
 }

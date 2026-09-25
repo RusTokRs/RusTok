@@ -116,7 +116,8 @@ impl FulfillmentService {
         .await?;
 
         insert_translations(&txn, shipping_option_id, &translations).await?;
-        let translation_rows = load_shipping_option_translation_rows(&txn, shipping_option_id).await?;
+        let translation_rows =
+            load_shipping_option_translation_rows(&txn, shipping_option_id).await?;
         let resource_revision =
             shipping_option_translation_resource_revision(&option, &translation_rows);
         record_shipping_option_translation_change_in_tx(
@@ -205,9 +206,7 @@ impl FulfillmentService {
                 "amount cannot be negative".to_string(),
             ));
         }
-        let translations = translations
-            .map(normalize_translation_inputs)
-            .transpose()?;
+        let translations = translations.map(normalize_translation_inputs).transpose()?;
 
         let txn = self.db.begin().await?;
         let shipping_option = entities::shipping_option::Entity::find_by_id(shipping_option_id)
@@ -378,12 +377,8 @@ impl FulfillmentService {
         let now = Utc::now();
         let txn = self.db.begin().await?;
         let checkout_operation_id = identity.as_ref().map(|value| value.operation_id);
-        let checkout_fulfillment_index = identity
-            .as_ref()
-            .map(|value| i64::from(value.index));
-        let checkout_plan_hash = identity
-            .as_ref()
-            .map(|value| value.plan_hash.clone());
+        let checkout_fulfillment_index = identity.as_ref().map(|value| i64::from(value.index));
+        let checkout_plan_hash = identity.as_ref().map(|value| value.plan_hash.clone());
 
         entities::fulfillment::ActiveModel {
             id: Set(fulfillment_id),
@@ -509,7 +504,6 @@ impl FulfillmentService {
         }
         Ok(records)
     }
-
 
     pub async fn find_by_order(
         &self,
@@ -1128,7 +1122,9 @@ fn validate_checkout_identity(
     }
     let checkout_plan_hash = checkout_plan_hash.trim();
     if checkout_plan_hash.len() != 64
-        || !checkout_plan_hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+        || !checkout_plan_hash
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
     {
         return Err(FulfillmentError::Validation(
             "checkout fulfillment plan hash must be a 64-character hexadecimal value".to_string(),
@@ -1674,7 +1670,9 @@ fn translation_change_error_to_fulfillment_error(
     error: ShippingOptionTranslationExactLocaleError,
 ) -> FulfillmentError {
     match error {
-        ShippingOptionTranslationExactLocaleError::Database(error) => FulfillmentError::Database(error),
+        ShippingOptionTranslationExactLocaleError::Database(error) => {
+            FulfillmentError::Database(error)
+        }
         other => FulfillmentError::Validation(format!(
             "Fulfillment translation change journal write failed: {other}"
         )),

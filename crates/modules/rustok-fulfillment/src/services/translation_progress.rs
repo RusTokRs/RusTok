@@ -27,7 +27,8 @@ impl ShippingOptionTranslationService {
         tenant_id: Uuid,
         source_locale: &str,
         target_locale: &str,
-    ) -> ShippingOptionTranslationExactLocaleResult<ShippingOptionTranslationExactProgressFacts> {
+    ) -> ShippingOptionTranslationExactLocaleResult<ShippingOptionTranslationExactProgressFacts>
+    {
         if tenant_id.is_nil() {
             return Err(ShippingOptionTranslationExactLocaleError::Validation(
                 "Fulfillment translation progress tenant_id must not be nil".to_string(),

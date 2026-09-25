@@ -504,6 +504,8 @@ fn order_read_owner_error_facts(error: &OrderError) -> OrderReadOwnerErrorFacts 
         ),
         OrderError::Database(_) => ("database", 0, 0, 0, 0, true),
         OrderError::Core(_) => ("core", 0, 0, 0, 0, true),
+        OrderError::IdempotencyConflict => ("idempotency_conflict", 0, 0, 0, 0, false),
+        OrderError::CommandReceiptCorrupt => ("command_receipt_corrupt", 0, 0, 0, 0, true),
     };
     OrderReadOwnerErrorFacts {
         error_variant,
@@ -604,6 +606,20 @@ fn order_read_owner_error_policy(
             "order operation could not be completed safely",
             false,
             "core",
+        ),
+        OrderError::IdempotencyConflict => (
+            PortErrorKind::Conflict,
+            "order.idempotency_conflict",
+            "order operation conflicts with an existing idempotency key",
+            false,
+            "idempotency_conflict",
+        ),
+        OrderError::CommandReceiptCorrupt => (
+            PortErrorKind::InvariantViolation,
+            "order.command_receipt_corrupt",
+            "order command receipt requires operator review",
+            false,
+            "command_receipt_corrupt",
         ),
     }
 }

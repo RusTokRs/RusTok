@@ -20,10 +20,10 @@ use std::{fmt, sync::Arc};
 
 use super::{
     tenant_resolution::{
-        ResolvedTenantIdentifier, TenantIdentifierKind, TenantResolution, TenantResolutionSource,
-        resolve_explicit_slug, resolve_request,
+        resolve_explicit_slug, resolve_request, ResolvedTenantIdentifier, TenantIdentifierKind,
+        TenantResolution, TenantResolutionSource,
     },
-    tenant_route_policy::{TenantRouteScope, tenant_route_scope},
+    tenant_route_policy::{tenant_route_scope, TenantRouteScope},
 };
 use crate::context::{TenantContext, TenantContextExtension};
 use crate::services::server_runtime_context::ServerRuntimeContext;

@@ -43,7 +43,9 @@ pub async fn ensure_fulfillment_schema(db: &DatabaseConnection) {
     .await;
 
     let change_journal_table = sea_orm::sea_query::Table::create()
-        .table(sea_orm::sea_query::Alias::new("shipping_option_translation_change_journal"))
+        .table(sea_orm::sea_query::Alias::new(
+            "shipping_option_translation_change_journal",
+        ))
         .if_not_exists()
         .col(
             sea_orm::sea_query::ColumnDef::new(sea_orm::sea_query::Alias::new("change_seq"))
@@ -63,9 +65,11 @@ pub async fn ensure_fulfillment_schema(db: &DatabaseConnection) {
                 .not_null(),
         )
         .col(
-            sea_orm::sea_query::ColumnDef::new(sea_orm::sea_query::Alias::new("shipping_option_id"))
-                .uuid()
-                .not_null(),
+            sea_orm::sea_query::ColumnDef::new(sea_orm::sea_query::Alias::new(
+                "shipping_option_id",
+            ))
+            .uuid()
+            .not_null(),
         )
         .col(
             sea_orm::sea_query::ColumnDef::new(sea_orm::sea_query::Alias::new("resource_revision"))
@@ -90,7 +94,9 @@ pub async fn ensure_fulfillment_schema(db: &DatabaseConnection) {
 
     let uq_index = sea_orm::sea_query::Index::create()
         .name("uq_shipping_option_translation_change_operation_target")
-        .table(sea_orm::sea_query::Alias::new("shipping_option_translation_change_journal"))
+        .table(sea_orm::sea_query::Alias::new(
+            "shipping_option_translation_change_journal",
+        ))
         .col(sea_orm::sea_query::Alias::new("operation_id"))
         .col(sea_orm::sea_query::Alias::new("shipping_option_id"))
         .unique()
@@ -102,7 +108,9 @@ pub async fn ensure_fulfillment_schema(db: &DatabaseConnection) {
 
     let idx_tenant_seq = sea_orm::sea_query::Index::create()
         .name("idx_shipping_option_translation_change_tenant_seq")
-        .table(sea_orm::sea_query::Alias::new("shipping_option_translation_change_journal"))
+        .table(sea_orm::sea_query::Alias::new(
+            "shipping_option_translation_change_journal",
+        ))
         .col(sea_orm::sea_query::Alias::new("tenant_id"))
         .col(sea_orm::sea_query::Alias::new("change_seq"))
         .if_not_exists()
@@ -113,7 +121,9 @@ pub async fn ensure_fulfillment_schema(db: &DatabaseConnection) {
 
     let idx_target_seq = sea_orm::sea_query::Index::create()
         .name("idx_shipping_option_translation_change_target_seq")
-        .table(sea_orm::sea_query::Alias::new("shipping_option_translation_change_journal"))
+        .table(sea_orm::sea_query::Alias::new(
+            "shipping_option_translation_change_journal",
+        ))
         .col(sea_orm::sea_query::Alias::new("tenant_id"))
         .col(sea_orm::sea_query::Alias::new("shipping_option_id"))
         .col(sea_orm::sea_query::Alias::new("change_seq"))
