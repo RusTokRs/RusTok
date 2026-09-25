@@ -434,5 +434,22 @@ The control intentionally does not claim distributed transactionality with consu
 
 Maintainer runtime evidence, gatekeeper, build, and tests remain unrun by the agent.
 
+## 2026-09-25 Product owner-port diagnostic hardening
+
+The Product catalog read port still emitted raw owner error details and request identity
+values from its shared mapper path. The port now records bounded context facts
+(correlation/tenant/actor/channel/locale/causation/traceparent/idempotency presence and
+lengths) and bounded error-shape facts (variant, text/UUID counts, and opaque payload
+presence). Storage failures and variant-not-found diagnostics no longer expose backend
+error text or resource identifiers, and every Product `CommerceError` variant maps to a
+stable `PortError` envelope.
+
+The ecommerce public-port verifier now reads the Product owner port directly, rejects the
+former raw diagnostic patterns, requires the bounded fact helpers, and requires the stable
+error envelopes. The active Commerce `/store/products` list was already on the Product-owned
+HTTP capability before this slice and was not regressed or reintroduced through the legacy
+controller.
+
+Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
 ## Completed Rounds Archive
 _No completed rounds yet. Round 1 is currently in progress._
