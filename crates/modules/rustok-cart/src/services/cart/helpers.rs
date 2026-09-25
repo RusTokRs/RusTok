@@ -22,7 +22,8 @@ use rustok_tax::{
 };
 
 use crate::dto::{
-    CartAdjustmentResponse, CartDeliveryGroupResponse, CartLineItemResponse, CartResponse,
+    CartAdjustmentResponse, CartDeliveryGroupResponse, CartLineFulfillmentRequirement,
+    CartLineItemResponse, CartResponse,
     CartTaxLineResponse, UpdateCartContextInput,
 };
 use crate::entities;
@@ -109,6 +110,44 @@ pub fn normalize_shipping_profile_slug(value: Option<&str>) -> String {
         .unwrap_or_else(|| DEFAULT_SHIPPING_PROFILE_SLUG.to_string())
 }
 
+pub fn normalize_optional_shipping_profile_slug(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+}
+
+pub fn normalize_line_item_shipping_profile(
+    requirement: CartLineFulfillmentRequirement,
+    value: Option<&str>,
+) -> CartResult<Option<String>> {
+    let normalized = normalize_optional_shipping_profile_slug(value);
+    match requirement {
+        CartLineFulfillmentRequirement::Digital => {
+            if normalized.is_some() {
+                return Err(CartError::Validation(
+                    "digital cart lines must not have a shipping profile".to_string(),
+                ));
+            }
+            Ok(None)
+        }
+        CartLineFulfillmentRequirement::Physical => normalized
+            .filter(|value| value.len() <= 100)
+            .map(Some)
+            .ok_or_else(|| {
+                CartError::Validation(
+                    "physical cart lines require a non-empty shipping profile".to_string(),
+                )
+            }),
+    }
+}
+
+pub fn line_item_fulfillment_requirement(
+    value: &str,
+) -> CartResult<CartLineFulfillmentRequirement> {
+    CartLineFulfillmentRequirement::parse(value).map_err(CartError::Validation)
+}
+
 pub fn normalize_seller_id(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
@@ -190,26 +229,39 @@ pub fn seller_id_from_metadata(metadata: &Value) -> Option<String> {
 
 pub fn delivery_group_snapshot_for_line_item(
     item: &entities::cart_line_item::Model,
-) -> DeliveryGroupSnapshot {
+) -> CartResult<Option<DeliveryGroupSnapshot>> {
+    let requirement = line_item_fulfillment_requirement(&item.fulfillment_requirement)?;
+    if requirement == CartLineFulfillmentRequirement::Digital {
+        return Ok(None);
+    }
+    let shipping_profile_slug =
+        normalize_optional_shipping_profile_slug(Some(item.shipping_profile_slug.as_str()))
+            .ok_or_else(|| {
+                CartError::Validation(format!(
+                    "physical cart line {} has no shipping profile",
+                    item.id
+                ))
+            })?;
     let seller_id = seller_id_from_metadata(&item.metadata);
-    DeliveryGroupSnapshot {
+    Ok(Some(DeliveryGroupSnapshot {
         key: DeliveryGroupKey {
-            shipping_profile_slug: normalize_shipping_profile_slug(Some(
-                item.shipping_profile_slug.as_str(),
-            )),
+            shipping_profile_slug,
             seller_id,
             seller_scope: None,
         },
-    }
+    }))
 }
 
 pub fn collect_delivery_group_snapshots(
     line_items: &[entities::cart_line_item::Model],
-) -> BTreeSet<DeliveryGroupSnapshot> {
-    line_items
-        .iter()
-        .map(delivery_group_snapshot_for_line_item)
-        .collect()
+) -> CartResult<BTreeSet<DeliveryGroupSnapshot>> {
+    let mut groups = BTreeSet::new();
+    for item in line_items {
+        if let Some(snapshot) = delivery_group_snapshot_for_line_item(item)? {
+            groups.insert(snapshot);
+        }
+    }
+    Ok(groups)
 }
 
 impl PartialEq for DeliveryGroupSnapshot {
@@ -283,10 +335,12 @@ pub fn build_delivery_groups(
     cart_selected_shipping_option_id: Option<Uuid>,
     line_items: &[entities::cart_line_item::Model],
     selection_map: &BTreeMap<DeliveryGroupKey, Option<Uuid>>,
-) -> Vec<CartDeliveryGroupResponse> {
+) -> CartResult<Vec<CartDeliveryGroupResponse>> {
     let mut groups = BTreeMap::<DeliveryGroupKey, Vec<Uuid>>::new();
     for item in line_items {
-        let snapshot = delivery_group_snapshot_for_line_item(item);
+        let Some(snapshot) = delivery_group_snapshot_for_line_item(item)? else {
+            continue;
+        };
         groups
             .entry(snapshot.key)
             .and_modify(|line_item_ids| line_item_ids.push(item.id))
@@ -653,13 +707,13 @@ where
     let adjustment_total = adjustment_total(&adjustments);
     let shipping_total = cart.shipping_total;
     let total_amount = cart.total_amount;
-    let delivery_group_snapshots = collect_delivery_group_snapshots(&line_items);
+    let delivery_group_snapshots = collect_delivery_group_snapshots(&line_items)?;
     let selection_map = selection_map_from_records(&delivery_group_snapshots, shipping_selections);
     let delivery_groups = build_delivery_groups(
         cart.selected_shipping_option_id,
         &line_items,
         &selection_map,
-    );
+    )?;
     let selected_shipping_option_id = match delivery_groups.len() {
         0 => cart.selected_shipping_option_id,
         1 => delivery_groups[0].selected_shipping_option_id,
@@ -688,30 +742,45 @@ where
         created_at: cart.created_at.with_timezone(&Utc),
         updated_at: cart.updated_at.with_timezone(&Utc),
         completed_at: cart.completed_at.map(|value| value.with_timezone(&Utc)),
-        line_items: line_items
-            .into_iter()
-            .map(|item| {
+        line_items: {
+            let mut projected = Vec::with_capacity(line_items.len());
+            for item in &line_items {
+                let fulfillment_requirement =
+                    line_item_fulfillment_requirement(&item.fulfillment_requirement)?;
+                let shipping_profile_slug = match fulfillment_requirement {
+                    CartLineFulfillmentRequirement::Digital => None,
+                    CartLineFulfillmentRequirement::Physical => {
+                        Some(normalize_optional_shipping_profile_slug(
+                            Some(item.shipping_profile_slug.as_str()),
+                        ).ok_or_else(|| CartError::Validation(format!(
+                            "physical cart line {} has no shipping profile",
+                            item.id
+                        )))?)
+                    }
+                };
                 let seller_id = seller_id_from_metadata(&item.metadata);
-                CartLineItemResponse {
+                projected.push(CartLineItemResponse {
                     id: item.id,
                     cart_id: item.cart_id,
                     product_id: item.product_id,
                     variant_id: item.variant_id,
-                    shipping_profile_slug: item.shipping_profile_slug,
+                    fulfillment_requirement,
+                    shipping_profile_slug,
                     seller_id,
                     seller_scope: None,
-                    sku: item.sku,
+                    sku: item.sku.clone(),
                     title: title_map.get(&item.id).cloned().unwrap_or_default(),
                     quantity: item.quantity,
                     unit_price: item.unit_price,
                     total_price: item.total_price,
-                    currency_code: item.currency_code,
-                    metadata: item.metadata,
+                    currency_code: item.currency_code.clone(),
+                    metadata: item.metadata.clone(),
                     created_at: item.created_at.with_timezone(&Utc),
                     updated_at: item.updated_at.with_timezone(&Utc),
-                }
-            })
-            .collect(),
+                });
+            }
+            projected
+        },
         adjustments: adjustments
             .into_iter()
             .map(|adjustment| CartAdjustmentResponse {
@@ -751,11 +820,16 @@ where
 pub async fn load_shipping_total<C>(
     conn: &C,
     cart: &entities::cart::Model,
+    line_items: &[entities::cart_line_item::Model],
     shipping_selections: &[entities::cart_shipping_selection::Model],
 ) -> CartResult<Decimal>
 where
     C: ConnectionTrait,
 {
+    if collect_delivery_group_snapshots(line_items)?.is_empty() {
+        return Ok(Decimal::ZERO);
+    }
+
     let shipping_option_ids = if shipping_selections.is_empty() {
         cart.selected_shipping_option_id
             .into_iter()
@@ -935,7 +1009,8 @@ where
         .filter(entities::cart_shipping_selection::Column::CartId.eq(cart.id))
         .all(conn)
         .await?;
-    let shipping_total = load_shipping_total(conn, &cart, &shipping_selections).await?;
+    let shipping_total =
+        load_shipping_total(conn, &cart, &line_items, &shipping_selections).await?;
     let (tax_total, tax_included) = recalculate_tax_lines(
         conn,
         tax_calculation_port,
@@ -973,7 +1048,7 @@ where
         .filter(entities::cart_line_item::Column::CartId.eq(cart.id))
         .all(conn)
         .await?;
-    let available_group_snapshots = collect_delivery_group_snapshots(&line_items);
+    let available_group_snapshots = collect_delivery_group_snapshots(&line_items)?;
     let existing = entities::cart_shipping_selection::Entity::find()
         .filter(entities::cart_shipping_selection::Column::CartId.eq(cart.id))
         .all(conn)
@@ -1090,7 +1165,7 @@ where
         .order_by_asc(entities::cart_line_item::Column::CreatedAt)
         .all(conn)
         .await?;
-    let delivery_group_snapshots = collect_delivery_group_snapshots(&line_items);
+    let delivery_group_snapshots = collect_delivery_group_snapshots(&line_items)?;
     let mut desired = entities::cart_shipping_selection::Entity::find()
         .filter(entities::cart_shipping_selection::Column::CartId.eq(cart_id))
         .all(conn)
@@ -1109,7 +1184,7 @@ where
     store_shipping_selections(conn, cart_id, desired.clone()).await?;
 
     let legacy_selected_shipping_option_id = match delivery_group_snapshots.len() {
-        0 => cart.selected_shipping_option_id,
+        0 => None,
         1 => delivery_group_snapshots
             .iter()
             .next()
