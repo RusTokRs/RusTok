@@ -20,6 +20,16 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ---
 
 
+## 2026-09-25 Commerce Store shared HTTP error-envelope hardening
+
+The mounted Store shared HTTP mapper exposed dynamic StoreContext validation/currency
+details and logged full owner errors plus tenant/user/channel identifiers. It now emits
+stable public messages and bounded diagnostics: typed error kind, code/status, identity
+presence/shape, and channel presence/length only. The shared storefront safety verifier
+now requires the bounded contract and rejects the former raw payload patterns.
+
+Maintainer runtime evidence, Cargo build, tests, and verifier execution remain unrun.
+
 ## 2026-09-25 Commerce Mounted Store Product runtime capability integrity
 
 `products.rs` is intentionally retained as the compiled legacy Product compatibility source;
