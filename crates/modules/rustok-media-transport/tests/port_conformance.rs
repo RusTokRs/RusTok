@@ -144,6 +144,20 @@ async fn exercise_provider(
         MediaAssetReferenceAdmissionState::Admitted
     );
 
+    let reference_page = read
+        .list_asset_references(
+            read_context(tenant_id),
+            rustok_media::MediaAssetReferenceListRequest {
+                owner_module: "conformance".to_string(),
+                after_reference_id: None,
+                limit: 25,
+            },
+        )
+        .await
+        .expect("list_asset_references should expose a bounded owner-reference page");
+    assert!(reference_page.references.is_empty());
+    assert!(!reference_page.has_more);
+
     let descriptor = read
         .get_image_descriptor(
             read_context(tenant_id),
@@ -308,6 +322,79 @@ async fn exercise_provider(
         .expect("same retain idempotency key should replay the original hold");
     assert_eq!(retained_replay, retained);
 
+    let reference_page_after_retain = read
+        .list_asset_references(
+            read_context(tenant_id),
+            rustok_media::MediaAssetReferenceListRequest {
+                owner_module: "conformance".to_string(),
+                after_reference_id: None,
+                limit: 1,
+            },
+        )
+        .await
+        .expect("list_asset_references should expose retained owner holds");
+    assert_eq!(reference_page_after_retain.references.len(), 1);
+    assert_eq!(
+        reference_page_after_retain.references[0].reference_id,
+        retained.reference_id
+    );
+    assert_eq!(
+        reference_page_after_retain.references[0].media_id,
+        asset_id
+    );
+    assert!(!reference_page_after_retain.has_more);
+
+    let empty_after_cursor = read
+        .list_asset_references(
+            read_context(tenant_id),
+            rustok_media::MediaAssetReferenceListRequest {
+                owner_module: "conformance".to_string(),
+                after_reference_id: Some(retained.reference_id),
+                limit: 25,
+            },
+        )
+        .await
+        .expect("reference keyset cursor should advance strictly");
+    assert!(empty_after_cursor.references.is_empty());
+    assert!(!empty_after_cursor.has_more);
+
+    let lookup = read
+        .lookup_asset_references(
+            read_context(tenant_id),
+            rustok_media::MediaAssetReferenceLookupRequest {
+                owner_module: "conformance".to_string(),
+                reference_ids: vec![retained.reference_id],
+            },
+        )
+        .await
+        .expect("exact owner reference lookup should return retained hold");
+    assert_eq!(lookup.references.len(), 1);
+    assert_eq!(lookup.references[0], retained);
+
+    let foreign_owner_lookup = read
+        .lookup_asset_references(
+            read_context(tenant_id),
+            rustok_media::MediaAssetReferenceLookupRequest {
+                owner_module: "other-module".to_string(),
+                reference_ids: vec![retained.reference_id],
+            },
+        )
+        .await
+        .expect("foreign owner lookup should be an empty result");
+    assert!(foreign_owner_lookup.references.is_empty());
+
+    let unknown_lookup = read
+        .lookup_asset_references(
+            read_context(tenant_id),
+            rustok_media::MediaAssetReferenceLookupRequest {
+                owner_module: "conformance".to_string(),
+                reference_ids: vec![Uuid::new_v4()],
+            },
+        )
+        .await
+        .expect("unknown reference lookup should remain successful");
+    assert!(unknown_lookup.references.is_empty());
+
     let delete_while_retained = write
         .delete_asset(write_context(tenant_id, "delete-retained"), asset_id)
         .await
@@ -387,6 +474,7 @@ async fn embedded_and_loopback_grpc_providers_pass_the_same_port_suite() {
     .allow_operations([
         MediaGrpcOperation::GetAsset,
         MediaGrpcOperation::GetAssetReferenceAdmission,
+        MediaGrpcOperation::ListAssetReferences,
         MediaGrpcOperation::ListAssets,
         MediaGrpcOperation::GetImageDescriptor,
         MediaGrpcOperation::GetPublicImageAsset,

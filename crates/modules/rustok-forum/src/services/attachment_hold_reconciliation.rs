@@ -3,7 +3,8 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 use rustok_api::{Action, PortContext, PortError, Resource};
 use rustok_core::SecurityContext;
 use rustok_media::{
-    MediaAssetReferenceListPage, MediaAssetReferenceListRequest, MediaAssetReadPort,
+    MediaAssetReferenceListPage, MediaAssetReferenceListRequest, MediaAssetReferenceLookupRequest,
+    MediaAssetReferenceLookupResult, MediaAssetReadPort,
 };
 use sea_orm::{
     AccessMode, ColumnTrait, DatabaseBackend, DatabaseConnection, EntityTrait, IsolationLevel,
@@ -23,10 +24,11 @@ const FORUM_MEDIA_OWNER_MODULE: &str = "forum";
 const FORUM_ATTACHMENT_HOLD_RECONCILIATION_OPERATION: &str =
     "forum.attachment_hold_reconciliation_report";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ForumAttachmentHoldDriftKind {
     OrphanMediaHold,
+    MissingMediaHold,
     MediaReferenceMismatch,
 }
 
@@ -34,6 +36,7 @@ impl ForumAttachmentHoldDriftKind {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::OrphanMediaHold => "orphan_media_hold",
+            Self::MissingMediaHold => "missing_media_hold",
             Self::MediaReferenceMismatch => "media_reference_mismatch",
         }
     }
@@ -54,6 +57,9 @@ pub struct ForumAttachmentHoldReconciliationReport {
     pub inspected_media_holds: u64,
     pub has_more_media_holds: bool,
     pub media_cursor: Option<Uuid>,
+    pub inspected_forum_relations: u64,
+    pub has_more_forum_relations: bool,
+    pub forum_cursor: Option<Uuid>,
     pub drifts: Vec<ForumAttachmentHoldDrift>,
 }
 
@@ -95,6 +101,7 @@ impl ForumAttachmentHoldReconciliationService {
         media_context: PortContext,
         requested_limit: Option<u64>,
         media_reference_after: Option<Uuid>,
+        forum_relation_after: Option<Uuid>,
     ) -> ForumResult<ForumAttachmentHoldReconciliationReport> {
         rustok_telemetry::metrics::record_module_entrypoint_call(
             "forum",
@@ -109,6 +116,7 @@ impl ForumAttachmentHoldReconciliationService {
                     media_context,
                     requested_limit,
                     media_reference_after,
+                    forum_relation_after,
                 )
                 .await
             }
@@ -138,14 +146,17 @@ impl ForumAttachmentHoldReconciliationService {
         media_context: PortContext,
         requested_limit: Option<u64>,
         media_reference_after: Option<Uuid>,
+        forum_relation_after: Option<Uuid>,
     ) -> ForumResult<ForumAttachmentHoldReconciliationReport> {
         validate_cursor(media_reference_after)?;
+        validate_cursor(forum_relation_after)?;
         validate_media_context_tenant(&media_context, tenant_id)?;
 
         let effective_limit = requested_limit
             .unwrap_or(DEFAULT_FORUM_ATTACHMENT_HOLD_RECONCILIATION_LIMIT)
             .clamp(1, MAX_FORUM_ATTACHMENT_HOLD_RECONCILIATION_LIMIT);
 
+        let media_context_for_lookup = media_context.clone();
         let media_page = self
             .media
             .list_asset_references(
@@ -177,67 +188,176 @@ impl ForumAttachmentHoldReconciliationService {
             }
         };
 
-        let report = self
-            .report_media_page_in_transaction(
+        let (relation_media_by_reference, forum_relations) = self
+            .load_forum_relation_page_in_transaction(
                 &transaction,
                 tenant_id,
-                media_page,
-                requested_limit,
+                &media_page,
+                forum_relation_after,
                 effective_limit,
             )
             .await;
 
-        match report {
-            Ok(report) => {
+        let (relation_media_by_reference, forum_relations) = match (
+            relation_media_by_reference,
+            forum_relations,
+        ) {
+            (Ok(media_refs), Ok(forum_relations)) => {
                 transaction.commit().await?;
-                Ok(report)
+                (media_refs, forum_relations)
             }
-            Err(error) => {
-                let _ = transaction.rollback().await;
-                Err(error)
+            (Err(error), _) | (_, Err(error)) => {
+                if let Err(rollback_error) = transaction.rollback().await {
+                    tracing::warn!(
+                        operation = FORUM_ATTACHMENT_HOLD_RECONCILIATION_OPERATION,
+                        error = %rollback_error,
+                        "failed to rollback Forum attachment hold reconciliation transaction"
+                    );
+                }
+                return Err(error);
             }
-        }
+        };
+
+        let reverse_reference_ids = forum_relations
+            .iter()
+            .map(|row| row.reference_id)
+            .collect::<Vec<_>>();
+        let reverse_lookup = if reverse_reference_ids.is_empty() {
+            MediaAssetReferenceLookupResult {
+                references: Vec::new(),
+            }
+        } else {
+            self.media
+                .lookup_asset_references(
+                    media_context_for_lookup,
+                    MediaAssetReferenceLookupRequest {
+                        owner_module: FORUM_MEDIA_OWNER_MODULE.to_string(),
+                        reference_ids: reverse_reference_ids,
+                    },
+                )
+                .await
+                .map_err(media_port_error)?
+        };
+
+        self.build_report(
+            tenant_id,
+            requested_limit,
+            effective_limit,
+            media_page,
+            relation_media_by_reference,
+            forum_relations,
+            reverse_lookup,
+        )
     }
 
-    async fn report_media_page_in_transaction(
+    async fn load_forum_relation_page_in_transaction(
         &self,
         transaction: &sea_orm::DatabaseTransaction,
         tenant_id: Uuid,
-        media_page: MediaAssetReferenceListPage,
-        requested_limit: Option<u64>,
+        media_page: &MediaAssetReferenceListPage,
+        forum_relation_after: Option<Uuid>,
         effective_limit: u64,
-    ) -> ForumResult<ForumAttachmentHoldReconciliationReport> {
-        let references = media_page.references;
-        let inspected_media_holds = references.len() as u64;
-        let reference_ids = references
+    ) -> (
+        ForumResult<HashMap<Uuid, Uuid>>,
+        ForumResult<Vec<forum_attachment_relation::Model>>,
+    ) {
+        let media_reference_ids = media_page
+            .references
             .iter()
             .map(|reference| reference.reference_id)
             .collect::<Vec<_>>();
-
-        let mut relation_media_by_reference = HashMap::with_capacity(reference_ids.len());
-        if !reference_ids.is_empty() {
-            let rows = forum_attachment_relation::Entity::find()
+        let mut relation_media_by_reference = HashMap::with_capacity(media_reference_ids.len());
+        if !media_reference_ids.is_empty() {
+            let result = forum_attachment_relation::Entity::find()
                 .filter(forum_attachment_relation::Column::TenantId.eq(tenant_id))
-                .filter(forum_attachment_relation::Column::ReferenceId.is_in(reference_ids))
+                .filter(forum_attachment_relation::Column::ReferenceId.is_in(media_reference_ids))
                 .all(transaction)
-                .await?;
+                .await
+                .map(|rows| {
+                    relation_media_by_reference.extend(
+                        rows.into_iter()
+                            .map(|row| (row.reference_id, row.media_id)),
+                    );
+                    relation_media_by_reference
+                })
+                .map_err(ForumError::from);
+            if result.is_err() {
+                return (result, Ok(Vec::new()));
+            }
+        }
 
-            relation_media_by_reference.extend(
-                rows.into_iter()
-                    .map(|row| (row.reference_id, row.media_id)),
+        let mut query = forum_attachment_relation::Entity::find()
+            .filter(forum_attachment_relation::Column::TenantId.eq(tenant_id))
+            .order_by_asc(forum_attachment_relation::Column::ReferenceId)
+            .limit(effective_limit.saturating_add(1));
+        if let Some(after_reference_id) = forum_relation_after {
+            query = query.filter(
+                forum_attachment_relation::Column::ReferenceId.gt(after_reference_id),
             );
         }
 
+        let result = query.all(transaction).await.map_err(ForumError::from);
+        (Ok(relation_media_by_reference), result)
+    }
+
+    fn build_report(
+        &self,
+        tenant_id: Uuid,
+        requested_limit: Option<u64>,
+        effective_limit: u64,
+        media_page: MediaAssetReferenceListPage,
+        relation_media_by_reference: HashMap<Uuid, Uuid>,
+        relation_rows: Vec<forum_attachment_relation::Model>,
+        reverse_lookup: MediaAssetReferenceLookupResult,
+    ) -> ForumResult<ForumAttachmentHoldReconciliationReport> {
+        validate_media_page(&media_page, effective_limit, tenant_id)?;
+
+        let inspected_media_holds = media_page.references.len() as u64;
+        let has_more_media_holds = media_page.has_more;
+        let media_cursor = media_page.next_reference_id;
+
+        let has_more_forum_relations = relation_rows.len() > effective_limit as usize;
+        let forum_relations = relation_rows
+            .into_iter()
+            .take(effective_limit as usize)
+            .collect::<Vec<_>>();
+        let forum_cursor = forum_relations.last().map(|row| row.reference_id);
+        let inspected_forum_relations = forum_relations.len() as u64;
+
+        validate_media_lookup(
+            &reverse_lookup,
+            &forum_relations,
+            tenant_id,
+        )?;
+
+        let mut reverse_by_reference = HashMap::with_capacity(reverse_lookup.references.len());
+        for reference in reverse_lookup.references {
+            reverse_by_reference.insert(reference.reference_id, reference);
+        }
+
+        let mut seen_drifts = std::collections::HashSet::new();
         let mut drifts = Vec::new();
-        for reference in &references {
+
+        for reference in &media_page.references {
+            validate_media_reference(reference, tenant_id)?;
             match relation_media_by_reference.get(&reference.reference_id) {
-                None => drifts.push(ForumAttachmentHoldDrift {
-                    kind: ForumAttachmentHoldDriftKind::OrphanMediaHold,
-                    reference_id: reference.reference_id,
-                    media_id: reference.media_id,
-                    relation_media_id: None,
-                }),
+                None => {
+                    seen_drifts.insert((
+                        ForumAttachmentHoldDriftKind::OrphanMediaHold,
+                        reference.reference_id,
+                    ));
+                    drifts.push(ForumAttachmentHoldDrift {
+                        kind: ForumAttachmentHoldDriftKind::OrphanMediaHold,
+                        reference_id: reference.reference_id,
+                        media_id: reference.media_id,
+                        relation_media_id: None,
+                    });
+                }
                 Some(&relation_media_id) if relation_media_id != reference.media_id => {
+                    seen_drifts.insert((
+                        ForumAttachmentHoldDriftKind::MediaReferenceMismatch,
+                        reference.reference_id,
+                    ));
                     drifts.push(ForumAttachmentHoldDrift {
                         kind: ForumAttachmentHoldDriftKind::MediaReferenceMismatch,
                         reference_id: reference.reference_id,
@@ -249,12 +369,44 @@ impl ForumAttachmentHoldReconciliationService {
             }
         }
 
+        for relation in &forum_relations {
+            match reverse_by_reference.get(&relation.reference_id) {
+                None if seen_drifts.insert((
+                    ForumAttachmentHoldDriftKind::MissingMediaHold,
+                    relation.reference_id,
+                )) => {
+                    drifts.push(ForumAttachmentHoldDrift {
+                        kind: ForumAttachmentHoldDriftKind::MissingMediaHold,
+                        reference_id: relation.reference_id,
+                        media_id: relation.media_id,
+                        relation_media_id: None,
+                    });
+                }
+                Some(reference) if reference.media_id != relation.media_id
+                    && seen_drifts.insert((
+                        ForumAttachmentHoldDriftKind::MediaReferenceMismatch,
+                        relation.reference_id,
+                    )) => {
+                    drifts.push(ForumAttachmentHoldDrift {
+                        kind: ForumAttachmentHoldDriftKind::MediaReferenceMismatch,
+                        reference_id: relation.reference_id,
+                        media_id: reference.media_id,
+                        relation_media_id: Some(relation.media_id),
+                    });
+                }
+                _ => {}
+            }
+        }
+
         Ok(ForumAttachmentHoldReconciliationReport {
             requested_limit,
             effective_limit,
             inspected_media_holds,
-            has_more_media_holds: media_page.has_more,
-            media_cursor: media_page.next_reference_id,
+            has_more_media_holds,
+            media_cursor,
+            inspected_forum_relations,
+            has_more_forum_relations,
+            forum_cursor,
             drifts,
         })
     }
@@ -263,6 +415,139 @@ impl ForumAttachmentHoldReconciliationService {
 fn enforce_operations_scope(security: &SecurityContext) -> ForumResult<()> {
     enforce_scope(security, Resource::ForumCategories, Action::Manage)?;
     enforce_scope(security, Resource::ForumTopics, Action::Manage)
+}
+
+fn validate_media_lookup(
+    lookup: &MediaAssetReferenceLookupResult,
+    forum_relations: &[forum_attachment_relation::Model],
+    tenant_id: Uuid,
+) -> ForumResult<()> {
+    if lookup.references.len() > forum_relations.len() {
+        return Err(ForumError::capability_failure(
+            "media.asset_reference_reconciliation",
+            "MEDIA_REFERENCE_LOOKUP_TOO_MANY_RESULTS",
+            "Media returned more attachment holds than Forum requested",
+            false,
+        ));
+    }
+
+    let expected = forum_relations
+        .iter()
+        .map(|row| row.reference_id)
+        .collect::<std::collections::HashSet<_>>();
+    let mut seen = std::collections::HashSet::with_capacity(lookup.references.len());
+
+    for reference in &lookup.references {
+        validate_media_reference(reference, tenant_id)?;
+        if !expected.contains(&reference.reference_id) {
+            return Err(ForumError::capability_failure(
+                "media.asset_reference_reconciliation",
+                "MEDIA_REFERENCE_LOOKUP_UNREQUESTED_ID",
+                "Media returned an attachment hold outside the requested Forum relation set",
+                false,
+            ));
+        }
+        if !seen.insert(reference.reference_id) {
+            return Err(ForumError::capability_failure(
+                "media.asset_reference_reconciliation",
+                "MEDIA_REFERENCE_LOOKUP_DUPLICATE_ID",
+                "Media returned a duplicate attachment hold reference ID",
+                false,
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_media_page(
+    page: &MediaAssetReferenceListPage,
+    effective_limit: u64,
+    tenant_id: Uuid,
+) -> ForumResult<()> {
+    if page.references.len() > effective_limit as usize {
+        return Err(ForumError::capability_failure(
+            "media.asset_reference_reconciliation",
+            "MEDIA_REFERENCE_PAGE_TOO_LARGE",
+            "Media returned more attachment holds than the requested reconciliation bound",
+            false,
+        ));
+    }
+    if page.has_more && page.next_reference_id.is_none() {
+        return Err(ForumError::capability_failure(
+            "media.asset_reference_reconciliation",
+            "MEDIA_REFERENCE_PAGE_CURSOR_MISSING",
+            "Media indicated more attachment holds without returning a continuation cursor",
+            false,
+        ));
+    }
+
+    let mut previous = None;
+    let mut seen = std::collections::HashSet::with_capacity(page.references.len());
+    for reference in &page.references {
+        validate_media_reference(reference, tenant_id)?;
+        if !seen.insert(reference.reference_id) {
+            return Err(ForumError::capability_failure(
+                "media.asset_reference_reconciliation",
+                "MEDIA_REFERENCE_PAGE_DUPLICATE_ID",
+                "Media returned a duplicate attachment hold reference ID",
+                false,
+            ));
+        }
+        if let Some(previous_id) = previous
+            && reference.reference_id <= previous_id
+        {
+            return Err(ForumError::capability_failure(
+                "media.asset_reference_reconciliation",
+                "MEDIA_REFERENCE_PAGE_ORDER_INVALID",
+                "Media attachment hold reference page is not strictly ordered",
+                false,
+            ));
+        }
+        previous = Some(reference.reference_id);
+    }
+
+    if page.next_reference_id != page.references.last().map(|reference| reference.reference_id) {
+        return Err(ForumError::capability_failure(
+            "media.asset_reference_reconciliation",
+            "MEDIA_REFERENCE_PAGE_CURSOR_INVALID",
+            "Media attachment hold page cursor does not match the last returned reference",
+            false,
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_media_reference(
+    reference: &rustok_media::MediaAssetReference,
+    tenant_id: Uuid,
+) -> ForumResult<()> {
+    if reference.tenant_id != tenant_id {
+        return Err(ForumError::CapabilityFailure {
+            capability: "media.asset_reference_reconciliation",
+            source_code: "MEDIA_REFERENCE_TENANT_MISMATCH".to_string(),
+            message: "Media returned an owner reference outside the trusted Forum tenant".to_string(),
+            retryable: false,
+        });
+    }
+    if reference.owner_module != FORUM_MEDIA_OWNER_MODULE {
+        return Err(ForumError::CapabilityFailure {
+            capability: "media.asset_reference_reconciliation",
+            source_code: "MEDIA_REFERENCE_OWNER_MISMATCH".to_string(),
+            message: "Media returned a reference outside the Forum owner scope".to_string(),
+            retryable: false,
+        });
+    }
+    if reference.reference_id.is_nil() || reference.media_id.is_nil() {
+        return Err(ForumError::CapabilityFailure {
+            capability: "media.asset_reference_reconciliation",
+            source_code: "MEDIA_REFERENCE_IDENTITY_INVALID".to_string(),
+            message: "Media returned an invalid durable reference identity".to_string(),
+            retryable: false,
+        });
+    }
+    Ok(())
 }
 
 fn validate_cursor(cursor: Option<Uuid>) -> ForumResult<()> {
@@ -325,10 +610,121 @@ mod tests {
     }
 
     #[test]
+    fn media_page_validation_rejects_unbounded_duplicate_or_invalid_cursor() {
+        let tenant_id = Uuid::new_v4();
+        let first = rustok_media::MediaAssetReference {
+            media_id: Uuid::new_v4(),
+            tenant_id,
+            owner_module: "forum".to_string(),
+            reference_id: Uuid::from_u128(1),
+        };
+        let duplicate = rustok_media::MediaAssetReference {
+            reference_id: first.reference_id,
+            ..first
+        };
+        let lower = rustok_media::MediaAssetReference {
+            media_id: Uuid::new_v4(),
+            tenant_id,
+            owner_module: "forum".to_string(),
+            reference_id: Uuid::from_u128(0),
+        };
+
+        let too_large = MediaAssetReferenceListPage {
+            references: vec![first],
+            next_reference_id: Some(first.reference_id),
+            has_more: false,
+        };
+        assert!(validate_media_page(&too_large, 0, tenant_id).is_err());
+
+        let duplicate_page = MediaAssetReferenceListPage {
+            references: vec![first, duplicate],
+            next_reference_id: Some(first.reference_id),
+            has_more: false,
+        };
+        assert!(validate_media_page(&duplicate_page, 2, tenant_id).is_err());
+
+        let unordered = MediaAssetReferenceListPage {
+            references: vec![first, lower],
+            next_reference_id: Some(lower.reference_id),
+            has_more: false,
+        };
+        assert!(validate_media_page(&unordered, 2, tenant_id).is_err());
+
+        let missing_cursor = MediaAssetReferenceListPage {
+            references: vec![first],
+            next_reference_id: None,
+            has_more: true,
+        };
+        assert!(validate_media_page(&missing_cursor, 1, tenant_id).is_err());
+    }
+
+    #[test]
+    fn media_lookup_validation_rejects_unrequested_or_duplicate_results() {
+        let tenant_id = Uuid::new_v4();
+        let relation = forum_attachment_relation::Model {
+            tenant_id,
+            reference_id: Uuid::new_v4(),
+            media_id: Uuid::new_v4(),
+            target_kind: "topic".to_string(),
+            target_id: Uuid::new_v4(),
+            locale: "en".to_string(),
+            usage: "attachment".to_string(),
+            position: 0,
+            caption: None,
+            created_at: chrono::Utc::now(),
+        };
+
+        let unrequested = MediaAssetReferenceLookupResult {
+            references: vec![rustok_media::MediaAssetReference {
+                media_id: Uuid::new_v4(),
+                tenant_id,
+                owner_module: "forum".to_string(),
+                reference_id: Uuid::new_v4(),
+            }],
+        };
+        assert!(validate_media_lookup(&unrequested, &[relation.clone()], tenant_id).is_err());
+
+        let duplicate = MediaAssetReference {
+            media_id: relation.media_id,
+            tenant_id,
+            owner_module: "forum".to_string(),
+            reference_id: relation.reference_id,
+        };
+        let duplicate_result = MediaAssetReferenceLookupResult {
+            references: vec![duplicate, duplicate],
+        };
+        assert!(validate_media_lookup(&duplicate_result, &[relation], tenant_id).is_err());
+    }
+
+    #[test]
+    fn media_reference_boundary_rejects_foreign_tenant_and_owner() {
+        let tenant_id = Uuid::new_v4();
+        let foreign = rustok_media::MediaAssetReference {
+            media_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            owner_module: "forum".to_string(),
+            reference_id: Uuid::new_v4(),
+        };
+        assert!(validate_media_reference(&foreign, tenant_id).is_err());
+
+        let wrong_owner = rustok_media::MediaAssetReference {
+            media_id: Uuid::new_v4(),
+            tenant_id,
+            owner_module: "blog".to_string(),
+            reference_id: Uuid::new_v4(),
+        };
+        assert!(validate_media_reference(&wrong_owner, tenant_id).is_err());
+    }
+
+    #[test]
     fn drift_kind_wire_values_are_stable() {
         assert_eq!(
             ForumAttachmentHoldDriftKind::OrphanMediaHold.as_str(),
             "orphan_media_hold"
+        );
+        assert_eq!(
+            ForumAttachmentHoldDriftKind::MissingMediaHold.as_str(),
+            "missing_media_hold"
         );
         assert_eq!(
             ForumAttachmentHoldDriftKind::MediaReferenceMismatch.as_str(),

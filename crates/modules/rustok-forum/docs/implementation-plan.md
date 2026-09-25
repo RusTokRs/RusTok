@@ -89,9 +89,7 @@ projection revisions.
   content revisions.
 - The immutable `forum_relation_revisions` stream remains dedicated to mentions/quotes;
   attachment state must not reuse it as a mutable head or CAS row.
-- The current source-ready API deliberately stops before persistence. A Media admission
-  result does not reserve an asset against deletion, so committing a Forum foreign reference
-  from that read fact alone would leave a cross-owner time-of-check/time-of-use race.
+- Attachment relation persistence now uses the Forum-owned CAS head and bounded relation rows. A Media admission result alone does not reserve an asset against deletion; the writer acquires durable Media owner references before the Forum commit and releases removed references only after commit. Ambiguous commits and failed post-commit releases intentionally preserve conservative holds for later reconciliation.
 
 Persistence now combines the owner-side CAS with Media durable reference retention. New Media
 holds are acquired before the Forum transaction commits; removed holds are released only after
@@ -305,7 +303,7 @@ is deferred to the final production-validation phase.
 | `FORUM-11` | `done` | Subscription levels and participation policy. |
 | `FORUM-12` | `in_progress` | Mention/quote relations and notification source exist. Runtime execution, profile/block privacy, moderator audience and final Notifications evidence remain. |
 | `FORUM-13` | `in_progress` | Optional Media presentation policy exists. Add typed category-cover owner command, transports, UI and runtime evidence; Media keeps lifecycle ownership. |
-| `FORUM-14` | `in_progress` | Forum attachment relations over Media-owned sessions/assets; FORUM-14A content-revision relation admission and the independent attachment-set revision/CAS contract are source-ready. Forum-owned attachment relation persistence now uses a dedicated CAS head plus bounded ordered rows and durable Media owner reference retention. `source_revision` is content provenance only; attachment-only changes do not advance Forum content revisions. Runtime integration/reconciliation evidence remains open. |
+| `FORUM-14` | `in_progress` | Forum attachment relations over Media-owned assets are implemented through a dedicated CAS head, bounded ordered rows and durable Media owner reference retention. `source_revision` is content provenance only; attachment-only changes do not advance Forum content revisions. Runtime integration/reconciliation evidence remains open; FORUM-33 now audits conservative orphan holds through the public Media owner-reference listing contract. |
 | `FORUM-15` | `in_progress` | Profiles supplies `ProfilesReader`; FORUM-15A through 15E provide member-card owner service, user stats, GraphQL/native transport, and privacy-aware storefront UI composition. Retain live runtime evidence. |
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
@@ -324,7 +322,7 @@ is deferred to the final production-validation phase.
 | `FORUM-30` | `planned` | Complete Forum admin by composing Forum and shared owners. |
 | `FORUM-31` | `planned` | Complete Forum storefront by composing Profiles, Media, Reactions, Notifications and Search. |
 | `FORUM-32` | `in_progress` | Generated Forum Fly blocks/renderers/property contracts, Forum-owned preview service/HTTP/native transport, provider-neutral Pages host composition and owner-backed schema/validation property editing are source-ready. Retained runtime/browser evidence and observed Page Builder Wave evidence remain. |
-| `FORUM-33` | `in_progress` | Bounded snapshot-consistent owner counter and accepted-solution reconciliation with independent keyset cursors, strict operator GraphQL/owner admission and baseline platform telemetry are source-ready, with mention and subscription reconciliation slices implemented. Retain SQLite/PostgreSQL execution evidence; write repair remains blocked on dry-run/audit/idempotent job state and CLI integration awaits a synchronized dependency/lock update. |
+| `FORUM-33` | `in_progress` | Bounded snapshot-consistent owner counter and accepted-solution reconciliation with independent keyset cursors, strict operator GraphQL/owner admission and baseline platform telemetry are source-ready, with mention, subscription and attachment-hold reconciliation slices implemented. Retain SQLite/PostgreSQL execution evidence; write repair remains blocked on dry-run/audit/idempotent job state and CLI integration awaits a synchronized dependency/lock update. |
 | `FORUM-34` | `in_progress` | Forum import/export adapter and NodeBB mapping; FORUM-34A through 34Q (export inventory/planner/reader/mapping, import inspection/relation-prep/resolution/tombstone/write) are source-ready, awaiting shared migration runner integration. |
 | `NOTIFY-00` | `in_progress` | Neutral API/runtime composition and Forum providers exist; executable distribution evidence remains. |
 | `NOTIFY-01` | `in_progress` | Persistence/source inbox exist; final commands, migrations, retention and reconciliation remain. |
@@ -741,7 +739,7 @@ These commands remain maintainer-run in this source slice.
 
 FORUM-33A/B provide the read-only `ForumCounterReconciliationService`; FORUM-33C
 adds a sibling read-only `ForumSolutionReconciliationService`. Both are exposed
-through the same operator GraphQL query object:
+through the same operator GraphQL query object, alongside subscription, mention and attachment-hold diagnostics:
 
 ```text
 forumCounterReconciliationReport(
@@ -754,6 +752,12 @@ forumSolutionReconciliationReport(
   limit: Int,
   solutionAfter: UUID,
   solutionStatAfter: UUID
+)
+
+forumAttachmentHoldReconciliationReport(
+  limit: Int,
+  mediaAfter: UUID,
+  relationAfter: UUID
 )
 ```
 
@@ -785,13 +789,15 @@ serializable repair fence. `clean` is page-local; whole-tenant clean requires
 exhausting every relevant cursor chain with every page clean.
 
 The services reuse platform module-entrypoint/span/error metrics rather than
-adding duplicate Forum metric families. Source-ready reporting does not claim
-runtime observability evidence.
+adding duplicate Forum metric families. Attachment-hold reporting records the same
+entrypoint/span/error classes and remains read-only. Source-ready reporting does not
+claim runtime observability evidence.
 
 FORUM-33 remains `in_progress`. Retain SQLite and PostgreSQL execution evidence
 for counter and accepted-solution clean/drift pages, independent multi-page
 cursor traversal, exhausted-one-side behavior and concurrent page-local snapshot
-semantics. The attachment reconciliation slice is now source-ready as a read-only owner diagnostic. It uses a bounded Media owner-reference keyset and compares each returned hold against Forum-owned relation rows; runtime PostgreSQL evidence remains open. Automatic repair stays blocked by the existing FORUM-33 write-repair gate. Add only
+semantics. The attachment reconciliation slice is now source-ready as a read-only bidirectional owner diagnostic. It uses independent bounded keysets for Media-owned holds and Forum-owned relation rows, exact bulk Media lookup for the reverse relation page, and fails closed on tenant/owner/identity, ordering, cursor or response-bound violations. It reports orphan Media holds, missing Media holds and stable-reference Media-ID mismatches; runtime PostgreSQL evidence remains open. Automatic repair stays blocked by the existing FORUM-33 write-repair gate.
+The canonical machine-readable contract is `crates/modules/rustok-forum/contracts/forum-attachment-hold-reconciliation.json`, guarded by `scripts/verify/verify-forum-attachment-hold-reconciliation.mjs`. Add only
 non-duplicative operational metrics for moderation, notification/search lag,
 unread/activity, locale fallback and spam outcomes. Any write repair remains
 blocked until it has explicit operator RBAC, dry-run behavior, durable audit,
@@ -828,7 +834,7 @@ Hosts register/mount packages and do not absorb policy.
 
 ### Track 3 — Profiles/Media and Forum product
 
-1. Category cover and attachment relations over Media; the lifecycle-admission prerequisite and independent attachment-set revision/CAS contract are source-ready, while attachment relation persistence remains gated on a Media owner reference-retention/control contract.
+1. Category cover and attachment relations over Media; attachment relation persistence, durable Media reference retention/control, and bidirectional orphan/missing-hold reconciliation are source-ready. Category-cover owner write semantics remain a separate product slice; attachment runtime evidence remains open.
 2. Batched Profiles member composition.
 3. Topic kinds, drafts/bookmarks, read-state bulk completion and trust enforcement.
 4. Full admin/storefront assembly and release integrations.
@@ -1101,8 +1107,8 @@ pages (`solution_reconciliation_sqlite.rs`), subscription pages
 (`subscription_reconciliation_sqlite.rs`), and mention pages
 (`mention_reconciliation_sqlite.rs`). GraphQL schema SDL, RBAC authorization,
 tenant scope isolation, unauthenticated rejection, and operator execution evidence
-are retained and verified across all four reconciliation reports
-(`reconciliation_graphql_contract.rs`). This covers relation eligibility, missing
+are retained and verified across the Forum reconciliation reports
+(`reconciliation_graphql_contract.rs`), including attachment-hold owner isolation. This covers relation eligibility, missing
 solution-author stats, stale/mismatched `solution_count`, independent multi-page
 cursor traversal, exhausted-one-side behavior, target existence, merge redirect
 source subscription detection, muted preferences integrity, positive revision

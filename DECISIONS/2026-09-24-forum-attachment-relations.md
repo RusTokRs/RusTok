@@ -104,10 +104,13 @@ The relation model is explicit and owner-correct, at the cost of an asynchronous
 After relation persistence, Forum audits the conservative-hold failure mode through the public
 owner boundary rather than querying Media persistence. Media exposes a bounded
 `MediaAssetReferenceListRequest/Page` for one normalized owner module with a strict
-`reference_id` keyset. Forum scans only `owner_module = "forum"` and checks each returned hold
-against the Forum-owned `forum_attachment_relations.reference_id` identity in the same tenant.
+`reference_id` keyset and a bounded exact `MediaAssetReferenceLookupRequest/Result` for Forum
+relation IDs. Forum scans only `owner_module = "forum"` and checks each returned hold against the
+Forum-owned `forum_attachment_relations.reference_id` identity in the same tenant, while the
+reverse relation page verifies that every committed relation still has the expected durable hold.
 
-The diagnostic distinguishes an `orphan_media_hold` when no Forum relation exists and a
+The diagnostic distinguishes an `orphan_media_hold` when no Forum relation exists, a
+`missing_media_hold` when a committed Forum relation has no Media hold, and a
 `media_reference_mismatch` when the same reference identity is bound to a different Media asset.
 The two owners cannot provide one distributed snapshot in remote deployments, so each page is
 explicitly page-local and diagnostic. No reconciliation path releases or retains a Media hold;

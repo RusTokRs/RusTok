@@ -7,6 +7,7 @@
 - `pub struct ForumModule`
 - `pub struct CategoryService`, `TopicService`, `ReplyService`, `ModerationService`, `SubscriptionService`, `UserStatsService`, `VoteService`
 - `pub struct ForumAttachmentRelationService`
+- `pub struct ForumAttachmentHoldReconciliationService` — read-only Media hold reconciliation report with bounded keyset pagination
 - `ForumAttachmentRelationService::get_attachment_relations(tenant_id, target, locale) -> ForumAttachmentRelationSet`
 - `ForumAttachmentRelationService::replace_attachment_relations(context, ForumAttachmentRelationAdmissionRequest) -> ForumAttachmentRelationSet`
 - `pub struct ForumRelationReadService`
@@ -61,6 +62,7 @@
 - `CreateTopicCommandInput`, `UpdateTopicCommandInput`, `CreateReplyCommandInput`, `UpdateReplyCommandInput`
 - `ForumRelationSnapshotQuery`, `ForumRelationSnapshotResponse`, `ForumRelationQuoteResponse`
 - `pub mod graphql` -> `ForumQuery`, `ForumMutation`
+- GraphQL reconciliation entry point: `forumAttachmentHoldReconciliationReport(limit, mediaAfter, relationAfter)`; operator-only, page-local, bidirectional read-only Media hold/relation audit
 - `pub mod controllers` -> `routes()`
 - Public DTOs/constants from `dto::*` and `constants::*`
 - `pub enum ForumError`, `pub type ForumResult<T>`

@@ -67,6 +67,19 @@ pub struct MediaAssetReferenceListRequest {
     pub limit: u64,
 }
 
+/// Bounded exact lookup for durable consumer-owned Media reference holds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MediaAssetReferenceLookupRequest {
+    pub owner_module: String,
+    pub reference_ids: Vec<Uuid>,
+}
+
+/// Result of a bounded exact lookup. Missing references are intentionally omitted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MediaAssetReferenceLookupResult {
+    pub references: Vec<MediaAssetReference>,
+}
+
 /// One bounded page of durable consumer-owned Media reference holds.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MediaAssetReferenceListPage {
@@ -92,6 +105,12 @@ pub trait MediaAssetReadPort: Send + Sync {
         context: PortContext,
         request: MediaAssetReferenceListRequest,
     ) -> Result<MediaAssetReferenceListPage, PortError>;
+
+    async fn lookup_asset_references(
+        &self,
+        context: PortContext,
+        request: MediaAssetReferenceLookupRequest,
+    ) -> Result<MediaAssetReferenceLookupResult, PortError>;
 
     async fn list_assets(
         &self,
@@ -231,6 +250,19 @@ impl MediaAssetReadPort for MediaService {
         let tenant_id = parse_tenant_id(&context)?;
         validate_asset_reference_list_request(&request)?;
         self.list_asset_references_page(tenant_id, request)
+            .await
+            .map_err(media_error_to_port_error)
+    }
+
+    async fn lookup_asset_references(
+        &self,
+        context: PortContext,
+        request: MediaAssetReferenceLookupRequest,
+    ) -> Result<MediaAssetReferenceLookupResult, PortError> {
+        require_media_read_policy(&context)?;
+        let tenant_id = parse_tenant_id(&context)?;
+        validate_asset_reference_lookup_request(&request)?;
+        self.lookup_asset_references_exact(tenant_id, request)
             .await
             .map_err(media_error_to_port_error)
     }
@@ -615,6 +647,41 @@ fn validate_asset_reference_list_request(
             "media.asset_reference_list_cursor_invalid",
             "media asset reference list cursor must be a non-nil UUID",
         ));
+    }
+    Ok(())
+}
+
+fn validate_asset_reference_lookup_request(
+    request: &MediaAssetReferenceLookupRequest,
+) -> Result<(), PortError> {
+    if request.reference_ids.is_empty() {
+        return Err(PortError::validation(
+            "media.asset_reference_lookup_ids_empty",
+            "media asset reference lookup requires at least one reference ID",
+        ));
+    }
+    if request.reference_ids.len() > MAX_MEDIA_RECONCILIATION_LIMIT as usize {
+        return Err(PortError::validation(
+            "media.asset_reference_lookup_ids_too_large",
+            format!(
+                "media asset reference lookup is limited to {MAX_MEDIA_RECONCILIATION_LIMIT} reference IDs"
+            ),
+        ));
+    }
+    let mut seen = std::collections::HashSet::with_capacity(request.reference_ids.len());
+    for reference_id in &request.reference_ids {
+        if reference_id.is_nil() {
+            return Err(PortError::validation(
+                "media.asset_reference_lookup_id_invalid",
+                "media asset reference lookup IDs must be non-nil UUIDs",
+            ));
+        }
+        if !seen.insert(*reference_id) {
+            return Err(PortError::validation(
+                "media.asset_reference_lookup_duplicate_id",
+                "media asset reference lookup IDs must be unique",
+            ));
+        }
     }
     Ok(())
 }

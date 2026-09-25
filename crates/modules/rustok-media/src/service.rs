@@ -1498,6 +1498,31 @@ impl MediaService {
         ))
     }
 
+    pub async fn lookup_asset_references_exact(
+        &self,
+        tenant_id: Uuid,
+        request: crate::MediaAssetReferenceLookupRequest,
+    ) -> Result<crate::MediaAssetReferenceLookupResult> {
+        let owner_module = normalize_owner_module(Some(&request.owner_module))?;
+        let references = AssetReferenceEntity::find()
+            .filter(AssetReferenceCol::TenantId.eq(tenant_id))
+            .filter(AssetReferenceCol::OwnerModule.eq(&owner_module))
+            .filter(AssetReferenceCol::ReferenceId.is_in(request.reference_ids))
+            .order_by_asc(AssetReferenceCol::ReferenceId)
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .map(|row| MediaAssetReference {
+                media_id: row.media_id,
+                tenant_id: row.tenant_id,
+                owner_module: row.owner_module,
+                reference_id: row.reference_id,
+            })
+            .collect();
+
+        Ok(crate::MediaAssetReferenceLookupResult { references })
+    }
+
     pub async fn list_asset_references_page(
         &self,
         tenant_id: Uuid,

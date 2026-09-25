@@ -15,6 +15,36 @@ fn attachment_relation_postgres_trigger_uses_valid_dollar_quoting() {
 }
 
 #[test]
+fn attachment_hold_reconciliation_stays_within_media_owner_boundary() {
+    let source = include_str!("../src/services/attachment_hold_reconciliation.rs");
+    for forbidden in [
+        "media_asset_reference_holds",
+        "media_assets",
+        "media_blobs",
+        "retain_asset_reference",
+        "release_asset_reference",
+    ] {
+        assert!(
+            !source.contains(forbidden),
+            "attachment hold reconciliation must not cross into Media private persistence or mutate holds: {forbidden}"
+        );
+    }
+
+    for required in [
+        ".list_asset_references(",
+        "owner_module: FORUM_MEDIA_OWNER_MODULE.to_string()",
+        "MediaReferenceMismatch",
+        "OrphanMediaHold",
+        "validate_media_reference(",
+    ] {
+        assert!(
+            source.contains(required),
+            "attachment hold reconciliation contract marker is missing: {required}"
+        );
+    }
+}
+
+#[test]
 fn module_manifest_declares_optional_forum_widget_catalog_contract() {
     let manifest = include_str!("../rustok-module.toml");
     let value: toml::Value = toml::from_str(manifest).expect("rustok-module.toml must stay valid");

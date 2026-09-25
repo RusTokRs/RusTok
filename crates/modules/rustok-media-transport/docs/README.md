@@ -2,7 +2,7 @@
 
 The transport is deliberately narrower than the Media HTTP/object interfaces.
 It carries asset metadata, owner-selected public image descriptors,
-reference-admission lifecycle facts, bounded owner-reference enumeration, durable owner-reference retention/release controls,
+reference-admission lifecycle facts, bounded owner-reference enumeration and exact bulk owner-reference lookup, durable owner-reference retention/release controls,
 translations, upload-session control, deletion commands, and reconciliation commands. Upload/download bytes never enter a JSON or protobuf envelope.
 
 ## Contract ownership

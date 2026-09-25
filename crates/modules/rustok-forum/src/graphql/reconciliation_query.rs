@@ -1,6 +1,8 @@
+use std::time::Duration;
+
 use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
 use rustok_api::{
-    AuthContext, Permission, TenantContext,
+    AuthContext, Permission, PortActor, PortContext, RequestContext, TenantContext,
     graphql::{GraphQLError, require_module_enabled},
     has_any_effective_permission,
 };
@@ -10,8 +12,11 @@ use uuid::Uuid;
 
 use crate::{
     ForumCounterDrift, ForumCounterReconciliationReport, ForumCounterReconciliationService,
+    ForumError, forum_graphql_runtime,
     services::{
-        ForumSolutionDrift, ForumSolutionReconciliationReport, ForumSolutionReconciliationService,
+        ForumAttachmentHoldReconciliationReport, ForumAttachmentHoldReconciliationService,
+        ForumAttachmentHoldDrift, ForumSolutionDrift, ForumSolutionReconciliationReport,
+        ForumSolutionReconciliationService,
     },
 };
 
@@ -40,6 +45,30 @@ pub struct GqlForumCounterReconciliationReport {
     /// requires exhausting both cursor chains with every page clean.
     pub clean: bool,
     pub drifts: Vec<GqlForumCounterDrift>,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct GqlForumAttachmentHoldDrift {
+    pub kind: String,
+    pub reference_id: Uuid,
+    pub media_id: Uuid,
+    pub relation_media_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct GqlForumAttachmentHoldReconciliationReport {
+    pub requested_limit: Option<i32>,
+    pub effective_limit: i32,
+    pub inspected_media_holds: i32,
+    pub has_more_media_holds: bool,
+    pub media_cursor: Option<Uuid>,
+    pub inspected_forum_relations: i32,
+    pub has_more_forum_relations: bool,
+    pub forum_cursor: Option<Uuid>,
+    pub drift_count: i32,
+    /// True only for this bounded Media-owner page.
+    pub clean: bool,
+    pub drifts: Vec<GqlForumAttachmentHoldDrift>,
 }
 
 #[derive(Debug, Clone, SimpleObject)]
@@ -101,6 +130,58 @@ impl ForumReconciliationQuery {
         Ok(map_report(report))
     }
 
+    /// Read-only FORUM-33 audit of Media durable holds retained for Forum attachments.
+    ///
+    /// The media_after cursor is a strict keyset cursor over Media reference IDs. The report is
+    /// page-local and never releases or otherwise mutates a Media hold.
+    async fn forum_attachment_hold_reconciliation_report(
+        &self,
+        ctx: &Context<'_>,
+        limit: Option<i32>,
+        media_after: Option<Uuid>,
+        relation_after: Option<Uuid>,
+    ) -> Result<GqlForumAttachmentHoldReconciliationReport> {
+        let (tenant_id, security, requested_limit, db) =
+            reconciliation_context(ctx, limit).await?;
+        let runtime = forum_graphql_runtime(ctx);
+        let media = runtime
+            .attachment_hold_reconciliation_media()
+            .ok_or_else(|| {
+                ForumError::capability_unavailable(
+                    "media.asset_reference_listing",
+                    "FORUM_MEDIA_REFERENCE_LIST_CAPABILITY_UNAVAILABLE",
+                )
+            })?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let request_context = ctx.data_opt::<RequestContext>();
+        let locale = request_context
+            .map(|request| request.locale.clone())
+            .unwrap_or_else(|| tenant.default_locale.clone());
+        let correlation_id = request_context
+            .map(|request| request.correlation_id.clone())
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+        let media_context = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::user(auth.user_id.to_string()),
+            locale,
+            correlation_id,
+        )
+        .with_deadline(Duration::from_secs(5));
+        let report = ForumAttachmentHoldReconciliationService::new(db, media)
+            .report_page(
+                tenant_id,
+                &security,
+                media_context,
+                requested_limit,
+                media_after,
+                relation_after,
+            )
+            .await?;
+        Ok(map_attachment_hold_report(report))
+    }
     /// Read-only FORUM-33 accepted-solution and solution-author-stat drift report.
     ///
     /// A solution is authoritative only when the exact same-tenant/topic reply still exists and is
@@ -199,6 +280,34 @@ fn map_drift(drift: ForumCounterDrift) -> GqlForumCounterDrift {
     }
 }
 
+fn map_attachment_hold_report(
+    report: ForumAttachmentHoldReconciliationReport,
+) -> GqlForumAttachmentHoldReconciliationReport {
+    GqlForumAttachmentHoldReconciliationReport {
+        requested_limit: report.requested_limit.map(saturating_i32),
+        effective_limit: saturating_i32(report.effective_limit),
+        inspected_media_holds: saturating_i32(report.inspected_media_holds),
+        has_more_media_holds: report.has_more_media_holds,
+        media_cursor: report.media_cursor,
+        inspected_forum_relations: saturating_i32(report.inspected_forum_relations),
+        has_more_forum_relations: report.has_more_forum_relations,
+        forum_cursor: report.forum_cursor,
+        drift_count: saturating_i32(report.drift_count() as u64),
+        clean: report.is_clean(),
+        drifts: report.drifts.into_iter().map(map_attachment_hold_drift).collect(),
+    }
+}
+
+fn map_attachment_hold_drift(
+    drift: ForumAttachmentHoldDrift,
+) -> GqlForumAttachmentHoldDrift {
+    GqlForumAttachmentHoldDrift {
+        kind: drift.kind.as_str().to_string(),
+        reference_id: drift.reference_id,
+        media_id: drift.media_id,
+        relation_media_id: drift.relation_media_id,
+    }
+}
 fn map_solution_report(
     report: ForumSolutionReconciliationReport,
 ) -> GqlForumSolutionReconciliationReport {

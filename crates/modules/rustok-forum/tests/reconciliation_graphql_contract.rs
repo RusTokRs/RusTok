@@ -15,6 +15,8 @@ const COUNTER_AND_SOLUTION_GRAPHQL: &str = include_str!("../src/graphql/reconcil
 const SUBSCRIPTION_GRAPHQL: &str =
     include_str!("../src/graphql/subscription_reconciliation_query.rs");
 const MENTION_GRAPHQL: &str = include_str!("../src/graphql/mention_reconciliation_query.rs");
+const ATTACHMENT_HOLD_GRAPHQL: &str =
+    include_str!("../src/graphql/reconciliation_query.rs");
 
 #[test]
 fn graphql_schema_exposes_all_reconciliation_reports() {
@@ -37,6 +39,13 @@ fn graphql_schema_exposes_all_reconciliation_reports() {
         "GqlForumSubscriptionCursor",
         "GqlForumMentionReconciliationReport",
         "GqlForumMentionDrift",
+        "GqlForumAttachmentHoldReconciliationReport",
+        "GqlForumAttachmentHoldDrift",
+        "forumAttachmentHoldReconciliationReport",
+        "inspectedForumRelations",
+        "hasMoreForumRelations",
+        "forumCursor",
+        "missing_media_hold",
         "inspectedTopics",
         "inspectedCategories",
         "topicCursor",
@@ -66,6 +75,7 @@ fn graphql_reconciliation_adapters_enforce_security_scope_and_isolation() {
         ("counter/solution", COUNTER_AND_SOLUTION_GRAPHQL),
         ("subscription", SUBSCRIPTION_GRAPHQL),
         ("mention", MENTION_GRAPHQL),
+        ("attachment-hold", ATTACHMENT_HOLD_GRAPHQL),
     ] {
         for marker in [
             "require_module_enabled(ctx, MODULE_SLUG).await?",
@@ -96,6 +106,9 @@ fn graphql_reconciliation_adapters_enforce_security_scope_and_isolation() {
 
     assert!(COUNTER_AND_SOLUTION_GRAPHQL.contains("ForumCounterReconciliationService::new(db)"));
     assert!(COUNTER_AND_SOLUTION_GRAPHQL.contains("ForumSolutionReconciliationService::new(db)"));
+    assert!(ATTACHMENT_HOLD_GRAPHQL.contains("ForumAttachmentHoldReconciliationService::new(db, media)"));
+    assert!(ATTACHMENT_HOLD_GRAPHQL.contains("attachment_hold_reconciliation_media()"));
+    assert!(ATTACHMENT_HOLD_GRAPHQL.contains("FORUM_MEDIA_REFERENCE_LIST_CAPABILITY_UNAVAILABLE"));
     assert!(SUBSCRIPTION_GRAPHQL.contains("ForumSubscriptionReconciliationService::new(db)"));
     assert!(MENTION_GRAPHQL.contains("ForumMentionReconciliationService::new(db)"));
 }
@@ -247,6 +260,58 @@ async fn graphql_reconciliation_execution_rejects_unauthenticated_and_unauthoriz
         res.errors[0].message.contains("tenant scope mismatch"),
         "expected tenant scope mismatch message, got: {}",
         res.errors[0].message
+    );
+}
+
+#[tokio::test]
+async fn attachment_hold_reconciliation_execution_fails_closed_without_media_provider() {
+    let db = setup_test_db().await;
+    let tenant_id = Uuid::new_v4();
+    let tenant = test_tenant_context(tenant_id);
+
+    db.execute_unprepared(&format!(
+        "INSERT INTO tenant_modules (tenant_id, module_slug, enabled) VALUES ({}, 'forum', 1);",
+        sql_uuid(tenant_id)
+    ))
+    .await
+    .expect("tenant_modules seed should apply");
+
+    let schema = Schema::build(ForumQuery::default(), EmptyMutation, EmptySubscription)
+        .extension(ForumGraphqlErrorExtension)
+        .finish();
+
+    let auth = test_auth_context(
+        tenant_id,
+        vec![
+            Permission::new(Resource::ForumCategories, Action::Manage),
+            Permission::new(Resource::ForumTopics, Action::Manage),
+        ],
+    );
+
+    let query = r#"
+        query {
+            forumAttachmentHoldReconciliationReport(limit: 10) {
+                clean
+                driftCount
+                inspectedMediaHolds
+                inspectedForumRelations
+                hasMoreMediaHolds
+                hasMoreForumRelations
+            }
+        }
+    "#;
+
+    let req = Request::new(query)
+        .data(tenant)
+        .data(auth)
+        .data(db);
+    let res = schema.execute(req).await;
+    assert!(!res.errors.is_empty(), "missing Media provider must fail closed");
+    let error = res.errors[0].message.as_str();
+    assert!(
+        error.contains("FORUM_MEDIA_REFERENCE_LIST_CAPABILITY_UNAVAILABLE")
+            || error.contains("media.asset_reference_listing"),
+        "unexpected attachment reconciliation capability error: {error}"
     );
 }
 

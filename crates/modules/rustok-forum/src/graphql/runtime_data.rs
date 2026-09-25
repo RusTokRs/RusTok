@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use rustok_api::{
     graphql::GraphqlRuntimeInputs, SharedStaticModuleSettingsReader,
     SharedStaticModuleSettingsTransactionReader,
 };
+use rustok_media::MediaAssetReadPort;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
@@ -22,6 +25,7 @@ use crate::{
 pub struct ForumGraphqlRuntimeData {
     audience_facts: Option<SharedForumAudienceFactsPort>,
     settings_providers: ForumSettingsProviders,
+    attachment_hold_media: Option<Arc<dyn MediaAssetReadPort>>,
 }
 
 pub fn attach_schema_data(
@@ -37,13 +41,22 @@ pub fn attach_schema_data(
         _ => ForumSettingsProviders::default(),
     };
 
+    let attachment_hold_media = inputs.shared_get::<Arc<dyn MediaAssetReadPort>>();
+
     Ok(ForumGraphqlRuntimeData {
         audience_facts: inputs.shared_get::<SharedForumAudienceFactsPort>(),
         settings_providers,
+        attachment_hold_media,
     })
 }
 
 impl ForumGraphqlRuntimeData {
+    pub(crate) fn attachment_hold_reconciliation_media(
+        &self,
+    ) -> Option<Arc<dyn MediaAssetReadPort>> {
+        self.attachment_hold_media.clone()
+    }
+
     pub(crate) fn read_model_service(&self, db: DatabaseConnection) -> ForumReadModelService {
         ForumReadModelService::new(db).with_settings_providers(self.settings_providers.clone())
     }
@@ -196,5 +209,30 @@ mod tests {
         let runtime =
             attach_schema_data(&inputs).expect("Forum GraphQL runtime should materialize");
         assert!(runtime.audience_facts.is_none());
+        assert!(runtime.attachment_hold_media.is_none());
+    }
+
+    #[tokio::test]
+    async fn schema_factory_consumes_host_published_media_reader() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite should connect");
+        let storage = rustok_storage::StorageRuntime::local(&rustok_storage::LocalStorageConfig {
+            base_dir: std::env::temp_dir()
+                .join(format!("rustok-forum-media-runtime-{}", uuid::Uuid::new_v4()))
+                .display()
+                .to_string(),
+            base_url: String::new(),
+            fsync: false,
+        })
+        .expect("local storage runtime should initialize");
+        let media: Arc<dyn MediaAssetReadPort> =
+            Arc::new(rustok_media::MediaService::new(db.clone(), storage));
+        let host = HostRuntimeContext::new(db).with_shared_value(media);
+        let inputs = GraphqlRuntimeInputs::new(host);
+
+        let runtime =
+            attach_schema_data(&inputs).expect("Forum GraphQL runtime should materialize");
+        assert!(runtime.attachment_hold_media.is_some());
     }
 }
