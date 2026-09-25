@@ -20,6 +20,12 @@ Last reviewed: 2026-09-25
 
 ## Audit 2026-09-25: mounted owner-runtime composition
 
+- [x] Require host-composed `CommercePaymentReadRuntime` and `CommercePaymentCommandRuntime` for mounted Commerce GraphQL schema composition. The mandatory Payment capability now fails closed instead of silently synthesizing an in-process wrapper when host composition is incomplete.
+- [x] Compose the Commerce Payment GraphQL wrapper runtimes in `apps/server::attach_commerce_provider_registries`, preserving host/server-selected owner runtimes and deterministic in-process construction only at the explicit host-composition boundary.
+- [x] Remove obsolete duplicate admin REST implementations for order changes and returns. Each route now has one canonical transport adapter: owner-port reads/commands or the dedicated Commerce orchestration boundary.
+- [x] Extend `verify-commerce-fulfillment-requirement-boundary.mjs` with the Payment runtime-composition guard.
+- [ ] Execute the Commerce/server Rust test suites and the static verifier against a repository checkout; this environment cannot run the repository build because the GitHub source is not mounted locally.
+
 ## Audit 2026-09-25: source-integrity blockers
 
 - [x] Repair the malformed `CommerceGraphqlRuntimeData` initializer so every composed owner runtime is separated correctly and the GraphQL runtime source remains compilable.
@@ -27,11 +33,6 @@ Last reviewed: 2026-09-25
 - [ ] Run the Rust compiler and static verification suite after this repair; runtime, migration, and test evidence remains maintainer-owned for this continuation.
 
 
-- [x] Require host-composed `CommercePaymentReadRuntime` and `CommercePaymentCommandRuntime` for mounted Commerce GraphQL schema composition. The mandatory Payment capability now fails closed instead of silently synthesizing an in-process wrapper when host composition is incomplete.
-- [x] Compose the Commerce Payment GraphQL wrapper runtimes in `apps/server::attach_commerce_provider_registries`, preserving host/server-selected owner runtimes and deterministic in-process construction only at the explicit host-composition boundary.
-- [x] Remove obsolete duplicate admin REST implementations for order changes and returns. Each route now has one canonical transport adapter: owner-port reads/commands or the dedicated Commerce orchestration boundary.
-- [x] Extend `verify-commerce-fulfillment-requirement-boundary.mjs` with the Payment runtime-composition guard.
-- [ ] Execute the Commerce/server Rust test suites and the static verifier against a repository checkout; this environment cannot run the repository build because the GitHub source is not mounted locally.
 ## Payment workstream
 
 - Payment storefront and webhook boundary is guarded by `scripts/verify/verify-payment-storefront-boundary.mjs`.
@@ -40,7 +41,7 @@ Last reviewed: 2026-09-25
 - Provider outcome lifecycle and error taxonomy are guarded by `scripts/verify/verify-payment-provider-outcome-contract.mjs`.
 - Stripe payment provider runtime attachment is guarded by `scripts/verify/verify-payment-stripe-runtime.mjs`.
 - Commerce storefront transport handoff and native adapter `storefront/src/transport/native_server_adapter.rs` are guarded by `scripts/verify/verify-commerce-storefront-transport-handoff.mjs`.
-- - [x] Update the legacy GraphQL runtime parity refund mutation helper to pass explicit idempotency keys.
+- [x] Update the legacy GraphQL runtime parity refund mutation helper to pass explicit idempotency keys.
 
 ## Source of truth
 
