@@ -196,6 +196,38 @@ impl ChannelService {
         Ok((items, total))
     }
 
+    pub async fn list_channel_details_page(
+        &self,
+        tenant_id: Uuid,
+        page: u64,
+        per_page: u64,
+        include_inactive: bool,
+    ) -> ChannelResult<(Vec<ChannelDetailResponse>, u64)> {
+        if page == 0 || per_page == 0 {
+            return Err(ChannelError::Validation(
+                "channel pagination requires non-zero page and per_page".to_string(),
+            ));
+        }
+        let query = channel::Entity::find()
+            .filter(channel::Column::TenantId.eq(tenant_id))
+            .order_by_desc(channel::Column::IsDefault)
+            .order_by_asc(channel::Column::CreatedAt);
+        let query = if include_inactive {
+            query
+        } else {
+            query.filter(channel::Column::IsActive.eq(true))
+        };
+        let paginator = query.paginate(&self.db, per_page);
+        let total = paginator.num_items().await?;
+        let models = paginator.fetch_page(page - 1).await?;
+
+        let mut items = Vec::with_capacity(models.len());
+        for model in models {
+            items.push(self.build_channel_detail(model).await?);
+        }
+        Ok((items, total))
+    }
+
     pub async fn list_channel_details(
         &self,
         tenant_id: Uuid,
