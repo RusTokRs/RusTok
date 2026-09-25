@@ -5,7 +5,7 @@ use thiserror::Error;
 use uuid::Uuid;
 use validator::Validate;
 
-use rustok_fulfillment::FulfillmentService;
+use rustok_fulfillment::{FulfillmentService, FulfillmentStatusKind};
 use rustok_fulfillment::providers::{
     FulfillmentProviderOperationRequest, FulfillmentProviderRegistry,
     MANUAL_FULFILLMENT_PROVIDER_ID,
@@ -126,7 +126,7 @@ impl FulfillmentOrchestrationService {
             .await?;
         let mut fulfilled_quantities = BTreeMap::<Uuid, i32>::new();
         for fulfillment in existing_fulfillments {
-            if fulfillment.status == "cancelled" {
+            if fulfillment.status_kind() == FulfillmentStatusKind::Cancelled {
                 continue;
             }
             if fulfillment.items.is_empty() {
