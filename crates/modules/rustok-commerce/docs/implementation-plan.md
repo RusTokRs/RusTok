@@ -26,6 +26,18 @@ Last reviewed: 2026-09-25
 - [x] Extend `verify-commerce-fulfillment-requirement-boundary.mjs` with the Payment runtime-composition guard.
 - [ ] Execute the Commerce/server Rust test suites and the static verifier against a repository checkout; this environment cannot run the repository build because the GitHub source is not mounted locally.
 
+## Audit 2026-09-25: Tax port error-envelope hardening
+
+- [x] Stop the legacy TaxCalculationPort implementation from copying arbitrary
+  TaxError::Validation text into public PortError messages; validation now uses a
+  stable tax calculation envelope.
+- [x] Remove full PortError debug payloads from the canonical in-process tax adapter
+  diagnostics while retaining bounded error-kind/code/message-length facts.
+- [x] Extend the ecommerce public-port safety verifier and fixture regression coverage
+  to protect the TaxCalculationPort and canonical tax diagnostic boundary.
+- [ ] Continue the broader mapper cleanup for promotion and remaining non-PortError
+  public envelopes, plus compile/runtime evidence for all new source guards.
+
 ## Audit 2026-09-25: Fulfillment lifecycle status typing
 
 - [x] Replace raw string comparisons in the Fulfillment admin command owner adapter with
