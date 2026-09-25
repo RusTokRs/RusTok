@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
@@ -32,6 +32,82 @@ const ADMIN_ORDER_CHANGE_ORCHESTRATION_OWNER: &str =
 const ADMIN_ORDER_CHANGE_BOUNDARY: &str = "commerce_admin_order_change_http";
 
 type AdminOrderChangeHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
+
+fn require_idempotency_key(headers: &HeaderMap) -> Result<String, HttpError> {
+    let value = headers
+        .get("Idempotency-Key")
+        .ok_or_else(|| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_admin_idempotency_key_required",
+                "Idempotency-Key header is required for this write operation",
+            )
+        })?
+        .to_str()
+        .map_err(|_| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_admin_idempotency_key_invalid",
+                "Idempotency-Key header is invalid",
+            )
+        })?
+        .trim()
+        .to_string();
+
+    if value.is_empty() || value.len() > 191 {
+        return Err(HttpError::new(
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_idempotency_key_invalid",
+            "Idempotency-Key header must contain 1 to 191 bytes",
+        ));
+    }
+
+    Ok(value)
+}
+
+fn admin_order_change_read_context(
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    request_context: &RequestContext,
+    resource_id: Uuid,
+) -> PortContext {
+    let mut context = PortContext::new(
+        tenant.id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        format!("commerce-admin-order-change:read:{resource_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+
+    if let Some(channel) = request_context.channel_slug.as_deref() {
+        context = context.with_channel(channel);
+    }
+
+    context
+}
+
+fn admin_order_change_apply_context(
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    request_context: &RequestContext,
+    resource_id: Uuid,
+    idempotency_key: String,
+) -> PortContext {
+    let mut context = PortContext::new(
+        tenant.id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        format!("commerce-admin-order-change:apply:{resource_id}"),
+    )
+    .with_idempotency_key(idempotency_key)
+    .with_deadline(std::time::Duration::from_secs(2));
+
+    if let Some(channel) = request_context.channel_slug.as_deref() {
+        context = context.with_channel(channel);
+    }
+
+    context
+}
 
 fn admin_order_change_port_error_policy(error: &PortError) -> AdminOrderChangeHttpPolicy {
     match &error.kind {
@@ -300,7 +376,10 @@ pub struct AdminApplyOrderChangeInput {
     post,
     path = "/admin/order-changes/{id}/apply",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Order change ID")),
+    params(
+        ("id" = Uuid, Path, description = "Order change ID"),
+        ("Idempotency-Key" = String, Header, description = "Caller-owned idempotency key")
+    ),
     request_body = AdminApplyOrderChangeInput,
     responses(
         (status = 200, description = "Order change applied", body = ApplyOrderChangeResult),
@@ -313,6 +392,7 @@ pub async fn apply_order_change(
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
     Json(input): Json<AdminApplyOrderChangeInput>,
 ) -> HttpResult<Json<ApplyOrderChangeResult>> {
@@ -323,8 +403,15 @@ pub async fn apply_order_change(
     )?;
 
     let actor_id = auth.user_id;
+    let idempotency_key = require_idempotency_key(&headers)?;
     let read_context = admin_order_change_read_context(&tenant, &auth, &request_context, id);
-    let command_context = admin_order_change_apply_context(&tenant, &auth, &request_context, id);
+    let command_context = admin_order_change_apply_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        idempotency_key,
+    );
     let result = OrderChangeOrchestrationService::from_order_ports(
         runtime.db_clone(),
         runtime.event_bus(),
