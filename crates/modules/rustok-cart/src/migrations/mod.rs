@@ -15,6 +15,7 @@ mod m20260713_000115_enforce_cart_shipping_option_integrity;
 mod m20260713_000116_normalize_cart_shipping_totals;
 mod m20260713_000117_lock_checkout_shipping_option_economics;
 mod m20260721_000118_create_cart_marketplace_snapshots;
+mod m20260925_000119_add_cart_line_fulfillment_requirement;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -38,6 +39,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000116_normalize_cart_shipping_totals::Migration),
         Box::new(m20260713_000117_lock_checkout_shipping_option_economics::Migration),
         Box::new(m20260721_000118_create_cart_marketplace_snapshots::Migration),
+        Box::new(m20260925_000119_add_cart_line_fulfillment_requirement::Migration),
     ]
 }
 
