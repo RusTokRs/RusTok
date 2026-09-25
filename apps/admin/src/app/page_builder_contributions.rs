@@ -10,6 +10,7 @@ use rustok_page_builder_admin::{
     PageBuilderContributionPropertyValidationRequest,
 };
 use std::collections::HashSet;
+#[cfg(feature = "ssr")]
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -132,84 +133,128 @@ impl PageBuilderContributionPropertyPort for ForumPageBuilderPropertyPort {
     }
 }
 
+#[cfg(feature = "ssr")]
 #[server(prefix = "/api/fn", endpoint = "page-builder/contribution-permissions")]
 async fn page_builder_contribution_permissions(
     required_permissions: Vec<String>,
 ) -> Result<Vec<String>, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        let auth = leptos_axum::extract::<rustok_api::AuthContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        let mut granted = Vec::new();
-        for required in required_permissions {
-            let permission =
-                rustok_api::Permission::from_str(required.trim()).map_err(|error| {
-                    ServerFnError::new(format!(
-                        "Invalid Page Builder contribution permission `{required}`: {error}"
-                    ))
-                })?;
-            if rustok_api::has_effective_permission(&auth.permissions, &permission) {
-                granted.push(permission.to_string());
-            }
+    let auth = leptos_axum::extract::<rustok_api::AuthContext>()
+        .await
+        .map_err(ServerFnError::new)?;
+    let mut granted = Vec::new();
+    for required in required_permissions {
+        let permission =
+            rustok_api::Permission::from_str(required.trim()).map_err(|error| {
+                ServerFnError::new(format!(
+                    "Invalid Page Builder contribution permission `{required}`: {error}"
+                ))
+            })?;
+        if rustok_api::has_effective_permission(&auth.permissions, &permission) {
+            granted.push(permission.to_string());
         }
-        granted.sort();
-        granted.dedup();
-        Ok(granted)
     }
-    #[cfg(not(feature = "ssr"))]
-    {
-        let _ = required_permissions;
-        Err(ServerFnError::new(
-            "page-builder/contribution-permissions requires the `ssr` feature",
-        ))
-    }
+    granted.sort();
+    granted.dedup();
+    Ok(granted)
 }
 
 /// App composition scope for optional Page Builder provider extensions.
 ///
-/// The enabled-module set has already crossed tenant control-plane loading before this component
-/// is mounted. The browser sends only manifest-declared permissions; the server resolves each one
-/// through `has_effective_permission`, so a resource `manage` grant correctly satisfies an exact
-/// `read` contribution requirement without exposing the caller's complete permission snapshot.
+/// In SSR mode, the browser sends only manifest-declared permissions; the server resolves each one
+/// through `has_effective_permission`.
+/// In CSR mode, the client validates the authenticated user role directly from auth context.
 #[component]
 pub fn PageBuilderContributionScope(
     enabled_modules: HashSet<String>,
     children: ChildrenFn,
 ) -> impl IntoView {
     let required_permissions = required_contribution_permissions(&enabled_modules);
-    let permissions = LocalResource::new(move || {
-        page_builder_contribution_permissions(required_permissions.clone())
-    });
-    let children_for_result = children.clone();
 
-    view! {
-        <Suspense fallback=|| view! {
-            <div class="h-24 animate-pulse rounded-xl border border-border bg-muted" aria-label="Loading Page Builder contribution permissions"></div>
-        }>
+    #[cfg(feature = "ssr")]
+    {
+        let permissions = LocalResource::new(move || {
+            page_builder_contribution_permissions(required_permissions.clone())
+        });
+        let children_for_result = children.clone();
+
+        view! {
+            <Suspense fallback=|| view! {
+                <div class="h-24 animate-pulse rounded-xl border border-border bg-muted" aria-label="Loading Page Builder contribution permissions"></div>
+            }>
+                {move || {
+                    let enabled_modules = enabled_modules.clone();
+                    let children = children_for_result.clone();
+                    permissions.get().map(|result| match result {
+                        Ok(permissions) => view! {
+                            <ResolvedPageBuilderContributionScope
+                                enabled_modules
+                                permissions
+                                children
+                            />
+                        }.into_any(),
+                        Err(error) => view! {
+                            <div
+                                class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+                                role="alert"
+                                data-page-builder-contribution-host="permission-error"
+                            >
+                                {format!("Page Builder contribution permissions are unavailable: {error}")}
+                            </div>
+                        }.into_any(),
+                    })
+                }}
+            </Suspense>
+        }
+    }
+
+    #[cfg(not(feature = "ssr"))]
+    {
+        let current_user = leptos_auth::hooks::use_current_user();
+        let is_loading = leptos_auth::hooks::use_is_loading();
+        let children_for_result = children.clone();
+
+        view! {
             {move || {
-                let enabled_modules = enabled_modules.clone();
-                let children = children_for_result.clone();
-                permissions.get().map(|result| match result {
-                    Ok(permissions) => view! {
+                if is_loading.get() {
+                    return view! {
+                        <div class="h-24 animate-pulse rounded-xl border border-border bg-muted" aria-label="Loading Page Builder contribution permissions"></div>
+                    }.into_any();
+                }
+
+                let user = current_user.get();
+                let is_authorized = user.as_ref().map(|u| {
+                    let role = u.role.to_ascii_lowercase();
+                    role == "super_admin" || role == "admin"
+                }).unwrap_or(false);
+
+                if is_authorized {
+                    let enabled_modules = enabled_modules.clone();
+                    let children = children_for_result.clone();
+                    let permissions = required_permissions.clone();
+                    view! {
                         <ResolvedPageBuilderContributionScope
                             enabled_modules
                             permissions
                             children
                         />
-                    }.into_any(),
-                    Err(error) => view! {
+                    }.into_any()
+                } else if user.is_some() {
+                    view! {
                         <div
                             class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
                             role="alert"
                             data-page-builder-contribution-host="permission-error"
                         >
-                            {format!("Page Builder contribution permissions are unavailable: {error}")}
+                            "Page Builder contribution permissions are unavailable: unauthorized"
                         </div>
-                    }.into_any(),
-                })
+                    }.into_any()
+                } else {
+                    view! {
+                        <div class="h-24 animate-pulse rounded-xl border border-border bg-muted" aria-label="Loading Page Builder contribution permissions"></div>
+                    }.into_any()
+                }
             }}
-        </Suspense>
+        }
     }
 }
 

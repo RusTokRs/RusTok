@@ -5,7 +5,7 @@ mod generated_ui_codegen {
 mod registry;
 mod search_composition;
 
-use std::cell::Cell;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub use generated_ui_codegen::core_module_slugs;
 pub use generated_ui_codegen::module_navigation_entries;
@@ -26,17 +26,13 @@ pub struct GeneratedModuleNavigationEntry {
     pub child_pages: &'static [AdminChildPageRegistration],
 }
 
-thread_local! {
-    static INIT: Cell<bool> = const { Cell::new(false) };
-}
+static INIT: AtomicBool = AtomicBool::new(false);
 
 pub fn init_modules() {
-    INIT.with(|flag| {
-        if flag.get() {
-            return;
-        }
-        flag.set(true);
-        core::register_components();
-        generated_ui_codegen::register_generated_components();
-    });
+    if INIT.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    core::register_components();
+    generated_ui_codegen::register_generated_components();
 }
+

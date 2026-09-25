@@ -1,5 +1,5 @@
-use std::cell::RefCell;
 use std::collections::HashSet;
+use std::sync::RwLock;
 
 use leptos::prelude::AnyView;
 
@@ -34,67 +34,63 @@ pub struct AdminPageRegistration {
     pub render: fn() -> AnyView,
 }
 
-thread_local! {
-    static REGISTRY: RefCell<Vec<AdminComponentRegistration>> = const { RefCell::new(Vec::new()) };
-    static PAGE_REGISTRY: RefCell<Vec<AdminPageRegistration>> = const { RefCell::new(Vec::new()) };
-}
+static REGISTRY: RwLock<Vec<AdminComponentRegistration>> = RwLock::new(Vec::new());
+static PAGE_REGISTRY: RwLock<Vec<AdminPageRegistration>> = RwLock::new(Vec::new());
 
 pub fn register_component(component: AdminComponentRegistration) {
-    REGISTRY.with(|registry| {
-        registry.borrow_mut().push(component);
-    });
+    if let Ok(mut registry) = REGISTRY.write() {
+        registry.push(component);
+    }
 }
 
 pub fn register_page(page: AdminPageRegistration) {
-    PAGE_REGISTRY.with(|registry| {
-        registry.borrow_mut().push(page);
-    });
+    if let Ok(mut registry) = PAGE_REGISTRY.write() {
+        registry.push(page);
+    }
 }
 
 pub fn components_for_slot(
     slot: AdminSlot,
     enabled_modules: Option<&HashSet<String>>,
 ) -> Vec<AdminComponentRegistration> {
-    REGISTRY.with(|registry| {
-        let components = registry
-            .borrow()
-            .iter()
-            .filter(|component| component.slot == slot)
-            .filter(|component| match (component.module_slug, enabled_modules) {
-                (Some(module_slug), Some(enabled_modules)) => enabled_modules.contains(module_slug),
-                (Some(_), None) => false,
-                (None, _) => true,
-            })
-            .cloned()
-            .collect::<Vec<_>>();
+    super::init_modules();
+    let registry = REGISTRY.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut components = registry
+        .iter()
+        .filter(|component| component.slot == slot)
+        .filter(|component| match (component.module_slug, enabled_modules) {
+            (Some(module_slug), Some(enabled_modules)) => enabled_modules.contains(module_slug),
+            (Some(_), None) => false,
+            (None, _) => true,
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    drop(registry);
 
-        let mut sorted = components;
-        sorted.sort_by(|left, right| {
-            left.order
-                .cmp(&right.order)
-                .then_with(|| left.id.cmp(right.id))
-        });
-        sorted
-    })
+    components.sort_by(|left, right| {
+        left.order
+            .cmp(&right.order)
+            .then_with(|| left.id.cmp(right.id))
+    });
+    components
 }
 
 pub fn page_for_route_segment(
     route_segment: &str,
     enabled_modules: Option<&HashSet<String>>,
 ) -> Option<AdminPageRegistration> {
-    PAGE_REGISTRY.with(|registry| {
-        registry
-            .borrow()
-            .iter()
-            .find(|page| {
-                page.route_segment == route_segment
-                    && match enabled_modules {
-                        Some(enabled_modules) => enabled_modules.contains(page.module_slug),
-                        None => true,
-                    }
-            })
-            .cloned()
-    })
+    super::init_modules();
+    let registry = PAGE_REGISTRY.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+    registry
+        .iter()
+        .find(|page| {
+            page.route_segment == route_segment
+                && match enabled_modules {
+                    Some(enabled_modules) => enabled_modules.contains(page.module_slug),
+                    None => true,
+                }
+        })
+        .cloned()
 }
 
 impl AdminPageRegistration {

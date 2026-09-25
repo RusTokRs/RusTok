@@ -95,7 +95,7 @@ async fn ensure_search_admin_permission(
 
 #[cfg(test)]
 mod tests {
-    use async_graphql::{ErrorExtensions, FieldError};
+    use async_graphql::FieldError;
     use super::map_search_module_error;
 
     fn error_code(error: &FieldError) -> Option<String> {

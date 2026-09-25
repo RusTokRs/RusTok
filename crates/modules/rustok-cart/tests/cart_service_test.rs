@@ -1447,7 +1447,6 @@ async fn seller_aware_delivery_groups_split_same_shipping_profile() {
                 selected_shipping_option_id: None,
                 shipping_selections: Some(vec![
                     CartShippingSelectionInput {
-        fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                         shipping_profile_slug: "default".to_string(),
                         seller_id: Some(seller_a_id.to_string()),
                         seller_scope: None,

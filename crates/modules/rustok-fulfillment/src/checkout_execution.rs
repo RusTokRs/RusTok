@@ -292,14 +292,13 @@ impl InProcessCheckoutFulfillmentExecutionPort {
             .list_checkout_fulfillments(tenant_id, checkout_operation_id)
             .await
             .map_err(|error| fulfillment_error_to_port_error(context, service_operation, error))
-            .map(|records| {
+            .inspect(|records| {
                 tracing::debug!(
                     boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
                     owner_operation,
                     record_count = records.len(),
                     "checkout fulfillment typed identity lookup completed"
                 );
-                records
             })
     }
 
@@ -316,14 +315,13 @@ impl InProcessCheckoutFulfillmentExecutionPort {
             .find_checkout_fulfillment(tenant_id, checkout_operation_id, checkout_fulfillment_index)
             .await
             .map_err(|error| fulfillment_error_to_port_error(context, service_operation, error))
-            .map(|record| {
+            .inspect(|record| {
                 tracing::debug!(
                     boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
                     owner_operation,
                     record_present = record.is_some(),
                     "checkout fulfillment typed identity lookup completed"
                 );
-                record
             })
     }
 }

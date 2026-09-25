@@ -6,7 +6,7 @@ use rustok_api::{PortActor, PortCallPolicy, PortContext, PortError, PortErrorKin
 use rustok_product::{
     ProductCatalogReadPort, ProductProjectionRequest, PublishedProductsRequest,
     StorefrontProductList, StorefrontProductListItem, VariantProductProjectionRequest,
-    dto::ProductResponse, entities::product::ProductStatus,
+    dto::ProductResponse, entities::product::ProductStatus, ProductFulfillmentRequirement,
 };
 use rustok_product_transport::{
     GrpcProductCatalogReadProvider, ProductCatalogGrpcOperation, ProductCatalogGrpcService,
@@ -45,6 +45,7 @@ impl MockProductCatalogReadPort {
             seller_id: None,
             vendor: Some("RusToK".to_string()),
             product_type: Some("demo".to_string()),
+            fulfillment_requirement: ProductFulfillmentRequirement::Physical,
             shipping_profile_slug: Some("default".to_string()),
             primary_category_id: None,
             tags: vec!["remote".to_string()],

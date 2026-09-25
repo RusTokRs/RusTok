@@ -550,7 +550,9 @@ async fn create_order(
                 line_items: vec![rustok_order::dto::CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement:
+                        rustok_order::dto::OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some(sku.to_string()),
                     title: sku.to_string(),

@@ -928,12 +928,12 @@ impl OrderService {
                     "adjustment amount must be greater than zero".to_string(),
                 ));
             }
-            if let Some(index) = adjustment.line_item_index {
-                if index >= line_item_count {
-                    return Err(OrderError::Validation(format!(
-                        "adjustment line_item_index {index} is out of range"
-                    )));
-                }
+            if let Some(index) = adjustment.line_item_index
+                && index >= line_item_count
+            {
+                return Err(OrderError::Validation(format!(
+                    "adjustment line_item_index {index} is out of range"
+                )));
             }
             adjustment_total += adjustment.amount;
         }
@@ -960,12 +960,12 @@ impl OrderService {
                     "tax line rate must be zero or greater".to_string(),
                 ));
             }
-            if let Some(index) = tax_line.line_item_index {
-                if index >= line_item_count {
-                    return Err(OrderError::Validation(format!(
-                        "tax line line_item_index {index} is out of range"
-                    )));
-                }
+            if let Some(index) = tax_line.line_item_index
+                && index >= line_item_count
+            {
+                return Err(OrderError::Validation(format!(
+                    "tax line line_item_index {index} is out of range"
+                )));
             }
             if tax_line.currency_code.trim().to_ascii_uppercase() != currency_code {
                 return Err(OrderError::Validation(
@@ -1728,10 +1728,10 @@ impl OrderService {
             .map_err(|error| OrderError::Validation(error.to_string()))?;
         let reason = trim_optional_text(input.reason);
         let mut metadata = normalize_json_object(input.metadata, "metadata")?;
-        if let Some(reason) = reason.clone() {
-            if let Value::Object(ref mut object) = metadata {
-                object.insert("cancellation_reason".to_string(), Value::String(reason));
-            }
+        if let Some(reason) = reason.clone()
+            && let Value::Object(ref mut object) = metadata
+        {
+            object.insert("cancellation_reason".to_string(), Value::String(reason));
         }
         let key = normalize_idempotency_key(idempotency_key)?;
         let hash = command_request_hash(
