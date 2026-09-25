@@ -364,11 +364,7 @@ fn legacy_graphql_error(
 ) -> async_graphql::Error {
     let tenant_id_shape = uuid_shape(tenant_id);
     let resource_id_shape = optional_uuid_shape(resource_id);
-    let message = if error.message.is_empty() {
-        default_message.to_string()
-    } else {
-        error.message.clone()
-    };
+    let message = default_message;
     let error = StorefrontLegacyGraphqlDiagnosticError::from(error);
 
     tracing::error!(
