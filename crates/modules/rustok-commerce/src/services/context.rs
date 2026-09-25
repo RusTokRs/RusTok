@@ -3,7 +3,6 @@ use std::{sync::Arc, time::Duration};
 use rustok_api::{
     PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind, TenantLocale,
 };
-use sea_orm::DatabaseConnection;
 use thiserror::Error;
 use tracing::instrument;
 use uuid::Uuid;
@@ -11,7 +10,7 @@ use uuid::Uuid;
 use rustok_region::dto::RegionResponse;
 use rustok_region::{RegionReadPort, RegionReadRequest, RegionReadSelector};
 use rustok_tenant::{
-    TenantLocalePolicyPort, TenantReadPort, TenantReadRequest, TenantReadSelector, TenantService,
+    TenantLocalePolicyPort, TenantReadPort, TenantReadRequest, TenantReadSelector,
 };
 
 use crate::dto::{ResolveStoreContextInput, StoreContextResponse};
@@ -49,17 +48,6 @@ pub struct StoreContextService {
 }
 
 impl StoreContextService {
-    pub fn new(db: DatabaseConnection, region_read_port: Arc<dyn RegionReadPort>) -> Self {
-        let tenant_service = Arc::new(TenantService::new(db));
-        let tenant_read_port: Arc<dyn TenantReadPort> = tenant_service.clone();
-        let tenant_locale_policy_port: Arc<dyn TenantLocalePolicyPort> = tenant_service;
-        Self {
-            tenant_read_port,
-            tenant_locale_policy_port,
-            region_read_port,
-        }
-    }
-
     pub fn with_ports(
         tenant_read_port: Arc<dyn TenantReadPort>,
         tenant_locale_policy_port: Arc<dyn TenantLocalePolicyPort>,
