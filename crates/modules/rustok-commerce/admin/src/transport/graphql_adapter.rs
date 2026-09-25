@@ -15,8 +15,8 @@ const UPDATE_SHIPPING_PROFILE_MUTATION: &str = "mutation CommerceUpdateShippingP
 const DEACTIVATE_SHIPPING_PROFILE_MUTATION: &str = "mutation CommerceDeactivateShippingProfile($tenantId: UUID!, $id: UUID!) { deactivateShippingProfile(tenantId: $tenantId, id: $id) { id tenantId slug name description active metadata createdAt updatedAt } }";
 const REACTIVATE_SHIPPING_PROFILE_MUTATION: &str = "mutation CommerceReactivateShippingProfile($tenantId: UUID!, $id: UUID!) { reactivateShippingProfile(tenantId: $tenantId, id: $id) { id tenantId slug name description active metadata createdAt updatedAt } }";
 const ORDER_CHANGES_QUERY: &str = "query CommerceOrderChanges($tenantId: UUID!, $filter: OrderChangesFilter) { orderChanges(tenantId: $tenantId, filter: $filter) { total page perPage hasNext items { id tenantId orderId createdBy changeType status description preview metadata createdAt updatedAt appliedAt cancelledAt } } }";
-const APPLY_ORDER_CHANGE_MUTATION: &str = "mutation CommerceApplyOrderChange($tenantId: UUID!, $id: UUID!, $input: ApplyOrderChangeInputObject!) { applyOrderChange(tenantId: $tenantId, id: $id, input: $input) { id tenantId orderId createdBy changeType status description preview metadata createdAt updatedAt appliedAt cancelledAt } }";
-const CANCEL_ORDER_CHANGE_MUTATION: &str = "mutation CommerceCancelOrderChange($tenantId: UUID!, $id: UUID!, $input: CancelOrderChangeInputObject!) { cancelOrderChange(tenantId: $tenantId, id: $id, input: $input) { id tenantId orderId createdBy changeType status description preview metadata createdAt updatedAt appliedAt cancelledAt } }";
+const APPLY_ORDER_CHANGE_MUTATION: &str = "mutation CommerceApplyOrderChange($tenantId: UUID!, $id: UUID!, $idempotencyKey: String!, $input: ApplyOrderChangeInputObject!) { applyOrderChange(tenantId: $tenantId, id: $id, idempotencyKey: $idempotencyKey, input: $input) { id tenantId orderId createdBy changeType status description preview metadata createdAt updatedAt appliedAt cancelledAt } }";
+const CANCEL_ORDER_CHANGE_MUTATION: &str = "mutation CommerceCancelOrderChange($tenantId: UUID!, $id: UUID!, $idempotencyKey: String!, $input: CancelOrderChangeInputObject!) { cancelOrderChange(tenantId: $tenantId, id: $id, idempotencyKey: $idempotencyKey, input: $input) { id tenantId orderId createdBy changeType status description preview metadata createdAt updatedAt appliedAt cancelledAt } }";
 
 #[derive(Debug, Deserialize)]
 struct BootstrapResponse {
@@ -115,6 +115,8 @@ struct OrderChangesVariables {
 #[derive(Debug, Serialize)]
 struct OrderChangeActionVariables<T> {
     id: String,
+    #[serde(rename = "idempotencyKey")]
+    idempotency_key: String,
     input: T,
 }
 
@@ -372,6 +374,7 @@ pub async fn apply_order_change(
             tenant_id,
             extra: OrderChangeActionVariables {
                 id,
+                idempotency_key: draft.idempotency_key,
                 input: ApplyOrderChangeInput {
                     metadata: optional_json_text(draft.metadata_json.as_str()),
                 },
@@ -397,6 +400,7 @@ pub async fn cancel_order_change(
             tenant_id,
             extra: OrderChangeActionVariables {
                 id,
+                idempotency_key: draft.idempotency_key,
                 input: CancelOrderChangeInput {
                     reason: optional_text(draft.reason.as_str()),
                     metadata: optional_json_text(draft.metadata_json.as_str()),
