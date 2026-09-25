@@ -23,4 +23,11 @@ pub enum CartError {
         message: String,
         retryable: bool,
     },
+    #[error("shipping boundary failed with `{code}` ({kind:?}, retryable={retryable}): {message}")]
+    ShippingBoundary {
+        kind: rustok_api::PortErrorKind,
+        code: String,
+        message: String,
+        retryable: bool,
+    },
 }
