@@ -29,19 +29,29 @@ fn map_cart_port_error(
     tenant_id: Uuid,
     cart_id: Option<Uuid>,
 ) -> HttpError {
-    let public = port_error_to_http_error(error.clone());
+    let owner_error_kind = match &error.kind {
+        rustok_api::PortErrorKind::Validation => "validation",
+        rustok_api::PortErrorKind::NotFound => "not_found",
+        rustok_api::PortErrorKind::Conflict => "conflict",
+        rustok_api::PortErrorKind::Forbidden => "forbidden",
+        rustok_api::PortErrorKind::Unavailable => "unavailable",
+        rustok_api::PortErrorKind::Timeout => "timeout",
+        rustok_api::PortErrorKind::InvariantViolation => "invariant_violation",
+    };
+    let owner_code_length = error.code.chars().count();
+    let retryable = error.retryable;
+    let public = port_error_to_http_error(error);
     tracing::error!(
-        error = ?error,
         owner = "rustok_cart",
         operation,
-        tenant_id = %tenant_id,
-        cart_id = ?cart_id,
-        error_kind = ?error.kind,
-        retryable = error.retryable,
-        public_code = %public.code,
-        status = %public.status,
+        tenant_non_nil = !tenant_id.is_nil(),
+        cart_id_present = cart_id.is_some(),
+        owner_error_kind,
+        owner_code_length,
+        retryable,
+        public_status = %public.status,
         boundary = "commerce_storefront_cart_http",
-        "storefront cart port operation failed"
+        "storefront cart port operation failed with bounded diagnostics"
     );
     public
 }
