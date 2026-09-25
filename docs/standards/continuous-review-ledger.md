@@ -493,5 +493,18 @@ construction and lifecycle calls in the mounted controller and requires the type
 owner handoff.
 
 Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
+
+## 2026-09-25 Storefront line-item resolution error safety
+
+Mounted storefront line-item resolution still serialized raw Product/Pricing `PortError`
+and Inventory `CommerceError` values at its HTTP boundary. The Product and Pricing mappers
+now retain bounded owner kind/code-length/retryability and safe request/resource shape facts;
+Inventory now records only bounded error-kind and identity/channel/locale presence facts.
+Public HTTP envelopes remain stable.
+
+The ecommerce public-port verifier now guards the line-item resolution controller against
+the former raw owner error/context patterns.
+
+Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
 ## Completed Rounds Archive
 _No completed rounds yet. Round 1 is currently in progress._
