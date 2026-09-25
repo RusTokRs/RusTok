@@ -32,9 +32,10 @@ const forbidText = (content, value, label) => {
 
 for (const [value, label] of [
   ['use rustok_order::error::OrderError;', 'typed order error import'],
-  ['fn admin_public_error<E>(', 'shared safe HTTP constructor'],
-  ['E: std::fmt::Debug', 'raw error logging bound'],
-  ['error = ?error', 'raw internal error logging'],
+  ['fn admin_public_error(', 'shared safe HTTP constructor'],
+  ['"commerce admin operation failed with bounded diagnostics"', 'bounded shared HTTP diagnostics'],
+  ['owner,', 'owner logging'],
+  ['error_kind,', 'error-kind logging'],
   ['owner,', 'owner logging'],
   ['error_kind,', 'error-kind logging'],
   ['public_code = code', 'public-code logging'],
@@ -251,6 +252,8 @@ if (fulfillmentOrchestrationUses.length !== 4) {
   failures.push(`expected four context-aware fulfillment orchestration mapper callsites, found ${fulfillmentOrchestrationUses.length}`);
 }
 
+forbidText(admin, 'error = ?error', 'unsafe shared admin raw error logging');
+forbidText(admin, 'E: std::fmt::Debug', 'unsafe shared admin generic error bound');
 forbidText(admin, 'other.to_string()', 'unsafe shared admin dynamic string conversion');
 requireText(
   admin,
