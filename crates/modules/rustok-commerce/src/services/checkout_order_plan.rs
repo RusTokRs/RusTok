@@ -1,6 +1,6 @@
 use chrono::Utc;
 use rustok_cart::CartMarketplaceLineSnapshot;
-use rustok_order::CreateOrderInput;
+use rustok_order::{CreateOrderInput, OrderLineFulfillmentRequirement};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -193,6 +193,7 @@ fn validate_payload(payload: &CheckoutOrderPlanPayload) -> CheckoutOrderPlanResu
         ));
     }
     let mut cart_line_item_ids = HashSet::new();
+    let mut fulfillment_line_ids = HashSet::new();
     for (plan_index, plan) in payload.fulfillment_plans.iter().enumerate() {
         if plan.items.is_empty() {
             return Err(CheckoutOrderPlanError::Validation(format!(
@@ -211,6 +212,52 @@ fn validate_payload(payload: &CheckoutOrderPlanPayload) -> CheckoutOrderPlanResu
                     "cart line item {} appears in multiple fulfillment plans",
                     item.cart_line_item_id
                 )));
+            }
+            let order_line = payload.order_input.line_items.iter().find(|line| {
+                line.metadata
+                    .get("checkout")
+                    .and_then(|checkout| checkout.get("cart_line_item_id"))
+                    .and_then(Value::as_str)
+                    .and_then(|value| Uuid::parse_str(value).ok())
+                    == Some(item.cart_line_item_id)
+            }).ok_or_else(|| CheckoutOrderPlanError::Validation(format!(
+                "fulfillment plan references cart line {} without order provenance",
+                item.cart_line_item_id
+            )))?;
+            if order_line.fulfillment_requirement != OrderLineFulfillmentRequirement::Physical {
+                return Err(CheckoutOrderPlanError::Validation(format!(
+                    "digital order line {} cannot require fulfillment",
+                    item.cart_line_item_id
+                )));
+            }
+            if item.quantity != order_line.quantity {
+                return Err(CheckoutOrderPlanError::Validation(format!(
+                    "fulfillment item {} must exactly cover order quantity {}",
+                    item.cart_line_item_id, order_line.quantity
+                )));
+            }
+            fulfillment_line_ids.insert(item.cart_line_item_id);
+        }
+    }
+
+    if payload.create_fulfillment {
+        for line in &payload.order_input.line_items {
+            if line.fulfillment_requirement == OrderLineFulfillmentRequirement::Physical {
+                let cart_line_id = line
+                    .metadata
+                    .get("checkout")
+                    .and_then(|checkout| checkout.get("cart_line_item_id"))
+                    .and_then(Value::as_str)
+                    .and_then(|value| Uuid::parse_str(value).ok())
+                    .ok_or_else(|| CheckoutOrderPlanError::Validation(
+                        "physical order line is missing checkout cart-line provenance".to_string(),
+                    ))?;
+                if !fulfillment_line_ids.contains(&cart_line_id) {
+                    return Err(CheckoutOrderPlanError::Validation(format!(
+                        "physical order line {} is not covered by fulfillment plans",
+                        cart_line_id
+                    )));
+                }
             }
         }
     }
