@@ -16,6 +16,10 @@ pub enum OrderError {
     OrderChangeNotFound(Uuid),
     #[error("invalid order status transition: {from} -> {to}")]
     InvalidTransition { from: String, to: String },
+    #[error("order command idempotency key conflicts with another request")]
+    IdempotencyConflict,
+    #[error("order command receipt requires operator review")]
+    CommandReceiptCorrupt,
     #[error(transparent)]
     Database(#[from] DbErr),
     #[error(transparent)]
