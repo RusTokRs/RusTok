@@ -19,7 +19,6 @@ pub(crate) mod error {
     use super::BoundaryError;
 
     #[derive(Clone, Debug)]
-    #[allow(dead_code)]
     pub enum FulfillmentError {
         ShippingOptionNotFound(Uuid),
         FulfillmentNotFound(Uuid),
