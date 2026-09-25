@@ -428,6 +428,13 @@ fn map_admin_return_decision_payment_port_error(
     HttpError::new(status, code, message)
 }
 
+fn admin_owner_port_policy(owner: &str, error: &PortError) -> AdminOrderReturnHttpPolicy {
+    match owner {
+        "rustok_payment" => admin_payment_port_error_policy(error),
+        _ => admin_order_port_error_policy(error),
+    }
+}
+
 fn map_admin_order_return_orchestration_error(
     mut context: AdminOrderReturnOrchestrationErrorContext,
     error: PostOrderOrchestrationError,
@@ -465,6 +472,10 @@ fn map_admin_order_return_orchestration_error(
                 (status, code, message, error_kind, "rustok_payment")
             }
         },
+        PostOrderOrchestrationError::OwnerPort { owner, error } => {
+            let (status, code, message, error_kind) = admin_owner_port_policy(owner, error);
+            (status, code, message, error_kind, owner)
+        }
         PostOrderOrchestrationError::Validation(_) => (
             StatusCode::BAD_REQUEST,
             "commerce_admin_post_order_invalid",
