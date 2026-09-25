@@ -515,5 +515,22 @@ and emits only explicit tenant/actor/operation/payment/order/reservation state f
 stable public policy data. The verifier now rejects the former redacted/raw patterns.
 
 Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
+
+## 2026-09-25 Active Admin Order idempotency and cart lifecycle typing
+
+The mounted Admin Order controller was already using `OrderAdminCommandPort`, but its
+shared context helper generated a new UUID per request and therefore could not preserve
+caller-owned replay identity. Read contexts now carry no idempotency key; all four write
+handlers require and propagate the caller's `Idempotency-Key` header.
+
+Active Admin Order HTTP diagnostics also now retain only bounded error-code length rather
+than serializing the internal code value. Separately, the storefront payment-collection
+guard now parses `CartResponse::lifecycle_status()` and checks `CartStatus::Completed`,
+failing closed when an unknown persisted status is encountered.
+
+The Admin Order and order-detail verifier scripts were corrected to inspect the mounted
+`orders_owner_ports.rs` controller rather than the unmounted legacy `orders.rs` source.
+
+Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
 ## Completed Rounds Archive
 _No completed rounds yet. Round 1 is currently in progress._
