@@ -332,13 +332,11 @@ pub(crate) fn product_catalog_command_runtime_for_current_graphql_scope(
         .unwrap_or_else(|_| ProductCatalogCommandRuntime::in_process(db, event_bus))
 }
 
-/// Provider registries and host-selectable ports available to every commerce GraphQL resolver.
+/// Host-composed owner capabilities available to every mounted Commerce GraphQL resolver.
 ///
-/// Hosts supply composed capabilities through `HostRuntimeContext`. The built-in manual provider
-/// registries remain deterministic fallbacks. Mounted Payment/Fulfillment reads and commands,
-/// shipping-option reads/commands, Product catalog, and order reads/commands consume host-selected
-/// runtime data. Directly embedded compatibility schemas retain explicit in-process owner-runtime
-/// fallbacks.
+/// Mounted schema composition is fail-closed: owner runtimes and provider registries must already be
+/// present in `HostRuntimeContext`. Explicit in-process fallbacks remain limited to directly embedded
+/// compatibility schemas, where the caller constructs those adapters intentionally.
 #[derive(Clone)]
 pub struct CommerceGraphqlRuntimeData {
     payment_provider_registry: PaymentProviderRegistry,
@@ -421,13 +419,41 @@ impl CommerceGraphqlRuntimeData {
 pub fn attach_schema_data(
     inputs: &rustok_api::graphql::GraphqlRuntimeInputs,
 ) -> Result<CommerceGraphqlRuntimeData, String> {
+    let payment_provider_registry = inputs
+        .shared_get::<PaymentProviderRegistry>()
+        .ok_or_else(|| {
+            "commerce GraphQL requires PaymentProviderRegistry in host composition".to_string()
+        })?;
+    let fulfillment_provider_registry = inputs
+        .shared_get::<FulfillmentProviderRegistry>()
+        .ok_or_else(|| {
+            "commerce GraphQL requires FulfillmentProviderRegistry in host composition".to_string()
+        })?;
+
+    let payment_read_runtime = inputs
+        .shared_get::<CommercePaymentReadRuntime>()
+        .ok_or_else(|| {
+            "commerce GraphQL requires CommercePaymentReadRuntime in host composition".to_string()
+        })?;
+    let payment_command_runtime = inputs
+        .shared_get::<CommercePaymentCommandRuntime>()
+        .ok_or_else(|| {
+            "commerce GraphQL requires CommercePaymentCommandRuntime in host composition".to_string()
+        })?;
+    let fulfillment_command_runtime = inputs
+        .shared_get::<CommerceFulfillmentCommandRuntime>()
+        .ok_or_else(|| {
+            "commerce GraphQL requires CommerceFulfillmentCommandRuntime in host composition".to_string()
+        })?;
+    let fulfillment_lifecycle_read_runtime = inputs
+        .shared_get::<CommerceFulfillmentLifecycleReadRuntime>()
+        .ok_or_else(|| {
+            "commerce GraphQL requires CommerceFulfillmentLifecycleReadRuntime in host composition".to_string()
+        })?;
+
     Ok(CommerceGraphqlRuntimeData {
-        payment_provider_registry: inputs
-            .shared_get::<PaymentProviderRegistry>()
-            .unwrap_or_else(PaymentProviderRegistry::with_manual_provider),
-        fulfillment_provider_registry: inputs
-            .shared_get::<FulfillmentProviderRegistry>()
-            .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider),
+        payment_provider_registry,
+        fulfillment_provider_registry,
         #[cfg(feature = "marketplace-financial")]
         marketplace_financial_runtime: inputs
             .shared_get::<crate::MarketplaceFinancialRuntime>()
@@ -435,33 +461,9 @@ pub fn attach_schema_data(
                 "commerce marketplace-financial GraphQL requires MarketplaceFinancialRuntime in host composition"
                     .to_string()
             })?,
-        payment_read_runtime: inputs
-            .shared_get::<CommercePaymentReadRuntime>()
-            .unwrap_or_else(|| {
-                CommercePaymentReadRuntime::new(
-                    inputs
-                        .shared_get::<rustok_payment::PaymentAdminReadRuntime>()
-                        .unwrap_or_else(|| {
-                            rustok_payment::PaymentAdminReadRuntime::in_process(inputs.db_clone())
-                        }),
-                    inputs
-                        .shared_get::<rustok_payment::PaymentOrderReadRuntime>()
-                        .unwrap_or_else(|| {
-                            rustok_payment::PaymentOrderReadRuntime::in_process(inputs.db_clone())
-                        }),
-                    inputs
-                        .shared_get::<rustok_payment::PaymentCartReadRuntime>()
-                        .unwrap_or_else(|| {
-                            rustok_payment::PaymentCartReadRuntime::in_process(inputs.db_clone())
-                        }),
-                )
-            }),
-        payment_command_runtime: inputs
-            .shared_get::<CommercePaymentCommandRuntime>()
-            .unwrap_or_else(|| CommercePaymentCommandRuntime::from_graphql_inputs(inputs)),
-        fulfillment_command_runtime: inputs
-            .shared_get::<CommerceFulfillmentCommandRuntime>()
-            .unwrap_or_else(|| CommerceFulfillmentCommandRuntime::from_graphql_inputs(inputs)),
+        payment_read_runtime,
+        payment_command_runtime,
+        fulfillment_command_runtime
         shipping_option_read_runtime: inputs
             .shared_get::<CommerceShippingOptionReadRuntime>()
             .ok_or_else(|| {
@@ -474,11 +476,7 @@ pub fn attach_schema_data(
                 "commerce GraphQL requires ShippingOptionAdminCommandRuntime in host composition"
                     .to_string()
             })?,
-        fulfillment_lifecycle_read_runtime: inputs
-            .shared_get::<CommerceFulfillmentLifecycleReadRuntime>()
-            .unwrap_or_else(|| {
-                CommerceFulfillmentLifecycleReadRuntime::in_process(inputs.db_clone())
-            }),
+        fulfillment_lifecycle_read_runtime
         order_read_runtime: inputs
             .shared_get::<CommerceOrderReadRuntime>()
             .ok_or_else(|| {
