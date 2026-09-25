@@ -1164,6 +1164,21 @@ Source inspection is not execution evidence.
   storefront Cart and Order controllers against regression.
 - [ ] Continue the mounted non-`PortError` public-envelope audit and owner-port cleanup across
   remaining ecommerce controllers/transports.
+
+## Audit 2026-09-25: Admin Order command owner-port cutover
+
+- [x] Route mounted `/admin/orders/{id}/mark-paid`, `/ship`, `/deliver`, and `/cancel`
+  handlers through the host-composed `OrderAdminCommandPort` instead of constructing
+  `OrderService` directly inside the Commerce HTTP controller.
+- [x] Forward typed `MarkOrderPaidRequest`, `ShipOrderRequest`, `DeliverOrderRequest`, and
+  `CancelOrderRequest` into the owner boundary and reuse the transport-neutral Order
+  `PortContext` for tenant, actor, locale, channel, and deadline semantics.
+- [x] Remove the controller-local legacy `OrderError` mutation mapper and its duplicate
+  diagnostic wrapper; command failures now use the owner-port `PortError` envelope.
+- [x] Extend the admin order/fulfillment verification guard to forbid direct OrderService
+  construction/lifecycle calls and require the owner command handoff.
+- [ ] Apply the same owner-port cutover discipline to remaining mounted Commerce handlers
+  still constructing foreign owner services directly.
 ## Change rules
 
 1. Update this file with every completed or newly discovered ecommerce task.
