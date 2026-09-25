@@ -479,5 +479,19 @@ The ecommerce public-port verifier now includes these mounted Cart and Order con
 and rejects the former raw diagnostic patterns.
 
 Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
+
+## 2026-09-25 Admin Order command owner-port cutover
+
+Mounted Commerce Admin Order lifecycle commands previously constructed `OrderService`
+directly for mark-paid, ship, deliver, and cancel. The handlers now use the composed
+`OrderAdminCommandPort` with typed command requests and an explicit owner-port context.
+The legacy controller-local `OrderError` mutation mapper was removed in favor of the
+existing typed `PortError` HTTP envelope path.
+
+The admin order/fulfillment verification guard now forbids direct `OrderService`
+construction and lifecycle calls in the mounted controller and requires the typed command
+owner handoff.
+
+Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
 ## Completed Rounds Archive
 _No completed rounds yet. Round 1 is currently in progress._
