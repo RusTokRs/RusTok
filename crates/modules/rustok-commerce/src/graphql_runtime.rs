@@ -459,7 +459,7 @@ pub fn attach_schema_data(
             })?,
         payment_read_runtime,
         payment_command_runtime,
-        fulfillment_command_runtime
+        fulfillment_command_runtime,
         shipping_option_read_runtime: inputs
             .shared_get::<CommerceShippingOptionReadRuntime>()
             .ok_or_else(|| {
@@ -472,7 +472,7 @@ pub fn attach_schema_data(
                 "commerce GraphQL requires ShippingOptionAdminCommandRuntime in host composition"
                     .to_string()
             })?,
-        fulfillment_lifecycle_read_runtime
+        fulfillment_lifecycle_read_runtime,
         order_read_runtime: inputs
             .shared_get::<CommerceOrderReadRuntime>()
             .ok_or_else(|| {

@@ -20,6 +20,13 @@ Last reviewed: 2026-09-25
 
 ## Audit 2026-09-25: mounted owner-runtime composition
 
+## Audit 2026-09-25: source-integrity blockers
+
+- [x] Repair the malformed `CommerceGraphqlRuntimeData` initializer so every composed owner runtime is separated correctly and the GraphQL runtime source remains compilable.
+- [x] Repair the malformed marker array in `verify-order-post-order-command-port.mjs` so the post-order owner-boundary guard is valid JavaScript.
+- [ ] Run the Rust compiler and static verification suite after this repair; runtime, migration, and test evidence remains maintainer-owned for this continuation.
+
+
 - [x] Require host-composed `CommercePaymentReadRuntime` and `CommercePaymentCommandRuntime` for mounted Commerce GraphQL schema composition. The mandatory Payment capability now fails closed instead of silently synthesizing an in-process wrapper when host composition is incomplete.
 - [x] Compose the Commerce Payment GraphQL wrapper runtimes in `apps/server::attach_commerce_provider_registries`, preserving host/server-selected owner runtimes and deterministic in-process construction only at the explicit host-composition boundary.
 - [x] Remove obsolete duplicate admin REST implementations for order changes and returns. Each route now has one canonical transport adapter: owner-port reads/commands or the dedicated Commerce orchestration boundary.

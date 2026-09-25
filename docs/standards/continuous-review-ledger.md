@@ -20,6 +20,10 @@ Tracking persistent progress across cyclical review rounds for all modules in Ru
 ---
 
 
+## 2026-09-25 Commerce source-integrity blockers
+
+A fresh Commerce continuity audit found two hard source blockers on `main`: the mounted GraphQL runtime initializer was missing field separators in `CommerceGraphqlRuntimeData`, and the Order post-order static verifier contained adjacent string literals without commas. Both are corrected in one atomic source-integrity commit. Rust compilation, static verifier execution, migrations, and tests were not run in this continuation; maintainer verification remains outstanding.
+
 ## 2026-09-24 Media public URL owner hardening
 
 A fresh Forum→Media boundary audit found that `MediaItem.public_url` previously fell back to `blob.object_key` when no public storage base URL was configured. That made an internal storage key look like a consumer-visible delivery URL and was inconsistent with the Media public-image capability contract.

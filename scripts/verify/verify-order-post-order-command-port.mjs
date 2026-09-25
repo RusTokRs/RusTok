@@ -28,11 +28,11 @@ for (const marker of [
   'context.require_policy(PortCallPolicy::write())',
   '"order.post_order_complete_return_unavailable"',
   '.create_order_change(',
-  '.apply_order_change('
-  '.cancel_order_change('
-  '.create_return('
-  '.complete_return('
-  '.cancel_return('
+  '.apply_order_change(',
+  '.cancel_order_change(',
+  '.create_return(',
+  '.complete_return(',
+  '.cancel_return(',
   'PortErrorKind::Unavailable',
   'PortErrorKind::InvariantViolation',
   'CommandReceiptAdmission::Replay',
