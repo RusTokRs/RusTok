@@ -1,3 +1,4 @@
+pub mod order_command_receipt;
 pub mod order;
 pub mod order_adjustment;
 pub mod order_change;
