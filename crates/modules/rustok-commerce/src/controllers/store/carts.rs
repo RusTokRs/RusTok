@@ -407,8 +407,10 @@ pub async fn update_cart_line_item(
     if let Some(existing_line_item) = existing.line_items.iter().find(|item| item.id == line_id)
         && let Some(variant_id) = existing_line_item.variant_id
     {
+        let product_catalog_read_port = runtime.product_catalog_read_port();
         line_item_resolution::validate_store_line_item_quantity(
             runtime.db(),
+            product_catalog_read_port.as_ref(),
             tenant.id,
             variant_id,
             input.quantity,
