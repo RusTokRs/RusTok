@@ -665,7 +665,7 @@ fn create_cart_line_item_input() -> AddCartLineItemInput {
         product_id: Some(Uuid::new_v4()),
         variant_id: Some(Uuid::new_v4()),
         fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
-        shipping_profile_slug: None,
+        shipping_profile_slug: Some("default".to_string()),
         sku: Some(format!("CART-SKU-{}", Uuid::new_v4())),
         title: "Migration cart product".to_string(),
         quantity: 2,

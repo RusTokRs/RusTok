@@ -7,6 +7,70 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        if manager.get_database_backend() == DatabaseBackend::Sqlite {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    r#"
+CREATE TABLE IF NOT EXISTS product_variant_axes (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    attribute_id TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS product_variant_axis_values (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    axis_id TEXT NOT NULL,
+    option_id TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS product_attribute_groups (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    code TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS product_attribute_group_translations (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    locale TEXT NOT NULL,
+    label TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS product_attribute_group_attributes (
+    tenant_id TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    attribute_id TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (tenant_id, group_id, attribute_id)
+);
+
+CREATE TABLE IF NOT EXISTS product_attribute_group_channel_settings (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    is_visible BOOLEAN NOT NULL DEFAULT 1,
+    position INTEGER,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+                    "#,
+                )
+                .await?;
+            return Ok(());
+        }
         if manager.get_database_backend() != DatabaseBackend::Postgres {
             return Err(DbErr::Custom(
                 "rustok-product migrations require PostgreSQL".to_owned(),
@@ -337,6 +401,22 @@ EXECUTE FUNCTION rustok_product_validate_variant_axis_completeness();
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        if manager.get_database_backend() == DatabaseBackend::Sqlite {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    r#"
+DROP TABLE IF EXISTS product_attribute_group_channel_settings;
+DROP TABLE IF EXISTS product_attribute_group_attributes;
+DROP TABLE IF EXISTS product_attribute_group_translations;
+DROP TABLE IF EXISTS product_attribute_groups;
+DROP TABLE IF EXISTS product_variant_axis_values;
+DROP TABLE IF EXISTS product_variant_axes;
+                    "#,
+                )
+                .await?;
+            return Ok(());
+        }
         if manager.get_database_backend() != DatabaseBackend::Postgres {
             return Ok(());
         }
