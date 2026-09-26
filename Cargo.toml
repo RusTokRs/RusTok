@@ -193,7 +193,7 @@ google-cloud-secretmanager-v1 = "1.10"
 opentelemetry = "0.32"
 opentelemetry-otlp = "0.32.0"
 tracing-opentelemetry = "0.33.0"
-opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
+opentelemetry_sdk = { version = "0.33", features = ["rt-tokio"] }
 rust_decimal = "1.42"
 utoipa = "5.5"
 utoipa-swagger-ui = { version = "7.0", features = ["vendored"] }
