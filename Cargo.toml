@@ -190,7 +190,7 @@ google-cloud-secretmanager-v1 = "1.10"
 # OpenTelemetry
 # NOTE: tracing-opentelemetry 0.32.x is coupled with opentelemetry 0.31.x.
 # Keep this quartet aligned until upstream crates move to the same major/minor line.
-opentelemetry = "0.32"
+opentelemetry = "0.33"
 opentelemetry-otlp = "0.32.0"
 tracing-opentelemetry = "0.33.0"
 opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
