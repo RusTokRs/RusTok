@@ -39,7 +39,7 @@ pub async fn load_product_variant_axes<C: ConnectionTrait>(
     let axes = AxisRow::find_by_statement(Statement::from_sql_and_values(
         db.get_database_backend(),
         r#"
-        SELECT ax.id, ax.product_id, ax.attribute_id, ax.position, a.code, pat.name
+        SELECT ax.id, ax.product_id, ax.attribute_id, ax.position, a.code, pat.label AS name
         FROM product_variant_axes ax
         JOIN product_attributes a ON a.id = ax.attribute_id AND a.tenant_id = ax.tenant_id
         LEFT JOIN product_attribute_translations pat ON pat.attribute_id = a.id AND pat.locale = $3

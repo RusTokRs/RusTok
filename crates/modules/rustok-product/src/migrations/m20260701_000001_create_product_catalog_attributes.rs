@@ -14,6 +14,123 @@ impl MigrationTrait for Migration {
                     r#"
                     ALTER TABLE products ADD COLUMN primary_category_id TEXT;
                     ALTER TABLE product_translations ADD COLUMN tenant_id TEXT;
+
+                    CREATE TABLE IF NOT EXISTS product_attributes (
+                        id TEXT PRIMARY KEY,
+                        tenant_id TEXT NOT NULL,
+                        code TEXT NOT NULL,
+                        value_type TEXT NOT NULL,
+                        scope TEXT NOT NULL DEFAULT 'product',
+                        is_localized BOOLEAN NOT NULL DEFAULT 0,
+                        is_filterable BOOLEAN NOT NULL DEFAULT 0,
+                        is_searchable BOOLEAN NOT NULL DEFAULT 0,
+                        is_sortable BOOLEAN NOT NULL DEFAULT 0,
+                        is_comparable BOOLEAN NOT NULL DEFAULT 0,
+                        show_on_storefront BOOLEAN NOT NULL DEFAULT 1,
+                        show_in_admin_grid BOOLEAN NOT NULL DEFAULT 0,
+                        search_weight INTEGER NOT NULL DEFAULT 1,
+                        filter_display TEXT,
+                        facet_mode TEXT,
+                        position INTEGER NOT NULL DEFAULT 0,
+                        validation TEXT NOT NULL DEFAULT '{}',
+                        default_value TEXT,
+                        metadata TEXT NOT NULL DEFAULT '{}',
+                        archived_at TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE TABLE IF NOT EXISTS product_attribute_translations (
+                        id TEXT PRIMARY KEY,
+                        attribute_id TEXT NOT NULL,
+                        locale TEXT NOT NULL,
+                        label TEXT NOT NULL,
+                        name TEXT,
+                        help_text TEXT,
+                        facet_label TEXT,
+                        seo_label TEXT
+                    );
+
+                    CREATE TABLE IF NOT EXISTS product_attribute_options (
+                        id TEXT PRIMARY KEY,
+                        tenant_id TEXT NOT NULL,
+                        attribute_id TEXT NOT NULL,
+                        code TEXT NOT NULL,
+                        position INTEGER NOT NULL DEFAULT 0,
+                        metadata TEXT NOT NULL DEFAULT '{}',
+                        archived_at TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE TABLE IF NOT EXISTS product_attribute_option_translations (
+                        id TEXT PRIMARY KEY,
+                        option_id TEXT NOT NULL,
+                        locale TEXT NOT NULL,
+                        label TEXT NOT NULL
+                    );
+
+                    CREATE TABLE IF NOT EXISTS product_attribute_values (
+                        id TEXT PRIMARY KEY,
+                        tenant_id TEXT NOT NULL,
+                        product_id TEXT NOT NULL,
+                        attribute_id TEXT NOT NULL,
+                        value_text TEXT,
+                        value_integer INTEGER,
+                        value_decimal NUMERIC,
+                        value_boolean BOOLEAN,
+                        value_date TEXT,
+                        value_datetime TEXT,
+                        value_json TEXT,
+                        detached_at TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE TABLE IF NOT EXISTS product_attribute_value_translations (
+                        id TEXT PRIMARY KEY,
+                        value_id TEXT NOT NULL,
+                        locale TEXT NOT NULL,
+                        value_text TEXT
+                    );
+
+                    CREATE TABLE IF NOT EXISTS product_attribute_value_options (
+                        tenant_id TEXT NOT NULL,
+                        value_id TEXT NOT NULL,
+                        option_id TEXT NOT NULL,
+                        PRIMARY KEY (value_id, option_id)
+                    );
+
+                    CREATE TABLE IF NOT EXISTS product_variant_attribute_values (
+                        id TEXT PRIMARY KEY,
+                        tenant_id TEXT NOT NULL,
+                        variant_id TEXT NOT NULL,
+                        attribute_id TEXT NOT NULL,
+                        value_text TEXT,
+                        value_integer INTEGER,
+                        value_decimal NUMERIC,
+                        value_boolean BOOLEAN,
+                        value_date TEXT,
+                        value_datetime TEXT,
+                        value_json TEXT,
+                        detached_at TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE TABLE IF NOT EXISTS product_variant_attribute_value_translations (
+                        id TEXT PRIMARY KEY,
+                        value_id TEXT NOT NULL,
+                        locale TEXT NOT NULL,
+                        value_text TEXT
+                    );
+
+                    CREATE TABLE IF NOT EXISTS product_variant_attribute_value_options (
+                        tenant_id TEXT NOT NULL,
+                        value_id TEXT NOT NULL,
+                        option_id TEXT NOT NULL,
+                        PRIMARY KEY (value_id, option_id)
+                    );
                     "#,
                 )
                 .await?;
