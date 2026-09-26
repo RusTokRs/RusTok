@@ -199,6 +199,7 @@ async fn store_shipping_options_transport_filters_incompatible_shipping_profiles
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(variant.id),
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: Some("bulky".to_string()),
                 sku: variant.sku.clone(),
                 title: variant.title.clone(),
@@ -341,6 +342,7 @@ async fn store_update_cart_context_rejects_incompatible_shipping_profile_option(
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(variant.id),
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: Some("bulky".to_string()),
                 sku: variant.sku.clone(),
                 title: variant.title.clone(),

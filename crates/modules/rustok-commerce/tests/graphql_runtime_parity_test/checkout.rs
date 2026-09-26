@@ -105,6 +105,7 @@ async fn storefront_graphql_read_path_is_stable_after_complete_checkout() {
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(published_variant.id),
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: published_variant.sku.clone(),
                 title: "Parity Product".to_string(),
@@ -255,6 +256,7 @@ async fn admin_graphql_catalog_query_is_stable_after_complete_checkout() {
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(published_variant.id),
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: published_variant.sku.clone(),
                 title: "Parity Product".to_string(),
@@ -330,7 +332,8 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("GRAPHQL-ADMIN-ORDER-1".to_string()),
                     title: "GraphQL Admin Order".to_string(),
@@ -551,7 +554,8 @@ async fn admin_graphql_refund_surface_matches_runtime_services() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("GRAPHQL-ADMIN-REFUND-1".to_string()),
                     title: "GraphQL Admin Refund".to_string(),
@@ -763,7 +767,8 @@ async fn admin_graphql_refund_query_hides_foreign_tenant_refund() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("GRAPHQL-FOREIGN-REFUND-1".to_string()),
                     title: "GraphQL Foreign Refund".to_string(),
@@ -867,7 +872,8 @@ async fn admin_graphql_refunds_list_ignores_foreign_tenant_payment_collection_fi
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("GRAPHQL-FOREIGN-REFUND-LIST-1".to_string()),
                     title: "GraphQL Foreign Refund List".to_string(),
@@ -969,7 +975,8 @@ async fn admin_graphql_create_refund_rejects_foreign_tenant_payment_collection()
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("GRAPHQL-FOREIGN-REFUND-CREATE-1".to_string()),
                     title: "GraphQL Foreign Refund Create".to_string(),
@@ -1051,7 +1058,8 @@ async fn admin_graphql_complete_refund_hides_foreign_tenant_refund() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("GRAPHQL-FOREIGN-REFUND-COMPLETE-1".to_string()),
                     title: "GraphQL Foreign Refund Complete".to_string(),
@@ -1150,7 +1158,8 @@ async fn admin_graphql_refunds_filter_normalizes_status_and_rejects_unknown_valu
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("GRAPHQL-REFUND-STATUS-FILTER-1".to_string()),
                     title: "GraphQL Refund Status Filter".to_string(),
@@ -1276,7 +1285,8 @@ async fn admin_graphql_refunds_filter_supports_order_id() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("GRAPHQL-REFUND-ORDER-FILTER-1".to_string()),
                     title: "GraphQL Refund Order Filter 1".to_string(),
@@ -1302,7 +1312,8 @@ async fn admin_graphql_refunds_filter_supports_order_id() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("GRAPHQL-REFUND-ORDER-FILTER-2".to_string()),
                     title: "GraphQL Refund Order Filter 2".to_string(),
@@ -1441,7 +1452,8 @@ async fn admin_graphql_order_query_exposes_typed_adjustments_and_totals() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-ADJUSTMENT-1".to_string()),
                     title: "Admin Adjusted Order".to_string(),
@@ -1562,7 +1574,8 @@ async fn admin_graphql_order_query_exposes_shipping_total_and_shipping_scoped_ad
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-SHIPPING-ADJUSTMENT-1".to_string()),
                     title: "Admin Shipping Adjusted Order".to_string(),
@@ -1688,7 +1701,8 @@ async fn admin_graphql_order_query_exposes_tax_breakdown_with_provider_ids() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-TAX-LINE-1".to_string()),
                     title: "Admin Taxed Order".to_string(),
@@ -1823,7 +1837,8 @@ async fn admin_graphql_return_decision_creates_completed_claim_order_change() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: Some("merchant-claim-id".to_string()),
                     sku: Some("GRAPHQL-RETURN-CLAIM-1".to_string()),
                     title: "GraphQL Return Claim Order".to_string(),
@@ -1948,7 +1963,8 @@ async fn admin_graphql_complete_return_with_exchange_helper() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: Some("merchant-exchange-id".to_string()),
                     sku: Some("GRAPHQL-COMPLETE-EXCHANGE-1".to_string()),
                     title: "GraphQL Complete Return Exchange Order".to_string(),
@@ -1967,7 +1983,9 @@ async fn admin_graphql_complete_return_with_exchange_helper() {
     let order_return = order_service
         .create_return(
             tenant_id,
+            actor_id,
             order.id,
+            "graphql-complete-exchange-return",
             rustok_order::dto::CreateOrderReturnInput {
                 reason: Some("wrong-size".to_string()),
                 note: Some("needs larger size".to_string()),
@@ -2067,7 +2085,8 @@ async fn admin_graphql_complete_return_with_claim_helper() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: Some("merchant-claim-id".to_string()),
                     sku: Some("GRAPHQL-COMPLETE-CLAIM-1".to_string()),
                     title: "GraphQL Complete Return Claim Order".to_string(),
@@ -2086,7 +2105,9 @@ async fn admin_graphql_complete_return_with_claim_helper() {
     let order_return = order_service
         .create_return(
             tenant_id,
+            actor_id,
             order.id,
+            "graphql-complete-claim-return",
             rustok_order::dto::CreateOrderReturnInput {
                 reason: Some("damaged".to_string()),
                 note: Some("damaged on delivery".to_string()),
@@ -2185,7 +2206,8 @@ async fn admin_graphql_create_fulfillment_supports_typed_manual_post_order_items
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: Some("merchant-alpha-id".to_string()),
                     sku: Some("GRAPHQL-MANUAL-FULFILLMENT-1".to_string()),
                     title: "GraphQL Manual Fulfillment Order".to_string(),
@@ -2293,7 +2315,8 @@ async fn admin_graphql_ship_and_deliver_support_partial_item_progress() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("GRAPHQL-PARTIAL-FULFILLMENT-1".to_string()),
                     title: "GraphQL Partial Fulfillment Order".to_string(),
@@ -2393,7 +2416,8 @@ async fn admin_graphql_reopen_fulfillment_restores_shipped_progress() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("GRAPHQL-REOPEN-FULFILLMENT-1".to_string()),
                     title: "GraphQL Reopen Fulfillment Order".to_string(),
@@ -2524,7 +2548,8 @@ async fn admin_graphql_reship_fulfillment_reopens_delivery_with_new_tracking() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("GRAPHQL-RESHIP-FULFILLMENT-1".to_string()),
                     title: "GraphQL Reship Fulfillment Order".to_string(),
@@ -2674,7 +2699,8 @@ async fn storefront_graphql_customer_and_order_queries_match_customer_owned_read
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("STOREFRONT-ORDER-1".to_string()),
                     title: "Storefront Order".to_string(),
@@ -2825,7 +2851,8 @@ async fn storefront_graphql_refunds_query_returns_customer_order_refunds_only() 
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("STOREFRONT-REFUND-1".to_string()),
                     title: "Storefront Refundable Order".to_string(),
@@ -2955,7 +2982,8 @@ async fn storefront_graphql_refunds_query_rejects_foreign_customer_order() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("STOREFRONT-REFUND-FORBIDDEN".to_string()),
                     title: "Foreign Order".to_string(),
@@ -3112,7 +3140,8 @@ async fn storefront_graphql_refunds_query_normalizes_status_and_rejects_unknown_
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("STOREFRONT-REFUND-STATUS".to_string()),
                     title: "Storefront Refund Status".to_string(),
@@ -3246,7 +3275,8 @@ async fn storefront_graphql_order_query_exposes_typed_adjustments_and_totals() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("STOREFRONT-ADJUSTMENT-1".to_string()),
                     title: "Storefront Adjusted Order".to_string(),
@@ -3413,7 +3443,8 @@ async fn storefront_graphql_order_query_rejects_foreign_customer_access() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("FOREIGN-ORDER-1".to_string()),
                     title: "Foreign Guard".to_string(),
@@ -3534,6 +3565,7 @@ async fn storefront_graphql_checkout_reuses_cart_payment_collection_for_guest_ca
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(published_variant.id),
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: published_variant.sku.clone(),
                 title: "Parity Product".to_string(),
@@ -3691,6 +3723,7 @@ async fn storefront_graphql_checkout_preserves_typed_adjustments_and_net_payment
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(published_variant.id),
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: published_variant.sku.clone(),
                 title: "Parity Product".to_string(),
@@ -4008,6 +4041,7 @@ async fn storefront_graphql_checkout_preserves_shipping_total_and_shipping_promo
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(published_variant.id),
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: published_variant.sku.clone(),
                 title: "Shipping Promotion Product".to_string(),

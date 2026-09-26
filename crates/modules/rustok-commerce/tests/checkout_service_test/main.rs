@@ -1,8 +1,8 @@
 use rust_decimal::Decimal;
 use rustok_cart::CartService;
 use rustok_cart::dto::{
-    AddCartLineItemInput, CartShippingSelectionInput, CreateCartInput, SetCartAdjustmentInput,
-    UpdateCartContextInput,
+    AddCartLineItemInput, CartLineFulfillmentRequirement, CartShippingSelectionInput,
+    CreateCartInput, SetCartAdjustmentInput, UpdateCartContextInput,
 };
 use rustok_commerce::dto::CompleteCheckoutInput;
 use rustok_commerce::services::{CheckoutError, CheckoutService};

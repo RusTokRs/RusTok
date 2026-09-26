@@ -679,6 +679,7 @@ async fn legacy_catalog_read_path_is_stable_after_complete_checkout() {
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(published_variant.id),
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: published_variant.sku.clone(),
                 title: "Parity Product".to_string(),

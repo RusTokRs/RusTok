@@ -37,7 +37,8 @@ async fn admin_return_decision_transport_creates_exchange_order_change() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-RETURN-DECISION-EXCHANGE".to_string()),
                     title: "Admin Return Decision Exchange".to_string(),
@@ -153,7 +154,8 @@ async fn admin_return_decision_transport_creates_claim_order_change() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-RETURN-DECISION-CLAIM".to_string()),
                     title: "Admin Return Decision Claim".to_string(),
@@ -284,7 +286,8 @@ async fn admin_return_decision_transport_requires_payments_update_for_refund_act
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-RETURN-DECISION-REFUND".to_string()),
                     title: "Admin Return Decision Refund".to_string(),

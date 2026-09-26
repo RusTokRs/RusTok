@@ -50,6 +50,7 @@ async fn cart_add_line_item_rejects_unknown_tax_provider_id_on_region() {
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: Some("CHK-TAX-1".to_string()),
                 title: "Tax Provider Product".to_string(),
@@ -123,6 +124,7 @@ async fn cart_add_line_item_prefers_country_tax_policy_over_region_baseline() {
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: Some("CHK-TAX-DE".to_string()),
                 title: "Country Tax Product".to_string(),

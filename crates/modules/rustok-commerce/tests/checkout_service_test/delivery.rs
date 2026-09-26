@@ -66,6 +66,7 @@ async fn checkout_without_fulfillment_flag_skips_fulfillment_creation() {
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: Some("CHK-NO-FULFILL-1".to_string()),
                 title: "Checkout Without Fulfillment Product".to_string(),
@@ -183,6 +184,7 @@ async fn mixed_cart_creates_delivery_groups_and_uses_typed_shipping_selections()
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: Some("cold".to_string()),
                 sku: Some("COLD-1".to_string()),
                 title: "Cold Shipment".to_string(),
@@ -200,6 +202,7 @@ async fn mixed_cart_creates_delivery_groups_and_uses_typed_shipping_selections()
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: Some("bulky".to_string()),
                 sku: Some("BULKY-1".to_string()),
                 title: "Bulky Shipment".to_string(),
@@ -331,6 +334,7 @@ async fn complete_checkout_rejects_missing_shipping_selection_for_delivery_group
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: Some("cold".to_string()),
                 sku: Some("COLD-1".to_string()),
                 title: "Cold Shipment".to_string(),
@@ -348,6 +352,7 @@ async fn complete_checkout_rejects_missing_shipping_selection_for_delivery_group
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: Some("bulky".to_string()),
                 sku: Some("BULKY-1".to_string()),
                 title: "Bulky Shipment".to_string(),
@@ -476,6 +481,7 @@ async fn complete_checkout_creates_multiple_fulfillments_for_delivery_groups() {
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: Some("cold".to_string()),
                 sku: Some("COLD-1".to_string()),
                 title: "Cold Shipment".to_string(),
@@ -493,6 +499,7 @@ async fn complete_checkout_creates_multiple_fulfillments_for_delivery_groups() {
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: Some("bulky".to_string()),
                 sku: Some("BULKY-1".to_string()),
                 title: "Bulky Shipment".to_string(),
@@ -658,6 +665,7 @@ async fn complete_checkout_keeps_seller_aware_delivery_groups_for_same_shipping_
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: Some("SELLER-A-1".to_string()),
                 title: "Seller A Shipment".to_string(),
@@ -681,6 +689,7 @@ async fn complete_checkout_keeps_seller_aware_delivery_groups_for_same_shipping_
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: Some("SELLER-B-1".to_string()),
                 title: "Seller B Shipment".to_string(),
@@ -893,6 +902,7 @@ async fn complete_checkout_rejects_stale_shipping_profile_snapshot_after_variant
             AddCartLineItemInput {
                 product_id: Some(product.id),
                 variant_id: Some(variant.id),
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: Some("cold".to_string()),
                 sku: variant.sku.clone(),
                 title: variant.title,

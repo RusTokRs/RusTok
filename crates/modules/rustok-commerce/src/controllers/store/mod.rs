@@ -27,7 +27,7 @@ use rustok_pricing::{
     PriceResolutionContext, PricingReadPort, ResolveProductPriceRequest,
     in_process_pricing_read_port,
 };
-use rustok_product::entities::{product_translation, variant_translation};
+use rustok_product::entities::product_translation;
 use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
 use sea_orm::DatabaseConnection;
 use serde::de::Deserializer;
@@ -680,23 +680,6 @@ pub(crate) fn pick_product_translation<'a>(
         .or_else(|| translations.first())
 }
 
-pub(crate) fn pick_variant_translation<'a>(
-    translations: &'a [variant_translation::Model],
-    locale: &str,
-    default_locale: &str,
-) -> Option<&'a variant_translation::Model> {
-    translations
-        .iter()
-        .find(|translation| locale_tags_match(&translation.locale, locale))
-        .or_else(|| {
-            (!locale_tags_match(default_locale, locale)).then(|| {
-                translations
-                    .iter()
-                    .find(|translation| locale_tags_match(&translation.locale, default_locale))
-            })?
-        })
-        .or_else(|| translations.first())
-}
 
 pub(crate) fn default_metadata() -> Value {
     json!({})

@@ -35,9 +35,9 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context as TaskContext, Poll};
 
 use crate::dto::{
-    AddCartLineItemInput, CartResponse, CreateCartInput, CreateProductInput,
-    CreateShippingOptionInput, CreateVariantInput, PriceInput, ProductTranslationInput,
-    ShippingOptionTranslationInput, StoreContextResponse,
+    AddCartLineItemInput, CartLineFulfillmentRequirement, CartResponse, CreateCartInput,
+    CreateProductInput, CreateShippingOptionInput, CreateVariantInput, PriceInput,
+    ProductTranslationInput, ShippingOptionTranslationInput, StoreContextResponse,
 };
 use rustok_cart::CartService;
 use rustok_customer::CustomerService;

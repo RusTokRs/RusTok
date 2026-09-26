@@ -22,9 +22,6 @@ use crate::services::OrderChangeOrchestrationService;
 use crate::{
     ApplyOrderChangeResult, ExchangeDifferenceRefundInput, OrderChangeOrchestrationError,
     PaymentOrchestrationError, PostOrderOrchestrationError,
-    dto::{
-        OrderChangeResponse,
-    },
 };
 
 const ADMIN_ORDER_CHANGE_ORCHESTRATION_OWNER: &str =

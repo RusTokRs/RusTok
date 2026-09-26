@@ -6,8 +6,6 @@ mod async_graphql_shim {
     pub type Result<T> = std::result::Result<T, super::super::query_error_boundary::BoundaryError>;
 }
 
-use self::async_graphql_shim as async_graphql;
-
 mod rustok_api_shim {
     pub use ::rustok_api::{
         AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
@@ -85,15 +83,6 @@ mod rustok_order_shim;
 mod rustok_payment_shim;
 #[path = "source/rustok_pricing_shim.rs"]
 mod rustok_pricing_shim;
-
-use self::rustok_api_shim as rustok_api;
-use self::rustok_cart_shim as rustok_cart;
-use self::rustok_channel_shim as rustok_channel;
-use self::rustok_customer_shim as rustok_customer;
-use self::rustok_fulfillment_shim as rustok_fulfillment;
-use self::rustok_order_shim as rustok_order;
-use self::rustok_payment_shim as rustok_payment;
-use self::rustok_pricing_shim as rustok_pricing;
 
 // Query implementation dependencies are re-exported from this source boundary so the
 // implementation module can consume the same scoped aliases without textual inclusion.

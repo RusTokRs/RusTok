@@ -67,6 +67,7 @@ async fn complete_checkout_snapshots_cart_adjustments_into_order_and_payment_tot
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: Some("ADJ-1".to_string()),
                 title: "Adjusted Checkout Product".to_string(),
@@ -244,6 +245,7 @@ async fn complete_checkout_snapshots_typed_percentage_promotion_into_order() {
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: Some("PROMO-1".to_string()),
                 title: "Promotion Checkout Product".to_string(),
@@ -386,6 +388,7 @@ async fn complete_checkout_snapshots_pricing_reprice_adjustments_into_order() {
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: Some("PRICE-1".to_string()),
                 title: "Priced Checkout Product".to_string(),
@@ -545,6 +548,7 @@ async fn complete_checkout_snapshots_shipping_promotion_into_order_and_payment_t
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: Some("SHIP-PROMO-1".to_string()),
                 title: "Shipping Promo Product".to_string(),

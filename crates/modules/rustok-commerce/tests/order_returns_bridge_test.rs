@@ -1,6 +1,7 @@
 use rust_decimal::Decimal;
 use rustok_order::dto::{
     CreateOrderInput, CreateOrderLineItemInput, CreateOrderReturnInput, ListOrderReturnsInput,
+    OrderLineFulfillmentRequirement,
 };
 use rustok_order::services::OrderService;
 use rustok_test_utils::mock_transactional_event_bus;
@@ -29,7 +30,8 @@ async fn commerce_test_schema_supports_order_returns_filters() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: None,
                     variant_id: None,
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("RET-SKU-1".to_string()),
                     title: "Return Candidate".to_string(),
@@ -48,7 +50,9 @@ async fn commerce_test_schema_supports_order_returns_filters() {
     let created = service
         .create_return(
             tenant_id,
+            actor_id,
             order.id,
+            "commerce-order-returns-bridge-test",
             CreateOrderReturnInput {
                 reason: Some("damaged".to_string()),
                 note: None,
@@ -100,7 +104,8 @@ async fn commerce_order_returns_listing_ignores_blank_status_filter() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: None,
                     variant_id: None,
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("RET-SKU-2".to_string()),
                     title: "Return Candidate 2".to_string(),
@@ -119,7 +124,9 @@ async fn commerce_order_returns_listing_ignores_blank_status_filter() {
     let created = service
         .create_return(
             tenant_id,
+            actor_id,
             order.id,
+            "commerce-order-returns-blank-filter-test",
             CreateOrderReturnInput {
                 reason: Some("wrong-size".to_string()),
                 note: None,
@@ -178,7 +185,8 @@ async fn commerce_post_order_decision_creates_return_bound_refund() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: None,
                     variant_id: None,
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("RET-REFUND-1".to_string()),
                     title: "Refundable Return Candidate".to_string(),
@@ -238,6 +246,7 @@ async fn commerce_post_order_decision_creates_return_bound_refund() {
             tenant_id,
             actor_id,
             order.id,
+            "commerce-return-refund-decision-test",
             CreateReturnDecisionInput {
                 return_request: CreateOrderReturnInput {
                     reason: Some("damaged".to_string()),
@@ -305,7 +314,8 @@ async fn commerce_post_order_decision_creates_return_bound_exchange_change() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: None,
                     variant_id: None,
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("RET-EXCHANGE-1".to_string()),
                     title: "Exchange Return Candidate".to_string(),
@@ -326,6 +336,7 @@ async fn commerce_post_order_decision_creates_return_bound_exchange_change() {
             tenant_id,
             actor_id,
             order.id,
+            "commerce-return-exchange-decision-test",
             CreateReturnDecisionInput {
                 return_request: CreateOrderReturnInput {
                     reason: Some("wrong-size".to_string()),
@@ -405,7 +416,8 @@ async fn commerce_post_order_decision_creates_return_bound_claim_change() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: None,
                     variant_id: None,
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("RET-CLAIM-1".to_string()),
                     title: "Claim Return Candidate".to_string(),
@@ -426,6 +438,7 @@ async fn commerce_post_order_decision_creates_return_bound_claim_change() {
             tenant_id,
             actor_id,
             order.id,
+            "commerce-return-claim-decision-test",
             CreateReturnDecisionInput {
                 return_request: CreateOrderReturnInput {
                     reason: Some("damaged".to_string()),
@@ -502,7 +515,8 @@ async fn commerce_apply_exchange_order_change_with_explicit_refund() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: None,
                     variant_id: None,
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("RET-EXCHANGE-2".to_string()),
                     title: "Exchange Return Candidate 2".to_string(),
@@ -566,6 +580,7 @@ async fn commerce_apply_exchange_order_change_with_explicit_refund() {
             tenant_id,
             actor_id,
             order.id,
+            "commerce-apply-exchange-decision-test",
             CreateReturnDecisionInput {
                 return_request: CreateOrderReturnInput {
                     reason: Some("wrong-size".to_string()),
@@ -594,8 +609,10 @@ async fn commerce_apply_exchange_order_change_with_explicit_refund() {
     let result = orchestration
         .apply_exchange_order_change(
             tenant_id,
+            actor_id,
             order.id,
             change.id,
+            "commerce-apply-exchange-test",
             Some(ExchangeDifferenceRefundInput {
                 amount: Decimal::new(1000, 2),
                 reason: Some("Exchange size price diff".to_string()),
@@ -642,7 +659,8 @@ async fn commerce_apply_exchange_order_change_with_automated_refund() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: None,
                     variant_id: None,
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("RET-EXCHANGE-3".to_string()),
                     title: "Exchange Return Candidate 3".to_string(),
@@ -706,6 +724,7 @@ async fn commerce_apply_exchange_order_change_with_automated_refund() {
             tenant_id,
             actor_id,
             order.id,
+            "commerce-auto-exchange-decision-test",
             CreateReturnDecisionInput {
                 return_request: CreateOrderReturnInput {
                     reason: Some("wrong-size".to_string()),
@@ -739,8 +758,10 @@ async fn commerce_apply_exchange_order_change_with_automated_refund() {
     let result = orchestration
         .apply_exchange_order_change(
             tenant_id,
+            actor_id,
             order.id,
             change.id,
+            "commerce-auto-exchange-test",
             None, // Use automated extraction!
             serde_json::json!({"operator":"returns-desk"}),
         )
@@ -781,7 +802,8 @@ async fn commerce_apply_claim_order_change() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: None,
                     variant_id: None,
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("RET-CLAIM-2".to_string()),
                     title: "Claim Return Candidate 2".to_string(),
@@ -804,6 +826,7 @@ async fn commerce_apply_claim_order_change() {
             tenant_id,
             actor_id,
             order.id,
+            "commerce-claim-decision-test",
             CreateReturnDecisionInput {
                 return_request: CreateOrderReturnInput {
                     reason: Some("damaged".to_string()),
@@ -832,7 +855,9 @@ async fn commerce_apply_claim_order_change() {
     let result = orchestration
         .apply_claim_order_change(
             tenant_id,
+            actor_id,
             change.id,
+            "commerce-apply-claim-test",
             serde_json::json!({"operator":"claims-desk"}),
         )
         .await

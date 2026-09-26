@@ -41,35 +41,6 @@ impl CommercePaymentCommandRuntime {
         )
     }
 
-    pub(crate) fn from_graphql_inputs(inputs: &rustok_api::graphql::GraphqlRuntimeInputs) -> Self {
-        let provider_registry = inputs
-            .shared_get::<PaymentProviderRegistry>()
-            .unwrap_or_else(PaymentProviderRegistry::with_manual_provider);
-        let collection_create_or_reuse = inputs
-            .shared_get::<PaymentCollectionRuntime>()
-            .unwrap_or_else(|| PaymentCollectionRuntime::in_process(inputs.db_clone()));
-        let collection_commands = inputs
-            .shared_get::<PaymentAdminCollectionCommandRuntime>()
-            .unwrap_or_else(|| {
-                PaymentAdminCollectionCommandRuntime::in_process(
-                    inputs.db_clone(),
-                    provider_registry.clone(),
-                )
-            });
-        let refund_commands = inputs
-            .shared_get::<PaymentAdminRefundCommandRuntime>()
-            .unwrap_or_else(|| {
-                PaymentAdminRefundCommandRuntime::in_process(
-                    inputs.db_clone(),
-                    provider_registry.clone(),
-                )
-            });
-        Self::new(
-            collection_create_or_reuse,
-            collection_commands,
-            refund_commands,
-        )
-    }
 
     pub fn collection_create_or_reuse_port(&self) -> Arc<dyn PaymentCollectionPort> {
         self.collection_create_or_reuse.port()

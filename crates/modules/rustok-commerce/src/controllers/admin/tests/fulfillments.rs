@@ -40,7 +40,8 @@ async fn admin_fulfillments_transport_lists_fulfillments_with_pagination_and_fil
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-FULFILLMENT-LIST-1".to_string()),
                     title: "Admin Fulfillment List 1".to_string(),
@@ -66,7 +67,8 @@ async fn admin_fulfillments_transport_lists_fulfillments_with_pagination_and_fil
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-FULFILLMENT-LIST-2".to_string()),
                     title: "Admin Fulfillment List 2".to_string(),
@@ -201,7 +203,8 @@ async fn admin_fulfillment_transport_creates_manual_fulfillment_with_typed_items
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-FULFILLMENT-CREATE-1".to_string()),
                     title: "Admin Fulfillment Create Order".to_string(),
@@ -322,7 +325,8 @@ async fn admin_fulfillment_transport_rejects_overfulfillment_for_order_line_item
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-FULFILLMENT-OVER-1".to_string()),
                     title: "Admin Fulfillment Over Order".to_string(),
@@ -452,7 +456,8 @@ async fn admin_fulfillment_transport_ships_delivers_and_reads_detail() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-FULFILLMENT-1".to_string()),
                     title: "Admin Fulfillment Order".to_string(),
@@ -623,7 +628,8 @@ async fn admin_fulfillment_transport_supports_partial_item_ship_and_deliver() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-FULFILLMENT-PARTIAL-1".to_string()),
                     title: "Admin Fulfillment Partial Order".to_string(),
@@ -775,7 +781,8 @@ async fn admin_fulfillment_transport_supports_reopen_and_reship() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-FULFILLMENT-REOPEN-1".to_string()),
                     title: "Admin Fulfillment Reopen Order".to_string(),

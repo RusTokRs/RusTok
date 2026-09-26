@@ -1,16 +1,3 @@
-use std::sync::Arc;
-
-use ::rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
-use ::rustok_fulfillment::{
-    FindLatestFulfillmentByOrderProjectionRequest, FulfillmentReadPort, FulfillmentResponse,
-    ListAllShippingOptionProjectionsRequest, ListFulfillmentProjectionsRequest,
-    ListFulfillmentsInput, ListShippingOptionProjectionsRequest, ReadFulfillmentProjectionRequest,
-    ReadShippingOptionProjectionRequest, ShippingOptionAdminReadPort, ShippingOptionReadPort,
-    ShippingOptionResponse,
-};
-use ::sea_orm::DatabaseConnection;
-use ::uuid::Uuid;
-
 use super::super::query_error_boundary::BoundaryError;
 
 pub(crate) mod error {
@@ -29,7 +16,16 @@ pub(crate) mod error {
         #[allow(clippy::inherent_to_string, clippy::wrong_self_convention)]
         pub(crate) fn to_string(self) -> BoundaryError {
             match self {
-                Self::ShippingOptionNotFound(_) | Self::FulfillmentNotFound(_) => {
+                Self::ShippingOptionNotFound(id) => {
+                    tracing::debug!(shipping_option_id = %id, "shipping option not found");
+                    BoundaryError::Public {
+                        message: "Fulfillment resource was not found",
+                        code: "FULFILLMENT_RESOURCE_NOT_FOUND",
+                        retryable: false,
+                    }
+                }
+                Self::FulfillmentNotFound(id) => {
+                    tracing::debug!(fulfillment_id = %id, "fulfillment not found");
                     BoundaryError::Public {
                         message: "Fulfillment resource was not found",
                         code: "FULFILLMENT_RESOURCE_NOT_FOUND",

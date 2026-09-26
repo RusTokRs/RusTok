@@ -67,6 +67,7 @@ async fn complete_checkout_builds_order_payment_and_fulfillment_flow() {
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: Some("CHK-1".to_string()),
                 title: "Checkout Product".to_string(),
@@ -276,6 +277,7 @@ async fn complete_checkout_reuses_existing_cart_payment_collection() {
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: Some("CHK-EXISTING-1".to_string()),
                 title: "Checkout Product".to_string(),
@@ -432,6 +434,7 @@ async fn complete_checkout_prefers_persisted_cart_context_over_conflicting_overr
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: Some("CHK-CONTEXT-1".to_string()),
                 title: "Checkout Context Product".to_string(),

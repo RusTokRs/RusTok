@@ -1,7 +1,4 @@
-use super::{
-    error::FulfillmentError, BoundaryError, GRAPHQL_QUERY_FULFILLMENT_BOUNDARY,
-    ShippingOptionAdminQueryError,
-};
+use super::{error::FulfillmentError, BoundaryError, GRAPHQL_QUERY_FULFILLMENT_BOUNDARY};
 use ::rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use ::uuid::Uuid;
 

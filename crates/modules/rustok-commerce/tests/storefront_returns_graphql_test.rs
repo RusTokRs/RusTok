@@ -5,7 +5,9 @@ use rustok_commerce::graphql::{CommerceMutation, CommerceQuery};
 use rustok_customer::CustomerService;
 use rustok_customer::dto::CreateCustomerInput;
 use rustok_order::OrderService;
-use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
+use rustok_order::dto::{
+    CreateOrderInput, CreateOrderLineItemInput, OrderLineFulfillmentRequirement,
+};
 use rustok_test_utils::{db::setup_test_db, mock_transactional_event_bus};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::Value;
@@ -228,7 +230,8 @@ async fn create_customer_order(
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("STOREFRONT-RETURN-1".to_string()),
                     title: "Storefront Returnable Order".to_string(),

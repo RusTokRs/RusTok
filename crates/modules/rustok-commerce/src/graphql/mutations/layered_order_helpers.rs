@@ -6,4 +6,3 @@ pub(crate) use super::typed_line_item_helpers::{
 };
 pub(crate) use super::typed_reprice_helper::reprice_storefront_cart_line_items;
 pub(crate) use super::typed_shipping_enrichment_helper::enrich_storefront_cart;
-pub(crate) use super::typed_shipping_option_helper::validate_selected_shipping_option;

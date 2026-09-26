@@ -66,6 +66,7 @@ async fn repeated_complete_checkout_recovers_existing_result() {
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: Some("CHK-RETRY-1".to_string()),
                 title: "Checkout Retry Product".to_string(),
@@ -188,6 +189,7 @@ async fn complete_checkout_recovers_stuck_checking_out_cart_when_paid_artifacts_
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: Some("CHK-RECOVER-1".to_string()),
                 title: "Checkout Recovery Product".to_string(),
@@ -320,6 +322,7 @@ async fn complete_checkout_rejects_reentry_for_checking_out_cart_without_artifac
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: Some("CHK-REENTRY-1".to_string()),
                 title: "Checkout Reentry Guard Product".to_string(),
@@ -416,6 +419,7 @@ async fn checkout_failure_releases_cart_back_to_active() {
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: Some("CHK-LOCK-1".to_string()),
                 title: "Checkout Lock Product".to_string(),
@@ -506,6 +510,7 @@ async fn checkout_preflight_failure_does_not_create_payment_or_order_artifacts()
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: Some("CHK-COMP-1".to_string()),
                 title: "Checkout Compensation Product".to_string(),
@@ -616,6 +621,7 @@ async fn retry_after_preflight_failure_creates_checkout_artifacts() {
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: Some("CHK-RETRY-AFTER-FAIL-1".to_string()),
                 title: "Checkout Retry After Failure Product".to_string(),

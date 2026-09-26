@@ -26,7 +26,7 @@ use rustok_fulfillment::{
 };
 use rustok_order::{
     OrderService,
-    dto::{CreateOrderInput, CreateOrderLineItemInput},
+    dto::{CreateOrderInput, CreateOrderLineItemInput, OrderLineFulfillmentRequirement},
 };
 use rustok_test_utils::{db::setup_test_db, mock_transactional_event_bus};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
@@ -442,7 +442,8 @@ async fn graphql_list_and_latest_by_order_apply_the_same_deadline_contract() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("FULFILLMENT-READ-FAILURE".to_string()),
                     title: "Fulfillment read failure contract".to_string(),

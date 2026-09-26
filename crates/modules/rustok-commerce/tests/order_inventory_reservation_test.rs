@@ -8,7 +8,9 @@ use rustok_fulfillment::{FulfillmentService, migrations as fulfillment_migration
 use rustok_inventory::InventoryService;
 use rustok_inventory::entities::{inventory_item, inventory_level, reservation_item};
 use rustok_order::OrderService;
-use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
+use rustok_order::dto::{
+    CreateOrderInput, CreateOrderLineItemInput, OrderLineFulfillmentRequirement,
+};
 use rustok_product::CatalogService;
 use rustok_product::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput,
@@ -147,7 +149,8 @@ async fn create_order(
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(product_id),
                     variant_id: Some(variant_id),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("RESERVED-SKU".to_string()),
                     title: "Reserved product".to_string(),

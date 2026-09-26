@@ -22,41 +22,17 @@ use super::{
 use crate::{
     CompleteReturnClaimInput, CompleteReturnExchangeInput, CompleteReturnRefundInput,
     CompleteReturnResolutionInput, CreateReturnDecisionInput, PaymentOrchestrationError,
-    PostOrderOrchestrationError, ReturnCompletionOrchestrationService,
+    PostOrderOrchestrationError,
     ReturnDecisionOwnerOrchestrationError, ReturnDecisionOwnerOrchestrationService,
     ReturnDecisionResponse,
     dto::OrderReturnResponse,
 };
 
-const ADMIN_ORDER_RETURN_OWNER: &str = "rustok_order.admin_returns";
 const ADMIN_ORDER_RETURN_ORCHESTRATION_OWNER: &str =
     "rustok_commerce.admin_order_return_orchestration";
 const ADMIN_ORDER_RETURN_BOUNDARY: &str = "commerce_admin_order_return_http";
 
 type AdminOrderReturnHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
-
-struct AdminOrderReturnErrorContext {
-    tenant_id: Uuid,
-    order_id: Option<Uuid>,
-    return_id: Option<Uuid>,
-    operation: &'static str,
-}
-
-impl AdminOrderReturnErrorContext {
-    fn new(
-        tenant_id: Uuid,
-        order_id: Option<Uuid>,
-        return_id: Option<Uuid>,
-        operation: &'static str,
-    ) -> Self {
-        Self {
-            tenant_id,
-            order_id,
-            return_id,
-            operation,
-        }
-    }
-}
 
 struct AdminOrderReturnOrchestrationErrorContext {
     tenant_id: Uuid,
@@ -141,6 +117,8 @@ fn admin_return_decision_order_context(
     context
 }
 
+
+
 fn admin_order_error_policy(error: &OrderError) -> AdminOrderReturnHttpPolicy {
     match error {
         OrderError::Validation(_) => (
@@ -175,6 +153,80 @@ fn admin_order_error_policy(error: &OrderError) -> AdminOrderReturnHttpPolicy {
             "Order operation could not be completed safely",
             "core",
         ),
+    }
+}
+
+fn admin_payment_error_policy(error: &PaymentError) -> AdminOrderReturnHttpPolicy {
+    match error {
+        PaymentError::PaymentCollectionNotFound(_)
+        | PaymentError::PaymentNotFound(_)
+        | PaymentError::RefundNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        PaymentError::Validation(_) => (
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_payment_invalid",
+            "Payment request is invalid",
+            "validation",
+        ),
+        PaymentError::InvalidTransition { .. } | PaymentError::ProviderRejected { .. } => (
+            StatusCode::CONFLICT,
+            "commerce_admin_payment_state_conflict",
+            "Payment operation conflicts with the current state",
+            "state_conflict",
+        ),
+        PaymentError::ProviderUnavailable { .. } => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_payment_provider_unavailable",
+            "Payment provider is temporarily unavailable",
+            "provider_unavailable",
+        ),
+        PaymentError::ProviderInvalidResponse { .. } => (
+            StatusCode::BAD_GATEWAY,
+            "commerce_admin_payment_provider_invalid_response",
+            "Payment provider returned an invalid response; reconciliation may be required",
+            "provider_invalid_response",
+        ),
+        PaymentError::ProviderOutcomeUnknown { .. } => (
+            StatusCode::CONFLICT,
+            "commerce_admin_payment_reconciliation_required",
+            "Payment provider outcome is unknown and requires reconciliation",
+            "provider_outcome_unknown",
+        ),
+        PaymentError::ProviderConfiguration { .. } => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_payment_provider_not_configured",
+            "Payment provider is not configured for this tenant",
+            "provider_configuration",
+        ),
+        PaymentError::Database(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_payment_storage_unavailable",
+            "Payment storage is temporarily unavailable",
+            "database",
+        ),
+    }
+}
+
+fn admin_reserved_refund_error_policy(error: &PaymentError) -> AdminOrderReturnHttpPolicy {
+    match error {
+        PaymentError::ProviderOutcomeUnknown { .. }
+        | PaymentError::ProviderInvalidResponse { .. } => (
+            StatusCode::CONFLICT,
+            "commerce_admin_refund_reconciliation_required",
+            "Refund remains reserved while the provider outcome is reconciled",
+            "refund_reconciliation_required",
+        ),
+        PaymentError::ProviderUnavailable { .. } => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_refund_provider_unavailable",
+            "Refund remains reserved and the provider operation may be retried safely",
+            "refund_provider_unavailable",
+        ),
+        error => admin_payment_error_policy(error),
     }
 }
 
@@ -260,147 +312,7 @@ fn admin_payment_port_error_policy(error: &PortError) -> AdminOrderReturnHttpPol
     }
 }
 
-fn admin_order_return_port_context(
-    tenant_id: Uuid,
-    actor_id: Uuid,
-    operation: &'static str,
-    resource_id: Uuid,
-    write: bool,
-) -> PortContext {
-    let context = PortContext::new(
-        tenant_id.to_string(),
-        PortActor::user(actor_id.to_string()),
-        "en",
-        format!("commerce-admin-order-return:{}:{}", operation, resource_id),
-    )
-    .with_deadline(std::time::Duration::from_secs(2));
-    if write {
-        context.with_idempotency_key(format!(
-            "commerce-admin-order-return:{}:{}",
-            operation, resource_id
-        ))
-    } else {
-        context
-    }
-}
 
-fn map_admin_order_return_port_error(
-    context: &AdminOrderReturnErrorContext,
-    error: PortError,
-) -> HttpError {
-    let (status, code, message, error_kind) = admin_order_port_error_policy(&error);
-    tracing::error!(
-        owner = "rustok_order",
-        tenant_id = %context.tenant_id,
-        order_id = ?context.order_id,
-        return_id = ?context.return_id,
-        operation = %context.operation,
-        owner_error_kind = ?error.kind,
-        owner_code_length = error.code.chars().count(),
-        retryable = error.retryable,
-        error_kind,
-        public_code = code,
-        status = %status,
-        boundary = ADMIN_ORDER_RETURN_BOUNDARY,
-        "commerce admin order return owner port failed with bounded diagnostics"
-    );
-    HttpError::new(status, code, message)
-}
-
-fn admin_payment_error_policy(error: &PaymentError) -> AdminOrderReturnHttpPolicy {
-    match error {
-        PaymentError::PaymentCollectionNotFound(_)
-        | PaymentError::PaymentNotFound(_)
-        | PaymentError::RefundNotFound(_) => (
-            StatusCode::NOT_FOUND,
-            "commerce_admin_not_found",
-            "Commerce resource not found",
-            "not_found",
-        ),
-        PaymentError::Validation(_) => (
-            StatusCode::BAD_REQUEST,
-            "commerce_admin_payment_invalid",
-            "Payment request is invalid",
-            "validation",
-        ),
-        PaymentError::InvalidTransition { .. } | PaymentError::ProviderRejected { .. } => (
-            StatusCode::CONFLICT,
-            "commerce_admin_payment_state_conflict",
-            "Payment operation conflicts with the current state",
-            "state_conflict",
-        ),
-        PaymentError::ProviderUnavailable { .. } => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_payment_provider_unavailable",
-            "Payment provider is temporarily unavailable",
-            "provider_unavailable",
-        ),
-        PaymentError::ProviderInvalidResponse { .. } => (
-            StatusCode::BAD_GATEWAY,
-            "commerce_admin_payment_provider_invalid_response",
-            "Payment provider returned an invalid response; reconciliation may be required",
-            "provider_invalid_response",
-        ),
-        PaymentError::ProviderOutcomeUnknown { .. } => (
-            StatusCode::CONFLICT,
-            "commerce_admin_payment_reconciliation_required",
-            "Payment provider outcome is unknown and requires reconciliation",
-            "provider_outcome_unknown",
-        ),
-        PaymentError::ProviderConfiguration { .. } => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_payment_provider_not_configured",
-            "Payment provider is not configured for this tenant",
-            "provider_configuration",
-        ),
-        PaymentError::Database(_) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_payment_storage_unavailable",
-            "Payment storage is temporarily unavailable",
-            "database",
-        ),
-    }
-}
-
-fn admin_reserved_refund_error_policy(error: &PaymentError) -> AdminOrderReturnHttpPolicy {
-    match error {
-        PaymentError::ProviderOutcomeUnknown { .. }
-        | PaymentError::ProviderInvalidResponse { .. } => (
-            StatusCode::CONFLICT,
-            "commerce_admin_refund_reconciliation_required",
-            "Refund remains reserved while the provider outcome is reconciled",
-            "refund_reconciliation_required",
-        ),
-        PaymentError::ProviderUnavailable { .. } => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_refund_provider_unavailable",
-            "Refund remains reserved and the provider operation may be retried safely",
-            "refund_provider_unavailable",
-        ),
-        error => admin_payment_error_policy(error),
-    }
-}
-
-fn map_admin_order_return_error(
-    context: AdminOrderReturnErrorContext,
-    error: OrderError,
-) -> HttpError {
-    let (status, code, message, error_kind) = admin_order_error_policy(&error);
-    tracing::error!(
-        error = ?error,
-        owner = ADMIN_ORDER_RETURN_OWNER,
-        tenant_id = %context.tenant_id,
-        order_id = ?context.order_id,
-        return_id = ?context.return_id,
-        operation = %context.operation,
-        error_kind,
-        public_code = code,
-        status = %status,
-        boundary = ADMIN_ORDER_RETURN_BOUNDARY,
-        "commerce admin order return owner operation failed"
-    );
-    HttpError::new(status, code, message)
-}
 
 fn map_admin_return_decision_order_port_error(
     tenant_id: Uuid,

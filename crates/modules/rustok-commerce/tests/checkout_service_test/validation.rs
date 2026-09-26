@@ -56,6 +56,7 @@ async fn complete_checkout_rejects_shipping_option_hidden_for_cart_channel() {
             AddCartLineItemInput {
                 product_id: None,
                 variant_id: None,
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: Some("CHK-HIDDEN-1".to_string()),
                 title: "Checkout Hidden Shipping Product".to_string(),
@@ -168,6 +169,7 @@ async fn complete_checkout_rejects_line_item_hidden_for_cart_channel() {
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(variant.id),
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: variant.sku.clone(),
                 title: variant.title.clone(),
@@ -275,6 +277,7 @@ async fn complete_checkout_rejects_line_item_without_channel_visible_inventory()
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(variant.id),
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: variant.sku.clone(),
                 title: variant.title.clone(),
@@ -387,6 +390,7 @@ async fn complete_checkout_rejects_shipping_option_incompatible_with_cart_shippi
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(variant.id),
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: Some("bulky".to_string()),
                 sku: variant.sku.clone(),
                 title: variant.title.clone(),
@@ -545,6 +549,7 @@ async fn complete_checkout_rejects_channel_hidden_inventory_on_deny_policy() {
             AddCartLineItemInput {
                 product_id: Some(product.id),
                 variant_id: Some(variant.id),
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: variant.shipping_profile_slug.clone(),
                 sku: variant.sku.clone(),
                 title: "Channel Hidden Inventory Product".to_string(),
@@ -727,6 +732,7 @@ async fn complete_checkout_allows_backorder_variant_when_channel_inventory_hidde
             AddCartLineItemInput {
                 product_id: Some(product.id),
                 variant_id: Some(variant.id),
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: variant.shipping_profile_slug.clone(),
                 sku: variant.sku.clone(),
                 title: "Backorder Channel Product".to_string(),
@@ -878,6 +884,7 @@ async fn complete_checkout_accepts_variant_when_stock_location_visible_for_cart_
             AddCartLineItemInput {
                 product_id: Some(product.id),
                 variant_id: Some(variant.id),
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: variant.shipping_profile_slug.clone(),
                 sku: variant.sku.clone(),
                 title: "Channel Visible Inventory Product".to_string(),

@@ -40,7 +40,8 @@ async fn admin_payment_collections_transport_lists_collections_with_pagination_a
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-PAYMENT-LIST-1".to_string()),
                     title: "Admin Payment List 1".to_string(),
@@ -66,7 +67,8 @@ async fn admin_payment_collections_transport_lists_collections_with_pagination_a
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-PAYMENT-LIST-2".to_string()),
                     title: "Admin Payment List 2".to_string(),
@@ -196,7 +198,8 @@ async fn admin_refunds_transport_creates_completes_cancels_and_lists_refunds() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-REFUND-LIFECYCLE-1".to_string()),
                     title: "Admin Refund Lifecycle".to_string(),
@@ -435,7 +438,8 @@ async fn admin_refund_transport_hides_foreign_tenant_refund() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("REFUND-FOREIGN-1".to_string()),
                     title: "Refund Foreign".to_string(),
@@ -535,7 +539,8 @@ async fn admin_refunds_transport_list_ignores_foreign_tenant_payment_collection_
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("REFUND-LIST-FOREIGN-1".to_string()),
                     title: "Refund list foreign".to_string(),
@@ -645,7 +650,8 @@ async fn admin_refunds_transport_create_rejects_foreign_tenant_payment_collectio
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("REFUND-CREATE-FOREIGN-1".to_string()),
                     title: "Refund create foreign".to_string(),
@@ -784,7 +790,8 @@ async fn admin_refunds_transport_accepts_case_insensitive_status_filter() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("REFUND-LIST-UPPER-1".to_string()),
                     title: "Refund list uppercase".to_string(),
@@ -883,7 +890,8 @@ async fn admin_refunds_transport_supports_order_id_filter() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-REFUND-ORDER-FILTER-1".to_string()),
                     title: "Admin Refund Order Filter 1".to_string(),
@@ -909,7 +917,8 @@ async fn admin_refunds_transport_supports_order_id_filter() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-REFUND-ORDER-FILTER-2".to_string()),
                     title: "Admin Refund Order Filter 2".to_string(),
@@ -1063,7 +1072,8 @@ async fn admin_payment_collection_transport_authorizes_captures_and_reads_detail
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-PAYMENT-1".to_string()),
                     title: "Admin Payment Order".to_string(),

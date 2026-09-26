@@ -119,6 +119,7 @@ impl From<PortError> for ChannelQueryError {
 }
 
 impl ChannelQueryError {
+    #[allow(clippy::inherent_to_string, clippy::wrong_self_convention)]
     pub(crate) fn to_string(self) -> ChannelGraphqlMessage {
         ChannelGraphqlMessage { error: self.error }
     }

@@ -3,7 +3,9 @@ use rust_decimal::Decimal;
 use rustok_api::Permission;
 use rustok_api::{AuthContext, RequestContext, TenantContext};
 use rustok_cart::CartService;
-use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput, SetCartAdjustmentInput};
+use rustok_cart::dto::{
+    AddCartLineItemInput, CartLineFulfillmentRequirement, CreateCartInput, SetCartAdjustmentInput,
+};
 use rustok_commerce::dto::{CompleteCheckoutInput, ShippingProfileTranslationInput};
 use rustok_commerce::graphql::{CommerceMutation, CommerceQuery};
 use rustok_commerce::{CheckoutService, ShippingProfileService};
@@ -15,7 +17,9 @@ use rustok_fulfillment::dto::{
     ShipFulfillmentInput, ShippingOptionTranslationInput,
 };
 use rustok_order::OrderService;
-use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
+use rustok_order::dto::{
+    CreateOrderInput, CreateOrderLineItemInput, OrderLineFulfillmentRequirement,
+};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_payment::PaymentRefundCreationService;
 use rustok_payment::PaymentService;

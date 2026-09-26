@@ -1347,6 +1347,7 @@ async fn admin_graphql_preview_and_apply_cart_shipping_promotion() {
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(variant.id),
+                fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
                 shipping_profile_slug: None,
                 sku: variant.sku.clone(),
                 title: "Admin Cart Promotion Product".to_string(),

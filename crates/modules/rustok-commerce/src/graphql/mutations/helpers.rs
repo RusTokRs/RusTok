@@ -24,7 +24,6 @@ use crate::{
     storefront_channel::{is_metadata_visible_for_public_channel, normalize_public_channel_slug},
     storefront_shipping::{
         effective_shipping_profile_slug, enrich_cart_delivery_groups,
-        is_shipping_option_compatible_with_profiles,
     },
 };
 

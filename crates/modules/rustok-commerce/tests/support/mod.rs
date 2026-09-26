@@ -17,8 +17,8 @@ use rustok_inventory::entities::{
     inventory_item, inventory_level, reservation_item, stock_location, stock_location_translation,
 };
 use rustok_order::entities::{
-    order, order_adjustment, order_change, order_checkout_identity, order_line_item,
-    order_line_item_translation, order_return, order_return_item, order_tax_line,
+    order, order_adjustment, order_change, order_checkout_identity, order_command_receipt,
+    order_line_item, order_line_item_translation, order_return, order_return_item, order_tax_line,
 };
 use rustok_payment::entities::{
     payment, payment_collection, provider_operation as payment_provider_operation, refund_creation,
@@ -317,6 +317,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(order_return_item::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(order_command_receipt::Entity),
     )
     .await;
     create_entity_table(

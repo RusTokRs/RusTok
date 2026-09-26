@@ -38,7 +38,8 @@ async fn admin_order_transport_returns_order_with_payment_and_fulfillment() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-ORDER-1".to_string()),
                     title: "Admin Order".to_string(),
@@ -220,7 +221,8 @@ async fn admin_order_transport_returns_typed_adjustments_and_totals() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-ORDER-ADJUSTMENT-1".to_string()),
                     title: "Admin Adjusted Order".to_string(),
@@ -333,7 +335,8 @@ async fn admin_order_transport_returns_shipping_total_and_shipping_scoped_adjust
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-ORDER-SHIPPING-ADJUSTMENT-1".to_string()),
                     title: "Admin Shipping Adjusted Order".to_string(),
@@ -449,7 +452,8 @@ async fn admin_orders_transport_lists_orders_with_pagination_and_status_filter()
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-ORDER-LIST-1".to_string()),
                     title: "Admin List Order 1".to_string(),
@@ -484,7 +488,8 @@ async fn admin_orders_transport_lists_orders_with_pagination_and_status_filter()
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-ORDER-LIST-2".to_string()),
                     title: "Admin List Order 2".to_string(),
@@ -630,7 +635,8 @@ async fn admin_order_lifecycle_transport_marks_paid_ships_delivers_and_reads_det
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-ORDER-LIFECYCLE-1".to_string()),
                     title: "Admin Lifecycle Order".to_string(),
@@ -787,7 +793,8 @@ async fn admin_order_lifecycle_transport_cancels_order() {
                 line_items: vec![CreateOrderLineItemInput {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
-                    shipping_profile_slug: "default".to_string(),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
                     seller_id: None,
                     sku: Some("ADMIN-ORDER-CANCEL-1".to_string()),
                     title: "Admin Cancel Order".to_string(),

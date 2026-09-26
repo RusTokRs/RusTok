@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use super::{
-    error::FulfillmentError, BoundaryError, FulfillmentResult, ShippingOptionAdminQueryError,
-};
+use super::{BoundaryError, FulfillmentResult, ShippingOptionAdminQueryError};
 use super::fulfillment_query_boundary::{
     fulfillment_query_context, map_fulfillment_port_error,
     map_shipping_option_lookup_port_error, map_shipping_option_port_error,

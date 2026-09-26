@@ -22,8 +22,9 @@ use crate::dto::{
     AuthorizePaymentInput, CancelPaymentInput, CancelRefundInput, CapturePaymentInput,
     CompleteRefundInput, CreateFulfillmentInput, CreateFulfillmentItemInput, CreateOrderInput,
     CreateOrderLineItemInput, CreateOrderTaxLineInput, CreatePaymentCollectionInput,
-    CreateRefundInput, DeliverFulfillmentInput, FulfillmentItemQuantityInput, RefundResponse,
-    ShipFulfillmentInput, UpdateShippingOptionInput,
+    CreateRefundInput, DeliverFulfillmentInput, FulfillmentItemQuantityInput,
+    OrderLineFulfillmentRequirement, RefundResponse, ShipFulfillmentInput,
+    UpdateShippingOptionInput,
 };
 use rustok_fulfillment::FulfillmentService;
 use rustok_order::OrderService;
@@ -178,10 +179,9 @@ pub(crate) async fn inject_transport_context(
     req.extensions_mut()
         .insert(AuthContextExtension(context.auth));
 
-    let path = req.uri().path();
-    if req.method() == Method::POST
-        && path.starts_with("/admin/payment-collections/")
-        && path.ends_with("/refunds")
+    if req.method() != Method::GET
+        && req.method() != Method::HEAD
+        && req.method() != Method::OPTIONS
         && !req.headers().contains_key("idempotency-key")
     {
         let value =

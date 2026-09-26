@@ -15,7 +15,7 @@ use super::{
 };
 use crate::dto::OrderReturnResponse;
 use crate::services::{ListReturnCompletionOperationsInput, ReturnCompletionOperationResponse};
-use crate::{PostOrderOrchestrationError, ReturnCompletionOrchestrationService};
+use crate::PostOrderOrchestrationError;
 
 const RETURN_COMPLETION_OPERATOR_OWNER: &str = "rustok_commerce.return_completion_operation";
 const RETURN_COMPLETION_OPERATOR_BOUNDARY: &str = "commerce_admin_return_completion_operation_http";

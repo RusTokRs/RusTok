@@ -7,7 +7,7 @@ use rustok_api::{
     OptionalAuthContext, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
     TenantContext,
 };
-use rustok_product::{LegacyStorefrontHttpProductsRequest, ProductStorefrontHttpReadPort};
+use rustok_product::LegacyStorefrontHttpProductsRequest;
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
