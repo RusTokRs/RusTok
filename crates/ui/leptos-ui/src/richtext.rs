@@ -94,7 +94,8 @@ pub fn RichTextEditorFrame(
         unsafe extern "C" {
             #[wasm_bindgen(
                 js_namespace = RustokRichText,
-                js_name = mountLeptosRichTextFrame
+                js_name = mountLeptosRichTextFrame,
+                catch
             )]
             fn mount_richtext_frame(
                 iframe: &HtmlIFrameElement,
@@ -107,35 +108,47 @@ pub fn RichTextEditorFrame(
                 editable: bool,
                 on_document_change: &Closure<dyn FnMut(JsValue)>,
                 on_error: &Closure<dyn FnMut(JsValue, JsValue)>,
-            ) -> JsValue;
+            ) -> Result<JsValue, JsValue>;
 
             #[wasm_bindgen(
                 js_namespace = RustokRichText,
-                js_name = setLeptosRichTextDocument
+                js_name = setLeptosRichTextDocument,
+                catch
             )]
-            fn set_richtext_document(handle: &JsValue, document_json: &str);
+            fn set_richtext_document(handle: &JsValue, document_json: &str) -> Result<(), JsValue>;
 
             #[wasm_bindgen(
                 js_namespace = RustokRichText,
-                js_name = setLeptosRichTextAuthoringContext
+                js_name = setLeptosRichTextAuthoringContext,
+                catch
             )]
             fn set_richtext_authoring_context(
                 handle: &JsValue,
                 content_locale: &str,
                 spellcheck: bool,
-            );
+            ) -> Result<(), JsValue>;
 
             #[wasm_bindgen(
                 js_namespace = RustokRichText,
-                js_name = setLeptosRichTextEditable
+                js_name = setLeptosRichTextEditable,
+                catch
             )]
-            fn set_richtext_editable(handle: &JsValue, editable: bool);
+            fn set_richtext_editable(handle: &JsValue, editable: bool) -> Result<(), JsValue>;
 
             #[wasm_bindgen(
                 js_namespace = RustokRichText,
-                js_name = disposeLeptosRichTextFrame
+                js_name = disposeLeptosRichTextFrame,
+                catch
             )]
-            fn dispose_richtext_frame(handle: &JsValue);
+            fn dispose_richtext_frame(handle: &JsValue) -> Result<(), JsValue>;
+        }
+
+        fn is_richtext_js_ready() -> bool {
+            web_sys::window()
+                .and_then(|win| {
+                    js_sys::Reflect::get(&win, &wasm_bindgen::JsValue::from_str("RustokRichText")).ok()
+                })
+                .is_some_and(|val| !val.is_undefined() && !val.is_null())
         }
 
         let messages_json =
@@ -158,7 +171,7 @@ pub fn RichTextEditorFrame(
                 editor_error.set(Some(controlled_serialization_error.clone()));
                 return;
             };
-            set_richtext_document(&handle, &document_json);
+            let _ = set_richtext_document(&handle, &document_json);
         });
 
         Effect::new(move |_| {
@@ -167,7 +180,7 @@ pub fn RichTextEditorFrame(
             let Some(handle) = editor_handle.get_value() else {
                 return;
             };
-            set_richtext_authoring_context(&handle, content_locale.as_str(), spellcheck);
+            let _ = set_richtext_authoring_context(&handle, content_locale.as_str(), spellcheck);
         });
 
         Effect::new(move |_| {
@@ -175,7 +188,7 @@ pub fn RichTextEditorFrame(
             let Some(handle) = editor_handle.get_value() else {
                 return;
             };
-            set_richtext_editable(&handle, editable);
+            let _ = set_richtext_editable(&handle, editable);
         });
 
         let iframe_ref = iframe_ref;
@@ -186,6 +199,10 @@ pub fn RichTextEditorFrame(
             let Some(iframe) = iframe_ref.get() else {
                 return;
             };
+            if !is_richtext_js_ready() {
+                editor_error.set(Some(copy.frame_error.clone()));
+                return;
+            }
             let invalid_payload_error = copy.invalid_payload_error.clone();
             let frame_error = copy.frame_error.clone();
             let serialization_error = copy.serialization_error.clone();
@@ -203,12 +220,13 @@ pub fn RichTextEditorFrame(
                         Err(_) => editor_error.set(Some(invalid_payload_error.clone())),
                     }
                 });
+            let on_error_frame_error = frame_error.clone();
             let on_error = Closure::<dyn FnMut(JsValue, JsValue)>::new(
                 move |code: JsValue, _message: JsValue| {
                     let code = code
                         .as_string()
                         .unwrap_or_else(|| "frame_error".to_string());
-                    editor_error.set(Some(format!("{frame_error} ({code})")));
+                    editor_error.set(Some(format!("{on_error_frame_error} ({code})")));
                 },
             );
             let document_json = match serde_json::to_string(&document.get_untracked()) {
@@ -218,7 +236,7 @@ pub fn RichTextEditorFrame(
                     return;
                 }
             };
-            let mounted_handle = mount_richtext_frame(
+            match mount_richtext_frame(
                 &iframe,
                 "/richtext/frame",
                 &profile,
@@ -229,14 +247,21 @@ pub fn RichTextEditorFrame(
                 !disabled.get_untracked(),
                 &on_document_change,
                 &on_error,
-            );
-            editor_handle.set_value(Some(mounted_handle.clone()));
-            callback_handles.set_value(Some((on_document_change, on_error)));
-            on_cleanup(move || {
-                dispose_richtext_frame(&mounted_handle);
-                editor_handle.set_value(None);
-                callback_handles.set_value(None);
-            });
+            ) {
+                Ok(mounted_handle) => {
+                    editor_handle.set_value(Some(mounted_handle.clone()));
+                    callback_handles.set_value(Some((on_document_change, on_error)));
+                    on_cleanup(move || {
+                        let _ = dispose_richtext_frame(&mounted_handle);
+                        editor_handle.set_value(None);
+                        callback_handles.set_value(None);
+                    });
+                }
+                Err(err) => {
+                    let code = err.as_string().unwrap_or_else(|| "mount_failed".to_string());
+                    editor_error.set(Some(format!("{frame_error} ({code})")));
+                }
+            }
         });
     }
 

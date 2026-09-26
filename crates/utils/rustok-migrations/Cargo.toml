@@ -63,6 +63,7 @@ rustok-media.workspace = true
 rustok-profiles.workspace = true
 rustok-social-graph.workspace = true
 rustok-translation.workspace = true
+rustok-ai = { workspace = true, features = ["server"] }
 rustok-outbox.workspace = true
 rustok-iggy-connector = { workspace = true, features = ["migrations"] }
 

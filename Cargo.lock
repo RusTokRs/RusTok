@@ -8390,6 +8390,7 @@ name = "leptos-ui"
 version = "0.1.0"
 dependencies = [
  "iu-leptos",
+ "js-sys",
  "leptos",
  "rustok-api",
  "serde_json",
@@ -14919,6 +14920,7 @@ dependencies = [
  "flex",
  "hex",
  "rust_decimal",
+ "rustok-ai",
  "rustok-api",
  "rustok-auth",
  "rustok-blog",

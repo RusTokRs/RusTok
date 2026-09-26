@@ -339,6 +339,10 @@ static MODULE_MIGRATION_SOURCES: &[ModuleMigrationSource] = &[
         slug: "translation",
         source: &rustok_translation::TranslationModule,
     },
+    ModuleMigrationSource {
+        slug: "ai",
+        source: &rustok_ai::AiModule,
+    },
 ];
 
 fn module_migration_sources() -> &'static [ModuleMigrationSource] {

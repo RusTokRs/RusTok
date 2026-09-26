@@ -51,7 +51,9 @@ pub fn ModuleAdminPage() -> impl IntoView {
     view! {
         <section class="flex flex-1 flex-col p-4 md:px-6">
             {move || {
-                if is_loading.get() {
+                let loading = is_loading.get();
+                leptos::logging::log!("ModuleAdminPage view closure: is_loading={}", loading);
+                if loading {
                     return view! {
                         <div class="space-y-4">
                             <div class="h-10 w-64 animate-pulse rounded-xl bg-muted"></div>
@@ -61,6 +63,9 @@ pub fn ModuleAdminPage() -> impl IntoView {
                     .into_any();
                 }
 
+                let seg = route_segment.get();
+                let sub = module_subpath.get();
+                leptos::logging::log!("ModuleAdminPage view closure: seg={:?}, sub={:?}", seg, sub);
                 match (any_page.get(), enabled_page.get()) {
                     (_, Some(page)) => {
                         let route_segment_value = route_segment.get();
