@@ -517,6 +517,7 @@ impl MigratorTrait for Migrator {
             &rustok_social_graph::SocialGraphModule,
         ));
         all.extend(rustok_translation::migrations::migrations());
+        all.extend(rustok_core::MigrationSource::migrations(&rustok_ai::AiModule));
         all.extend(rustok_iggy_connector::migrations::migrations());
         all.push(Box::new(
             m20260501_000001_create_platform_composition_state::Migration,

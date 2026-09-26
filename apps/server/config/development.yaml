@@ -5,8 +5,8 @@ logger:
   format: compact
 
 server:
-  binding: localhost
-  host: http://localhost
+  binding: 127.0.0.1
+  host: http://127.0.0.1
   port: 5150
 
 database:
