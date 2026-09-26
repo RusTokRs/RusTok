@@ -249,7 +249,9 @@ mod tests {
 
     use chrono::Utc;
     use rustok_api::{PortActor, PortErrorKind};
-    use rustok_channel::{ChannelDetailResponse, ChannelListRequest, ChannelResponse};
+    use rustok_channel::{
+        ChannelDetailResponse, ChannelListProjectionPage, ChannelListRequest, ChannelResponse,
+    };
 
     use super::*;
 
@@ -307,8 +309,11 @@ mod tests {
             &self,
             _context: PortContext,
             _request: ChannelListRequest,
-        ) -> Result<Vec<ChannelReadProjection>, PortError> {
-            Ok(Vec::new())
+        ) -> Result<ChannelListProjectionPage, PortError> {
+            Ok(ChannelListProjectionPage {
+                items: Vec::new(),
+                total: 0,
+            })
         }
     }
 

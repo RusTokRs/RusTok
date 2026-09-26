@@ -261,7 +261,8 @@ mod tests {
     use rustok_api::Permission;
     use rustok_core::{ModuleRuntimeExtensions, UserRole};
     use rustok_index::{
-        EntityName, FieldCardinality, FieldName, IndexField, IndexReconciliationRunRequest,
+        EntityName, FieldCardinality, FieldName, IndexField, IndexReconciliationBudget,
+        IndexReconciliationRunRequest,
         IndexSchema, IndexSource, IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest,
         IndexSourcePage, IndexSourceScanRequest, IndexValueType, LocaleMode, ModuleName, SchemaRef,
         SchemaVersion, SharedIndexSchemaRegistry, SharedIndexSourceRegistry,
@@ -477,11 +478,7 @@ mod tests {
             Uuid::new_v4(),
             schema().reference,
             "server-reconciliation-worker",
-            1,
-            1,
-            1,
-            1,
-            Duration::from_secs(30),
+            IndexReconciliationBudget::new(1, 1, 1, 1, Duration::from_secs(30)),
         )
         .expect("valid bounded request");
 

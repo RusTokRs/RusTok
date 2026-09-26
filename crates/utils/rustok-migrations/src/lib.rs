@@ -98,6 +98,9 @@ const SQLITE_INCOMPATIBLE_MIGRATIONS: &[&str] = &[
     "m20260913_000026_add_product_attribute_translation_change_journal",
     "m20260913_000027_add_product_attribute_schema_translation_change_journal",
     "m20260913_000028_add_product_category_form_translation_change_journal",
+    "m20260913_000029_add_product_attribute_value_translation_target",
+    "m20260913_000030_add_product_variant_attribute_value_translation_target",
+    "m20260913_000031_add_product_category_seo_translation_target",
     "m20260918_000033_create_variant_axes_and_invariants",
 ];
 

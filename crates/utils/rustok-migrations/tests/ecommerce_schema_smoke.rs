@@ -1,7 +1,7 @@
 use rustok_migrations::SqliteTestMigrator;
 
 use rust_decimal::Decimal;
-use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput};
+use rustok_cart::dto::{AddCartLineItemInput, CartLineFulfillmentRequirement, CreateCartInput};
 use rustok_cart::services::CartService;
 use rustok_commerce::dto::ResolveStoreContextInput;
 use rustok_commerce::services::StoreContextService;
@@ -14,7 +14,7 @@ use rustok_fulfillment::dto::{
 use rustok_fulfillment::services::FulfillmentService;
 use rustok_inventory::InventoryService;
 use rustok_inventory::entities;
-use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
+use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput, OrderLineFulfillmentRequirement};
 use rustok_order::services::OrderService;
 use rustok_payment::dto::{
     AuthorizePaymentInput, CapturePaymentInput, CompleteRefundInput, CreatePaymentCollectionInput,
@@ -619,7 +619,8 @@ fn create_order_input() -> CreateOrderInput {
             CreateOrderLineItemInput {
                 product_id: None,
                 variant_id: None,
-                shipping_profile_slug: "default".to_string(),
+                fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                shipping_profile_slug: Some("default".to_string()),
                 seller_id: None,
                 sku: Some(format!("ORD-SKU-{}", Uuid::new_v4())),
                 title: "Migration order product".to_string(),
@@ -630,7 +631,8 @@ fn create_order_input() -> CreateOrderInput {
             CreateOrderLineItemInput {
                 product_id: None,
                 variant_id: None,
-                shipping_profile_slug: "default".to_string(),
+                fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                shipping_profile_slug: Some("default".to_string()),
                 seller_id: None,
                 sku: Some(format!("ORD-ADDON-{}", Uuid::new_v4())),
                 title: "Migration add-on".to_string(),
@@ -662,6 +664,7 @@ fn create_cart_line_item_input() -> AddCartLineItemInput {
     AddCartLineItemInput {
         product_id: Some(Uuid::new_v4()),
         variant_id: Some(Uuid::new_v4()),
+        fulfillment_requirement: CartLineFulfillmentRequirement::Physical,
         shipping_profile_slug: None,
         sku: Some(format!("CART-SKU-{}", Uuid::new_v4())),
         title: "Migration cart product".to_string(),

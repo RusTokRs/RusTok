@@ -51,7 +51,7 @@ rustok-marketplace-payout.workspace = true
 rustok-moderation.workspace = true
 rustok-content.workspace = true
 rustok-blog.workspace = true
-rustok-comments.workspace = true
+rustok-comments = { workspace = true, features = ["server"] }
 rustok-pages.workspace = true
 rustok-seo.workspace = true
 rustok-forum.workspace = true

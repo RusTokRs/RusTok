@@ -196,7 +196,7 @@ mod tests {
             unit_price: "5".to_string(),
             total_price: "10".to_string(),
             currency_code: "USD".to_string(),
-            shipping_profile_slug: "default".to_string(),
+            shipping_profile_slug: Some("default".to_string()),
             seller_id: None,
         };
 

@@ -294,7 +294,7 @@ mod forum_media_provider_composition_tests {
         extensions.insert(remote_like.clone());
 
         let host = extensions.apply_to_host_runtime(HostRuntimeContext::new(db));
-        let resolved = attach_forum_media_asset_read_provider(&host, &ctx);
+        let resolved = attach_forum_media_asset_read_provider(host, &ctx);
         let selected = resolved
             .shared_get::<Arc<dyn MediaAssetReadPort>>()
             .expect("host-published provider should remain selected");
