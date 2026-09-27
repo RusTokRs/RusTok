@@ -127,8 +127,8 @@ if (evidence) {
     composition.shared_value !== 'Arc<dyn CommentsThreadPort>' ||
     composition.lookup !== 'GraphqlRuntimeInputs::shared_get' ||
     composition.selector !== 'BlogGraphqlRuntimeData::comment_service' ||
-    composition.injected_constructor !== 'CommentService::from_optional_comments_thread_port' ||
-    composition.fallback_constructor !== 'CommentService::from_optional_comments_thread_port' ||
+    composition.runtime_constructor !== 'CommentService::from_runtime_capabilities' ||
+    composition.settings_reader !== 'SharedStaticModuleSettingsReader' ||
     !sameSet(composition.graphql_operations ?? [], expectedOperations)
   ) failures.push(`${evidencePath}: composition drift`);
 
@@ -171,13 +171,15 @@ requireMarker(
 );
 
 for (const marker of [
-  'use rustok_api::graphql::GraphqlRuntimeInputs;',
+  'use rustok_api::{SharedStaticModuleSettingsReader, graphql::GraphqlRuntimeInputs};',
   'use rustok_comments_api::CommentsThreadPort;',
   'comments_thread_port: Option<Arc<dyn CommentsThreadPort>>',
+  'settings_reader: Option<SharedStaticModuleSettingsReader>',
   'pub fn attach_schema_data(',
   'inputs.shared_get::<Arc<dyn CommentsThreadPort>>()',
+  'inputs.shared_get::<SharedStaticModuleSettingsReader>()',
   'pub(crate) fn comment_service(',
-  'CommentService::from_optional_comments_thread_port(',
+  'CommentService::from_runtime_capabilities(',
   'fn graphql_runtime_data_exposes_comments_port_selection()',
   'let factory: fn(&GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, String>',
   'BlogGraphqlRuntimeData::comment_service;',
@@ -207,22 +209,23 @@ for (const source of [commentReads, commentMutation]) {
   requireNoMarker(source, 'CommentService::new(', 'GraphQL resolver source');
   requireNoMarker(
     source,
-    'CommentService::with_comments_thread_port(',
+    'CommentService::from_runtime_capabilities(',
     'GraphQL resolver source',
   );
   requireNoMarker(
     source,
-    'CommentService::from_optional_comments_thread_port(',
+    'CommentService::from_runtime_capabilities(',
     'GraphQL resolver source',
   );
 }
 
-requireMarker(service, 'pub fn from_optional_comments_thread_port(', servicePath);
+requireMarker(service, 'pub fn from_runtime_capabilities(', servicePath);
 requireMarker(
   service,
   'comments_thread_port: Option<Arc<dyn CommentsThreadPort>>',
   servicePath,
 );
+requireMarker(service, 'settings_reader: Option<SharedStaticModuleSettingsReader>', servicePath);
 
 for (const marker of [
   'blog-comments-graphql-port-injection.json',

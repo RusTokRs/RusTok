@@ -35,8 +35,8 @@
     "shared_value": "Arc<dyn CommentsThreadPort>",
     "lookup": "GraphqlRuntimeInputs::shared_get",
     "selector": "BlogGraphqlRuntimeData::comment_service",
-    "injected_constructor": "CommentService::from_optional_comments_thread_port",
-    "fallback_constructor": "CommentService::from_optional_comments_thread_port",
+    "runtime_constructor": "CommentService::from_runtime_capabilities",
+    "settings_reader": "SharedStaticModuleSettingsReader",
     "graphql_operations": [
       "public_comments",
       "moderation_comments",

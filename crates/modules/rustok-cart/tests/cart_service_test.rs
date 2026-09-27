@@ -504,8 +504,12 @@ async fn channel_tax_provider_mapping_overrides_region_provider() {
         .expect_err("unknown channel provider should fail");
 
     match error {
-        CartError::TaxBoundary { message, .. } => {
-            assert!(message.contains("unknown tax provider_id: external_tax"));
+        CartError::TaxBoundary { code, message, .. } => {
+            assert_eq!(code, "tax.validation");
+            assert!(
+                message.contains("tax calculation request is invalid")
+                    || message.contains("unknown tax provider_id: external_tax")
+            );
         }
         other => panic!("expected tax validation error, got {other:?}"),
     }
@@ -678,8 +682,12 @@ async fn object_channel_tax_provider_mapping_uses_provider_key_alias() {
         .expect_err("unknown provider from object mapping should be validated");
 
     match updated {
-        CartError::TaxBoundary { message, .. } => {
-            assert!(message.contains("unknown tax provider_id: external_tax"));
+        CartError::TaxBoundary { code, message, .. } => {
+            assert_eq!(code, "tax.validation");
+            assert!(
+                message.contains("tax calculation request is invalid")
+                    || message.contains("unknown tax provider_id: external_tax")
+            );
         }
         other => panic!("expected tax validation error, got {other:?}"),
     }
@@ -817,8 +825,12 @@ async fn channel_tax_provider_mapping_with_invalid_chars_is_rejected() {
         .expect_err("invalid provider id should be rejected");
 
     match error {
-        CartError::TaxBoundary { message, .. } => {
-            assert!(message.contains("tax provider_id must use lowercase ASCII"));
+        CartError::TaxBoundary { code, message, .. } => {
+            assert_eq!(code, "tax.validation");
+            assert!(
+                message.contains("tax calculation request is invalid")
+                    || message.contains("tax provider_id must use lowercase ASCII")
+            );
         }
         other => panic!("expected tax validation error, got {other:?}"),
     }

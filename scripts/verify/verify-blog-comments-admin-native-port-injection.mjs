@@ -116,8 +116,8 @@ if (evidence) {
     composition.shared_value !== 'Arc<dyn rustok_blog::CommentsThreadPort>' ||
     composition.lookup !== 'HostRuntimeContext::shared_get' ||
     composition.selector !== 'comment_service' ||
-    composition.injected_constructor !== 'CommentService::from_optional_comments_thread_port' ||
-    composition.fallback_constructor !== 'CommentService::from_optional_comments_thread_port' ||
+    composition.runtime_constructor !== 'CommentService::from_runtime_capabilities' ||
+    composition.settings_reader !== 'SharedStaticModuleSettingsReader' ||
     !sameSet(composition.native_endpoints ?? [], [
       'blog/admin/moderation-comments',
       'blog/admin/moderate-comment',
@@ -171,12 +171,14 @@ for (const marker of [
   'use std::sync::Arc;',
   'struct NativeContext {',
   'comments_thread_port: Option<Arc<dyn rustok_blog::CommentsThreadPort>>',
+  'settings_reader: Option<rustok_api::SharedStaticModuleSettingsReader>',
   'use_context::<HostRuntimeContext>()',
   'if auth.tenant_id != tenant.id',
   'runtime.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>()',
+  'runtime.shared_get::<rustok_api::SharedStaticModuleSettingsReader>()',
   'fn comment_service(context: &NativeContext) -> rustok_blog::CommentService',
   'context.comments_thread_port.clone()',
-  'rustok_blog::CommentService::from_optional_comments_thread_port(',
+  'rustok_blog::CommentService::from_runtime_capabilities(',
   '#[server(prefix = "/api/fn", endpoint = "blog/admin/moderation-comments")]',
   '#[server(prefix = "/api/fn", endpoint = "blog/admin/moderate-comment")]',
   'require_manage_permission(&context.auth)?;',
@@ -191,7 +193,7 @@ for (const marker of [
   'let selector: fn(&NativeContext) -> rustok_blog::CommentService = comment_service;',
 ]) requireMarker(adminAdapter, marker, adminAdapterPath);
 
-if (countMarker(adminAdapter, 'rustok_blog::CommentService::from_optional_comments_thread_port(') !== 1) {
+if (countMarker(adminAdapter, 'rustok_blog::CommentService::from_runtime_capabilities(') !== 1) {
   failures.push(`${adminAdapterPath}: expected one selector constructor branch`);
 }
 requireNoMarker(adminAdapter, 'rustok_blog::CommentService::new(', adminAdapterPath);
@@ -228,7 +230,7 @@ for (const [label, source] of [
 }
 
 for (const marker of [
-  'pub fn from_optional_comments_thread_port(',
+  'pub fn from_runtime_capabilities(',
   '.list_comments_for_target(',
   '.get_comment(',
   '.set_comment_status(',

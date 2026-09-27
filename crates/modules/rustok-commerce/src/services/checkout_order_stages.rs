@@ -1,330 +1,63 @@
 use std::sync::Arc;
 
+use rustok_api::PortActor;
 use rustok_cart::PreparedCartCheckoutSnapshot;
 use rustok_inventory::InventoryReservationIdentityPort;
-use rustok_order::CheckoutCompletionPort as CanonicalCheckoutCompletionPort;
+use rustok_order::{OrderResponse, OrderService};
 use rustok_outbox::TransactionalEventBus;
+use thiserror::Error;
 use uuid::Uuid;
 
-use super::{CheckoutOrderPlanJournal, CheckoutOrderPlanPayload};
+use super::{
+    CheckoutInventoryExecutionError, CheckoutInventoryReservationExecutor, CheckoutOperationError,
+    CheckoutOperationJournal, CheckoutOperationStage, CheckoutOrderConfirmationError,
+    CheckoutOrderConfirmationExecutor, CheckoutOrderCreationError, CheckoutOrderCreationExecutor,
+    CheckoutOrderPlanError, CheckoutOrderPlanJournal, CheckoutOrderPlanPayload,
+    CheckoutOrderPlanRecord, DEFAULT_CHECKOUT_LEASE_SECONDS,
+};
 
-mod order_stage_boundary {
-    use ::rustok_api::{PortActorKind, PortContext, PortError, PortErrorKind};
-    use uuid::Uuid;
-
-    const CHECKOUT_ORDER_STAGE_ADAPTER_BOUNDARY: &str = "commerce_checkout_order_stage_adapter";
-
-    pub(crate) struct BoundaryPortError {
-        pub(crate) kind: PortErrorKind,
-        pub(crate) code: String,
-        pub(crate) message: String,
-        pub(crate) retryable: bool,
-    }
-
-    impl std::fmt::Debug for BoundaryPortError {
-        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            formatter.write_str("redacted")
-        }
-    }
-
-    struct CheckoutOrderStageDiagnosticError;
-
-    impl std::fmt::Debug for CheckoutOrderStageDiagnosticError {
-        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            formatter.write_str("redacted")
-        }
-    }
-
-    #[derive(Clone, Copy)]
-    struct CheckoutOrderStageContextFacts {
-        tenant_id_shape: &'static str,
-        actor_kind: &'static str,
-        actor_id_shape: &'static str,
-        claim_count: usize,
-        role_count: usize,
-        channel_shape: &'static str,
-        locale_shape: &'static str,
-        correlation_id_shape: &'static str,
-        causation_id_shape: &'static str,
-        traceparent_shape: &'static str,
-        idempotency_key_shape: &'static str,
-        deadline_ms: Option<u64>,
-    }
-
-    impl From<&PortContext> for CheckoutOrderStageContextFacts {
-        fn from(context: &PortContext) -> Self {
-            Self {
-                tenant_id_shape: identity_text_shape(context.tenant_id.as_str()),
-                actor_kind: actor_kind_name(&context.actor.kind),
-                actor_id_shape: identity_text_shape(context.actor.id.as_str()),
-                claim_count: context.claims.len(),
-                role_count: context.roles.len(),
-                channel_shape: optional_text_shape(context.channel.as_deref()),
-                locale_shape: text_shape(context.locale.as_str()),
-                correlation_id_shape: text_shape(context.correlation_id.as_str()),
-                causation_id_shape: optional_text_shape(context.causation_id.as_deref()),
-                traceparent_shape: optional_text_shape(context.traceparent.as_deref()),
-                idempotency_key_shape: optional_text_shape(context.idempotency_key.as_deref()),
-                deadline_ms: context.deadline_ms,
-            }
-        }
-    }
-
-    fn actor_kind_name(kind: &PortActorKind) -> &'static str {
-        match kind {
-            PortActorKind::User => "user",
-            PortActorKind::Service => "service",
-            PortActorKind::System => "system",
-        }
-    }
-
-    fn identity_text_shape(value: &str) -> &'static str {
-        if value.is_empty() {
-            return "empty";
-        }
-        match Uuid::parse_str(value) {
-            Ok(value) if value.is_nil() => "uuid_nil",
-            Ok(_) => "uuid_non_nil",
-            Err(_) => "opaque",
-        }
-    }
-
-    fn text_shape(value: &str) -> &'static str {
-        if value.is_empty() { "empty" } else { "present" }
-    }
-
-    fn optional_text_shape(value: Option<&str>) -> &'static str {
-        match value {
-            None => "absent",
-            Some("") => "empty",
-            Some(_) => "present",
-        }
-    }
-
-    fn public_message(kind: &PortErrorKind) -> &'static str {
-        match kind {
-            PortErrorKind::Validation => "Checkout order request is invalid",
-            PortErrorKind::NotFound => "Checkout order resource was not found",
-            PortErrorKind::Conflict => {
-                "Checkout order state conflicts with the requested operation"
-            }
-            PortErrorKind::Forbidden => "Checkout order operation is not permitted",
-            PortErrorKind::Unavailable | PortErrorKind::Timeout => {
-                "Checkout order service is temporarily unavailable"
-            }
-            PortErrorKind::InvariantViolation => {
-                "Checkout order operation could not be completed safely"
-            }
-        }
-    }
-
-    pub(crate) fn sanitize_owner_error(
-        context: &PortContext,
-        owner_operation: &'static str,
-        error: PortError,
-    ) -> BoundaryPortError {
-        let diagnostic_context = CheckoutOrderStageContextFacts::from(context);
-        let owner_message_shape = text_shape(error.message.as_str());
-        let owner_message_len = error.message.chars().count();
-        let public_message = public_message(&error.kind);
-        let technical = matches!(
-            &error.kind,
-            PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation
-        );
-        let diagnostic_error = CheckoutOrderStageDiagnosticError;
-
-        if technical {
-            tracing::error!(
-                error = ?diagnostic_error,
-                owner = "rustok_order",
-                owner_operation,
-                tenant_id_shape = diagnostic_context.tenant_id_shape,
-                actor_kind = diagnostic_context.actor_kind,
-                actor_id_shape = diagnostic_context.actor_id_shape,
-                claim_count = diagnostic_context.claim_count,
-                role_count = diagnostic_context.role_count,
-                channel_shape = diagnostic_context.channel_shape,
-                locale_shape = diagnostic_context.locale_shape,
-                correlation_id_shape = diagnostic_context.correlation_id_shape,
-                causation_id_shape = diagnostic_context.causation_id_shape,
-                traceparent_shape = diagnostic_context.traceparent_shape,
-                idempotency_key_shape = diagnostic_context.idempotency_key_shape,
-                deadline_ms = ?diagnostic_context.deadline_ms,
-                owner_code = %error.code,
-                owner_message_shape,
-                owner_message_len,
-                owner_kind = ?error.kind,
-                owner_retryable = error.retryable,
-                boundary = CHECKOUT_ORDER_STAGE_ADAPTER_BOUNDARY,
-                "commerce checkout order owner call failed"
-            );
-        } else {
-            tracing::warn!(
-                error = ?diagnostic_error,
-                owner = "rustok_order",
-                owner_operation,
-                tenant_id_shape = diagnostic_context.tenant_id_shape,
-                actor_kind = diagnostic_context.actor_kind,
-                actor_id_shape = diagnostic_context.actor_id_shape,
-                claim_count = diagnostic_context.claim_count,
-                role_count = diagnostic_context.role_count,
-                channel_shape = diagnostic_context.channel_shape,
-                locale_shape = diagnostic_context.locale_shape,
-                correlation_id_shape = diagnostic_context.correlation_id_shape,
-                causation_id_shape = diagnostic_context.causation_id_shape,
-                traceparent_shape = diagnostic_context.traceparent_shape,
-                idempotency_key_shape = diagnostic_context.idempotency_key_shape,
-                deadline_ms = ?diagnostic_context.deadline_ms,
-                owner_code = %error.code,
-                owner_message_shape,
-                owner_message_len,
-                owner_kind = ?error.kind,
-                owner_retryable = error.retryable,
-                boundary = CHECKOUT_ORDER_STAGE_ADAPTER_BOUNDARY,
-                "commerce checkout order owner call was rejected"
-            );
-        }
-
-        BoundaryPortError {
-            kind: error.kind,
-            code: error.code,
-            message: public_message.to_string(),
-            retryable: error.retryable,
-        }
-    }
+#[derive(Clone, Debug)]
+pub struct CheckoutPaymentReadyState {
+    pub operation_id: Uuid,
+    pub order: OrderResponse,
+    pub plan: CheckoutOrderPlanRecord,
 }
 
-mod rustok_api_shim {
-    pub(crate) use super::order_stage_boundary::BoundaryPortError as PortError;
-    pub use ::rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortErrorKind};
+#[derive(Debug, Error)]
+pub enum CheckoutOrderStageError {
+    #[error(transparent)]
+    Operation(#[from] CheckoutOperationError),
+    #[error(transparent)]
+    Plan(#[from] CheckoutOrderPlanError),
+    #[error(transparent)]
+    Inventory(#[from] CheckoutInventoryExecutionError),
+    #[error(transparent)]
+    Creation(#[from] CheckoutOrderCreationError),
+    #[error(transparent)]
+    Confirmation(#[from] CheckoutOrderConfirmationError),
+    #[error(
+        "checkout order boundary failed at `{stage}` with `{code}` (retryable={retryable}): {message}"
+    )]
+    Boundary {
+        stage: &'static str,
+        code: String,
+        message: String,
+        retryable: bool,
+    },
+    #[error("checkout order stage conflict: {0}")]
+    Conflict(String),
 }
 
-mod rustok_order_shim {
-    use std::sync::Arc;
-
-    use ::rustok_api::PortContext;
-
-    use super::order_stage_boundary::{BoundaryPortError, sanitize_owner_error};
-
-    pub use ::rustok_order::{
-        CheckoutCompletionSnapshot, CompleteCheckoutPortRequest, CreateOrderInput, OrderResponse,
-        OrderStatusKind, ReadCheckoutOrderProjectionRequest, RecoverExistingCheckoutOrderRequest,
-    };
-
-    #[async_trait::async_trait]
-    pub trait CheckoutCompletionPort: Send + Sync {
-        async fn complete_checkout(
-            &self,
-            context: PortContext,
-            request: CompleteCheckoutPortRequest,
-        ) -> Result<CheckoutCompletionSnapshot, BoundaryPortError>;
-    }
-
-    struct SanitizingCheckoutCompletionPort {
-        inner: Arc<dyn ::rustok_order::CheckoutCompletionPort>,
-    }
-
-    #[async_trait::async_trait]
-    impl CheckoutCompletionPort for SanitizingCheckoutCompletionPort {
-        async fn complete_checkout(
-            &self,
-            context: PortContext,
-            request: CompleteCheckoutPortRequest,
-        ) -> Result<CheckoutCompletionSnapshot, BoundaryPortError> {
-            let error_context = context.clone();
-            self.inner
-                .complete_checkout(context, request)
-                .await
-                .map_err(|error| sanitize_owner_error(&error_context, "complete_checkout", error))
-        }
-    }
-
-    pub struct CheckoutOrderRecoveryAdapter {
-        inner: ::rustok_order::CheckoutOrderRecoveryAdapter,
-    }
-
-    impl CheckoutOrderRecoveryAdapter {
-        pub async fn recover_existing_checkout(
-            &self,
-            context: PortContext,
-            request: RecoverExistingCheckoutOrderRequest,
-        ) -> Result<Option<OrderResponse>, BoundaryPortError> {
-            let error_context = context.clone();
-            self.inner
-                .recover_existing_checkout(context, request)
-                .await
-                .map_err(|error| {
-                    sanitize_owner_error(&error_context, "recover_existing_checkout", error)
-                })
-        }
-
-        pub async fn read_checkout_order(
-            &self,
-            context: PortContext,
-            request: ReadCheckoutOrderProjectionRequest,
-        ) -> Result<OrderResponse, BoundaryPortError> {
-            let error_context = context.clone();
-            self.inner
-                .read_checkout_order(context, request)
-                .await
-                .map_err(|error| sanitize_owner_error(&error_context, "read_checkout_order", error))
-        }
-    }
-
-    pub fn in_process_checkout_completion_port(
-        db: sea_orm::DatabaseConnection,
-        event_bus: rustok_outbox::TransactionalEventBus,
-    ) -> Arc<dyn CheckoutCompletionPort> {
-        wrap_checkout_completion_port(::rustok_order::in_process_checkout_completion_port(
-            db, event_bus,
-        ))
-    }
-
-    pub fn in_process_checkout_order_recovery_adapter(
-        db: sea_orm::DatabaseConnection,
-        event_bus: rustok_outbox::TransactionalEventBus,
-    ) -> CheckoutOrderRecoveryAdapter {
-        CheckoutOrderRecoveryAdapter {
-            inner: ::rustok_order::in_process_checkout_order_recovery_adapter(db, event_bus),
-        }
-    }
-
-    pub(crate) fn wrap_checkout_completion_port(
-        inner: Arc<dyn ::rustok_order::CheckoutCompletionPort>,
-    ) -> Arc<dyn CheckoutCompletionPort> {
-        Arc::new(SanitizingCheckoutCompletionPort { inner })
-    }
-}
-
-mod tracing_shim {
-    macro_rules! error {
-        ($($tokens:tt)*) => {{
-            ::tracing::error!($($tokens)*);
-        }};
-    }
-
-    macro_rules! warn_event {
-        ($($tokens:tt)*) => {{
-            ::tracing::warn!($($tokens)*);
-        }};
-    }
-
-    pub(crate) use error;
-    pub(crate) use warn_event;
-}
-
-mod legacy {
-    use super::rustok_api_shim as rustok_api;
-    use super::rustok_order_shim as rustok_order;
-    use super::tracing_shim as tracing;
-
-    include!("checkout_order_stages_legacy.rs");
-}
-
-pub use legacy::{CheckoutOrderStageError, CheckoutOrderStageResult, CheckoutPaymentReadyState};
+pub type CheckoutOrderStageResult<T> = Result<T, CheckoutOrderStageError>;
 
 pub struct CheckoutOrderStageExecutor {
-    inner: legacy::CheckoutOrderStageExecutor,
+    operation_journal: CheckoutOperationJournal,
+    plan_journal: CheckoutOrderPlanJournal,
+    inventory_executor: CheckoutInventoryReservationExecutor,
+    order_creation: CheckoutOrderCreationExecutor,
+    order_confirmation: CheckoutOrderConfirmationExecutor,
+    order_service: OrderService,
+    lease_seconds: i64,
 }
 
 impl CheckoutOrderStageExecutor {
@@ -334,27 +67,42 @@ impl CheckoutOrderStageExecutor {
         inventory_port: Arc<dyn InventoryReservationIdentityPort>,
     ) -> Self {
         Self {
-            inner: legacy::CheckoutOrderStageExecutor::new(db, event_bus, inventory_port),
+            operation_journal: CheckoutOperationJournal::new(db.clone()),
+            plan_journal: CheckoutOrderPlanJournal::new(db.clone()),
+            inventory_executor: CheckoutInventoryReservationExecutor::new(
+                db.clone(),
+                inventory_port,
+            ),
+            order_creation: CheckoutOrderCreationExecutor::new(db.clone(), event_bus.clone()),
+            order_confirmation: CheckoutOrderConfirmationExecutor::new(
+                db.clone(),
+                event_bus.clone(),
+            ),
+            order_service: OrderService::new(db, event_bus),
+            lease_seconds: DEFAULT_CHECKOUT_LEASE_SECONDS,
         }
     }
 
-    pub fn with_completion_port(
+    pub fn with_order_identity_port(
         mut self,
-        completion_port: Arc<dyn CanonicalCheckoutCompletionPort>,
+        order_identity_port: Arc<dyn rustok_order::CheckoutOrderIdentityPort>,
     ) -> Self {
-        self.inner =
-            self.inner
-                .with_completion_port(rustok_order_shim::wrap_checkout_completion_port(
-                    completion_port,
-                ));
+        self.order_creation = self.order_creation.with_order_identity_port(order_identity_port);
         self
     }
 
     pub fn with_lease_seconds(mut self, lease_seconds: i64) -> Self {
-        self.inner = self.inner.with_lease_seconds(lease_seconds);
+        self.lease_seconds = lease_seconds;
+        self.order_confirmation = self.order_confirmation.with_lease_seconds(lease_seconds);
         self
     }
 
+    /// Advances an already claimed and cart-locked checkout operation through
+    /// inventory reservation, order creation & inventory adoption, and order
+    /// confirmation to `payment_ready`.
+    ///
+    /// Sequence strictly aligns with database lifecycle guards:
+    /// `cart_locked -> inventory_reserved -> order_created (with adopted lines) -> payment_ready (confirmed order)`
     pub async fn advance_to_payment_ready(
         &self,
         tenant_id: Uuid,
@@ -364,16 +112,89 @@ impl CheckoutOrderStageExecutor {
         snapshot: &PreparedCartCheckoutSnapshot,
         initial_plan: Option<CheckoutOrderPlanPayload>,
     ) -> CheckoutOrderStageResult<CheckoutPaymentReadyState> {
-        self.inner
-            .advance_to_payment_ready(
-                tenant_id,
-                actor_id,
-                operation_id,
-                lease_owner,
-                snapshot,
-                initial_plan,
-            )
-            .await
+        let lease_owner = lease_owner.into();
+        let mut supplied_plan = initial_plan;
+
+        for _ in 0..4 {
+            let operation = self.operation_journal.get(tenant_id, operation_id).await?;
+            match operation.stage.as_str() {
+                stage if stage == CheckoutOperationStage::CartLocked.as_str() => {
+                    if operation.snapshot_hash.as_deref() != Some(snapshot.snapshot_hash.as_str())
+                        || operation.cart_id != snapshot.cart.id
+                    {
+                        return Err(CheckoutOrderStageError::Conflict(format!(
+                            "checkout operation {} does not match the prepared cart snapshot",
+                            operation.id
+                        )));
+                    }
+                    let payload = supplied_plan.take().ok_or_else(|| {
+                        CheckoutOrderStageError::Conflict(format!(
+                            "checkout operation {} requires an immutable order plan before inventory reservation",
+                            operation.id
+                        ))
+                    })?;
+                    self.plan_journal
+                        .persist(
+                            tenant_id,
+                            operation_id,
+                            snapshot.snapshot_hash.clone(),
+                            payload,
+                        )
+                        .await?;
+                    self.inventory_executor
+                        .reserve_and_checkpoint(
+                            tenant_id,
+                            PortActor::user(actor_id.to_string()),
+                            operation_id,
+                            lease_owner.clone(),
+                            snapshot,
+                        )
+                        .await?;
+                }
+                stage if stage == CheckoutOperationStage::InventoryReserved.as_str() => {
+                    let plan = self.plan_journal.get(tenant_id, operation_id).await?;
+                    self.order_creation
+                        .create_pending_and_adopt(
+                            tenant_id,
+                            actor_id,
+                            operation_id,
+                            lease_owner.clone(),
+                            plan.payload.order_input.clone(),
+                            plan.payload.channel_id,
+                            plan.payload.channel_slug.clone(),
+                            plan.payload.context.locale.as_str(),
+                            Some(plan.payload.context.default_locale.as_str()),
+                        )
+                        .await?;
+                }
+                stage if stage == CheckoutOperationStage::OrderCreated.as_str() => {
+                    let plan = self.plan_journal.get(tenant_id, operation_id).await?;
+                    self.order_confirmation
+                        .confirm_and_checkpoint(
+                            tenant_id,
+                            actor_id,
+                            operation_id,
+                            lease_owner.clone(),
+                            plan.payload.context.locale.as_str(),
+                            Some(plan.payload.context.default_locale.as_str()),
+                        )
+                        .await?;
+                }
+                stage if stage == CheckoutOperationStage::PaymentReady.as_str() => {
+                    return self.load_payment_ready_state(tenant_id, operation_id).await;
+                }
+                stage => {
+                    return Err(CheckoutOrderStageError::Conflict(format!(
+                        "checkout operation {} cannot enter order stages from `{stage}`",
+                        operation.id
+                    )));
+                }
+            }
+        }
+
+        Err(CheckoutOrderStageError::Conflict(format!(
+            "checkout operation {operation_id} did not reach payment_ready within the bounded stage loop"
+        )))
     }
 
     pub async fn load_payment_ready_state(
@@ -381,12 +202,36 @@ impl CheckoutOrderStageExecutor {
         tenant_id: Uuid,
         operation_id: Uuid,
     ) -> CheckoutOrderStageResult<CheckoutPaymentReadyState> {
-        self.inner
-            .load_payment_ready_state(tenant_id, operation_id)
+        let operation = self.operation_journal.get(tenant_id, operation_id).await?;
+        let plan = self.plan_journal.get(tenant_id, operation_id).await?;
+        let order_id = operation.order_id.ok_or_else(|| {
+            CheckoutOrderStageError::Conflict(format!(
+                "checkout operation {} has no persisted order id",
+                operation.id
+            ))
+        })?;
+        let order = self
+            .order_service
+            .get_order_with_locale_fallback(
+                tenant_id,
+                order_id,
+                plan.payload.context.locale.as_str(),
+                Some(plan.payload.context.default_locale.as_str()),
+            )
             .await
+            .map_err(|err| {
+                CheckoutOrderStageError::Conflict(format!(
+                    "failed to load order {order_id} for checkout operation {operation_id}: {err}"
+                ))
+            })?;
+        Ok(CheckoutPaymentReadyState {
+            operation_id,
+            order,
+            plan,
+        })
     }
 
     pub fn plan_journal(&self) -> &CheckoutOrderPlanJournal {
-        self.inner.plan_journal()
+        &self.plan_journal
     }
 }

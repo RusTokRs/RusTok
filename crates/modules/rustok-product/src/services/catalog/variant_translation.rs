@@ -313,6 +313,10 @@ impl CatalogService {
             .await?;
         }
 
+        let mut variant_active: entities::product_variant::ActiveModel = variant.into();
+        variant_active.updated_at = Set(Utc::now().into());
+        let updated_variant = variant_active.update(&txn).await?;
+
         let translations_after = load_variant_translations(&txn, variant_id).await?;
         let target_after = exact_variant_locale_row(&translations_after, &target_locale)
             .ok_or_else(|| {
@@ -322,7 +326,7 @@ impl CatalogService {
                 }
             })?;
         let resource_revision =
-            product_variant_translation_resource_revision(&product, &variant, &translations_after);
+            product_variant_translation_resource_revision(&product, &updated_variant, &translations_after);
         let target_revision = product_variant_translation_locale_revision(target_after);
         let target = ProductVariantTranslationExactLocaleRecord::from(target_after.clone());
 

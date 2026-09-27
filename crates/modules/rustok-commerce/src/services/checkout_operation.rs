@@ -335,6 +335,45 @@ impl CheckoutOperationJournal {
         self.get(tenant_id, id).await.map(Some)
     }
 
+    pub async fn renew_lease(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        lease_owner: impl Into<String>,
+        lease_seconds: i64,
+    ) -> CheckoutOperationResult<checkout_operation::Model> {
+        let lease_owner = normalize_lease_owner(lease_owner.into())?;
+        let lease_seconds = normalize_lease_seconds(lease_seconds)?;
+        let now = Utc::now().fixed_offset();
+        let lease_expires_at = now + Duration::seconds(lease_seconds);
+
+        let update = checkout_operation::Entity::update_many()
+            .col_expr(
+                checkout_operation::Column::LeaseExpiresAt,
+                Expr::value(Some(lease_expires_at)),
+            )
+            .col_expr(
+                checkout_operation::Column::UpdatedAt,
+                Expr::current_timestamp(),
+            )
+            .filter(checkout_operation::Column::TenantId.eq(tenant_id))
+            .filter(checkout_operation::Column::Id.eq(id))
+            .filter(
+                checkout_operation::Column::Status.eq(CheckoutOperationStatus::Executing.as_str()),
+            )
+            .filter(checkout_operation::Column::LeaseOwner.eq(lease_owner.clone()))
+            .filter(checkout_operation::Column::LeaseExpiresAt.gt(now))
+            .exec(&self.db)
+            .await?;
+
+        if update.rows_affected == 0 {
+            return Err(CheckoutOperationError::Conflict(format!(
+                "checkout operation {id} lease is no longer held by `{lease_owner}` or has expired"
+            )));
+        }
+        self.get(tenant_id, id).await
+    }
+
     pub async fn checkpoint(
         &self,
         input: CheckoutOperationCheckpoint,
@@ -755,8 +794,12 @@ fn ensure_same_request(
     existing: &checkout_operation::Model,
     input: &BeginCheckoutOperation,
 ) -> CheckoutOperationResult<()> {
-    if existing.request_hash != input.request_hash || existing.snapshot_hash != input.snapshot_hash
-    {
+    let snapshot_hash_mismatch = match (&existing.snapshot_hash, &input.snapshot_hash) {
+        (Some(existing_hash), Some(input_hash)) => existing_hash != input_hash,
+        (None, Some(_)) => true,
+        (_, None) => false,
+    };
+    if existing.request_hash != input.request_hash || snapshot_hash_mismatch {
         return Err(CheckoutOperationError::Conflict(format!(
             "idempotency key `{}` is already bound to a different checkout request",
             input.idempotency_key

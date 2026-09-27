@@ -18,7 +18,9 @@ use rustok_core::{SecurityActorKind, SecurityContext};
 use std::sync::Arc;
 
 use crate::BlogPostStatus;
-use crate::domain::comment_policy::{BlogCommentsMode, parse_comments_mode};
+use crate::domain::comment_policy::{
+    BLOG_COMMENTS_MODE_SETTING, BlogCommentsMode, parse_comments_mode,
+};
 use crate::dto::{
     CommentListItem, CommentResponse, CreateCommentInput, ListCommentsFilter, ModerateCommentInput,
     UpdateCommentInput,
@@ -79,7 +81,14 @@ impl CommentService {
             return Ok(BlogCommentsMode::Disabled);
         }
 
-        parse_comments_mode(&snapshot.settings).map_err(|_| BlogError::CommentsPolicyUnavailable)
+        parse_comments_mode(&snapshot.settings).map_err(|_| {
+            tracing::warn!(
+                tenant_id = %tenant_id,
+                setting = BLOG_COMMENTS_MODE_SETTING,
+                "Blog comments policy could not be parsed; failing closed"
+            );
+            BlogError::CommentsPolicyUnavailable
+        })
     }
 
     async fn ensure_public_comment_creation_allowed(

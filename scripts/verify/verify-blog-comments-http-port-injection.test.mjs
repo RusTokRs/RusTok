@@ -40,12 +40,15 @@ function fixture({
     runtimePath,
     `
 use rustok_comments_api::CommentsThreadPort;
+use rustok_api::SharedStaticModuleSettingsReader;
 use std::sync::Arc;
 comments_thread_port: Option<Arc<dyn CommentsThreadPort>>
+settings_reader: Option<SharedStaticModuleSettingsReader>
 fn comment_service(&self) -> CommentService {
-${missingInjectedBranch || missingFallback ? '' : 'CommentService::from_optional_comments_thread_port('}
+${missingInjectedBranch || missingFallback ? '' : 'CommentService::from_runtime_capabilities('}
 }
 ${missingSharedLookup ? '' : 'comments_thread_port: runtime.shared_get::<Arc<dyn CommentsThreadPort>>()'}
+${missingSharedLookup ? '' : 'settings_reader: runtime.shared_get::<SharedStaticModuleSettingsReader>()'}
 ${missingHarness ? '' : `
 mod tests
 fn blog_http_runtime_exposes_comments_port_selection()
@@ -66,8 +69,9 @@ let selector: fn(&BlogHttpRuntime) -> CommentService = BlogHttpRuntime::comment_
     root,
     servicePath,
     `
-pub fn from_optional_comments_thread_port(
+pub fn from_runtime_capabilities(
 comments_thread_port: Option<Arc<dyn CommentsThreadPort>>
+settings_reader: Option<SharedStaticModuleSettingsReader>
 `,
   );
 
@@ -77,7 +81,7 @@ comments_thread_port: Option<Arc<dyn CommentsThreadPort>>
     JSON.stringify({
       schema_version: 3,
       adapter_injection: {
-        constructor: 'CommentService::from_optional_comments_thread_port',
+        constructor: 'CommentService::from_runtime_capabilities',
         runtime_status: 'not_run',
         remote_transport_implementation: 'pending',
       },
@@ -115,8 +119,8 @@ comments_thread_port: Option<Arc<dyn CommentsThreadPort>>
         shared_value: 'Arc<dyn CommentsThreadPort>',
         lookup: 'HostRuntimeContext::shared_get',
         selector: 'BlogHttpRuntime::comment_service',
-        injected_constructor: 'CommentService::from_optional_comments_thread_port',
-        fallback_constructor: 'CommentService::from_optional_comments_thread_port',
+        runtime_constructor: 'CommentService::from_runtime_capabilities',
+        settings_reader: 'SharedStaticModuleSettingsReader',
         http_operation: 'moderate_comment',
       },
       harness: {

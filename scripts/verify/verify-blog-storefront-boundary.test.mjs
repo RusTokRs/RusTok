@@ -195,7 +195,7 @@ normalize_channel_slug
 is_visible_for_public_channel
 ctx.channel_slug
 Blog is not available for the current channel
-${options.missingComments ? "" : `CommentService::from_optional_comments_thread_port
+${options.missingComments ? "" : `CommentService::from_runtime_capabilities
 list_public_comments_with_snapshot(
 SecurityContext::public_read()
 ${pagination ? "comments_page,\nCOMMENTS_PAGE_SIZE,\n" : ""}map_comment_list_item

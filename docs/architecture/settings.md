@@ -72,9 +72,9 @@ Reviewed through `main@5c283707cef13da9a99c665e3cf1b3c2ebddba78`.
 | Dynamic artifact settings | settings instance, stable data owner, admitted schema digest, recovery/purge contracts | `rustok-modules` artifact control plane | Stronger owner model; production recovery/fence evidence remains incomplete |
 | SEO settings | Manifest schema plus typed `SeoModuleSettings` runtime normalization | SEO semantics, but reads `tenant_modules` directly | **Gap:** persistence boundary bypass |
 | Forum engagement selection | `forum.use_reactions` in `tenant_modules.settings` | Forum semantics | Runtime consumer is live through the canonical tenant-module runtime API; Reactions availability remains a separate effective-capability decision |
-| Blog manifest settings | `use_reactions` in `tenant_modules.settings` | Blog owns reaction-surface intent; `rustok-modules` owns static lifecycle/persistence | Live runtime consumer; setting is canonical tenant intent and does not imply Reactions availability |
+| Blog manifest settings | `use_reactions` and `comments_mode` in `tenant_modules.settings` | Blog owns reaction/comment-surface intent; `rustok-modules` owns static lifecycle/persistence | Live runtime consumers; intent never implies provider availability |
 | Blog reaction selection | `use_reactions` plus Blog reaction-subject provider | Blog owns subject/presentation intent; Reactions owns state | Runtime intent gate is live; provider/effective availability remains separate from stored intent |
-| Blog comment selection | Optional `CommentsThreadPort`; no tenant comment-surface setting | Blog owns surface intent; Comments owns comment state | **Gap:** static dependency is removed, but tenant `disabled/read_only/open` policy is not implemented |
+| Blog comment selection | `comments_mode = disabled \| read_only \| open`, read through `SharedStaticModuleSettingsReader`; optional `CommentsThreadPort` | Blog owns public-surface intent; Comments owns comment state | Live: disabled hides the public surface, read-only serves approved comments but denies creates, and open enables normal public reads/writes |
 | Email generic settings | `platform_settings.email` | Generic server path while Email runtime reads bootstrap config | **Gap:** saved value is not authoritative; historical secret material may exist |
 | Nested manifest schema vocabulary | Owner validator supports `properties`/`items`; current SEO manifest uses `shape`/`additional_properties` | Host manifest adapter | **Gap:** unknown TOML schema keywords are ignored, so the generic editor/validator does not enforce the declared nested shape |
 | Cross-module capability graph | `blog -> comments` lifecycle edge removed; `commerce -> fulfillment` remains tracked separately | Module composition | Blog comment access is optional at lifecycle/runtime composition; Blog consumes the neutral Comments/Profiles API contracts while hosts compose provider implementations |
@@ -286,9 +286,15 @@ alone is not evidence of such a requirement.
 | Mixed cart | Digital lines bypass delivery; physical lines form fulfillment groups without forcing a shipping identity onto digital lines |
 
 Blog must remain enableable and able to serve publications when Comments is absent.
-That dependency cutover is complete, while the tenant Blog comment-surface policy is
-still open. Commerce must support a digital-only flow without Fulfillment; its current
-static edge remains executable truth to remove, not an example to preserve.
+That dependency cutover is complete. Blog's locale-neutral `comments_mode` is
+materialized in the static Blog settings document and resolved through the canonical
+settings-reader port: `disabled` hides public comments without contacting Comments or
+serving a snapshot, `read_only` serves approved comments when the provider is ready but
+rejects public creates, and `open` enables normal public reads/writes. Existing normalized
+documents that predate the optional field resolve to `open`, so an update or re-enable does
+not silently close a working discussion. Commerce must support a digital-only flow without
+Fulfillment; its current static edge remains executable truth to remove, not an example to
+preserve.
 
 As of 2026-09-25, the Commerce module graph no longer requires Fulfillment for startup:
 the module manifest, root composition, and server feature no longer make it an
@@ -299,8 +305,9 @@ capability cutover.
 
 #### Blog comment capability matrix
 
-These are semantic policy states; the owning Blog contract chooses the final field
-name and transport shape.
+`comments_mode` is the canonical Blog setting key. Enum values are locale-neutral; the
+storefront's disabled/read-only labels are module Fluent UI copy and do not alter the
+stored policy.
 
 | Blog comment policy | Comments capability required? | Blog publication serving | Comment behavior | Existing comment data |
 | --- | --- | --- | --- | --- |

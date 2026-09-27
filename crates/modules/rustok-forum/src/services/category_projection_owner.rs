@@ -1,4 +1,3 @@
-use crate::entities::forum_category_lifecycle;
 
 /// Transactional owner facade for canonical Forum Category mutations.
 ///
@@ -43,17 +42,17 @@ impl CategoryProjectionOwnerService {
 
         if let Some(parent_id) = input.parent_id {
             CategoryService::find_category_in_tx(&txn, tenant_id, parent_id).await?;
-            if forum_category_lifecycle::Entity::find()
-                .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
-                .filter(forum_category_lifecycle::Column::CategoryId.eq(parent_id))
-                .one(&txn)
-                .await?
-                .is_some()
-            {
-                return Err(ForumError::Validation(
+            super::category_lifecycle::ensure_category_tree_target_is_active_in_tx(
+                &txn,
+                tenant_id,
+                parent_id,
+            )
+            .await
+            .map_err(|_| {
+                ForumError::Validation(
                     "active forum category cannot have archived parent".to_string(),
-                ));
-            }
+                )
+            })?;
         }
 
         forum_category::ActiveModel {

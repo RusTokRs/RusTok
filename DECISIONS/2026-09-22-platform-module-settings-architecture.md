@@ -203,11 +203,16 @@ existing static edge without the same review. The Blog edge has since been remov
 the Commerce edge remains open implementation work.
 
 Blog publications, categories, and tags are valid without Comments. The former static
-`blog -> comments` lifecycle edge has been removed. Blog owns
-its comments-surface policy; Comments owns threads, bodies, and moderation. An enabled
-or required Blog comments mode may require Comments for comment operations, while Blog
-itself remains available when that capability is disabled or unavailable according to
-the selected policy.
+`blog -> comments` lifecycle edge has been removed. Blog owns its locale-neutral
+`comments_mode = disabled | read_only | open` comments-surface policy; Comments owns
+threads, bodies, and moderation. `disabled` hides Blog's public comment surface and does
+not read provider data or snapshots; `read_only` keeps approved public reads but rejects
+new public writes; `open` permits normal public reads/writes. The policy is read only
+through the static-module settings port, so Blog does not inspect Comments or module
+persistence directly. A missing/invalid settings capability or an unavailable provider
+fails only the affected public comment operation closed; Blog itself remains available.
+Older normalized Blog documents without this optional setting resolve to `open`, so a
+safe package update/re-enable retains the existing discussion behavior.
 
 For Blog/Forum and Reactions, Reactions can remain optional. A consumer setting selects
 the desired engagement behavior, while effective availability additionally requires

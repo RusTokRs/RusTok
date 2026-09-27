@@ -163,6 +163,13 @@ impl TopicService {
             if updated.rows_affected != 1 {
                 return Err(ForumError::TopicNotFound(topic_id).into());
             }
+            super::projection_invalidation::publish_forum_topic_projection_direct_in_tx(
+                txn,
+                tenant_id,
+                None,
+                topic_id,
+            )
+            .await?;
         }
 
         finish_apply(
@@ -262,6 +269,18 @@ impl ReplyService {
             if updated.rows_affected != 1 {
                 return Err(ForumError::ReplyNotFound(reply_id).into());
             }
+            let reply = forum_reply::Entity::find_by_id(reply_id)
+                .filter(forum_reply::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+                .ok_or_else(|| ForumError::ReplyNotFound(reply_id))?;
+            super::projection_invalidation::publish_forum_topic_projection_direct_in_tx(
+                txn,
+                tenant_id,
+                None,
+                reply.topic_id,
+            )
+            .await?;
         }
 
         finish_apply(

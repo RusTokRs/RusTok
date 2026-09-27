@@ -93,7 +93,15 @@ impl CheckoutOrderCreationExecutor {
         fallback_locale: Option<&str>,
     ) -> CheckoutOrderCreationResult<OrderResponse> {
         let lease_owner = lease_owner.into();
-        let operation = self.operation_journal.get(tenant_id, operation_id).await?;
+        let operation = self
+            .operation_journal
+            .renew_lease(
+                tenant_id,
+                operation_id,
+                lease_owner.as_str(),
+                super::DEFAULT_CHECKOUT_LEASE_SECONDS,
+            )
+            .await?;
         if operation.status != CheckoutOperationStatus::Executing.as_str() {
             return Err(CheckoutOrderCreationError::Conflict(format!(
                 "checkout operation {} must be executing, not `{}`",
@@ -189,7 +197,7 @@ impl CheckoutOrderCreationExecutor {
                     .await;
                 match create_result {
                     Ok(order) => {
-                        let identity = self
+                        let bind_result = self
                             .order_identity_port
                             .bind(
                                 identity_context(
@@ -210,9 +218,51 @@ impl CheckoutOrderCreationExecutor {
                                     request_hash: request_hash.clone(),
                                 },
                             )
-                            .await
-                            .map_err(identity_boundary_error)?;
-                        (order, identity)
+                            .await;
+                        match bind_result {
+                            Ok(identity) => (order, identity),
+                            Err(bind_error) => {
+                                let _ = self
+                                    .order_service
+                                    .cancel_order(
+                                        tenant_id,
+                                        actor_id,
+                                        order.id,
+                                        Some("redundant checkout order creation race".to_string()),
+                                    )
+                                    .await;
+                                let Some(identity) = self
+                                    .order_identity_port
+                                    .read_by_operation(
+                                        identity_context(
+                                            tenant_id,
+                                            actor_id,
+                                            operation_id,
+                                            self.port_deadline,
+                                            "read-after-bind-conflict",
+                                            false,
+                                        ),
+                                        ReadCheckoutOrderIdentityByOperationRequest {
+                                            checkout_operation_id: operation_id,
+                                        },
+                                    )
+                                    .await
+                                    .map_err(identity_boundary_error)?
+                                else {
+                                    return Err(identity_boundary_error(bind_error));
+                                };
+                                let winning_order = self
+                                    .order_service
+                                    .get_order_with_locale_fallback(
+                                        tenant_id,
+                                        identity.order_id,
+                                        locale,
+                                        fallback_locale,
+                                    )
+                                    .await?;
+                                (winning_order, identity)
+                            }
+                        }
                     }
                     Err(create_error) => {
                         let Some(identity) = self

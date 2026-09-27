@@ -65,7 +65,7 @@ pub(in crate::services) async fn load_category_owner_snapshot_in_tx(
         .await.map_err(map_taxonomy_error)?;
     let categories = rustok_taxonomy::TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
         txn, tenant_id, rustok_taxonomy::TaxonomyScopeType::Module, Some(FORUM_TAXONOMY_SCOPE),
-        Some(&[category_id]), locale, None,
+        Some(&[category_id]), locale, Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
     ).await.map_err(map_taxonomy_error)?;
     categories.into_iter().next().ok_or(ForumError::CategoryNotFound(category_id))
 }

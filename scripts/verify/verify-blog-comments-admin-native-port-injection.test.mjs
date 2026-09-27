@@ -66,13 +66,15 @@ function fixture({
 use std::sync::Arc;
 struct NativeContext {
 comments_thread_port: Option<Arc<dyn rustok_blog::CommentsThreadPort>>
+settings_reader: Option<rustok_api::SharedStaticModuleSettingsReader>
 }
 let runtime = use_context::<HostRuntimeContext>();
 ${missingTenantBinding ? '' : 'if auth.tenant_id != tenant.id'}
 ${missingLookup ? '' : 'runtime.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>()'}
+${missingLookup ? '' : 'runtime.shared_get::<rustok_api::SharedStaticModuleSettingsReader>()'}
 fn comment_service(context: &NativeContext) -> rustok_blog::CommentService {
 context.comments_thread_port.clone()
-${missingInjected || missingFallback ? '' : 'rustok_blog::CommentService::from_optional_comments_thread_port('}
+${missingInjected || missingFallback ? '' : 'rustok_blog::CommentService::from_runtime_capabilities('}
 }
 ${directConstruction ? 'rustok_blog::CommentService::new(' : ''}
 fn require_manage_permission(
@@ -105,7 +107,8 @@ let selector: fn(&NativeContext) -> rustok_blog::CommentService = comment_servic
     root,
     servicePath,
     `
-pub fn from_optional_comments_thread_port(
+pub fn from_runtime_capabilities(
+settings_reader: Option<SharedStaticModuleSettingsReader>
 .list_comments_for_target(
 .get_comment(
 .set_comment_status(
@@ -160,8 +163,8 @@ PortErrorKind::Timeout => rustok_core::error::ErrorKind::Timeout
         shared_value: 'Arc<dyn rustok_blog::CommentsThreadPort>',
         lookup: 'HostRuntimeContext::shared_get',
         selector: 'comment_service',
-        injected_constructor: 'CommentService::from_optional_comments_thread_port',
-        fallback_constructor: 'CommentService::from_optional_comments_thread_port',
+        runtime_constructor: 'CommentService::from_runtime_capabilities',
+        settings_reader: 'SharedStaticModuleSettingsReader',
         native_endpoints: [
           'blog/admin/moderation-comments',
           'blog/admin/moderate-comment',

@@ -62,12 +62,11 @@ const providerRegistryPath = 'crates/modules/rustok-comments/contracts/comments-
 const consumerRegistryPath = 'crates/modules/rustok-blog/contracts/blog-fba-registry.json';
 const planPath = 'crates/modules/rustok-blog/docs/implementation-plan.md';
 const slice99Path = 'crates/modules/rustok-blog/docs/implementation-plan-slice-99.md';
-const injectionConstructor = 'CommentService::with_comments_thread_port';
-const injectionSignature = 'fn(DatabaseConnection, Arc<dyn CommentsThreadPort>) -> CommentService';
-const injectionTest =
-  'services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port';
+const injectionConstructor = 'CommentService::from_runtime_capabilities';
+const injectionSignature = 'fn(DatabaseConnection, Option<Arc<dyn CommentsThreadPort>>, Option<SharedStaticModuleSettingsReader>) -> CommentService';
+const injectionTest = 'test_blog_comment_surface_policy_preserves_comment_data';
 const injectionCommand =
-  `cargo test -p rustok-blog --lib ${injectionTest} -- --exact`;
+  `cargo test -p rustok-blog --test integration ${injectionTest} -- --exact`;
 const expectedOperations = [
   'create_comment',
   'get_comment',
@@ -261,14 +260,9 @@ if (
 
 for (const marker of [
   'comments_thread_port: Option<Arc<dyn CommentsThreadPort>>',
-  'pub fn from_optional_comments_thread_port(',
+  'pub fn from_runtime_capabilities(',
+  'settings_reader: Option<SharedStaticModuleSettingsReader>',
   'require_comments_thread_port(',
-  'pub fn with_comments_thread_port(',
-  'comments_thread_port: Arc<dyn CommentsThreadPort>,',
-  'mod port_injection_tests',
-  'fn comment_service_accepts_an_injected_comments_thread_port()',
-  ') -> CommentService =',
-  'CommentService::with_comments_thread_port;',
   '.create_comment(',
   '.get_comment(',
   '.list_comments_for_target(',
@@ -364,7 +358,9 @@ for (const marker of [
 requireNoMarker(storefrontNative, 'fn comments_read_availability(', storefrontNativePath);
 
 for (const marker of [
-  'comments.availability != BlogCommentsAvailability::Available && !comments.cached_snapshot',
+  'BlogCommentsAvailability::Disabled',
+  'BlogCommentsAvailability::ReadOnly',
+  'BlogCommentsAvailability::Unavailable | BlogCommentsAvailability::Timeout',
   'BlogCommentsAvailability::Unavailable if comments.cached_snapshot',
   'BlogCommentsAvailability::Timeout if comments.cached_snapshot',
   'Showing a recent cached snapshot.',
@@ -413,7 +409,7 @@ for (const marker of [
   'test:verify:blog:comments-port-boundary',
   'source_verified_no_compile',
   'typed storefront comments availability',
-  'CommentService::with_comments_thread_port',
+  'CommentService::from_runtime_capabilities',
 ]) requireMarker(plan, marker, planPath);
 
 for (const marker of [

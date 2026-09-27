@@ -320,9 +320,11 @@ fn validate_operation(
     operation: &crate::entities::checkout_operation::Model,
     state: &CheckoutPaymentCapturedState,
 ) -> CheckoutFulfillmentStageResult<()> {
-    if operation.status != CheckoutOperationStatus::Executing.as_str() {
+    if operation.status != CheckoutOperationStatus::Executing.as_str()
+        && operation.status != CheckoutOperationStatus::Completed.as_str()
+    {
         return Err(CheckoutFulfillmentStageError::Conflict(format!(
-            "checkout operation {} must be executing, not `{}`",
+            "checkout operation {} must be executing or completed, not `{}`",
             operation.id, operation.status
         )));
     }

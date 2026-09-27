@@ -289,7 +289,7 @@ where
     );
 
     for input in inputs {
-        let (mut shared_values, _) =
+        let (mut shared_values, legacy_localized) =
             split_existing_metadata(input.shared_metadata, &localized_keys);
         let resolved_localized = localized_by_entity
             .get(&input.entity_id)
@@ -301,6 +301,10 @@ where
             for (key, value) in localized {
                 shared_values.insert(key, value);
             }
+        }
+
+        for (key, value) in legacy_localized {
+            shared_values.entry(key).or_insert(value);
         }
 
         let payload = (!shared_values.is_empty()).then_some(Value::Object(shared_values));
@@ -532,8 +536,19 @@ fn prepare_write(
 
     let payload_map = object_map(payload.as_ref());
     let (shared_patch, localized_patch) = split_patch(&payload_map, &localized_keys);
-    let (mut shared_values, _) = split_existing_metadata(&existing_metadata, &localized_keys);
+    let (mut shared_values, legacy_localized) =
+        split_existing_metadata(&existing_metadata, &localized_keys);
     let mut localized_values = object_map(Some(&existing_localized));
+
+    for (key, value) in legacy_localized {
+        localized_values.entry(key).or_insert(value);
+    }
+
+    for (key, value) in object_map(Some(&existing_localized)) {
+        if !localized_keys.contains(&key) {
+            shared_values.entry(key).or_insert(value);
+        }
+    }
 
     merge_patch(&mut shared_values, shared_patch);
     merge_patch(&mut localized_values, localized_patch);
@@ -1097,6 +1112,42 @@ mod tests {
             }))
         );
         assert_eq!(prepared.locale.as_deref(), Some("en"));
+    }
+
+    #[tokio::test]
+    async fn prepare_update_migrates_legacy_shared_value_when_field_becomes_localized() {
+        let db = setup_attached_test_db().await;
+        let tenant_id = Uuid::new_v4();
+        let entity_id = Uuid::new_v4();
+
+        let existing_metadata = json!({
+            "nickname": "Neo",
+        });
+
+        let schema = CustomFieldsSchema::new(vec![definition("nickname", true)]);
+
+        let prepared = prepare_attached_values_update(
+            &db,
+            AttachedEntityRef {
+                tenant_id,
+                entity_type: "customer",
+                entity_id,
+            },
+            schema,
+            "en",
+            &existing_metadata,
+            None,
+        )
+        .await
+        .expect("prepare update should migrate legacy value");
+
+        assert_eq!(
+            prepared.localized_values,
+            Some(json!({
+                "nickname": "Neo",
+            }))
+        );
+        assert_eq!(prepared.metadata, None);
     }
 }
 

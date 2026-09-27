@@ -11,7 +11,7 @@
     "consumer_service": "crates/modules/rustok-blog/src/services/comment.rs",
     "provider_registry": "crates/modules/rustok-comments/contracts/comments-fba-registry.json",
     "consumer_registry": "crates/modules/rustok-blog/contracts/blog-fba-registry.json",
-    "injection_constructor": "CommentService::from_optional_comments_thread_port"
+    "injection_constructor": "CommentService::from_runtime_capabilities"
   },
   "profiles": {
     "source_verified": [
@@ -25,10 +25,10 @@
     "status": "executable_no_run",
     "runtime_status": "not_run",
     "source": "crates/modules/rustok-blog/src/services/comment.rs",
-    "constructor": "CommentService::from_optional_comments_thread_port",
-    "signature": "fn(DatabaseConnection, Arc<dyn CommentsThreadPort>) -> CommentService",
-    "test": "services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port",
-    "command": "cargo test -p rustok-blog --lib services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port -- --exact",
+    "constructor": "CommentService::from_runtime_capabilities",
+    "signature": "fn(DatabaseConnection, Option<Arc<dyn CommentsThreadPort>>, Option<SharedStaticModuleSettingsReader>) -> CommentService",
+    "test": "test_blog_comment_surface_policy_preserves_comment_data",
+    "command": "cargo test -p rustok-blog --test integration test_blog_comment_surface_policy_preserves_comment_data -- --exact",
     "default_profile": "in_process",
     "remote_transport_implementation": "pending"
   },

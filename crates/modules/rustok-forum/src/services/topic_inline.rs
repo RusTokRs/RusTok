@@ -76,6 +76,12 @@ impl TopicService {
                 }
             })?;
         CategoryService::ensure_exists_in_tx(&txn, tenant_id, input.category_id).await?;
+        super::category_lifecycle::ensure_category_tree_target_is_active_in_tx(
+            &txn,
+            tenant_id,
+            input.category_id,
+        )
+        .await?;
 
         let now = Utc::now();
         forum_topic::ActiveModel {

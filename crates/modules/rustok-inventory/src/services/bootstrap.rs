@@ -1,5 +1,8 @@
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, Set,
+    Statement,
+};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -38,11 +41,50 @@ impl BootstrapService {
     {
         if let Some(location) = entities::stock_location::Entity::find()
             .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
+            .filter(entities::stock_location::Column::Code.eq("default"))
             .filter(entities::stock_location::Column::DeletedAt.is_null())
             .one(conn)
             .await?
         {
             return Ok(location);
+        }
+        if let Some(location) = entities::stock_location::Entity::find()
+            .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
+            .filter(entities::stock_location::Column::DeletedAt.is_null())
+            .order_by_asc(entities::stock_location::Column::CreatedAt)
+            .one(conn)
+            .await?
+        {
+            return Ok(location);
+        }
+
+        if conn.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            let lock_key = format!("inventory:stock_location_bootstrap:{tenant_id}");
+            conn.execute_raw(Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                [lock_key.into()],
+            ))
+            .await?;
+
+            if let Some(location) = entities::stock_location::Entity::find()
+                .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
+                .filter(entities::stock_location::Column::Code.eq("default"))
+                .filter(entities::stock_location::Column::DeletedAt.is_null())
+                .one(conn)
+                .await?
+            {
+                return Ok(location);
+            }
+            if let Some(location) = entities::stock_location::Entity::find()
+                .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
+                .filter(entities::stock_location::Column::DeletedAt.is_null())
+                .order_by_asc(entities::stock_location::Column::CreatedAt)
+                .one(conn)
+                .await?
+            {
+                return Ok(location);
+            }
         }
 
         let now = Utc::now();

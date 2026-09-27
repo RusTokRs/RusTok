@@ -119,7 +119,7 @@ test('rejects removal of the injected selector branch', () => {
     rejects(
       removeMarker(
         nativeAdapterPath,
-        'rustok_blog::CommentService::from_optional_comments_thread_port(',
+        'rustok_blog::CommentService::from_runtime_capabilities(',
       ),
     ).status,
     0,
