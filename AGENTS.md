@@ -32,6 +32,24 @@ An agent MUST NOT invent an exception to a platform rule.
 If two mandatory rules genuinely conflict, surface the conflict and resolve it through the owning contract or an ADR rather than bypassing either rule.
 
 ## 2. Required start protocol
+### 2.1 Full-Stack Audit Execution Contract
+
+The canonical trigger for the repository-wide deep audit is the single instruction:
+
+`реализуй план аудита`
+
+When that instruction is given, the contributor or AI agent MUST:
+
+1. Read this `AGENTS.md`, `docs/index.md`, `docs/CONTINUOUS_CODE_REVIEW.md`, and the active section of `docs/standards/continuous-review-ledger.md`. The ledger is the single living audit-progress record; do not create parallel audit plans.
+2. Record the current `main` commit SHA before starting the next phase and refresh `main` again immediately before integration.
+3. Execute audit phases strictly in ledger order unless an explicit dependency or an active ADR requires a different order. Do not skip a phase because a component was previously marked complete in an older review round.
+4. Review the whole affected change surface, including business/domain logic, persistence and migrations, writers/readers, events/outbox/workers, transports, tenancy/context/auth/policy, UI/operator surfaces, scripts, generated/reference artifacts, dependencies, and documentation.
+5. Fix discovered repository-owned defects to the canonical architecture in the same change set. Do not leave a known in-scope root-cause defect as a follow-up merely because a narrower test or static check would pass.
+6. Work on a dedicated phase branch created from the refreshed `main`. Commit the audit result and implementation on that branch, open a PR to `main`, merge it, then refresh `main` before beginning the next phase. Never rewrite another agent's branch or force-update shared history.
+7. The maintainer/user runs test suites. Unless the maintainer explicitly changes this rule, the AI agent MUST NOT run test suites. It MAY inspect tests and perform non-test static/source checks when needed to reason about correctness, but must not claim runtime/test evidence it did not obtain.
+8. Mark the phase complete in the canonical ledger only after the implementation/assessment commit has been integrated into `main`; record outstanding maintainer verification explicitly.
+9. When an issue changes an architectural contract rather than merely implementing an existing one, stop implementation at the boundary and add/update the owning ADR before continuing.
+
 
 Before changing repository content, contributors and agents MUST:
 
