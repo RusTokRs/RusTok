@@ -107,7 +107,7 @@ impl ContentNode<Draft> {
             kind,
             category_id: None,
             state: Draft {
-                created_at: self.state.created_at,
+                created_at: now,
                 updated_at: now,
             },
         }
@@ -176,7 +176,7 @@ impl ContentNode<Published> {
             kind: self.kind,
             category_id: self.category_id,
             state: Draft {
-                created_at: now,
+                created_at: self.state.created_at,
                 updated_at: now,
             },
         }
