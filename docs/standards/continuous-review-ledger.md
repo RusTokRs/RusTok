@@ -661,4 +661,11 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 ### FS-03 Pre-Implementation Audit Findings
 
-- [ ] **FOUNDATION-01 — module registry contract accepts unmanifested runtime modules.** `validate_module_registry_contract` verifies manifest entries are present in the runtime registry, but never rejects registry entries absent from the manifest. Because the manifest is the declared deployment composition, an extra runtime module can therefore pass the contract and expose runtime capabilities not represented by the active manifest.
+- [x] **FOUNDATION-01 — module registry contract accepts unmanifested runtime modules.** `validate_module_registry_contract` verifies manifest entries are present in the runtime registry, but never rejects registry entries absent from the manifest. Because the manifest is the declared deployment composition, an extra runtime module can therefore pass the contract and expose runtime capabilities not represented by the active manifest.
+
+
+### FS-03 Result
+
+**Implemented:** the stable module-registry contract now requires the runtime registry set to be a subset of the declared `modules.toml` set; unmanifested runtime entries fail validation with a typed contract error. A regression test covers the extra-runtime-entry case.
+
+**Verification state:** Tests were not run by the agent. Maintainer execution remains required. FS-03 implementation is ready for integration.
