@@ -713,3 +713,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 
 - [ ] **COMMERCE-04 — capture uses order amount after partial authorization.** `PaymentProviderRegistry` explicitly permits partial authorization, and `capture_collection` correctly limits local capture to `collection.authorized_amount`, but checkout `capture_provider.rs` constructs the external capture request with `request.identity.amount`. A partially authorized collection therefore asks the provider to capture more than the amount authorized by that provider operation. The external request must use the persisted authorized amount as its financial authority.
+
+
+- [ ] **COMMERCE-05 — exported legacy inventory reservation has a read-modify-write race.** `InventoryService::reserve` reads `reserved_quantity`, computes availability, then writes the stale value back. Concurrent reservations on the same inventory level can overwrite one another and return misleading availability. The legacy public path must use the same database-guarded increment semantics as the identity reservation port.
