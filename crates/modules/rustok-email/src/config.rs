@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct EmailConfig {
     #[serde(default)]
     pub enabled: bool,
@@ -12,7 +12,7 @@ pub struct EmailConfig {
     pub reset_base_url: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct SmtpConfig {
     #[serde(default = "default_smtp_host")]
     pub host: String,
@@ -22,6 +22,31 @@ pub struct SmtpConfig {
     pub username: String,
     #[serde(default)]
     pub password: String,
+}
+
+
+impl std::fmt::Debug for EmailConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("EmailConfig")
+            .field("enabled", &self.enabled)
+            .field("smtp", &self.smtp)
+            .field("from", &self.from)
+            .field("reset_base_url", &"<redacted>")
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for SmtpConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SmtpConfig")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field("password", &"<redacted>")
+            .finish()
+    }
 }
 
 impl Default for EmailConfig {
