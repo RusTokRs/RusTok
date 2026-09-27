@@ -458,6 +458,8 @@ pub enum ManifestError {
     InvalidVersion,
     #[error("modules.toml entries are not available in ModuleRegistry: {0}")]
     MissingInRegistry(String),
+    #[error("ModuleRegistry contains entries not declared by modules.toml: {0}")]
+    UnexpectedInRegistry(String),
     #[error("modules.toml required flags conflict with ModuleRegistry kinds: {0}")]
     RequiredMismatch(String),
     #[error("modules.toml depends_on conflict with ModuleRegistry dependencies: {0}")]

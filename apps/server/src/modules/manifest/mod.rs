@@ -548,6 +548,9 @@ impl ManifestManager {
             ModuleRegistryContractError::MissingInRegistry(details) => {
                 ManifestError::MissingInRegistry(details)
             }
+            ModuleRegistryContractError::UnexpectedInRegistry(details) => {
+                ManifestError::UnexpectedInRegistry(details)
+            }
             ModuleRegistryContractError::RequiredMismatch(details) => {
                 ManifestError::RequiredMismatch(details)
             }

@@ -254,6 +254,7 @@ fn map_manifest_error(err: ManifestError) -> FieldError {
         | ManifestError::InvalidVersion
         | ManifestError::InvalidBuildSurface(_)
         | ManifestError::MissingInRegistry(_)
+        | ManifestError::UnexpectedInRegistry(_)
         | ManifestError::RequiredMismatch(_)
         | ManifestError::DependencyMismatch(_)
         | ManifestError::MissingModulePackageManifest { .. }
