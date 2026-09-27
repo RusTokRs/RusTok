@@ -710,3 +710,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 - [ ] **COMMERCE-01 — commerce cross-tenant mutation boundaries require audit.** Verify every cart/customer/product/pricing/inventory/order/payment/fulfillment mutation predicates all persisted reads/writes by the trusted tenant and never by client-supplied entity ids alone.
 - [ ] **COMMERCE-02 — money and order lifecycle transitions require invariant audit.** Verify currency/amount arithmetic, status transitions, idempotency and capture/refund/fulfillment event ordering cannot produce duplicate or impossible financial state.
 - [ ] **COMMERCE-03 — channel visibility and inventory reservation require race audit.** Verify concurrent cart/order operations cannot oversell or expose products outside the active tenant/channel policy.
+
+
+- [ ] **COMMERCE-04 — capture uses order amount after partial authorization.** `PaymentProviderRegistry` explicitly permits partial authorization, and `capture_collection` correctly limits local capture to `collection.authorized_amount`, but checkout `capture_provider.rs` constructs the external capture request with `request.identity.amount`. A partially authorized collection therefore asks the provider to capture more than the amount authorized by that provider operation. The external request must use the persisted authorized amount as its financial authority.
