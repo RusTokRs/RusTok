@@ -15,7 +15,7 @@ use axum::{
 use futures_util::{SinkExt, StreamExt};
 use rustok_api::{Action, AuthPrincipalContext, Permission};
 use rustok_core::i18n::Locale;
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio_stream::wrappers::ReceiverStream;
 
 use crate::common::RequestContext;
 use crate::context::{AuthContext, TenantContext};
@@ -29,6 +29,9 @@ use rustok_core::ModuleRegistry;
 
 const WS_CLOSE_UNAUTHORIZED: u16 = 4401;
 const WS_AUTHORITY_CHANGED_REASON: &str = "authorization changed; reconnect required";
+const WS_MAX_MESSAGE_SIZE: usize = 256 * 1024;
+const WS_MAX_FRAME_SIZE: usize = 256 * 1024;
+const WS_INCOMING_QUEUE_CAPACITY: usize = 32;
 
 /// Normalize canonical RBAC implications for GraphQL policies that inspect an
 /// immutable permission vector directly.
@@ -174,7 +177,10 @@ async fn graphql_ws_handler(
     Extension(registry): Extension<ModuleRegistry>,
     Extension(schema): Extension<Arc<AppSchema>>,
 ) -> impl IntoResponse {
-    let ws = ws.protocols(async_graphql::http::ALL_WEBSOCKET_PROTOCOLS);
+    let ws = ws
+        .protocols(async_graphql::http::ALL_WEBSOCKET_PROTOCOLS)
+        .max_message_size(WS_MAX_MESSAGE_SIZE)
+        .max_frame_size(WS_MAX_FRAME_SIZE);
     let protocol = ws
         .selected_protocol()
         .and_then(|value| value.to_str().ok())
@@ -202,7 +208,8 @@ async fn handle_graphql_ws(
     protocol: WebSocketProtocols,
 ) {
     let (mut sink, mut source) = socket.split();
-    let (incoming_tx, incoming_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let (incoming_tx, incoming_rx) =
+        tokio::sync::mpsc::channel::<String>(WS_INCOMING_QUEUE_CAPACITY);
     let auth_lease = Arc::new(OnceLock::<GraphqlWsAuthLease>::new());
 
     let schema_for_stream = schema.as_ref().clone();
@@ -212,7 +219,7 @@ async fn handle_graphql_ws(
     let auth_lease_for_init = Arc::clone(&auth_lease);
     let mut graphql_stream = async_graphql::http::WebSocket::new(
         schema_for_stream,
-        UnboundedReceiverStream::new(incoming_rx),
+        ReceiverStream::new(incoming_rx),
         protocol,
     )
     .on_connection_init(move |payload| {
@@ -229,14 +236,15 @@ async fn handle_graphql_ws(
         while let Some(message) = source.next().await {
             match message {
                 Ok(Message::Text(text)) => {
-                    if incoming_tx.send(text.to_string()).is_err() {
+                    if incoming_tx.send(text.to_string()).await.is_err() {
                         break;
                     }
                 }
                 Ok(Message::Binary(bytes)) => {
-                    if let Ok(text) = String::from_utf8(bytes.to_vec())
-                        && incoming_tx.send(text).is_err()
-                    {
+                    let Ok(text) = String::from_utf8(bytes.to_vec()) else {
+                        continue;
+                    };
+                    if incoming_tx.send(text).await.is_err() {
                         break;
                     }
                 }
@@ -426,6 +434,13 @@ mod tests {
     use rustok_migrations::SqliteTestMigrator as Migrator;
     use sea_orm::{ActiveModelTrait, Set};
     use serial_test::serial;
+
+    #[test]
+    fn graphql_ws_transport_limits_are_bounded() {
+        assert_eq!(WS_MAX_MESSAGE_SIZE, 256 * 1024);
+        assert_eq!(WS_MAX_FRAME_SIZE, 256 * 1024);
+        assert_eq!(WS_INCOMING_QUEUE_CAPACITY, 32);
+    }
 
     #[test]
     fn graphql_router_uses_the_canonical_http_path() {

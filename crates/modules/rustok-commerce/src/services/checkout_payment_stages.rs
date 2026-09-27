@@ -400,13 +400,8 @@ mod tracing_shim {
     pub(crate) use warn_event;
 }
 
-mod legacy {
-    use super::rustok_api_shim as rustok_api;
-    use super::rustok_payment_shim as rustok_payment;
-    use super::tracing_shim as tracing;
-
-    include!("checkout_payment_stages_legacy.rs");
-}
+#[path = "checkout_payment_stages_legacy.rs"]
+mod legacy;
 
 pub use legacy::{
     CheckoutPaymentCapturedState, CheckoutPaymentStageError, CheckoutPaymentStageResult,
