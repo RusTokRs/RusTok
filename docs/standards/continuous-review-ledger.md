@@ -725,3 +725,10 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** commerce mutations use tenant-scoped owner queries; payment amounts/statuses/refunds are backed by service-level transactions and database lifecycle/capacity guards; payment provider operations are journaled/idempotent and reconcile uncertain outcomes; checkout identity is durable and cross-boundary validated; channel-specific storefront inventory visibility is separated from tenant inventory accounting.
 
 **Verification state:** Tests were inspected/added but not executed by the agent. Maintainer execution remains required. FS-06 implementation is ready for integration.
+
+
+### FS-07 Pre-Implementation Audit Findings
+
+- [ ] **CONTENT-01 — content ownership and soft-delete boundaries require audit.** Verify all content/taxonomy/profile/group/comment mutations and reads are tenant-scoped and do not expose soft-deleted or foreign-owner records through alternate lookup paths.
+- [ ] **CONTENT-02 — translation fallback/locale identity requires audit.** Verify locale keys, fallback chains, revisioning and update/delete paths cannot return another tenant's translation or silently overwrite a concurrent revision.
+- [ ] **CONTENT-03 — social graph/reaction/moderation invariants require audit.** Verify duplicate reactions/follows/memberships, authorization edges, moderation state transitions and idempotency remain atomic under retries/concurrency.
