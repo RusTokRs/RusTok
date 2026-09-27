@@ -198,6 +198,43 @@ mod tests {
     }
 
     #[test]
+    fn request_auth_snapshot_ignores_unverified_cookie_identity() {
+        let forged_session = AuthSession {
+            token: "attacker-token".to_string(),
+            refresh_token: "attacker-refresh".to_string(),
+            expires_at: i64::MAX,
+            tenant: "attacker-tenant".to_string(),
+        };
+        let forged_user = AuthUser {
+            id: "attacker".to_string(),
+            email: "attacker@example.test".to_string(),
+            name: Some("Attacker".to_string()),
+            role: "admin".to_string(),
+        };
+        let cookie = format!(
+            "{ADMIN_SESSION_COOKIE}={}; {ADMIN_USER_COOKIE}={}",
+            encoded(&forged_session),
+            encoded(&forged_user),
+        );
+        let (mut parts, _) = axum::http::Request::builder()
+            .header(axum::http::header::COOKIE, cookie)
+            .body(())
+            .expect("request")
+            .into_parts();
+
+        parts
+            .extensions
+            .insert(ServerAuthSnapshot::default());
+
+        let owner = Owner::new();
+        let snapshot = owner.with(|| {
+            provide_context(parts);
+            request_auth_snapshot()
+        });
+        assert_eq!(snapshot, ServerAuthSnapshot::default());
+    }
+
+    #[test]
     fn malformed_cookie_is_ignored_without_panicking() {
         let mut headers = HeaderMap::new();
         headers.insert(
