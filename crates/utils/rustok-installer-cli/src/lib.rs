@@ -82,17 +82,41 @@ impl CommandProvider for InstallerCommandProvider {
                 });
             }
         }
-        if request.dry_run {
-            return Ok(CommandOutcome::success(
-                "Seed profile validated; dry run does not mutate state.",
+        let options = &request.args["options"];
+        let seed_environment = option(options, "environment")
+            .ok_or_else(|| input("seed apply requires an explicit --environment (local, demo, or test)"))?
+            .as_deref()
+            .map(InstallEnvironment::parse_cli_value)
+            .transpose()
+            .map_err(input)?
+            .ok_or_else(|| input("seed apply requires an explicit --environment"))?;
+        if seed_environment.is_production() {
+            return Err(input(
+                "seed apply is not allowed for production installations; use install apply",
             ));
         }
+
+        if request.dry_run {
+            let profile = option(options, "profile")
+                .as_deref()
+                .map(SeedProfile::parse_cli_value)
+                .transpose()
+                .map_err(input)?
+                .unwrap_or(SeedProfile::Dev);
+            return Ok(CommandOutcome::success(
+                "Seed profile validated; dry run does not mutate state.",
+            )
+            .with_data(serde_json::json!({
+                "environment": seed_environment.as_str(),
+                "profile": profile,
+            })));
+        }
+
         let db = db_clone(
             self.runtime
                 .require_host()
                 .map_err(|error| failed(error.to_string()))?,
         );
-        let options = &request.args["options"];
         let profile = option(options, "profile")
             .as_deref()
             .map(SeedProfile::parse_cli_value)
@@ -105,6 +129,20 @@ impl CommandProvider for InstallerCommandProvider {
             .ok_or_else(|| {
                 input("seed apply requires --password, SEED_ADMIN_PASSWORD, or SUPERADMIN_PASSWORD")
             })?;
+        let demo_customer_password = if profile == SeedProfile::Dev {
+            Some(
+                option(options, "demo_customer_password")
+                    .or_else(|| environment("SEED_DEMO_CUSTOMER_PASSWORD"))
+                    .or_else(|| environment("DEMO_CUSTOMER_PASSWORD"))
+                    .ok_or_else(|| {
+                        input(
+                            "dev seed apply requires --demo-customer-password, SEED_DEMO_CUSTOMER_PASSWORD, or DEMO_CUSTOMER_PASSWORD",
+                        )
+                    })?,
+            )
+        } else {
+            None
+        };
         let tenant = SeedTenantRequest {
             name: option(options, "tenant_name").unwrap_or_else(|| "Demo Workspace".to_string()),
             slug: option(options, "tenant_slug").unwrap_or_else(|| "demo".to_string()),
@@ -126,7 +164,7 @@ impl CommandProvider for InstallerCommandProvider {
                 enabled_modules: profile.default_enabled_modules(),
                 disabled_modules: Vec::new(),
                 admin,
-                demo_customer_password: Some(password),
+                demo_customer_password,
                 actor: "rustok-cli seed apply".to_string(),
             },
             &ports,
@@ -598,6 +636,64 @@ mod tests {
         ));
         std::fs::write(&path, serde_json::to_vec(&receipt).unwrap()).unwrap();
         (path, public_key)
+    }
+
+    #[tokio::test]
+    async fn seed_apply_requires_explicit_non_production_environment_in_dry_run() {
+        let runtime = RuntimeComposition::without_database(serde_json::Value::Null);
+        let provider = command_provider(&runtime);
+
+        let missing_environment = provider
+            .execute(CommandRequest {
+                namespace: "seed".to_string(),
+                name: "apply".to_string(),
+                args: serde_json::json!({
+                    "options": {
+                        "profile": "dev"
+                    }
+                }),
+                dry_run: true,
+            })
+            .await
+            .expect_err("seed apply must require explicit environment");
+        assert!(missing_environment.to_string().contains("explicit --environment"));
+
+        let production = provider
+            .execute(CommandRequest {
+                namespace: "seed".to_string(),
+                name: "apply".to_string(),
+                args: serde_json::json!({
+                    "options": {
+                        "environment": "production",
+                        "profile": "dev"
+                    }
+                }),
+                dry_run: true,
+            })
+            .await
+            .expect_err("seed apply must reject production");
+        assert!(production
+            .to_string()
+            .contains("not allowed for production installations"));
+
+        let local = provider
+            .execute(CommandRequest {
+                namespace: "seed".to_string(),
+                name: "apply".to_string(),
+                args: serde_json::json!({
+                    "options": {
+                        "environment": "local",
+                        "profile": "dev"
+                    }
+                }),
+                dry_run: true,
+            })
+            .await
+            .expect("non-production seed dry run should validate");
+
+        assert_eq!(local.exit_code, 0);
+        assert_eq!(local.data["environment"], "local");
+        assert_eq!(local.data["profile"], "dev");
     }
 
     #[tokio::test]

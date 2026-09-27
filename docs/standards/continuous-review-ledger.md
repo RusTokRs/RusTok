@@ -10,7 +10,7 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-14 — storage/schema/migrations (audit in progress; tests remain maintainer-owned).  
+**Active phase:** FS-15 — utilities/installer/build/release tooling (audit in progress; tests remain maintainer-owned).  
 **Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
 
 ### FS-01 Pre-Implementation Audit Findings
@@ -59,8 +59,8 @@ status: active
 | FS-11 | Leptos applications | `apps/admin`, `apps/storefront`; SSR/hydration, routing, server functions, browser trust, caching, i18n, forms and operator paths | [ ] |
 | FS-12 | Next.js applications | `apps/next-admin`, `apps/next-frontend`; server/client boundaries, proxying, auth, GraphQL, SEO, caching, browser security and tenant propagation | [ ] |
 | FS-13 | Shared frontend/browser packages | `packages/*`, UI cores, richtext, generated clients, shared state, URL/security helpers, duplicated semantics | [ ] |
-| FS-14 | Storage/schema/migrations | all module migrations, entity/schema parity, cross-backend behavior, constraints, indexes, rollback/down paths, data-loss hazards | [ ] |
-| FS-15 | Utilities/installer/build/release tooling | `crates/utils/*`, installer, source/publication/signing, CLI tooling, build scripts, deployment tooling and operator safety | [ ] |
+| FS-14 | Storage/schema/migrations | all module migrations, entity/schema parity, cross-backend behavior, constraints, indexes, rollback/down paths, data-loss hazards | [x] |
+| FS-15 | Utilities/installer/build/release tooling | `crates/utils/*`, installer, source/publication/signing, CLI tooling, build scripts, deployment tooling and operator safety | [x] |
 | FS-16 | Shared libraries | `crates/libs/*`, UI foundations, common infrastructure and reusable abstractions; ownership, API stability, hidden coupling, dependency direction | [ ] |
 | FS-17 | Dependency & supply-chain closure | Cargo/npm lockfiles, duplicate/unused dependencies, feature flags, unsafe/advisory surfaces, generated code provenance, licenses/policies where repository contracts require them | [ ] |
 | FS-18 | Cross-cutting business scenarios | end-to-end invariants spanning owners: tenant isolation, auth/RBAC, money, lifecycle, idempotency, events, projections, cache invalidation, locale/channel context, destructive operations | [ ] |
@@ -869,3 +869,20 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Findings:** no new repository-owned root-cause defect was confirmed in this phase. The previously deferred Flex persisted-schema corruption behavior remains tracked for this storage phase and requires a separate runtime/schema policy decision; no lossy automatic fallback was introduced.
 
 **Verification state:** migration tests/database upgrade-downgrade runs were not executed by the agent. Maintainer execution remains required. FS-14 is ready for integration.
+
+
+### FS-15 Pre-Implementation Audit Findings
+
+- [x] **TOOLING-01 — release/build trust boundary and reproducibility audit passed.** Check release packaging/finalization, workflow inputs, generated artifacts and publication/signing for mutable remote inputs, symlinks, unpinned tools, digest drift, secret publication and unsafe filesystem behavior.
+- [x] **TOOLING-02 — utility CLI mutation authority/environment guard audit passed, with TOOLING-04 remediated.** Check installer, seed/import/repair commands for implicit production defaults, destructive mutation without explicit operator intent, and output that leaks credentials or raw persisted secrets.
+- [x] **TOOLING-03 — generated/release artifact deterministic provenance audit passed.** Verify archive contents, manifest/checksum generation, source materialization, publication receipts and installer distribution receipts cannot silently diverge or package unreviewed local content.
+- [x] **TOOLING-04 — standalone seed apply bypassed installer environment policy and reused the admin password for the development customer.** The command mutates through seed ports outside `InstallPlan` preflight, defaults to `Dev`, and passes the same password to both the SuperAdmin and `customer@demo.local`.
+
+
+### FS-15 Result
+
+**Implemented:** standalone seed apply now requires an explicit `--environment`, rejects production, and enforces that policy during dry runs. The `Dev` profile now requires an independent demo-customer password instead of reusing the administrator password. Regression coverage was added at the CLI command boundary.
+
+**Audit passes:** release packaging/finalization is deterministic and rejects symlinks/unexpected files; release workflows pin action revisions and verify release ancestry, signing, immutability, exact assets, checksums, SBOM/provenance and image digests; source/publication materializers enforce safe paths, create-new semantics and executable identity; installer receipts are signature/digest bound and production preflight rejects plaintext/sample secrets; topology validates exact surface/role ownership; CLI plan/output paths redact secrets.
+
+**Verification state:** tests/builds were not run by the agent. Maintainer execution remains required. FS-15 is ready for integration.
