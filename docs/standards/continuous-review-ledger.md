@@ -744,3 +744,10 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** content/comment/group reads and mutations consistently carry tenant ownership and soft-delete constraints; taxonomy category hierarchy mutations use tenant-scoped locks, scope checks and revision CAS; taxonomy translation writes use tenant filters and revision CAS; profile privacy evaluates recipient state under the trusted tenant and checks actor identity; social graph commands use tenant-scoped idempotency receipts and revision CAS; reaction commands enforce tenant/actor admission, catalog revision fencing and aggregate/state consistency; moderation application workers use tenant-scoped lease/revision CAS and transactional case/event transitions.
 
 **Verification state:** Tests were inspected and regression coverage was added, but no test suite was executed by the agent. Maintainer execution remains required. FS-07 implementation is ready for integration.
+
+
+### FS-08 Pre-Implementation Audit Findings
+
+- [ ] **PUBLISH-01 — blog/forum/page publication boundaries require audit.** Verify public reads cannot expose draft/archived/restricted records through route aliases, slugs, search indexes, projections or locale fallback.
+- [ ] **PUBLISH-02 — canonical URLs, aliases and SEO projections require audit.** Verify tenant/locale uniqueness, retirement semantics, redirect safety and cache invalidation cannot point a public route at another tenant or stale resource.
+- [ ] **PUBLISH-03 — page-builder/navigation/notifications require audit.** Verify authored component payloads, navigation trees and notification targets are tenant-scoped, permission-checked, size-bounded and idempotent under retries.
