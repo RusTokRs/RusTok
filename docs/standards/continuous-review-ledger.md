@@ -10,7 +10,7 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-06 — commerce domain (audit in progress; tests remain maintainer-owned).  
+**Active phase:** FS-11 — Leptos applications (implementation complete on branch; integration pending; tests remain maintainer-owned).  
 **Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
 
 ### FS-01 Pre-Implementation Audit Findings
@@ -795,3 +795,16 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** module-owned admin/storefront transport layers were checked for auth/tenant propagation and owner-port usage. Commerce admin server functions resolve authenticated `AuthContext`/`TenantContext` and compare request tenant ids where supplied; auth admin mutations construct server-owned mutation contexts from resolved auth/tenant state and delegate to the owner port; page-builder, forum, product, tenant, order, payment and related module UI seams were reviewed for direct persistence or trust-boundary bypasses. No additional repository-owned production authorization bypass was confirmed in this phase.
 
 **Verification state:** no test suite/build was executed by the agent. Maintainer execution remains required. FS-10 implementation is ready for integration.
+
+
+### FS-11 Findings — 2026-09-27
+
+- [x] **LEPTOS-01 — SSR server-function trust-boundary audit passed.** Protected mutations derive auth/tenant from server context; public storefront server functions do not treat browser identity parameters as authorization authority.
+- [x] **LEPTOS-02 — protected server mutation audit passed.** Authenticated blog comments and forum read-state mutations verify canonical `AuthContext` + `TenantContext`, permission/audience/revision boundaries and owner services; the full HttpOnly/CSRF migration is separately tracked in the accepted ADR for FS-13.
+- [x] **LEPTOS-03 — SSR/hydration data ownership audit passed.** Public storefront rendering uses tenant/channel/locale scoped owner reads and bounded public projections; no authenticated operator state was found embedded into public SSR output.
+- [x] **LEPTOS-04 — full HttpOnly browser-session migration captured in accepted ADR; implementation intentionally deferred to FS-13.**
+- [x] **LEPTOS-05 — SSR auth snapshot no longer trusts client-controlled cookie identity/role data.** Middleware treats the cookie as an untrusted transport envelope, revalidates its bearer token through the canonical auth transport, and inserts only the verified user into request extensions; `request_auth_snapshot` consumes only that trusted extension.
+
+**Implementation:** `apps/admin/src/app/auth_ssr.rs` and `apps/admin/src/main.rs` implement the verified SSR snapshot middleware and request-extension boundary. `DECISIONS/2026-09-27-leptos-httponly-session-migration.md` defines the complete later migration contract.
+
+**Verification state:** tests/builds were not run by the agent. Maintainer execution remains required. FS-11 implementation is ready for integration.
