@@ -55,7 +55,10 @@ impl InProcessCheckoutPaymentExecutionPort {
         let provider_request = PaymentProviderOperationRequest {
             tenant_id,
             collection_id: collection.id,
-            amount: request.identity.amount,
+            // A provider capture is authoritative only up to the amount it
+            // actually authorized. This remains correct when the provider
+            // returns a partial authorization.
+            amount: collection.authorized_amount,
             currency_code: collection.currency_code.clone(),
             idempotency_key: Some(idempotency_key),
             metadata: merge_metadata(
