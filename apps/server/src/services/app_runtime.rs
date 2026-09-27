@@ -372,6 +372,13 @@ struct RateLimitLayers {
     combined_state: PathRateLimitMiddlewareState,
 }
 
+const AUTH_RATE_LIMIT_PREFIXES: &[&str] = &[
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/auth/reset",
+    "/api/auth/verify",
+];
+
 fn init_rate_limit_layers(
     ctx: &ServerRuntimeContext,
     settings: &RustokSettings,
@@ -430,12 +437,7 @@ fn init_rate_limit_layers(
                 },
                 PathRateLimitPolicy {
                     limiter: auth_limiter,
-                    prefixes: Arc::new(vec![
-                        "/api/auth/login",
-                        "/api/auth/register",
-                        "/api/auth/reset",
-                        "/api/auth/verify",
-                    ]),
+                    prefixes: Arc::new(AUTH_RATE_LIMIT_PREFIXES.to_vec()),
                 },
                 PathRateLimitPolicy {
                     limiter: api_limiter,
@@ -561,8 +563,10 @@ mod tests {
 
     #[test]
     fn dedicated_auth_rate_limit_covers_verification_requests() {
-        let policy = "/api/auth/verify/request";
-        assert!(policy.starts_with("/api/auth/verify"));
+        assert!(AUTH_RATE_LIMIT_PREFIXES
+            .iter()
+            .any(|prefix| "/api/auth/verify/request".starts_with(prefix)));
+        assert!(AUTH_RATE_LIMIT_PREFIXES.contains(&"/api/auth/reset"));
     }
 
     #[tokio::test]
