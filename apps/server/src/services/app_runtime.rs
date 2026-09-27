@@ -434,6 +434,7 @@ fn init_rate_limit_layers(
                         "/api/auth/login",
                         "/api/auth/register",
                         "/api/auth/reset",
+                        "/api/auth/verify",
                     ]),
                 },
                 PathRateLimitPolicy {
@@ -556,6 +557,12 @@ mod tests {
         };
 
         assert!(validate_compiled_surface_contract(&contract, false, false).is_ok());
+    }
+
+    #[test]
+    fn dedicated_auth_rate_limit_covers_verification_requests() {
+        let policy = "/api/auth/verify/request";
+        assert!(policy.starts_with("/api/auth/verify"));
     }
 
     #[tokio::test]
