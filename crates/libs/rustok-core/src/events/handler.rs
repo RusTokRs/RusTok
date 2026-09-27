@@ -237,6 +237,7 @@ impl EventDispatcher {
             let bp = backpressure.clone();
             let count = Arc::clone(&completion_count);
             let event_type = event_type.clone();
+            let queue_permit = Arc::clone(&queue_permit);
 
             tokio::spawn(async move {
                 let _permit = permit;

@@ -32,12 +32,6 @@ use rustok_blog::{blog_category, blog_post, blog_post_tag, blog_post_translation
     feature = "mod-forum",
     feature = "mod-comments"
 ))]
-#[cfg(all(
-    feature = "mod-content",
-    feature = "mod-blog",
-    feature = "mod-forum",
-    feature = "mod-comments"
-))]
 use rustok_comments::{comment, comment_thread};
 #[cfg(all(
     feature = "mod-content",
@@ -51,12 +45,6 @@ use rustok_content::{
     MergeTopicsOutput, PromoteTopicToPostInput, PromoteTopicToPostOutput, RetiredCanonicalTarget,
     SplitTopicInput, SplitTopicOutput, normalize_locale_code, resolve_by_locale_with_fallback,
 };
-#[cfg(all(
-    feature = "mod-content",
-    feature = "mod-blog",
-    feature = "mod-forum",
-    feature = "mod-comments"
-))]
 #[cfg(all(
     feature = "mod-content",
     feature = "mod-blog",
@@ -429,8 +417,24 @@ async fn promote_topic_to_post(
     }
     ensure_blog_slug_unique_in_tx(txn, tenant_id, &slug).await?;
 
+    for translation in &translations {
+        rustok_content::richtext::parse_json(
+            &translation.body,
+            rustok_content::richtext::RichTextProfile::Article,
+        )
+        .map_err(|_| {
+            ContentError::validation(
+                "Forum topic content must be canonical article-compatible richtext before promotion to Blog",
+            )
+        })?;
+    }
+
     let reply_records = load_forum_reply_records_in_tx(txn, tenant_id, topic.id).await?;
     let post_id = Uuid::new_v4();
+    let active_comments =
+        move_forum_replies_to_comments_in_tx(txn, tenant_id, post_id, actor_id, &reply_records)
+            .await?;
+
     let now = Utc::now();
     let post_status = match topic.status {
         TopicStatus::Archived => "archived",
@@ -464,7 +468,7 @@ async fn promote_topic_to_post(
         } else {
             None
         }),
-        comment_count: Set(0),
+        comment_count: Set(active_comments),
         view_count: Set(0),
         version: Set(1),
     }
@@ -472,17 +476,6 @@ async fn promote_topic_to_post(
     .await?;
 
     for translation in &translations {
-        if rustok_content::richtext::parse_json(
-            &translation.body,
-            rustok_content::richtext::RichTextProfile::Article,
-        )
-        .is_err()
-        {
-            return Err(ContentError::validation(
-                "Forum topic content must be canonical article-compatible richtext before promotion to Blog",
-            ));
-        }
-
         blog_post_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
             post_id: Set(post_id),
@@ -516,15 +509,6 @@ async fn promote_topic_to_post(
         &resolved.effective_locale,
     )
     .await?;
-
-    let active_comments =
-        move_forum_replies_to_comments_in_tx(txn, tenant_id, post_id, actor_id, &reply_records)
-            .await?;
-
-    let created_post = find_post_in_tx(txn, tenant_id, post_id).await?;
-    let mut post_active: blog_post::ActiveModel = created_post.into();
-    post_active.comment_count = Set(active_comments);
-    post_active.update(txn).await?;
 
     forum_topic::Entity::delete_by_id(topic.id)
         .exec(txn)
@@ -596,6 +580,9 @@ async fn demote_post_to_topic(
     }
 
     let topic_id = Uuid::new_v4();
+    let comment_records = load_comment_records_for_post_in_tx(txn, tenant_id, post.id).await?;
+    move_comments_to_forum_replies_in_tx(txn, tenant_id, topic_id, &comment_records).await?;
+
     let now = Utc::now();
     let topic_status_value = match post.status.as_str() {
         "archived" => TopicStatus::Archived,
@@ -608,7 +595,13 @@ async fn demote_post_to_topic(
         category_id: Set(input.forum_category_id),
         author_id: Set(Some(post.author_id)),
         status: Set(topic_status_value),
-        metadata: Set(serde_json::json!({})),
+        metadata: Set(serde_json::json!({
+            "orchestration": {
+                "source_type": "blog_post",
+                "source_id": post.id,
+                "source_category_id": post.category_id,
+            }
+        })),
         is_pinned: Set(false),
         is_locked: Set(false),
         reply_count: Set(0),
@@ -645,8 +638,6 @@ async fn demote_post_to_topic(
     )
     .await?;
 
-    let comment_records = load_comment_records_for_post_in_tx(txn, tenant_id, post.id).await?;
-    move_comments_to_forum_replies_in_tx(txn, tenant_id, topic_id, &comment_records).await?;
     resequence_forum_topic_replies_in_tx(txn, tenant_id, topic_id).await?;
     refresh_forum_topic_stats_in_tx(txn, tenant_id, topic_id).await?;
     adjust_forum_category_counters_in_tx(
@@ -659,6 +650,11 @@ async fn demote_post_to_topic(
     .await?;
 
     delete_comments_for_post_in_tx(txn, tenant_id, post.id).await?;
+    blog_post_tag::Entity::delete_many()
+        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
+        .filter(blog_post_tag::Column::PostId.eq(post.id))
+        .exec(txn)
+        .await?;
     blog_post::Entity::delete_by_id(post.id).exec(txn).await?;
 
     let url_updates = locales_from_post_translations(&translations)?
@@ -704,6 +700,11 @@ async fn split_topic(
     let source_translations =
         load_topic_translations_in_tx(txn, tenant_id, source_topic.id).await?;
     let resolved = resolve_topic_translation(&source_translations, &requested_locale)?;
+    if input.reply_ids.is_empty() {
+        return Err(ContentError::validation(
+            "split_topic requires at least one reply/comment id",
+        ));
+    }
     let moved_set: HashSet<Uuid> = input.reply_ids.iter().copied().collect();
     if moved_set.len() != input.reply_ids.len() {
         return Err(ContentError::validation(
@@ -752,11 +753,14 @@ async fn split_topic(
 
     let mut requested_translation_written = false;
     for translation in &source_translations {
-        let title = if translation.locale == requested_locale {
+        let (title, slug) = if translation.locale == requested_locale {
             requested_translation_written = true;
-            input.new_title.clone()
+            (
+                input.new_title.clone(),
+                Some(normalize_slug(&input.new_title)),
+            )
         } else {
-            translation.title.clone()
+            (translation.title.clone(), translation.slug.clone())
         };
         forum_topic_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -764,7 +768,7 @@ async fn split_topic(
             tenant_id: Set(tenant_id),
             locale: Set(translation.locale.clone()),
             title: Set(title),
-            slug: Set(translation.slug.clone()),
+            slug: Set(slug),
             body: Set(translation.body.clone()),
             created_at: Set(translation.created_at),
             updated_at: Set(translation.updated_at),
@@ -817,6 +821,7 @@ async fn split_topic(
     resequence_forum_topic_replies_in_tx(txn, tenant_id, source_topic.id).await?;
     refresh_forum_topic_stats_in_tx(txn, tenant_id, source_topic.id).await?;
     refresh_forum_topic_stats_in_tx(txn, tenant_id, target_topic_id).await?;
+    adjust_forum_category_counters_in_tx(txn, tenant_id, source_topic.category_id, 1, 0).await?;
 
     let target_translations =
         load_topic_translations_in_tx(txn, tenant_id, target_topic_id).await?;
@@ -1599,7 +1604,10 @@ fn unique_source_ids(target_topic_id: Uuid, source_ids: &[Uuid]) -> ContentResul
 ))]
 mod tests {
     use super::*;
-    use rustok_api::RichTextDocument;
+    use rustok_api::{
+        PortError, RichTextDocument, SharedStaticModuleSettingsReader, StaticModuleSettingsReader,
+        StaticModuleSettingsSnapshot,
+    };
     use rustok_blog::{
         CommentService as BlogCommentService, CreateCommentInput as BlogCreateCommentInput,
         CreatePostInput, PostService,
@@ -1609,7 +1617,8 @@ mod tests {
         entities::{comment, comment_body},
     };
     use rustok_content::{
-        CanonicalUrlService, ContentModule, DemotePostToTopicInput, PromoteTopicToPostInput,
+        CanonicalUrlService, ContentModule, DemotePostToTopicInput, MergeTopicsInput,
+        PromoteTopicToPostInput, SplitTopicInput,
     };
     use rustok_core::{MigrationSource, SecurityContext, UserRole};
     use rustok_forum::{
@@ -1637,6 +1646,32 @@ mod tests {
             }]
         }))
         .expect("test richtext")
+    }
+
+    struct BlogSettingsReader {
+        comments_mode: &'static str,
+    }
+
+    #[async_trait]
+    impl StaticModuleSettingsReader for BlogSettingsReader {
+        async fn settings(
+            &self,
+            _tenant_id: Uuid,
+            module_slug: &str,
+        ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+            Ok(
+                (module_slug == "blog").then(|| StaticModuleSettingsSnapshot {
+                    enabled: true,
+                    settings: serde_json::json!({ "comments_mode": self.comments_mode }),
+                }),
+            )
+        }
+    }
+
+    fn blog_settings_reader(
+        comments_mode: &'static str,
+    ) -> SharedStaticModuleSettingsReader {
+        SharedStaticModuleSettingsReader(Arc::new(BlogSettingsReader { comments_mode }))
     }
 
     async fn setup_conversion_test_db() -> DatabaseConnection {
@@ -2028,12 +2063,13 @@ mod tests {
             .await
             .expect("blog post should be created");
 
-        let blog_comment_service = BlogCommentService::from_optional_comments_thread_port(
+        let blog_comment_service = BlogCommentService::from_runtime_capabilities(
             db.clone(),
             Some(rustok_comments::in_process_comments_thread_port(
                 db.clone(),
                 events.clone(),
             )),
+            Some(blog_settings_reader("open")),
         );
         blog_comment_service
             .create_public_comment(
@@ -2247,4 +2283,317 @@ mod tests {
         assert_eq!(replies_after_retry.len(), 2);
         assert_eq!(residual_comments.len(), 0);
     }
+
+    #[tokio::test]
+    async fn split_topic_moves_replies_and_updates_category_counter() {
+        let db = setup_conversion_test_db().await;
+        ensure_conversion_schema(&db).await;
+
+        let events = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+        let security = admin_security();
+        let tenant_id = Uuid::new_v4();
+        insert_test_actor(&db, tenant_id, &security).await;
+
+        let category = CategoryService::new(db.clone())
+            .create(
+                tenant_id,
+                security.clone(),
+                CreateCategoryInput {
+                    locale: "en".to_string(),
+                    name: "Discussions".to_string(),
+                    slug: "discussions".to_string(),
+                    description: None,
+                    icon: None,
+                    color: None,
+                    parent_id: None,
+                    position: Some(0),
+                    moderated: false,
+                },
+            )
+            .await
+            .expect("category should be created");
+
+        let topic = TopicService::new(db.clone(), events.clone())
+            .create(
+                tenant_id,
+                security.clone(),
+                CreateTopicInput {
+                    locale: "en".to_string(),
+                    category_id: category.id,
+                    title: "Main thread".to_string(),
+                    slug: Some("main-thread".to_string()),
+                    body: RichTextDocument::single_paragraph("Original main body"),
+                    metadata: serde_json::json!({}),
+                    tags: vec![],
+                    channel_slugs: None,
+                },
+            )
+            .await
+            .expect("topic should be created");
+
+        let reply_service = ReplyService::new(db.clone(), events.clone());
+        let reply_1 = reply_service
+            .create(
+                tenant_id,
+                security.clone(),
+                topic.id,
+                CreateReplyInput {
+                    locale: "en".to_string(),
+                    content: RichTextDocument::single_paragraph("Reply 1"),
+                    parent_reply_id: None,
+                },
+            )
+            .await
+            .expect("reply 1 should be created");
+
+        let reply_2 = reply_service
+            .create(
+                tenant_id,
+                security.clone(),
+                topic.id,
+                CreateReplyInput {
+                    locale: "en".to_string(),
+                    content: RichTextDocument::single_paragraph("Reply 2"),
+                    parent_reply_id: None,
+                },
+            )
+            .await
+            .expect("reply 2 should be created");
+
+        let orchestration = ContentOrchestrationService::new(
+            db.clone(),
+            events.clone(),
+            Arc::new(ServerContentOrchestrationBridge::new(db.clone())),
+        );
+
+        let split_result = orchestration
+            .split_topic(
+                tenant_id,
+                security.clone(),
+                SplitTopicInput {
+                    topic_id: topic.id,
+                    locale: "en".to_string(),
+                    reply_ids: vec![reply_2.id],
+                    new_title: "Forked thread".to_string(),
+                    reason: Some("split off discussion".to_string()),
+                    idempotency_key: "split-topic-test-1".to_string(),
+                },
+            )
+            .await
+            .expect("split should succeed");
+
+        assert_eq!(split_result.source_id, topic.id);
+        assert_eq!(split_result.moved_comments, 1);
+
+        let target_trans = forum_topic_translation::Entity::find()
+            .filter(forum_topic_translation::Column::TopicId.eq(split_result.target_id))
+            .filter(forum_topic_translation::Column::Locale.eq("en"))
+            .one(&db)
+            .await
+            .expect("query target translation")
+            .expect("target translation exists");
+        assert_eq!(target_trans.title, "Forked thread");
+        assert_eq!(target_trans.slug, Some("forked-thread".to_string()));
+
+        let cat = forum_category::Entity::find_by_id(category.id)
+            .filter(forum_category::Column::TenantId.eq(tenant_id))
+            .one(&db)
+            .await
+            .expect("query category")
+            .expect("category exists");
+        assert_eq!(cat.topic_count, 2);
+
+        let source_replies = forum_reply::Entity::find()
+            .filter(forum_reply::Column::TopicId.eq(topic.id))
+            .all(&db)
+            .await
+            .expect("query source replies");
+        assert_eq!(source_replies.len(), 1);
+        assert_eq!(source_replies[0].id, reply_1.id);
+        assert_eq!(source_replies[0].position, 1);
+
+        let target_replies = forum_reply::Entity::find()
+            .filter(forum_reply::Column::TopicId.eq(split_result.target_id))
+            .all(&db)
+            .await
+            .expect("query target replies");
+        assert_eq!(target_replies.len(), 1);
+        assert_eq!(target_replies[0].id, reply_2.id);
+        assert_eq!(target_replies[0].position, 1);
+    }
+
+    #[tokio::test]
+    async fn merge_topics_moves_replies_and_updates_category_counters() {
+        let db = setup_conversion_test_db().await;
+        ensure_conversion_schema(&db).await;
+
+        let events = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+        let security = admin_security();
+        let tenant_id = Uuid::new_v4();
+        insert_test_actor(&db, tenant_id, &security).await;
+
+        let category_a = CategoryService::new(db.clone())
+            .create(
+                tenant_id,
+                security.clone(),
+                CreateCategoryInput {
+                    locale: "en".to_string(),
+                    name: "Category A".to_string(),
+                    slug: "cat-a".to_string(),
+                    description: None,
+                    icon: None,
+                    color: None,
+                    parent_id: None,
+                    position: Some(0),
+                    moderated: false,
+                },
+            )
+            .await
+            .expect("category A created");
+
+        let category_b = CategoryService::new(db.clone())
+            .create(
+                tenant_id,
+                security.clone(),
+                CreateCategoryInput {
+                    locale: "en".to_string(),
+                    name: "Category B".to_string(),
+                    slug: "cat-b".to_string(),
+                    description: None,
+                    icon: None,
+                    color: None,
+                    parent_id: None,
+                    position: Some(1),
+                    moderated: false,
+                },
+            )
+            .await
+            .expect("category B created");
+
+        let topic_a = TopicService::new(db.clone(), events.clone())
+            .create(
+                tenant_id,
+                security.clone(),
+                CreateTopicInput {
+                    locale: "en".to_string(),
+                    category_id: category_a.id,
+                    title: "Target thread".to_string(),
+                    slug: Some("target-thread".to_string()),
+                    body: RichTextDocument::single_paragraph("Target body"),
+                    metadata: serde_json::json!({}),
+                    tags: vec![],
+                    channel_slugs: None,
+                },
+            )
+            .await
+            .expect("topic A created");
+
+        let topic_b = TopicService::new(db.clone(), events.clone())
+            .create(
+                tenant_id,
+                security.clone(),
+                CreateTopicInput {
+                    locale: "en".to_string(),
+                    category_id: category_b.id,
+                    title: "Source thread".to_string(),
+                    slug: Some("source-thread".to_string()),
+                    body: RichTextDocument::single_paragraph("Source body"),
+                    metadata: serde_json::json!({}),
+                    tags: vec![],
+                    channel_slugs: None,
+                },
+            )
+            .await
+            .expect("topic B created");
+
+        let reply_service = ReplyService::new(db.clone(), events.clone());
+        let _reply_a = reply_service
+            .create(
+                tenant_id,
+                security.clone(),
+                topic_a.id,
+                CreateReplyInput {
+                    locale: "en".to_string(),
+                    content: RichTextDocument::single_paragraph("Target reply"),
+                    parent_reply_id: None,
+                },
+            )
+            .await
+            .expect("reply A created");
+
+        let _reply_b = reply_service
+            .create(
+                tenant_id,
+                security.clone(),
+                topic_b.id,
+                CreateReplyInput {
+                    locale: "en".to_string(),
+                    content: RichTextDocument::single_paragraph("Source reply"),
+                    parent_reply_id: None,
+                },
+            )
+            .await
+            .expect("reply B created");
+
+        let orchestration = ContentOrchestrationService::new(
+            db.clone(),
+            events.clone(),
+            Arc::new(ServerContentOrchestrationBridge::new(db.clone())),
+        );
+
+        let merge_result = orchestration
+            .merge_topics(
+                tenant_id,
+                security.clone(),
+                MergeTopicsInput {
+                    target_topic_id: topic_a.id,
+                    source_topic_ids: vec![topic_b.id],
+                    reason: Some("merging duplicate topic".to_string()),
+                    idempotency_key: "merge-topic-test-1".to_string(),
+                },
+            )
+            .await
+            .expect("merge should succeed");
+
+        assert_eq!(merge_result.target_id, topic_a.id);
+        assert_eq!(merge_result.moved_comments, 1);
+
+        let source_deleted = forum_topic::Entity::find_by_id(topic_b.id)
+            .one(&db)
+            .await
+            .expect("query source topic");
+        assert!(source_deleted.is_none());
+
+        let target_replies = forum_reply::Entity::find()
+            .filter(forum_reply::Column::TopicId.eq(topic_a.id))
+            .order_by_asc(forum_reply::Column::Position)
+            .all(&db)
+            .await
+            .expect("query target replies");
+        assert_eq!(target_replies.len(), 2);
+        assert_eq!(target_replies[0].position, 1);
+        assert_eq!(target_replies[1].position, 2);
+
+        let cat_b = forum_category::Entity::find_by_id(category_b.id)
+            .filter(forum_category::Column::TenantId.eq(tenant_id))
+            .one(&db)
+            .await
+            .expect("query category B")
+            .expect("category B exists");
+        assert_eq!(cat_b.topic_count, 0);
+
+        let canonical = CanonicalUrlService::new(db.clone());
+        let alias = canonical
+            .resolve_route(
+                tenant_id,
+                "en",
+                format!("/modules/forum?topic={}", topic_b.id).as_str(),
+            )
+            .await
+            .expect("resolve alias")
+            .expect("alias exists");
+        assert!(alias.redirect_required);
+        assert_eq!(alias.target_id, topic_a.id);
+    }
 }
+
