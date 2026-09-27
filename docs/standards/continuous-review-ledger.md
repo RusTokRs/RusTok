@@ -781,3 +781,17 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Additional observation for later phase:** Flex persisted-schema presentation currently maps malformed stored \`fields_config\` to an empty view in \`standalone_schema_view_from_source\`; this is a storage-corruption resilience concern and is deferred to FS-14 rather than silently changed here.
 
 **Verification state:** tests were inspected and regression coverage was added but not executed by the agent. Maintainer execution remains required. FS-09 implementation is ready for integration.
+
+
+### FS-10 Pre-Implementation Audit Findings
+
+- [x] **UI-01 — auth admin transport DTOs expose bearer/password secrets through derived Debug.** `ApiRequestContext`/`ServerGraphqlRequest` contain the caller token and derive `Debug`; `CreateUserInput` contains a plaintext password and derives `Debug`. The UI transport contract must preserve serialization for requests but diagnostic formatting must redact credentials.
+
+
+### FS-10 Result
+
+**Implemented:** added root `AUDIT_PLAN.md` as the single human entry point to the canonical trigger/ledger; redacted bearer tokens and GraphQL variables from auth admin transport Debug output; redacted user passwords from `CreateUserInput`; redacted OAuth client secrets from `CreateOAuthAppResult` Debug output.
+
+**Audit passes:** module-owned admin/storefront transport layers were checked for auth/tenant propagation and owner-port usage. Commerce admin server functions resolve authenticated `AuthContext`/`TenantContext` and compare request tenant ids where supplied; auth admin mutations construct server-owned mutation contexts from resolved auth/tenant state and delegate to the owner port; page-builder, forum, product, tenant, order, payment and related module UI seams were reviewed for direct persistence or trust-boundary bypasses. No additional repository-owned production authorization bypass was confirmed in this phase.
+
+**Verification state:** no test suite/build was executed by the agent. Maintainer execution remains required. FS-10 implementation is ready for integration.
