@@ -74,6 +74,7 @@ use rustok_modules::{
     ModuleGovernanceErrorCategory, ModuleGovernanceValidationStageSnapshot,
 };
 use rustok_web::HttpError;
+use subtle::ConstantTimeEq;
 
 #[derive(Debug, Default, Deserialize, ToSchema, utoipa::IntoParams)]
 struct RegistryCatalogListParams {
@@ -2782,7 +2783,7 @@ fn require_remote_executor_access(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| Error::Unauthorized("Missing x-rustok-runner-token header".to_string()))?;
-    if provided_token != expected_token {
+    if !bool::from(provided_token.as_bytes().ct_eq(expected_token.as_bytes())) {
         return Err(Error::Unauthorized(
             "Invalid x-rustok-runner-token header".to_string(),
         ));

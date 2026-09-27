@@ -21,13 +21,21 @@ pub(crate) fn tenant_route_scope(path: &str) -> TenantRouteScope {
         || path == "/api/graphql/schema.graphql"
         || path_is_or_descendant(path, "/api/install")
         || path_is_or_descendant(path, "/catalog")
-        || path_is_or_descendant(path, "/catalog")
+        || registry_route_is_global(path)
         || path_is_or_descendant(path, "/health")
     {
         TenantRouteScope::GlobalOperator
     } else {
         TenantRouteScope::TenantBound
     }
+}
+
+fn registry_route_is_global(path: &str) -> bool {
+    const REGISTRY_ROOT: &str = "/v2/catalog";
+    const TENANT_SCOPED_PLATFORM_BUILD_SUFFIX: &str = "/platform-build-stage";
+
+    path_is_or_descendant(path, REGISTRY_ROOT)
+        && !path.ends_with(TENANT_SCOPED_PLATFORM_BUILD_SUFFIX)
 }
 
 #[cfg(test)]
@@ -58,6 +66,14 @@ mod tests {
         );
         assert_eq!(
             tenant_route_scope("/v2/catalog/publish"),
+            TenantRouteScope::GlobalOperator
+        );
+        assert_eq!(
+            tenant_route_scope("/v2/catalog/runner/claim"),
+            TenantRouteScope::GlobalOperator
+        );
+        assert_eq!(
+            tenant_route_scope("/v2/catalog/publish/request-1/platform-build-stage"),
             TenantRouteScope::TenantBound
         );
     }
