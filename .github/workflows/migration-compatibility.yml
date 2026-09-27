@@ -51,7 +51,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout base policy source
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           repository: ${{ env.BASE_REPOSITORY }}
           ref: ${{ env.BASE_REF }}
@@ -60,7 +60,7 @@ jobs:
           persist-credentials: false
 
       - name: Checkout head policy as untrusted data
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           repository: ${{ env.HEAD_REPOSITORY }}
           ref: ${{ env.HEAD_REF }}
@@ -95,7 +95,7 @@ jobs:
     timeout-minutes: 25
     steps:
       - name: Checkout base migration source
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           repository: ${{ env.BASE_REPOSITORY }}
           ref: ${{ env.BASE_REF }}
@@ -104,7 +104,7 @@ jobs:
           persist-credentials: false
 
       - name: Checkout head migration source
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           repository: ${{ env.HEAD_REPOSITORY }}
           ref: ${{ env.HEAD_REF }}
@@ -208,7 +208,7 @@ jobs:
           --health-retries 12
     steps:
       - name: Checkout head migration source
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           repository: ${{ env.HEAD_REPOSITORY }}
           ref: ${{ env.HEAD_REF }}
@@ -266,7 +266,7 @@ jobs:
           --health-retries 12
     steps:
       - name: Checkout base migration source
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           repository: ${{ env.BASE_REPOSITORY }}
           ref: ${{ env.BASE_REF }}
@@ -275,7 +275,7 @@ jobs:
           persist-credentials: false
 
       - name: Checkout head migration source
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           repository: ${{ env.HEAD_REPOSITORY }}
           ref: ${{ env.HEAD_REF }}

@@ -51,7 +51,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout base contract source
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           repository: ${{ env.BASE_REPOSITORY }}
           ref: ${{ env.BASE_REF }}
@@ -60,7 +60,7 @@ jobs:
           persist-credentials: false
 
       - name: Checkout head contract source
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           repository: ${{ env.HEAD_REPOSITORY }}
           ref: ${{ env.HEAD_REF }}

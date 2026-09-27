@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-slim
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Verify contract script syntax
         run: node --check scripts/verify/verify-index-storage-scale-run-contract.mjs
       - name: Verify fail-closed scale workflow orchestration
