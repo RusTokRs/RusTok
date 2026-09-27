@@ -21,7 +21,7 @@ use crate::auth::{
     decode_email_verification_token, decode_invite_token, encode_email_verification_token,
     encode_password_reset_token, hash_refresh_token,
 };
-use crate::common::{RequestContext, demo_mode_token_exposure_enabled};
+use crate::common::{RequestContext, demo_mode_token_exposure_enabled, is_production_environment};
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::models::{
     sessions,

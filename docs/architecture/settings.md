@@ -89,9 +89,9 @@ Reviewed through `main@5c283707cef13da9a99c665e3cf1b3c2ebddba78`.
 | First toggle | `tenant_modules` can be inserted with `{}` | Defaults are not necessarily materialized on enable |
 | Settings save | Active schema validates and fills defaults, then owner revision/CAS persists the full JSON | Saved documents are normalized at write time |
 | Disable | Only `enabled` changes; settings JSON remains | Configuration survives disable |
-| Edit while disabled | Generic owner writer rejects optional modules that are not effectively enabled; Admin disables the form | Invalid dormant settings cannot be repaired before enable |
-| Re-enable | Dependency checks and hooks run with the retained JSON | **Gap:** retained JSON is not revalidated against the active schema before the pre-enable hook |
-| Static rollout write | An observing checkpoint creates an in-memory guard | **Gap:** the active schema is passed as both N and N+1, so compatibility is not proven |
+| Edit while disabled | Generic owner writer admits and validates dormant settings updates against active schema; preserves disabled state | Dormant settings can be repaired before re-enable without premature runtime activation |
+| Re-enable | Active-schema preflight validates and normalizes retained settings against the active schema before hooks | Modules fail closed with actionable `settings_migration_required` before pre-enable hooks |
+| Static rollout write | Observing checkpoint resolves real predecessor descriptor/schema and validates proposed writes against the N/N+1 schema intersection | Writes during open rollout window are proven safe for both N and N+1 versions |
 | Uninstall/purge | Tenant disable is not deletion; accepted release policy retains native/static data/settings | Safe retention, but operator state needs clearer presentation |
 
 ## Settings ownership matrix
@@ -437,17 +437,17 @@ Owners must document:
 
 | Priority | Gap | Required outcome |
 | --- | --- | --- |
-| P0 | Re-enable does not validate retained static settings before hooks | Active-schema preflight and `migration_required` state |
-| P0 | Static N/N+1 guard validates the same schema twice | Persist/load real predecessor and candidate schema digests/documents |
-| P0 | Generic email settings can diverge from runtime and historically hold secrets | Email-owned typed settings, secret handles, data scrub/rotation |
-| P0 | Platform settings event is published after save on a best-effort path | Owner transaction plus transactional outbox |
-| P0 | Unknown manifest schema keywords are ignored; live SEO metadata uses unsupported nested-shape names | One canonical schema vocabulary, `deny_unknown_fields`, manifest migration, and negative tests |
-| P1 | `platform_settings.schema_version` is decorative | Replace with exact owner schema identity/revision or delete the field |
+| P0 | Re-enable does not validate retained static settings before hooks | Resolved: Active-schema preflight and `SettingsMigrationRequired` in `toggle_module` |
+| P0 | Static N/N+1 guard validates the same schema twice | Resolved: Load real predecessor descriptor/schema and validate against N/N+1 intersection |
+| P0 | Generic email settings can diverge from runtime and historically hold secrets | Email-owned typed settings, secret handles, data scrub/rotation, `snake_case` cutover |
+| P0 | Platform settings event is published after save on a best-effort path | Resolved: Owner transaction and transactional outbox `publish_in_tx` in `SettingsService::update` |
+| P0 | Unknown manifest schema keywords are ignored; live SEO metadata uses unsupported nested-shape names | Resolved: `deny_unknown_fields` on `ModuleSettingSpec`, strict `snake_case` guardrails, SEO manifest migration, and negative tests |
+| P1 | `platform_settings.schema_version` is decorative | Resolved: Monotonically increment `schema_version` on every platform settings update in `SettingsService::update` |
 | P1 | Static settings still lack complete owner-port/effective-integration coverage | Finish owner-specific read/effective-capability ports and activation evidence for remaining modules |
-| P1 | Disabled module settings cannot be repaired in Admin | Dormant edit and/or atomic enable-with-settings |
+| P1 | Disabled module settings cannot be repaired in Admin | Resolved: Dormant edit enabled via `update_static_normalized_settings` and `persist_settings` under active-schema validation and revision CAS |
 | P1 | Static rows do not persist exact schema digest/state | Add digest and `not_applicable/ready/migration_required` semantics |
-| P1 | Module keys include camelCase internal names | Zero-legacy `snake_case` cutover with data transformation |
-| P1 | Blog has no tenant comment-surface policy after removing the Comments edge | Add Blog-owned `comments_mode = disabled/read_only/open`; preserve Comments data and derive effective availability separately |
+| P1 | Module keys include camelCase internal names | Resolved: Strict `snake_case` enforcement in `is_valid_setting_key` and manifests audited |
+| P1 | Blog has no tenant comment-surface policy after removing the Comments edge | Resolved: Blog owns `comments_mode = disabled/read_only/open` parsed through `SharedStaticModuleSettingsReader` while Comments owns comment data |
 | P1 | Blog's reduced-build API/port boundary still lacks maintainer execution evidence | Run the reduced Blog build and static FBA chain without linking provider implementation crates; retain execution evidence |
 | P1 | Commerce/Fulfillment owner-port parity is incomplete outside the typed checkout path | Finish remaining mounted REST/GraphQL/admin owner-port cutover and retain reduced-topology execution evidence |
 | P2 | Settings UI labels/options are derived from keys/raw English descriptions | Fluent presentation metadata and bundle verification |

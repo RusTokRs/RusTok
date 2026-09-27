@@ -995,11 +995,6 @@ impl TenantModuleStateStore {
             .await
             .map_err(database_error)?;
         if let Some(row) = existing {
-            if !request.is_core && !request.is_effectively_enabled {
-                return Err(ModuleOperationStoreError::ModuleNotEnabled(
-                    request.module_slug,
-                ));
-            }
             let id: Uuid = row.try_get("", "id").map_err(database_error)?;
             let previous_enabled: bool = row.try_get("", "enabled").map_err(database_error)?;
             let enabled = request.is_core || previous_enabled;
@@ -1021,11 +1016,6 @@ impl TenantModuleStateStore {
             });
         }
 
-        if !request.is_core && !request.is_effectively_enabled {
-            return Err(ModuleOperationStoreError::ModuleNotEnabled(
-                request.module_slug,
-            ));
-        }
         let id = rustok_core::generate_id();
         let enabled = request.is_core || request.is_effectively_enabled;
         execute(
@@ -1118,10 +1108,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn settings_persistence_enforces_effective_enablement_and_keeps_core_enabled() {
+    async fn settings_persistence_persists_dormant_settings_and_keeps_core_enabled() {
         let database = database().await;
         let tenant_id = Uuid::new_v4();
-        let disabled = TenantModuleStateStore::persist_settings(
+        let dormant = TenantModuleStateStore::persist_settings(
             &database,
             TenantModuleSettingsRequest {
                 tenant_id,
@@ -1131,12 +1121,11 @@ mod tests {
                 is_effectively_enabled: false,
             },
         )
-        .await;
-        assert!(matches!(
-            disabled,
-            Err(ModuleOperationStoreError::ModuleNotEnabled(module_slug))
-                if module_slug == "optional_module"
-        ));
+        .await
+        .expect("dormant settings for disabled module");
+        assert_eq!(dormant.module_slug, "optional_module");
+        assert!(!dormant.enabled);
+        assert_eq!(dormant.settings, json!({ "value": 1 }));
 
         let core = TenantModuleStateStore::persist_settings(
             &database,

@@ -1,14 +1,15 @@
-use sea_orm::{DatabaseConnection, DbErr};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, DbErr, Statement};
 use thiserror::Error;
 
-use rustok_api::{PortError, StaticTenantModuleView};
+use rustok_api::{PortError, StaticModuleSettingsReader, StaticTenantModuleView};
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
-    ModuleCommandContext, ModuleControlPlane, ModuleLifecycleDbWriterError,
-    ModuleLifecycleExecutionError, ModuleLifecycleRecoveryCommand, ModuleLifecycleSettingsCommand,
-    ModuleLifecycleToggleCommand, ModuleOperationRecoveryError as ModulesRecoveryError,
-    ModuleOperationRecoveryPlan, ModuleOperationStoreError, ModuleToggleValidationError,
-    SettingsCompatibilityGuard, normalize_module_settings,
+    DatabaseStaticModuleSettingsReader, ModuleCommandContext, ModuleControlPlane,
+    ModuleLifecycleDbWriterError, ModuleLifecycleExecutionError, ModuleLifecycleRecoveryCommand,
+    ModuleLifecycleSettingsCommand, ModuleLifecycleToggleCommand,
+    ModuleOperationRecoveryError as ModulesRecoveryError, ModuleOperationRecoveryPlan,
+    ModuleOperationStoreError, ModuleToggleValidationError, SettingsCompatibilityGuard,
+    normalize_module_settings,
 };
 
 use crate::modules::{ManifestError, ManifestManager, map_module_settings_validation_error};
@@ -102,6 +103,13 @@ pub enum ToggleModuleError {
     PostHookFailed(String),
     #[error("Platform module policy error: {0}")]
     Policy(String),
+    #[error("{0}")]
+    Manifest(#[from] ManifestError),
+    #[error("Settings migration required for module '{module_slug}': {reason}")]
+    SettingsMigrationRequired {
+        module_slug: String,
+        reason: String,
+    },
 }
 
 #[derive(Debug, Error)]
@@ -156,6 +164,29 @@ impl ModuleLifecycleService {
                 checkpoint.operation_id,
                 checkpoint.state.name(),
             )));
+        }
+
+        if enabled {
+            let settings_schema = ManifestManager::module_settings_schema(module_slug)?;
+            if !settings_schema.is_empty() {
+                let reader = DatabaseStaticModuleSettingsReader::new(db.clone());
+                let retained_settings = reader
+                    .settings(tenant_id, module_slug)
+                    .await
+                    .map_err(|error| ToggleModuleError::Policy(error.to_string()))?
+                    .map(|snapshot| snapshot.settings)
+                    .unwrap_or_else(|| serde_json::json!({}));
+                if let Err(error) = normalize_module_settings(
+                    module_slug,
+                    &settings_schema,
+                    retained_settings,
+                ) {
+                    return Err(ToggleModuleError::SettingsMigrationRequired {
+                        module_slug: module_slug.to_string(),
+                        reason: error.to_string(),
+                    });
+                }
+            }
         }
 
         let manifest = PlatformCompositionService::active_manifest(db)
@@ -343,16 +374,23 @@ impl ModuleLifecycleService {
                 pred_digest.clone(),
                 checkpoint.candidate_digest.clone(),
             );
-            if let Some(guard) = guard
-                && let Err(err) = guard.validate_and_normalize_write(
+            if let Some(guard) = guard {
+                let predecessor_schema = resolve_predecessor_settings_schema(
+                    db,
+                    module_slug,
+                    pred_digest,
                     &settings_schema,
+                )
+                .await;
+                if let Err(err) = guard.validate_and_normalize_write(
+                    &predecessor_schema,
                     &settings_schema,
                     settings.clone(),
-                )
-            {
-                return Err(UpdateModuleSettingsError::Validation(format!(
-                    "Settings update rejected by N/N+1 Settings Compatibility Guard during open rollout window: {err}"
-                )));
+                ) {
+                    return Err(UpdateModuleSettingsError::Validation(format!(
+                        "Settings update rejected by N/N+1 Settings Compatibility Guard during open rollout window: {err}"
+                    )));
+                }
             }
         }
 
@@ -390,6 +428,56 @@ impl ModuleLifecycleService {
             revision: state.revision,
         })
     }
+}
+
+async fn resolve_predecessor_settings_schema(
+    db: &DatabaseConnection,
+    module_slug: &str,
+    pred_digest: &str,
+    candidate_schema: &std::collections::HashMap<String, rustok_modules::ModuleSettingSpec>,
+) -> std::collections::HashMap<String, rustok_modules::ModuleSettingSpec> {
+    let backend = db.get_database_backend();
+    let query = match backend {
+        DbBackend::Postgres => {
+            "SELECT descriptor FROM module_artifact_installations WHERE (payload_digest = $1 OR installation_id = $2) AND slug = $3 LIMIT 1"
+        }
+        _ => {
+            "SELECT descriptor FROM module_artifact_installations WHERE (payload_digest = ?1 OR installation_id = ?2) AND slug = ?3 LIMIT 1"
+        }
+    };
+    let installation_uuid = uuid::Uuid::parse_str(pred_digest).ok();
+    let id_val = installation_uuid
+        .map(|u| u.into())
+        .unwrap_or_else(|| pred_digest.to_string().into());
+    if let Ok(Some(row)) = db
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            query,
+            vec![
+                pred_digest.to_string().into(),
+                id_val,
+                module_slug.to_string().into(),
+            ],
+        ))
+        .await
+    {
+        if let Ok(raw_desc) = row.try_get::<String>("", "descriptor") {
+            if let Ok(desc) =
+                serde_json::from_str::<rustok_modules::ModuleArtifactDescriptor>(&raw_desc)
+            {
+                if let Some(schema_doc) = desc.settings_schema() {
+                    if let Ok(spec_map) = serde_json::from_value::<
+                        std::collections::HashMap<String, rustok_modules::ModuleSettingSpec>,
+                    >(schema_doc.clone())
+                    {
+                        return spec_map;
+                    }
+                }
+            }
+        }
+    }
+
+    candidate_schema.clone()
 }
 
 fn map_toggle_validation_error(error: ModuleToggleValidationError) -> ToggleModuleError {
@@ -873,7 +961,7 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn update_module_settings_rejects_disabled_optional_module() {
+    async fn update_module_settings_persists_dormant_settings_for_disabled_optional_module() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let registry = build_settings_registry();
         let tenant =
@@ -909,10 +997,10 @@ mod tests {
         .await;
         restore_manifest_env(previous);
 
-        assert!(matches!(
-            result,
-            Err(UpdateModuleSettingsError::ModuleNotEnabled(slug)) if slug == "content"
-        ));
+        let snapshot = result.expect("dormant settings update succeeds");
+        assert_eq!(snapshot.module_slug, "content");
+        assert!(!snapshot.enabled);
+        assert_eq!(snapshot.settings, serde_json::json!({ "posts_per_page": 20 }));
     }
 
     #[tokio::test]

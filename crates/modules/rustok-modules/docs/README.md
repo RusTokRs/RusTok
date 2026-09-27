@@ -31,13 +31,12 @@ module owns field semantics and runtime consumption. `tenant_modules` and
 use owner read/policy ports rather than query those rows directly.
 
 Current writes normalize against the active host-resolved manifest schema, and
-disable retains settings. The accepted target is not complete: retained settings
-are not yet revalidated before re-enable hooks, the static rollout guard currently
-uses the active schema for both predecessor and candidate validation, and static
-rows do not yet persist the exact schema digest plus
-`not_applicable`/`ready`/`migration_required` state. The owner must also permit
-dormant repair or atomic enable-with-settings so an incompatible disabled value
-does not require unsafe activation.
+disable retains settings. Retained settings are revalidated against the active
+schema before re-enable hooks, the static rollout guard validates against the real
+predecessor and candidate schema intersection, and dormant settings can be repaired
+while disabled via `update_static_normalized_settings`. Static rows do not yet
+persist the exact schema digest plus `not_applicable`/`ready`/`migration_required`
+columns.
 
 The canonical current/target contract and gap table are in
 [Settings and Configuration Architecture](../../../../docs/architecture/settings.md),

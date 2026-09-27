@@ -1,5 +1,4 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::context::{AuthContext, TenantContext};
@@ -98,9 +97,11 @@ impl SettingsMutation {
             .map_err(|e| FieldError::new(format!("Invalid JSON in settings: {e}")))?;
 
         let validators = ValidatorRegistry::default();
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
 
         let stored = SettingsService::update(
             runtime_ctx,
+            event_bus,
             tenant.id,
             &input.category,
             settings_json,
@@ -117,26 +118,6 @@ impl SettingsMutation {
             }
             other => <FieldError as GraphQLError>::internal_error(&other.to_string()),
         })?;
-
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
-        if let Err(e) = event_bus
-            .publish(
-                tenant.id,
-                Some(auth.user_id),
-                DomainEvent::PlatformSettingsChanged {
-                    category: input.category.clone(),
-                    changed_by: auth.user_id,
-                },
-            )
-            .await
-        {
-            tracing::warn!(
-                category = %input.category,
-                actor = %auth.user_id,
-                error = %e,
-                "Failed to publish PlatformSettingsChanged event; settings were saved"
-            );
-        }
 
         let settings_str = serde_json::to_string(&stored)
             .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;

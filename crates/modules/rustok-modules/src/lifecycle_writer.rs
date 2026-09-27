@@ -703,22 +703,6 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                     return Err(error);
                 }
             };
-        if definition.kind != ModuleDefinitionKind::Core
-            && !effective_enabled_modules.contains(&definition.slug)
-        {
-            let error = ModuleLifecycleDbWriterError::Settings(
-                ModuleOperationStoreError::ModuleNotEnabled(definition.slug.clone()),
-            );
-            self.abandon_static_settings_operation(
-                lease,
-                command.tenant_id,
-                &command.module_slug,
-                command.context.idempotency_key,
-                &error,
-            )
-            .await?;
-            return Err(error);
-        }
 
         let transaction = match self.db.begin().await {
             Ok(transaction) => transaction,

@@ -3,7 +3,6 @@ use sea_orm::prelude::*;
 
 use rustok_core::generate_id;
 
-use super::_entities::platform_settings;
 pub use super::_entities::platform_settings::{ActiveModel, Column, Entity, Model};
 
 impl ActiveModel {
@@ -27,24 +26,24 @@ impl ActiveModel {
 }
 
 impl Entity {
-    pub async fn find_by_category(
-        db: &DatabaseConnection,
+    pub async fn find_by_category<C: ConnectionTrait>(
+        db: &C,
         tenant_id: Uuid,
         category: &str,
     ) -> Result<Option<Model>, DbErr> {
         Self::find()
-            .filter(platform_settings::Column::TenantId.eq(tenant_id))
-            .filter(platform_settings::Column::Category.eq(category))
+            .filter(Column::TenantId.eq(tenant_id))
+            .filter(Column::Category.eq(category))
             .one(db)
             .await
     }
 
-    pub async fn find_all_for_tenant(
-        db: &DatabaseConnection,
+    pub async fn find_all_for_tenant<C: ConnectionTrait>(
+        db: &C,
         tenant_id: Uuid,
     ) -> Result<Vec<Model>, DbErr> {
         Self::find()
-            .filter(platform_settings::Column::TenantId.eq(tenant_id))
+            .filter(Column::TenantId.eq(tenant_id))
             .all(db)
             .await
     }

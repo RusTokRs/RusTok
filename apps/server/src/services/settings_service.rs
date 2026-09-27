@@ -1,6 +1,9 @@
-use sea_orm::{ActiveModelTrait, Set};
+use sea_orm::{ActiveModelTrait, Set, TransactionTrait};
 use serde_json::Value;
 use uuid::Uuid;
+
+use rustok_events::DomainEvent;
+use rustok_outbox::TransactionalEventBus;
 
 use crate::models::platform_settings::{self, ActiveModel, Entity};
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -236,9 +239,11 @@ impl SettingsService {
 
     /// Upsert settings for a supported generic category.
     ///
-    /// Returns the stored `Value`.
+    /// Persists settings and outbox domain event atomically within a transaction.
+    /// Returns the stored and redacted `Value`.
     pub async fn update(
         ctx: &ServerRuntimeContext,
+        event_bus: &TransactionalEventBus,
         tenant_id: Uuid,
         cat: &str,
         settings: Value,
@@ -253,20 +258,38 @@ impl SettingsService {
             .validate(cat, &settings)
             .map_err(SettingsError::ValidationFailed)?;
 
-        match Entity::find_by_category(ctx.db(), tenant_id, cat).await? {
+        let tx = ctx.db().begin().await?;
+
+        match Entity::find_by_category(&tx, tenant_id, cat).await? {
             Some(existing) => {
+                let next_version = existing.schema_version.saturating_add(1);
                 let mut active: platform_settings::ActiveModel = existing.into();
                 active.settings = Set(settings.clone());
                 active.updated_by = Set(actor_id);
-                active.schema_version = Set(1);
-                active.update(ctx.db()).await?;
+                active.schema_version = Set(next_version);
+                active.update(&tx).await?;
             }
             None => {
                 ActiveModel::new(tenant_id, cat, settings.clone(), actor_id)
-                    .insert(ctx.db())
+                    .insert(&tx)
                     .await?;
             }
         }
+
+        event_bus
+            .publish_in_tx(
+                &tx,
+                tenant_id,
+                actor_id,
+                DomainEvent::PlatformSettingsChanged {
+                    category: cat.to_string(),
+                    changed_by: actor_id.unwrap_or_default(),
+                },
+            )
+            .await
+            .map_err(|e| sea_orm::DbErr::Custom(format!("Failed to publish settings event to outbox: {e}")))?;
+
+        tx.commit().await?;
 
         Ok(redact_secrets(cat, settings))
     }
@@ -290,6 +313,9 @@ fn redact_secrets(cat: &str, mut settings: Value) -> Value {
     }
 
     if let Some(object) = settings.as_object_mut() {
+        if object.contains_key("smtp_password") {
+            object.insert("smtp_password".to_string(), Value::String(String::new()));
+        }
         if object.contains_key("smtpPassword") {
             object.insert("smtpPassword".to_string(), Value::String(String::new()));
         }
@@ -328,11 +354,24 @@ fn preserve_email_secret_fields(existing: Value, mut incoming: Value) -> Value {
     };
 
     if incoming_object
+        .get("smtp_password")
+        .and_then(Value::as_str)
+        .is_some_and(str::is_empty)
+        && let Some(existing_password) = existing_object
+            .get("smtp_password")
+            .or_else(|| existing_object.get("smtpPassword"))
+            .filter(|value| !value.as_str().unwrap_or_default().is_empty())
+    {
+        incoming_object.insert("smtp_password".to_string(), existing_password.clone());
+    }
+
+    if incoming_object
         .get("smtpPassword")
         .and_then(Value::as_str)
         .is_some_and(str::is_empty)
         && let Some(existing_password) = existing_object
-            .get("smtpPassword")
+            .get("smtp_password")
+            .or_else(|| existing_object.get("smtpPassword"))
             .filter(|value| !value.as_str().unwrap_or_default().is_empty())
     {
         incoming_object.insert("smtpPassword".to_string(), existing_password.clone());

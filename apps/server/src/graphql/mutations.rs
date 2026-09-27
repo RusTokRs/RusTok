@@ -536,6 +536,15 @@ fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
         ToggleModuleError::Policy(_) => {
             <FieldError as GraphQLError>::internal_error("Internal server error")
         }
+        ToggleModuleError::Manifest(err) => {
+            <FieldError as GraphQLError>::bad_user_input(&err.to_string())
+        }
+        ToggleModuleError::SettingsMigrationRequired {
+            module_slug,
+            reason,
+        } => <FieldError as GraphQLError>::bad_user_input(&format!(
+            "Module '{module_slug}' cannot be enabled: settings migration is required: {reason}"
+        )),
     }
 }
 
@@ -2013,6 +2022,23 @@ mod tests {
                 expected_message: "Internal server error".to_string(),
                 expected_code: Some("INTERNAL_ERROR"),
                 case_name: "policy",
+            },
+            ToggleCase {
+                error: ToggleModuleError::Manifest(crate::modules::ManifestError::UnknownModule(
+                    "custom".into(),
+                )),
+                expected_message: "Unknown module: custom".to_string(),
+                expected_code: Some("BAD_USER_INPUT"),
+                case_name: "manifest",
+            },
+            ToggleCase {
+                error: ToggleModuleError::SettingsMigrationRequired {
+                    module_slug: "blog".into(),
+                    reason: "missing required setting 'author'".into(),
+                },
+                expected_message: "Module 'blog' cannot be enabled: settings migration is required: missing required setting 'author'".to_string(),
+                expected_code: Some("BAD_USER_INPUT"),
+                case_name: "settings-migration-required",
             },
         ]
     }
