@@ -5,10 +5,7 @@
 
 // Keep the host fallback explicit: the repository i18n contract verifies this
 // declaration independently from the library macro's convenience default.
-rustok_ui_i18n::declare_module_i18n!(
-    default = "en",
-    locales = ["en", "ru"],
-);
+rustok_ui_i18n::declare_module_i18n!(default = "en", locales = ["en", "ru"],);
 
 #[cfg(test)]
 mod tests {

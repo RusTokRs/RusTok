@@ -1,7 +1,4 @@
-rustok_ui_i18n::declare_module_i18n!(
-    default = "en",
-    locales = ["en", "ru"],
-);
+rustok_ui_i18n::declare_module_i18n!(default = "en", locales = ["en", "ru"],);
 
 pub fn unread_count_label(locale: Option<&str>, count: u64) -> String {
     let args = rustok_ui_i18n::fluent_args!(count = count);

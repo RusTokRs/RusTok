@@ -52,12 +52,12 @@ fn icu_to_fluent_langid(locale: &IcuLocale) -> Option<LanguageIdentifier> {
 }
 
 fn parse_locale_tag(locale: &str) -> Option<LanguageIdentifier> {
-    parse_unicode_locale(locale).as_ref().and_then(icu_to_fluent_langid)
+    parse_unicode_locale(locale)
+        .as_ref()
+        .and_then(icu_to_fluent_langid)
 }
 
-pub(crate) fn canonicalize_language_identifier(
-    langid: LanguageIdentifier,
-) -> LanguageIdentifier {
+pub(crate) fn canonicalize_language_identifier(langid: LanguageIdentifier) -> LanguageIdentifier {
     let Ok(mut locale) = langid.to_string().parse::<IcuLocale>() else {
         return langid;
     };
@@ -187,7 +187,10 @@ fn push_locale_candidate_internal(candidates: &mut Vec<String>, locale: Option<&
 
 fn infer_script(langid: &LanguageIdentifier) -> Option<LanguageIdentifier> {
     let expander = LocaleExpander::new_extended();
-    let mut regional = langid.to_string().parse::<icu_locale::LanguageIdentifier>().ok()?;
+    let mut regional = langid
+        .to_string()
+        .parse::<icu_locale::LanguageIdentifier>()
+        .ok()?;
     let mut language = regional.clone();
     language.region = None;
 

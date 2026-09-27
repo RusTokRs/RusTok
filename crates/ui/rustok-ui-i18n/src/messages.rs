@@ -20,9 +20,7 @@ use crate::bundle::{
     parse_language_identifier, try_build_fluent_catalog,
 };
 use crate::error::{BundleBuildError, I18nError, MessageKeyError};
-use crate::locale::{
-    MAX_LOCALE_TAG_LEN, canonicalize_language_identifier, locale_candidates,
-};
+use crate::locale::{MAX_LOCALE_TAG_LEN, canonicalize_language_identifier, locale_candidates};
 
 /// A successfully formatted Fluent value together with the catalog locale that supplied it.
 ///
