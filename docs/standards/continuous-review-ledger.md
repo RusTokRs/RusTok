@@ -10,7 +10,7 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-13 — shared frontend/browser packages (audit in progress; tests remain maintainer-owned).  
+**Active phase:** FS-14 — storage/schema/migrations (audit in progress; tests remain maintainer-owned).  
 **Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
 
 ### FS-01 Pre-Implementation Audit Findings
@@ -853,3 +853,10 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** shared AuthSession Debug redaction, browser API tenant metadata semantics, route query sanitizer/writer, transport retry safety policy, shared AuthError mapping, and client/server separation. The backend remains the authority for tenant and authorization decisions.
 
 **Verification state:** no browser tests/builds were run by the agent. Maintainer execution remains required. FS-13 implementation is ready for integration.
+
+
+### FS-14 Pre-Implementation Audit Findings
+
+- [ ] **STORAGE-01 — destructive migrations and down-path completeness require repository-wide audit.** Check every migration with Drop/Delete/Truncate/Rename/alter-removal for guarded preconditions, data-preserving rollback and explicit irreversibility where applicable.
+- [ ] **STORAGE-02 — tenant/owner uniqueness and foreign-key scope require audit.** Verify business uniqueness keys include tenant/channel/locale where required, and foreign keys prevent cross-tenant references instead of merely relying on application filters.
+- [ ] **STORAGE-03 — migration/entity/schema parity requires audit.** Verify entities, DTOs, indexes and runtime assumptions match the actual migrated schema across PostgreSQL, MySQL and SQLite where supported.
