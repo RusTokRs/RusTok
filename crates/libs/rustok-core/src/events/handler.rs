@@ -104,14 +104,16 @@ impl EventDispatcher {
             async move {
                 consumer_runtime.restarted("startup");
                 info!(handlers = handlers.len(), "Event dispatcher started");
+                let queue_capacity = config.max_queue_depth.max(1);
                 if config.max_queue_depth == 0 {
-                    error!("Event dispatcher max_queue_depth must be greater than zero");
-                    return;
+                    warn!(
+                        "Event dispatcher max_queue_depth was zero; using the minimum queue capacity of one"
+                    );
                 }
 
                 let max_concurrent = config.max_concurrent.max(1);
                 let semaphore = Arc::new(Semaphore::new(max_concurrent));
-                let queue = Arc::new(Semaphore::new(config.max_queue_depth));
+                let queue = Arc::new(Semaphore::new(queue_capacity));
 
                 loop {
                     let queue_permit = match Arc::clone(&queue).acquire_owned().await {
