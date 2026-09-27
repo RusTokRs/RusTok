@@ -10,7 +10,7 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-15 — utilities/installer/build/release tooling (audit in progress; tests remain maintainer-owned).  
+**Active phase:** FS-16 — shared libraries (audit in progress; tests remain maintainer-owned).  
 **Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
 
 ### FS-01 Pre-Implementation Audit Findings
@@ -61,7 +61,7 @@ status: active
 | FS-13 | Shared frontend/browser packages | `packages/*`, UI cores, richtext, generated clients, shared state, URL/security helpers, duplicated semantics | [ ] |
 | FS-14 | Storage/schema/migrations | all module migrations, entity/schema parity, cross-backend behavior, constraints, indexes, rollback/down paths, data-loss hazards | [x] |
 | FS-15 | Utilities/installer/build/release tooling | `crates/utils/*`, installer, source/publication/signing, CLI tooling, build scripts, deployment tooling and operator safety | [x] |
-| FS-16 | Shared libraries | `crates/libs/*`, UI foundations, common infrastructure and reusable abstractions; ownership, API stability, hidden coupling, dependency direction | [ ] |
+| FS-16 | Shared libraries | `crates/libs/*`, UI foundations, common infrastructure and reusable abstractions; ownership, API stability, hidden coupling, dependency direction | [~] |
 | FS-17 | Dependency & supply-chain closure | Cargo/npm lockfiles, duplicate/unused dependencies, feature flags, unsafe/advisory surfaces, generated code provenance, licenses/policies where repository contracts require them | [ ] |
 | FS-18 | Cross-cutting business scenarios | end-to-end invariants spanning owners: tenant isolation, auth/RBAC, money, lifecycle, idempotency, events, projections, cache invalidation, locale/channel context, destructive operations | [ ] |
 | FS-19 | Final architecture reconciliation | dependency graph, boundary violations, dead/duplicate paths, stale docs/ADRs, generated artifacts, canonical vocabulary, remaining TODO/placeholder risk | [ ] |
@@ -886,3 +886,11 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** release packaging/finalization is deterministic and rejects symlinks/unexpected files; release workflows pin action revisions and verify release ancestry, signing, immutability, exact assets, checksums, SBOM/provenance and image digests; source/publication materializers enforce safe paths, create-new semantics and executable identity; installer receipts are signature/digest bound and production preflight rejects plaintext/sample secrets; topology validates exact surface/role ownership; CLI plan/output paths redact secrets.
 
 **Verification state:** tests/builds were not run by the agent. Maintainer execution remains required. FS-15 is ready for integration.
+
+
+### FS-16 Pre-Implementation Audit Findings
+
+- [ ] **LIB-01 — shared error/diagnostic types require a secret and PII redaction audit.** Shared libraries are reusable by every module, so Debug/Display/serialization of credential-bearing or request-bearing types must never become a cross-module leakage primitive.
+- [ ] **LIB-02 — shared context/tenant/auth helpers require direction and authority audit.** Verify helpers distinguish trusted runtime authority from client metadata and do not allow downstream modules to reconstruct security context from transport values.
+- [ ] **LIB-03 — common storage/event/web abstractions require invariant audit.** Check shared repository/storage adapters, event envelopes, web helpers and cache primitives for generic behaviors that weaken tenant scope, error stability, transaction ownership or idempotency at call sites.
+- [ ] **LIB-04 — feature-flag and optional dependency boundaries require audit.** Verify shared crates do not accidentally enable incompatible feature combinations or expose server-only dependencies to browser/transport targets.
