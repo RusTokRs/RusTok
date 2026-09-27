@@ -10,7 +10,7 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-17 — dependency & supply-chain closure (audit in progress; tests remain maintainer-owned).  
+**Active phase:** FS-18 — runtime/server application (audit in progress; tests remain maintainer-owned).  
 **Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
 
 ### FS-01 Pre-Implementation Audit Findings
@@ -918,3 +918,20 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** `rustok-api`, `rustok-core`, `rustok-events`, `rustok-runtime`, `rustok-web`, `rustok-telemetry`, and `rustok-fba` were reviewed for secret-bearing Debug/serialization surfaces, request/tenant authority, event envelope validation, storage/runtime path safety, transport error mapping, feature isolation, and dependency direction. Event envelopes do not dump payloads through Debug; AuthContext/TenantContext/ChannelContext consume trusted extensions; `rustok-api` runtime/server features remain directionally isolated; `rustok-core` `redis-cache` is an intentionally empty compatibility feature with no Redis references in cache implementation.
 
 **Verification state:** Tests/builds were not run by the agent. Regression tests were added for the rate limiter, RequestContext and telemetry bucket contract. Maintainer execution remains required. FS-16 implementation is ready for integration.
+
+
+### FS-17 Pre-Implementation Audit Findings
+
+- [x] **SUPPLY-01 — Cargo lock/dependency graph audit passed.** The 1622-package lockfile has one immutable Athanor git revision; reviewed security-sensitive duplicate families did not reveal an unpinned git source or unsafe source override. Multiple package versions remain governed by the existing reviewed cargo-deny policy. Detect multiple versions of security/serialization/network primitives, git dependencies without immutable revs, path dependencies escaping the workspace, and lockfile entries whose provenance cannot be reconciled to manifests.
+- [x] **SUPPLY-02 — JavaScript dependency/provenance audit passed.** All six lockfiles are npm lockfileVersion 3; local links occur only for expected workspace packages; root, admin, storefront and richtext packages have no install lifecycle hooks, while Next admin uses its existing Husky prepare hook. Verify package-lock integrity, workspace/package boundary, postinstall scripts, local file/link dependencies, and build-time downloads do not introduce mutable or unreviewed code execution.
+- [x] **SUPPLY-03 — CI/CD action pinning completed.** Third-party GitHub Actions in the audited workflow tree were migrated to full commit SHAs, and scripts/verify/verify-workflow-action-pins.mjs now rejects mutable or unapproved action refs in CI. Every third-party GitHub Action used in release/build/security-sensitive workflows should be pinned to an immutable commit SHA where repository policy requires it; mutable tags/branches are not acceptable for privileged automation.
+- [x] **SUPPLY-04 — cargo-deny/toolchain/license/source policy audit passed.** deny.toml explicitly denies unknown registries and git sources, allows only the crates.io registry plus the reviewed Athanor repository, uses the RustSec advisory DB, and rust-toolchain.toml declares the stable toolchain. Verify `deny.toml`, `rust-toolchain.toml`, advisory/license/source policies and repository scripts actually constrain the dependency graph they claim to govern.
+
+
+### FS-17 Result
+
+**Implemented:** all audited third-party GitHub Actions are pinned to immutable commit SHAs; a permanent CI verifier enforces the approved pin set; dependency-audit tooling uses exact versions (cargo-audit 0.22.2 and cargo-outdated 0.19.0) instead of floating latest installs; temporary migration workflow/script were removed after cutover.
+
+**Dependency evidence:** Cargo.lock contains one immutable Athanor git revision and no known removed malicious crates tracing_checks or tracings; h2 0.4.16 is the locked version and is patched for the August 2026 RustSec advisory. JavaScript lockfiles are npm lockfileVersion 3, with workspace-only local links where expected.
+
+**Verification state:** tests/builds were not run by the agent, per the maintainer-owned test policy. Static source/lock/workflow audits were completed and FS-17 is ready for integration.

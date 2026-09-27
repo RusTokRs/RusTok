@@ -4,6 +4,7 @@
     "generate:docs-topology": "node scripts/generate/generate-docs-topology.mjs",
     "verify:adrs": "node scripts/verify/verify-adrs.mjs",
     "verify:module-source-layout": "node scripts/verify/verify-module-source-layout.mjs",
+    "verify:workflow-action-pins": "node scripts/verify/verify-workflow-action-pins.mjs",
     "audit:deps": "cargo machete",
     "audit:deadcode": "npx knip --directory apps/next-admin",
     "audit:clones": "npx jscpd crates/ apps/ --min-tokens 50",
