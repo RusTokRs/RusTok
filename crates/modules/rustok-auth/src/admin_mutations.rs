@@ -265,6 +265,41 @@ mod tests {
     use super::*;
 
     #[test]
+    fn oauth_secret_result_debug_redacts_client_secret() {
+        let app = OAuthAppMutationRecord {
+            id: Uuid::new_v4(),
+            name: "test".to_string(),
+            slug: "test".to_string(),
+            description: None,
+            icon_url: None,
+            app_type: "confidential".to_string(),
+            client_id: Uuid::new_v4(),
+            redirect_uris: vec![],
+            scopes: vec![],
+            grant_types: vec![],
+            granted_permissions: vec![],
+            manifest_ref: None,
+            auto_created: false,
+            managed_by_manifest: false,
+            is_active: true,
+            can_edit: true,
+            can_rotate_secret: true,
+            can_revoke: true,
+            active_token_count: 0,
+            last_used_at: None,
+            created_at: Utc::now(),
+        };
+        let result = OAuthAppSecretResult {
+            app,
+            client_secret: "super-secret-client-value".to_string(),
+        };
+
+        let rendered = format!("{result:?}");
+        assert!(!rendered.contains("super-secret-client-value"));
+        assert!(rendered.contains("<redacted>"));
+    }
+
+    #[test]
     fn mutation_errors_have_stable_operator_safe_categories() {
         assert_eq!(
             AuthAdminMutationError::Forbidden("users:create required".into()).to_string(),
