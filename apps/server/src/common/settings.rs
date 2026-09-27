@@ -1245,6 +1245,13 @@ pub(crate) fn is_production_environment() -> bool {
     })
 }
 
+pub(crate) fn demo_mode_token_exposure_enabled() -> bool {
+    !is_production_environment()
+        && std::env::var("RUSTOK_DEMO_MODE")
+            .map(|value| value == "1")
+            .unwrap_or(false)
+}
+
 fn email_disabled_production_override_enabled() -> bool {
     std::env::var("RUSTOK_EMAIL_ALLOW_DISABLED_IN_PRODUCTION")
         .map(|value| {
