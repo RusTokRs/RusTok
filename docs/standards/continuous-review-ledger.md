@@ -7,6 +7,72 @@ source_language: markdown
 status: active
 ---
 
+## Deep Full-Stack Audit Cycle — 2026-09-27
+
+**Status:** ACTIVE  
+**Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. The previous ACRE component round remains historical evidence; its `100%` component status does **not** close this deeper cross-layer audit.
+
+**Execution contract**
+- Canonical trigger: `реализуй план аудита`
+- Plan state: this section plus the phase table below are the temporary living plan for the current cycle.
+- Progress state: maintained here and in this ledger entry; do not create a second audit checklist.
+- Ordering: one phase at a time, strictly in order.
+- Base: begin each phase from freshly refreshed `main`.
+- Integration: phase branch → implementation/audit commit → PR to `main` → merge → refresh `main`.
+- Tests: maintainer runs test suites. The agent does not run test suites unless this rule is explicitly changed.
+- Completion: a phase is complete only after its repository-owned findings are fixed or explicitly recorded as blocked by an ADR/user decision, and the branch has been integrated into `main`.
+- Quality bar: audit root causes and business invariants, not just syntax, lint, or pattern counts.
+
+### Session Contract Read Record
+
+- [x] `AGENTS.md` read.
+- [x] `docs/index.md` read.
+- [x] `ARCHITECTURE.md` read.
+- [x] `docs/CONTINUOUS_CODE_REVIEW.md` read.
+- [x] `docs/standards/continuous-review-ledger.md` read.
+- [x] User audit contract recorded: full-stack/server-to-libraries scope, sequential execution, branch/commit/merge workflow, maintainer-owned tests, single trigger `реализуй план аудита`.
+- [x] `agents.md` checked and confirmed absent; `AGENTS.md` is the canonical governance file.
+- **Initial main SHA:** `3ba0ced2de0ad84a4e35a6a867ef1be6c350f05d`
+
+### Phase Order
+
+| Phase | Scope | Audit focus | Status |
+|---|---|---|:---:|
+| FS-00 | Governance & repository topology | manifests, workspace graph, ADR/Docs authority, generated surfaces, scripts, branch/CI conventions, auditability | [ ] |
+| FS-01 | Deployment/server/runtime boundary | process model, HTTP/TLS/proxy assumptions, runtime config, startup/shutdown, secrets, environment, fail-closed behavior, observability, resource limits | [ ] |
+| FS-02 | `apps/server` composition root | routing, middleware, request context, auth/session, tenant/channel/locale resolution, error mapping, GraphQL/REST/server functions, host composition | [ ] |
+| FS-03 | Stable foundation/API crates | `rustok-api`, runtime/web/context contracts, dependency direction, shared types, transport/error contracts, accidental domain leakage | [ ] |
+| FS-04 | Workers, jobs, queue, outbox | worker ownership, retries/idempotency, leases, concurrency, delivery guarantees, dead-letter paths, shutdown/recovery, telemetry | [ ] |
+| FS-05 | Core platform modules | modules/control-plane, tenant, auth, RBAC, channel, cache, email, index/search/outbox/events, lifecycle/settings | [ ] |
+| FS-06 | Commerce domain | cart, customer, product, relations, pricing, inventory, order, payment, fulfillment, commerce orchestration, marketplace family | [ ] |
+| FS-07 | Content/social domain | content, taxonomy, translation, profiles, social graph, reactions, groups, moderation, comments | [ ] |
+| FS-08 | Publishing/community domain | blog, pages, forum, navigation, page-builder, SEO, notifications and cross-module projections | [ ] |
+| FS-09 | Capability/extension modules | AI, MCP, Iggy/connectors, Alloy, Flex, repository connectors and external/provider seams | [ ] |
+| FS-10 | Module-owned UI packages | all module `admin/`, `storefront/`, `next-admin/` packages; transport ownership, auth, locale, tenant and UI/data parity | [ ] |
+| FS-11 | Leptos applications | `apps/admin`, `apps/storefront`; SSR/hydration, routing, server functions, browser trust, caching, i18n, forms and operator paths | [ ] |
+| FS-12 | Next.js applications | `apps/next-admin`, `apps/next-frontend`; server/client boundaries, proxying, auth, GraphQL, SEO, caching, browser security and tenant propagation | [ ] |
+| FS-13 | Shared frontend/browser packages | `packages/*`, UI cores, richtext, generated clients, shared state, URL/security helpers, duplicated semantics | [ ] |
+| FS-14 | Storage/schema/migrations | all module migrations, entity/schema parity, cross-backend behavior, constraints, indexes, rollback/down paths, data-loss hazards | [ ] |
+| FS-15 | Utilities/installer/build/release tooling | `crates/utils/*`, installer, source/publication/signing, CLI tooling, build scripts, deployment tooling and operator safety | [ ] |
+| FS-16 | Shared libraries | `crates/libs/*`, UI foundations, common infrastructure and reusable abstractions; ownership, API stability, hidden coupling, dependency direction | [ ] |
+| FS-17 | Dependency & supply-chain closure | Cargo/npm lockfiles, duplicate/unused dependencies, feature flags, unsafe/advisory surfaces, generated code provenance, licenses/policies where repository contracts require them | [ ] |
+| FS-18 | Cross-cutting business scenarios | end-to-end invariants spanning owners: tenant isolation, auth/RBAC, money, lifecycle, idempotency, events, projections, cache invalidation, locale/channel context, destructive operations | [ ] |
+| FS-19 | Final architecture reconciliation | dependency graph, boundary violations, dead/duplicate paths, stale docs/ADRs, generated artifacts, canonical vocabulary, remaining TODO/placeholder risk | [ ] |
+| FS-20 | Release-readiness handoff | final ledger reconciliation, unresolved findings, maintainer test matrix, verification commands/evidence gaps, clean main baseline | [ ] |
+
+### Definition of Done for Every Phase
+
+- [ ] Every relevant production path and boundary has been inspected, not only obvious entrypoints.
+- [ ] Business invariants and failure states are documented in the audit notes.
+- [ ] Cross-tenant / cross-principal / cross-channel / cross-locale leakage risks are checked.
+- [ ] Concurrency, retry, idempotency and transaction boundaries are checked where applicable.
+- [ ] Persistence, migrations and rollback implications are checked where applicable.
+- [ ] All repository-owned defects found in scope are implemented in the phase branch or explicitly blocked by an owner decision/ADR.
+- [ ] Tests are inspected but left for maintainer execution unless the test-running rule is explicitly changed.
+- [ ] Ledger status and evidence are updated before integration.
+
+---
+
 # Continuous Code Review & Remediation Ledger (ACRE)
 
 Tracking persistent progress across cyclical review rounds for all modules in RusToK.

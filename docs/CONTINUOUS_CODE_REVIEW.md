@@ -21,11 +21,12 @@ status: active
 > **Single Trigger Instruction for Any AI Agent:**
 > To start any AI model (Codex, Claude, Cursor, Antigravity, local LLM) on this continuous deep review loop:
 > ```
-> Проведи глубокий код-ревью по docs/CONTINUOUS_CODE_REVIEW.md
+> реализуй план аудита
 > ```
 > *(or in English: `Execute deep code review per docs/CONTINUOUS_CODE_REVIEW.md`)*
 >
 > The agent reads this guide, takes the next pending module from the ledger, conducts a deep audit across all 6 engineering pillars, verifies changes via gatekeeper, and records progress in the ledger.
+For repository-wide work, the trigger above is the complete task instruction: it means execute the next pending phase in the **Deep Full-Stack Audit Cycle** in the ledger, starting from the refreshed `main`, fixing in-scope findings, and integrating the phase through the branch → commit → PR → merge workflow defined by `AGENTS.md`.
 
 ---
 
