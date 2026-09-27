@@ -6,6 +6,7 @@ use rustok_outbox::TransactionalEventBus;
 use rustok_pages::dto::{CreatePageInput, PageBodyInput, PageTranslationInput};
 use rustok_pages::services::PageService;
 
+use crate::error::StarterResult;
 use crate::model::PageStarter;
 
 /// Imports landing pages declared in the blueprint.
@@ -16,7 +17,7 @@ pub async fn import_pages(
     security: &SecurityContext,
     pages: &[PageStarter],
     locale: &str,
-) -> Result<(usize, usize), Box<dyn std::error::Error + Send + Sync>> {
+) -> StarterResult<(usize, usize)> {
     let service = PageService::new(db.clone(), event_bus.clone());
     let mut created = 0;
     let mut skipped = 0;

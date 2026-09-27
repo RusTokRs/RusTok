@@ -8,6 +8,7 @@ use rustok_blog::{
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
+use crate::error::StarterResult;
 use crate::model::{BlogPostStarter, TaxonomyCategoryStarter};
 
 /// Imports blog categories using the canonical Blog CategoryService (which synchronizes with Taxonomy).
@@ -18,7 +19,7 @@ pub async fn import_blog_categories(
     security: &SecurityContext,
     categories: &[TaxonomyCategoryStarter],
     locale: &str,
-) -> Result<(HashMap<String, Uuid>, usize, usize), Box<dyn std::error::Error + Send + Sync>> {
+) -> StarterResult<(HashMap<String, Uuid>, usize, usize)> {
     let cat_service = BlogCategoryService::new(db.clone(), event_bus.clone());
     let mut slug_to_id = HashMap::new();
     let mut created = 0;
@@ -71,7 +72,7 @@ pub async fn import_blog_posts(
     posts: &[BlogPostStarter],
     category_map: &HashMap<String, Uuid>,
     locale: &str,
-) -> Result<(usize, usize), Box<dyn std::error::Error + Send + Sync>> {
+) -> StarterResult<(usize, usize)> {
     let post_service = PostService::new(db.clone(), event_bus.clone());
     let mut created = 0;
     let mut skipped = 0;

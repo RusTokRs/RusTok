@@ -10,6 +10,7 @@ use rustok_forum::{
 };
 use rustok_outbox::TransactionalEventBus;
 
+use crate::error::StarterResult;
 use crate::model::{ForumCategoryStarter, ForumTopicStarter};
 
 fn collect_tree_categories(nodes: &[CategoryTreeNode], map: &mut HashMap<String, Uuid>) {
@@ -26,7 +27,7 @@ pub async fn import_forum_categories(
     security: &SecurityContext,
     categories: &[ForumCategoryStarter],
     locale: &str,
-) -> Result<(HashMap<String, Uuid>, usize, usize), Box<dyn std::error::Error + Send + Sync>> {
+) -> StarterResult<(HashMap<String, Uuid>, usize, usize)> {
     let cat_service = ForumCategoryService::new(db.clone());
     let mut slug_to_id = HashMap::new();
     let mut created = 0;
@@ -92,7 +93,7 @@ pub async fn import_forum_topics(
     topics: &[ForumTopicStarter],
     category_map: &HashMap<String, Uuid>,
     locale: &str,
-) -> Result<(usize, usize, usize), Box<dyn std::error::Error + Send + Sync>> {
+) -> StarterResult<(usize, usize, usize)> {
     let topic_service = TopicService::new(db.clone(), event_bus.clone());
     let reply_service = ReplyService::new(db.clone(), event_bus.clone());
     let moderation_service = ModerationService::new(db.clone(), event_bus.clone());

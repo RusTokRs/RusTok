@@ -8,7 +8,7 @@ This slice closes the payload-diagnostic gap in Product-owned `map_product_publi
 
 The mapper still accepts `CommerceError`, creates one `ProductPublicError`, and preserves its safe message, stable code, retryability, generated correlation id, and display reference. Consumer adapters, requests, responses, fallback behavior, and transport composition are unchanged.
 
-All eight current `CommerceError` variants remain mapped:
+Coverage: all eight current `CommerceError` variants remain mapped:
 
 - database;
 - product not found;

@@ -79,6 +79,10 @@ pub fn generate_variant_title_from_axis_values(values: &[&str]) -> String {
     }
 }
 
+pub fn format_product_media_url(media_id: Uuid) -> String {
+    format!("/api/v1/media/{media_id}")
+}
+
 pub fn preferred_product_locale_from_translations(
     translations: &[ProductTranslationInput],
 ) -> String {

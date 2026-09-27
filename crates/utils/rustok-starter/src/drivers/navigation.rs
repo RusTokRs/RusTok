@@ -7,6 +7,7 @@ use rustok_navigation::dto::{
 };
 use rustok_navigation::services::MenuService;
 
+use crate::error::StarterResult;
 use crate::model::NavigationMenuStarter;
 
 /// Imports navigation menus and menu trees.
@@ -16,7 +17,7 @@ pub async fn import_navigation(
     security: &SecurityContext,
     menus: &[NavigationMenuStarter],
     locale: &str,
-) -> Result<(usize, usize), Box<dyn std::error::Error + Send + Sync>> {
+) -> StarterResult<(usize, usize)> {
     let service = MenuService::new(db.clone());
     let mut created = 0;
     let mut skipped = 0;

@@ -440,7 +440,7 @@ impl CatalogService {
                     ProductImageResponse {
                         id: image.id,
                         media_id: image.media_id,
-                        url: format!("/api/v1/media/{}", image.media_id),
+                        url: format_product_media_url(image.media_id),
                         alt_text,
                         position: image.position,
                         translations: translations

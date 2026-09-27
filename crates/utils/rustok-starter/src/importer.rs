@@ -11,6 +11,7 @@ use crate::drivers::{
     import_blog_categories, import_blog_posts, import_forum_categories, import_forum_topics,
     import_navigation, import_pages,
 };
+use crate::error::StarterResult;
 use crate::model::{StarterBlueprint, StarterExecutionReport};
 
 /// The canonical orchestrator for importing Starter Blueprints into a tenant workspace.
@@ -30,7 +31,7 @@ impl StarterEngine {
         tenant_id: Uuid,
         security: &SecurityContext,
         blueprint: &StarterBlueprint,
-    ) -> Result<StarterExecutionReport, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> StarterResult<StarterExecutionReport> {
         let start_time = Instant::now();
         let locale = &blueprint.locale;
 

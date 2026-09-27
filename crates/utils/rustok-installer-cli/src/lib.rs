@@ -118,7 +118,7 @@ impl CommandProvider for InstallerCommandProvider {
         });
         let registry = rustok_distribution::build_registry();
         let ports =
-            SeaOrmInstallerBootstrapPorts::new(db, &registry, profile.default_enabled_modules());
+            SeaOrmInstallerBootstrapPorts::new(db.clone(), &registry, profile.default_enabled_modules());
         let result = execute_seed_profile(
             SeedExecutionRequest {
                 profile,
@@ -135,7 +135,34 @@ impl CommandProvider for InstallerCommandProvider {
         )
         .await
         .map_err(failed)?;
-        Ok(CommandOutcome::success("Seed profile applied").with_data(serde_json::json!({ "tenant_id": result.tenant.id, "tenant_slug": result.tenant.slug, "enabled_modules": result.enabled_modules })))
+
+        let starter_name = option(options, "starter");
+        let starter_report = if let Some(starter_name) = starter_name {
+            let blueprint = if starter_name == "default" {
+                rustok_starter::default_starter()
+            } else {
+                return Err(input(format!("Unknown starter blueprint: {}", starter_name)));
+            };
+            let event_bus = rustok_outbox::TransactionalEventBus::new(std::sync::Arc::new(
+                rustok_outbox::OutboxTransport::new(db.clone()),
+            ));
+            let engine = rustok_starter::StarterEngine::new(db, event_bus);
+            let security = rustok_core::SecurityContext::system();
+            let report = engine
+                .import_blueprint(result.tenant.id, &security, &blueprint)
+                .await
+                .map_err(failed)?;
+            Some(report)
+        } else {
+            None
+        };
+
+        Ok(CommandOutcome::success("Seed profile applied").with_data(serde_json::json!({
+            "tenant_id": result.tenant.id,
+            "tenant_slug": result.tenant.slug,
+            "enabled_modules": result.enabled_modules,
+            "starter": starter_report,
+        })))
     }
 }
 
@@ -197,6 +224,72 @@ impl InstallerCommandProvider {
                 })),
             ),
         }
+    }
+
+    async fn starter_import_command(
+        &self,
+        args: &serde_json::Value,
+        dry_run: bool,
+    ) -> CliCoreResult<CommandOutcome> {
+        let options = &args["options"];
+        let tenant_slug = option(options, "tenant_slug")
+            .or_else(|| option(options, "tenant"))
+            .unwrap_or_else(|| "demo".to_string());
+        let starter_name = option(options, "blueprint")
+            .or_else(|| option(options, "starter"))
+            .or_else(|| option(options, "name"))
+            .unwrap_or_else(|| "default".to_string());
+        let file_path = option(options, "file");
+
+        let blueprint = if let Some(path) = file_path {
+            let content = std::fs::read_to_string(&path)
+                .map_err(|err| failed(format!("Failed to read blueprint file `{}`: {}", path, err)))?;
+            serde_json::from_str::<rustok_starter::StarterBlueprint>(&content)
+                .map_err(|err| failed(format!("Failed to parse blueprint JSON `{}`: {}", path, err)))?
+        } else if starter_name == "default" {
+            rustok_starter::default_starter()
+        } else {
+            return Err(input(format!("Unknown starter blueprint: {}", starter_name)));
+        };
+
+        if dry_run {
+            return Ok(CommandOutcome::success(
+                "Starter blueprint validated; dry run does not mutate state.",
+            )
+            .with_data(serde_json::json!({
+                "tenant_slug": tenant_slug,
+                "blueprint_id": blueprint.id,
+                "blueprint_name": blueprint.name,
+                "locale": blueprint.locale,
+                "dry_run": true,
+            })));
+        }
+
+        let db = db_clone(
+            self.runtime
+                .require_host()
+                .map_err(|error| failed(error.to_string()))?,
+        );
+
+        let tenant_service = rustok_tenant::services::TenantService::new(db.clone());
+        let tenant = tenant_service
+            .get_tenant_by_slug(&tenant_slug)
+            .await
+            .map_err(|err| failed(format!("Tenant `{}` not found: {}", tenant_slug, err)))?;
+
+        let event_bus = rustok_outbox::TransactionalEventBus::new(std::sync::Arc::new(
+            rustok_outbox::OutboxTransport::new(db.clone()),
+        ));
+        let engine = rustok_starter::StarterEngine::new(db, event_bus);
+        let security = rustok_core::SecurityContext::system();
+
+        let report = engine
+            .import_blueprint(tenant.id, &security, &blueprint)
+            .await
+            .map_err(failed)?;
+
+        Ok(CommandOutcome::success("Starter blueprint imported successfully")
+            .with_data(serde_json::to_value(&report).map_err(failed)?))
     }
 }
 
@@ -453,4 +546,29 @@ mod tests {
         assert!(!outcome.data.to_string().contains("admin12345"));
         assert!(!outcome.data.to_string().contains("rustok:secret"));
     }
+
+    #[tokio::test]
+    async fn starter_import_dry_run_validates_default_blueprint_without_runtime_database() {
+        let runtime = RuntimeComposition::without_database(serde_json::Value::Null);
+        let provider = command_provider(&runtime);
+        let outcome = provider
+            .execute(CommandRequest {
+                namespace: "starter".to_string(),
+                name: "import".to_string(),
+                args: serde_json::json!({
+                    "options": {
+                        "tenant_slug": "demo",
+                        "starter": "default"
+                    }
+                }),
+                dry_run: true,
+            })
+            .await
+            .expect("starter import dry run should not require a database runtime");
+
+        assert_eq!(outcome.exit_code, 0);
+        assert_eq!(outcome.data["blueprint_id"], "default-starter");
+        assert_eq!(outcome.data["dry_run"], true);
+    }
 }
+

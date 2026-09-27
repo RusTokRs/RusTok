@@ -1,4 +1,5 @@
 use super::*;
+use rustok_core::error::Error as CoreError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult};
 
 async fn find_product_for_update_in_tx(
@@ -274,7 +275,15 @@ impl CatalogService {
             )
             .await?;
 
-            let variant_title = "Default".to_string();
+            let variant_title = if !var_input.axis_values.is_empty() {
+                let variant_model = entities::product_variant::Entity::find_by_id(variant_id)
+                    .one(&txn)
+                    .await?
+                    .ok_or(CommerceError::VariantNotFound(variant_id))?;
+                generate_variant_title(&variant_model)
+            } else {
+                "Default".to_string()
+            };
             for locale in &translation_locales {
                 variant_translation_models.push(entities::variant_translation::ActiveModel {
                     id: Set(generate_id()),
@@ -313,7 +322,7 @@ impl CatalogService {
                 .translations
                 .first()
                 .map(|translation| translation.locale.as_str())
-                .unwrap_or("en");
+                .unwrap_or(PLATFORM_FALLBACK_LOCALE);
             self.sync_product_tags_in_tx(&txn, tenant_id, product_id, locale, tags)
                 .await?;
         }
@@ -1201,7 +1210,7 @@ impl CatalogService {
         Ok(ProductImageResponse {
             id: image_id,
             media_id: input.media_id,
-            url: format!("/api/v1/media/{}", input.media_id),
+            url: format_product_media_url(input.media_id),
             alt_text: input.alt_text,
             position,
             translations,
@@ -1293,7 +1302,7 @@ impl CatalogService {
         Ok(ProductImageResponse {
             id: image_id,
             media_id: updated_image.media_id,
-            url: format!("/api/v1/media/{}", updated_image.media_id),
+            url: format_product_media_url(updated_image.media_id),
             alt_text: input.alt_text,
             position,
             translations: all_translations,
@@ -1537,17 +1546,19 @@ pub(crate) async fn assign_variant_axis_values_in_tx(
 
         let value_id = match row {
             Some(r) => r.id,
-            None => {
-                IdRow::find_by_statement(Statement::from_sql_and_values(
-                    txn.get_database_backend(),
-                    "SELECT id FROM product_variant_attribute_values WHERE tenant_id = $1 AND variant_id = $2 AND attribute_id = $3",
-                    vec![tenant_id.into(), variant_id.into(), val.attribute_id.into()],
+            None => IdRow::find_by_statement(Statement::from_sql_and_values(
+                txn.get_database_backend(),
+                "SELECT id FROM product_variant_attribute_values WHERE tenant_id = $1 AND variant_id = $2 AND attribute_id = $3",
+                vec![tenant_id.into(), variant_id.into(), val.attribute_id.into()],
+            ))
+            .one(txn)
+            .await?
+            .map(|r| r.id)
+            .ok_or_else(|| {
+                CommerceError::Core(CoreError::Internal(
+                    "failed to resolve variant attribute value identity after upsert".to_string(),
                 ))
-                .one(txn)
-                .await?
-                .map(|r| r.id)
-                .unwrap_or_else(generate_id)
-            }
+            })?,
         };
 
         txn.execute_raw(Statement::from_sql_and_values(
