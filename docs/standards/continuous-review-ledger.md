@@ -10,7 +10,7 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-11 — Leptos applications (implementation complete on branch; integration pending; tests remain maintainer-owned).  
+**Active phase:** FS-12 — Next.js applications (audit in progress; tests remain maintainer-owned).  
 **Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
 
 ### FS-01 Pre-Implementation Audit Findings
@@ -808,3 +808,10 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Implementation:** `apps/admin/src/app/auth_ssr.rs` and `apps/admin/src/main.rs` implement the verified SSR snapshot middleware and request-extension boundary. `DECISIONS/2026-09-27-leptos-httponly-session-migration.md` defines the complete later migration contract.
 
 **Verification state:** tests/builds were not run by the agent. Maintainer execution remains required. FS-11 implementation is ready for integration.
+
+
+### FS-12 Pre-Implementation Audit Findings
+
+- [ ] **NEXT-01 — Next.js server/client trust boundary requires audit.** Verify browser-provided tenant, user, role and provider data cannot become server authority, and server actions route mutations through canonical backend owner boundaries.
+- [ ] **NEXT-02 — proxy/middleware/auth and caching require audit.** Verify auth/session cookies, proxy rewrites, cache headers, route handlers and server-side fetches cannot cross tenant/session boundaries or cache authenticated data publicly.
+- [ ] **NEXT-03 — GraphQL/REST/SEO data loading requires audit.** Verify server components, route handlers and metadata generation use tenant/locale context from trusted request state, avoid secret leakage in HTML, and preserve fail-closed authorization semantics.
