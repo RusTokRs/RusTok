@@ -67,6 +67,7 @@ import { ModuleUpdateCard } from './module-update-card';
 import { TransitionControlCard } from './transition-control-card';
 import { ModuleSettingsDialog } from './module-settings-dialog';
 import { ForumModuleSettingsFields } from './module-settings-fields/forum';
+import { BlogModuleSettingsFields } from './module-settings-fields/blog';
 
 interface ModulesListProps {
   adminSurface: 'leptos-admin' | 'next-admin';
@@ -1106,6 +1107,14 @@ export function ModulesList({
             settingsDialog.slug === 'forum'
               ? ({ settingsText, onSettingsTextChange, disabled }) => (
                   <ForumModuleSettingsFields
+                    settingsText={settingsText}
+                    onSettingsTextChange={onSettingsTextChange}
+                    disabled={disabled}
+                  />
+                )
+              : settingsDialog.slug === 'blog'
+              ? ({ settingsText, onSettingsTextChange, disabled }) => (
+                  <BlogModuleSettingsFields
                     settingsText={settingsText}
                     onSettingsTextChange={onSettingsTextChange}
                     disabled={disabled}

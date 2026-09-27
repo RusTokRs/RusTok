@@ -24,7 +24,10 @@ export function ForumModuleSettingsFields({
     try {
       const parsed = JSON.parse(settingsText || '{}');
       return Boolean(
-        parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.use_reactions === true
+        parsed &&
+        typeof parsed === 'object' &&
+        !Array.isArray(parsed) &&
+        parsed.use_reactions === true
       );
     } catch {
       return false;
@@ -46,16 +49,21 @@ export function ForumModuleSettingsFields({
   };
 
   return (
-    <div className='flex items-center justify-between rounded-lg border bg-muted/20 p-3'>
+    <div className='bg-muted/20 flex items-center justify-between rounded-lg border p-3'>
       <div className='space-y-1 pr-4'>
         <label className='text-sm font-medium'>
           Use Reactions instead of internal voting
         </label>
         <p className='text-muted-foreground text-xs'>
-          Forum-specific setting. The shared Reactions module can stay enabled for other modules.
+          Forum-specific setting. The shared Reactions module can stay enabled
+          for other modules.
         </p>
       </div>
-      <Switch checked={use_reactions} disabled={disabled} onCheckedChange={handleChange} />
+      <Switch
+        checked={use_reactions}
+        disabled={disabled}
+        onCheckedChange={handleChange}
+      />
     </div>
   );
 }
