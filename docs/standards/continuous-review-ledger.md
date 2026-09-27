@@ -10,7 +10,7 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-12 — Next.js applications (audit in progress; tests remain maintainer-owned).  
+**Active phase:** FS-13 — shared frontend/browser packages (audit in progress; tests remain maintainer-owned).  
 **Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
 
 ### FS-01 Pre-Implementation Audit Findings
@@ -832,3 +832,10 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** Next-admin proxy/route auth, backend bearer forwarding, tenant propagation, module-enabled navigation, server-owned module mutations, Next storefront fixed-tenant composition, SEO REST/GraphQL fallback error taxonomy, same-origin SEO document fetching, runtime robots/sitemap handling, and server/client component boundaries. Starter routes required by docs all use `notFound()`.
 
 **Verification state:** no tests/builds were run by the agent. Maintainer execution remains required. FS-12 implementation is ready for integration.
+
+
+### FS-13 Pre-Implementation Audit Findings
+
+- [ ] **BROWSER-01 — reusable backend bearer credentials are persisted in browser-readable storage.** Shared auth currently permits access/refresh tokens in LocalStorage and NextAuth exposes the backend access token through the client-visible session. This expands any XSS blast radius and duplicates credential authority across browser storage/session layers.
+- [ ] **BROWSER-02 — cookie-authentication migration requires explicit CSRF and session lifecycle semantics.** Moving authority to HttpOnly cookies without a consistent SameSite/CSRF/rotation/revocation contract would create a second class of vulnerabilities. Verify native/GraphQL/browser adapters can share one server-issued session contract.
+- [ ] **BROWSER-03 — shared API clients must not accept browser-supplied tenant identity as authority.** Inspect token/tenant header construction, URL/query helpers and request contexts for client-controlled tenant values that can cross the canonical server tenant resolution boundary.
