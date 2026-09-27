@@ -7,6 +7,9 @@ on:
     paths:
       - "crates/ui/rustok-ui-i18n/**"
       - "crates/modules/rustok-notifications/storefront/**"
+      - "apps/admin/src/i18n.rs"
+      - "scripts/verify/verify-i18n-contract.mjs"
+      - "scripts/verify/verify-db-multilingual-contract.mjs"
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
@@ -15,6 +18,9 @@ on:
     paths:
       - "crates/ui/rustok-ui-i18n/**"
       - "crates/modules/rustok-notifications/storefront/**"
+      - "apps/admin/src/i18n.rs"
+      - "scripts/verify/verify-i18n-contract.mjs"
+      - "scripts/verify/verify-db-multilingual-contract.mjs"
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
@@ -48,7 +54,11 @@ jobs:
         with:
           workspaces: ". -> target"
       - name: Format
-        run: cargo fmt -p rustok-ui-i18n -- --check
+        run: |
+          cargo fmt -p rustok-ui-i18n -- --check
+          rustfmt --edition 2024 --check apps/admin/src/i18n.rs
+      - name: Repository i18n contract
+        run: node scripts/verify/verify-i18n-contract.mjs
       - name: Test
         run: cargo test -p rustok-ui-i18n --all-features
       - name: Consumer integration

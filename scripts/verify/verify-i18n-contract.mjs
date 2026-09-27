@@ -69,14 +69,14 @@ expectContains(
   "apps/next-admin to use platform fallback locale 'en'",
 );
 expectContains(
-  "apps/admin/build.rs",
-  'Config::new("en")?',
-  "Leptos admin generated i18n module to use platform fallback locale 'en'",
+  "apps/admin/src/i18n.rs",
+  'declare_module_i18n!(\n    "en",',
+  "admin runtime catalog to use platform fallback locale 'en'",
 );
 expectNotContains(
-  "apps/admin/build.rs",
-  'Config::new("ru")?',
-  "legacy Russian default in the Leptos admin generated i18n module",
+  "apps/admin/src/i18n.rs",
+  'declare_module_i18n!(\n    "ru",',
+  "legacy Russian default in the admin runtime catalog",
 );
 expectContains(
   "crates/modules/rustok-modules/src/static_package.rs",

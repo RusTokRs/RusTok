@@ -701,6 +701,8 @@ What it checks:
 Repo-side guardrail for the platform i18n contract.
 
 What it checks:
+- host defaults remain aligned on the platform fallback locale `en`, including
+  the framework-neutral admin runtime catalog;
 - key i18n contract rules remain consistent in source/documentation;
 - no regression in canonical locale handling paths for server-owned contract.
 

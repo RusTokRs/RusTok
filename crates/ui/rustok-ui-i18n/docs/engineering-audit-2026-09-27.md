@@ -154,6 +154,19 @@ production-парсинге **не подтвердились**.
 - **Исправление:** README, implementation plan, public API policy и этот аудит
   синхронизированы с кодом. Старый отчёт помечен superseded.
 
+### F-09 — repository i18n guard проверял удалённый build-time генератор
+
+- **Серьёзность:** средняя.
+- **Статус до:** подтверждено после основной матрицы аудита.
+- **Причина:** после миграции admin host на framework-neutral `rustok-ui-i18n`
+  verifier продолжал искать `Config::new("en")?` от удалённого Leptos build-time
+  генератора в `apps/admin/build.rs`. Проверка стабильно давала ложный baseline
+  failure и больше не защищала фактический runtime contract.
+- **Исправление:** fallback `en` явно объявлен рядом с реальными admin catalogs в
+  `apps/admin/src/i18n.rs`; verifier теперь проверяет эту декларацию и запрещает
+  возврат к `ru` как default. Unit test подтверждает fallback для `None` и
+  неподдерживаемой locale.
+
 ## Проверенные инварианты, не требующие изменения
 
 1. **Bidi:** `set_use_isolating(true)` вызывается при каждой сборке Rust bundle;
@@ -215,9 +228,9 @@ npm run verify:i18n:keys -- --strict
 - `cargo check -p rustok-ui-i18n --all-features --target wasm32-unknown-unknown` — PASS;
 - UI catalog parity — PASS;
 - strict UI key inventory — PASS (987 occurrences, 50 packages, 0 missing);
-- repository i18n contract — имеет независимый baseline failure в
-  `apps/admin/build.rs` (ожидаемый `Config::new("en")?` отсутствует); изменение
-  `rustok-ui-i18n` эту проверку не ухудшает.
+- repository i18n contract — PASS; устаревшая проверка удалённого build-time
+  генератора заменена проверкой фактического framework-neutral admin runtime
+  catalog, где fallback `en` объявлен явно.
 
 WASM check сначала выявил дефект provisioning самого workflow: target ставился для
 pinned toolchain, а `cargo` выбирал repository override `stable`. После привязки job
