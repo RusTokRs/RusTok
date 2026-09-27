@@ -93,11 +93,7 @@ impl<'a> UiTranslator<'a> {
     }
 
     /// Resolves a message and preserves the locale that supplied it.
-    pub fn resolve_with_locale(
-        &self,
-        locale: Option<&str>,
-        key: &str,
-    ) -> Option<ResolvedMessage> {
+    pub fn resolve_with_locale(&self, locale: Option<&str>, key: &str) -> Option<ResolvedMessage> {
         resolve_fluent_message_with_locale(
             self.fluent_catalog,
             locale,
@@ -536,10 +532,9 @@ fn collect_inline_contract(inline: &ast::InlineExpression<&str>, out: &mut Patte
         }
         ast::InlineExpression::MessageReference { id, attribute } => {
             let target = match attribute {
-                Some(attribute) => SchemaNodeId::MessageAttribute(
-                    id.name.to_string(),
-                    attribute.name.to_string(),
-                ),
+                Some(attribute) => {
+                    SchemaNodeId::MessageAttribute(id.name.to_string(), attribute.name.to_string())
+                }
                 None => SchemaNodeId::MessageValue(id.name.to_string()),
             };
             out.references.push(PatternReference {
@@ -622,8 +617,7 @@ fn resolve_node_variables(
                 reference: reference.target.display_name(),
             });
         }
-        let referenced =
-            resolve_node_variables(locale, &reference.target, nodes, memo, visiting)?;
+        let referenced = resolve_node_variables(locale, &reference.target, nodes, memo, visiting)?;
         variables.extend(
             referenced
                 .into_iter()
@@ -675,10 +669,7 @@ fn parse_locale_entry_schemas_for_normalized_locale(
                     insert_schema_node(
                         locale,
                         &mut nodes,
-                        SchemaNodeId::MessageAttribute(
-                            message_id.clone(),
-                            attribute_id.clone(),
-                        ),
+                        SchemaNodeId::MessageAttribute(message_id.clone(), attribute_id.clone()),
                         &attribute.value,
                     )?;
                     attributes.push(attribute_id);
@@ -703,10 +694,7 @@ fn parse_locale_entry_schemas_for_normalized_locale(
                     insert_schema_node(
                         locale,
                         &mut nodes,
-                        SchemaNodeId::TermAttribute(
-                            term_id.clone(),
-                            attribute.id.name.to_string(),
-                        ),
+                        SchemaNodeId::TermAttribute(term_id.clone(), attribute.id.name.to_string()),
                         &attribute.value,
                     )?;
                 }
@@ -717,13 +705,7 @@ fn parse_locale_entry_schemas_for_normalized_locale(
 
     let mut memo = BTreeMap::new();
     for node in nodes.keys() {
-        resolve_node_variables(
-            locale,
-            node,
-            &nodes,
-            &mut memo,
-            &mut BTreeSet::new(),
-        )?;
+        resolve_node_variables(locale, node, &nodes, &mut memo, &mut BTreeSet::new())?;
     }
 
     let mut result = BTreeMap::new();
@@ -818,8 +800,7 @@ pub fn validate_catalog_schemas(
         if locale_schemas.contains_key(&normalized) {
             return Err(BundleBuildError::DuplicateLocale { locale: normalized });
         }
-        let schemas =
-            parse_locale_entry_schemas_for_normalized_locale(&normalized, ftl_source)?;
+        let schemas = parse_locale_entry_schemas_for_normalized_locale(&normalized, ftl_source)?;
         locale_schemas.insert(normalized, schemas);
     }
 
@@ -970,8 +951,7 @@ impl UiMessages {
                     {
                         report.push_diagnostic(error);
                     } else if report.is_clean()
-                        && let Err(error) =
-                            validate_catalog_schemas(self.bundles, &default_locale)
+                        && let Err(error) = validate_catalog_schemas(self.bundles, &default_locale)
                     {
                         // Lenient rendering remains available, but startup health can
                         // now observe schema/reference defects without a second build.
@@ -1236,11 +1216,9 @@ pub fn validate_message_key(key: &str) -> Result<(), I18nError> {
 
 /// Validates a Fluent message attribute identifier.
 pub fn validate_message_attribute(attribute: &str) -> Result<(), I18nError> {
-    validate_identifier(attribute, false).map_err(|reason| {
-        I18nError::InvalidMessageAttribute {
-            attribute: diagnostic_identifier(attribute),
-            reason,
-        }
+    validate_identifier(attribute, false).map_err(|reason| I18nError::InvalidMessageAttribute {
+        attribute: diagnostic_identifier(attribute),
+        reason,
     })
 }
 
@@ -1360,9 +1338,9 @@ fn lookup_fluent_candidates<'args>(
             };
             let pattern = match part {
                 MessagePart::Value => message.value(),
-                MessagePart::Attribute(attribute) => {
-                    message.get_attribute(attribute).map(|attribute| attribute.value())
-                }
+                MessagePart::Attribute(attribute) => message
+                    .get_attribute(attribute)
+                    .map(|attribute| attribute.value()),
             };
             let Some(pattern) = pattern else {
                 continue;
@@ -1428,15 +1406,8 @@ pub fn try_resolve_fluent_attribute<'args>(
     attribute: &str,
     args: Option<&FluentArgs<'args>>,
 ) -> Result<String, I18nError> {
-    try_resolve_fluent_attribute_with_locale(
-        catalog,
-        locale,
-        default_locale,
-        key,
-        attribute,
-        args,
-    )
-    .map(ResolvedMessage::into_value)
+    try_resolve_fluent_attribute_with_locale(catalog, locale, default_locale, key, attribute, args)
+        .map(ResolvedMessage::into_value)
 }
 
 /// Strictly resolves a Fluent message attribute and preserves its source locale.
@@ -1523,13 +1494,7 @@ pub fn resolve_fluent_message_with_locale<'args>(
     args: Option<&FluentArgs<'args>>,
 ) -> Option<ResolvedMessage> {
     let candidates = locale_candidates(locale, default_locale);
-    resolve_fluent_candidates_with_locale(
-        catalog,
-        &candidates,
-        key,
-        MessagePart::Value,
-        args,
-    )
+    resolve_fluent_candidates_with_locale(catalog, &candidates, key, MessagePart::Value, args)
 }
 
 /// Resolves a Fluent message attribute using lenient UI semantics.
@@ -1541,15 +1506,8 @@ pub fn resolve_fluent_attribute<'args>(
     attribute: &str,
     args: Option<&FluentArgs<'args>>,
 ) -> Option<String> {
-    resolve_fluent_attribute_with_locale(
-        catalog,
-        locale,
-        default_locale,
-        key,
-        attribute,
-        args,
-    )
-    .map(ResolvedMessage::into_value)
+    resolve_fluent_attribute_with_locale(catalog, locale, default_locale, key, attribute, args)
+        .map(ResolvedMessage::into_value)
 }
 
 /// Resolves an attribute leniently and preserves the canonical source locale.

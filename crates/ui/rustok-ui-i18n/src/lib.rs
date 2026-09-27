@@ -303,8 +303,10 @@ page-builder-translations-localizedMetadataValuesPlaceholder =
     }
 
     mod mock_module {
-        const EN_FTL: &str = "test-title = Title\ntest-greet = Hello, { $name }!\n";
-        const RU_FTL: &str = "test-title = Заголовок\ntest-greet = Привет, { $name }!\n";
+        const EN_FTL: &str =
+            "test-title = Title\n    .aria-label = English title\ntest-greet = Hello, { $name }!\n";
+        const RU_FTL: &str =
+            "test-title = Заголовок\n    .aria-label = Русский заголовок\ntest-greet = Привет, { $name }!\n";
 
         super::declare_module_i18n!("en", &[("en", EN_FTL), ("ru", RU_FTL)]);
 
@@ -314,6 +316,18 @@ page-builder-translations-localizedMetadataValuesPlaceholder =
             assert_eq!(t(Some("ru"), "test.title", "Fallback"), "Заголовок");
             assert_eq!(t(Some("fr"), "test.title", "Fallback"), "Title");
             assert_eq!(t(Some("en"), "missing.key", "Fallback"), "Fallback");
+            assert_eq!(
+                format_attribute(
+                    Some("ru"),
+                    "test.title",
+                    "aria-label",
+                    None,
+                    "Fallback",
+                ),
+                "Русский заголовок"
+            );
+            assert!(validate().is_ok());
+            assert!(initialization_diagnostics().is_empty());
 
             let args = fluent_args!(name = "Иван");
             assert_eq!(

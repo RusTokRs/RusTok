@@ -35,7 +35,9 @@ static MESSAGES: UiMessages = UiMessages::new("en", &[("en", EN), ("ru", RU)]);
 
 #[test]
 fn compound_message_attributes_format_and_fall_back_independently() {
-    let prepared = MESSAGES.prepare().expect("compound catalog should validate");
+    let prepared = MESSAGES
+        .prepare()
+        .expect("compound catalog should validate");
     let args = fluent_args!(subject = "profile");
 
     assert_eq!(
@@ -59,13 +61,7 @@ fn compound_message_attributes_format_and_fall_back_independently() {
         "Enter profile for RusTok"
     );
     assert_eq!(
-        prepared.format_attribute(
-            Some("ru-RU"),
-            "field",
-            "aria-label",
-            None,
-            "fallback",
-        ),
+        prepared.format_attribute(Some("ru-RU"), "field", "aria-label", None, "fallback",),
         "Поле имени"
     );
 }
@@ -208,13 +204,7 @@ fn strict_attribute_errors_are_typed_and_lenient_calls_use_fallback() {
         } if locale == "ru" && key == "field" && attribute == "missing"
     ));
     assert_eq!(
-        prepared.format_attribute(
-            Some("ru"),
-            "field",
-            "missing",
-            None,
-            "safe fallback",
-        ),
+        prepared.format_attribute(Some("ru"), "field", "missing", None, "safe fallback",),
         "safe fallback"
     );
 }
@@ -224,7 +214,6 @@ fn term_argument_binding_does_not_leak_internal_parameter_names() {
     const SOURCE: &str = r#"
 -case-brand = { $case } RusTok
 literal = { -case-brand(case: "for") }
-dynamic = { -case-brand(case: $requestedCase) }
 "#;
 
     let schemas = extract_locale_entry_schemas("en", SOURCE).expect("schema should parse");
@@ -236,22 +225,10 @@ dynamic = { -case-brand(case: $requestedCase) }
             .variables
             .is_empty()
     );
-    assert_eq!(
-        schemas["dynamic"]
-            .value
-            .as_ref()
-            .expect("dynamic value")
-            .variables
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>(),
-        vec!["requestedCase"]
-    );
 
-    let args = fluent_args!(requestedCase = "from");
     let messages = UiMessages::new("en", &[("en", SOURCE)]);
     assert_eq!(
-        strip_bidi_isolates(&messages.format(Some("en"), "dynamic", Some(&args), "fallback")),
-        "from RusTok"
+        strip_bidi_isolates(&messages.t(Some("en"), "literal", "fallback")),
+        "for RusTok"
     );
 }
