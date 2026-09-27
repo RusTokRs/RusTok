@@ -10,7 +10,7 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-02 — `apps/server` composition root (audit in progress; tests remain maintainer-owned).  
+**Active phase:** FS-03 — stable foundation/API crates (audit in progress; tests remain maintainer-owned).  
 **Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
 
 ### FS-01 Pre-Implementation Audit Findings
@@ -657,3 +657,8 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Implemented:** registry route scope now separates platform-global registry operations from the single tenant-bound platform-build staging operation; the duplicate `/catalog` predicate was removed; controller-side remote-runner token validation now uses constant-time comparison to match the registry middleware.
 
 **Verification state:** Tests were inspected but not executed by the agent. Maintainer verification remains required. FS-02 implementation is ready for integration.
+
+
+### FS-03 Pre-Implementation Audit Findings
+
+- [ ] **FOUNDATION-01 — module registry contract accepts unmanifested runtime modules.** `validate_module_registry_contract` verifies manifest entries are present in the runtime registry, but never rejects registry entries absent from the manifest. Because the manifest is the declared deployment composition, an extra runtime module can therefore pass the contract and expose runtime capabilities not represented by the active manifest.
