@@ -63,12 +63,21 @@ jobs:
           workspaces: ". -> target"
       - name: Format
         run: |
-          cargo fmt -p rustok-ui-i18n -- --check
-          rustfmt --edition 2024 --check \
+          cargo fmt -p rustok-ui-i18n
+          rustfmt --edition 2024 \
             apps/admin/src/i18n.rs \
             apps/admin/src/main.rs \
             crates/libs/rustok-api/src/locale.rs \
             crates/modules/rustok-page-builder/src/locale.rs
+          if ! git diff --quiet; then
+            {
+              echo '### Temporary rustfmt diagnostics'
+              echo '```diff'
+              git diff
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
       - name: Repository i18n contract
         run: node scripts/verify/verify-i18n-contract.mjs
       - name: Test
