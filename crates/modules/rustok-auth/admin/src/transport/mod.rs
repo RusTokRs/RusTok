@@ -811,11 +811,21 @@ pub struct CreateOAuthAppResponse {
     pub create_oauth_app: CreateOAuthAppResult,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateOAuthAppResult {
     pub app: OAuthApp,
     pub client_secret: String,
+}
+
+impl std::fmt::Debug for CreateOAuthAppResult {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CreateOAuthAppResult")
+            .field("app", &self.app)
+            .field("client_secret", &"<redacted>")
+            .finish()
+    }
 }
 
 #[derive(serde::Serialize)]
