@@ -82,16 +82,6 @@ impl CommandProvider for InstallerCommandProvider {
                 });
             }
         }
-        if request.dry_run {
-            return Ok(CommandOutcome::success(
-                "Seed profile validated; dry run does not mutate state.",
-            ));
-        }
-        let db = db_clone(
-            self.runtime
-                .require_host()
-                .map_err(|error| failed(error.to_string()))?,
-        );
         let options = &request.args["options"];
         let seed_environment = option(options, "environment")
             .ok_or_else(|| input("seed apply requires an explicit --environment (local, demo, or test)"))?
@@ -105,6 +95,27 @@ impl CommandProvider for InstallerCommandProvider {
                 "seed apply is not allowed for production installations; use install apply",
             ));
         }
+
+        if request.dry_run {
+            return Ok(CommandOutcome::success(
+                "Seed profile validated; dry run does not mutate state.",
+            )
+            .with_data(serde_json::json!({
+                "environment": seed_environment.as_str(),
+                "profile": option(options, "profile")
+                    .as_deref()
+                    .map(SeedProfile::parse_cli_value)
+                    .transpose()
+                    .map_err(input)?
+                    .unwrap_or(SeedProfile::Dev)
+            })));
+        }
+
+        let db = db_clone(
+            self.runtime
+                .require_host()
+                .map_err(|error| failed(error.to_string()))?,
+        );
 
         let profile = option(options, "profile")
             .as_deref()
