@@ -15,7 +15,6 @@ env:
 
 jobs:
   pin-actions:
-    if: github.event.head_commit.message == 'audit(fs-17): execute global action pin migration'
     runs-on: ubuntu-24.04
     timeout-minutes: 6
     steps:
@@ -27,6 +26,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "${{ github.event.head_commit.message }}" != "audit(fs-17): run global action pin migration" ]]; then
+            echo "Migration trigger commit does not match; exiting."
+            exit 0
+          fi
           python3 scripts/maintenance/pin-workflow-actions.py
           git diff --check
 
