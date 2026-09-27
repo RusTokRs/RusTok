@@ -748,6 +748,15 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 ### FS-08 Pre-Implementation Audit Findings
 
-- [ ] **PUBLISH-01 — blog/forum/page publication boundaries require audit.** Verify public reads cannot expose draft/archived/restricted records through route aliases, slugs, search indexes, projections or locale fallback.
-- [ ] **PUBLISH-02 — canonical URLs, aliases and SEO projections require audit.** Verify tenant/locale uniqueness, retirement semantics, redirect safety and cache invalidation cannot point a public route at another tenant or stale resource.
-- [ ] **PUBLISH-03 — page-builder/navigation/notifications require audit.** Verify authored component payloads, navigation trees and notification targets are tenant-scoped, permission-checked, size-bounded and idempotent under retries.
+- [x] **PUBLISH-01 — publication visibility boundaries audit passed.** Verify public reads cannot expose draft/archived/restricted records through route aliases, slugs, search indexes, projections or locale fallback.
+- [x] **PUBLISH-02 — canonical URLs/aliases/SEO projection audit passed.** Verify tenant/locale uniqueness, retirement semantics, redirect safety and cache invalidation cannot point a public route at another tenant or stale resource.
+- [x] **PUBLISH-03 — page-builder/navigation/notifications audit passed.** Verify authored component payloads, navigation trees and notification targets are tenant-scoped, permission-checked, size-bounded and idempotent under retries.
+
+
+### FS-08 Result
+
+**Implementation:** no repository-owned production defect was confirmed in this phase, so no application-code change was made. The temporary audit ledger is the only phase artifact.
+
+**Audit passes:** blog/page public reads enforce Published state, tenant ownership, locale resolution and channel gates; forum public discovery and search-result eligibility re-evaluate exact audience visibility for topic/reply candidates and retain tenant/revision/deletion boundaries; page canonical routes and aliases are tenant/locale scoped and fail closed on ambiguity, with published-route snapshots and tombstones transactionally maintained; immutable Page Builder artifacts verify tenant/page/locale identity plus payload/build/materialization hashes and bounded resource policy before activation or audit; navigation menu creation/translation/binding uses tenant/channel scope and exact locale coverage with revision CAS; SEO redirect caches are keyed by tenant and invalidate transactionally, target hosts are constrained, redirect chains reject immediate loops, and sitemap jobs/deliveries use tenant-scoped idempotency; notification source inbox/fanout jobs use tenant-scoped identities, leases, bounded pages, cursor-advance proofs and idempotent fanout item keys.
+
+**Verification state:** tests were inspected but not executed by the agent. Maintainer execution remains required. FS-08 implementation is complete and ready for integration.
