@@ -77,4 +77,20 @@ jobs:
       - name: Clippy
         run: cargo clippy -p rustok-ui-i18n --all-targets --all-features -- -D warnings
       - name: WASM check
-        run: cargo check -p rustok-ui-i18n --all-features --target wasm32-unknown-unknown
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set +e
+          cargo check -p rustok-ui-i18n --all-features --target wasm32-unknown-unknown > /tmp/wasm.log 2>&1
+          status=$?
+          set -e
+          {
+            echo 'Temporary WASM audit validation output:'
+            echo
+            echo '```text'
+            tail -n 400 /tmp/wasm.log
+            echo '```'
+          } > /tmp/wasm-validation.md
+          gh pr comment "$PR_NUMBER" --body-file /tmp/wasm-validation.md
+          exit "$status"

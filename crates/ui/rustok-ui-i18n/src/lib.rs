@@ -305,8 +305,7 @@ page-builder-translations-localizedMetadataValuesPlaceholder =
     mod mock_module {
         const EN_FTL: &str =
             "test-title = Title\n    .aria-label = English title\ntest-greet = Hello, { $name }!\n";
-        const RU_FTL: &str =
-            "test-title = Заголовок\n    .aria-label = Русский заголовок\ntest-greet = Привет, { $name }!\n";
+        const RU_FTL: &str = "test-title = Заголовок\n    .aria-label = Русский заголовок\ntest-greet = Привет, { $name }!\n";
 
         super::declare_module_i18n!("en", &[("en", EN_FTL), ("ru", RU_FTL)]);
 
@@ -317,13 +316,7 @@ page-builder-translations-localizedMetadataValuesPlaceholder =
             assert_eq!(t(Some("fr"), "test.title", "Fallback"), "Title");
             assert_eq!(t(Some("en"), "missing.key", "Fallback"), "Fallback");
             assert_eq!(
-                format_attribute(
-                    Some("ru"),
-                    "test.title",
-                    "aria-label",
-                    None,
-                    "Fallback",
-                ),
+                format_attribute(Some("ru"), "test.title", "aria-label", None, "Fallback",),
                 "Русский заголовок"
             );
             assert!(validate().is_ok());
