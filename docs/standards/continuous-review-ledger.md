@@ -781,3 +781,8 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Additional observation for later phase:** Flex persisted-schema presentation currently maps malformed stored \`fields_config\` to an empty view in \`standalone_schema_view_from_source\`; this is a storage-corruption resilience concern and is deferred to FS-14 rather than silently changed here.
 
 **Verification state:** tests were inspected and regression coverage was added but not executed by the agent. Maintainer execution remains required. FS-09 implementation is ready for integration.
+
+
+### FS-10 Pre-Implementation Audit Findings
+
+- [ ] **UI-01 — auth admin transport DTOs expose bearer/password secrets through derived Debug.** `ApiRequestContext`/`ServerGraphqlRequest` contain the caller token and derive `Debug`; `CreateUserInput` contains a plaintext password and derives `Debug`. The UI transport contract must preserve serialization for requests but diagnostic formatting must redact credentials.
