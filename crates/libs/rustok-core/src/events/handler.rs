@@ -104,12 +104,25 @@ impl EventDispatcher {
             async move {
                 consumer_runtime.restarted("startup");
                 info!(handlers = handlers.len(), "Event dispatcher started");
+                if config.max_queue_depth == 0 {
+                    error!("Event dispatcher max_queue_depth must be greater than zero");
+                    return;
+                }
+
                 let max_concurrent = config.max_concurrent.max(1);
                 let semaphore = Arc::new(Semaphore::new(max_concurrent));
+                let queue = Arc::new(Semaphore::new(config.max_queue_depth));
 
                 loop {
                     match receiver.recv().await {
                         Ok(envelope) => {
+                            let queue_permit = match Arc::clone(&queue).acquire_owned().await {
+                                Ok(permit) => Arc::new(permit),
+                                Err(_) => {
+                                    error!("Event dispatcher queue semaphore closed");
+                                    break;
+                                }
+                            };
                             let span = tracing::info_span!(
                                 "event_dispatch",
                                 event_type = envelope.event.event_type(),
@@ -122,6 +135,7 @@ impl EventDispatcher {
                             let config = config.clone();
                             let semaphore = semaphore.clone();
                             let consumer_runtime = consumer_runtime;
+                            let queue_permit = queue_permit;
 
                             tokio::spawn(
                                 async move {
@@ -132,6 +146,7 @@ impl EventDispatcher {
                                         semaphore,
                                         bp,
                                         consumer_runtime,
+                                        queue_permit,
                                     )
                                     .await;
                                 }
@@ -161,6 +176,7 @@ impl EventDispatcher {
         semaphore: Arc<Semaphore>,
         backpressure: Option<Arc<super::backpressure::BackpressureController>>,
         consumer_runtime: EventConsumerRuntime,
+        queue_permit: Arc<tokio::sync::OwnedSemaphorePermit>,
     ) {
         let dispatch_started_at = Instant::now();
         let event_type = envelope.event.event_type().to_string();
@@ -229,6 +245,7 @@ impl EventDispatcher {
                     consumer_runtime: EventConsumerRuntime,
                     event_type: String,
                     dispatch_started_at: Instant,
+                    _queue_permit: Arc<tokio::sync::OwnedSemaphorePermit>,
                 }
 
                 impl Drop for CompletionGuard {
@@ -253,6 +270,7 @@ impl EventDispatcher {
                     consumer_runtime,
                     event_type,
                     dispatch_started_at,
+                    _queue_permit: Arc::clone(&queue_permit),
                 };
 
                 let _ = Self::handle_with_retry(handler, envelope, &config).await;
@@ -447,6 +465,80 @@ mod tests {
 
         assert_eq!(attempts.load(Ordering::SeqCst), 2);
         assert_eq!(error_notifications.load(Ordering::SeqCst), 0);
+    }
+
+
+
+    #[tokio::test]
+    async fn dispatcher_respects_max_queue_depth_before_receiving_more_events() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use tokio::sync::Notify;
+
+        struct BlockingHandler {
+            started: Arc<AtomicUsize>,
+            release: Arc<Notify>,
+        }
+
+        #[async_trait]
+        impl EventHandler for BlockingHandler {
+            fn name(&self) -> &'static str {
+                "blocking_queue_test"
+            }
+
+            fn handles(&self, _event: &DomainEvent) -> bool {
+                true
+            }
+
+            async fn handle(&self, _envelope: &EventEnvelope) -> HandlerResult {
+                self.started.fetch_add(1, Ordering::SeqCst);
+                self.release.notified().await;
+                Ok(())
+            }
+        }
+
+        let bus = EventBus::new();
+        let started = Arc::new(AtomicUsize::new(0));
+        let release = Arc::new(Notify::new());
+        let mut dispatcher = EventDispatcher::with_config(
+            bus.clone(),
+            DispatcherConfig {
+                max_concurrent: 1,
+                max_queue_depth: 1,
+                ..DispatcherConfig::default()
+            },
+        );
+        dispatcher.register(BlockingHandler {
+            started: Arc::clone(&started),
+            release: Arc::clone(&release),
+        });
+        let running = dispatcher.start();
+
+        bus.publish(Uuid::new_v4(), None, DomainEvent::IndexUpdated {
+            index_name: "products".to_string(),
+            target_id: Uuid::new_v4(),
+        }).expect("first event publish");
+        while started.load(Ordering::SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+
+        bus.publish(Uuid::new_v4(), None, DomainEvent::IndexUpdated {
+            index_name: "products".to_string(),
+            target_id: Uuid::new_v4(),
+        }).expect("second event publish");
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(started.load(Ordering::SeqCst), 1);
+
+        release.notify_one();
+        for _ in 0..100 {
+            if started.load(Ordering::SeqCst) == 2 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(started.load(Ordering::SeqCst), 2);
+        running.stop();
     }
 
     #[tokio::test]
