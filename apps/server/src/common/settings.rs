@@ -1968,6 +1968,7 @@ mod tests {
         let _prod = EnvVarGuard::set("RUST_ENV", "production");
 
         assert!(super::is_production_environment());
+        assert!(!super::demo_mode_token_exposure_enabled());
     }
 
 }
