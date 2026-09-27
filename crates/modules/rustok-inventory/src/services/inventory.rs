@@ -2,6 +2,7 @@ use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
     QueryFilter, QueryOrder, Set, TransactionTrait,
+    sea_query::{Expr, ExprTrait},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -560,7 +561,7 @@ impl InventoryService {
             .await?;
         let tracked_reservation_quantity = reservation_items
             .iter()
-            .map(|item| item.quantity.max(0))
+            .map(|item| Ord::max(item.quantity, 0))
             .sum::<i32>();
         if quantity > tracked_reservation_quantity {
             return Err(insufficient_reservation_items_release_error(
@@ -789,7 +790,7 @@ where
             continue;
         }
 
-        let released_quantity = remaining_quantity.min(item.quantity);
+        let released_quantity = Ord::min(remaining_quantity, item.quantity);
         let new_quantity = item.quantity - released_quantity;
         remaining_quantity -= released_quantity;
 
@@ -822,7 +823,7 @@ where
             continue;
         }
 
-        let released_quantity = remaining_quantity.min(level.reserved_quantity);
+        let released_quantity = Ord::min(remaining_quantity, level.reserved_quantity);
         let new_reserved_quantity = level.reserved_quantity - released_quantity;
         remaining_quantity -= released_quantity;
 

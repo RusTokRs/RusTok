@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use rust_decimal::Decimal;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
 use rustok_outbox::TransactionalEventBus;
-use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -316,15 +316,13 @@ pub trait CheckoutOrderIdentityPort: Send + Sync {
 
 #[derive(Clone)]
 pub struct InProcessCheckoutOrderIdentityPort {
-    db: DatabaseConnection,
     journal: OrderCheckoutIdentityJournal,
 }
 
 impl InProcessCheckoutOrderIdentityPort {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            journal: OrderCheckoutIdentityJournal::new(db.clone()),
-            db,
+            journal: OrderCheckoutIdentityJournal::new(db),
         }
     }
 }
@@ -420,6 +418,7 @@ pub struct BindCheckoutOrderIdentityRequest {
     pub request_hash: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CheckoutOrderIdentitySnapshot {
     pub checkout_operation_id: Uuid,
     pub tenant_id: Uuid,

@@ -791,14 +791,12 @@ async fn expired_lease_executor_is_fenced_from_order_creation_without_ghost_orde
         .checkpoint(rustok_commerce::services::CheckoutOperationCheckpoint {
             tenant_id,
             operation_id: op.id,
-            lease_owner: "executor-A",
-            expected_stage: rustok_commerce::services::CheckoutOperationStage::Executing,
+            lease_owner: "executor-A".to_string(),
+            expected_stage: rustok_commerce::services::CheckoutOperationStage::Created,
             next_stage: rustok_commerce::services::CheckoutOperationStage::InventoryReserved,
             snapshot_hash: None,
             order_id: None,
             payment_collection_id: None,
-            fulfillment_shipment_id: None,
-            last_error: None,
             lease_seconds: 10,
         })
         .await
@@ -817,7 +815,7 @@ async fn expired_lease_executor_is_fenced_from_order_creation_without_ghost_orde
         .expect("lease expired");
 
     // Executor A attempts create_pending_and_adopt with expired lease
-    let event_bus = rustok_outbox::TransactionalEventBus::new(db.clone());
+    let event_bus = mock_transactional_event_bus();
     let creation_executor = rustok_commerce::services::CheckoutOrderCreationExecutor::new(db.clone(), event_bus);
 
     let create_input = rustok_order::CreateOrderInput {
