@@ -10,7 +10,7 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-12 — Next.js applications (audit in progress; tests remain maintainer-owned).  
+**Active phase:** FS-13 — shared frontend/browser packages (audit in progress; tests remain maintainer-owned).  
 **Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
 
 ### FS-01 Pre-Implementation Audit Findings
@@ -832,3 +832,24 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** Next-admin proxy/route auth, backend bearer forwarding, tenant propagation, module-enabled navigation, server-owned module mutations, Next storefront fixed-tenant composition, SEO REST/GraphQL fallback error taxonomy, same-origin SEO document fetching, runtime robots/sitemap handling, and server/client component boundaries. Starter routes required by docs all use `notFound()`.
 
 **Verification state:** no tests/builds were run by the agent. Maintainer execution remains required. FS-12 implementation is ready for integration.
+
+
+### FS-13 Pre-Implementation Audit Findings
+
+- [x] **BROWSER-01 — browser-readable bearer persistence confirmed; full removal deferred by accepted browser-auth ADR to coordinated transport migration.** Shared auth currently permits access/refresh tokens in LocalStorage and NextAuth exposes the backend access token through the client-visible session. This expands any XSS blast radius and duplicates credential authority across browser storage/session layers.
+- [x] **BROWSER-02 — HttpOnly/Secure/SameSite/CSRF/rotation/revocation contract accepted in ADR; implementation deferred to coordinated migration.** Moving authority to HttpOnly cookies without a consistent SameSite/CSRF/rotation/revocation contract would create a second class of vulnerabilities. Verify native/GraphQL/browser adapters can share one server-issued session contract.
+- [x] **BROWSER-03 — tenant header is metadata only; backend re-resolves/validates tenant authority.** Inspect token/tenant header construction, URL/query helpers and request contexts for client-controlled tenant values that can cross the canonical server tenant resolution boundary.
+
+
+- [x] **BROWSER-04 — shared browser cookie parser now fails closed on malformed encoding and preserves `=` characters.** `getCookieValue` directly calls `decodeURIComponent` and splits on every `=`. A malformed cookie can throw during auth bootstrap, and values containing `=` are truncated. The parser should fail closed on invalid encoding and split only at the first delimiter.
+
+
+### FS-13 Result
+
+**Implemented:** `packages/rustok-ui-auth/browser/getCookieValue` now splits cookie pairs at the first structural delimiter only, decodes the complete remaining value, and returns undefined on malformed percent-encoding rather than throwing.
+
+**Architecture boundary:** BROWSER-01/02 are not hidden as “done”. Browser bearer persistence in Leptos LocalStorage and NextAuth client session remains a known architectural finding. The accepted browser-auth ADR makes the required full migration contract explicit and assigns completion to the coordinated shared browser transport migration. No partial token-storage removal was introduced.
+
+**Audit passes:** shared AuthSession Debug redaction, browser API tenant metadata semantics, route query sanitizer/writer, transport retry safety policy, shared AuthError mapping, and client/server separation. The backend remains the authority for tenant and authorization decisions.
+
+**Verification state:** no browser tests/builds were run by the agent. Maintainer execution remains required. FS-13 implementation is ready for integration.

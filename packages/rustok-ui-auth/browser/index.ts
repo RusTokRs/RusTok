@@ -32,10 +32,22 @@ export function mapAuthError(status: number, isLogin: boolean): AuthError {
 
 export function getCookieValue(name: string, cookieSource?: string) {
   const source = cookieSource ?? document.cookie;
+  const prefix = `${name}=`;
   const pair = source
-    .split("; ")
-    .find((row) => row.startsWith(`${name}=`));
-  return pair ? decodeURIComponent(pair.split("=")[1]) : undefined;
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix));
+
+  if (!pair) {
+    return undefined;
+  }
+
+  const encodedValue = pair.slice(prefix.length);
+  try {
+    return decodeURIComponent(encodedValue);
+  } catch {
+    return undefined;
+  }
 }
 
 export function getClientAuth(cookieSource?: string): AuthSession {
