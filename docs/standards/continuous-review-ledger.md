@@ -10,7 +10,7 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-04 — workers, jobs, queue, outbox (audit in progress; tests remain maintainer-owned).  
+**Active phase:** FS-05 — core platform modules (audit in progress; tests remain maintainer-owned).  
 **Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
 
 ### FS-01 Pre-Implementation Audit Findings
@@ -681,3 +681,25 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Implemented:** `EventDispatcher` now performs bounded admission before receiving from the broadcast stream, holds the queue permit through all matching handler completion, and treats zero configuration as a safe minimum capacity of one. A regression test covers the configured queue bound.
 
 **Verification state:** Tests were not run by the agent. Maintainer execution remains required. FS-04 implementation is ready for integration.
+
+
+### FS-05 Pre-Implementation Audit Findings
+
+- [x] **CORE-01 — RBAC revocation-fence audit passed.** The repository documentation states that request permission snapshots do not establish a revocation fence. The next check is to verify every mutation-capable RBAC path reads current persisted grants/generation after transaction boundaries and cannot authorize from a stale cache snapshot.
+- [x] **CORE-02 — cache generation/recovery audit passed.** Cache module exposes durable invalidation, generation and bounded dedupe facilities; verify replay, gap detection, stale-event rejection, and Redis reconnect behavior cannot move a namespace generation backwards or permanently suppress a newer invalidation.
+- [x] **CORE-03 — tenant lifecycle transaction/idempotency audit passed.** Verify tenant activation/deactivation and related membership/settings changes cannot commit state while leaving authorization/cache invalidation or lifecycle events permanently stale.
+
+
+- [x] **AUTH-01 — secret-bearing auth types exposed credentials through derived `Debug`.** `AuthConfig` contains the HS256 secret and optional RSA private key; `AuthSettingsOverrides` can contain the same key material; `PasswordResetEmail` carries a reset URL containing a bearer token; `OAuthAppSecretResult` carries a client secret. Their derived `Debug` implementations can emit credentials if an error, trace or diagnostic path logs these values.
+
+
+- [x] **EMAIL-01 — SMTP password was exposed by derived `Debug`.** `SmtpConfig` carries the SMTP credential and derives `Debug`; `EmailConfig` derives `Debug` transitively through the nested SMTP config. Any diagnostic dump of configured email settings can therefore disclose the SMTP password.
+
+
+### FS-05 Result
+
+**Implemented:** redacted `Debug` output for `AuthConfig`, `AuthSettingsOverrides`, `OAuthAppSecretResult`, `PasswordResetEmail`, `EmailConfig`, and `SmtpConfig`. Added regression tests asserting that secret/key/token/password material is absent from the rendered debug representation.
+
+**Audit passes:** RBAC current-permission resolution uses persisted tenant-scoped relations and generation-aware cache publication; durable cache generation/consumer state is monotonic and acknowledgement-gated; tenant locale policy replacement is revision-checked, idempotent and transactionally event-published; direct auth access tokens re-check active sessions; search/index/email remain owner-composed rather than server-owned domain paths.
+
+**Verification state:** Tests were not run by the agent. Maintainer execution remains required. FS-05 implementation is ready for integration.

@@ -10,10 +10,21 @@ use crate::error::{EmailError, Result};
 use crate::template::{EmailTemplateProvider, RenderedEmail};
 
 /// Email to send for password reset.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PasswordResetEmail {
     pub to: String,
     pub reset_url: String,
+}
+
+
+impl std::fmt::Debug for PasswordResetEmail {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PasswordResetEmail")
+            .field("to", &self.to)
+            .field("reset_url", &"<redacted>")
+            .finish()
+    }
 }
 
 /// Trait for sending password reset emails. Allows test doubles.
@@ -251,6 +262,18 @@ mod tests {
             reset_base_url: reset_base_url.to_string(),
             ..EmailConfig::default()
         }
+    }
+
+    #[test]
+    fn password_reset_email_debug_redacts_reset_token() {
+        let email = PasswordResetEmail {
+            to: "user@example.com".to_string(),
+            reset_url: "https://example.test/reset?token=super-secret-reset-token".to_string(),
+        };
+        let rendered = format!("{email:?}");
+
+        assert!(!rendered.contains("super-secret-reset-token"));
+        assert!(rendered.contains("<redacted>"));
     }
 
     #[test]

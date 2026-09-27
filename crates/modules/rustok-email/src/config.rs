@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct EmailConfig {
     #[serde(default)]
     pub enabled: bool,
@@ -12,7 +12,7 @@ pub struct EmailConfig {
     pub reset_base_url: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct SmtpConfig {
     #[serde(default = "default_smtp_host")]
     pub host: String,
@@ -22,6 +22,65 @@ pub struct SmtpConfig {
     pub username: String,
     #[serde(default)]
     pub password: String,
+}
+
+
+impl std::fmt::Debug for EmailConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("EmailConfig")
+            .field("enabled", &self.enabled)
+            .field("smtp", &self.smtp)
+            .field("from", &self.from)
+            .field("reset_base_url", &"<redacted>")
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for SmtpConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SmtpConfig")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field("password", &"<redacted>")
+            .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EmailConfig, SmtpConfig};
+
+    #[test]
+    fn email_config_debug_redacts_smtp_password() {
+        let mut config = EmailConfig::default();
+        config.smtp = SmtpConfig {
+            host: "smtp.example.test".to_string(),
+            port: 587,
+            username: "mailer".to_string(),
+            password: "super-secret-smtp-password".to_string(),
+        };
+
+        let rendered = format!("{config:?}");
+        assert!(!rendered.contains("super-secret-smtp-password"));
+        assert!(rendered.contains("<redacted>"));
+    }
+
+    #[test]
+    fn smtp_config_debug_redacts_password() {
+        let config = SmtpConfig {
+            host: "smtp.example.test".to_string(),
+            port: 587,
+            username: "mailer".to_string(),
+            password: "super-secret-smtp-password".to_string(),
+        };
+
+        let rendered = format!("{config:?}");
+        assert!(!rendered.contains("super-secret-smtp-password"));
+        assert!(rendered.contains("<redacted>"));
+    }
 }
 
 impl Default for EmailConfig {

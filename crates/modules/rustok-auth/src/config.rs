@@ -33,7 +33,7 @@ pub enum JwtAlgorithm {
 ///
 /// The server is responsible for constructing this from whatever config source
 /// it uses (YAML, environment variables, etc.). `rustok-auth` never reads config files.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AuthConfig {
     pub secret: String,
     pub access_expiration: u64,
@@ -46,6 +46,29 @@ pub struct AuthConfig {
     pub rsa_private_key_pem: Option<String>,
     /// RSA public key in PEM format. Required when `algorithm = RS256` for token decoding.
     pub rsa_public_key_pem: Option<String>,
+}
+
+
+impl std::fmt::Debug for AuthConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AuthConfig")
+            .field("secret", &"<redacted>")
+            .field("access_expiration", &self.access_expiration)
+            .field("refresh_expiration", &self.refresh_expiration)
+            .field("issuer", &self.issuer)
+            .field("audience", &self.audience)
+            .field("algorithm", &self.algorithm)
+            .field(
+                "rsa_private_key_pem",
+                &self.rsa_private_key_pem.as_ref().map(|_| "<redacted>"),
+            )
+            .field(
+                "rsa_public_key_pem",
+                &self.rsa_public_key_pem.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
 }
 
 impl AuthConfig {
@@ -91,7 +114,7 @@ impl AuthConfig {
 }
 
 /// Helper for loading auth settings from nested YAML `settings.rustok.auth`.
-#[derive(Debug, Deserialize, Default)]
+#[derive(Deserialize, Default)]
 pub struct AuthSettingsOverrides {
     pub refresh_expiration: Option<u64>,
     pub issuer: Option<String>,
@@ -101,6 +124,29 @@ pub struct AuthSettingsOverrides {
     pub rsa_public_key_pem: Option<String>,
     pub rsa_private_key_env: Option<String>,
     pub rsa_public_key_env: Option<String>,
+}
+
+
+impl std::fmt::Debug for AuthSettingsOverrides {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AuthSettingsOverrides")
+            .field("refresh_expiration", &self.refresh_expiration)
+            .field("issuer", &self.issuer)
+            .field("audience", &self.audience)
+            .field("algorithm", &self.algorithm)
+            .field(
+                "rsa_private_key_pem",
+                &self.rsa_private_key_pem.as_ref().map(|_| "<redacted>"),
+            )
+            .field(
+                "rsa_public_key_pem",
+                &self.rsa_public_key_pem.as_ref().map(|_| "<redacted>"),
+            )
+            .field("rsa_private_key_env", &self.rsa_private_key_env)
+            .field("rsa_public_key_env", &self.rsa_public_key_env)
+            .finish()
+    }
 }
 
 impl AuthSettingsOverrides {
@@ -303,6 +349,35 @@ mod tests {
 
     fn secret() -> String {
         "test-secret-key-for-unit-tests-only-32bytes!".to_string()
+    }
+
+    #[test]
+    fn auth_config_debug_redacts_secret_and_private_keys() {
+        let config = AuthConfig::new("super-secret-auth-key-0123456789".to_string())
+            .with_rs256("PRIVATE-KEY-MATERIAL", "PUBLIC-KEY-MATERIAL");
+        let rendered = format!("{config:?}");
+
+        assert!(!rendered.contains("super-secret-auth-key-0123456789"));
+        assert!(!rendered.contains("PRIVATE-KEY-MATERIAL"));
+        assert!(!rendered.contains("PUBLIC-KEY-MATERIAL"));
+        assert!(rendered.contains("<redacted>"));
+    }
+
+    #[test]
+    fn auth_settings_debug_redacts_inline_key_material() {
+        let settings = AuthSettingsOverrides {
+            rsa_private_key_pem: Some("PRIVATE-KEY-MATERIAL".to_string()),
+            rsa_public_key_pem: Some("PUBLIC-KEY-MATERIAL".to_string()),
+            rsa_private_key_env: Some("AUTH_PRIVATE".to_string()),
+            rsa_public_key_env: Some("AUTH_PUBLIC".to_string()),
+            ..AuthSettingsOverrides::default()
+        };
+        let rendered = format!("{settings:?}");
+
+        assert!(!rendered.contains("PRIVATE-KEY-MATERIAL"));
+        assert!(!rendered.contains("PUBLIC-KEY-MATERIAL"));
+        assert!(rendered.contains("AUTH_PRIVATE"));
+        assert!(rendered.contains("AUTH_PUBLIC"));
     }
 
     #[test]
