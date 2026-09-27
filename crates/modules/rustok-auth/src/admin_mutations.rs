@@ -114,11 +114,23 @@ pub struct AuthorizedOAuthAppRecord {
     pub granted_at: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct OAuthAppSecretResult {
     pub app: OAuthAppMutationRecord,
     pub client_secret: String,
 }
+
+
+impl std::fmt::Debug for OAuthAppSecretResult {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("OAuthAppSecretResult")
+            .field("app", &self.app)
+            .field("client_secret", &"<redacted>")
+            .finish()
+    }
+}
+
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum AuthAdminMutationError {
