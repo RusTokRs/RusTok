@@ -37,6 +37,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
@@ -70,12 +71,15 @@ jobs:
             crates/libs/rustok-api/src/locale.rs \
             crates/modules/rustok-page-builder/src/locale.rs
           if ! git diff --quiet; then
+            diagnostics=/tmp/rustfmt-diagnostics.md
             {
               echo '### Temporary rustfmt diagnostics'
               echo '```diff'
               git diff
               echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
+            } > "$diagnostics"
+            cat "$diagnostics" >> "$GITHUB_STEP_SUMMARY"
+            gh pr comment "${{ github.event.pull_request.number }}" --body-file "$diagnostics"
             exit 1
           fi
       - name: Repository i18n contract
