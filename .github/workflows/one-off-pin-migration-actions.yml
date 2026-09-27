@@ -1,10 +1,11 @@
-name: One-off Pin Migration Actions
+name: One-off FS17 Action Pin Migration
 
 on:
   push:
-    branches: [main]
+    branches: [audit/fs-17-dependencies-supply-chain]
     paths:
       - .github/workflows/one-off-pin-migration-actions.yml
+      - scripts/maintenance/pin-workflow-actions.py
 
 permissions:
   contents: write
@@ -14,54 +15,31 @@ env:
 
 jobs:
   pin-actions:
-    if: >-
-      github.event.head_commit.message == 'security(ci): execute migration action pin patch'
+    if: github.event.head_commit.message == 'audit(fs-17): execute global action pin migration'
     runs-on: ubuntu-24.04
     timeout-minutes: 6
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: main
           fetch-depth: 0
 
-      - name: Apply and verify immutable migration actions
+      - name: Pin all mutable action references
         shell: bash
         run: |
           set -euo pipefail
-          git pull --rebase origin main
-          python3 - <<'PY'
-          from pathlib import Path
-          patch = Path('scripts/maintenance/pin-migration-actions.py')
-          source = patch.read_text()
-          double_slash = chr(92) * 2
-          old = f'matchAll(/{double_slash}s*uses:{double_slash}s*'
-          new = f'matchAll(/{double_slash}s*(?:-{double_slash}s*)?uses:{double_slash}s*'
-          if source.count(old) != 1:
-              raise SystemExit('temporary pin parser marker drifted')
-          patch.write_text(source.replace(old, new))
-          PY
-          python3 scripts/maintenance/pin-migration-actions.py
-          node --check scripts/verify/verify-migration-compatibility-contract.mjs
-          node scripts/verify/verify-migration-compatibility-contract.mjs
+          python3 scripts/maintenance/pin-workflow-actions.py
           git diff --check
 
-      - name: Commit immutable migration actions
+      - name: Commit immutable action refs
         shell: bash
         run: |
           set -euo pipefail
+          if git diff --quiet; then
+            echo "No mutable action references remain."
+            exit 0
+          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git commit -m 'security(ci): pin migration compatibility actions'
-          for attempt in 1 2 3; do
-            git fetch origin main
-            if ! git merge-base --is-ancestor origin/main HEAD; then
-              git rebase origin/main
-              node --check scripts/verify/verify-migration-compatibility-contract.mjs
-              node scripts/verify/verify-migration-compatibility-contract.mjs
-            fi
-            if git push origin HEAD:main; then
-              exit 0
-            fi
-          done
-          exit 1
+          git add .github/workflows
+          git commit -m 'security(ci): pin all mutable workflow actions'
+          git push origin HEAD:audit/fs-17-dependencies-supply-chain
