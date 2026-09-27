@@ -18,7 +18,43 @@ media = { version_req = ">=0.1.0" }
 taxonomy = { version_req = ">=0.1.0" }
 
 [settings]
+# Submodule Feature Enablement
+submodule_subscriptions_enabled = { type = "boolean", default = true, description = "Enable category and topic subscription levels (watching, tracking, normal, muted)." }
+submodule_moderation_enabled = { type = "boolean", default = true, description = "Enable forum moderation workflows, flags, and queue." }
+submodule_attachments_enabled = { type = "boolean", default = true, description = "Enable media and file attachments in topics and replies." }
+submodule_mentions_enabled = { type = "boolean", default = true, description = "Enable @mention parsing and user notifications in forum posts." }
+submodule_search_enabled = { type = "boolean", default = true, description = "Enable search projection synchronization for forum content." }
+
+# Posting & Content Limits
+min_topic_title_length = { type = "integer", default = 5, description = "Minimum character length required for topic titles." }
+max_topic_title_length = { type = "integer", default = 150, description = "Maximum character length allowed for topic titles." }
+min_post_body_length = { type = "integer", default = 10, description = "Minimum character length required for post body text." }
+max_post_body_length = { type = "integer", default = 30000, description = "Maximum character length allowed for post body text." }
+rate_limit_new_topic_seconds = { type = "integer", default = 60, description = "Cooldown time in seconds required between creating consecutive topics." }
+rate_limit_new_reply_seconds = { type = "integer", default = 15, description = "Cooldown time in seconds required between submitting consecutive replies." }
+auto_close_inactive_days = { type = "integer", default = 0, description = "Automatically close and lock topics after N days without new replies (0 = disabled)." }
+allow_user_topic_closing = { type = "boolean", default = false, description = "Allow topic authors to close or lock their own topics." }
+
+# Pagination & Display
+topics_per_page = { type = "integer", default = 20, description = "Default number of topics displayed per category page." }
+replies_per_page = { type = "integer", default = 20, description = "Default number of replies displayed per topic page." }
+default_topic_sort = { type = "string", default = "latest_reply", options = ["latest_reply", "created_at", "votes", "views"], description = "Default sort order for topic listing pages." }
+hot_topic_threshold_replies = { type = "integer", default = 15, description = "Number of replies required for a topic to receive the hot badge." }
+hot_topic_threshold_views = { type = "integer", default = 100, description = "Number of views required for a topic to receive the hot badge." }
+show_locked_topics_in_lists = { type = "boolean", default = true, description = "Show locked or archived topics in category lists." }
+
+# Voting, Reactions & Engagement
 use_reactions = { type = "boolean", default = false, description = "Use the shared Reactions module for Forum reactions instead of internal Forum voting." }
+allow_downvotes = { type = "boolean", default = true, description = "Allow downvoting on forum topics and replies (disable for upvote-only like mode)." }
+allow_self_voting = { type = "boolean", default = false, description = "Allow users to vote on their own topics or replies." }
+vote_undo_window_minutes = { type = "integer", default = 10, description = "Time window in minutes during which a vote can be retracted or changed (0 = unlimited)." }
+
+# Moderation & Access
+pre_moderation_enabled = { type = "boolean", default = false, description = "Require moderator approval before newly created topics and replies are published." }
+auto_flag_threshold = { type = "integer", default = 3, description = "Number of user flags required to automatically hide a post pending moderator review." }
+allow_anonymous_reading = { type = "boolean", default = true, description = "Allow unauthenticated visitors to read public forum categories and topics." }
+edit_grace_period_minutes = { type = "integer", default = 5, description = "Grace period in minutes during which post edits do not trigger an edited indicator." }
+max_edit_window_minutes = { type = "integer", default = 0, description = "Maximum time in minutes after posting during which authors may edit their post (0 = unlimited)." }
 
 [crate]
 entry_type = "ForumModule"

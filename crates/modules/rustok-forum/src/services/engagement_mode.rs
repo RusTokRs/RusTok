@@ -15,11 +15,7 @@ pub const FORUM_REACTIONS_MODULE_SLUG: &str = "reactions";
 #[cfg(test)]
 pub const FORUM_USE_REACTIONS_SETTING: &str = "use_reactions";
 
-#[derive(Debug, Deserialize, Default)]
-struct ForumSettings {
-    #[serde(default, alias = "useReactions")]
-    use_reactions: bool,
-}
+pub type ForumSettings = crate::dto::ForumModuleSettings;
 
 #[derive(Clone, Default)]
 pub struct ForumSettingsProviders {
