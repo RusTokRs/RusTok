@@ -63,17 +63,17 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           shared-key: pages-repeated-artifact-loss-postgres-evidence
       - name: Require exact event checkout
@@ -116,7 +116,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
@@ -227,7 +227,7 @@ jobs:
           test "$(stat -c %s evidence/pages-repeated-artifact-loss-recovery-postgres/receipt.json)" -le 1048576
           node -e 'const r=require("./evidence/pages-repeated-artifact-loss-recovery-postgres/receipt.json"); if(r.format!=="pages_repeated_artifact_loss_recovery_postgres_execution_v1"||r.status!=="postgres_execution_passed_repeated_loss_recovery_admission_pending"||r.source_commit!==process.env.GITHUB_SHA||r.scope?.repeated_loss_recovery_only!==true||r.scope?.physical_loss_recovery_parent_claimed!==false||r.scope?.rollback_activated_current_set_recovery_claimed!==false||r.scope?.rollback_continuity_claimed!==false||r.governance?.registry_mutated!==false) process.exit(1)'
       - name: Archive bounded repeated-loss recovery evidence
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: pages-repeated-artifact-loss-recovery-postgres-${{ github.run_id }}-${{ github.sha }}
           path: evidence/pages-repeated-artifact-loss-recovery-postgres/receipt.json
