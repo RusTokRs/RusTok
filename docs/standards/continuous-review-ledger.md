@@ -947,3 +947,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 
 - [ ] **RUNTIME-06 — GraphQL WebSocket input queue is unbounded.** `handle_graphql_ws` uses `tokio::sync::mpsc::unbounded_channel` between the network read task and `async_graphql::http::WebSocket`. A peer can send valid WebSocket messages faster than the schema consumes them, causing unbounded queued `String` allocations. The transport must apply a bounded channel and explicit frame/message size limits so backpressure reaches the socket rather than accumulating memory.
+
+
+- [ ] **RUNTIME-07 — server rate-limit debug logging exposes raw rate-limit identity keys.** `rate_limit_base::rate_limit_for_paths` logs `rate_limit_key` verbatim. Depending on policy, the key includes client IP plus trusted tenant UUID and OAuth application UUID. These are privacy-sensitive identifiers and the debug path can leak them into application logs. The log must use only a stable non-reversible fingerprint and policy metadata.
