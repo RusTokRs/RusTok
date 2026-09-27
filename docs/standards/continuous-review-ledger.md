@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-19 — final architecture reconciliation (audit in progress; tests remain maintainer-owned).  
-**Phase base SHA:** `a7d6a5aa57a913eb1accb28459e26e3dc52dbf8d`
+**Phase base SHA:** `c0718c6f395f2cc5ee7a3d711084137c1234e01f`
 
 ### FS-01 Pre-Implementation Audit Findings
 
@@ -965,3 +965,12 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** framework body extractors remain bounded by their default/request-specific limits; request/persisted-data panic candidates are either test-only or protected by validated invariants, with public malformed data mapped to stable errors; server request handlers do not perform synchronous filesystem/process work; artifact/static paths are admission-bound and downloads use storage keys rather than client filesystem paths; GraphQL WebSocket auth is token-bound, tenant-bound and revalidated against the original RBAC scope; observability endpoints are protected by bearer authorization and bounded readiness payloads; public error mappings use typed statuses and safe messages.
 
 **Verification state:** tests/builds were not run by the agent. Regression tests were added for WebSocket transport bounds, rate-limit log fingerprints, auth-rate-limit coverage, and production-safe demo token policy. Maintainer execution remains required. FS-18 implementation is ready for integration.
+
+
+### FS-19 Pre-Implementation Audit Findings
+
+- [ ] **ARCH-01 — audit-plan/source-of-truth duplication requires reconciliation.** Root `AUDIT_PLAN.md`, ACRE documentation, and the living full-stack ledger may contain overlapping or stale instructions. There must be one canonical trigger and one canonical phase-progress source without contradictory phase numbering or obsolete workflow text.
+- [ ] **ARCH-02 — architecture/module dependency direction requires a fresh graph audit.** Verify shared libraries do not depend upward on app/server or specific feature modules, module manifests do not encode reciprocal runtime dependencies, and generated/source registries cannot create cycles.
+- [ ] **ARCH-03 — generated registries and metadata require source-of-truth reconciliation.** Check `cli-registry.toml`, module manifests, generated route/registry artifacts, ADR indexes and other committed generated surfaces for drift against their generators/canonical owners.
+- [ ] **ARCH-04 — stale compatibility/legacy paths require final cutover audit.** Search for public APIs, compatibility shims, deprecated names and old terminology left reachable after the repository’s documented cutovers.
+- [ ] **ARCH-05 — unresolved TODO/placeholder/dead path risk requires closure.** Review production TODO/FIXME/panic placeholders and unreachable/dead compatibility code; remove or explicitly register anything that remains necessary.
