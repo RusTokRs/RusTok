@@ -128,14 +128,18 @@ production-парсинге **не подтвердились**.
 - **Исправление:** каталоги используют `{ $count }`, consumer — `fluent_args!` и
   сгенерированный `format`.
 
-### F-07 — path-filter CI пропускал изменения toolchain/workspace dependency
+### F-07 — focused CI имел неполные triggers и нестабильную WASM provisioning
 
 - **Серьёзность:** средняя.
 - **Статус до:** подтверждено.
-- **Причина:** workflow запускался только при изменении директории crate или самого
+- **Причина 1:** workflow запускался только при изменении директории crate или самого
   workflow. Изменение root `Cargo.toml`, `Cargo.lock` либо `rust-toolchain.toml`
   могло сломать crate без запуска focused gate.
-- **Исправление:** все три root-файла добавлены в push/PR path filters.
+- **Причина 2:** декларативный `targets` input setup action не обеспечил фактическое
+  наличие `wasm32-unknown-unknown` на runner; gate падал с `E0463 can't find crate
+  for std/core`, не проверяя библиотеку.
+- **Исправление:** root-файлы добавлены в push/PR path filters; перед WASM check
+  выполняется идемпотентный `rustup target add --toolchain 1.96.0`.
 
 ### F-08 — документация расходилась с реализацией
 
@@ -200,15 +204,21 @@ npm run verify:i18n:keys -- --strict
 
 Дополнительно проверяется Notifications storefront consumer.
 
-На sandbox без установленного Rust toolchain локально выполнены JS gates:
+На sandbox без установленного Rust toolchain локально выполнены JS gates, а Rust
+матрица выполнена focused GitHub workflow:
 
+- `cargo fmt -p rustok-ui-i18n -- --check` — PASS;
+- `cargo test -p rustok-ui-i18n --all-features` — PASS;
+- `cargo clippy -p rustok-ui-i18n --all-targets --all-features -- -D warnings` — PASS;
 - UI catalog parity — PASS;
 - strict UI key inventory — PASS (987 occurrences, 50 packages, 0 missing);
 - repository i18n contract — имеет независимый baseline failure в
   `apps/admin/build.rs` (ожидаемый `Config::new("en")?` отсутствует); изменение
   `rustok-ui-i18n` эту проверку не ухудшает.
 
-Rust-матрица должна быть выполнена focused GitHub workflow перед merge.
+WASM check выявил дефект provisioning самого workflow (`wasm32-unknown-unknown`
+не был установлен несмотря на setup input); gate исправлен явной идемпотентной
+установкой target и повторно выполнен перед merge.
 
 ## Осознанно отложенные направления (не дефекты текущего контракта)
 

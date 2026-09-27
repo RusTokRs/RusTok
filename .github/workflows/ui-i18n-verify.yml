@@ -21,7 +21,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
@@ -39,58 +38,16 @@ jobs:
           toolchain: "1.96.0"
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
+      - name: Ensure WASM target
+        run: rustup target add --toolchain 1.96.0 wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
       - name: Format
-        run: |
-          cargo fmt -p rustok-ui-i18n
-          git diff -- crates/ui/rustok-ui-i18n > /tmp/rustfmt.patch
+        run: cargo fmt -p rustok-ui-i18n -- --check
       - name: Test
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set +e
-          cargo test -p rustok-ui-i18n --all-features > /tmp/test.log 2>&1
-          status=$?
-          set -e
-          {
-            echo 'Temporary audit validation output:'
-            echo
-            echo '<details><summary>rustfmt patch</summary>'
-            echo
-            echo '```diff'
-            cat /tmp/rustfmt.patch
-            echo '```'
-            echo '</details>'
-            echo
-            echo '<details><summary>cargo test output</summary>'
-            echo
-            echo '```text'
-            tail -n 400 /tmp/test.log
-            echo '```'
-            echo '</details>'
-          } > /tmp/validation.md
-          gh pr comment "$PR_NUMBER" --body-file /tmp/validation.md
-          exit "$status"
+        run: cargo test -p rustok-ui-i18n --all-features
       - name: Clippy
         run: cargo clippy -p rustok-ui-i18n --all-targets --all-features -- -D warnings
       - name: WASM check
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set +e
-          cargo check -p rustok-ui-i18n --all-features --target wasm32-unknown-unknown > /tmp/wasm.log 2>&1
-          status=$?
-          set -e
-          {
-            echo 'Temporary WASM audit validation output:'
-            echo
-            echo '```text'
-            tail -n 400 /tmp/wasm.log
-            echo '```'
-          } > /tmp/wasm-validation.md
-          gh pr comment "$PR_NUMBER" --body-file /tmp/wasm-validation.md
-          exit "$status"
+        run: cargo check -p rustok-ui-i18n --all-features --target wasm32-unknown-unknown
