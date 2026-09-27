@@ -93,14 +93,14 @@ impl CommandProvider for InstallerCommandProvider {
                 .map_err(|error| failed(error.to_string()))?,
         );
         let options = &request.args["options"];
-        let environment = option(options, "environment")
+        let seed_environment = option(options, "environment")
             .ok_or_else(|| input("seed apply requires an explicit --environment (local, demo, or test)"))?
             .as_deref()
             .map(InstallEnvironment::parse_cli_value)
             .transpose()
             .map_err(input)?
             .ok_or_else(|| input("seed apply requires an explicit --environment"))?;
-        if environment.is_production() {
+        if seed_environment.is_production() {
             return Err(input(
                 "seed apply is not allowed for production installations; use install apply",
             ));
