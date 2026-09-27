@@ -162,7 +162,7 @@ pub struct GraphqlPageInfo {
     pub total_count: i64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreateUserInput {
     pub email: String,
     pub password: String,

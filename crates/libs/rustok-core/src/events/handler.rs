@@ -576,6 +576,8 @@ mod tests {
         ));
         controller.try_acquire().unwrap();
 
+        let queue_permit = Arc::new(Arc::new(Semaphore::new(1)).acquire_owned().await.unwrap());
+
         EventDispatcher::dispatch_to_handlers(
             test_envelope(),
             Arc::new(Vec::new()),
@@ -583,6 +585,7 @@ mod tests {
             Arc::new(Semaphore::new(1)),
             Some(Arc::clone(&controller)),
             EventConsumerRuntime::new("test_dispatcher"),
+            queue_permit,
         )
         .await;
 
@@ -632,6 +635,8 @@ mod tests {
             },
         );
 
+        let queue_permit = Arc::new(Arc::new(Semaphore::new(1)).acquire_owned().await.unwrap());
+
         let dispatch = tokio::spawn(EventDispatcher::dispatch_to_handlers(
             test_envelope(),
             Arc::new(vec![
@@ -646,6 +651,7 @@ mod tests {
             Arc::new(Semaphore::new(2)),
             Some(Arc::clone(&controller)),
             EventConsumerRuntime::new("test_dispatcher"),
+            queue_permit,
         ));
 
         first_started.notified().await;

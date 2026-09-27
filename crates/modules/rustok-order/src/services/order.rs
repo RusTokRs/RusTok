@@ -169,6 +169,16 @@ mod order_field_definitions_storage {
 }
 impl_field_definition_source!(order_field_definitions_storage::Model);
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreateCheckoutOrderIdentityInput {
+    pub checkout_operation_id: Uuid,
+    pub source_cart_id: Uuid,
+    pub payment_collection_id: Option<Uuid>,
+    pub shipping_option_id: Option<Uuid>,
+    pub snapshot_hash: String,
+    pub request_hash: String,
+}
+
 pub struct OrderService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
@@ -189,16 +199,6 @@ impl OrderService {
         self.create_order_with_channel(tenant_id, actor_id, input, None, None)
             .await
     }
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CreateCheckoutOrderIdentityInput {
-    pub checkout_operation_id: Uuid,
-    pub source_cart_id: Uuid,
-    pub payment_collection_id: Option<Uuid>,
-    pub shipping_option_id: Option<Uuid>,
-    pub snapshot_hash: String,
-    pub request_hash: String,
-}
 
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id, channel_id = ?channel_id, channel_slug = ?channel_slug))]
     pub async fn create_order_with_channel(

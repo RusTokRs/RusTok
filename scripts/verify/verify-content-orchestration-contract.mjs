@@ -1,12 +1,17 @@
 #!/usr/bin/env node
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 
 const checks = [];
 const read = (path) => readFileSync(path, 'utf8');
 const service = read('crates/modules/rustok-content/src/services/content_orchestration_service.rs');
 const resolver = read('crates/modules/rustok-content/src/services/canonical_url_service.rs');
-const serverBridge = read('crates/modules/rustok-content-orchestration/src/lib.rs');
-const productionBridge = serverBridge.split('#[cfg(all(\n    test,')[0];
+const bridgeDir = 'crates/modules/rustok-content-orchestration/src/bridge';
+const productionBridge = existsSync(bridgeDir)
+  ? readdirSync(bridgeDir)
+      .filter((file) => file.endsWith('.rs'))
+      .map((file) => read(`crates/modules/rustok-content-orchestration/src/bridge/${file}`))
+      .join('\n')
+  : read('crates/modules/rustok-content-orchestration/src/lib.rs').split('#[cfg(all(\n    test,')[0];
 const plan = read('crates/modules/rustok-content/docs/implementation-plan.md');
 const docs = read('crates/modules/rustok-content/docs/README.md');
 const runbook = read('crates/modules/rustok-content/docs/runbook.md');
@@ -129,7 +134,7 @@ check(
 const blogTagSync = between(
   productionBridge,
   'async fn sync_blog_tags_for_post_in_tx(',
-  'async fn load_comment_records_for_post_in_tx(',
+  'async fn sync_forum_tags_for_topic_in_tx(',
 );
 const forumTagSync = between(
   productionBridge,
