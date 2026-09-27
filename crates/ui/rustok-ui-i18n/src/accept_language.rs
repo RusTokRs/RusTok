@@ -150,17 +150,10 @@ pub fn preferred_locale_from_accept_language(header: Option<&str>) -> Option<Str
 
 /// Returns the highest-quality extension-free catalog locale from an optional field value.
 pub fn preferred_catalog_locale_from_accept_language(header: Option<&str>) -> Option<String> {
-    header.and_then(|header| {
-        accept_language_catalog_locales(header)
-            .into_iter()
-            .next()
-    })
+    header.and_then(|header| accept_language_catalog_locales(header).into_iter().next())
 }
 
-fn collect_locales(
-    header: &str,
-    mut project: impl FnMut(&str) -> Option<String>,
-) -> Vec<String> {
+fn collect_locales(header: &str, mut project: impl FnMut(&str) -> Option<String>) -> Vec<String> {
     let mut locales = Vec::new();
     for preference in parse_accept_language(header) {
         if preference.is_rejected() {
@@ -255,18 +248,15 @@ mod tests {
 
     #[test]
     fn quality_sorting_is_exact_and_source_order_is_stable() {
-        let locales = accept_language_catalog_locales(
-            "en-US;q=0.7, ru-RU, de;q=0.700, fr;q=0.701, ja;q=0",
-        );
+        let locales =
+            accept_language_catalog_locales("en-US;q=0.7, ru-RU, de;q=0.700, fr;q=0.701, ja;q=0");
         assert_eq!(locales, vec!["ru-RU", "fr", "en-US", "de"]);
     }
 
     #[test]
     fn aliases_extensions_wildcards_and_exclusions_remain_explicit() {
-        let preferences = try_parse_accept_language(
-            "iw-IL-u-ca-hebrew;q=0.8, *;q=0.5, en;q=0",
-        )
-        .expect("bounded header must parse");
+        let preferences = try_parse_accept_language("iw-IL-u-ca-hebrew;q=0.8, *;q=0.5, en;q=0")
+            .expect("bounded header must parse");
 
         assert_eq!(preferences.len(), 3);
         assert_eq!(preferences[0].locale(), Some("he-IL-u-ca-hebrew"));

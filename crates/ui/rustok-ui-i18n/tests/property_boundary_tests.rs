@@ -12,8 +12,8 @@ use std::collections::HashSet;
 
 use proptest::prelude::*;
 use rustok_ui_i18n::{
-    MAX_ACCEPT_LANGUAGE_LEN, MAX_ACCEPT_LANGUAGE_RANGES, locale_candidates,
-    normalize_locale_tag, normalize_unicode_locale, parse_accept_language,
+    MAX_ACCEPT_LANGUAGE_LEN, MAX_ACCEPT_LANGUAGE_RANGES, locale_candidates, normalize_locale_tag,
+    normalize_unicode_locale, parse_accept_language,
 };
 use unic_langid::LanguageIdentifier;
 

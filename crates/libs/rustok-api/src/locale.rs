@@ -3,9 +3,7 @@ use std::{fmt, str::FromStr};
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use thiserror::Error;
 
-pub use rustok_ui_i18n::{
-    preferred_catalog_locale_from_accept_language as extract_locale_tag_from_header,
-};
+pub use rustok_ui_i18n::preferred_catalog_locale_from_accept_language as extract_locale_tag_from_header;
 
 pub const PLATFORM_FALLBACK_LOCALE: &str = "en";
 pub const UNKNOWN_PROVENANCE_LOCALE: &str = "und";
