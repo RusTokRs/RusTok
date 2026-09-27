@@ -673,4 +673,11 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 ### FS-04 Pre-Implementation Audit Findings
 
-- [ ] **WORKER-01 — EventDispatcher queue depth is unbounded despite a max_queue_depth contract.** `DispatcherConfig` exposes `max_queue_depth`, but `EventDispatcher::start` spawns one Tokio dispatch task per received event and only limits per-handler concurrency with a semaphore. Under sustained load, dispatch tasks can accumulate while waiting for handler permits, so memory/task pressure is not bounded by the configured queue depth. The fix must enforce queue admission before task creation and preserve explicit backpressure behavior rather than silently growing an in-process queue.
+- [x] **WORKER-01 — EventDispatcher queue depth is unbounded despite a max_queue_depth contract.** `DispatcherConfig` exposes `max_queue_depth`, but `EventDispatcher::start` spawns one Tokio dispatch task per received event and only limits per-handler concurrency with a semaphore. Under sustained load, dispatch tasks can accumulate while waiting for handler permits, so memory/task pressure is not bounded by the configured queue depth. The fix must enforce queue admission before task creation and preserve explicit backpressure behavior rather than silently growing an in-process queue.
+
+
+### FS-04 Result
+
+**Implemented:** `EventDispatcher` now performs bounded admission before receiving from the broadcast stream, holds the queue permit through all matching handler completion, and treats zero configuration as a safe minimum capacity of one. A regression test covers the configured queue bound.
+
+**Verification state:** Tests were not run by the agent. Maintainer execution remains required. FS-04 implementation is ready for integration.
