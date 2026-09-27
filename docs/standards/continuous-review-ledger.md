@@ -904,3 +904,8 @@ _No completed rounds yet. Round 1 is currently in progress._
 ### FS-16 Pre-Implementation Audit Finding — Request Tenant Authority
 
 - [ ] **LIB-06 — shared `RequestContext` bypasses the accepted canonical tenant-resolution boundary.** When `TenantContextExtension` is absent, `RequestContext::from_request_parts` accepts `X-Tenant-ID` directly. This contradicts the accepted strict tenant/request-trust ADR, under which tenant resolution is a server-owned middleware pipeline and downstream request contexts must consume the trusted resolved context rather than reconstruct tenant authority from transport metadata.
+
+
+### FS-16 Pre-Implementation Audit Finding — Telemetry Cardinality
+
+- [ ] **LIB-07 — shared Prometheus metrics expose unbounded raw `tenant_id` labels.** `rustok-telemetry` uses tenant UUID strings as labels for event publication, span creation, and media upload/delete counters. Tenant cardinality is deployment-scale and unbounded, so series count grows with every tenant and can become a memory/storage/query resource-exhaustion vector. The shared telemetry contract needs a bounded tenant dimension.
