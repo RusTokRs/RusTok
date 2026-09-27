@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
@@ -42,17 +42,14 @@ jobs:
         with:
           workspaces: ". -> target"
       - name: Format
-        env:
-          HEAD_BRANCH: ${{ github.head_ref }}
-        run: |
-          cargo fmt -p rustok-ui-i18n
-          if ! git diff --quiet -- crates/ui/rustok-ui-i18n; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add crates/ui/rustok-ui-i18n
-            git commit -m "style(i18n): apply rustfmt"
-            git push origin "HEAD:${HEAD_BRANCH}"
-          fi
+        run: cargo fmt -p rustok-ui-i18n
+      - name: Upload formatted i18n sources
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rustok-ui-i18n-formatted
+          path: |
+            crates/ui/rustok-ui-i18n/src
+            crates/ui/rustok-ui-i18n/tests
       - name: Test
         run: cargo test -p rustok-ui-i18n --all-features
       - name: Clippy
