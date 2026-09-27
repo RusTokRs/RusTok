@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    AdoptLegacyCheckoutOrderIdentityRequest, CheckoutOrderIdentityPort,
-    CheckoutOrderIdentitySnapshot, InProcessCheckoutOrderIdentityPort, OrderError, OrderResponse,
-    OrderService, OrderStatusKind, ReadCheckoutOrderIdentityByOperationRequest,
+    CheckoutOrderIdentityPort, CheckoutOrderIdentitySnapshot, InProcessCheckoutOrderIdentityPort,
+    OrderError, OrderResponse, OrderService, OrderStatusKind,
+    ReadCheckoutOrderIdentityByOperationRequest,
 };
 
 const ORDER_PAYMENT_SETTLEMENT_OWNER: &str = "rustok_order.checkout_payment_settlement";
@@ -155,7 +155,7 @@ impl CheckoutOrderPaymentSettlementPort for InProcessCheckoutOrderPaymentSettlem
         )?;
         validate_request(&context, &request)?;
 
-        let mut identity = self
+        let identity = self
             .identity_port
             .read_by_operation(
                 context.clone(),
@@ -164,18 +164,6 @@ impl CheckoutOrderPaymentSettlementPort for InProcessCheckoutOrderPaymentSettlem
                 },
             )
             .await?;
-        if identity.is_none() {
-            identity = self
-                .identity_port
-                .adopt_legacy(
-                    context.clone(),
-                    AdoptLegacyCheckoutOrderIdentityRequest {
-                        checkout_operation_id: request.checkout_operation_id,
-                        cart_id: request.cart_id,
-                    },
-                )
-                .await?;
-        }
         let identity = identity.ok_or_else(|| {
             log_missing_checkout_identity(&context, &request);
             PortError::conflict(

@@ -87,7 +87,15 @@ impl CheckoutInventoryOrderAdoptionService {
         order: &rustok_order::OrderResponse,
     ) -> CheckoutInventoryOrderAdoptionResult<Vec<CheckoutInventoryOrderAdoption>> {
         let lease_owner = lease_owner.into();
-        let operation = self.operation_journal.get(tenant_id, operation_id).await?;
+        let operation = self
+            .operation_journal
+            .renew_lease(
+                tenant_id,
+                operation_id,
+                lease_owner.as_str(),
+                self.lease_seconds,
+            )
+            .await?;
         validate_order_provenance(tenant_id, operation_id, order)?;
 
         if operation.status != CheckoutOperationStatus::Executing.as_str() {

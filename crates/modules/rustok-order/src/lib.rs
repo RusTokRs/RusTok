@@ -81,8 +81,8 @@ pub use status::*;
 
 pub use error::{OrderError, OrderResult};
 pub use services::{
-    OrderCheckoutIdentityError, OrderCheckoutIdentityJournal, OrderCheckoutIdentityResult,
-    OrderService, RecordOrderCheckoutIdentity,
+    CreateCheckoutOrderIdentityInput, OrderCheckoutIdentityError, OrderCheckoutIdentityJournal,
+    OrderCheckoutIdentityResult, OrderService, RecordOrderCheckoutIdentity,
 };
 
 pub struct OrderModule;

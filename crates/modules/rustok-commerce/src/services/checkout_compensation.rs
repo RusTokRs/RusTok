@@ -6,8 +6,7 @@ use rustok_inventory::{
     InventoryIdentityReservationReleaseRequest, InventoryReservationIdentityPort,
 };
 use rustok_order::{
-    AdoptLegacyCheckoutOrderIdentityRequest, CheckoutOrderIdentityPort,
-    CheckoutOrderIdentitySnapshot, OrderError, OrderService,
+    CheckoutOrderIdentityPort, CheckoutOrderIdentitySnapshot, OrderError, OrderService,
     ReadCheckoutOrderIdentityByOperationRequest, in_process_checkout_order_identity_port,
 };
 use rustok_outbox::TransactionalEventBus;
@@ -226,7 +225,7 @@ impl CheckoutCompensationService {
         tenant_id: Uuid,
         operation: &checkout_operation::Model,
     ) -> CheckoutCompensationResult<Option<Uuid>> {
-        let mut identity = self
+        let identity = self
             .order_identity_port
             .read_by_operation(
                 order_identity_context(tenant_id, operation, self.port_deadline, "read", false),
@@ -236,19 +235,6 @@ impl CheckoutCompensationService {
             )
             .await
             .map_err(|error| boundary_error("read_order_identity", error))?;
-        if identity.is_none() {
-            identity = self
-                .order_identity_port
-                .adopt_legacy(
-                    order_identity_context(tenant_id, operation, self.port_deadline, "adopt", true),
-                    AdoptLegacyCheckoutOrderIdentityRequest {
-                        checkout_operation_id: operation.id,
-                        cart_id: operation.cart_id,
-                    },
-                )
-                .await
-                .map_err(|error| boundary_error("adopt_order_identity", error))?;
-        }
 
         match identity {
             Some(identity) => {

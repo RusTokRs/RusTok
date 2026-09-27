@@ -200,7 +200,7 @@ digital order creation or historical reads. The canonical matrix is in
   locks and serialize return-quantity admission on the parent order row.
 - [ ] Execute PostgreSQL/MySQL concurrent completion/admission, compensation,
   payment settlement, kill-point, restart, and remote-adapter evidence.
-- [ ] Remove old JSON expression indexes, generated columns, metadata identity
+- [x] Remove old JSON expression indexes, generated columns, metadata identity
   writes, old creation/confirmation/compensation/pipeline source, and
   `adopt_legacy` after every production consumer is cut over.
 

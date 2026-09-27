@@ -190,6 +190,16 @@ impl OrderService {
             .await
     }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreateCheckoutOrderIdentityInput {
+    pub checkout_operation_id: Uuid,
+    pub source_cart_id: Uuid,
+    pub payment_collection_id: Option<Uuid>,
+    pub shipping_option_id: Option<Uuid>,
+    pub snapshot_hash: String,
+    pub request_hash: String,
+}
+
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id, channel_id = ?channel_id, channel_slug = ?channel_slug))]
     pub async fn create_order_with_channel(
         &self,
@@ -199,9 +209,68 @@ impl OrderService {
         channel_id: Option<Uuid>,
         channel_slug: Option<String>,
     ) -> OrderResult<OrderResponse> {
+        self.create_order_with_channel_internal(
+            tenant_id,
+            actor_id,
+            input,
+            channel_id,
+            channel_slug,
+            None,
+        )
+        .await
+    }
+
+    #[instrument(skip(self, input, checkout_identity), fields(tenant_id = %tenant_id, channel_id = ?channel_id, channel_slug = ?channel_slug))]
+    pub async fn create_checkout_order_with_channel(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        input: CreateOrderInput,
+        channel_id: Option<Uuid>,
+        channel_slug: Option<String>,
+        checkout_identity: CreateCheckoutOrderIdentityInput,
+    ) -> OrderResult<OrderResponse> {
+        self.create_order_with_channel_internal(
+            tenant_id,
+            actor_id,
+            input,
+            channel_id,
+            channel_slug,
+            Some(checkout_identity),
+        )
+        .await
+    }
+
+    async fn create_order_with_channel_internal(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        input: CreateOrderInput,
+        channel_id: Option<Uuid>,
+        channel_slug: Option<String>,
+        checkout_identity: Option<CreateCheckoutOrderIdentityInput>,
+    ) -> OrderResult<OrderResponse> {
         input
             .validate()
             .map_err(|error| OrderError::Validation(error.to_string()))?;
+
+        if let Some(identity) = &checkout_identity {
+            if identity.checkout_operation_id.is_nil()
+                || identity.source_cart_id.is_nil()
+                || identity.payment_collection_id.is_some_and(|id| id.is_nil())
+                || identity.shipping_option_id.is_some_and(|id| id.is_nil())
+            {
+                return Err(OrderError::Validation(
+                    "checkout operation, cart, payment, and shipping identities must be valid UUIDs"
+                        .to_string(),
+                ));
+            }
+            if identity.snapshot_hash.trim().is_empty() || identity.request_hash.trim().is_empty() {
+                return Err(OrderError::Validation(
+                    "snapshot_hash and request_hash cannot be empty".to_string(),
+                ));
+            }
+        }
 
         let currency_code = input.currency_code.trim().to_ascii_uppercase();
         if currency_code.len() != 3 {
@@ -382,6 +451,24 @@ impl OrderService {
                 metadata: Set(sanitize_tax_line_metadata(tax_line.metadata.clone())),
                 created_at: Set(now.into()),
                 updated_at: Set(now.into()),
+            }
+            .insert(&txn)
+            .await?;
+        }
+
+        if let Some(identity) = checkout_identity {
+            let normalized_snapshot_hash = identity.snapshot_hash.trim().to_ascii_lowercase();
+            let normalized_request_hash = identity.request_hash.trim().to_ascii_lowercase();
+            entities::order_checkout_identity::ActiveModel {
+                checkout_operation_id: Set(identity.checkout_operation_id),
+                tenant_id: Set(tenant_id),
+                order_id: Set(order_id),
+                source_cart_id: Set(Some(identity.source_cart_id)),
+                payment_collection_id: Set(identity.payment_collection_id),
+                shipping_option_id: Set(identity.shipping_option_id),
+                snapshot_hash: Set(Some(normalized_snapshot_hash)),
+                request_hash: Set(Some(normalized_request_hash)),
+                created_at: Set(now.into()),
             }
             .insert(&txn)
             .await?;

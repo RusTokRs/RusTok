@@ -760,3 +760,98 @@ async fn checkout_operation_lease_renewal_and_fencing_prevents_expired_executor_
     assert!(stale_err.is_err(), "stale executor A is fenced from renewing lease");
 }
 
+#[tokio::test]
+async fn expired_lease_executor_is_fenced_from_order_creation_without_ghost_orders() {
+    let (db, _, _, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let cart_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let journal = rustok_commerce::services::CheckoutOperationJournal::new(db.clone());
+    let op = journal
+        .begin(rustok_commerce::services::BeginCheckoutOperation {
+            tenant_id,
+            cart_id,
+            idempotency_key: "lease-fencing-order-test".to_string(),
+            request_hash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+            snapshot_hash: Some("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789".to_string()),
+        })
+        .await
+        .expect("operation created");
+
+    // Executor A claims execution
+    journal
+        .claim_execution(tenant_id, op.id, "executor-A", 10)
+        .await
+        .expect("claim succeeds");
+
+    // Transition to inventory_reserved
+    journal
+        .checkpoint(rustok_commerce::services::CheckoutOperationCheckpoint {
+            tenant_id,
+            operation_id: op.id,
+            lease_owner: "executor-A",
+            expected_stage: rustok_commerce::services::CheckoutOperationStage::Executing,
+            next_stage: rustok_commerce::services::CheckoutOperationStage::InventoryReserved,
+            snapshot_hash: None,
+            order_id: None,
+            payment_collection_id: None,
+            fulfillment_shipment_id: None,
+            last_error: None,
+            lease_seconds: 10,
+        })
+        .await
+        .expect("checkpoint succeeds");
+
+    // Expire executor A's lease in DB
+    use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
+    rustok_commerce::entities::checkout_operation::Entity::update_many()
+        .col_expr(
+            rustok_commerce::entities::checkout_operation::Column::LeaseExpiresAt,
+            sea_orm::sea_query::Expr::value(chrono::Utc::now().fixed_offset() - chrono::Duration::seconds(10)),
+        )
+        .filter(rustok_commerce::entities::checkout_operation::Column::Id.eq(op.id))
+        .exec(&db)
+        .await
+        .expect("lease expired");
+
+    // Executor A attempts create_pending_and_adopt with expired lease
+    let event_bus = rustok_outbox::TransactionalEventBus::new(db.clone());
+    let creation_executor = rustok_commerce::services::CheckoutOrderCreationExecutor::new(db.clone(), event_bus);
+
+    let create_input = rustok_order::CreateOrderInput {
+        customer_id: None,
+        currency_code: "USD".to_string(),
+        shipping_total: rust_decimal::Decimal::ZERO,
+        line_items: vec![],
+        adjustments: vec![],
+        tax_lines: vec![],
+        metadata: serde_json::json!({}),
+    };
+
+    let result = creation_executor
+        .create_pending_and_adopt(
+            tenant_id,
+            actor_id,
+            op.id,
+            "executor-A",
+            create_input,
+            None,
+            None,
+            "en",
+            None,
+        )
+        .await;
+
+    assert!(result.is_err(), "stale executor A must be fenced by renew_lease before creating order");
+
+    // Verify zero rows in orders were created
+    let orders_count = rustok_order::entities::order::Entity::find()
+        .filter(rustok_order::entities::order::Column::TenantId.eq(tenant_id))
+        .count(&db)
+        .await
+        .expect("count orders");
+    assert_eq!(orders_count, 0, "no ghost order must exist in orders table");
+}
+

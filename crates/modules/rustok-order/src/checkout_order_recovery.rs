@@ -7,9 +7,8 @@ use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use crate::{
-    AdoptLegacyCheckoutOrderIdentityRequest, CheckoutOrderIdentityPort,
-    CheckoutOrderIdentitySnapshot, CompleteCheckoutPortRequest, InProcessCheckoutOrderIdentityPort,
-    OrderError, OrderResponse, OrderService, OrderStatusKind,
+    CheckoutOrderIdentityPort, CheckoutOrderIdentitySnapshot, CompleteCheckoutPortRequest,
+    InProcessCheckoutOrderIdentityPort, OrderError, OrderResponse, OrderService, OrderStatusKind,
     ReadCheckoutOrderIdentityByOperationRequest,
 };
 
@@ -72,7 +71,7 @@ impl CheckoutOrderRecoveryAdapter {
         )?;
         let owner_hashes = checkout_request_hashes(&context, &request.completion)?;
 
-        let mut identity = self
+        let identity = self
             .identity_port
             .read_by_operation(
                 context.clone(),
@@ -81,18 +80,6 @@ impl CheckoutOrderRecoveryAdapter {
                 },
             )
             .await?;
-        if identity.is_none() {
-            identity = self
-                .identity_port
-                .adopt_legacy(
-                    context.clone(),
-                    AdoptLegacyCheckoutOrderIdentityRequest {
-                        checkout_operation_id: request.checkout_operation_id,
-                        cart_id: request.completion.cart_id,
-                    },
-                )
-                .await?;
-        }
         let Some(identity) = identity else {
             return Ok(None);
         };

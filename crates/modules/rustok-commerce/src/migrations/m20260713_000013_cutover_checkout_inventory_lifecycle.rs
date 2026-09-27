@@ -13,6 +13,7 @@ impl MigrationTrait for Migration {
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => install_postgres(manager).await?,
             DatabaseBackend::Sqlite => install_sqlite(manager).await?,
+            DatabaseBackend::MySql => install_mysql(manager).await?,
             _ => {}
         }
         Ok(())
@@ -22,6 +23,7 @@ impl MigrationTrait for Migration {
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => uninstall_postgres(manager).await?,
             DatabaseBackend::Sqlite => uninstall_sqlite(manager).await?,
+            DatabaseBackend::MySql => uninstall_mysql(manager).await?,
             _ => {}
         }
         Ok(())
@@ -486,6 +488,196 @@ async fn scope_sqlite_legacy_reservation(
     manager
         .get_connection()
         .execute_unprepared(sql.as_str())
+        .await?;
+    Ok(())
+}
+
+async fn install_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .get_connection()
+        .execute_unprepared(
+            r#"
+            DROP TRIGGER IF EXISTS checkout_order_inventory_confirm_guard;
+            DROP TRIGGER IF EXISTS checkout_inventory_released_on_cancel;
+            DROP TRIGGER IF EXISTS checkout_inventory_consumed_on_fulfillment;
+            DROP TRIGGER IF EXISTS checkout_inventory_consumed_on_delivery;
+
+            CREATE TRIGGER checkout_order_inventory_confirm_guard
+            BEFORE UPDATE ON orders
+            FOR EACH ROW
+            BEGIN
+                DECLARE operation_id CHAR(36);
+                DECLARE is_ready INT DEFAULT 0;
+                DECLARE missing_ledger INT DEFAULT 0;
+                DECLARE foreign_reservations INT DEFAULT 0;
+
+                IF OLD.status = 'pending' AND NEW.status = 'confirmed' THEN
+                    SET operation_id = JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.checkout.operation_id'));
+                    IF operation_id IS NOT NULL AND operation_id <> '' AND operation_id <> 'null' THEN
+                        SELECT COUNT(*) INTO is_ready
+                        FROM checkout_operations co
+                        WHERE (co.id = operation_id
+                            OR LOWER(HEX(co.id)) = LOWER(REPLACE(operation_id, '-', '')))
+                          AND co.tenant_id = NEW.tenant_id
+                          AND co.order_id = NEW.id
+                          AND co.status = 'executing'
+                          AND co.stage = 'order_created';
+
+                        IF is_ready = 0 THEN
+                            SIGNAL SQLSTATE '45000'
+                                SET MESSAGE_TEXT = 'checkout operation is not ready to confirm order';
+                        END IF;
+
+                        SELECT COUNT(*) INTO missing_ledger
+                        FROM order_line_items oli
+                        WHERE oli.order_id = NEW.id
+                          AND oli.variant_id IS NOT NULL
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM checkout_inventory_reservations cir
+                              JOIN checkout_operations co
+                                ON co.id = cir.checkout_operation_id
+                              JOIN reservation_items ri
+                                ON ri.id = cir.reservation_id
+                              JOIN inventory_items ii
+                                ON ii.id = ri.inventory_item_id
+                              WHERE (co.id = operation_id
+                                  OR LOWER(HEX(co.id)) = LOWER(REPLACE(operation_id, '-', '')))
+                                AND cir.tenant_id = NEW.tenant_id
+                                AND cir.order_line_item_id = oli.id
+                                AND cir.status = 'reserved'
+                                AND cir.variant_id = oli.variant_id
+                                AND cir.quantity = oli.quantity
+                                AND ri.line_item_id = oli.id
+                                AND ri.quantity = oli.quantity
+                                AND ri.deleted_at IS NULL
+                                AND ii.variant_id = oli.variant_id
+                          );
+
+                        IF missing_ledger > 0 THEN
+                            SIGNAL SQLSTATE '45000'
+                                SET MESSAGE_TEXT = 'checkout order has an incomplete adopted inventory ledger';
+                        END IF;
+
+                        SELECT COUNT(*) INTO foreign_reservations
+                        FROM checkout_inventory_reservations cir
+                        JOIN checkout_operations co
+                          ON co.id = cir.checkout_operation_id
+                        WHERE (co.id = operation_id
+                            OR LOWER(HEX(co.id)) = LOWER(REPLACE(operation_id, '-', '')))
+                          AND cir.tenant_id = NEW.tenant_id
+                          AND (
+                              cir.status <> 'reserved'
+                              OR cir.order_line_item_id IS NULL
+                              OR NOT EXISTS (
+                                  SELECT 1
+                                  FROM order_line_items oli
+                                  WHERE oli.id = cir.order_line_item_id
+                                    AND oli.order_id = NEW.id
+                                    AND oli.variant_id = cir.variant_id
+                                    AND oli.quantity = cir.quantity
+                              )
+                          );
+
+                        IF foreign_reservations > 0 THEN
+                            SIGNAL SQLSTATE '45000'
+                                SET MESSAGE_TEXT = 'checkout order has foreign or inactive inventory reservations';
+                        END IF;
+                    END IF;
+                END IF;
+            END;
+
+            CREATE TRIGGER checkout_inventory_released_on_cancel
+            AFTER UPDATE ON orders
+            FOR EACH ROW
+            BEGIN
+                DECLARE operation_id CHAR(36);
+                IF OLD.status <> 'cancelled' AND NEW.status = 'cancelled' THEN
+                    SET operation_id = JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.checkout.operation_id'));
+                    IF operation_id IS NOT NULL AND operation_id <> '' AND operation_id <> 'null' THEN
+                        UPDATE checkout_inventory_reservations
+                        SET status = 'released',
+                            released_at = CURRENT_TIMESTAMP,
+                            updated_at = CURRENT_TIMESTAMP,
+                            last_error_code = NULL,
+                            last_error_message = NULL
+                        WHERE tenant_id = NEW.tenant_id
+                          AND status = 'reserved'
+                          AND order_line_item_id IN (
+                              SELECT oli.id
+                              FROM order_line_items oli
+                              WHERE oli.order_id = NEW.id
+                          );
+                    END IF;
+                END IF;
+            END;
+
+            CREATE TRIGGER checkout_inventory_consumed_on_fulfillment
+            AFTER UPDATE OF shipped_quantity ON fulfillment_items
+            FOR EACH ROW
+            BEGIN
+                IF NEW.shipped_quantity > OLD.shipped_quantity THEN
+                    UPDATE checkout_inventory_reservations
+                    SET status = 'consumed',
+                        consumed_at = CURRENT_TIMESTAMP,
+                        updated_at = CURRENT_TIMESTAMP,
+                        last_error_code = NULL,
+                        last_error_message = NULL
+                    WHERE order_line_item_id = NEW.order_line_item_id
+                      AND status = 'reserved'
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM reservation_items ri
+                          WHERE ri.id = checkout_inventory_reservations.reservation_id
+                            AND ri.deleted_at IS NULL
+                            AND ri.quantity > 0
+                      );
+                END IF;
+            END;
+
+            CREATE TRIGGER checkout_inventory_consumed_on_delivery
+            AFTER UPDATE ON orders
+            FOR EACH ROW
+            BEGIN
+                IF OLD.status = 'shipped' AND NEW.status = 'delivered' THEN
+                    UPDATE checkout_inventory_reservations
+                    SET status = 'consumed',
+                        consumed_at = CURRENT_TIMESTAMP,
+                        updated_at = CURRENT_TIMESTAMP,
+                        last_error_code = NULL,
+                        last_error_message = NULL
+                    WHERE status = 'reserved'
+                      AND order_line_item_id IN (
+                          SELECT oli.id
+                          FROM order_line_items oli
+                          WHERE oli.order_id = NEW.id
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM reservation_items ri
+                          WHERE ri.id = checkout_inventory_reservations.reservation_id
+                            AND ri.deleted_at IS NULL
+                            AND ri.quantity > 0
+                      );
+                END IF;
+            END;
+            "#,
+        )
+        .await?;
+    Ok(())
+}
+
+async fn uninstall_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .get_connection()
+        .execute_unprepared(
+            r#"
+            DROP TRIGGER IF EXISTS checkout_order_inventory_confirm_guard;
+            DROP TRIGGER IF EXISTS checkout_inventory_released_on_cancel;
+            DROP TRIGGER IF EXISTS checkout_inventory_consumed_on_fulfillment;
+            DROP TRIGGER IF EXISTS checkout_inventory_consumed_on_delivery;
+            "#,
+        )
         .await?;
     Ok(())
 }

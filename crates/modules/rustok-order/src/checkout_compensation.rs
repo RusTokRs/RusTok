@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    AdoptLegacyCheckoutOrderIdentityRequest, CheckoutOrderIdentityPort,
-    CheckoutOrderIdentitySnapshot, InProcessCheckoutOrderIdentityPort, OrderError, OrderResponse,
-    OrderService, OrderStatusKind, ReadCheckoutOrderIdentityByOperationRequest,
+    CheckoutOrderIdentityPort, CheckoutOrderIdentitySnapshot, InProcessCheckoutOrderIdentityPort,
+    OrderError, OrderResponse, OrderService, OrderStatusKind,
+    ReadCheckoutOrderIdentityByOperationRequest,
 };
 
 const ORDER_COMPENSATION_OWNER: &str = "rustok_order.checkout_compensation";
@@ -104,28 +104,14 @@ impl InProcessCheckoutOrderCompensationPort {
         context: &PortContext,
         request: &CheckoutOrderCompensationRequest,
     ) -> Result<Option<CheckoutOrderIdentitySnapshot>, PortError> {
-        let mut identity = self
-            .identity_port
+        self.identity_port
             .read_by_operation(
                 context.clone(),
                 ReadCheckoutOrderIdentityByOperationRequest {
                     checkout_operation_id: request.checkout_operation_id,
                 },
             )
-            .await?;
-        if identity.is_none() {
-            identity = self
-                .identity_port
-                .adopt_legacy(
-                    context.clone(),
-                    AdoptLegacyCheckoutOrderIdentityRequest {
-                        checkout_operation_id: request.checkout_operation_id,
-                        cart_id: request.cart_id,
-                    },
-                )
-                .await?;
-        }
-        Ok(identity)
+            .await
     }
 
     async fn cancel_or_adopt_cancelled(

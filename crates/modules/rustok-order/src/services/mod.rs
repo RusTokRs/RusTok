@@ -5,4 +5,4 @@ pub use checkout_identity::{
     OrderCheckoutIdentityError, OrderCheckoutIdentityJournal, OrderCheckoutIdentityResult,
     RecordOrderCheckoutIdentity,
 };
-pub use order::OrderService;
+pub use order::{CreateCheckoutOrderIdentityInput, OrderService};

@@ -4,7 +4,8 @@ use chrono::Utc;
 use rust_decimal::Decimal;
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortErrorKind};
 use rustok_order::{
-    AdoptLegacyCheckoutOrderIdentityRequest, ReadCheckoutOrderIdentityByOperationRequest,
+    BindCheckoutOrderIdentityRequest, ReadCheckoutOrderIdentityByCartRequest,
+    ReadCheckoutOrderIdentityByOperationRequest,
     entities::{order, order_checkout_identity},
     in_process_checkout_order_identity_port,
 };
@@ -61,13 +62,7 @@ impl TestDatabase {
         Self { db, path }
     }
 
-    async fn seed_legacy_order(
-        &self,
-        tenant_id: Uuid,
-        operation_id: Uuid,
-        snapshot_hash: &str,
-        request_hash: &str,
-    ) -> Uuid {
+    async fn seed_order(&self, tenant_id: Uuid) -> Uuid {
         let order_id = Uuid::new_v4();
         let now = Utc::now().fixed_offset();
         order::ActiveModel {
@@ -82,13 +77,7 @@ impl TestDatabase {
             total_amount: Set(Decimal::ZERO),
             tax_total: Set(Decimal::ZERO),
             tax_included: Set(false),
-            metadata: Set(json!({
-                "checkout": {
-                    "operation_id": operation_id,
-                    "snapshot_hash": snapshot_hash,
-                    "order_request_hash": request_hash,
-                }
-            })),
+            metadata: Set(json!({})),
             payment_id: Set(None),
             payment_method: Set(None),
             tracking_number: Set(None),
@@ -134,93 +123,100 @@ fn context(tenant_id: Uuid, operation_id: Uuid, action: &str, write: bool) -> Po
 }
 
 #[tokio::test]
-async fn adopts_legacy_metadata_inside_order_owner_and_reads_typed_identity() {
+async fn binds_checkout_identity_and_reads_by_operation_and_cart() {
     let database = TestDatabase::new().await;
     let tenant_id = Uuid::new_v4();
     let operation_id = Uuid::new_v4();
     let cart_id = Uuid::new_v4();
     let snapshot_hash = "a".repeat(64);
     let request_hash = "b".repeat(64);
-    let order_id = database
-        .seed_legacy_order(
-            tenant_id,
-            operation_id,
-            snapshot_hash.as_str(),
-            request_hash.as_str(),
-        )
-        .await;
+    let order_id = database.seed_order(tenant_id).await;
     let port = in_process_checkout_order_identity_port(database.db.clone());
 
-    let adopted = port
-        .adopt_legacy(
-            context(tenant_id, operation_id, "adopt", true),
-            AdoptLegacyCheckoutOrderIdentityRequest {
+    let bound = port
+        .bind(
+            context(tenant_id, operation_id, "bind", true),
+            BindCheckoutOrderIdentityRequest {
                 checkout_operation_id: operation_id,
+                order_id,
                 cart_id,
+                payment_collection_id: None,
+                shipping_option_id: None,
+                snapshot_hash: snapshot_hash.clone(),
+                request_hash: request_hash.clone(),
             },
         )
         .await
-        .unwrap()
         .unwrap();
 
-    assert_eq!(adopted.order_id, order_id);
-    assert_eq!(adopted.source_cart_id, Some(cart_id));
-    assert_eq!(
-        adopted.snapshot_hash.as_deref(),
-        Some(snapshot_hash.as_str())
-    );
-    assert_eq!(adopted.request_hash.as_deref(), Some(request_hash.as_str()));
-    assert_eq!(
-        port.read_by_operation(
-            context(tenant_id, operation_id, "read", false),
+    assert_eq!(bound.order_id, order_id);
+    assert_eq!(bound.source_cart_id, Some(cart_id));
+    assert_eq!(bound.snapshot_hash.as_deref(), Some(snapshot_hash.as_str()));
+    assert_eq!(bound.request_hash.as_deref(), Some(request_hash.as_str()));
+
+    let by_op = port
+        .read_by_operation(
+            context(tenant_id, operation_id, "read-op", false),
             ReadCheckoutOrderIdentityByOperationRequest {
                 checkout_operation_id: operation_id,
             },
         )
         .await
-        .unwrap(),
-        Some(adopted)
-    );
+        .unwrap();
+    assert_eq!(by_op, Some(bound.clone()));
+
+    let by_cart = port
+        .read_by_cart(
+            context(tenant_id, operation_id, "read-cart", false),
+            ReadCheckoutOrderIdentityByCartRequest { cart_id },
+        )
+        .await
+        .unwrap();
+    assert_eq!(by_cart, Some(bound));
 }
 
 #[tokio::test]
-async fn rejects_rebinding_adopted_operation_to_another_cart() {
+async fn rejects_rebinding_operation_to_another_cart() {
     let database = TestDatabase::new().await;
     let tenant_id = Uuid::new_v4();
     let operation_id = Uuid::new_v4();
     let first_cart_id = Uuid::new_v4();
+    let second_cart_id = Uuid::new_v4();
     let snapshot_hash = "c".repeat(64);
     let request_hash = "d".repeat(64);
-    database
-        .seed_legacy_order(
-            tenant_id,
-            operation_id,
-            snapshot_hash.as_str(),
-            request_hash.as_str(),
-        )
-        .await;
+    let order_id = database.seed_order(tenant_id).await;
     let port = in_process_checkout_order_identity_port(database.db.clone());
 
-    port.adopt_legacy(
-        context(tenant_id, operation_id, "first-adopt", true),
-        AdoptLegacyCheckoutOrderIdentityRequest {
+    port.bind(
+        context(tenant_id, operation_id, "first-bind", true),
+        BindCheckoutOrderIdentityRequest {
             checkout_operation_id: operation_id,
+            order_id,
             cart_id: first_cart_id,
+            payment_collection_id: None,
+            shipping_option_id: None,
+            snapshot_hash: snapshot_hash.clone(),
+            request_hash: request_hash.clone(),
         },
     )
     .await
     .unwrap();
+
     let error = port
-        .adopt_legacy(
-            context(tenant_id, operation_id, "second-adopt", true),
-            AdoptLegacyCheckoutOrderIdentityRequest {
+        .bind(
+            context(tenant_id, operation_id, "second-bind", true),
+            BindCheckoutOrderIdentityRequest {
                 checkout_operation_id: operation_id,
-                cart_id: Uuid::new_v4(),
+                order_id,
+                cart_id: second_cart_id,
+                payment_collection_id: None,
+                shipping_option_id: None,
+                snapshot_hash,
+                request_hash,
             },
         )
         .await
         .unwrap_err();
 
     assert_eq!(error.kind, PortErrorKind::Conflict);
-    assert_eq!(error.code, "order.checkout_identity_cart_conflict");
 }

@@ -312,15 +312,6 @@ pub trait CheckoutOrderIdentityPort: Send + Sync {
         context: PortContext,
         request: BindCheckoutOrderIdentityRequest,
     ) -> Result<CheckoutOrderIdentitySnapshot, PortError>;
-
-    /// Temporary owner-side compatibility operation. It adopts an order created
-    /// by the old metadata path into typed owner persistence. Consumers must not
-    /// inspect order metadata or query owner tables themselves.
-    async fn adopt_legacy(
-        &self,
-        context: PortContext,
-        request: AdoptLegacyCheckoutOrderIdentityRequest,
-    ) -> Result<Option<CheckoutOrderIdentitySnapshot>, PortError>;
 }
 
 #[derive(Clone)]
@@ -406,94 +397,6 @@ impl CheckoutOrderIdentityPort for InProcessCheckoutOrderIdentityPort {
                 order_checkout_identity_error_to_port_error(&context, owner_operation, error)
             })
     }
-
-    async fn adopt_legacy(
-        &self,
-        context: PortContext,
-        request: AdoptLegacyCheckoutOrderIdentityRequest,
-    ) -> Result<Option<CheckoutOrderIdentitySnapshot>, PortError> {
-        let owner_operation = "adopt_legacy_checkout_identity";
-        context.require_policy(PortCallPolicy::write())?;
-        context.require_write_semantics()?;
-        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
-        if let Some(existing) = self
-            .journal
-            .get_by_operation(tenant_id, request.checkout_operation_id)
-            .await
-            .map_err(|error| {
-                order_checkout_identity_error_to_port_error(&context, owner_operation, error)
-            })?
-        {
-            if existing.source_cart_id.is_some() && existing.source_cart_id != Some(request.cart_id)
-            {
-                return Err(PortError::conflict(
-                    "order.checkout_identity_cart_conflict",
-                    "checkout operation is already bound to another cart",
-                ));
-            }
-            return Ok(Some(existing.into()));
-        }
-
-        let candidate = find_legacy_checkout_order_candidate(
-            &self.db,
-            tenant_id,
-            request.checkout_operation_id,
-        )
-        .await
-        .map_err(|_| {
-            let facts = OrderPortErrorFacts {
-                error_variant: "checkout_identity_storage",
-                text_field_count: 0,
-                text_total_length: 0,
-                uuid_field_count: 0,
-                uuid_non_nil_count: 0,
-                opaque_payload_present: true,
-            };
-            log_order_port_failure(
-                &context,
-                owner_operation,
-                "order.checkout_identity_storage_unavailable",
-                &facts,
-                true,
-            );
-            PortError::unavailable(
-                "order.checkout_identity_storage_unavailable",
-                "order checkout identity storage is temporarily unavailable",
-            )
-        })?;
-        let Some(candidate) = candidate else {
-            return Ok(None);
-        };
-        let snapshot_hash = candidate.snapshot_hash.ok_or_else(|| {
-            PortError::conflict(
-                "order.checkout_identity_snapshot_missing",
-                "legacy checkout order has no immutable snapshot hash",
-            )
-        })?;
-        let request_hash = candidate.request_hash.ok_or_else(|| {
-            PortError::conflict(
-                "order.checkout_identity_request_hash_missing",
-                "legacy checkout order has no immutable order request hash",
-            )
-        })?;
-        self.journal
-            .record(RecordOrderCheckoutIdentity {
-                tenant_id,
-                checkout_operation_id: request.checkout_operation_id,
-                order_id: candidate.order_id,
-                source_cart_id: request.cart_id,
-                payment_collection_id: candidate.payment_collection_id,
-                shipping_option_id: candidate.shipping_option_id,
-                snapshot_hash,
-                request_hash,
-            })
-            .await
-            .map(Into::into)
-            .map(Some)
-            .map_err(|error| {
-                order_checkout_identity_error_to_port_error(&context, owner_operation, error)
-            })
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -517,13 +420,6 @@ pub struct BindCheckoutOrderIdentityRequest {
     pub request_hash: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct AdoptLegacyCheckoutOrderIdentityRequest {
-    pub checkout_operation_id: Uuid,
-    pub cart_id: Uuid,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CheckoutOrderIdentitySnapshot {
     pub checkout_operation_id: Uuid,
     pub tenant_id: Uuid,
@@ -548,68 +444,6 @@ impl From<crate::entities::order_checkout_identity::Model> for CheckoutOrderIden
             request_hash: value.request_hash,
         }
     }
-}
-
-struct LegacyCheckoutOrderCandidate {
-    order_id: Uuid,
-    payment_collection_id: Option<Uuid>,
-    shipping_option_id: Option<Uuid>,
-    snapshot_hash: Option<String>,
-    request_hash: Option<String>,
-}
-
-async fn find_legacy_checkout_order_candidate<C>(
-    conn: &C,
-    tenant_id: Uuid,
-    checkout_operation_id: Uuid,
-) -> Result<Option<LegacyCheckoutOrderCandidate>, sea_orm::DbErr>
-where
-    C: ConnectionTrait,
-{
-    let orders = crate::entities::order::Entity::find()
-        .filter(crate::entities::order::Column::TenantId.eq(tenant_id))
-        .all(conn)
-        .await?;
-
-    let op_str = checkout_operation_id.to_string();
-    let mut matches = orders
-        .into_iter()
-        .filter_map(|order| {
-            let checkout = order.metadata.get("checkout")?;
-            let op_id = checkout.get("operation_id")?.as_str()?;
-            if op_id == op_str {
-                Some(LegacyCheckoutOrderCandidate {
-                    order_id: order.id,
-                    payment_collection_id: checkout
-                        .get("payment_collection_id")
-                        .and_then(serde_json::Value::as_str)
-                        .and_then(|s| Uuid::parse_str(s).ok()),
-                    shipping_option_id: checkout
-                        .get("shipping_option_id")
-                        .and_then(serde_json::Value::as_str)
-                        .and_then(|s| Uuid::parse_str(s).ok()),
-                    snapshot_hash: checkout
-                        .get("snapshot_hash")
-                        .and_then(serde_json::Value::as_str)
-                        .map(String::from),
-                    request_hash: checkout
-                        .get("order_request_hash")
-                        .and_then(serde_json::Value::as_str)
-                        .map(String::from),
-                })
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-
-    if matches.len() > 1 {
-        return Err(sea_orm::DbErr::Custom(
-            "multiple orders are bound to one checkout operation".to_string(),
-        ));
-    }
-
-    Ok(matches.pop())
 }
 
 fn order_checkout_identity_error_to_port_error(
@@ -716,23 +550,6 @@ impl InProcessCheckoutCompletionPort {
                 context.clone(),
                 ReadCheckoutOrderIdentityByOperationRequest {
                     checkout_operation_id,
-                },
-            )
-            .await
-    }
-
-    async fn adopt_legacy_identity(
-        &self,
-        context: &PortContext,
-        checkout_operation_id: Uuid,
-        cart_id: Uuid,
-    ) -> Result<Option<CheckoutOrderIdentitySnapshot>, PortError> {
-        self.identity_port
-            .adopt_legacy(
-                context.clone(),
-                AdoptLegacyCheckoutOrderIdentityRequest {
-                    checkout_operation_id,
-                    cart_id,
                 },
             )
             .await
@@ -871,33 +688,6 @@ impl CheckoutCompletionPort for crate::InProcessCheckoutCompletionPort {
                 .await;
         }
 
-        if let Some(identity) = self
-            .adopt_legacy_identity(&context, checkout_operation_id, request.cart_id)
-            .await?
-        {
-            validate_completion_identity(
-                &identity,
-                tenant_id,
-                checkout_operation_id,
-                &request,
-                snapshot_hash.as_str(),
-                request_hash.as_str(),
-            )?;
-            return self
-                .resolve_existing_completion(
-                    &context,
-                    ExistingCompletionContext {
-                        owner_operation,
-                        tenant_id,
-                        actor_id,
-                        identity: &identity,
-                        locale: request.locale.as_deref(),
-                        fallback_locale: request.fallback_locale.as_deref(),
-                    },
-                )
-                .await;
-        }
-
         attach_checkout_owner_metadata(
             &mut request.metadata,
             checkout_operation_id,
@@ -917,71 +707,43 @@ impl CheckoutCompletionPort for crate::InProcessCheckoutCompletionPort {
             tax_lines: request.tax_lines.clone(),
             metadata: request.metadata.clone(),
         };
+        let checkout_identity = crate::CreateCheckoutOrderIdentityInput {
+            checkout_operation_id,
+            source_cart_id: request.cart_id,
+            payment_collection_id: request.payment_collection_id,
+            shipping_option_id: request.shipping_option_id,
+            snapshot_hash: snapshot_hash.clone(),
+            request_hash: request_hash.clone(),
+        };
         let create_result = self
             .order_service
-            .create_order_with_channel(
+            .create_checkout_order_with_channel(
                 tenant_id,
                 actor_id,
                 create_input,
                 request.channel_id,
                 request.channel_slug.clone(),
+                checkout_identity,
             )
             .await;
 
         let (order, identity) = match create_result {
             Ok(order) => {
-                let bind_result = self
-                    .identity_port
-                    .bind(
-                        context.clone(),
-                        BindCheckoutOrderIdentityRequest {
-                            checkout_operation_id,
-                            order_id: order.id,
-                            cart_id: request.cart_id,
-                            payment_collection_id: request.payment_collection_id,
-                            shipping_option_id: request.shipping_option_id,
-                            snapshot_hash: snapshot_hash.clone(),
-                            request_hash: request_hash.clone(),
-                        },
-                    )
-                    .await;
-                match bind_result {
-                    Ok(identity) => (order, identity),
-                    Err(bind_error) => {
-                        let Some(identity) = self
-                            .read_identity_by_operation(&context, checkout_operation_id)
-                            .await?
-                            .or(self
-                                .adopt_legacy_identity(
-                                    &context,
-                                    checkout_operation_id,
-                                    request.cart_id,
-                                )
-                                .await?)
-                        else {
-                            return Err(bind_error);
-                        };
-                        validate_completion_identity(
-                            &identity,
-                            tenant_id,
-                            checkout_operation_id,
-                            &request,
-                            snapshot_hash.as_str(),
-                            request_hash.as_str(),
-                        )?;
-                        if identity.order_id != order.id {
-                            return Err(PortError::conflict(
-                                "order.checkout_concurrent_order_conflict",
-                                "checkout operation resolved to another order during identity binding",
-                            ));
-                        }
-                        (order, identity)
-                    }
-                }
+                let identity = CheckoutOrderIdentitySnapshot {
+                    checkout_operation_id,
+                    tenant_id,
+                    order_id: order.id,
+                    source_cart_id: Some(request.cart_id),
+                    payment_collection_id: request.payment_collection_id,
+                    shipping_option_id: request.shipping_option_id,
+                    snapshot_hash: Some(snapshot_hash.clone()),
+                    request_hash: Some(request_hash.clone()),
+                };
+                (order, identity)
             }
             Err(create_error) => {
                 let Some(identity) = self
-                    .adopt_legacy_identity(&context, checkout_operation_id, request.cart_id)
+                    .read_identity_by_operation(&context, checkout_operation_id)
                     .await?
                 else {
                     return Err(order_error_to_port_error(

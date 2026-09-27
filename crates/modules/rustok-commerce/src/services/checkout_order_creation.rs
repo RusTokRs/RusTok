@@ -1,9 +1,8 @@
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError};
 use rustok_order::{
-    AdoptLegacyCheckoutOrderIdentityRequest, BindCheckoutOrderIdentityRequest,
-    CheckoutOrderIdentityPort, CheckoutOrderIdentitySnapshot, CreateOrderInput, OrderError,
-    OrderResponse, OrderService, ReadCheckoutOrderIdentityByOperationRequest,
-    in_process_checkout_order_identity_port,
+    CheckoutOrderIdentityPort, CheckoutOrderIdentitySnapshot, CreateCheckoutOrderIdentityInput,
+    CreateOrderInput, OrderError, OrderResponse, OrderService,
+    ReadCheckoutOrderIdentityByOperationRequest, in_process_checkout_order_identity_port,
 };
 use rustok_outbox::TransactionalEventBus;
 use serde_json::Value;
@@ -130,7 +129,7 @@ impl CheckoutOrderCreationExecutor {
         let request_hash = order_request_hash(&input, channel_id, channel_slug.as_deref())?;
         attach_order_request_hash(&mut input.metadata, request_hash.as_str())?;
 
-        let mut identity = self
+        let identity = self
             .order_identity_port
             .read_by_operation(
                 identity_context(
@@ -147,26 +146,6 @@ impl CheckoutOrderCreationExecutor {
             )
             .await
             .map_err(identity_boundary_error)?;
-        if identity.is_none() {
-            identity = self
-                .order_identity_port
-                .adopt_legacy(
-                    identity_context(
-                        tenant_id,
-                        actor_id,
-                        operation_id,
-                        self.port_deadline,
-                        "adopt",
-                        true,
-                    ),
-                    AdoptLegacyCheckoutOrderIdentityRequest {
-                        checkout_operation_id: operation_id,
-                        cart_id: operation.cart_id,
-                    },
-                )
-                .await
-                .map_err(identity_boundary_error)?;
-        }
 
         let (order, identity) = match identity {
             Some(identity) => {
@@ -191,94 +170,62 @@ impl CheckoutOrderCreationExecutor {
                 (order, identity)
             }
             None => {
+                let operation = self
+                    .operation_journal
+                    .renew_lease(
+                        tenant_id,
+                        operation_id,
+                        lease_owner.as_str(),
+                        super::DEFAULT_CHECKOUT_LEASE_SECONDS,
+                    )
+                    .await?;
+                let checkout_identity = CreateCheckoutOrderIdentityInput {
+                    checkout_operation_id: operation_id,
+                    source_cart_id: operation.cart_id,
+                    payment_collection_id: None,
+                    shipping_option_id: None,
+                    snapshot_hash: snapshot_hash.to_string(),
+                    request_hash: request_hash.clone(),
+                };
                 let create_result = self
                     .order_service
-                    .create_order_with_channel(tenant_id, actor_id, input, channel_id, channel_slug)
+                    .create_checkout_order_with_channel(
+                        tenant_id,
+                        actor_id,
+                        input,
+                        channel_id,
+                        channel_slug,
+                        checkout_identity,
+                    )
                     .await;
                 match create_result {
                     Ok(order) => {
-                        let bind_result = self
-                            .order_identity_port
-                            .bind(
-                                identity_context(
-                                    tenant_id,
-                                    actor_id,
-                                    operation_id,
-                                    self.port_deadline,
-                                    "bind",
-                                    true,
-                                ),
-                                BindCheckoutOrderIdentityRequest {
-                                    checkout_operation_id: operation_id,
-                                    order_id: order.id,
-                                    cart_id: operation.cart_id,
-                                    payment_collection_id: None,
-                                    shipping_option_id: None,
-                                    snapshot_hash: snapshot_hash.to_string(),
-                                    request_hash: request_hash.clone(),
-                                },
-                            )
-                            .await;
-                        match bind_result {
-                            Ok(identity) => (order, identity),
-                            Err(bind_error) => {
-                                let _ = self
-                                    .order_service
-                                    .cancel_order(
-                                        tenant_id,
-                                        actor_id,
-                                        order.id,
-                                        Some("redundant checkout order creation race".to_string()),
-                                    )
-                                    .await;
-                                let Some(identity) = self
-                                    .order_identity_port
-                                    .read_by_operation(
-                                        identity_context(
-                                            tenant_id,
-                                            actor_id,
-                                            operation_id,
-                                            self.port_deadline,
-                                            "read-after-bind-conflict",
-                                            false,
-                                        ),
-                                        ReadCheckoutOrderIdentityByOperationRequest {
-                                            checkout_operation_id: operation_id,
-                                        },
-                                    )
-                                    .await
-                                    .map_err(identity_boundary_error)?
-                                else {
-                                    return Err(identity_boundary_error(bind_error));
-                                };
-                                let winning_order = self
-                                    .order_service
-                                    .get_order_with_locale_fallback(
-                                        tenant_id,
-                                        identity.order_id,
-                                        locale,
-                                        fallback_locale,
-                                    )
-                                    .await?;
-                                (winning_order, identity)
-                            }
-                        }
+                        let identity = CheckoutOrderIdentitySnapshot {
+                            checkout_operation_id: operation_id,
+                            tenant_id,
+                            order_id: order.id,
+                            source_cart_id: Some(operation.cart_id),
+                            payment_collection_id: None,
+                            shipping_option_id: None,
+                            snapshot_hash: Some(snapshot_hash.to_string()),
+                            request_hash: Some(request_hash.clone()),
+                        };
+                        (order, identity)
                     }
                     Err(create_error) => {
                         let Some(identity) = self
                             .order_identity_port
-                            .adopt_legacy(
+                            .read_by_operation(
                                 identity_context(
                                     tenant_id,
                                     actor_id,
                                     operation_id,
                                     self.port_deadline,
-                                    "adopt-after-create-race",
-                                    true,
+                                    "read-after-create-conflict",
+                                    false,
                                 ),
-                                AdoptLegacyCheckoutOrderIdentityRequest {
+                                ReadCheckoutOrderIdentityByOperationRequest {
                                     checkout_operation_id: operation_id,
-                                    cart_id: operation.cart_id,
                                 },
                             )
                             .await
