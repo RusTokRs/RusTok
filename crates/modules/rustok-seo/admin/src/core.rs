@@ -686,7 +686,7 @@ impl SeoSettingsForm {
                 twitter_description: trim_to_option(self.template_twitter_description.as_str()),
             },
             template_overrides: parse_template_overrides(self.template_overrides_json.as_str()),
-            sitemap_submission_endpoints: Vec::new(),
+            ..SeoModuleSettings::default()
         }
     }
 }

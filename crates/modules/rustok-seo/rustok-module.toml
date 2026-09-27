@@ -41,11 +41,60 @@ title = "SEO Overview"
 nav_label = "Overview"
 
 [settings]
-default_robots = { type = "array", item_type = "string", default = ["index", "follow"] }
-sitemap_enabled = { type = "boolean", default = true }
-allowed_redirect_hosts = { type = "array", item_type = "string", default = [] }
-allowed_canonical_hosts = { type = "array", item_type = "string", default = [] }
-x_default_locale = { type = "string", default = "" }
+# Submodule Feature Enablement (Suite submodules)
+submodule_redirects_enabled = { type = "boolean", default = true, description = "Enable or disable the redirects engine submodule." }
+submodule_sitemaps_enabled = { type = "boolean", default = true, description = "Enable or disable XML/HTML sitemap generation submodule." }
+submodule_canonical_enabled = { type = "boolean", default = true, description = "Enable or disable canonical URL resolution submodule." }
+submodule_hreflang_enabled = { type = "boolean", default = true, description = "Enable or disable hreflang alternate cluster submodule." }
+submodule_rich_snippets_enabled = { type = "boolean", default = true, description = "Enable or disable Schema.org JSON-LD structured data submodule." }
+submodule_bulk_editor_enabled = { type = "boolean", default = true, description = "Enable or disable bulk SEO editing submodule." }
+
+# Robots & Crawling
+default_robots = { type = "array", item_type = "string", default = ["index", "follow"], description = "Default meta robots directives." }
+robots_txt_custom_content = { type = "string", default = "", description = "Custom directives or user-agent rules appended to robots.txt." }
+crawl_delay = { type = "integer", default = 0, description = "Crawl delay in seconds for web crawlers in robots.txt." }
+disallow_paths = { type = "array", item_type = "string", default = [], description = "Paths disallowed for web crawlers in robots.txt." }
+
+# Canonical URLs & Redirects
+canonical_force_https = { type = "boolean", default = true, description = "Enforce HTTPS scheme in all generated canonical URLs." }
+canonical_trailing_slash_mode = { type = "string", default = "never", options = ["always", "never", "preserve"], description = "Trailing slash normalization mode for canonical URLs." }
+allowed_canonical_hosts = { type = "array", item_type = "string", default = [], description = "Allowed domain hostnames for canonical URLs." }
+allowed_redirect_hosts = { type = "array", item_type = "string", default = [], description = "Allowed destination hostnames for external redirects." }
+auto_redirect_on_slug_change = { type = "boolean", default = true, description = "Automatically create a 301 redirect when an entity URL slug or handle changes." }
+redirect_cache_ttl_seconds = { type = "integer", default = 3600, description = "Cache TTL in seconds for fast redirect lookup on hot paths." }
+
+# Sitemaps
+sitemap_enabled = { type = "boolean", default = true, description = "Enable XML sitemap generation." }
+sitemap_include_images = { type = "boolean", default = true, description = "Include image metadata in XML sitemaps." }
+sitemap_changefreq = { type = "string", default = "weekly", options = ["always", "hourly", "daily", "weekly", "monthly", "yearly", "never"], description = "Default sitemap change frequency hint." }
+sitemap_priority = { type = "string", default = "0.8", description = "Default sitemap priority score (0.0 to 1.0)." }
+sitemap_max_entries_per_file = { type = "integer", default = 50000, description = "Maximum entries per sitemap file (search engine limit: 50,000)." }
+sitemap_submission_endpoints = { type = "array", item_type = "string", default = [], description = "External search engine ping/submission endpoints for XML sitemaps." }
+sitemap_exclude_patterns = { type = "array", item_type = "string", default = [], description = "URL path patterns excluded from sitemap generation." }
+
+# Hreflang & Internationalization
+hreflang_enabled = { type = "boolean", default = true, description = "Emit hreflang alternate link tags in HTML head." }
+hreflang_in_sitemap = { type = "boolean", default = true, description = "Include hreflang alternate links inside XML sitemaps." }
+x_default_locale = { type = "string", default = "", description = "Designated locale tag for x-default hreflang fallback." }
+
+# Structured Data & Rich Snippets (Schema.org / JSON-LD)
+rich_snippets_enabled = { type = "boolean", default = true, description = "Emit Schema.org JSON-LD structured data." }
+organization_name = { type = "string", default = "", description = "Organization name for Organization Schema.org structured data." }
+organization_logo_url = { type = "string", default = "", description = "Organization logo URL for Schema.org structured data." }
+breadcrumbs_enabled = { type = "boolean", default = true, description = "Emit BreadcrumbList Schema.org structured data." }
+searchbox_enabled = { type = "boolean", default = true, description = "Emit SitelinksSearchBox Schema.org structured data." }
+
+# OpenGraph & Social Cards
+og_site_name = { type = "string", default = "", description = "Default OpenGraph site_name property." }
+default_og_image_url = { type = "string", default = "", description = "Default OpenGraph image URL used when no target image exists." }
+twitter_card_type = { type = "string", default = "summary_large_image", options = ["summary", "summary_large_image"], description = "Twitter card presentation type." }
+twitter_site_handle = { type = "string", default = "", description = "Twitter/X site handle (@username)." }
+
+# Title formatting & Templates
+title_separator = { type = "string", default = " | ", description = "Separator string between page title and site name." }
+title_suffix = { type = "string", default = "", description = "Default suffix appended to page titles." }
+meta_title_max_length = { type = "integer", default = 60, description = "Recommended maximum character length for meta title." }
+meta_description_max_length = { type = "integer", default = 160, description = "Recommended maximum character length for meta description." }
 template_defaults = { type = "object", default = {}, properties = { title = { type = "string" }, meta_description = { type = "string" }, canonical_url = { type = "string" }, keywords = { type = "string" }, robots = { type = "string" }, open_graph_title = { type = "string" }, open_graph_description = { type = "string" }, twitter_title = { type = "string" }, twitter_description = { type = "string" } } }
 template_overrides = { type = "object", default = {}, description = "Per-target SEO template overrides keyed by target kind." }
 

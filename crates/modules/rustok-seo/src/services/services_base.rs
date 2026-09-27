@@ -182,7 +182,11 @@ impl SeoService {
         db: DatabaseConnection,
         event_bus: TransactionalEventBus,
     ) -> Self {
+        let reader = SharedStaticModuleSettingsReader(Arc::new(TestStaticSettingsReader {
+            db: db.clone(),
+        }));
         Self::new(db, event_bus, built_in_target_registry())
+            .with_static_settings_reader(reader)
     }
 
     #[cfg(test)]
@@ -212,48 +216,14 @@ impl SeoService {
         &self,
         tenant_id: Uuid,
     ) -> SeoResult<Option<rustok_api::StaticModuleSettingsSnapshot>> {
-        if let Some(reader) = self.static_settings_reader.as_ref() {
-            return reader
-                .settings(tenant_id, MODULE_SLUG)
-                .await
-                .map_err(map_settings_port_error);
-        }
+        let Some(reader) = self.static_settings_reader.as_ref() else {
+            return Ok(None);
+        };
 
-        Self::read_db_static_settings(&self.db, tenant_id, MODULE_SLUG).await
-    }
-
-    async fn read_db_static_settings(
-        db: &DatabaseConnection,
-        tenant_id: Uuid,
-        module_slug: &str,
-    ) -> SeoResult<Option<rustok_api::StaticModuleSettingsSnapshot>> {
-        use sea_orm::{ConnectionTrait, DbBackend, Statement};
-        let backend = db.get_database_backend();
-        let statement = match backend {
-            DbBackend::Postgres => Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "SELECT enabled, settings FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1",
-                vec![tenant_id.into(), module_slug.into()],
-            ),
-            _ => Statement::from_sql_and_values(
-                DbBackend::Sqlite,
-                "SELECT enabled, settings FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1",
-                vec![tenant_id.into(), module_slug.into()],
-            ),
-        };
-        let row = match db.query_one_raw(statement).await {
-            Ok(Some(row)) => row,
-            Ok(None) => return Ok(None),
-            Err(_) => return Ok(None),
-        };
-        let enabled: bool = row.try_get("", "enabled").unwrap_or(false);
-        let encoded: String = row.try_get("", "settings").unwrap_or_default();
-        let settings = if encoded.trim().is_empty() {
-            serde_json::json!({})
-        } else {
-            serde_json::from_str(&encoded).unwrap_or_else(|_| serde_json::json!({}))
-        };
-        Ok(Some(rustok_api::StaticModuleSettingsSnapshot { enabled, settings }))
+        reader
+            .settings(tenant_id, MODULE_SLUG)
+            .await
+            .map_err(map_settings_port_error)
     }
 
     pub fn normalize_settings(mut settings: SeoModuleSettings) -> SeoModuleSettings {
@@ -281,6 +251,91 @@ impl SeoService {
         settings.sitemap_submission_endpoints = sitemaps::normalize_sitemap_submission_endpoints(
             settings.sitemap_submission_endpoints.as_slice(),
         );
+
+        settings.title_separator = if settings.title_separator.trim().is_empty() {
+            " | ".to_string()
+        } else {
+            settings.title_separator
+        };
+        settings.title_suffix = settings
+            .title_suffix
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        settings.meta_title_max_length = settings.meta_title_max_length.clamp(10, 200);
+        settings.meta_description_max_length = settings.meta_description_max_length.clamp(20, 500);
+        settings.sitemap_max_entries_per_file = settings.sitemap_max_entries_per_file.clamp(1, 50000);
+        settings.redirect_cache_ttl_seconds = settings.redirect_cache_ttl_seconds.clamp(0, 86400);
+        settings.crawl_delay = settings.crawl_delay.map(|delay| delay.clamp(0, 3600));
+        settings.robots_txt_custom_content = settings
+            .robots_txt_custom_content
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        settings.disallow_paths = settings
+            .disallow_paths
+            .into_iter()
+            .filter_map(|p| {
+                let trimmed = p.trim().to_string();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            })
+            .collect();
+        settings.organization_name = settings
+            .organization_name
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        settings.organization_logo_url = settings
+            .organization_logo_url
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        settings.og_site_name = settings
+            .og_site_name
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        settings.default_og_image_url = settings
+            .default_og_image_url
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        settings.twitter_site_handle = settings
+            .twitter_site_handle
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        settings.canonical_trailing_slash_mode = {
+            let mode = settings.canonical_trailing_slash_mode.trim().to_ascii_lowercase();
+            match mode.as_str() {
+                "always" | "never" | "preserve" => mode,
+                _ => "never".to_string(),
+            }
+        };
+        settings.sitemap_changefreq = {
+            let freq = settings.sitemap_changefreq.trim().to_ascii_lowercase();
+            match freq.as_str() {
+                "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never" => freq,
+                _ => "weekly".to_string(),
+            }
+        };
+        settings.twitter_card_type = {
+            let card = settings.twitter_card_type.trim().to_ascii_lowercase();
+            match card.as_str() {
+                "summary" | "summary_large_image" => card,
+                _ => "summary_large_image".to_string(),
+            }
+        };
+        settings.sitemap_exclude_patterns = settings
+            .sitemap_exclude_patterns
+            .into_iter()
+            .filter_map(|p| {
+                let trimmed = p.trim().to_string();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            })
+            .collect();
+
         settings
     }
 
@@ -292,6 +347,57 @@ impl SeoService {
             Some(capability) => self.registry.entries_with_capability(capability),
             None => self.registry.entries(),
         }
+    }
+}
+
+#[cfg(test)]
+struct TestStaticSettingsReader {
+    db: DatabaseConnection,
+}
+
+#[cfg(test)]
+#[async_trait::async_trait]
+impl rustok_api::StaticModuleSettingsReader for TestStaticSettingsReader {
+    async fn settings(
+        &self,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<Option<rustok_api::StaticModuleSettingsSnapshot>, rustok_api::PortError> {
+        use sea_orm::{ConnectionTrait, DbBackend, Statement};
+        let backend = self.db.get_database_backend();
+        let statement = match backend {
+            DbBackend::Postgres => Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "SELECT enabled, settings FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1",
+                vec![tenant_id.into(), module_slug.into()],
+            ),
+            _ => Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT enabled, settings FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1",
+                vec![tenant_id.into(), module_slug.into()],
+            ),
+        };
+        let row = match self.db.query_one_raw(statement).await {
+            Ok(Some(row)) => row,
+            Ok(None) => return Ok(None),
+            Err(error) => {
+                return Err(rustok_api::PortError::unavailable(
+                    "tests.static_settings_unavailable",
+                    error.to_string(),
+                ));
+            }
+        };
+        let enabled: bool = row.try_get("", "enabled").unwrap_or(false);
+        let encoded: String = row.try_get("", "settings").unwrap_or_default();
+        let settings = if encoded.trim().is_empty() {
+            serde_json::json!({})
+        } else {
+            serde_json::from_str(&encoded).unwrap_or_else(|_| serde_json::json!({}))
+        };
+        Ok(Some(rustok_api::StaticModuleSettingsSnapshot {
+            enabled,
+            settings,
+        }))
     }
 }
 

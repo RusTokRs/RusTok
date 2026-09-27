@@ -54,15 +54,9 @@ async fn persist_seo_settings(
         .map_err(|err| ServerFnError::new(err.to_string()))?
     else {
         return Err(ServerFnError::new(
-            "Module `seo` must be enabled for this tenant before saving defaults",
+            "Module `seo` must be configured for this tenant before saving defaults",
         ));
     };
-
-    if !model.enabled {
-        return Err(ServerFnError::new(
-            "Module `seo` must be enabled for this tenant before saving defaults",
-        ));
-    }
 
     let mut active: tenant_module::ActiveModel = model.into();
     active.settings =
@@ -780,21 +774,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn persist_seo_settings_rejects_disabled_module_row() {
+    async fn persist_seo_settings_persists_disabled_module_row() {
         let db = test_db().await;
         seed_tenant_modules_table(&db).await;
         let tenant_id = Uuid::new_v4();
         insert_tenant_module(&db, tenant_id, false, json!({})).await;
 
         let result = persist_seo_settings(&db, tenant_id, SeoModuleSettings::default()).await;
-
-        assert!(
-            result
-                .expect_err("disabled seo module row should fail")
-                .to_string()
-                .contains("Module `seo` must be enabled for this tenant before saving defaults"),
-            "disabled module row error should mention enabled seo module requirement"
-        );
+        assert!(result.is_ok(), "dormant settings save should succeed for disabled module");
     }
 
     #[tokio::test]

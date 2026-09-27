@@ -874,35 +874,149 @@ pub struct SeoBulkJobStatusRecord {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SeoModuleSettings {
+    // Submodule Feature Enablement
+    #[serde(default = "default_true")]
+    pub submodule_redirects_enabled: bool,
+    #[serde(default = "default_true")]
+    pub submodule_sitemaps_enabled: bool,
+    #[serde(default = "default_true")]
+    pub submodule_canonical_enabled: bool,
+    #[serde(default = "default_true")]
+    pub submodule_hreflang_enabled: bool,
+    #[serde(default = "default_true")]
+    pub submodule_rich_snippets_enabled: bool,
+    #[serde(default = "default_true")]
+    pub submodule_bulk_editor_enabled: bool,
+
+    // Robots & Crawling
     #[serde(default = "default_robots")]
     pub default_robots: Vec<String>,
-    #[serde(default = "default_sitemap_enabled")]
-    pub sitemap_enabled: bool,
     #[serde(default)]
-    pub allowed_redirect_hosts: Vec<String>,
+    pub robots_txt_custom_content: Option<String>,
+    #[serde(default)]
+    pub crawl_delay: Option<i32>,
+    #[serde(default)]
+    pub disallow_paths: Vec<String>,
+
+    // Canonical URLs & Redirects
+    #[serde(default = "default_true")]
+    pub canonical_force_https: bool,
+    #[serde(default = "default_canonical_trailing_slash_mode")]
+    pub canonical_trailing_slash_mode: String,
     #[serde(default)]
     pub allowed_canonical_hosts: Vec<String>,
     #[serde(default)]
+    pub allowed_redirect_hosts: Vec<String>,
+    #[serde(default = "default_true")]
+    pub auto_redirect_on_slug_change: bool,
+    #[serde(default = "default_redirect_cache_ttl_seconds")]
+    pub redirect_cache_ttl_seconds: i32,
+
+    // Sitemaps
+    #[serde(default = "default_sitemap_enabled")]
+    pub sitemap_enabled: bool,
+    #[serde(default = "default_true")]
+    pub sitemap_include_images: bool,
+    #[serde(default = "default_sitemap_changefreq")]
+    pub sitemap_changefreq: String,
+    #[serde(default = "default_sitemap_priority")]
+    pub sitemap_priority: String,
+    #[serde(default = "default_sitemap_max_entries_per_file")]
+    pub sitemap_max_entries_per_file: i32,
+    #[serde(default)]
+    pub sitemap_submission_endpoints: Vec<String>,
+    #[serde(default)]
+    pub sitemap_exclude_patterns: Vec<String>,
+
+    // Hreflang & Internationalization
+    #[serde(default = "default_true")]
+    pub hreflang_enabled: bool,
+    #[serde(default = "default_true")]
+    pub hreflang_in_sitemap: bool,
+    #[serde(default)]
     pub x_default_locale: Option<String>,
+
+    // Structured Data & Rich Snippets
+    #[serde(default = "default_true")]
+    pub rich_snippets_enabled: bool,
+    #[serde(default)]
+    pub organization_name: Option<String>,
+    #[serde(default)]
+    pub organization_logo_url: Option<String>,
+    #[serde(default = "default_true")]
+    pub breadcrumbs_enabled: bool,
+    #[serde(default = "default_true")]
+    pub searchbox_enabled: bool,
+
+    // OpenGraph & Social Cards
+    #[serde(default)]
+    pub og_site_name: Option<String>,
+    #[serde(default)]
+    pub default_og_image_url: Option<String>,
+    #[serde(default = "default_twitter_card_type")]
+    pub twitter_card_type: String,
+    #[serde(default)]
+    pub twitter_site_handle: Option<String>,
+
+    // Title formatting & Templates
+    #[serde(default = "default_title_separator")]
+    pub title_separator: String,
+    #[serde(default)]
+    pub title_suffix: Option<String>,
+    #[serde(default = "default_meta_title_max_length")]
+    pub meta_title_max_length: i32,
+    #[serde(default = "default_meta_description_max_length")]
+    pub meta_description_max_length: i32,
     #[serde(default)]
     pub template_defaults: SeoTemplateRuleSet,
     #[serde(default)]
     pub template_overrides: BTreeMap<String, SeoTemplateRuleSet>,
-    #[serde(default)]
-    pub sitemap_submission_endpoints: Vec<String>,
 }
 
 impl Default for SeoModuleSettings {
     fn default() -> Self {
         Self {
+            submodule_redirects_enabled: true,
+            submodule_sitemaps_enabled: true,
+            submodule_canonical_enabled: true,
+            submodule_hreflang_enabled: true,
+            submodule_rich_snippets_enabled: true,
+            submodule_bulk_editor_enabled: true,
             default_robots: default_robots(),
-            sitemap_enabled: default_sitemap_enabled(),
-            allowed_redirect_hosts: Vec::new(),
+            robots_txt_custom_content: None,
+            crawl_delay: None,
+            disallow_paths: Vec::new(),
+            canonical_force_https: true,
+            canonical_trailing_slash_mode: default_canonical_trailing_slash_mode(),
             allowed_canonical_hosts: Vec::new(),
+            allowed_redirect_hosts: Vec::new(),
+            auto_redirect_on_slug_change: true,
+            redirect_cache_ttl_seconds: default_redirect_cache_ttl_seconds(),
+            sitemap_enabled: default_sitemap_enabled(),
+            sitemap_include_images: true,
+            sitemap_changefreq: default_sitemap_changefreq(),
+            sitemap_priority: default_sitemap_priority(),
+            sitemap_max_entries_per_file: default_sitemap_max_entries_per_file(),
+            sitemap_submission_endpoints: Vec::new(),
+            sitemap_exclude_patterns: Vec::new(),
+            hreflang_enabled: true,
+            hreflang_in_sitemap: true,
             x_default_locale: None,
+            rich_snippets_enabled: true,
+            organization_name: None,
+            organization_logo_url: None,
+            breadcrumbs_enabled: true,
+            searchbox_enabled: true,
+            og_site_name: None,
+            default_og_image_url: None,
+            twitter_card_type: default_twitter_card_type(),
+            twitter_site_handle: None,
+            title_separator: default_title_separator(),
+            title_suffix: None,
+            meta_title_max_length: default_meta_title_max_length(),
+            meta_description_max_length: default_meta_description_max_length(),
             template_defaults: SeoTemplateRuleSet::default(),
             template_overrides: BTreeMap::new(),
-            sitemap_submission_endpoints: Vec::new(),
         }
     }
 }
@@ -991,6 +1105,46 @@ fn default_robots() -> Vec<String> {
 
 fn default_sitemap_enabled() -> bool {
     true
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_canonical_trailing_slash_mode() -> String {
+    "never".to_string()
+}
+
+fn default_redirect_cache_ttl_seconds() -> i32 {
+    3600
+}
+
+fn default_sitemap_changefreq() -> String {
+    "weekly".to_string()
+}
+
+fn default_sitemap_priority() -> String {
+    "0.8".to_string()
+}
+
+fn default_sitemap_max_entries_per_file() -> i32 {
+    50000
+}
+
+fn default_twitter_card_type() -> String {
+    "summary_large_image".to_string()
+}
+
+fn default_title_separator() -> String {
+    " | ".to_string()
+}
+
+fn default_meta_title_max_length() -> i32 {
+    60
+}
+
+fn default_meta_description_max_length() -> i32 {
+    160
 }
 
 fn default_index_repair_limit() -> i32 {
