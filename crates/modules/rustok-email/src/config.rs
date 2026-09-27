@@ -49,6 +49,40 @@ impl std::fmt::Debug for SmtpConfig {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{EmailConfig, SmtpConfig};
+
+    #[test]
+    fn email_config_debug_redacts_smtp_password() {
+        let mut config = EmailConfig::default();
+        config.smtp = SmtpConfig {
+            host: "smtp.example.test".to_string(),
+            port: 587,
+            username: "mailer".to_string(),
+            password: "super-secret-smtp-password".to_string(),
+        };
+
+        let rendered = format!("{config:?}");
+        assert!(!rendered.contains("super-secret-smtp-password"));
+        assert!(rendered.contains("<redacted>"));
+    }
+
+    #[test]
+    fn smtp_config_debug_redacts_password() {
+        let config = SmtpConfig {
+            host: "smtp.example.test".to_string(),
+            port: 587,
+            username: "mailer".to_string(),
+            password: "super-secret-smtp-password".to_string(),
+        };
+
+        let rendered = format!("{config:?}");
+        assert!(!rendered.contains("super-secret-smtp-password"));
+        assert!(rendered.contains("<redacted>"));
+    }
+}
+
 impl Default for EmailConfig {
     fn default() -> Self {
         Self {
