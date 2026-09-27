@@ -210,6 +210,7 @@ npm run verify:i18n:keys -- --strict
 
 - `cargo fmt -p rustok-ui-i18n -- --check` — PASS;
 - `cargo test -p rustok-ui-i18n --all-features` — PASS;
+- `cargo test -p rustok-notifications-storefront` (мигрированный consumer) — PASS;
 - `cargo clippy -p rustok-ui-i18n --all-targets --all-features -- -D warnings` — PASS;
 - `cargo check -p rustok-ui-i18n --all-features --target wasm32-unknown-unknown` — PASS;
 - UI catalog parity — PASS;
@@ -221,7 +222,8 @@ npm run verify:i18n:keys -- --strict
 WASM check сначала выявил дефект provisioning самого workflow: target ставился для
 pinned toolchain, а `cargo` выбирал repository override `stable`. После привязки job
 и target к единой toolchain identity вся focused-матрица, включая реальный WASM
-build, прошла в GitHub Actions run `36325836348`.
+build и интеграционный тест мигрированного consumer, прошла в GitHub Actions run
+`36326679490`.
 
 ## Осознанно отложенные направления (не дефекты текущего контракта)
 
