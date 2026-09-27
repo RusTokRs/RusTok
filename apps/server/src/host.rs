@@ -301,7 +301,7 @@ fn resolve_database_uri(configured_uri: &str) -> String {
     match resolve_boot_database_uri(std::env::var("DATABASE_URL").is_ok(), configured_uri) {
         Some(uri) => {
             tracing::info!(
-                database_uri = uri,
+                database_source = "local_sqlite_fallback",
                 "No external database found; using local SQLite"
             );
             uri.to_string()

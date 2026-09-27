@@ -63,6 +63,25 @@ impl ServerSharedValues {
         }
     }
 
+    fn get_or_insert_with<T>(&self, make: impl FnOnce() -> T) -> T
+    where
+        T: 'static + Send + Sync + Clone,
+    {
+        let mut values = self.write_lock();
+        match values.entry(TypeId::of::<T>()) {
+            Entry::Occupied(entry) => entry
+                .get()
+                .downcast_ref::<T>()
+                .expect("typed shared runtime value must match its TypeId key")
+                .clone(),
+            Entry::Vacant(entry) => {
+                let value = make();
+                entry.insert(Arc::new(value.clone()));
+                value
+            }
+        }
+    }
+
     fn take<T>(&self) -> Option<T>
     where
         T: 'static + Send + Sync,
@@ -159,13 +178,8 @@ impl ServerRuntimeContext {
     }
 
     pub fn effective_policy_cache(&self) -> rustok_modules::ModuleEffectivePolicyCache {
-        if let Some(cache) = self.shared_get::<rustok_modules::ModuleEffectivePolicyCache>() {
-            cache
-        } else {
-            let cache = rustok_modules::ModuleEffectivePolicyCache::new();
-            self.shared_insert(cache.clone());
-            cache
-        }
+        self.shared_values
+            .get_or_insert_with(rustok_modules::ModuleEffectivePolicyCache::new)
     }
 }
 
