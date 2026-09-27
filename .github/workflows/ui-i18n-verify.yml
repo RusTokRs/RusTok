@@ -29,7 +29,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
@@ -61,23 +60,7 @@ jobs:
       - name: Repository i18n contract
         run: node scripts/verify/verify-i18n-contract.mjs
       - name: Test
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set +e
-          cargo test -p rustok-ui-i18n --all-features > /tmp/locale-v2-test.log 2>&1
-          status=$?
-          set -e
-          {
-            echo 'Temporary locale-v2 test diagnostics:'
-            echo
-            echo '```text'
-            tail -n 1000 /tmp/locale-v2-test.log
-            echo '```'
-          } > /tmp/locale-v2-test.md
-          gh pr comment "$PR_NUMBER" --body-file /tmp/locale-v2-test.md
-          exit "$status"
+        run: cargo test -p rustok-ui-i18n --all-features
       - name: Consumer integration
         run: cargo test -p rustok-notifications-storefront
       - name: Clippy
