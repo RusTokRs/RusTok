@@ -21,7 +21,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
@@ -31,6 +30,8 @@ jobs:
   verify:
     name: Format, Test, Clippy & WASM
     runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: "1.96.0"
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -40,7 +41,7 @@ jobs:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
       - name: Ensure WASM target
-        run: rustup target add --toolchain 1.96.0 wasm32-unknown-unknown
+        run: rustup target add --toolchain "$RUSTUP_TOOLCHAIN" wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
@@ -51,20 +52,4 @@ jobs:
       - name: Clippy
         run: cargo clippy -p rustok-ui-i18n --all-targets --all-features -- -D warnings
       - name: WASM check
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set +e
-          cargo check -p rustok-ui-i18n --all-features --target wasm32-unknown-unknown > /tmp/wasm.log 2>&1
-          status=$?
-          set -e
-          {
-            echo 'Temporary WASM audit validation output (target installed):'
-            echo
-            echo '```text'
-            tail -n 400 /tmp/wasm.log
-            echo '```'
-          } > /tmp/wasm-validation.md
-          gh pr comment "$PR_NUMBER" --body-file /tmp/wasm-validation.md
-          exit "$status"
+        run: cargo check -p rustok-ui-i18n --all-features --target wasm32-unknown-unknown

@@ -135,11 +135,12 @@ production-парсинге **не подтвердились**.
 - **Причина 1:** workflow запускался только при изменении директории crate или самого
   workflow. Изменение root `Cargo.toml`, `Cargo.lock` либо `rust-toolchain.toml`
   могло сломать crate без запуска focused gate.
-- **Причина 2:** декларативный `targets` input setup action не обеспечил фактическое
-  наличие `wasm32-unknown-unknown` на runner; gate падал с `E0463 can't find crate
-  for std/core`, не проверяя библиотеку.
-- **Исправление:** root-файлы добавлены в push/PR path filters; перед WASM check
-  выполняется идемпотентный `rustup target add --toolchain 1.96.0`.
+- **Причина 2:** setup action устанавливал target для pinned `1.96.0`, но repository
+  override `stable` выбирал для `cargo` другой rustup toolchain identity. Gate падал
+  с `E0463 can't find crate for std/core`, не проверяя библиотеку.
+- **Исправление:** root-файлы добавлены в push/PR path filters; job фиксирует
+  `RUSTUP_TOOLCHAIN=1.96.0`, а перед WASM check выполняется идемпотентный `rustup
+  target add` для этой же identity.
 
 ### F-08 — документация расходилась с реализацией
 
