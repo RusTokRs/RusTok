@@ -978,9 +978,18 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 ### FS-19 Pre-Implementation Audit Finding — Source Layout
 
-- [ ] **ARCH-06 — production commerce service still stitches a source file with `include!`.** `crates/modules/rustok-commerce/src/services/checkout_payment_stages.rs` creates a nested `legacy` module by `include!("checkout_payment_stages_legacy.rs")`. This is explicitly forbidden by the repository ACRE contract because it bypasses normal Rust module boundaries and hides ownership/dependency structure from tooling. The existing sibling file must be mounted as a normal `#[path] mod` without changing its API.
+- [x] **ARCH-06 — production commerce service stitched a source file with `include!`.** `crates/modules/rustok-commerce/src/services/checkout_payment_stages.rs` creates a nested `legacy` module by `include!("checkout_payment_stages_legacy.rs")`. This is explicitly forbidden by the repository ACRE contract because it bypasses normal Rust module boundaries and hides ownership/dependency structure from tooling. The existing sibling file must be mounted as a normal `#[path] mod` without changing its API.
 
 
 ### FS-19 Pre-Implementation Reconciliation Finding
 
-- [ ] **ARCH-07 — phase table is stale for FS-00 through FS-13.** The live plan history shows those phases already integrated into `main`, but the phase-order table still marks many of them `[ ]`. The single living ledger therefore gives a false “unfinished” state and cannot reliably serve as the one command-driven continuation point.
+- [x] **ARCH-07 — phase table was stale for FS-00 through FS-13.** The live plan history shows those phases already integrated into `main`, but the phase-order table still marks many of them `[ ]`. The single living ledger therefore gives a false “unfinished” state and cannot reliably serve as the one command-driven continuation point.
+
+
+### FS-19 Result
+
+**Implemented:** the production commerce payment-stage compatibility implementation no longer uses `include!`; the legacy file declares its shim dependencies explicitly and is attached through a normal `#[path] mod` boundary. The living phase table was reconciled so FS-00 through FS-18 reflect their already-integrated state.
+
+**Audit passes:** `modules.toml` contains 53 module entries with no missing or cyclic `depends_on` edges; Cargo.lock shows no shared-library dependency on `rustok-server`, `rustok-admin`, or `rustok-storefront`; `AUDIT_PLAN.md`, ACRE and the living ledger agree on the single trigger and plan authority; generated CLI registry output matches the declared root/module provider sources; intentional legacy guards remain explicitly wired where they serve active compatibility boundaries; superseded ADRs are registered as superseded rather than silently rewritten.
+
+**Verification state:** tests/builds/generators were not executed by the agent. Static source and metadata checks only. FS-19 implementation is ready for integration.
