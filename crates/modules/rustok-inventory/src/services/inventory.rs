@@ -438,21 +438,39 @@ impl InventoryService {
         let state = self
             .ensure_inventory_state(&txn, tenant_id, &variant)
             .await?;
-        let available = self
-            .available_quantity(&txn, state.inventory_item.id)
-            .await?;
 
-        if !inventory_policy_allows_backorder(&variant.inventory_policy) && available < quantity {
+        let mut level_update = entities::inventory_level::Entity::update_many()
+            .col_expr(
+                entities::inventory_level::Column::ReservedQuantity,
+                Expr::col(entities::inventory_level::Column::ReservedQuantity).add(quantity),
+            )
+            .col_expr(
+                entities::inventory_level::Column::UpdatedAt,
+                Expr::value(Utc::now()),
+            )
+            .filter(entities::inventory_level::Column::Id.eq(state.level.id));
+
+        if !inventory_policy_allows_backorder(&variant.inventory_policy) {
+            level_update = level_update.filter(
+                Expr::col(entities::inventory_level::Column::StockedQuantity)
+                    .sub(Expr::col(entities::inventory_level::Column::ReservedQuantity))
+                    .gte(quantity),
+            );
+        }
+
+        if level_update.exec(&txn).await?.rows_affected != 1 {
+            let available = self
+                .available_quantity(&txn, state.inventory_item.id)
+                .await?;
             return Err(CommerceError::InsufficientInventory {
                 requested: quantity,
                 available,
             });
         }
 
-        let mut level_active: entities::inventory_level::ActiveModel = state.level.clone().into();
-        level_active.reserved_quantity = Set(state.level.reserved_quantity + quantity);
-        level_active.updated_at = Set(Utc::now().into());
-        level_active.update(&txn).await?;
+        let available = self
+            .available_quantity(&txn, state.inventory_item.id)
+            .await?;
 
         entities::reservation_item::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -476,7 +494,7 @@ impl InventoryService {
         txn.commit().await?;
         Ok(InventoryReservationWriteResult::from_quantities(
             quantity,
-            available - quantity,
+            available,
             variant.inventory_policy.as_str(),
         ))
     }
