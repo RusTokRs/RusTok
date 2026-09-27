@@ -1232,7 +1232,7 @@ fn email_delivery_is_disabled(settings: &EmailSettings) -> bool {
         || matches!(settings.provider, EmailProvider::Smtp) && !settings.enabled
 }
 
-fn is_production_environment() -> bool {
+pub(crate) fn is_production_environment() -> bool {
     ["RUSTOK_ENV", "RUST_ENV", "APP_ENV"].iter().any(|key| {
         std::env::var(key)
             .map(|value| {
@@ -1243,6 +1243,13 @@ fn is_production_environment() -> bool {
             })
             .unwrap_or(false)
     })
+}
+
+pub(crate) fn demo_mode_token_exposure_enabled() -> bool {
+    !is_production_environment()
+        && std::env::var("RUSTOK_DEMO_MODE")
+            .map(|value| value == "1")
+            .unwrap_or(false)
 }
 
 fn email_disabled_production_override_enabled() -> bool {
@@ -1954,4 +1961,14 @@ mod tests {
             Err(TenantSettingsError::MissingSubdomainBaseDomain)
         );
     }
+    #[test]
+    fn demo_mode_must_not_enable_token_exposure_in_production() {
+        let _guard = env_lock().lock().expect("env lock");
+        let _demo = EnvVarGuard::set("RUSTOK_DEMO_MODE", "1");
+        let _prod = EnvVarGuard::set("RUST_ENV", "production");
+
+        assert!(super::is_production_environment());
+        assert!(!super::demo_mode_token_exposure_enabled());
+    }
+
 }
