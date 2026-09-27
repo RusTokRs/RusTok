@@ -767,3 +767,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 - [ ] **EXT-01 — external/provider URL trust boundaries require audit.** Check all connector/provider/network-capable modules for SSRF, private-network access, DNS rebinding assumptions, redirect following, credential leakage, and unbounded response/resource use.
 - [ ] **EXT-02 — capability execution authorization requires audit.** Verify AI/MCP/connector/automation actions are tenant-scoped, permission-checked, bounded by explicit capability allowlists and cannot turn user-controlled metadata into arbitrary privileged tool execution.
 - [ ] **EXT-03 — external side effects require idempotency/retry audit.** Verify webhook/connector/provider retries cannot duplicate writes or side effects and that ambiguous outcomes are reconciled without weakening authorization boundaries.
+
+
+- [ ] **EXT-04 — MCP session plaintext token leaks through derived Debug/serialization.** `McpSessionContext` carries `plaintext_token` and derives both `Debug` and `Serialize`/`Deserialize`. Session contexts can therefore expose the authentication bearer material through diagnostics or serialized runtime state. The token must remain in-memory-only and redact from Debug/schema surfaces.
