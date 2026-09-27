@@ -331,13 +331,11 @@ fn preserve_email_secret_fields(existing: Value, mut incoming: Value) -> Value {
         .get("smtpPassword")
         .and_then(Value::as_str)
         .is_some_and(str::is_empty)
-    {
-        if let Some(existing_password) = existing_object
+        && let Some(existing_password) = existing_object
             .get("smtpPassword")
             .filter(|value| !value.as_str().unwrap_or_default().is_empty())
-        {
-            incoming_object.insert("smtpPassword".to_string(), existing_password.clone());
-        }
+    {
+        incoming_object.insert("smtpPassword".to_string(), existing_password.clone());
     }
 
     if let Some(incoming_smtp) = incoming_object
@@ -347,15 +345,13 @@ fn preserve_email_secret_fields(existing: Value, mut incoming: Value) -> Value {
             .get("password")
             .and_then(Value::as_str)
             .is_some_and(str::is_empty)
-    {
-        if let Some(existing_password) = existing_object
+        && let Some(existing_password) = existing_object
             .get("smtp")
             .and_then(Value::as_object)
             .and_then(|smtp| smtp.get("password"))
             .filter(|value| !value.as_str().unwrap_or_default().is_empty())
-        {
-            incoming_smtp.insert("password".to_string(), existing_password.clone());
-        }
+    {
+        incoming_smtp.insert("password".to_string(), existing_password.clone());
     }
 
     incoming

@@ -558,8 +558,8 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             }
         }
 
-        if user_row_update_requested || role_mutation_plan.is_some() {
-            if let Err(error) = event_bus
+        if (user_row_update_requested || role_mutation_plan.is_some())
+            && let Err(error) = event_bus
                 .publish_in_tx(
                     &tx,
                     context.tenant_id,
@@ -567,20 +567,19 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
                     DomainEvent::UserUpdated { user_id: user.id },
                 )
                 .await
-            {
-                let rollback_error = tx.rollback().await.err();
-                tracing::error!(
-                    %error,
-                    ?rollback_error,
-                    tenant_id = %context.tenant_id,
-                    actor_id = %context.actor_id,
-                    user_id = %user.id,
-                    "Durable UserUpdated publication failed; user update rolled back"
-                );
-                return Err(AuthAdminMutationError::Internal(
-                    "durable UserUpdated event is unavailable".to_string(),
-                ));
-            }
+        {
+            let rollback_error = tx.rollback().await.err();
+            tracing::error!(
+                %error,
+                ?rollback_error,
+                tenant_id = %context.tenant_id,
+                actor_id = %context.actor_id,
+                user_id = %user.id,
+                "Durable UserUpdated publication failed; user update rolled back"
+            );
+            return Err(AuthAdminMutationError::Internal(
+                "durable UserUpdated event is unavailable".to_string(),
+            ));
         }
 
         tx.commit()

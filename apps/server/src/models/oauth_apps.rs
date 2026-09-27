@@ -156,7 +156,7 @@ impl ActiveModel {
             .ok_or_else(|| DbErr::RecordNotFound(format!("OAuth app {app_id}")))?;
         let desired_is_active = active_value(&self.is_active).unwrap_or(before.is_active);
         let desired_revoked_at =
-            active_value(&self.revoked_at).unwrap_or(before.revoked_at.clone());
+            active_value(&self.revoked_at).unwrap_or(before.revoked_at);
         let lifecycle_changed = translation_lifecycle(&before)
             != oauth_app_translation_lifecycle(desired_is_active, desired_revoked_at.is_some());
 

@@ -37,9 +37,9 @@ settings:
       default_id: 00000000-0000-0000-0000-000000000001
     search:
       enabled: true
-      driver: meilisearch
-      url: http://localhost:7700
-      api_key: masterKey
+      driver: postgres
+      url: ""
+      api_key: null
       index_prefix: rustok_dev_
     features:
       registration_enabled: true

@@ -1,7 +1,7 @@
 use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
 use chrono::{DateTime, Utc};
 use rustok_api::{
-    HostAuthority, HostAuthorityContext, Permission, graphql::GraphQLError,
+    HostAuthority, Permission, graphql::GraphQLError,
     has_effective_permission,
 };
 use rustok_outbox::entity::{Column as EventCol, Entity as EventEntity};
@@ -75,10 +75,10 @@ fn require_host_or_permission(
     permission: &Permission,
     message: &str,
 ) -> Result<()> {
-    if let Some(authority) = crate::host_authority::current_host_authority() {
-        if authority.allows(required) {
-            return Ok(());
-        }
+    if let Some(authority) = crate::host_authority::current_host_authority()
+        && authority.allows(required)
+    {
+        return Ok(());
     }
     let auth = ctx
         .data::<AuthContext>()

@@ -266,12 +266,11 @@ impl RbacService {
             }
         };
 
-        if let Ok(Some(row)) = db.query_one_raw(role_query).await {
-            if let Ok(slug) = row.try_get::<String>("", "slug") {
-                if let Ok(role) = std::str::FromStr::from_str(&slug) {
-                    return Ok(role);
-                }
-            }
+        if let Ok(Some(row)) = db.query_one_raw(role_query).await
+            && let Ok(slug) = row.try_get::<String>("", "slug")
+            && let Ok(role) = std::str::FromStr::from_str(&slug)
+        {
+            return Ok(role);
         }
 
         let permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;

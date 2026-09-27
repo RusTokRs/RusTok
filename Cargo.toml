@@ -298,6 +298,7 @@ rustok-migrations = { path = "crates/utils/rustok-migrations" }
 rustok-installer = { path = "crates/utils/rustok-installer" }
 rustok-installer-persistence = { path = "crates/utils/rustok-installer-persistence" }
 rustok-installer-cli = { path = "crates/utils/rustok-installer-cli" }
+rustok-starter = { path = "crates/utils/rustok-starter" }
 rustok-build = { path = "crates/utils/rustok-build" }
 rustok-build-publication = { path = "crates/utils/rustok-build-publication" }
 rustok-build-source = { path = "crates/utils/rustok-build-source" }

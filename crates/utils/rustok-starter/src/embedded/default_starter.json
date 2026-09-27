@@ -1,0 +1,363 @@
+{
+  "schema_version": "1.0",
+  "id": "default-starter",
+  "name": "Default Community & Blog Starter",
+  "description": "Базовый стартовый комплект: главная страница с визуальным конструктором, блог с категориями и статьями, форум в стиле Discourse и навигация.",
+  "locale": "ru",
+  "content": {
+    "taxonomy": {
+      "categories": [
+        {
+          "slug": "news",
+          "name": "Новости и релизы",
+          "description": "Официальные анонсы платформы, важные обновления и планы развития."
+        },
+        {
+          "slug": "engineering",
+          "name": "Инженерия и архитектура",
+          "description": "Технические статьи про Rust, архитектуру модулей и бенчмарки."
+        },
+        {
+          "slug": "guides",
+          "name": "Гайды и туториалы",
+          "description": "Пошаговые инструкции по настройке, развертыванию и интеграциям."
+        }
+      ],
+      "tags": [
+        "release",
+        "announcement",
+        "rust",
+        "architecture",
+        "guide",
+        "faq"
+      ]
+    },
+    "pages": [
+      {
+        "slug": "home",
+        "title": "Главная",
+        "template": "default",
+        "publish": true,
+        "channels": ["web"],
+        "body": {
+          "format": "grapesjs",
+          "document": {
+            "pages": [
+              {
+                "id": "home",
+                "flyPageMeta": {
+                  "title": {
+                    "$localized": {
+                      "ru": "Главная",
+                      "en": "Home"
+                    }
+                  },
+                  "description": "RusToK — современная модульная платформа на Rust",
+                  "slug": {
+                    "$localized": {
+                      "ru": "home",
+                      "en": "home"
+                    }
+                  }
+                },
+                "component": {
+                  "id": "root",
+                  "type": "wrapper",
+                  "tagName": "main",
+                  "classes": ["min-h-screen", "bg-background"],
+                  "components": [
+                    {
+                      "id": "hero-section",
+                      "type": "section",
+                      "tagName": "section",
+                      "classes": ["hero-section", "py-20", "px-6", "text-center"],
+                      "components": [
+                        {
+                          "id": "hero-badge",
+                          "type": "text",
+                          "tagName": "span",
+                          "classes": ["inline-block", "px-4", "py-1", "mb-4", "rounded-full", "text-sm", "font-medium", "bg-primary/10", "text-primary"],
+                          "content": "🚀 Первый публичный релиз RusToK"
+                        },
+                        {
+                          "id": "hero-title",
+                          "type": "heading",
+                          "tagName": "h1",
+                          "classes": ["text-5xl", "font-bold", "tracking-tight", "mb-6"],
+                          "content": "RusToK — современная модульная платформа на Rust"
+                        },
+                        {
+                          "id": "hero-subtitle",
+                          "type": "paragraph",
+                          "tagName": "p",
+                          "classes": ["text-xl", "text-muted-foreground", "max-w-2xl", "mx-auto", "mb-8"],
+                          "content": "Высокая производительность, модульная архитектура, встроенный блог, форум в стиле Discourse и визуальный конструктор страниц."
+                        },
+                        {
+                          "id": "hero-cta-group",
+                          "type": "box",
+                          "tagName": "div",
+                          "classes": ["flex", "gap-4", "justify-center"],
+                          "components": [
+                            {
+                              "id": "hero-btn-blog",
+                              "type": "link",
+                              "tagName": "a",
+                              "attributes": {
+                                "href": "/modules/blog"
+                              },
+                              "classes": ["px-6", "py-3", "rounded-lg", "bg-primary", "text-primary-foreground", "font-semibold", "hover:opacity-90"],
+                              "content": "Читать блог"
+                            },
+                            {
+                              "id": "hero-btn-forum",
+                              "type": "link",
+                              "tagName": "a",
+                              "attributes": {
+                                "href": "/modules/forum"
+                              },
+                              "classes": ["px-6", "py-3", "rounded-lg", "border", "border-border", "font-semibold", "hover:bg-muted"],
+                              "content": "Перейти на форум"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "id": "features-section",
+                      "type": "section",
+                      "tagName": "section",
+                      "classes": ["py-16", "px-6", "max-w-6xl", "mx-auto"],
+                      "components": [
+                        {
+                          "id": "features-grid",
+                          "type": "box",
+                          "tagName": "div",
+                          "classes": ["grid", "md:grid-cols-3", "gap-8"],
+                          "components": [
+                            {
+                              "id": "feature-card-1",
+                              "type": "box",
+                              "tagName": "div",
+                              "classes": ["p-6", "rounded-2xl", "border", "border-border", "bg-card"],
+                              "components": [
+                                {
+                                  "id": "card-1-title",
+                                  "type": "heading",
+                                  "tagName": "h3",
+                                  "classes": ["text-xl", "font-semibold", "mb-2"],
+                                  "content": "⚡ Быстродействие Rust"
+                                },
+                                {
+                                  "id": "card-1-desc",
+                                  "type": "paragraph",
+                                  "tagName": "p",
+                                  "classes": ["text-muted-foreground"],
+                                  "content": "Минимальное потребление ресурсов, мгновенный отклик и надежная обработка запросов."
+                                }
+                              ]
+                            },
+                            {
+                              "id": "feature-card-2",
+                              "type": "box",
+                              "tagName": "div",
+                              "classes": ["p-6", "rounded-2xl", "border", "border-border", "bg-card"],
+                              "components": [
+                                {
+                                  "id": "card-2-title",
+                                  "type": "heading",
+                                  "tagName": "h3",
+                                  "classes": ["text-xl", "font-semibold", "mb-2"],
+                                  "content": "🎨 Визуальный конструктор"
+                                },
+                                {
+                                  "id": "card-2-desc",
+                                  "type": "paragraph",
+                                  "tagName": "p",
+                                  "classes": ["text-muted-foreground"],
+                                  "content": "Создавайте и редактируйте посадочные страницы в визуальном редакторе прямо из панели управления."
+                                }
+                              ]
+                            },
+                            {
+                              "id": "feature-card-3",
+                              "type": "box",
+                              "tagName": "div",
+                              "classes": ["p-6", "rounded-2xl", "border", "border-border", "bg-card"],
+                              "components": [
+                                {
+                                  "id": "card-3-title",
+                                  "type": "heading",
+                                  "tagName": "h3",
+                                  "classes": ["text-xl", "font-semibold", "mb-2"],
+                                  "content": "💬 Сообщество и блог"
+                                },
+                                {
+                                  "id": "card-3-desc",
+                                  "type": "paragraph",
+                                  "tagName": "p",
+                                  "classes": ["text-muted-foreground"],
+                                  "content": "Форум с категориями, голосованием и Q&A, а также полнофункциональный блог со статьями."
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "styles": [],
+            "assets": []
+          }
+        }
+      }
+    ],
+    "blog": {
+      "posts": [
+        {
+          "slug": "welcome-to-rustok",
+          "title": "Добро пожаловать в RusToK: первый публичный релиз",
+          "excerpt": "Мы рады представить RusToK — современную высокопроизводительную платформу для контента и сообществ.",
+          "category_slug": "news",
+          "tags": ["release", "announcement"],
+          "content_markdown": "Мы рады объявить о первом публичном релизе **RusToK**!\n\nRusToK объединяет лучшие практики веб-платформ: масштабируемый модульный монолит, ядро на Rust, транзакционный аутбокс и готовые решения для контента и электронной коммерции.\n\n### Что доступно уже сейчас?\n- **Визуальный конструктор страниц:** создавайте динамические посадочные страницы без кода.\n- **Многоязычный блог:** пишите статьи с поддержкой форматирования и категорий.\n- **Форум нового поколения:** удобное общение и Q&A в стиле Discourse.\n\nПрисоединяйтесь к сообществу и делитесь обратной связью!",
+          "publish": true
+        },
+        {
+          "slug": "rustok-modular-architecture",
+          "title": "Архитектура RusToK: почему Rust и модульный монолит",
+          "excerpt": "Подробный разбор архитектурных решений: гексагональные границы, транзакционный аутбокс и отсутствие легаси.",
+          "category_slug": "engineering",
+          "tags": ["rust", "architecture"],
+          "content_markdown": "При проектировании RusToK перед нами стояла задача построить платформу, способную обслуживать миллионы пользователей без усложнения инфраструктуры микросервисами.\n\n### Основные принципы:\n1. **Модульный монолит:** модули изолированы друг от друга через типизированные порты и контракты.\n2. **Надежность данных:** транзакционная целостность и аутбокс событий гарантируют синхронизацию проекций и очередей.\n3. **Zero Legacy:** мы проектируем целевую архитектуру напрямую, устраняя промежуточные костыли.\n\nЧитайте документацию в репозитории проекта и изучайте исходный код!",
+          "publish": true
+        },
+        {
+          "slug": "quickstart-guide",
+          "title": "Быстрый старт: как настроить сообщество за 10 минут",
+          "excerpt": "Пошаговое руководство по первому запуску, настройке категорий и подключению витрины.",
+          "category_slug": "guides",
+          "tags": ["guide"],
+          "content_markdown": "Развернуть платформу RusToK можно за несколько простых шагов.\n\n### Шаг 1. Запуск окружения\nУбедитесь, что запущен PostgreSQL, и выполните команду запуска сервера.\n\n### Шаг 2. Вход в панель управления\nОткройте панель управления по адресу `http://localhost:3001` и авторизуйтесь под учётной записью администратора.\n\n### Шаг 3. Управление контентом\nПерейдите в раздел **Страницы** для редактирования лендинга, в **Блог** для публикации новых заметок или на **Форум** для настройки разделов сообщества.",
+          "publish": true
+        }
+      ]
+    },
+    "forum": {
+      "categories": [
+        {
+          "slug": "announcements",
+          "name": "Объявления и правила",
+          "description": "Официальные новости проекта, правила сообщества и важные изменения.",
+          "color": "#2563EB",
+          "icon": "megaphone",
+          "position": 1,
+          "moderated": false
+        },
+        {
+          "slug": "general",
+          "name": "Общие обсуждения",
+          "description": "Темы для свободного общения, знакомства и обмена опытом.",
+          "color": "#10B981",
+          "icon": "message-circle",
+          "position": 2,
+          "moderated": false
+        },
+        {
+          "slug": "feature-requests",
+          "name": "Идеи и предложения",
+          "description": "Обсуждение нового функционала, предложений по модулям и интеграциям.",
+          "color": "#F59E0B",
+          "icon": "lightbulb",
+          "position": 3,
+          "moderated": false
+        },
+        {
+          "slug": "help-and-support",
+          "name": "Помощь и Q&A",
+          "description": "Технические вопросы, устранение неполадок и ответы сообщества.",
+          "color": "#8B5CF6",
+          "icon": "help-circle",
+          "position": 4,
+          "moderated": false
+        }
+      ],
+      "topics": [
+        {
+          "category_slug": "announcements",
+          "title": "Добро пожаловать на форум RusToK! Правила и навигация",
+          "slug": "welcome-to-forum",
+          "body_markdown": "Приветствуем всех участников сообщества RusToK!\n\nЭтот форум создан для обсуждения разработки, обмена опытом, публикации идей и взаимопомощи.\n\n### Правила сообщества:\n1. Будьте вежливы и уважительны к другим участникам.\n2. Выбирайте подходящую категорию для вашего топика.\n3. Если ваш вопрос был решён, отметьте ответ как принятое решение (Accepted Solution).\n\nПриятного общения!",
+          "is_pinned": true,
+          "tags": ["announcement"],
+          "replies": []
+        },
+        {
+          "category_slug": "general",
+          "title": "Давайте знакомиться: кто вы и какие проекты создаёте на RusToK?",
+          "slug": "introduce-yourself",
+          "body_markdown": "Всем привет! Давайте познакомимся.\n\nРасскажите немного о себе: над чем вы сейчас работаете, какие модули планируете использовать и какого функционала ждёте от RusToK больше всего?",
+          "is_pinned": false,
+          "tags": [],
+          "replies": [
+            {
+              "body_markdown": "Привет сообществу! Мы разрабатываем портал для онлайн-сообщества с магазином мерча. Архитектура RusToK на Rust нам идеально подходит.",
+              "is_solution": false
+            }
+          ]
+        },
+        {
+          "category_slug": "feature-requests",
+          "title": "Какие модули и интеграции вам нужны в первую очередь?",
+          "slug": "requested-modules",
+          "body_markdown": "Мы активно развиваем экосистему модулей RusToK.\n\nПоделитесь вашими пожеланиями: какие платёжные шлюзы, службы доставки или CRM-интеграции для вас наиболее критичны?",
+          "is_pinned": false,
+          "tags": [],
+          "replies": []
+        },
+        {
+          "category_slug": "help-and-support",
+          "title": "Часто задаваемые вопросы (FAQ) по первому запуску сервера",
+          "slug": "first-run-faq",
+          "body_markdown": "В этом топике собраны ответы на типовые вопросы при установке и локальной разработке.\n\n**Вопрос:** На каких портах запускаются компоненты платформы по умолчанию?",
+          "is_pinned": false,
+          "tags": ["faq"],
+          "replies": [
+            {
+              "body_markdown": "По умолчанию RusToK использует следующие порты:\n- **Axum API Server:** `5150`\n- **Leptos Admin:** `3001`\n- **Next.js Frontend:** `3100`\n- **PostgreSQL:** `5432`\n\nДля запуска всех сервисов удобно использовать скрипт `scripts/dev-start.sh`.",
+              "is_solution": true
+            }
+          ]
+        }
+      ]
+    },
+    "navigation": {
+      "menus": [
+        {
+          "location": "header",
+          "name": "Главное меню",
+          "items": [
+            {
+              "title": "Главная",
+              "url": "/",
+              "position": 1
+            },
+            {
+              "title": "Блог",
+              "url": "/modules/blog",
+              "position": 2
+            },
+            {
+              "title": "Форум",
+              "url": "/modules/forum",
+              "position": 3
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

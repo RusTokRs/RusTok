@@ -1,0 +1,29 @@
+[package]
+name = "rustok-starter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Starter blueprints and declarative data import engine for RusToK"
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+rustok-api = { workspace = true, features = ["server"] }
+rustok-blog.workspace = true
+rustok-core.workspace = true
+rustok-forum.workspace = true
+rustok-navigation.workspace = true
+rustok-outbox.workspace = true
+rustok-pages.workspace = true
+rustok-taxonomy.workspace = true
+sea-orm.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+rustok-test-utils.workspace = true
+sea-orm-migration.workspace = true

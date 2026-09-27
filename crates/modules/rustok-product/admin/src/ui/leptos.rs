@@ -451,9 +451,6 @@ pub fn ProductAdmin() -> impl IntoView {
     };
 
     let reload_current_product = {
-        let bootstrap = bootstrap.clone();
-        let token = token.clone();
-        let tenant = tenant.clone();
         let effective_locale_for_reload = effective_locale.clone();
         let error_copy_for_reload = error_copy.clone();
         move |product_id: String| {
@@ -1721,9 +1718,6 @@ fn ProductVariantsPanel(
     let default_currency_for_form = default_currency.clone();
 
     let on_add_submit = {
-        let bootstrap = bootstrap.clone();
-        let token = token.clone();
-        let tenant = tenant.clone();
         let product_id_val = product_id.clone();
         let default_currency_for_add = default_currency.clone();
         let on_mutated = on_variant_mutated;
@@ -2157,9 +2151,6 @@ fn ProductMediaPanel(
     let current_image_ids: Vec<String> = product.images.iter().map(|img| img.id.clone()).collect();
 
     let on_add_submit = {
-        let bootstrap = bootstrap.clone();
-        let token = token.clone();
-        let tenant = tenant.clone();
         let product_id_val = product_id.clone();
         let on_mutated = on_media_mutated;
         let locale_for_add = locale.clone();

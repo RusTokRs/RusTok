@@ -555,7 +555,7 @@ async fn load_current_published_routes(
         .into_iter()
         .collect::<std::collections::HashSet<_>>();
 
-    Ok(translations
+    translations
         .into_iter()
         .filter(|translation| published_page_ids.contains(&translation.page_id))
         .map(|translation| {
@@ -564,7 +564,7 @@ async fn load_current_published_routes(
                 slug: normalize_slug(&translation.slug)?,
             })
         })
-        .collect::<PagesResult<Vec<_>>>()?)
+        .collect::<PagesResult<Vec<_>>>()
 }
 
 fn page_route_path(locale: &str, slug: &str) -> String {

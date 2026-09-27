@@ -404,7 +404,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                                         <thead class="bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400 font-medium">
                                             <tr>
                                                 <th class="px-6 py-3">{if russian { "Название" } else { "Name" }}</th>
-                                                <th class="px-6 py-3">{if russian { "Slug" } else { "Slug" }}</th>
+                                                <th class="px-6 py-3">{if russian { "Слаг" } else { "Slug" }}</th>
                                                 <th class="px-6 py-3">{if russian { "Тип" } else { "Type" }}</th>
                                                 <th class="px-6 py-3">{if russian { "Скидка" } else { "Discount" }}</th>
                                                 <th class="px-6 py-3">{if russian { "Позиций" } else { "Items" }}</th>

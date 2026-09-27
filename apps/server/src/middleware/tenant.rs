@@ -410,24 +410,23 @@ impl TenantCacheMetricsStore {
         let _ = key;
 
         #[cfg(feature = "redis-cache")]
-        if let Some(client) = &self.redis_client {
-            if let Ok(mut conn) = tenant_cache_redis_timeout(
+        if let Some(client) = &self.redis_client
+            && let Ok(mut conn) = tenant_cache_redis_timeout(
                 "metrics connection",
                 client.get_multiplexed_async_connection(),
             )
             .await
+        {
+            let redis_key = format!("tenant_metrics:{}:{key}", TENANT_CACHE_VERSION);
+            if let Ok(Some(metric)) = tenant_cache_redis_timeout(
+                "metrics GET",
+                redis::cmd("GET")
+                    .arg(redis_key)
+                    .query_async::<Option<u64>>(&mut conn),
+            )
+            .await
             {
-                let redis_key = format!("tenant_metrics:{}:{key}", TENANT_CACHE_VERSION);
-                if let Ok(Some(metric)) = tenant_cache_redis_timeout(
-                    "metrics GET",
-                    redis::cmd("GET")
-                        .arg(redis_key)
-                        .query_async::<Option<u64>>(&mut conn),
-                )
-                .await
-                {
-                    return metric;
-                }
+                return metric;
             }
         }
 
