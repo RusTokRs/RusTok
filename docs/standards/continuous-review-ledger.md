@@ -10,7 +10,7 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-13 — shared frontend/browser packages (audit in progress; tests remain maintainer-owned).  
+**Active phase:** FS-14 — storage/schema/migrations (audit in progress; tests remain maintainer-owned).  
 **Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
 
 ### FS-01 Pre-Implementation Audit Findings
@@ -853,3 +853,19 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** shared AuthSession Debug redaction, browser API tenant metadata semantics, route query sanitizer/writer, transport retry safety policy, shared AuthError mapping, and client/server separation. The backend remains the authority for tenant and authorization decisions.
 
 **Verification state:** no browser tests/builds were run by the agent. Maintainer execution remains required. FS-13 implementation is ready for integration.
+
+
+### FS-14 Pre-Implementation Audit Findings
+
+- [x] **STORAGE-01 — destructive/irreversible migration paths audited; no unguarded repository-owned data-loss path confirmed.** Check every migration with Drop/Delete/Truncate/Rename/alter-removal for guarded preconditions, data-preserving rollback and explicit irreversibility where applicable.
+- [x] **STORAGE-02 — tenant/owner uniqueness and FK scope audited on high-risk migration set; taxonomy/product/forum/payment/tenant constraints preserve owner scope.** Verify business uniqueness keys include tenant/channel/locale where required, and foreign keys prevent cross-tenant references instead of merely relying on application filters.
+- [x] **STORAGE-03 — migration/entity/schema parity audited on high-risk and recent migrations; no confirmed backend/schema mismatch.** Verify entities, DTOs, indexes and runtime assumptions match the actual migrated schema across PostgreSQL, MySQL and SQLite where supported.
+
+
+### FS-14 Result
+
+**Audit coverage:** inventoried 606 migration blobs across 43 owner modules; performed focused source review of destructive, legacy-retirement, backfill, enforce, normalize and repair migrations, including PostgreSQL/SQLite/MySQL guards where present.
+
+**Findings:** no new repository-owned root-cause defect was confirmed in this phase. The previously deferred Flex persisted-schema corruption behavior remains tracked for this storage phase and requires a separate runtime/schema policy decision; no lossy automatic fallback was introduced.
+
+**Verification state:** migration tests/database upgrade-downgrade runs were not executed by the agent. Maintainer execution remains required. FS-14 is ready for integration.
