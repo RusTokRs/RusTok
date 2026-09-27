@@ -944,3 +944,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 - [ ] **RUNTIME-03 — blocking filesystem/process/network work must not run on async request executors.** Verify all synchronous heavy I/O has a bounded blocking boundary or dedicated worker ownership, and that request cancellation propagates to child work.
 - [ ] **RUNTIME-04 — file/static/WebSocket surfaces require path and origin/auth audit.** Verify path normalization/traversal, symlink handling, range/size limits, WebSocket origin/auth checks, and disconnect cleanup.
 - [ ] **RUNTIME-05 — server error/log paths require a final secret/PII and status mapping audit.** No generic `Debug`/request metadata should cross public response/log boundaries; HTTP status must never be derived from untrusted numeric values.
+
+
+- [ ] **RUNTIME-06 — GraphQL WebSocket input queue is unbounded.** `handle_graphql_ws` uses `tokio::sync::mpsc::unbounded_channel` between the network read task and `async_graphql::http::WebSocket`. A peer can send valid WebSocket messages faster than the schema consumes them, causing unbounded queued `String` allocations. The transport must apply a bounded channel and explicit frame/message size limits so backpressure reaches the socket rather than accumulating memory.
