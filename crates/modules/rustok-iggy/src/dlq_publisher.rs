@@ -109,7 +109,6 @@ impl IggyDlqPublisher {
             .create_stream_if_not_exists()
             .create_topic_if_not_exists(
                 self.partitions,
-                Some(self.replication_factor),
                 Default::default(),
                 Default::default(),
             )

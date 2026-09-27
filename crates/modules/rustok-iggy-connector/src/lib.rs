@@ -871,7 +871,6 @@ impl IggyConnector for ExternalConnector {
                 .create_stream_if_not_exists()
                 .create_topic_if_not_exists(
                     partitions,
-                    Some(replication_factor),
                     Default::default(),
                     Default::default(),
                 )
@@ -961,7 +960,6 @@ impl IggyConnector for ExternalConnector {
             let mut consumer = client
                 .consumer_group(group_name, stream, topic)
                 .map_err(|error: IggyError| ConnectorError::Subscribe(error.to_string()))?
-                .commit_failed_messages()
                 .build();
             consumer
                 .init()
@@ -1010,6 +1008,7 @@ impl IggyConnector for ExternalConnector {
         {
             let client_guard = self.client.read().await;
             let client: &IggyClient = client_guard.as_ref().ok_or(ConnectorError::NotConnected)?;
+            let _ = replication_factor;
             for topic in topics {
                 let producer = client
                     .producer(stream, topic)
@@ -1017,7 +1016,6 @@ impl IggyConnector for ExternalConnector {
                     .create_stream_if_not_exists()
                     .create_topic_if_not_exists(
                         partitions,
-                        Some(replication_factor),
                         Default::default(),
                         Default::default(),
                     )

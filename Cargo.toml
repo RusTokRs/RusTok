@@ -189,12 +189,12 @@ azure_security_keyvault_secrets = "1.0"
 google-cloud-secretmanager-v1 = "1.10"
 
 # OpenTelemetry
-# NOTE: tracing-opentelemetry 0.32.x is coupled with opentelemetry 0.31.x.
+# NOTE: tracing-opentelemetry 0.34.x is coupled with opentelemetry 0.33.x.
 # Keep this quartet aligned until upstream crates move to the same major/minor line.
-opentelemetry = "0.32"
-opentelemetry-otlp = "0.32.0"
-tracing-opentelemetry = "0.33.0"
-opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
+opentelemetry = "0.33"
+opentelemetry-otlp = "0.33.0"
+tracing-opentelemetry = "0.34.0"
+opentelemetry_sdk = { version = "0.33", features = ["rt-tokio"] }
 rust_decimal = "1.42"
 utoipa = "5.5"
 utoipa-swagger-ui = { version = "7.0", features = ["vendored"] }
@@ -211,7 +211,7 @@ wit-bindgen = "0.61.1"
 oci-distribution = "0.11.0"
 once_cell = "1.21"
 hex = "0.4"
-iggy = "0.10.0"
+iggy = "0.11.0"
 reqwest = { version = "0.13", features = ["json", "query", "form"] }
 url = "2.5"
 reqwest-middleware = { version = "0.5.2", features = ["json"] }

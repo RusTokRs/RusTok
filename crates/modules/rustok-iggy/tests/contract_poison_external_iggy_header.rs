@@ -37,7 +37,6 @@ async fn deterministic_dlq_uuid_is_physical_iggy_header_and_selects_one_based_pa
     let client = connect_sdk_probe(&config).await?;
     let mut probe = client
         .consumer_group(&probe_group, &stream, "dlq")?
-        .commit_failed_messages()
         .build();
     probe.init().await?;
 

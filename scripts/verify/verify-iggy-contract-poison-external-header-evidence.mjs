@@ -192,7 +192,6 @@ for (const marker of [
   'stream_name: unique_name("header-stream")',
   "domain_partitions: PARTITIONS",
   'consumer_group(&probe_group, &stream, "dlq")',
-  ".commit_failed_messages()",
   "probe.init().await?;",
   "ConsumedContractDecodeFailure::new(",
   ".with_offset(42)",
