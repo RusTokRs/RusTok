@@ -39,22 +39,24 @@ impl CategoryCommandProjectionOwnerService {
             return Err(ForumError::Validation(format!("Category parent {parent_id} does not exist in the tenant")));
         }
         if let Some(parent_id) = input.parent_id {
-            let parent_archived = forum_category_lifecycle::Entity::find()
+            let category_archived = forum_category_lifecycle::Entity::find()
                 .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
-                .filter(forum_category_lifecycle::Column::CategoryId.eq(parent_id))
+                .filter(forum_category_lifecycle::Column::CategoryId.eq(category_id))
                 .one(&txn)
                 .await?
                 .is_some();
-            if parent_archived {
-                let category_archived = forum_category_lifecycle::Entity::find()
-                    .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
-                    .filter(forum_category_lifecycle::Column::CategoryId.eq(category_id))
-                    .one(&txn)
-                    .await?
-                    .is_some();
-                if !category_archived {
-                    return Err(ForumError::Validation("active forum category cannot have archived parent".to_string()));
-                }
+            if !category_archived {
+                super::category_lifecycle::ensure_category_tree_target_is_active_in_tx(
+                    &txn,
+                    tenant_id,
+                    parent_id,
+                )
+                .await
+                .map_err(|_| {
+                    ForumError::Validation(
+                        "active forum category cannot have archived parent".to_string(),
+                    )
+                })?;
             }
         }
         let position = i32::try_from(input.position)

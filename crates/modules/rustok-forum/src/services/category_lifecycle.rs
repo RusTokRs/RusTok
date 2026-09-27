@@ -54,8 +54,8 @@ async fn load_category_parents_in_tx(
         rustok_taxonomy::TaxonomyScopeType::Module,
         Some("forum"),
         Some(category_ids),
-        "en",
-        None,
+        rustok_api::PLATFORM_FALLBACK_LOCALE,
+        Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
     )
     .await
     .map_err(|error| ForumError::Validation(format!(

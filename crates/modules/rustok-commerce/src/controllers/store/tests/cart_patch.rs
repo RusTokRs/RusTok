@@ -35,7 +35,7 @@ fn customer_owned_cart_rejects_different_customer() {
 #[test]
 fn payment_collection_allows_non_completed_cart() {
     let mut cart = sample_cart(None);
-    cart.status = "open".to_string();
+    cart.status = "active".to_string();
     assert!(super::super::ensure_cart_allows_payment_collection(&cart).is_ok());
 }
 

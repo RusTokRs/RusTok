@@ -18,8 +18,10 @@ use rustok_commerce::MarketplaceFinancialRuntime;
 use rustok_commerce::graphql::{CommerceMutation, CommerceQuery};
 use rustok_commerce::graphql_runtime::{
     CommerceFulfillmentLifecycleReadRuntime, CommerceOrderReadRuntime,
+    CommercePaymentCommandRuntime, CommercePaymentReadRuntime,
     CommerceShippingOptionReadRuntime, CommerceShippingOptionReadScope,
 };
+use rustok_payment::providers::PaymentProviderRegistry;
 use rustok_fulfillment::{
     FindLatestFulfillmentByOrderProjectionRequest, FulfillmentProjectionPage, FulfillmentReadPort,
     FulfillmentResponse, ListFulfillmentProjectionsRequest, ReadFulfillmentProjectionRequest,
@@ -207,7 +209,14 @@ fn host_runtime(
     let host = HostRuntimeContext::new(db.clone()).with_shared_value(event_bus.clone());
     #[cfg(feature = "marketplace-financial")]
     let host = host.with_shared_value(MarketplaceFinancialRuntime::in_process(db.clone()));
-    host.with_shared_value(CommerceShippingOptionReadRuntime::in_process(db.clone()))
+    let payment_provider_registry = PaymentProviderRegistry::with_manual_provider();
+    host.with_shared_value(payment_provider_registry.clone())
+        .with_shared_value(CommercePaymentReadRuntime::in_process(db.clone()))
+        .with_shared_value(CommercePaymentCommandRuntime::in_process(
+            db.clone(),
+            payment_provider_registry,
+        ))
+        .with_shared_value(CommerceShippingOptionReadRuntime::in_process(db.clone()))
         .with_shared_value(
             rustok_fulfillment::ShippingOptionAdminCommandRuntime::in_process(db.clone()),
         )

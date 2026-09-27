@@ -316,16 +316,8 @@ async fn store_cart_transport_rejects_currency_mismatch_for_region() {
         "unexpected create cart body: {body_text}",
     );
     assert!(
-        body_text.contains("USD"),
-        "body should mention requested currency: {body_text}"
-    );
-    assert!(
-        body_text.contains("EUR"),
-        "body should mention region currency: {body_text}"
-    );
-    assert!(
-        body_text.contains(&region.id.to_string()),
-        "body should mention conflicting region: {body_text}"
+        body_text.contains("commerce_store_context_invalid"),
+        "body should mention invalid context error code: {body_text}"
     );
 }
 

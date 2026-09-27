@@ -17,10 +17,9 @@ struct TopicResponseParts {
 
 use chrono::Utc;
 use flex::{
-    field_definition_from_source, impl_field_definition_source, merge_reserved_donor_metadata,
-    persist_localized_values, prepare_attached_values_create, prepare_attached_values_update,
+    field_definition_from_source, impl_field_definition_source, persist_localized_values,
+    prepare_donor_attached_values_create, prepare_donor_attached_values_update,
     resolve_attached_payload, resolve_attached_payloads, AttachedPayloadResolutionInput,
-    split_donor_metadata,
 };
 use sea_orm::{
     ActiveModelTrait,
@@ -861,15 +860,7 @@ impl TopicService {
         payload: Value,
     ) -> ForumResult<flex::PreparedAttachedValuesWrite> {
         let schema = load_topic_custom_fields_schema(&self.db, tenant_id).await?;
-        let (reserved_payload, flex_payload) = split_topic_metadata_payload(&schema, &payload);
-        prepare_attached_values_create(schema, Some(Value::Object(flex_payload)), locale)
-            .map(|mut prepared| {
-                prepared.metadata = Some(merge_reserved_topic_metadata(
-                    reserved_payload,
-                    prepared.metadata,
-                ));
-                prepared
-            })
+        prepare_donor_attached_values_create(schema, &payload, locale)
             .map_err(|error| ForumError::Validation(error.to_string()))
     }
 
@@ -882,9 +873,7 @@ impl TopicService {
         payload: Value,
     ) -> ForumResult<flex::PreparedAttachedValuesWrite> {
         let schema = load_topic_custom_fields_schema(&self.db, tenant_id).await?;
-        let (reserved_payload, flex_payload) = split_topic_metadata_payload(&schema, &payload);
-        let (_, existing_flex_metadata) = split_topic_metadata_payload(&schema, existing_metadata);
-        prepare_attached_values_update(
+        prepare_donor_attached_values_update(
             &self.db,
             flex::AttachedEntityRef {
                 tenant_id,
@@ -893,17 +882,10 @@ impl TopicService {
             },
             schema,
             locale,
-            &Value::Object(existing_flex_metadata),
-            Some(Value::Object(flex_payload)),
+            existing_metadata,
+            Some(&payload),
         )
         .await
-        .map(|mut prepared| {
-            prepared.metadata = Some(merge_reserved_topic_metadata(
-                reserved_payload,
-                prepared.metadata,
-            ));
-            prepared
-        })
         .map_err(|error| ForumError::Validation(error.to_string()))
     }
 
@@ -1090,22 +1072,6 @@ fn topic_field_definition_from_row(
     field_definition_from_source(&row)
 }
 
-fn split_topic_metadata_payload(
-    schema: &CustomFieldsSchema,
-    metadata: &Value,
-) -> (
-    serde_json::Map<String, Value>,
-    serde_json::Map<String, Value>,
-) {
-    split_donor_metadata(schema, metadata)
-}
-
-fn merge_reserved_topic_metadata(
-    reserved: serde_json::Map<String, Value>,
-    custom_fields: Option<Value>,
-) -> Value {
-    merge_reserved_donor_metadata(reserved, custom_fields)
-}
 
 impl TopicService {
     async fn prepare_topic_relation_body_for_update(
