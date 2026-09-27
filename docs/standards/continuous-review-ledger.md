@@ -760,3 +760,10 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** blog/page public reads enforce Published state, tenant ownership, locale resolution and channel gates; forum public discovery and search-result eligibility re-evaluate exact audience visibility for topic/reply candidates and retain tenant/revision/deletion boundaries; page canonical routes and aliases are tenant/locale scoped and fail closed on ambiguity, with published-route snapshots and tombstones transactionally maintained; immutable Page Builder artifacts verify tenant/page/locale identity plus payload/build/materialization hashes and bounded resource policy before activation or audit; navigation menu creation/translation/binding uses tenant/channel scope and exact locale coverage with revision CAS; SEO redirect caches are keyed by tenant and invalidate transactionally, target hosts are constrained, redirect chains reject immediate loops, and sitemap jobs/deliveries use tenant-scoped idempotency; notification source inbox/fanout jobs use tenant-scoped identities, leases, bounded pages, cursor-advance proofs and idempotent fanout item keys.
 
 **Verification state:** tests were inspected but not executed by the agent. Maintainer execution remains required. FS-08 implementation is complete and ready for integration.
+
+
+### FS-09 Pre-Implementation Audit Findings
+
+- [ ] **EXT-01 — external/provider URL trust boundaries require audit.** Check all connector/provider/network-capable modules for SSRF, private-network access, DNS rebinding assumptions, redirect following, credential leakage, and unbounded response/resource use.
+- [ ] **EXT-02 — capability execution authorization requires audit.** Verify AI/MCP/connector/automation actions are tenant-scoped, permission-checked, bounded by explicit capability allowlists and cannot turn user-controlled metadata into arbitrary privileged tool execution.
+- [ ] **EXT-03 — external side effects require idempotency/retry audit.** Verify webhook/connector/provider retries cannot duplicate writes or side effects and that ambiguous outcomes are reconciled without weakening authorization boundaries.
