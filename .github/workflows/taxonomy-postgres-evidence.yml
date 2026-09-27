@@ -49,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -62,7 +62,7 @@ jobs:
           echo "expected_sha=$expected"
           echo "actual_sha=$actual"
           test "$actual" = "$expected"
-      - uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22
       - name: Verify route-registry PostgreSQL contention source
@@ -95,11 +95,11 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - name: Activate exact Rust evidence toolchain
@@ -111,7 +111,7 @@ jobs:
           rustc --version
           cargo --version
           test "$(rustc --version | awk '{print $2}')" = "${RUST_TOOLCHAIN}"
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           shared-key: taxonomy-postgres-evidence
       - name: Record evidence provenance
@@ -166,7 +166,7 @@ jobs:
             2>&1 | tee evidence/taxonomy-postgres/translation-target.log
       - name: Archive Taxonomy PostgreSQL evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: taxonomy-postgres-evidence-${{ github.run_id }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: evidence/taxonomy-postgres
