@@ -10,7 +10,7 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-14 — storage/schema/migrations (audit in progress; tests remain maintainer-owned).  
+**Active phase:** FS-15 — utilities/installer/build/release tooling (audit in progress; tests remain maintainer-owned).  
 **Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
 
 ### FS-01 Pre-Implementation Audit Findings
@@ -869,3 +869,10 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Findings:** no new repository-owned root-cause defect was confirmed in this phase. The previously deferred Flex persisted-schema corruption behavior remains tracked for this storage phase and requires a separate runtime/schema policy decision; no lossy automatic fallback was introduced.
 
 **Verification state:** migration tests/database upgrade-downgrade runs were not executed by the agent. Maintainer execution remains required. FS-14 is ready for integration.
+
+
+### FS-15 Pre-Implementation Audit Findings
+
+- [ ] **TOOLING-01 — destructive CLI/installer operations require fail-closed audit.** Verify reset/drop/clean/uninstall/migrate commands require explicit intent, environment checks and cannot silently target production or another tenant.
+- [ ] **TOOLING-02 — release/publication artifacts require integrity audit.** Verify generated module metadata, archives, signing/provenance and publication tooling fail closed on missing inputs and do not publish stale or unverified content.
+- [ ] **TOOLING-03 — build/deploy scripts require secret and command-injection audit.** Check shell interpolation, environment propagation, artifact paths, temporary files and logging around credentials/tokens.
