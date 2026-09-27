@@ -79,7 +79,8 @@ jobs:
               echo '```'
             } > "$diagnostics"
             cat "$diagnostics" >> "$GITHUB_STEP_SUMMARY"
-            gh pr comment "${{ github.event.pull_request.number }}" --body-file "$diagnostics"
+            GH_TOKEN="${{ github.token }}" gh pr comment \
+              "${{ github.event.pull_request.number }}" --body-file "$diagnostics"
             exit 1
           fi
       - name: Repository i18n contract
