@@ -50,14 +50,10 @@ where
 
         let tenant_id = tenant_context
             .map(|tenant| tenant.id)
-            .or_else(|| {
-                parts
-                    .headers
-                    .get("X-Tenant-ID")
-                    .and_then(|value| value.to_str().ok())
-                    .and_then(|value| Uuid::parse_str(value).ok())
-            })
-            .ok_or((StatusCode::BAD_REQUEST, "X-Tenant-ID header required"))?;
+            .ok_or((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Trusted tenant context required",
+            ))?;
 
         // Never trust a caller-supplied X-User-ID header. The authenticated
         // middleware owns identity resolution and inserts AuthContextExtension
@@ -174,7 +170,10 @@ fn extract_locale_from_accept_language(headers: &HeaderMap) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use axum::http::Request;
+    use axum::http::{
+        Request,
+        request::Parts,
+    };
     use tokio::runtime::Runtime;
     use uuid::Uuid;
 
@@ -185,6 +184,18 @@ mod tests {
 
     use super::*;
 
+    fn insert_test_tenant(parts: &mut Parts, tenant_id: Uuid, default_locale: &str) {
+        parts.extensions.insert(TenantContextExtension(TenantContext {
+            id: tenant_id,
+            name: "Test".to_string(),
+            slug: "test".to_string(),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: default_locale.to_string(),
+            is_active: true,
+        }));
+    }
+
     #[test]
     fn normalizes_accept_language_header() {
         let request = Request::builder()
@@ -193,6 +204,7 @@ mod tests {
             .body(())
             .expect("request");
         let (mut parts, _) = request.into_parts();
+        insert_test_tenant(&mut parts, Uuid::nil(), "en");
 
         let runtime = Runtime::new().expect("tokio runtime");
         let context = runtime
@@ -212,6 +224,8 @@ mod tests {
             .expect("request");
         let (mut parts, _) = request.into_parts();
 
+        insert_test_tenant(&mut parts, Uuid::nil(), "en");
+
         let runtime = Runtime::new().expect("tokio runtime");
         let context = runtime
             .block_on(RequestContext::from_request_parts(&mut parts, &()))
@@ -230,6 +244,7 @@ mod tests {
             .body(())
             .expect("request");
         let (mut parts, _) = request.into_parts();
+        insert_test_tenant(&mut parts, tenant_id, "en");
         parts.extensions.insert(AuthContextExtension(AuthContext {
             user_id,
             session_id: Uuid::new_v4(),
@@ -247,6 +262,29 @@ mod tests {
 
         assert_eq!(context.user_id, Some(user_id));
         assert_eq!(context.require_user(), Ok(user_id));
+    }
+
+    #[test]
+    fn raw_tenant_header_cannot_create_trusted_request_context() {
+        let tenant_id = Uuid::new_v4();
+        let request = Request::builder()
+            .header("X-Tenant-ID", tenant_id.to_string())
+            .body(())
+            .expect("request");
+        let (mut parts, _) = request.into_parts();
+
+        let runtime = Runtime::new().expect("tokio runtime");
+        let rejection = runtime
+            .block_on(RequestContext::from_request_parts(&mut parts, &()))
+            .expect_err("raw tenant header must not establish trusted tenant context");
+
+        assert_eq!(
+            rejection,
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Trusted tenant context required",
+            )
+        );
     }
 
     #[test]
