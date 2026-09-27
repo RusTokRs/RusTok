@@ -737,8 +737,10 @@ pub async fn rate_limit_for_paths(
         &state.request_trust,
     );
 
+    let rate_limit_key_fingerprint =
+        hex::encode(Sha256::digest(rate_limit_key.as_bytes()))[..16].to_string();
     debug!(
-        rate_limit_key = %rate_limit_key,
+        rate_limit_key_fingerprint = %rate_limit_key_fingerprint,
         path = %path,
         namespace = policy.limiter.namespace(),
         "Checking rate limit for matched path policy"
@@ -768,6 +770,22 @@ pub async fn cleanup_task(limiter: Arc<RateLimiter>) {
     loop {
         interval.tick().await;
         limiter.cleanup_expired().await;
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::*;
+
+    #[test]
+    fn rate_limit_key_diagnostic_fingerprint_does_not_contain_raw_identity() {
+        let raw = "ip:192.0.2.10|tenant:7f4f3e6e-3f1f-4f99-8d4b-3cc2c3b7a2d1|oauth_app:0e9adf5a-2b66-4d58-a5f7-4b5d1b8f7d12";
+        let fingerprint = hex::encode(Sha256::digest(raw.as_bytes()))[..16].to_string();
+
+        assert_ne!(fingerprint, raw);
+        assert_eq!(fingerprint.len(), 16);
+        assert!(!fingerprint.contains("192.0.2.10"));
+        assert!(!fingerprint.contains("7f4f3e6e-3f1f-4f99-8d4b-3cc2c3b7a2d1"));
     }
 }
 
