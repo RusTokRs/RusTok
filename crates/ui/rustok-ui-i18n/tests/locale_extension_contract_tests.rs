@@ -25,7 +25,7 @@ fn complete_locale_normalization_preserves_well_formed_extensions() {
     );
     assert_eq!(
         normalize_unicode_locale(TRANSFORM_EXTENSION),
-        Some("de-t-en-US-h0-hybrid".to_string())
+        Some(TRANSFORM_EXTENSION.to_string())
     );
     assert_eq!(
         normalize_unicode_locale(PRIVATE_USE_EXTENSION),
