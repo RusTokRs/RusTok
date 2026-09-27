@@ -41,9 +41,13 @@ pub use locale::push_locale_candidate;
 pub use locale::push_unique;
 pub use locale::{locale_candidates, normalize_admin_locale, normalize_locale_tag};
 pub use messages::{
-    MAX_MESSAGE_KEY_LEN, MessageSchema, PreparedUiMessages, UiLocaleTranslator, UiMessages,
-    UiTranslator, extract_locale_schemas, resolve_fluent_message, try_resolve_fluent_message,
-    validate_catalog_schemas, validate_message_key, with_kebab_key,
+    MAX_MESSAGE_KEY_LEN, MessageEntrySchema, MessageSchema, PreparedUiMessages, ResolvedMessage,
+    UiLocaleTranslator, UiMessages, UiTranslator, extract_locale_entry_schemas,
+    extract_locale_schemas, resolve_fluent_attribute, resolve_fluent_attribute_with_locale,
+    resolve_fluent_message, resolve_fluent_message_with_locale, try_resolve_fluent_attribute,
+    try_resolve_fluent_attribute_with_locale, try_resolve_fluent_message,
+    try_resolve_fluent_message_with_locale, validate_catalog_schemas, validate_message_attribute,
+    validate_message_key, with_kebab_key,
 };
 
 #[cfg(test)]

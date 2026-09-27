@@ -158,5 +158,28 @@ macro_rules! declare_module_i18n {
         ) -> String {
             MESSAGES.format(locale, key, args, fallback)
         }
+
+        #[inline]
+        pub fn format_attribute<'args>(
+            locale: Option<&str>,
+            key: &str,
+            attribute: &str,
+            args: Option<&$crate::FluentArgs<'args>>,
+            fallback: &str,
+        ) -> String {
+            MESSAGES.format_attribute(locale, key, attribute, args, fallback)
+        }
+
+        /// Validates the complete embedded catalog using fail-closed semantics.
+        #[inline]
+        pub fn validate() -> Result<(), $crate::BundleBuildError> {
+            MESSAGES.validate()
+        }
+
+        /// Returns typed diagnostics from the one-time lenient catalog initialization.
+        #[inline]
+        pub fn initialization_diagnostics() -> &'static [$crate::BundleBuildError] {
+            MESSAGES.initialization_diagnostics()
+        }
     };
 }

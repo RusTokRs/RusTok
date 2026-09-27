@@ -33,7 +33,8 @@ runtime filesystem discovery.
    duplicate normalized locales and resource-add failures.
 
 4. **Lenient catalog construction with inspectable diagnostics.**
-   `build_fluent_catalog` keeps fail-soft first-input-wins rendering semantics and tracing diagnostics.
+   `build_fluent_catalog` keeps pure fail-soft first-input-wins rendering semantics; the report API
+   retains diagnostics and `UiMessages` logs its cached diagnostics once.
    A parseable locale reserves its normalized identity before FTL parsing, so a malformed first payload
    cannot be silently replaced by a later duplicate. `bundle::build_fluent_catalog_report` returns the
    same usable catalog plus typed diagnostics for every skipped entry in input order.
@@ -144,6 +145,27 @@ runtime filesystem discovery.
     same-file-candidate evidence kept distinct. `--json` provides machine-readable output. This removes
     dependency on GitHub code-search availability for pre-1.0 migration reviews without pretending a textual
     scan is compiler proof.
+
+25. **Compound Fluent message support.**
+    Value and attribute lookup now share the same strict/lenient fallback and formatting semantics. Missing
+    attributes can fall through to a parent/default catalog independently from message values. Attribute IDs
+    are bounded and validated as Fluent identifiers, and module macros expose an attribute formatter.
+
+26. **Resolved-locale provenance and locale discovery.**
+    `ResolvedMessage` reports the canonical catalog locale that supplied a formatted result. Provenance-aware
+    APIs cover ordinary and prepared translators, while facade types expose deterministic `available_locales()`
+    iterators. Host code no longer needs to duplicate fallback traversal for cache/diagnostic metadata.
+
+27. **Reference-aware startup schema validation.**
+    Strict preparation separates message-value and attribute contracts, follows message/term references,
+    handles named term arguments, rejects unresolved/cyclic graphs, and validates attribute variable parity.
+    Lazy initialization retains a typed schema diagnostic for otherwise parseable catalogs without changing
+    fail-soft rendering semantics.
+
+28. **Fluent identifier hardening.**
+    Message keys now enforce Fluent's ASCII identifier grammar after allowing the documented dot-to-hyphen
+    alias. Unicode control characters, non-Fluent punctuation, malformed leading characters, and invalid
+    attribute IDs fail as bounded typed errors instead of becoming ambiguous cache misses.
 
 ## Remaining engineering work
 

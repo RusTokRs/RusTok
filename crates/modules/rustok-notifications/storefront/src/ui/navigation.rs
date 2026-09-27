@@ -3,7 +3,7 @@ use leptos_auth::AuthContext;
 use rustok_ui_core::UiRouteContext;
 
 use super::leptos::NotificationUnreadBadge;
-use crate::i18n::{t, with_count};
+use crate::i18n::{t, unread_count_label};
 use crate::transport::{
     NotificationNavigationTransportContext, load_notification_navigation_unread_count,
 };
@@ -44,14 +44,8 @@ pub fn NotificationNavigation() -> impl IntoView {
                         Ok(count) => {
                             let has_unread = count.unread_count > 0;
                             let unread_count = count.unread_count;
-                            let unread_label = with_count(
-                                t(
-                                    locale.as_deref(),
-                                    "notifications.navigation.unread",
-                                    "{count} unread notifications",
-                                ),
-                                unread_count,
-                            );
+                            let unread_label =
+                                unread_count_label(locale.as_deref(), unread_count);
                             let aria_label = if unread_count > 0 {
                                 format!("{link_label}. {unread_label}")
                             } else {

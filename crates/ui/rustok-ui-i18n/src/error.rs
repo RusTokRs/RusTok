@@ -18,8 +18,10 @@ pub enum MessageKeyError {
     Empty,
     /// The message key length exceeded the maximum supported byte length.
     TooLong { length: usize, max_len: usize },
-    /// The message key contains control characters or NUL bytes.
+    /// The message key contains Unicode control characters.
     InvalidCharacters,
+    /// The message key is not a valid Fluent message identifier or dotted alias.
+    InvalidSyntax,
 }
 
 impl fmt::Display for MessageKeyError {
@@ -33,8 +35,12 @@ impl fmt::Display for MessageKeyError {
                 )
             }
             Self::InvalidCharacters => {
-                write!(f, "Message key contains control characters or NUL bytes")
+                write!(f, "Message key contains Unicode control characters")
             }
+            Self::InvalidSyntax => write!(
+                f,
+                "Message key must start with an ASCII letter and contain only ASCII letters, digits, '_', '-', or '.'"
+            ),
         }
     }
 }
@@ -79,6 +85,32 @@ pub enum BundleBuildError {
     },
     /// Message in a non-default locale does not exist in the default locale schema.
     ExtraMessage { locale: String, message: String },
+    /// A localized message defines a value while the default message is attribute-only.
+    ExtraMessageValue { locale: String, message: String },
+    /// A localized message attribute is missing from the default locale schema.
+    ExtraMessageAttribute {
+        locale: String,
+        message: String,
+        attribute: String,
+    },
+    /// A localized message attribute has a different variable set than the default locale.
+    MessageAttributeSchemaMismatch {
+        locale: String,
+        message: String,
+        attribute: String,
+        expected: Vec<String>,
+        actual: Vec<String>,
+    },
+    /// A Fluent message or term identifier is duplicated in one resource.
+    DuplicateEntry { locale: String, entry: String },
+    /// A message/term pattern references an entry that does not exist.
+    UnresolvedReference {
+        locale: String,
+        message: String,
+        reference: String,
+    },
+    /// A message/term reference graph contains a cycle.
+    CyclicReference { locale: String, reference: String },
 }
 
 impl fmt::Display for BundleBuildError {
@@ -131,6 +163,53 @@ impl fmt::Display for BundleBuildError {
                     "Message '{message}' in locale '{locale}' does not exist in default locale catalog"
                 )
             }
+            Self::ExtraMessageValue { locale, message } => {
+                write!(
+                    f,
+                    "Message '{message}' in locale '{locale}' defines a value while the default locale message is attribute-only"
+                )
+            }
+            Self::ExtraMessageAttribute {
+                locale,
+                message,
+                attribute,
+            } => {
+                write!(
+                    f,
+                    "Attribute '{message}.{attribute}' in locale '{locale}' does not exist in the default locale catalog"
+                )
+            }
+            Self::MessageAttributeSchemaMismatch {
+                locale,
+                message,
+                attribute,
+                expected,
+                actual,
+            } => {
+                write!(
+                    f,
+                    "Message attribute schema mismatch for '{message}.{attribute}' in locale '{locale}': expected variables {expected:?}, got {actual:?}"
+                )
+            }
+            Self::DuplicateEntry { locale, entry } => {
+                write!(f, "Duplicate Fluent entry '{entry}' in locale '{locale}'")
+            }
+            Self::UnresolvedReference {
+                locale,
+                message,
+                reference,
+            } => {
+                write!(
+                    f,
+                    "Fluent pattern '{message}' in locale '{locale}' references missing entry '{reference}'"
+                )
+            }
+            Self::CyclicReference { locale, reference } => {
+                write!(
+                    f,
+                    "Fluent reference cycle detected at '{reference}' in locale '{locale}'"
+                )
+            }
         }
     }
 }
@@ -157,6 +236,12 @@ pub enum I18nError {
     BundleBuild(BundleBuildError),
     /// Message key was not found.
     MessageNotFound { locale: String, key: String },
+    /// A message attribute was not found in any locale candidate.
+    AttributeNotFound {
+        locale: String,
+        key: String,
+        attribute: String,
+    },
     /// Message formatting encountered errors.
     FormattingFailed {
         locale: String,
@@ -168,6 +253,11 @@ pub enum I18nError {
         key: String,
         reason: MessageKeyError,
     },
+    /// Message attribute identifier is invalid.
+    InvalidMessageAttribute {
+        attribute: String,
+        reason: MessageKeyError,
+    },
 }
 
 impl fmt::Display for I18nError {
@@ -176,6 +266,16 @@ impl fmt::Display for I18nError {
             Self::BundleBuild(err) => write!(f, "Bundle build error: {err}"),
             Self::MessageNotFound { locale, key } => {
                 write!(f, "Message '{key}' not found for locale '{locale}'")
+            }
+            Self::AttributeNotFound {
+                locale,
+                key,
+                attribute,
+            } => {
+                write!(
+                    f,
+                    "Attribute '{key}.{attribute}' not found for locale '{locale}'"
+                )
             }
             Self::FormattingFailed {
                 locale,
@@ -192,6 +292,13 @@ impl fmt::Display for I18nError {
                     write!(f, "Invalid message key: {reason}")
                 } else {
                     write!(f, "Invalid message key '{key}': {reason}")
+                }
+            }
+            Self::InvalidMessageAttribute { attribute, reason } => {
+                if attribute.is_empty() {
+                    write!(f, "Invalid message attribute: {reason}")
+                } else {
+                    write!(f, "Invalid message attribute '{attribute}': {reason}")
                 }
             }
         }

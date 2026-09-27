@@ -12,6 +12,7 @@ New module-owned UI code should prefer `rustok_ui_i18n::prelude::*` when a glob 
 - `PreparedUiMessages`
 - `UiTranslator`
 - `UiLocaleTranslator`
+- `ResolvedMessage`
 - `BundleBuildError`
 - `I18nError`
 - `FluentArgs`
@@ -19,6 +20,8 @@ New module-owned UI code should prefer `rustok_ui_i18n::prelude::*` when a glob 
 - `fluent_args!`
 - `t!`
 - `module_t!`
+- `validate_message_key`
+- `validate_message_attribute`
 
 `FluentArgs` is retained in this tier because argument-bearing public formatting methods accept it directly and the public macros construct it.
 
@@ -37,11 +40,13 @@ The following APIs are intentionally available for callers that need catalog con
 - `normalize_admin_locale`
 - `normalize_locale_tag`
 - `locale_candidates`
-- `resolve_fluent_message`
-- `try_resolve_fluent_message`
+- `resolve_fluent_message` / `resolve_fluent_message_with_locale`
+- `try_resolve_fluent_message` / `try_resolve_fluent_message_with_locale`
+- `resolve_fluent_attribute` / `resolve_fluent_attribute_with_locale`
+- `try_resolve_fluent_attribute` / `try_resolve_fluent_attribute_with_locale`
 - `with_kebab_key`
-- `MessageSchema`
-- `extract_locale_schemas`
+- `MessageSchema` / `MessageEntrySchema`
+- `extract_locale_schemas` / `extract_locale_entry_schemas`
 - `validate_catalog_schemas`
 
 Schema extraction applies the bounded locale-input policy and reports canonical locale

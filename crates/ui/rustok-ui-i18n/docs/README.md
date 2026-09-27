@@ -14,6 +14,8 @@
 - compile embedded `.ftl` resources into concurrent Fluent bundles;
 - normalize Unicode Language Identifiers for catalog lookup;
 - resolve requested, default, platform and literal fallback paths;
+- resolve compound-message values/attributes and report the catalog locale that supplied them;
+- validate value/attribute schemas and transitive Fluent references before strict startup;
 - expose lenient UI rendering and strict validation/resolution APIs with typed diagnostics;
 - provide module declaration and argument-construction macros without framework dependencies.
 
@@ -40,5 +42,6 @@ negotiation remains a separate follow-up and must not be inferred from the curre
 
 - [Root README](../README.md)
 - [Implementation Plan](./implementation-plan.md)
+- [Engineering Audit (2026-09-27)](./engineering-audit-2026-09-27.md)
 - [Module UI Package Implementation Guide](../../../../docs/UI/module-package-implementation.md)
 - [Platform Documentation Map](../../../../docs/index.md)

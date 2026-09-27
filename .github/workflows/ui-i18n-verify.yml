@@ -6,10 +6,16 @@ on:
       - main
     paths:
       - "crates/ui/rustok-ui-i18n/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/ui-i18n-verify.yml"
   pull_request:
     paths:
       - "crates/ui/rustok-ui-i18n/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/ui-i18n-verify.yml"
   workflow_dispatch:
 
