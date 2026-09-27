@@ -10,7 +10,7 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-04 — workers, jobs, queue, outbox (audit in progress; tests remain maintainer-owned).  
+**Active phase:** FS-05 — core platform modules (audit in progress; tests remain maintainer-owned).  
 **Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
 
 ### FS-01 Pre-Implementation Audit Findings
@@ -681,3 +681,10 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Implemented:** `EventDispatcher` now performs bounded admission before receiving from the broadcast stream, holds the queue permit through all matching handler completion, and treats zero configuration as a safe minimum capacity of one. A regression test covers the configured queue bound.
 
 **Verification state:** Tests were not run by the agent. Maintainer execution remains required. FS-04 implementation is ready for integration.
+
+
+### FS-05 Pre-Implementation Audit Findings
+
+- [ ] **CORE-01 — RBAC invalidation/read path needs an explicit revocation fence audit.** The repository documentation states that request permission snapshots do not establish a revocation fence. The next check is to verify every mutation-capable RBAC path reads current persisted grants/generation after transaction boundaries and cannot authorize from a stale cache snapshot.
+- [ ] **CORE-02 — cache invalidation recovery must be checked against generation ordering.** Cache module exposes durable invalidation, generation and bounded dedupe facilities; verify replay, gap detection, stale-event rejection, and Redis reconnect behavior cannot move a namespace generation backwards or permanently suppress a newer invalidation.
+- [ ] **CORE-03 — tenant lifecycle mutations must be checked for atomic policy/cache/outbox ordering.** Verify tenant activation/deactivation and related membership/settings changes cannot commit state while leaving authorization/cache invalidation or lifecycle events permanently stale.
