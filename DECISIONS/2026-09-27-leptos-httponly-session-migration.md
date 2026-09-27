@@ -39,3 +39,10 @@ The full migration is tracked for FS-13 shared frontend/browser packages. FS-11 
 - refresh/logout/session revocation parity across transports;
 - all auth consumers migrated away from the legacy LocalStorage bearer transport;
 - maintainer-run browser/integration verification recorded in the ledger.
+
+
+## Next.js Admin browser boundary
+
+The Next.js admin currently copies the RusTok access bearer into the NextAuth session object (session.user.rustokToken) so client components can read it via useSession. This makes the backend bearer reachable to browser JavaScript and is the same class of credential exposure the server-issued HttpOnly target is intended to eliminate.
+
+The shared browser-auth migration in FS-13 MUST remove the backend bearer from the client-visible session shape and route client API calls through a server-owned transport/proxy or another server-issued session mechanism. The client-visible session may contain display-safe identity and UI state, but never a reusable backend access or refresh credential.
