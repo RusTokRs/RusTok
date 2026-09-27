@@ -10,7 +10,7 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-05 — core platform modules (audit in progress; tests remain maintainer-owned).  
+**Active phase:** FS-06 — commerce domain (audit in progress; tests remain maintainer-owned).  
 **Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
 
 ### FS-01 Pre-Implementation Audit Findings
@@ -703,3 +703,10 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** RBAC current-permission resolution uses persisted tenant-scoped relations and generation-aware cache publication; durable cache generation/consumer state is monotonic and acknowledgement-gated; tenant locale policy replacement is revision-checked, idempotent and transactionally event-published; direct auth access tokens re-check active sessions; search/index/email remain owner-composed rather than server-owned domain paths.
 
 **Verification state:** Tests were not run by the agent. Maintainer execution remains required. FS-05 implementation is ready for integration.
+
+
+### FS-06 Pre-Implementation Audit Findings
+
+- [ ] **COMMERCE-01 — commerce cross-tenant mutation boundaries require audit.** Verify every cart/customer/product/pricing/inventory/order/payment/fulfillment mutation predicates all persisted reads/writes by the trusted tenant and never by client-supplied entity ids alone.
+- [ ] **COMMERCE-02 — money and order lifecycle transitions require invariant audit.** Verify currency/amount arithmetic, status transitions, idempotency and capture/refund/fulfillment event ordering cannot produce duplicate or impossible financial state.
+- [ ] **COMMERCE-03 — channel visibility and inventory reservation require race audit.** Verify concurrent cart/order operations cannot oversell or expose products outside the active tenant/channel policy.
