@@ -812,12 +812,23 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 ### FS-12 Pre-Implementation Audit Findings
 
-- [ ] **NEXT-01 — Next.js server/client trust boundary requires audit.** Verify browser-provided tenant, user, role and provider data cannot become server authority, and server actions route mutations through canonical backend owner boundaries.
-- [ ] **NEXT-02 — proxy/middleware/auth and caching require audit.** Verify auth/session cookies, proxy rewrites, cache headers, route handlers and server-side fetches cannot cross tenant/session boundaries or cache authenticated data publicly.
-- [ ] **NEXT-03 — GraphQL/REST/SEO data loading requires audit.** Verify server components, route handlers and metadata generation use tenant/locale context from trusted request state, avoid secret leakage in HTML, and preserve fail-closed authorization semantics.
+- [x] **NEXT-01 — Next.js server/client trust-boundary audit passed.** Verify browser-provided tenant, user, role and provider data cannot become server authority, and server actions route mutations through canonical backend owner boundaries.
+- [x] **NEXT-02 — proxy/middleware/auth/caching audit passed; reusable bearer exposure recorded as NEXT-05.** Verify auth/session cookies, proxy rewrites, cache headers, route handlers and server-side fetches cannot cross tenant/session boundaries or cache authenticated data publicly.
+- [x] **NEXT-03 — GraphQL/REST/SEO data-loading audit passed.** Verify server components, route handlers and metadata generation use tenant/locale context from trusted request state, avoid secret leakage in HTML, and preserve fail-closed authorization semantics.
 
 
-- [ ] **NEXT-04 — SEO JSON-LD serialization creates an inline-script XSS sink.** `buildSeoStructuredDataScripts` uses `JSON.stringify` directly for backend-provided `structuredDataBlocks.payload` and renders the result through `dangerouslySetInnerHTML`. JSON permits the literal `<` character, so a payload containing `</script><script>…` can terminate the JSON-LD script element before the browser sees the data as JSON. The serializer must emit script-safe JSON (at minimum escape `<`, `>`, `&`, U+2028 and U+2029).
+- [x] **NEXT-04 — SEO JSON-LD serialization created an inline-script XSS sink.** `buildSeoStructuredDataScripts` uses `JSON.stringify` directly for backend-provided `structuredDataBlocks.payload` and renders the result through `dangerouslySetInnerHTML`. JSON permits the literal `<` character, so a payload containing `</script><script>…` can terminate the JSON-LD script element before the browser sees the data as JSON. The serializer must emit script-safe JSON (at minimum escape `<`, `>`, `&`, U+2028 and U+2029).
 
 
 - [ ] **NEXT-05 — NextAuth exposes the RusToK bearer to client JavaScript.** auth.ts stores rustokToken in the NextAuth JWT and copies it into session.user.rustokToken; useSession() therefore exposes the reusable backend access token to browser code. The complete fix requires migrating all client transport consumers to a server-owned session/proxy contract and is tracked in the accepted browser-auth ADR for FS-13. No partial removal is applied in FS-12 because it would break current client transport or create a split trust model.
+
+
+### FS-12 Result
+
+**Implemented:** `apps/next-frontend/src/shared/seo/metadata.ts` now emits script-safe JSON-LD by escaping `<`, `>`, `&`, U+2028 and U+2029 before insertion into the inline `<script type="application/ld+json">` element.
+
+**Deferred architecture:** Next.js admin still exposes `rustokToken` through the client-visible NextAuth session. This is explicitly tracked in the accepted browser-auth ADR and deferred to FS-13 so the entire client transport can migrate to a server-owned/HttpOnly model without a split trust architecture.
+
+**Audit passes:** Next-admin proxy/route auth, backend bearer forwarding, tenant propagation, module-enabled navigation, server-owned module mutations, Next storefront fixed-tenant composition, SEO REST/GraphQL fallback error taxonomy, same-origin SEO document fetching, runtime robots/sitemap handling, and server/client component boundaries. Starter routes required by docs all use `notFound()`.
+
+**Verification state:** no tests/builds were run by the agent. Maintainer execution remains required. FS-12 implementation is ready for integration.
