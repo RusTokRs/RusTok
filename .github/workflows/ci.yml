@@ -94,9 +94,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
       - uses: taiki-e/install-action@1ceecae37ba251f3f09906445d948ebfd5c4e06c
+      - name: Verify immutable workflow actions
+        run: npm run verify:workflow-action-pins
       - name: Run cargo audit
         run: cargo audit
 
