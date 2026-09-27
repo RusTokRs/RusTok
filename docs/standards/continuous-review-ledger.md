@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-18 — runtime/server application (audit in progress; tests remain maintainer-owned).  
-**Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
+**Phase base SHA:** `a7d6a5aa57a913eb1accb28459e26e3dc52dbf8d`
 
 ### FS-01 Pre-Implementation Audit Findings
 
@@ -62,8 +62,8 @@ status: active
 | FS-14 | Storage/schema/migrations | all module migrations, entity/schema parity, cross-backend behavior, constraints, indexes, rollback/down paths, data-loss hazards | [x] |
 | FS-15 | Utilities/installer/build/release tooling | `crates/utils/*`, installer, source/publication/signing, CLI tooling, build scripts, deployment tooling and operator safety | [x] |
 | FS-16 | Shared libraries | `crates/libs/*`, UI foundations, common infrastructure and reusable abstractions; ownership, API stability, hidden coupling, dependency direction | [x] |
-| FS-17 | Dependency & supply-chain closure | Cargo/npm lockfiles, duplicate/unused dependencies, feature flags, unsafe/advisory surfaces, generated code provenance, licenses/policies where repository contracts require them | [ ] |
-| FS-18 | Cross-cutting business scenarios | end-to-end invariants spanning owners: tenant isolation, auth/RBAC, money, lifecycle, idempotency, events, projections, cache invalidation, locale/channel context, destructive operations | [ ] |
+| FS-17 | Dependency & supply-chain closure | Cargo/npm lockfiles, duplicate/unused dependencies, feature flags, unsafe/advisory surfaces, generated code provenance, licenses/policies where repository contracts require them | [x] |
+| FS-18 | Runtime/server application | server runtime beyond composition: request lifecycle, controllers, server functions, body limits, file/WS surfaces, error mapping, blocking I/O, panic/resource hazards, auth/tenant context propagation | [~] |
 | FS-19 | Final architecture reconciliation | dependency graph, boundary violations, dead/duplicate paths, stale docs/ADRs, generated artifacts, canonical vocabulary, remaining TODO/placeholder risk | [ ] |
 | FS-20 | Release-readiness handoff | final ledger reconciliation, unresolved findings, maintainer test matrix, verification commands/evidence gaps, clean main baseline | [ ] |
 
@@ -935,3 +935,12 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Dependency evidence:** Cargo.lock contains one immutable Athanor git revision and no known removed malicious crates tracing_checks or tracings; h2 0.4.16 is the locked version and is patched for the August 2026 RustSec advisory. JavaScript lockfiles are npm lockfileVersion 3, with workspace-only local links where expected.
 
 **Verification state:** tests/builds were not run by the agent, per the maintainer-owned test policy. Static source/lock/workflow audits were completed and FS-17 is ready for integration.
+
+
+### FS-18 Pre-Implementation Audit Findings
+
+- [ ] **RUNTIME-01 — request body/resource limits require a complete server-surface audit.** Verify every externally reachable JSON/form/file/WebSocket endpoint has explicit bounded body/frame/time/resource controls, including endpoints bypassing the main GraphQL/REST router.
+- [ ] **RUNTIME-02 — production server code must not panic on request-controlled or persisted data.** Audit `unwrap`/`expect`/assertions in handlers, extractors, deserializers and background request-adjacent services; unknown/malformed state must fail closed with stable errors.
+- [ ] **RUNTIME-03 — blocking filesystem/process/network work must not run on async request executors.** Verify all synchronous heavy I/O has a bounded blocking boundary or dedicated worker ownership, and that request cancellation propagates to child work.
+- [ ] **RUNTIME-04 — file/static/WebSocket surfaces require path and origin/auth audit.** Verify path normalization/traversal, symlink handling, range/size limits, WebSocket origin/auth checks, and disconnect cleanup.
+- [ ] **RUNTIME-05 — server error/log paths require a final secret/PII and status mapping audit.** No generic `Debug`/request metadata should cross public response/log boundaries; HTTP status must never be derived from untrusted numeric values.
