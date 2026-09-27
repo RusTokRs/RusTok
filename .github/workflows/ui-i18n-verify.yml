@@ -13,6 +13,7 @@ on:
       - "apps/admin/src/i18n.rs"
       - "apps/admin/src/main.rs"
       - "scripts/verify/verify-i18n-contract.mjs"
+      - "scripts/verify/verify-fly-multilingual.mjs"
       - "scripts/verify/verify-db-multilingual-contract.mjs"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -28,6 +29,7 @@ on:
       - "apps/admin/src/i18n.rs"
       - "apps/admin/src/main.rs"
       - "scripts/verify/verify-i18n-contract.mjs"
+      - "scripts/verify/verify-fly-multilingual.mjs"
       - "scripts/verify/verify-db-multilingual-contract.mjs"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -69,8 +71,10 @@ jobs:
             apps/admin/src/main.rs \
             crates/libs/rustok-api/src/locale.rs \
             crates/modules/rustok-page-builder/src/locale.rs
-      - name: Repository i18n contract
-        run: node scripts/verify/verify-i18n-contract.mjs
+      - name: Repository i18n contracts
+        run: |
+          node scripts/verify/verify-i18n-contract.mjs
+          node scripts/verify/verify-fly-multilingual.mjs
       - name: Test
         run: cargo test -p rustok-ui-i18n --all-features
       - name: Consumer integration

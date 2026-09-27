@@ -70,7 +70,7 @@ requireMarkers('localePolicy', [
   'runtime_locale_unsupported',
   'translation_required_locale_missing',
   'localized_metadata_required_locale_missing',
-  'legacy_locale_aliases_are_canonicalized',
+  'current_locale_aliases_are_canonicalized',
   'invalid_runtime_locale_is_diagnosed_before_defaulting',
   'required_locale_coverage_is_warning_until_enforcement_is_enabled',
 ], 'Fly project locale policy');
@@ -188,8 +188,8 @@ requireMarkers('browserIntent', [
 requireMarkers('ssrForms', [
   'SsrTranslationUpsertRequest',
   'SsrTranslationRemoveRequest',
-  'EditorCommand::batch(commands)',
-  'removing_translation_removes_its_bindings_in_one_history_entry',
+  '.filter(|binding| binding.path == translation_path)',
+  'Ok(UiIntent::execute(EditorCommand::batch(commands)))',
 ], 'SSR translation form commands');
 requireMarkers('ssrLocale', [
   'data-fly-ssr-locale="true"',
