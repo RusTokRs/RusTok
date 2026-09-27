@@ -115,9 +115,9 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           shared-key: index-storage-scale
 
@@ -201,7 +201,7 @@ jobs:
           --root evidence/index-storage/${{ inputs.scale }}
 
       - name: Archive validated ${{ inputs.scale }} evidence
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: index-storage-${{ inputs.scale }}-${{ github.sha }}
           path: evidence/index-storage/${{ inputs.scale }}
@@ -211,7 +211,7 @@ jobs:
 
       - name: Archive ${{ inputs.scale }} failure diagnostic
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: index-storage-${{ inputs.scale }}-diagnostic-${{ github.sha }}
           path: evidence/index-storage/${{ inputs.scale }}
