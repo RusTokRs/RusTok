@@ -10,7 +10,7 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-17 — dependency & supply-chain closure (audit in progress; tests remain maintainer-owned).  
+**Active phase:** FS-18 — runtime/server application (audit in progress; tests remain maintainer-owned).  
 **Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
 
 ### FS-01 Pre-Implementation Audit Findings
