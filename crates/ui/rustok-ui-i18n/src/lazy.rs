@@ -128,7 +128,7 @@ impl std::fmt::Debug for LazyUiMessages {
             .field("default_locale", &self.default_locale)
             .field(
                 "declared_locales",
-                &self.available_locales().collect::<Vec<_>>(),
+                &self.declared_locales().collect::<Vec<_>>(),
             )
             .field("loaded_locales", &self.loaded_locales().collect::<Vec<_>>())
             .finish()
@@ -212,7 +212,7 @@ impl LazyUiMessages {
     ///
     /// A locale can still fail when first loaded if its resource is malformed. Use
     /// [`Self::validate`] when every declaration must be proven usable beforehand.
-    pub fn available_locales(&self) -> impl ExactSizeIterator<Item = &str> {
+    pub fn declared_locales(&self) -> impl ExactSizeIterator<Item = &str> {
         self.index().entries.keys().map(String::as_str)
     }
 
@@ -225,9 +225,18 @@ impl LazyUiMessages {
             .map(|(locale, _)| locale.as_str())
     }
 
-    /// Returns declaration/default diagnostics discovered without parsing FTL resources.
-    pub fn initialization_diagnostics(&self) -> &[BundleBuildError] {
+    /// Returns locale declaration and default-locale diagnostics without parsing FTL resources.
+    pub fn declaration_diagnostics(&self) -> &[BundleBuildError] {
         &self.index().diagnostics
+    }
+
+    /// Returns declaration diagnostics discovered during lazy catalog initialization.
+    ///
+    /// This compatibility-shaped accessor does not include malformed FTL resources
+    /// that have not been requested. See [`Self::loaded_bundle_diagnostics`] for
+    /// attempted locale loads and [`Self::validate`] for a complete fail-closed check.
+    pub fn initialization_diagnostics(&self) -> &[BundleBuildError] {
+        self.declaration_diagnostics()
     }
 
     /// Iterates errors from locale bundles whose lazy initialization was attempted.

@@ -23,7 +23,7 @@ fn locale_resources_are_parsed_only_when_the_fallback_chain_needs_them() {
     let messages = LazyUiMessages::new("en", CATALOG);
 
     assert_eq!(
-        messages.available_locales().collect::<Vec<_>>(),
+        messages.declared_locales().collect::<Vec<_>>(),
         vec!["ar", "en", "fr"]
     );
     assert_eq!(messages.loaded_locales().count(), 0);
@@ -117,7 +117,7 @@ fn lazy_index_canonicalizes_aliases_and_reserves_first_identity() {
     let messages = LazyUiMessages::new("en", BUNDLES);
 
     assert_eq!(
-        messages.available_locales().collect::<Vec<_>>(),
+        messages.declared_locales().collect::<Vec<_>>(),
         vec!["en", "he-IL"]
     );
     let diagnostics = messages.initialization_diagnostics();
