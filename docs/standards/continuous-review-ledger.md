@@ -950,3 +950,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 
 - [ ] **RUNTIME-07 — server rate-limit debug logging exposes raw rate-limit identity keys.** `rate_limit_base::rate_limit_for_paths` logs `rate_limit_key` verbatim. Depending on policy, the key includes client IP plus trusted tenant UUID and OAuth application UUID. These are privacy-sensitive identifiers and the debug path can leak them into application logs. The log must use only a stable non-reversible fingerprint and policy metadata.
+
+
+- [ ] **RUNTIME-08 — public email-verification request endpoint bypasses the dedicated auth rate-limit policy.** `/api/auth/verify/request` can enqueue a verification email for a target address but `init_rate_limit_layers` only assigns the stricter auth limiter to login/register/reset paths. The endpoint therefore falls back to the general `/api/` limiter, weakening anti-abuse protection for a direct email-sending side effect.
