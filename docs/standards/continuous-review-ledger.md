@@ -691,3 +691,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 
 - [ ] **AUTH-01 — secret-bearing auth types expose credentials through derived `Debug`.** `AuthConfig` contains the HS256 secret and optional RSA private key; `AuthSettingsOverrides` can contain the same key material; `PasswordResetEmail` carries a reset URL containing a bearer token; `OAuthAppSecretResult` carries a client secret. Their derived `Debug` implementations can emit credentials if an error, trace or diagnostic path logs these values.
+
+
+- [ ] **EMAIL-01 — SMTP password is exposed by derived `Debug`.** `SmtpConfig` carries the SMTP credential and derives `Debug`; `EmailConfig` derives `Debug` transitively through the nested SMTP config. Any diagnostic dump of configured email settings can therefore disclose the SMTP password.
