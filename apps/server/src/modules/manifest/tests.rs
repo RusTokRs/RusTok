@@ -678,8 +678,8 @@ ownership = "first_party"
 trust_level = "verified"
 
 [settings]
-postsPerPage = { type = "integer", default = 20, min = 1, max = 100 }
-showAuthor = { type = "boolean", default = true }
+posts_per_page = { type = "integer", default = 20, min = 1, max = 100 }
+show_author = { type = "boolean", default = true }
 "#,
     );
 
@@ -706,8 +706,8 @@ showAuthor = { type = "boolean", default = true }
     }
 
     let settings = result.expect("settings should be normalized from defaults");
-    assert_eq!(settings["postsPerPage"], serde_json::json!(20));
-    assert_eq!(settings["showAuthor"], serde_json::json!(true));
+    assert_eq!(settings["posts_per_page"], serde_json::json!(20));
+    assert_eq!(settings["show_author"], serde_json::json!(true));
 }
 
 #[test]
@@ -726,7 +726,7 @@ ownership = "first_party"
 trust_level = "verified"
 
 [settings]
-postsPerPage = { type = "integer", default = 20, min = 1, max = 100 }
+posts_per_page = { type = "integer", default = 20, min = 1, max = 100 }
 "#,
     );
 
@@ -776,7 +776,7 @@ ownership = "first_party"
 trust_level = "verified"
 
 [settings]
-postsPerPage = { type = "integer", default = 20, min = 1, max = 100 }
+posts_per_page = { type = "integer", default = 20, min = 1, max = 100 }
 "#,
     );
 
@@ -793,7 +793,7 @@ postsPerPage = { type = "integer", default = 20, min = 1, max = 100 }
 
     let result = ManifestManager::validate_module_settings(
         "blog",
-        serde_json::json!({ "postsPerPage": 1000 }),
+        serde_json::json!({ "posts_per_page": 1000 }),
     );
 
     match previous {
@@ -808,7 +808,7 @@ postsPerPage = { type = "integer", default = 20, min = 1, max = 100 }
     assert!(matches!(
         result,
         Err(ManifestError::InvalidModuleSettingValue { slug, key, .. })
-            if slug == "blog" && key == "postsPerPage"
+            if slug == "blog" && key == "posts_per_page"
     ));
 }
 
@@ -931,7 +931,7 @@ ownership = "first_party"
 trust_level = "verified"
 
 [settings]
-seo = { type = "object", object_keys = ["metaTitle", "metaDescription", "indexable"] }
+seo = { type = "object", object_keys = ["meta_title", "meta_description", "indexable"] }
 "#,
     );
 
@@ -950,7 +950,7 @@ seo = { type = "object", object_keys = ["metaTitle", "metaDescription", "indexab
         "blog",
         serde_json::json!({
             "seo": {
-                "metaTitle": "Welcome",
+                "meta_title": "Welcome",
                 "unknown": true
             }
         }),
@@ -990,7 +990,7 @@ ownership = "first_party"
 trust_level = "verified"
 
 [settings]
-featuredPostIds = { type = "array", item_type = "string", default = [] }
+featured_post_ids = { type = "array", item_type = "string", default = [] }
 "#,
     );
 
@@ -1007,7 +1007,7 @@ featuredPostIds = { type = "array", item_type = "string", default = [] }
 
     let result = ManifestManager::validate_module_settings(
         "blog",
-        serde_json::json!({ "featuredPostIds": ["post-1", 2] }),
+        serde_json::json!({ "featured_post_ids": ["post-1", 2] }),
     );
 
     match previous {
@@ -1023,7 +1023,7 @@ featuredPostIds = { type = "array", item_type = "string", default = [] }
         result,
         Err(ManifestError::InvalidModuleSettingValue { slug, key, reason })
             if slug == "blog"
-                && key == "featuredPostIds"
+                && key == "featured_post_ids"
                 && reason.contains("array item at index 1 must be string")
     ));
 }
@@ -1095,7 +1095,7 @@ ownership = "first_party"
 trust_level = "verified"
 
 [settings]
-seo = { type = "object", properties = { metaTitle = { type = "string" }, indexable = { type = "boolean", default = true } } }
+seo = { type = "object", properties = { meta_title = { type = "string" }, indexable = { type = "boolean", default = true } } }
 "#,
     );
 
@@ -1114,7 +1114,7 @@ seo = { type = "object", properties = { metaTitle = { type = "string" }, indexab
         "blog",
         serde_json::json!({
             "seo": {
-                "metaTitle": 42
+                "meta_title": 42
             }
         }),
     );
@@ -1132,7 +1132,7 @@ seo = { type = "object", properties = { metaTitle = { type = "string" }, indexab
         result,
         Err(ManifestError::InvalidModuleSettingValue { slug, key, reason })
             if slug == "blog"
-                && key == "seo.metaTitle"
+                && key == "seo.meta_title"
                 && reason.contains("expected") && reason.contains("string")
     ));
 }
@@ -1153,7 +1153,7 @@ ownership = "first_party"
 trust_level = "verified"
 
 [settings]
-contentBlocks = { type = "array", items = { type = "object", properties = { kind = { type = "string" }, enabled = { type = "boolean" } } } }
+content_blocks = { type = "array", items = { type = "object", properties = { kind = { type = "string" }, enabled = { type = "boolean" } } } }
 "#,
     );
 
@@ -1171,7 +1171,7 @@ contentBlocks = { type = "array", items = { type = "object", properties = { kind
     let result = ManifestManager::validate_module_settings(
         "blog",
         serde_json::json!({
-            "contentBlocks": [
+            "content_blocks": [
                 { "kind": "hero", "enabled": true },
                 { "kind": "gallery", "enabled": "yes" }
             ]
@@ -1191,9 +1191,82 @@ contentBlocks = { type = "array", items = { type = "object", properties = { kind
         result,
         Err(ManifestError::InvalidModuleSettingValue { slug, key, reason })
             if slug == "blog"
-                && key == "contentBlocks[1].enabled"
+                && key == "content_blocks[1].enabled"
                 && reason.contains("expected") && reason.contains("boolean")
     ));
+}
+
+#[test]
+#[serial]
+fn validate_rejects_non_snake_case_setting_keys_in_manifest() {
+    let temp = tempdir().unwrap();
+    let blog_dir = temp.path().join("crates").join("rustok-blog");
+    let manifest_path = temp.path().join("modules.toml");
+    write_module_manifest(
+        &blog_dir,
+        r#"[module]
+slug = "blog"
+name = "Blog"
+version = "0.1.0"
+ownership = "first_party"
+trust_level = "verified"
+
+[settings]
+postsPerPage = { type = "integer", default = 20, min = 1, max = 100 }
+"#,
+    );
+
+    let mut manifest = manifest_with_modules(&[
+        "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+    ]);
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
+    ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
+
+    let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
+    unsafe {
+        std::env::set_var("RUSTOK_MODULES_MANIFEST", &manifest_path);
+    }
+
+    let result = ManifestManager::validate_module_settings("blog", serde_json::json!({}));
+
+    match previous {
+        Some(value) => unsafe {
+            std::env::set_var("RUSTOK_MODULES_MANIFEST", value);
+        },
+        None => unsafe {
+            std::env::remove_var("RUSTOK_MODULES_MANIFEST");
+        },
+    }
+
+    assert!(matches!(
+        result,
+        Err(ManifestError::InvalidModuleSettingKey { slug, key })
+            if slug == "blog" && key == "postsPerPage"
+    ));
+}
+
+#[test]
+#[serial]
+fn validate_rejects_unknown_schema_keyword_in_manifest() {
+    let temp = tempdir().unwrap();
+    let blog_dir = temp.path().join("crates").join("rustok-blog");
+    write_module_manifest(
+        &blog_dir,
+        r#"[module]
+slug = "blog"
+name = "Blog"
+version = "0.1.0"
+ownership = "first_party"
+trust_level = "verified"
+
+[settings]
+template_defaults = { type = "object", shape = { title = { type = "string" } } }
+"#,
+    );
+
+    let manifest_file = blog_dir.join("rustok-module.toml");
+    let result = ManifestManager::read_module_package_manifest(&manifest_file);
+    assert!(result.is_err(), "unknown schema keyword 'shape' must be rejected by deny_unknown_fields");
 }
 
 #[test]

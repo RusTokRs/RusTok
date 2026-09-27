@@ -33,12 +33,10 @@ runtime loads and native admin writes still access `tenant_modules` directly, so
 is an explicit owner-boundary migration gap rather than the target persistence
 contract.
 
-The manifest's nested `template_defaults` and `template_overrides` declarations use
-`shape` and `additional_properties`, while the current generic parser understands
-`properties` and `items` and silently ignores unknown schema keywords. Until the
-zero-legacy cutover, the generic settings editor/validator therefore does not prove
-the nested SEO shape. The canonical target, migration, and verification requirements
-are defined in
+The manifest's nested `template_defaults` declaration uses canonical `properties`,
+while `template_overrides` uses `type = "object"`. The generic manifest parser
+enforces `deny_unknown_fields` and `snake_case` validation, guaranteeing schema validity.
+The canonical target, migration, and verification requirements are defined in
 [`docs/architecture/settings.md`](../../../../docs/architecture/settings.md).
 
 ## Template-generated SEO

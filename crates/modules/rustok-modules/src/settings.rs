@@ -8,6 +8,7 @@ const MAX_LOCALIZED_FIELD_ID_BYTES: usize = 128;
 
 /// Declarative schema for one module setting.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct ModuleSettingSpec {
     #[serde(rename = "type", default)]
     pub value_type: String,
@@ -731,8 +732,9 @@ fn declared_item_type(spec: &ModuleSettingSpec) -> Option<&str> {
 
 fn is_valid_setting_key(value: &str) -> bool {
     !value.is_empty()
+        && value.starts_with(|character: char| character.is_ascii_lowercase())
         && value.chars().all(|character| {
-            character.is_ascii_alphanumeric() || character == '_' || character == '-'
+            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
         })
 }
 
@@ -1075,5 +1077,56 @@ mod tests {
             ModuleSettingsValidationError::InvalidSchema { ref reason, .. }
                 if reason.contains("unknown setting")
         ));
+    }
+
+    #[test]
+    fn unknown_schema_keyword_is_rejected_by_serde_deny_unknown_fields() {
+        let json_with_shape = serde_json::json!({
+            "type": "object",
+            "shape": { "title": { "type": "string" } }
+        });
+        let result: Result<ModuleSettingSpec, _> = serde_json::from_value(json_with_shape);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("unknown field `shape`"),
+            "expected unknown field error, got: {err}"
+        );
+
+        let json_with_additional = serde_json::json!({
+            "type": "object",
+            "additional_properties": { "type": "string" }
+        });
+        let result: Result<ModuleSettingSpec, _> = serde_json::from_value(json_with_additional);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("unknown field `additional_properties`"),
+            "expected unknown field error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn non_snake_case_setting_keys_are_rejected() {
+        for invalid_key in [
+            "postsPerPage",
+            "ShowAuthor",
+            "kebab-case",
+            "_leading_underscore",
+            "123number",
+        ] {
+            let schema = HashMap::from([(
+                invalid_key.to_string(),
+                ModuleSettingSpec {
+                    value_type: "string".to_string(),
+                    ..Default::default()
+                },
+            )]);
+            let result = validate_module_settings_schema("test_mod", &schema);
+            assert!(
+                matches!(result, Err(ModuleSettingsValidationError::InvalidKey { ref key, .. }) if key == invalid_key),
+                "expected InvalidKey for '{invalid_key}', got: {result:?}"
+            );
+        }
     }
 }

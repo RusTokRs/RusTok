@@ -149,6 +149,7 @@ pub struct ManifestModuleSpec {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ModuleSettingSpec {
     #[serde(rename = "type", default)]
     pub value_type: String,

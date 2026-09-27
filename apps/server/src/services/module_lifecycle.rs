@@ -902,7 +902,7 @@ mod tests {
             &registry,
             tenant.id,
             "content",
-            serde_json::json!({ "postsPerPage": 20 }),
+            serde_json::json!({ "posts_per_page": 20 }),
             test_context(tenant.id, Uuid::new_v4(), Uuid::new_v4()),
             0,
         )
@@ -959,7 +959,7 @@ mod tests {
             &registry,
             tenant.id,
             "content",
-            serde_json::json!({ "postsPerPage": 20 }),
+            serde_json::json!({ "posts_per_page": 20 }),
             test_context(tenant.id, settings_actor, settings_idempotency_key),
             1,
         )
@@ -970,7 +970,7 @@ mod tests {
             &registry,
             tenant.id,
             "content",
-            serde_json::json!({ "postsPerPage": 20 }),
+            serde_json::json!({ "posts_per_page": 20 }),
             test_context(tenant.id, settings_actor, settings_idempotency_key),
             1,
         )
@@ -981,7 +981,7 @@ mod tests {
             &registry,
             tenant.id,
             "content",
-            serde_json::json!({ "postsPerPage": 30 }),
+            serde_json::json!({ "posts_per_page": 30 }),
             test_context(tenant.id, settings_actor, settings_idempotency_key),
             1,
         )
@@ -992,7 +992,7 @@ mod tests {
             &registry,
             tenant.id,
             "content",
-            serde_json::json!({ "postsPerPage": 30 }),
+            serde_json::json!({ "posts_per_page": 30 }),
             test_context(tenant.id, Uuid::new_v4(), Uuid::new_v4()),
             1,
         )
@@ -1001,7 +1001,7 @@ mod tests {
         restore_manifest_env(previous);
 
         assert!(updated.enabled);
-        assert_eq!(updated.settings["postsPerPage"], serde_json::json!(20));
+        assert_eq!(updated.settings["posts_per_page"], serde_json::json!(20));
         assert_eq!(updated.revision, 2);
         assert_eq!(replayed.revision, 2);
         assert!(matches!(
@@ -1091,8 +1091,8 @@ ownership = "first_party"
 trust_level = "verified"
 
 [settings]
-postsPerPage = { type = "integer", default = 20, min = 1, max = 100 }
-showSummaries = { type = "boolean", default = true }
+posts_per_page = { type = "integer", default = 20, min = 1, max = 100 }
+show_summaries = { type = "boolean", default = true }
 "#,
         );
 
@@ -1136,7 +1136,7 @@ showSummaries = { type = "boolean", default = true }
         .expect("update module settings");
         restore_manifest_env(previous);
 
-        assert_eq!(updated.settings["postsPerPage"], serde_json::json!(20));
-        assert_eq!(updated.settings["showSummaries"], serde_json::json!(true));
+        assert_eq!(updated.settings["posts_per_page"], serde_json::json!(20));
+        assert_eq!(updated.settings["show_summaries"], serde_json::json!(true));
     }
 }

@@ -64,12 +64,10 @@ directly. This is current executable truth, not the canonical owner contract; th
 cutover must route reads and writes through the static module settings owner with
 revision, schema-digest, and activation semantics.
 
-The manifest currently describes `template_defaults` and `template_overrides` with
-`shape` and `additional_properties`. The generic manifest parser recognizes
-`properties` and `items` instead and does not currently reject those unknown keywords,
-so the declared nested shape is not enforced by the generic editor/validator. The
-schema must be migrated to the single canonical vocabulary as part of the zero-legacy
-cutover. See [`docs/architecture/settings.md`](../../../docs/architecture/settings.md).
+The manifest describes `template_defaults` using canonical `properties` and
+`template_overrides` using `type = "object"`. Manifest deserialization enforces
+`deny_unknown_fields` and `snake_case` key validation, ensuring settings adhere to the
+canonical platform vocabulary. See [`docs/architecture/settings.md`](../../../docs/architecture/settings.md).
 
 ## Current execution wave (Phase D)
 
