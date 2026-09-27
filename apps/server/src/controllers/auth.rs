@@ -21,7 +21,7 @@ use crate::auth::{
     decode_email_verification_token, decode_invite_token, encode_email_verification_token,
     encode_password_reset_token, hash_refresh_token,
 };
-use crate::common::{RequestContext, is_production_environment};
+use crate::common::{RequestContext, demo_mode_token_exposure_enabled};
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::models::{
     sessions,
@@ -261,10 +261,7 @@ async fn request_reset(
 
     let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, &params.email).await?;
 
-    let expose_token = !is_production_environment()
-        && std::env::var("RUSTOK_DEMO_MODE")
-            .map(|value| value == "1")
-            .unwrap_or(false);
+    let expose_token = demo_mode_token_exposure_enabled();
 
     let reset_token = user
         .as_ref()
