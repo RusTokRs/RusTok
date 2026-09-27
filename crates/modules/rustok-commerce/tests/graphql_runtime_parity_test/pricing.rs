@@ -464,6 +464,7 @@ async fn admin_graphql_pricing_product_resolves_effective_price_for_explicit_cha
     let actor_id = Uuid::new_v4();
     let channel_id = Uuid::new_v4();
     seed_tenant_context(&db, tenant_id).await;
+    seed_channel_binding(&db, tenant_id, channel_id, "web-store", true).await;
 
     let created = catalog
         .create_product(tenant_id, actor_id, create_product_input())
@@ -832,6 +833,7 @@ async fn admin_graphql_update_pricing_variant_price_returns_written_row() {
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     seed_tenant_context(&db, tenant_id).await;
+    seed_channel_binding(&db, tenant_id, Uuid::new_v4(), "web-store", true).await;
 
     let created = catalog
         .create_product(tenant_id, actor_id, create_product_input())
@@ -917,6 +919,7 @@ async fn admin_graphql_update_pricing_variant_price_supports_price_list_tier_sco
     let actor_id = Uuid::new_v4();
     let channel_id = Uuid::new_v4();
     seed_tenant_context(&db, tenant_id).await;
+    seed_channel_binding(&db, tenant_id, channel_id, "web-store", true).await;
 
     let created = catalog
         .create_product(tenant_id, actor_id, create_product_input())
@@ -1726,6 +1729,7 @@ async fn admin_graphql_update_price_list_scope_updates_active_option_and_rows() 
     let actor_id = Uuid::new_v4();
     let channel_id = Uuid::new_v4();
     seed_tenant_context(&db, tenant_id).await;
+    seed_channel_binding(&db, tenant_id, channel_id, "web-store", true).await;
     let created = catalog
         .create_product(tenant_id, actor_id, create_product_input())
         .await
@@ -1819,6 +1823,7 @@ async fn admin_graphql_update_price_list_scope_clears_boundary_and_rows() {
     let actor_id = Uuid::new_v4();
     let channel_id = Uuid::new_v4();
     seed_tenant_context(&db, tenant_id).await;
+    seed_channel_binding(&db, tenant_id, channel_id, "web-store", true).await;
     let created = catalog
         .create_product(tenant_id, actor_id, create_product_input())
         .await

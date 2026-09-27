@@ -2,7 +2,10 @@ use rustok_cart::entities::{
     cart, cart_adjustment, cart_line_item, cart_line_item_marketplace_snapshot,
     cart_line_item_translation, cart_shipping_selection, cart_tax_line,
 };
-use rustok_channel::entities::{channel, channel_module_binding};
+use rustok_channel::entities::{
+    channel, channel_module_binding, channel_oauth_app, channel_resolution_policy_rule,
+    channel_resolution_policy_set, channel_target,
+};
 use rustok_commerce::entities::{
     checkout_inventory_reservation, checkout_operation, checkout_order_plan,
     return_completion_command, return_completion_operation, shipping_profile,
@@ -395,6 +398,30 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(channel_module_binding::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(channel_target::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(channel_oauth_app::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(channel_resolution_policy_set::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(channel_resolution_policy_rule::Entity),
     )
     .await;
     ensure_tenant_tables(db).await;

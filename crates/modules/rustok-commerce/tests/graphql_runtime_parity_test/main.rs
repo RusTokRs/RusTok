@@ -1414,7 +1414,7 @@ fn storefront_cart_context_update_mutation(
     tenant_id: Uuid,
     cart_id: Uuid,
     region_id: Uuid,
-    shipping_option_id: Uuid,
+    _shipping_option_id: Uuid,
 ) -> String {
     format!(
         r#"
@@ -1425,7 +1425,7 @@ fn storefront_cart_context_update_mutation(
             input: {{
               email: null
               regionId: "{region_id}"
-              selectedShippingOptionId: "{shipping_option_id}"
+              selectedShippingOptionId: null
             }}
           ) {{
             cart {{
