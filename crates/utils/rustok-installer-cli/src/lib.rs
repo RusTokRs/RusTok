@@ -93,6 +93,19 @@ impl CommandProvider for InstallerCommandProvider {
                 .map_err(|error| failed(error.to_string()))?,
         );
         let options = &request.args["options"];
+        let environment = option(options, "environment")
+            .ok_or_else(|| input("seed apply requires an explicit --environment (local, demo, or test)"))?
+            .as_deref()
+            .map(InstallEnvironment::parse_cli_value)
+            .transpose()
+            .map_err(input)?
+            .ok_or_else(|| input("seed apply requires an explicit --environment"))?;
+        if environment.is_production() {
+            return Err(input(
+                "seed apply is not allowed for production installations; use install apply",
+            ));
+        }
+
         let profile = option(options, "profile")
             .as_deref()
             .map(SeedProfile::parse_cli_value)
@@ -105,6 +118,20 @@ impl CommandProvider for InstallerCommandProvider {
             .ok_or_else(|| {
                 input("seed apply requires --password, SEED_ADMIN_PASSWORD, or SUPERADMIN_PASSWORD")
             })?;
+        let demo_customer_password = if profile == SeedProfile::Dev {
+            Some(
+                option(options, "demo_customer_password")
+                    .or_else(|| environment("SEED_DEMO_CUSTOMER_PASSWORD"))
+                    .or_else(|| environment("DEMO_CUSTOMER_PASSWORD"))
+                    .ok_or_else(|| {
+                        input(
+                            "dev seed apply requires --demo-customer-password, SEED_DEMO_CUSTOMER_PASSWORD, or DEMO_CUSTOMER_PASSWORD",
+                        )
+                    })?,
+            )
+        } else {
+            None
+        };
         let tenant = SeedTenantRequest {
             name: option(options, "tenant_name").unwrap_or_else(|| "Demo Workspace".to_string()),
             slug: option(options, "tenant_slug").unwrap_or_else(|| "demo".to_string()),
@@ -126,7 +153,7 @@ impl CommandProvider for InstallerCommandProvider {
                 enabled_modules: profile.default_enabled_modules(),
                 disabled_modules: Vec::new(),
                 admin,
-                demo_customer_password: Some(password),
+                demo_customer_password,
                 actor: "rustok-cli seed apply".to_string(),
             },
             &ports,
