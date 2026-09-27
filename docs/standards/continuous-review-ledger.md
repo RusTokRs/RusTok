@@ -953,3 +953,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 
 - [ ] **RUNTIME-08 — public email-verification request endpoint bypasses the dedicated auth rate-limit policy.** `/api/auth/verify/request` can enqueue a verification email for a target address but `init_rate_limit_layers` only assigns the stricter auth limiter to login/register/reset paths. The endpoint therefore falls back to the general `/api/` limiter, weakening anti-abuse protection for a direct email-sending side effect.
+
+
+- [ ] **RUNTIME-09 — `RUSTOK_DEMO_MODE` can expose password-reset/email-verification bearer tokens in production responses.** Auth controllers directly read `RUSTOK_DEMO_MODE` and return generated reset/verification tokens when set, but the shared production-environment validation does not constrain this flag. An accidental production environment setting therefore turns an otherwise out-of-band email flow into a credential-bearing API response.
