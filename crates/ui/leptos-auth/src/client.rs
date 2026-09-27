@@ -32,7 +32,8 @@ where
                 headers.set("Authorization", format!("Bearer {token}").as_str());
             }
             if let Some(tenant) = crate::storage::get_tenant() {
-                headers.set("X-Tenant-ID", tenant.as_str());
+                let _ = headers.set("X-Tenant-ID", tenant.as_str());
+                let _ = headers.set("X-Tenant-Slug", tenant.as_str());
             }
         }
 

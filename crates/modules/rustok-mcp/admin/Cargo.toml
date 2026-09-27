@@ -27,6 +27,7 @@ ssr = [
 [dependencies]
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
+leptos-auth.workspace = true
 chrono = { workspace = true, optional = true }
 rustok-api = { workspace = true, optional = true, default-features = false }
 rustok-core = { workspace = true, optional = true }

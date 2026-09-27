@@ -14791,6 +14791,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "leptos",
+ "leptos-auth",
  "leptos_axum",
  "rustok-api",
  "rustok-core",

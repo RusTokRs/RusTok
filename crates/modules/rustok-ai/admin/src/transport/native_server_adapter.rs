@@ -396,7 +396,11 @@ pub async fn cancel_run(run_id: String) -> Result<AiChatRunPayload, ApiError> {
     ai_cancel_run_native(run_id).await.map_err(Into::into)
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/bootstrap")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/bootstrap",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_bootstrap_native() -> Result<AiAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -546,7 +550,11 @@ async fn ai_bootstrap_native() -> Result<AiAdminBootstrap, ServerFnError> {
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/put-structured-budget-policy")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/put-structured-budget-policy",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_put_structured_budget_policy_native(
     currency_code: String,
     limit_minor_units: u64,
@@ -580,7 +588,11 @@ async fn ai_put_structured_budget_policy_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/put-structured-provider-policy")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/put-structured-provider-policy",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_put_structured_provider_policy_native(
     provider_profile_id: String,
     allowed_classifications: Vec<String>,
@@ -630,7 +642,11 @@ async fn ai_put_structured_provider_policy_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/session")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/session",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_session_native(
     session_id: String,
 ) -> Result<Option<AiChatSessionDetailPayload>, ServerFnError> {
@@ -656,7 +672,11 @@ async fn ai_session_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/create-provider")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/create-provider",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_create_provider_native(
     slug: String,
     display_name: String,
@@ -735,7 +755,11 @@ async fn ai_create_provider_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/test-provider")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/test-provider",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_test_provider_native(id: String) -> Result<AiProviderTestResultPayload, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -771,7 +795,11 @@ async fn ai_test_provider_native(id: String) -> Result<AiProviderTestResultPaylo
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/update-provider")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/update-provider",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_update_provider_native(
     id: String,
     display_name: String,
@@ -841,7 +869,11 @@ async fn ai_update_provider_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/deactivate-provider")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/deactivate-provider",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_deactivate_provider_native(
     id: String,
 ) -> Result<AiProviderProfilePayload, ServerFnError> {
@@ -869,7 +901,11 @@ async fn ai_deactivate_provider_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/create-agent-principal")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/create-agent-principal",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_create_agent_principal_native(
     slug: String,
     descriptor_owner: String,
@@ -910,7 +946,11 @@ async fn ai_create_agent_principal_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/update-agent-principal")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/update-agent-principal",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_update_agent_principal_native(
     id: String,
     role_slugs: Vec<String>,
@@ -949,7 +989,11 @@ async fn ai_update_agent_principal_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/create-agent-model-assignment")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/create-agent-model-assignment",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_create_agent_model_assignment_native(
     agent_principal_id: String,
     provider_profile_id: String,
@@ -991,7 +1035,11 @@ async fn ai_create_agent_model_assignment_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/update-agent-model-assignment")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/update-agent-model-assignment",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_update_agent_model_assignment_native(
     id: String,
     model_override: Option<String>,
@@ -1028,7 +1076,11 @@ async fn ai_update_agent_model_assignment_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/create-agent-workflow-run")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/create-agent-workflow-run",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_create_agent_workflow_run_native(
     workflow_owner: String,
     workflow_slug: String,
@@ -1102,7 +1154,11 @@ async fn ai_create_agent_workflow_run_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/create-tool-profile")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/create-tool-profile",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_create_tool_profile_native(
     slug: String,
     display_name: String,
@@ -1150,7 +1206,11 @@ async fn ai_create_tool_profile_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/update-tool-profile")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/update-tool-profile",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_update_tool_profile_native(
     id: String,
     display_name: String,
@@ -1201,7 +1261,11 @@ async fn ai_update_tool_profile_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/create-task-profile")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/create-task-profile",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_create_task_profile_native(
     slug: String,
     display_name: String,
@@ -1266,7 +1330,11 @@ async fn ai_create_task_profile_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/update-task-profile")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/update-task-profile",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_update_task_profile_native(
     id: String,
     display_name: String,
@@ -1334,7 +1402,11 @@ async fn ai_update_task_profile_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/start-session")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/start-session",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_start_session_native(
     title: String,
     provider_profile_id: Option<String>,
@@ -1388,7 +1460,11 @@ async fn ai_start_session_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/run-task-job")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/run-task-job",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_run_task_job_native(
     title: String,
     provider_profile_id: Option<String>,
@@ -1446,7 +1522,11 @@ async fn ai_run_task_job_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/send-message")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/send-message",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_send_message_native(
     session_id: String,
     content: String,
@@ -1477,7 +1557,11 @@ async fn ai_send_message_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/resume-approval")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/resume-approval",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_resume_approval_native(
     approval_id: String,
     approved: bool,
@@ -1511,7 +1595,8 @@ async fn ai_resume_approval_native(
 
 #[server(
     prefix = "/api/fn",
-    endpoint = "ai/resolve-agent-workflow-stage-approval"
+    endpoint = "ai/resolve-agent-workflow-stage-approval",
+    client = leptos_auth::AuthorizedBrowserClient
 )]
 async fn ai_resolve_agent_workflow_stage_approval_native(
     stage_id: String,
@@ -1542,7 +1627,11 @@ async fn ai_resolve_agent_workflow_stage_approval_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "ai/cancel-run")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "ai/cancel-run",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn ai_cancel_run_native(run_id: String) -> Result<AiChatRunPayload, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
