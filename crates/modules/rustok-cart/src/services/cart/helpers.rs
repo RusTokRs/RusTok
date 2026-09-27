@@ -134,6 +134,11 @@ pub fn normalize_line_item_shipping_profile(
             Ok(None)
         }
         CartLineFulfillmentRequirement::Physical => {
+            if value.is_some() && normalized.is_none() {
+                return Err(CartError::Validation(
+                    "physical cart lines require a non-empty shipping profile".to_string(),
+                ));
+            }
             let slug = normalized.unwrap_or_else(|| DEFAULT_SHIPPING_PROFILE_SLUG.to_string());
             if slug.len() > 100 {
                 return Err(CartError::Validation(
@@ -1444,9 +1449,18 @@ mod tests {
             .as_deref(),
             Some("express")
         );
+        assert_eq!(
+            normalize_line_item_shipping_profile(
+                CartLineFulfillmentRequirement::Physical,
+                None,
+            )
+            .expect("physical line defaults to default profile")
+            .as_deref(),
+            Some(DEFAULT_SHIPPING_PROFILE_SLUG)
+        );
         assert!(normalize_line_item_shipping_profile(
             CartLineFulfillmentRequirement::Physical,
-            None,
+            Some("   "),
         )
         .is_err());
     }
