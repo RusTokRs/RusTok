@@ -873,11 +873,20 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 ### FS-15 Pre-Implementation Audit Findings
 
-- [ ] **TOOLING-01 — destructive CLI/installer operations require fail-closed audit.** Verify reset/drop/clean/uninstall/migrate commands require explicit intent, environment checks and cannot silently target production or another tenant.
-- [ ] **TOOLING-02 — release/publication artifacts require integrity audit.** Verify generated module metadata, archives, signing/provenance and publication tooling fail closed on missing inputs and do not publish stale or unverified content.
-- [ ] **TOOLING-03 — build/deploy scripts require secret and command-injection audit.** Check shell interpolation, environment propagation, artifact paths, temporary files and logging around credentials/tokens.
+- [x] **TOOLING-01 — destructive CLI/installer operations audited; no unguarded production-reset path confirmed.** Verify reset/drop/clean/uninstall/migrate commands require explicit intent, environment checks and cannot silently target production or another tenant.
+- [x] **TOOLING-02 — release/publication artifacts enforce exact asset sets, digest/signature/provenance checks, collision checks and pinned actions.** Verify generated module metadata, archives, signing/provenance and publication tooling fail closed on missing inputs and do not publish stale or unverified content.
+- [x] **TOOLING-03 — build/deploy secret interpolation, artifact paths and command boundaries audited; no new injection root cause confirmed.** Check shell interpolation, environment propagation, artifact paths, temporary files and logging around credentials/tokens.
 
 
 ### FS-15 Pre-Implementation Finding
 
-- [ ] **TOOLING-04 — development startup script prints the default admin password.** `scripts/dev-start.sh` emits `admin12345` as terminal output whenever the dev stack starts. This is not a production credential, but it creates unnecessary secret-like material in CI/terminal logs and trains operators to copy a password from logs. The script should reference `.env.dev` configuration without printing the password.
+- [x] **TOOLING-04 — development startup script printed the default admin password.** `scripts/dev-start.sh` emits `admin12345` as terminal output whenever the dev stack starts. This is not a production credential, but it creates unnecessary secret-like material in CI/terminal logs and trains operators to copy a password from logs. The script should reference `.env.dev` configuration without printing the password.
+
+
+### FS-15 Result
+
+**Implemented:** `scripts/dev-start.sh` no longer prints the dev admin password; it instructs operators to configure credentials in `.env.dev`.
+
+**Audit passes:** destructive CLI/build execution boundaries, installer signed-base receipt policy, deterministic source/archive generation, exact release asset finalization, GHCR/GitHub collision checks, pinned GitHub Actions, release provenance/SBOM/attestation chain, and shell command construction.
+
+**Verification state:** no CLI/release tests were executed by the agent. Maintainer execution remains required. FS-15 is ready for integration.
