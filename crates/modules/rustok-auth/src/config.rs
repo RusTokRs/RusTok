@@ -352,6 +352,35 @@ mod tests {
     }
 
     #[test]
+    fn auth_config_debug_redacts_secret_and_private_keys() {
+        let config = AuthConfig::new("super-secret-auth-key-0123456789".to_string())
+            .with_rs256("PRIVATE-KEY-MATERIAL", "PUBLIC-KEY-MATERIAL");
+        let rendered = format!("{config:?}");
+
+        assert!(!rendered.contains("super-secret-auth-key-0123456789"));
+        assert!(!rendered.contains("PRIVATE-KEY-MATERIAL"));
+        assert!(!rendered.contains("PUBLIC-KEY-MATERIAL"));
+        assert!(rendered.contains("<redacted>"));
+    }
+
+    #[test]
+    fn auth_settings_debug_redacts_inline_key_material() {
+        let settings = AuthSettingsOverrides {
+            rsa_private_key_pem: Some("PRIVATE-KEY-MATERIAL".to_string()),
+            rsa_public_key_pem: Some("PUBLIC-KEY-MATERIAL".to_string()),
+            rsa_private_key_env: Some("AUTH_PRIVATE".to_string()),
+            rsa_public_key_env: Some("AUTH_PUBLIC".to_string()),
+            ..AuthSettingsOverrides::default()
+        };
+        let rendered = format!("{settings:?}");
+
+        assert!(!rendered.contains("PRIVATE-KEY-MATERIAL"));
+        assert!(!rendered.contains("PUBLIC-KEY-MATERIAL"));
+        assert!(rendered.contains("AUTH_PRIVATE"));
+        assert!(rendered.contains("AUTH_PUBLIC"));
+    }
+
+    #[test]
     fn build_auth_config_defaults_to_hs256() {
         let config =
             build_auth_config_with_env(secret(), 900, AuthSettingsOverrides::default(), |_| {
