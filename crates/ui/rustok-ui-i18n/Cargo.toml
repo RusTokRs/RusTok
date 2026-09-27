@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Framework-agnostic UI message catalog and resolution helpers for RusToK"
+description = "Framework-agnostic locale, Accept-Language, and UI message helpers for RusToK"
 
 [dependencies]
 fluent-bundle.workspace = true

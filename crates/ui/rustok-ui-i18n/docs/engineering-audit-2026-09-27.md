@@ -201,6 +201,23 @@ production-парсинге **не подтвердились**.
   download/eviction требует отдельного host storage adapter и не маскируется названием
   «lazy».
 
+### F-12 — `Accept-Language` разбирался несколькими несовместимыми реализациями
+
+- **Серьёзность:** высокая для единого multilingual contract.
+- **Статус до:** подтверждено после уточнения целевой ownership-модели.
+- **Причина:** до появления общего crate `rustok-api`, Page Builder и admin host
+  самостоятельно разбирали заголовок. Реализации использовали `f32`, clamp невалидных
+  q-values или просто первый comma-separated элемент; различались stable ordering,
+  wildcard/exclusion и locale canonicalization. Запрет package-local negotiation ошибочно
+  трактовался как запрет вынести общий синтаксический механизм в библиотеку.
+- **Исправление:** bounded parser перенесён в `rustok-ui-i18n`; q-values представлены
+  точными тысячными, полная Unicode locale отделена от catalog projection, wildcard и
+  `q=0` доступны typed API. `rustok-api` делегирует старый API новой реализации, Page
+  Builder и admin удалили локальные parsers. Repository verifier запрещает их возврат.
+- **Граница:** библиотека разбирает и ранжирует поле, но не решает host policy. Приоритет
+  query/cookie/header, tenant allowlist, user preference и final default остаются у
+  composition root.
+
 ## Проверенные инварианты, не требующие изменения
 
 1. **Bidi:** `set_use_isolating(true)` вызывается при каждой сборке Rust bundle;
@@ -225,7 +242,8 @@ production-парсинге **не подтвердились**.
 
 ```text
 host/runtime
-  └─ выбирает effective locale (route/cookie/header/user policy)
+  ├─ задаёт precedence/allowlist/default effective locale policy
+  └─ использует rustok-ui-i18n для bounded Accept-Language parsing
      └─ rustok-ui-i18n
         ├─ canonical locale + structural fallback
         ├─ eager validated catalog or opt-in per-locale lazy bundles

@@ -13,7 +13,8 @@ use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use rustok_ui_i18n::{
-    LazyUiMessages, UiTranslator, build_fluent_catalog, fluent_args, locale_candidates,
+    LazyUiMessages, UiTranslator, accept_language_catalog_locales, build_fluent_catalog,
+    fluent_args, locale_candidates,
 };
 
 const EN: &str = r#"
@@ -73,6 +74,14 @@ fn benchmark_lookup(c: &mut Criterion) {
                 black_box(Some("zh-Hant-TW")),
                 black_box("en-US"),
             ))
+        })
+    });
+
+    c.bench_function("i18n/accept_language/parse_and_project_8", |b| {
+        b.iter(|| {
+            black_box(accept_language_catalog_locales(black_box(
+                "ar-EG, he-IL;q=0.9, zh-TW;q=0.8, ja;q=0.7, fr;q=0.6, de;q=0.5, en;q=0.4, *;q=0.1",
+            )))
         })
     });
 

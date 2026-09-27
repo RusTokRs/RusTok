@@ -11,7 +11,10 @@
 use std::collections::HashSet;
 
 use proptest::prelude::*;
-use rustok_ui_i18n::{locale_candidates, normalize_locale_tag};
+use rustok_ui_i18n::{
+    MAX_ACCEPT_LANGUAGE_LEN, MAX_ACCEPT_LANGUAGE_RANGES, locale_candidates,
+    normalize_locale_tag, normalize_unicode_locale, parse_accept_language,
+};
 use unic_langid::LanguageIdentifier;
 
 fn bounded_text() -> impl Strategy<Value = String> {
@@ -38,6 +41,32 @@ proptest! {
                 normalize_locale_tag(&normalized),
                 Some(normalized.clone())
             );
+        }
+    }
+
+    #[test]
+    fn accept_language_parsing_is_bounded_sorted_and_canonical(raw in bounded_text()) {
+        let preferences = parse_accept_language(&raw);
+
+        if raw.len() > MAX_ACCEPT_LANGUAGE_LEN
+            || raw.split(',').count() > MAX_ACCEPT_LANGUAGE_RANGES
+        {
+            prop_assert!(preferences.is_empty());
+            return Ok(());
+        }
+
+        prop_assert!(preferences.len() <= MAX_ACCEPT_LANGUAGE_RANGES);
+        for pair in preferences.windows(2) {
+            prop_assert!(pair[0].quality_thousandths() >= pair[1].quality_thousandths());
+        }
+        for preference in preferences {
+            prop_assert!(preference.quality_thousandths() <= 1_000);
+            if let Some(locale) = preference.locale() {
+                prop_assert_eq!(
+                    normalize_unicode_locale(locale),
+                    Some(locale.to_string())
+                );
+            }
         }
     }
 

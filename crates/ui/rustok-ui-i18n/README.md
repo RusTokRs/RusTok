@@ -10,6 +10,7 @@ RusToK module-owned UI packages and future UI adapters.
 The crate is structured into focused domain modules:
 
 - `locale`: complete Unicode locale normalization (`normalize_unicode_locale`), ICU4X/CLDR alias canonicalization, Fluent catalog-identity projection (`normalize_locale_tag`), locale directionality (`locale_text_direction`), canonical admin locale resolution (`normalize_admin_locale`), and structured fallback candidate chains (`locale_candidates`).
+- `accept_language`: bounded, exact-q `Accept-Language` parsing and Unicode/catalog preference projections; host/runtime still owns precedence and tenant/user policy.
 - `bundle`: Concurrent Project Fluent (`.ftl`) bundle (`build_fluent_bundle`) and catalog (`build_fluent_catalog`, `try_build_fluent_catalog`, `bundle::build_fluent_catalog_report`, `FluentCatalog`) construction with Unicode bidi isolation enabled for interpolated values.
 - `messages`: Core thread-safe UI message facade (`UiMessages`), fail-closed prepared runtime (`PreparedUiMessages`), borrowed translator (`UiTranslator`), prepared per-locale translator (`UiLocaleTranslator`), source-locale provenance (`ResolvedMessage`), compound-message attribute lookup, transitive message/term schema validation, stack-buffered safe kebab-case key conversion (`with_kebab_key`), strict/lenient candidate resolution, and cached lazy-initialization diagnostics.
 - `lazy`: Opt-in per-locale Fluent parsing (`LazyUiMessages`, `LazyUiLocaleTranslator`) for large embedded locale sets while preserving the same fallback, formatting, provenance, and validation contracts.
@@ -27,6 +28,7 @@ The crate is structured into focused domain modules:
 - Accept arbitrary well-formed Unicode locale requests, canonicalize deprecated CLDR aliases, and safely project formatting/private-use extensions onto extension-free Fluent catalog identities.
 - Apply a structured platform UI fallback chain (exact locale -> variants removed as one layer -> CLDR-inferred script for region-disambiguated languages -> region -> script -> language -> default locale -> `"en"` -> fallback string) without depending on Leptos, Dioxus, Next.js, or host routing.
 - Expose CLDR writing direction instead of forcing hosts to maintain incomplete RTL language lists.
+- Parse bounded `Accept-Language` field values once with exact thousandth q-values, stable ordering, wildcard/exclusion representation, and full-vs-catalog locale projections.
 - Provide strict startup preparation (`UiMessages::prepare`) and fail-soft initialization diagnostics without rebuilding the lazy catalog.
 - Keep request/catalog/default locale normalization bounded on raw input before trim/normalization work.
 - Keep UI i18n catalog logic out of `rustok-api` and framework-specific crates.
@@ -59,6 +61,15 @@ in a lookup fallback chain. Failed bundles are cached, diagnosed once, and skipp
 fail-soft fallback semantics as `UiMessages`; `validate()` and `prepare()` remain complete fail-closed
 checks. This reduces startup parsing and resident bundle state, but does **not** remove `include_str!`
 bytes from native/WASM binaries. Truly downloadable catalogs require a host-owned storage adapter.
+
+`try_parse_accept_language` centralizes the framework-neutral syntax mechanism that was previously
+implemented separately in `rustok-api`, Page Builder, and host code. It bounds raw headers to 4096 bytes
+and 64 ranges, uses integer thousandths rather than floats for q-values, preserves wildcard and `q=0`
+entries in the typed result, and ignores malformed individual ranges without losing later valid values.
+`accept_language_locales` preserves full Unicode locale extensions; the explicitly named
+`accept_language_catalog_locales` projects them to Fluent identities. This does not move effective-locale
+policy into the crate: hosts still decide query/cookie/header priority, tenant allowlists, defaults, and
+whether an absent or wildcard preference is acceptable.
 
 The Rust locale-input policy rejects raw locale strings longer than 64 bytes before trimming or
 underscore normalization. Runtime lookup, direct bundle construction, strict/lenient catalog
@@ -101,6 +112,9 @@ an override policy for Rust catalogs.
 - `t!`
 - `module_t!`
 - `normalize_admin_locale`
+- `try_parse_accept_language` / `parse_accept_language`
+- `accept_language_locales` / `accept_language_catalog_locales`
+- `preferred_locale_from_accept_language` / `preferred_catalog_locale_from_accept_language`
 - `normalize_unicode_locale`
 - `normalize_locale_tag`
 - `locale_text_direction` / `TextDirection`
@@ -128,13 +142,13 @@ default locale before comparing values and attributes with default-locale contra
 ## Interactions
 
 - Module-owned UI packages use this crate from local `i18n.rs` files via `declare_module_i18n!`; large locale sets may choose its explicit `lazy` form.
-- Host/runtime code owns effective locale selection, including `Accept-Language` parsing and tenant/user policy; this crate only resolves messages for a supplied locale.
+- Host/runtime code owns effective locale selection and tenant/user policy; it may use this crate's shared `Accept-Language` parser instead of reimplementing field syntax.
 - `@rustok/next-fluent` uses the same Project Fluent bidi-safe default and bounded locale-input policy. Extension-aware canonicalization and CLDR likely-script fallback are now the reference behavior that the separately versioned Next adapter must mirror.
 
 ## Boundary Rules
 
 - Do not add Leptos, Dioxus, Axum, GraphQL, cookie, header, query, or routing dependencies.
-- Do not select the user's locale here; consume the host-provided effective locale.
+- Do not own the host's query/cookie/header/tenant precedence or supported-locale policy here; shared parsing and canonicalization primitives are allowed.
 - Do not add runtime filesystem scanning or environment lookups in production paths.
 - Do not add module-specific message keys or business copy to this crate.
 - Treat exported dependency types and helper functions as compatibility surface until an explicit migration window narrows them; prefer additive facade APIs over silent removals.

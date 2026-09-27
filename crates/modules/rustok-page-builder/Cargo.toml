@@ -21,6 +21,7 @@ rustok-api = { workspace = true, optional = true }
 async-trait = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
 rustok-telemetry = { workspace = true, optional = true }
+rustok-ui-i18n.workspace = true
 sea-orm-migration = { workspace = true, optional = true }
 thiserror.workspace = true
 serde.workspace = true

@@ -13,6 +13,7 @@ const paths = {
   runtimeValidation: 'crates/ui/fly/src/runtime_validation.rs',
   browserContract: 'crates/ui/fly-browser/src/lib.rs',
   pageBuilderLocale: 'crates/modules/rustok-page-builder/src/locale.rs',
+  uiI18nAcceptLanguage: 'crates/ui/rustok-ui-i18n/src/accept_language.rs',
   pageBuilderRender: 'crates/modules/rustok-page-builder/src/render.rs',
   storefrontLocalizedRoute: 'crates/modules/rustok-page-builder-storefront/src/localized_route.rs',
   pagesIntent: 'crates/modules/rustok-pages/admin/src/browser_intent.rs',
@@ -147,9 +148,14 @@ requireMarkers('browserContract', [
 requireMarkers('pageBuilderLocale', [
   'pub struct PageBuilderLocaleContext',
   'pub fn from_request',
-  'pub fn parse_accept_language',
-  'accept_language_is_sorted_by_quality_and_stable_order',
+  'use rustok_ui_i18n::accept_language_catalog_locales;',
+  'request_context_uses_shared_quality_sorted_accept_language_parser',
 ], 'SSR locale negotiation API');
+requireMarkers('uiI18nAcceptLanguage', [
+  'pub fn try_parse_accept_language',
+  'pub fn accept_language_catalog_locales',
+  'quality_sorting_is_exact_and_source_order_is_stable',
+], 'shared bounded Accept-Language parser');
 requireMarkers('pageBuilderRender', [
   'pub fn with_locale',
   'render_localized_runtime_document_html',

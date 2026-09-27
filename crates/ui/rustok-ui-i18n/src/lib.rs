@@ -8,6 +8,7 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+mod accept_language;
 pub mod bundle;
 pub mod error;
 mod lazy;
@@ -24,6 +25,12 @@ pub use fluent_bundle::{FluentArgs, FluentValue};
 )]
 pub use unic_langid::LanguageIdentifier;
 
+pub use accept_language::{
+    AcceptLanguageError, AcceptLanguagePreference, MAX_ACCEPT_LANGUAGE_LEN,
+    MAX_ACCEPT_LANGUAGE_RANGES, accept_language_catalog_locales, accept_language_locales,
+    parse_accept_language, preferred_catalog_locale_from_accept_language,
+    preferred_locale_from_accept_language, try_parse_accept_language,
+};
 pub use bundle::{
     FluentCatalog, build_fluent_bundle, build_fluent_catalog, try_build_fluent_catalog,
 };

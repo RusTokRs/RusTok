@@ -186,6 +186,13 @@ runtime filesystem discovery.
     Full `validate()`/`prepare()` remains eager and fail-closed. This addresses startup/resident-state scaling;
     compile-time `include_str!` bytes remain in the binary, so downloadable catalogs still require a host adapter.
 
+32. **Shared bounded `Accept-Language` parsing.**
+    The framework-neutral parser moved from duplicate host/module implementations into this crate. It enforces
+    4096-byte/64-range bounds before parsing, represents q-values as exact thousandths, preserves stable ordering,
+    wildcard and `q=0` semantics in the typed result, and offers separate full-Unicode and extension-free catalog
+    projections. `rustok-api` keeps its old function name as a compatibility re-export, while Page Builder and the
+    admin host consume the shared implementation. Host code still owns source precedence, allowlists and defaults.
+
 ## Remaining engineering work
 
 ### 1. Public API / semver surface before 1.0
@@ -250,12 +257,12 @@ Next.js Fluent parity surface:
 Future test work:
 - native fuzz targets only after shared project fuzz infrastructure exists;
 - retained benchmark evidence for any further hot-path optimization;
-- parity tests in the separately versioned Next adapter for CLDR aliases and likely-script branches.
+- parity tests in the separately versioned Next adapter for CLDR aliases, likely-script branches, and exact `Accept-Language` q-value behavior.
 
 ## Change rules
 
 1. Keep Leptos, Dioxus, Axum, GraphQL, cookie, header, query and routing dependencies out of this crate.
-2. Keep locale selection with the host/runtime effective-locale contract.
+2. Keep effective-locale source precedence, allowlists and defaults with the host/runtime contract; keep reusable locale/header parsing in this neutral crate.
 3. Domain modules own their `.ftl` message files; this crate owns the engine and shared formatting boundary.
 4. Do not silently weaken Unicode bidi safety for prettier serialized strings.
 5. Keep complete Unicode locale identity distinct from the extension-free Fluent catalog projection; do not silently use calendar/number/collation preferences as message-catalog keys.

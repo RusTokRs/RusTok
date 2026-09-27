@@ -79,6 +79,16 @@ expectNotContains(
   "legacy Russian default in the admin runtime catalog",
 );
 expectContains(
+  "apps/admin/src/main.rs",
+  "preferred_catalog_locale_from_accept_language",
+  "admin host to use the shared Accept-Language parser",
+);
+expectNotContains(
+  "apps/admin/src/main.rs",
+  "language.split(',').next()",
+  "manual first-range Accept-Language selection in the admin host",
+);
+expectContains(
   "crates/modules/rustok-modules/src/static_package.rs",
   "rustok_api::normalize_locale_tag(locale)",
   "module UI i18n validation to normalize locale tags via rustok-api",
@@ -113,10 +123,20 @@ expectContains(
   "LazyUiMessages",
   "module macro support for opt-in per-locale lazy catalogs",
 );
+expectContains(
+  "crates/ui/rustok-ui-i18n/src/accept_language.rs",
+  "pub fn try_parse_accept_language",
+  "the shared bounded Accept-Language parser",
+);
+expectContains(
+  "crates/libs/rustok-api/src/locale.rs",
+  "preferred_catalog_locale_from_accept_language as extract_locale_tag_from_header",
+  "rustok-api compatibility API to delegate Accept-Language parsing to rustok-ui-i18n",
+);
 expectNotContains(
-  "crates/ui/rustok-ui-i18n/src/locale.rs",
-  "parse_accept_language",
-  "host-owned Accept-Language negotiation inside the message catalog crate",
+  "crates/modules/rustok-page-builder/src/locale.rs",
+  "fn parse_accept_language(",
+  "a duplicate Page Builder Accept-Language parser",
 );
 
 const forbiddenLocaleDefaultPatterns = [

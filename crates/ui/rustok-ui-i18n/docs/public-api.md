@@ -41,6 +41,10 @@ The following APIs are intentionally available for callers that need catalog con
 - `bundle::FluentCatalogBuildReport`
 - `FluentCatalog`
 - `normalize_admin_locale`
+- `try_parse_accept_language` / `parse_accept_language`
+- `accept_language_locales` / `accept_language_catalog_locales`
+- `preferred_locale_from_accept_language` / `preferred_catalog_locale_from_accept_language`
+- `AcceptLanguagePreference` / `AcceptLanguageError`
 - `normalize_unicode_locale`
 - `normalize_locale_tag`
 - `locale_candidates`
@@ -57,6 +61,11 @@ Schema extraction applies the bounded locale-input policy and reports canonical 
 identities. Catalog schema validation uses the same normalized locale identity for the
 configured default, rejects duplicate normalized locale entries, and compares variable
 sets across non-default messages.
+
+The `Accept-Language` APIs own only bounded field syntax, exact q-value ordering, and locale
+canonicalization/projection. They deliberately do not encode host precedence, tenant allowlists,
+or final default selection. They stay outside the prelude so module-owned UI packages consume an
+effective locale instead of starting local negotiation chains.
 
 These APIs are deliberately omitted from the prelude so normal module code does not couple itself to catalog internals by default.
 

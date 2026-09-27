@@ -379,7 +379,7 @@ When creating a new shared library, decide upfront:
 
 If you see these patterns duplicated across modules, extract them:
 
-- **Locale negotiation helpers** -> Already in `rustok-api::locale`
+- **Unicode locale / `Accept-Language` parsing** -> `rustok-ui-i18n`; host precedence and request policy -> `rustok-api::locale`
 - **Route query parsing** -> Already in `rustok-ui-core` (`UiRouteQueryUpdate`)
 - **i18n message resolution** -> Already in `rustok-ui-i18n` (`LeptosUiMessages`)
 - **GraphQL error mapping** -> Already in `rustok-graphql`

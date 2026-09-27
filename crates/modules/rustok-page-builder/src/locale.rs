@@ -1,7 +1,7 @@
 use fly::{RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD, normalize_locale_tag};
+use rustok_ui_i18n::accept_language_catalog_locales;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct PageBuilderLocaleContext {
@@ -43,7 +43,7 @@ impl PageBuilderLocaleContext {
         configured_fallbacks: &[String],
     ) -> Self {
         let accepted = accept_language
-            .map(parse_accept_language)
+            .map(accept_language_catalog_locales)
             .unwrap_or_default();
         let locale = route_locale
             .and_then(normalize_locale_tag)
@@ -97,69 +97,22 @@ impl PageBuilderLocaleContext {
     }
 }
 
-pub fn parse_accept_language(header: &str) -> Vec<String> {
-    let mut candidates = header
-        .split(',')
-        .enumerate()
-        .filter_map(|(index, part)| parse_language_range(part, index))
-        .collect::<Vec<_>>();
-    candidates.sort_by(|left, right| {
-        right
-            .quality
-            .partial_cmp(&left.quality)
-            .unwrap_or(Ordering::Equal)
-            .then_with(|| left.index.cmp(&right.index))
-    });
-    let mut locales = Vec::new();
-    for candidate in candidates {
-        if !locales.contains(&candidate.locale) {
-            locales.push(candidate.locale);
-        }
-    }
-    locales
-}
-
-#[derive(Debug)]
-struct LanguageCandidate {
-    locale: String,
-    quality: f32,
-    index: usize,
-}
-
-fn parse_language_range(part: &str, index: usize) -> Option<LanguageCandidate> {
-    let mut segments = part.trim().split(';');
-    let locale = segments.next()?.trim();
-    if locale == "*" {
-        return None;
-    }
-    let locale = normalize_locale_tag(locale)?;
-    let mut quality = 1.0f32;
-    for parameter in segments {
-        let Some((name, value)) = parameter.trim().split_once('=') else {
-            continue;
-        };
-        if name.trim().eq_ignore_ascii_case("q") {
-            quality = value.trim().parse::<f32>().ok()?.clamp(0.0, 1.0);
-        }
-    }
-    (quality > 0.0).then_some(LanguageCandidate {
-        locale,
-        quality,
-        index,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
 
     #[test]
-    fn accept_language_is_sorted_by_quality_and_stable_order() {
-        assert_eq!(
-            parse_accept_language("en-US;q=0.7, ru-RU, de;q=0.7, *;q=0.9, fr;q=0"),
-            vec!["ru-ru", "en-us", "de"]
+    fn request_context_uses_shared_quality_sorted_accept_language_parser() {
+        let context = PageBuilderLocaleContext::from_request(
+            None,
+            None,
+            Some("en-US;q=0.7, ru-RU, de;q=0.7, *;q=0.9, fr;q=0"),
+            &[],
         );
+
+        assert_eq!(context.locale.as_deref(), Some("ru-ru"));
+        assert_eq!(context.fallback_locales, vec!["en-us", "de"]);
     }
 
     #[test]

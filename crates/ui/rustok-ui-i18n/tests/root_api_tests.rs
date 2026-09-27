@@ -8,9 +8,24 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-use rustok_ui_i18n::{PreparedUiMessages, UiLocaleTranslator, UiMessages};
+use rustok_ui_i18n::{
+    AcceptLanguagePreference, PreparedUiMessages, UiLocaleTranslator, UiMessages,
+    accept_language_catalog_locales, try_parse_accept_language,
+};
 
 fn assert_send_sync<T: Send + Sync>() {}
+
+#[test]
+fn accept_language_types_and_helpers_are_available_from_crate_root() {
+    let preferences: Vec<AcceptLanguagePreference> =
+        try_parse_accept_language("fr;q=0.7, ar;q=0.9")
+            .expect("bounded preferences must parse");
+    assert_eq!(preferences[0].locale(), Some("ar"));
+    assert_eq!(
+        accept_language_catalog_locales("iw-IL-u-ca-hebrew"),
+        vec!["he-IL"]
+    );
+}
 
 #[test]
 fn prepared_runtime_types_are_available_from_crate_root() {
