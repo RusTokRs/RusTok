@@ -114,15 +114,16 @@ impl EventDispatcher {
                 let queue = Arc::new(Semaphore::new(config.max_queue_depth));
 
                 loop {
+                    let queue_permit = match Arc::clone(&queue).acquire_owned().await {
+                        Ok(permit) => Arc::new(permit),
+                        Err(_) => {
+                            error!("Event dispatcher queue semaphore closed");
+                            break;
+                        }
+                    };
+
                     match receiver.recv().await {
                         Ok(envelope) => {
-                            let queue_permit = match Arc::clone(&queue).acquire_owned().await {
-                                Ok(permit) => Arc::new(permit),
-                                Err(_) => {
-                                    error!("Event dispatcher queue semaphore closed");
-                                    break;
-                                }
-                            };
                             let span = tracing::info_span!(
                                 "event_dispatch",
                                 event_type = envelope.event.event_type(),
