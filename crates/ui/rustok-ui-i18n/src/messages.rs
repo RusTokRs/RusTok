@@ -294,7 +294,19 @@ fn collect_message_variables(msg: &ast::Message<&str>) -> BTreeSet<String> {
 }
 
 /// Parses an FTL resource and extracts the variable schema for each message entry.
+///
+/// `locale` is validated and normalized using the same bounded locale contract as
+/// catalog construction. Parse diagnostics therefore contain only a canonical,
+/// bounded locale tag.
 pub fn extract_locale_schemas(
+    locale: &str,
+    ftl_source: &str,
+) -> Result<BTreeMap<String, MessageSchema>, BundleBuildError> {
+    let locale = parse_language_identifier(locale)?.to_string();
+    extract_locale_schemas_for_normalized_locale(&locale, ftl_source)
+}
+
+fn extract_locale_schemas_for_normalized_locale(
     locale: &str,
     ftl_source: &str,
 ) -> Result<BTreeMap<String, MessageSchema>, BundleBuildError> {
@@ -324,26 +336,30 @@ pub fn validate_catalog_schemas(
     bundles: &[(&str, &str)],
     default_locale: &str,
 ) -> Result<(), BundleBuildError> {
+    let normalized_default = normalize_default_locale(default_locale)?;
     let mut locale_schemas: BTreeMap<String, BTreeMap<String, MessageSchema>> = BTreeMap::new();
 
     for (locale_tag, ftl_source) in bundles {
         let langid = parse_language_identifier(locale_tag)?;
         let normalized = langid.to_string();
-        let schemas = extract_locale_schemas(&normalized, ftl_source)?;
+        if locale_schemas.contains_key(&normalized) {
+            return Err(BundleBuildError::DuplicateLocale { locale: normalized });
+        }
+        let schemas = extract_locale_schemas_for_normalized_locale(&normalized, ftl_source)?;
         locale_schemas.insert(normalized, schemas);
     }
 
-    let default_schemas = match locale_schemas.get(default_locale) {
+    let default_schemas = match locale_schemas.get(&normalized_default) {
         Some(schemas) => schemas,
         None => {
             return Err(BundleBuildError::MissingDefaultLocale {
-                locale: default_locale.to_string(),
+                locale: normalized_default.clone(),
             });
         }
     };
 
     for (locale, schemas) in &locale_schemas {
-        if locale == default_locale {
+        if locale == &normalized_default {
             continue;
         }
 

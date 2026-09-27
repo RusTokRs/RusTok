@@ -39,8 +39,10 @@ runtime filesystem discovery.
    same usable catalog plus typed diagnostics for every skipped entry in input order.
 
 5. **Bounded raw locale-input contract.**
-   Runtime lookup, catalog construction and default-locale validation enforce the same 64-byte raw
-   input bound before trimming or normalization work. Oversized Rust diagnostics retain only length
+   Runtime lookup, catalog construction, schema extraction and default-locale validation enforce the
+   same 64-byte raw input bound before trimming or normalization work. Schema extraction reports its
+   canonical locale identity, and schema validation rejects duplicate normalized locale identities
+   and normalizes the configured default before lookup. Oversized Rust diagnostics retain only length
    metadata and never copy/log the full payload. `@rustok/next-fluent` applies the corresponding raw
    64-code-unit gate and also bounds oversized configuration error text.
 
