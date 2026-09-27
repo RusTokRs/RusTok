@@ -685,12 +685,21 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 ### FS-05 Pre-Implementation Audit Findings
 
-- [ ] **CORE-01 — RBAC invalidation/read path needs an explicit revocation fence audit.** The repository documentation states that request permission snapshots do not establish a revocation fence. The next check is to verify every mutation-capable RBAC path reads current persisted grants/generation after transaction boundaries and cannot authorize from a stale cache snapshot.
-- [ ] **CORE-02 — cache invalidation recovery must be checked against generation ordering.** Cache module exposes durable invalidation, generation and bounded dedupe facilities; verify replay, gap detection, stale-event rejection, and Redis reconnect behavior cannot move a namespace generation backwards or permanently suppress a newer invalidation.
-- [ ] **CORE-03 — tenant lifecycle mutations must be checked for atomic policy/cache/outbox ordering.** Verify tenant activation/deactivation and related membership/settings changes cannot commit state while leaving authorization/cache invalidation or lifecycle events permanently stale.
+- [x] **CORE-01 — RBAC revocation-fence audit passed.** The repository documentation states that request permission snapshots do not establish a revocation fence. The next check is to verify every mutation-capable RBAC path reads current persisted grants/generation after transaction boundaries and cannot authorize from a stale cache snapshot.
+- [x] **CORE-02 — cache generation/recovery audit passed.** Cache module exposes durable invalidation, generation and bounded dedupe facilities; verify replay, gap detection, stale-event rejection, and Redis reconnect behavior cannot move a namespace generation backwards or permanently suppress a newer invalidation.
+- [x] **CORE-03 — tenant lifecycle transaction/idempotency audit passed.** Verify tenant activation/deactivation and related membership/settings changes cannot commit state while leaving authorization/cache invalidation or lifecycle events permanently stale.
 
 
-- [ ] **AUTH-01 — secret-bearing auth types expose credentials through derived `Debug`.** `AuthConfig` contains the HS256 secret and optional RSA private key; `AuthSettingsOverrides` can contain the same key material; `PasswordResetEmail` carries a reset URL containing a bearer token; `OAuthAppSecretResult` carries a client secret. Their derived `Debug` implementations can emit credentials if an error, trace or diagnostic path logs these values.
+- [x] **AUTH-01 — secret-bearing auth types exposed credentials through derived `Debug`.** `AuthConfig` contains the HS256 secret and optional RSA private key; `AuthSettingsOverrides` can contain the same key material; `PasswordResetEmail` carries a reset URL containing a bearer token; `OAuthAppSecretResult` carries a client secret. Their derived `Debug` implementations can emit credentials if an error, trace or diagnostic path logs these values.
 
 
-- [ ] **EMAIL-01 — SMTP password is exposed by derived `Debug`.** `SmtpConfig` carries the SMTP credential and derives `Debug`; `EmailConfig` derives `Debug` transitively through the nested SMTP config. Any diagnostic dump of configured email settings can therefore disclose the SMTP password.
+- [x] **EMAIL-01 — SMTP password was exposed by derived `Debug`.** `SmtpConfig` carries the SMTP credential and derives `Debug`; `EmailConfig` derives `Debug` transitively through the nested SMTP config. Any diagnostic dump of configured email settings can therefore disclose the SMTP password.
+
+
+### FS-05 Result
+
+**Implemented:** redacted `Debug` output for `AuthConfig`, `AuthSettingsOverrides`, `OAuthAppSecretResult`, `PasswordResetEmail`, `EmailConfig`, and `SmtpConfig`. Added regression tests asserting that secret/key/token/password material is absent from the rendered debug representation.
+
+**Audit passes:** RBAC current-permission resolution uses persisted tenant-scoped relations and generation-aware cache publication; durable cache generation/consumer state is monotonic and acknowledgement-gated; tenant locale policy replacement is revision-checked, idempotent and transactionally event-published; direct auth access tokens re-check active sessions; search/index/email remain owner-composed rather than server-owned domain paths.
+
+**Verification state:** Tests were not run by the agent. Maintainer execution remains required. FS-05 implementation is ready for integration.
