@@ -144,9 +144,8 @@ print_service_urls() {
     echo -e "  Database:          ${BLUE}rustok_dev${NC}"
     echo -e "  User:              ${BLUE}rustok${NC}"
     echo ""
-    echo -e "${YELLOW}Default Admin Credentials (dev only):${NC}"
-    echo -e "  Email:             ${BLUE}admin@local${NC}"
-    echo -e "  Password:          ${BLUE}admin12345${NC}"
+    echo -e "${YELLOW}Admin credentials:${NC}"
+    echo -e "  Configure them in .env.dev; the startup script does not print passwords."
     echo ""
 }
 
