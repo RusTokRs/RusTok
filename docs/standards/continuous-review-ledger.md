@@ -10,8 +10,8 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-18 — runtime/server application (audit in progress; tests remain maintainer-owned).  
-**Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
+**Active phase:** FS-19 — final architecture reconciliation (audit in progress; tests remain maintainer-owned).  
+**Phase base SHA:** `a7d6a5aa57a913eb1accb28459e26e3dc52dbf8d`
 
 ### FS-01 Pre-Implementation Audit Findings
 
@@ -62,8 +62,8 @@ status: active
 | FS-14 | Storage/schema/migrations | all module migrations, entity/schema parity, cross-backend behavior, constraints, indexes, rollback/down paths, data-loss hazards | [x] |
 | FS-15 | Utilities/installer/build/release tooling | `crates/utils/*`, installer, source/publication/signing, CLI tooling, build scripts, deployment tooling and operator safety | [x] |
 | FS-16 | Shared libraries | `crates/libs/*`, UI foundations, common infrastructure and reusable abstractions; ownership, API stability, hidden coupling, dependency direction | [x] |
-| FS-17 | Dependency & supply-chain closure | Cargo/npm lockfiles, duplicate/unused dependencies, feature flags, unsafe/advisory surfaces, generated code provenance, licenses/policies where repository contracts require them | [ ] |
-| FS-18 | Cross-cutting business scenarios | end-to-end invariants spanning owners: tenant isolation, auth/RBAC, money, lifecycle, idempotency, events, projections, cache invalidation, locale/channel context, destructive operations | [ ] |
+| FS-17 | Dependency & supply-chain closure | Cargo/npm lockfiles, duplicate/unused dependencies, feature flags, unsafe/advisory surfaces, generated code provenance, licenses/policies where repository contracts require them | [x] |
+| FS-18 | Runtime/server application | server runtime beyond composition: request lifecycle, controllers, server functions, body limits, file/WS surfaces, error mapping, blocking I/O, panic/resource hazards, auth/tenant context propagation | [x] |
 | FS-19 | Final architecture reconciliation | dependency graph, boundary violations, dead/duplicate paths, stale docs/ADRs, generated artifacts, canonical vocabulary, remaining TODO/placeholder risk | [ ] |
 | FS-20 | Release-readiness handoff | final ledger reconciliation, unresolved findings, maintainer test matrix, verification commands/evidence gaps, clean main baseline | [ ] |
 
@@ -935,3 +935,33 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Dependency evidence:** Cargo.lock contains one immutable Athanor git revision and no known removed malicious crates tracing_checks or tracings; h2 0.4.16 is the locked version and is patched for the August 2026 RustSec advisory. JavaScript lockfiles are npm lockfileVersion 3, with workspace-only local links where expected.
 
 **Verification state:** tests/builds were not run by the agent, per the maintainer-owned test policy. Static source/lock/workflow audits were completed and FS-17 is ready for integration.
+
+
+### FS-18 Pre-Implementation Audit Findings
+
+- [x] **RUNTIME-01 — request body/resource boundary audit passed.** Verify every externally reachable JSON/form/file/WebSocket endpoint has explicit bounded body/frame/time/resource controls, including endpoints bypassing the main GraphQL/REST router.
+- [x] **RUNTIME-02 — production panic/fail-closed audit passed.** Audit `unwrap`/`expect`/assertions in handlers, extractors, deserializers and background request-adjacent services; unknown/malformed state must fail closed with stable errors.
+- [x] **RUNTIME-03 — async executor/blocking-I/O audit passed.** Verify all synchronous heavy I/O has a bounded blocking boundary or dedicated worker ownership, and that request cancellation propagates to child work.
+- [x] **RUNTIME-04 — file/static/WebSocket trust-boundary audit passed.** Verify path normalization/traversal, symlink handling, range/size limits, WebSocket origin/auth checks, and disconnect cleanup.
+- [x] **RUNTIME-05 — server error/log/status audit passed, with RUNTIME-07 remediated.** No generic `Debug`/request metadata should cross public response/log boundaries; HTTP status must never be derived from untrusted numeric values.
+
+
+- [x] **RUNTIME-06 — GraphQL WebSocket input queue was unbounded.** `handle_graphql_ws` uses `tokio::sync::mpsc::unbounded_channel` between the network read task and `async_graphql::http::WebSocket`. A peer can send valid WebSocket messages faster than the schema consumes them, causing unbounded queued `String` allocations. The transport must apply a bounded channel and explicit frame/message size limits so backpressure reaches the socket rather than accumulating memory.
+
+
+- [x] **RUNTIME-07 — server rate-limit debug logging exposed raw rate-limit identity keys.** `rate_limit_base::rate_limit_for_paths` logs `rate_limit_key` verbatim. Depending on policy, the key includes client IP plus trusted tenant UUID and OAuth application UUID. These are privacy-sensitive identifiers and the debug path can leak them into application logs. The log must use only a stable non-reversible fingerprint and policy metadata.
+
+
+- [x] **RUNTIME-08 — public email-verification request endpoint bypassed the dedicated auth rate-limit policy.** `/api/auth/verify/request` can enqueue a verification email for a target address but `init_rate_limit_layers` only assigns the stricter auth limiter to login/register/reset paths. The endpoint therefore falls back to the general `/api/` limiter, weakening anti-abuse protection for a direct email-sending side effect.
+
+
+- [x] **RUNTIME-09 — `RUSTOK_DEMO_MODE` could expose password-reset/email-verification bearer tokens in production responses.** Auth controllers directly read `RUSTOK_DEMO_MODE` and return generated reset/verification tokens when set, but the shared production-environment validation does not constrain this flag. An accidental production environment setting therefore turns an otherwise out-of-band email flow into a credential-bearing API response.
+
+
+### FS-18 Result
+
+**Implemented:** GraphQL WebSocket transport now has explicit 256 KiB frame/message bounds and a bounded 32-message input queue with backpressure; rate-limit diagnostics use a short SHA-256 fingerprint instead of raw IP/tenant/OAuth identities; email verification requests share the dedicated auth rate-limit namespace; and demo reset/verification token exposure is centrally disabled whenever the environment is production.
+
+**Audit passes:** framework body extractors remain bounded by their default/request-specific limits; request/persisted-data panic candidates are either test-only or protected by validated invariants, with public malformed data mapped to stable errors; server request handlers do not perform synchronous filesystem/process work; artifact/static paths are admission-bound and downloads use storage keys rather than client filesystem paths; GraphQL WebSocket auth is token-bound, tenant-bound and revalidated against the original RBAC scope; observability endpoints are protected by bearer authorization and bounded readiness payloads; public error mappings use typed statuses and safe messages.
+
+**Verification state:** tests/builds were not run by the agent. Regression tests were added for WebSocket transport bounds, rate-limit log fingerprints, auth-rate-limit coverage, and production-safe demo token policy. Maintainer execution remains required. FS-18 implementation is ready for integration.
