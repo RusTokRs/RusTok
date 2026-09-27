@@ -732,8 +732,13 @@ impl CheckoutService {
                 != Some(current_shipping_profile_slug.as_str())
             {
                 return Err(CheckoutError::Validation(format!(
-                    "Line item {} uses stale shipping profile snapshot {:?} (current: {})",
-                    line_item.id, line_item.shipping_profile_slug, current_shipping_profile_slug
+                    "Line item {} uses stale shipping profile snapshot {} (current: {})",
+                    line_item.id,
+                    line_item
+                        .shipping_profile_slug
+                        .as_deref()
+                        .unwrap_or_default(),
+                    current_shipping_profile_slug
                 )));
             }
 
