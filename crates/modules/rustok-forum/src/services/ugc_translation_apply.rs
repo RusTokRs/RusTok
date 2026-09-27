@@ -163,8 +163,7 @@ impl TopicService {
             if updated.rows_affected != 1 {
                 return Err(ForumError::TopicNotFound(topic_id).into());
             }
-            super::projection_invalidation::publish_forum_topic_projection_in_tx(
-                &self.event_bus,
+            super::projection_invalidation::publish_forum_topic_projection_direct_in_tx(
                 txn,
                 tenant_id,
                 None,
@@ -275,8 +274,7 @@ impl ReplyService {
                 .one(txn)
                 .await?
                 .ok_or_else(|| ForumError::ReplyNotFound(reply_id))?;
-            super::projection_invalidation::publish_forum_topic_projection_in_tx(
-                &self.event_bus,
+            super::projection_invalidation::publish_forum_topic_projection_direct_in_tx(
                 txn,
                 tenant_id,
                 None,
