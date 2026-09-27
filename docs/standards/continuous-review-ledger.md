@@ -10,13 +10,13 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-01 — Deployment/server/runtime boundary (audit in progress; tests remain maintainer-owned).  
+**Active phase:** FS-01 — Deployment/server/runtime boundary (implementation complete on branch; integration pending; tests remain maintainer-owned).  
 **Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
 
 ### FS-01 Pre-Implementation Audit Findings
 
-- [ ] **SERVER-01 — database URI secret exposure in startup logs.** `apps/server/src/host.rs::resolve_database_uri` logs the complete fallback database URI. The configured URI may contain credentials, violating the repository rule that secrets/credentials must never enter logs.
-- [ ] **SERVER-02 — effective-policy cache initialization is not atomic.** `ServerRuntimeContext::effective_policy_cache` performs check-then-insert on the shared TypeId map. Concurrent callers can construct distinct cache instances; one can be returned while another becomes the shared owner, creating divergent policy-cache state and invalidation behavior.
+- [x] **SERVER-01 — database URI secret exposure in startup logs.** `apps/server/src/host.rs::resolve_database_uri` logs the complete fallback database URI. The configured URI may contain credentials, violating the repository rule that secrets/credentials must never enter logs.
+- [x] **SERVER-02 — effective-policy cache initialization is not atomic.** `ServerRuntimeContext::effective_policy_cache` performs check-then-insert on the shared TypeId map. Concurrent callers can construct distinct cache instances; one can be returned while another becomes the shared owner, creating divergent policy-cache state and invalidation behavior.
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. The previous ACRE component round remains historical evidence; its `100%` component status does **not** close this deeper cross-layer audit.
 
 **Execution contract**
@@ -636,3 +636,10 @@ contract aligned with runtime enforcement.
 Maintainer compiler, runtime, gatekeeper, build, and test evidence remain unrun by the agent.
 ## Completed Rounds Archive
 _No completed rounds yet. Round 1 is currently in progress._
+
+
+### FS-01 Result
+
+**Implemented:** `resolve_database_uri` now logs only the fallback source, never the URI; `ServerRuntimeContext` now atomically initializes `ModuleEffectivePolicyCache` through a typed get-or-insert operation.
+
+**Verification state:** Tests/runtime verification were not run by the agent, per the maintainer-owned test rule. The phase is ready for PR integration; after merge, `main` must be refreshed before FS-02 begins.
