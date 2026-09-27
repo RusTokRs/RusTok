@@ -173,21 +173,23 @@ pub fn apply_shipping_profile_to_metadata(
     mut metadata: Value,
     shipping_profile_slug: Option<String>,
 ) -> Value {
-    let Some(normalized_slug) =
-        shipping_profile_slug.and_then(|value| normalize_shipping_profile_slug(&value))
-    else {
-        return metadata;
-    };
-    if !metadata.is_object() {
-        metadata = Value::Object(Default::default());
-    }
+    if let Some(slug_raw) = shipping_profile_slug {
+        if let Some(normalized_slug) = normalize_shipping_profile_slug(&slug_raw) {
+            if !metadata.is_object() {
+                metadata = Value::Object(Default::default());
+            }
 
-    if let Some(object) = metadata.as_object_mut() {
-        object.remove("shipping_profile_slug");
-        object.insert(
-            "shipping_profile".to_string(),
-            serde_json::json!({ "slug": normalized_slug }),
-        );
+            if let Some(object) = metadata.as_object_mut() {
+                object.remove("shipping_profile_slug");
+                object.insert(
+                    "shipping_profile".to_string(),
+                    serde_json::json!({ "slug": normalized_slug }),
+                );
+            }
+        } else if let Some(object) = metadata.as_object_mut() {
+            object.remove("shipping_profile_slug");
+            object.remove("shipping_profile");
+        }
     }
 
     metadata
@@ -674,6 +676,19 @@ mod product_metadata_tests {
         assert!(error.to_string().contains("typed tags field"));
         reject_reserved_tag_metadata(&json!({"source": "erp"}))
             .expect("unrelated metadata should remain valid");
+    }
+
+    #[test]
+    fn shipping_profile_clears_from_metadata_when_empty_string_provided() {
+        let metadata = json!({
+            "source": "erp",
+            "shipping_profile": { "slug": "express" },
+            "shipping_profile_slug": "express"
+        });
+        let cleared = super::apply_shipping_profile_to_metadata(metadata, Some("   ".to_string()));
+        assert_eq!(cleared.get("source"), Some(&json!("erp")));
+        assert!(cleared.get("shipping_profile").is_none());
+        assert!(cleared.get("shipping_profile_slug").is_none());
     }
 
     #[test]

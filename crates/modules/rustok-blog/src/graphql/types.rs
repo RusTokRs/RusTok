@@ -76,6 +76,8 @@ impl From<GqlModerateCommentStatus> for DomainModerateCommentStatus {
 )]
 pub enum GqlBlogCommentsAvailability {
     Available,
+    Disabled,
+    ReadOnly,
     Unavailable,
     Timeout,
 }
@@ -84,6 +86,8 @@ impl From<PublicCommentsAvailability> for GqlBlogCommentsAvailability {
     fn from(availability: PublicCommentsAvailability) -> Self {
         match availability {
             PublicCommentsAvailability::Available => Self::Available,
+            PublicCommentsAvailability::Disabled => Self::Disabled,
+            PublicCommentsAvailability::ReadOnly => Self::ReadOnly,
             PublicCommentsAvailability::Unavailable => Self::Unavailable,
             PublicCommentsAvailability::Timeout => Self::Timeout,
         }
@@ -619,9 +623,6 @@ mod tests {
         assert!(post_comment_fallback_locale(&tenant, &post).is_err());
 
         post.tenant_id = tenant.id;
-        assert_eq!(
-            post_comment_fallback_locale(&tenant, &post).unwrap(),
-            "en"
-        );
+        assert_eq!(post_comment_fallback_locale(&tenant, &post).unwrap(), "en");
     }
 }

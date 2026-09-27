@@ -3,7 +3,10 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
-use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind};
+use rustok_api::{
+    PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind,
+    SharedStaticModuleSettingsReader,
+};
 use rustok_comments_api::{
     CommentListItem as ApiCommentListItem, CommentRecord as ApiCommentRecord,
     CommentStatus as ApiCommentStatus, CommentsThreadPort,
@@ -15,13 +18,12 @@ use rustok_core::{SecurityActorKind, SecurityContext};
 use std::sync::Arc;
 
 use crate::BlogPostStatus;
+use crate::domain::comment_policy::{BlogCommentsMode, parse_comments_mode};
 use crate::dto::{
     CommentListItem, CommentResponse, CreateCommentInput, ListCommentsFilter, ModerateCommentInput,
     UpdateCommentInput,
 };
-use crate::entities::{
-    blog_comment_projection_delivery, blog_post, blog_post_channel_visibility,
-};
+use crate::entities::{blog_comment_projection_delivery, blog_post, blog_post_channel_visibility};
 use crate::error::{BlogError, BlogResult};
 use crate::services::{is_post_visible_for_channel, post::storage_to_status, rbac::enforce_scope};
 
@@ -31,16 +33,24 @@ const PUBLIC_COMMENTS_PORT_ACTOR: &str = "rustok-blog.public-comments";
 pub struct CommentService {
     db: DatabaseConnection,
     comments_thread_port: Option<Arc<dyn CommentsThreadPort>>,
+    settings_reader: Option<SharedStaticModuleSettingsReader>,
 }
 
 impl CommentService {
-    pub fn from_optional_comments_thread_port(
+    /// Builds the Blog comment adapter from host-composed capabilities.
+    ///
+    /// The Comments port is optional because Blog remains useful without the
+    /// provider. The settings reader is required only for public Blog comment
+    /// operations; if it is unavailable those operations fail closed.
+    pub fn from_runtime_capabilities(
         db: DatabaseConnection,
         comments_thread_port: Option<Arc<dyn CommentsThreadPort>>,
+        settings_reader: Option<SharedStaticModuleSettingsReader>,
     ) -> Self {
         Self {
             db,
             comments_thread_port,
+            settings_reader,
         }
     }
 
@@ -49,6 +59,42 @@ impl CommentService {
         self.comments_thread_port
             .as_deref()
             .ok_or(BlogError::CommentsUnavailable)
+    }
+
+    pub(crate) async fn public_comments_mode(
+        &self,
+        tenant_id: Uuid,
+    ) -> BlogResult<BlogCommentsMode> {
+        let Some(settings_reader) = self.settings_reader.as_ref() else {
+            return Err(BlogError::CommentsPolicyUnavailable);
+        };
+        let snapshot = settings_reader
+            .settings(tenant_id, "blog")
+            .await
+            .map_err(|_| BlogError::CommentsPolicyUnavailable)?;
+        let Some(snapshot) = snapshot else {
+            return Ok(BlogCommentsMode::Disabled);
+        };
+        if !snapshot.enabled {
+            return Ok(BlogCommentsMode::Disabled);
+        }
+
+        parse_comments_mode(&snapshot.settings).map_err(|_| BlogError::CommentsPolicyUnavailable)
+    }
+
+    async fn ensure_public_comment_creation_allowed(
+        &self,
+        tenant_id: Uuid,
+        post_id: Uuid,
+        public_channel_slug: Option<&str>,
+    ) -> BlogResult<()> {
+        match self.public_comments_mode(tenant_id).await? {
+            BlogCommentsMode::Open => {}
+            BlogCommentsMode::Disabled => return Err(BlogError::CommentsDisabled),
+            BlogCommentsMode::ReadOnly => return Err(BlogError::CommentsReadOnly),
+        }
+        self.ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
+            .await
     }
 
     /// Creates a comment only when the owning Blog post is publicly visible in
@@ -64,7 +110,7 @@ impl CommentService {
         input: CreateCommentInput,
     ) -> BlogResult<CommentResponse> {
         enforce_scope(&security, Resource::Comments, Action::Create)?;
-        self.ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
+        self.ensure_public_comment_creation_allowed(tenant_id, post_id, public_channel_slug)
             .await?;
 
         self.create_comment_internal(tenant_id, security, post_id, public_channel_slug, input)
@@ -131,7 +177,7 @@ impl CommentService {
         // fresh idempotent delete command. The terminal TargetDeleted event remains the
         // durable cross-owner cleanup backstop for the deletion case.
         match self
-            .ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
+            .ensure_public_comment_creation_allowed(tenant_id, post_id, public_channel_slug)
             .await
         {
             Ok(()) => {}
@@ -140,10 +186,7 @@ impl CommentService {
                 // the final Blog visibility check means the create command cannot report
                 // success without leaving a committed foreign-side effect behind.
                 if let Err(compensation_error) = self
-                    .compensate_created_public_comment(
-                        tenant_id,
-                        record.id,
-                    )
+                    .compensate_created_public_comment(tenant_id, record.id)
                     .await
                 {
                     return Err(BlogError::invariant(format!(
@@ -190,14 +233,8 @@ impl CommentService {
         comment_id: Uuid,
         locale: &str,
     ) -> BlogResult<CommentResponse> {
-        self.get_comment_with_locale_fallback(
-            tenant_id,
-            security,
-            comment_id,
-            locale,
-            None,
-        )
-        .await
+        self.get_comment_with_locale_fallback(tenant_id, security, comment_id, locale, None)
+            .await
     }
 
     #[instrument(skip(self, security))]
@@ -213,12 +250,7 @@ impl CommentService {
         let record = self
             .require_comments_thread_port()?
             .get_comment(
-                comments_read_port_context(
-                    tenant_id,
-                    &security,
-                    locale,
-                    comment_id,
-                )?,
+                comments_read_port_context(tenant_id, &security, locale, comment_id)?,
                 comment_id,
                 fallback_locale.map(str::to_owned),
             )
@@ -404,6 +436,8 @@ impl CommentService {
     ) -> BlogResult<(Vec<CommentListItem>, u64)> {
         if !security.is_public_read() {
             enforce_scope(&security, Resource::Comments, Action::List)?;
+        } else if self.public_comments_mode(tenant_id).await? == BlogCommentsMode::Disabled {
+            return Err(BlogError::CommentsDisabled);
         }
         self.ensure_post_exists(tenant_id, post_id).await?;
 

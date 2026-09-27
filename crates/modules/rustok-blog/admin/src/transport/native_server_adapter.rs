@@ -86,6 +86,7 @@ struct NativeContext {
     db: sea_orm::DatabaseConnection,
     event_bus: rustok_outbox::TransactionalEventBus,
     comments_thread_port: Option<Arc<dyn rustok_blog::CommentsThreadPort>>,
+    settings_reader: Option<rustok_api::SharedStaticModuleSettingsReader>,
     auth: rustok_api::AuthContext,
     tenant: rustok_api::TenantContext,
 }
@@ -119,11 +120,13 @@ async fn native_context() -> Result<NativeContext, ServerFnError> {
         .shared_get::<TransactionalEventBus>()
         .ok_or_else(public_internal_error)?;
     let comments_thread_port = runtime.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>();
+    let settings_reader = runtime.shared_get::<rustok_api::SharedStaticModuleSettingsReader>();
 
     Ok(NativeContext {
         db: runtime.db_clone(),
         event_bus,
         comments_thread_port,
+        settings_reader,
         auth,
         tenant,
     })
@@ -131,9 +134,10 @@ async fn native_context() -> Result<NativeContext, ServerFnError> {
 
 #[cfg(feature = "ssr")]
 fn comment_service(context: &NativeContext) -> rustok_blog::CommentService {
-    rustok_blog::CommentService::from_optional_comments_thread_port(
+    rustok_blog::CommentService::from_runtime_capabilities(
         context.db.clone(),
         context.comments_thread_port.clone(),
+        context.settings_reader.clone(),
     )
 }
 

@@ -20,6 +20,7 @@ taxonomy = { version_req = ">=0.1.0" }
 channel = { version_req = ">=0.1.0" }
 
 [settings]
+comments_mode = { type = "string", default = "open", options = ["disabled", "read_only", "open"], description = "Controls the Blog public comment surface without changing the Comments module lifecycle." }
 use_reactions = { type = "boolean", default = false, description = "Use the shared Reactions module for Blog post reactions." }
 
 [crate]

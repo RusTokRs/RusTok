@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use rustok_api::graphql::GraphqlRuntimeInputs;
+use rustok_api::{SharedStaticModuleSettingsReader, graphql::GraphqlRuntimeInputs};
 use rustok_comments_api::CommentsThreadPort;
 use rustok_profiles_api::ProfileSummaryReader;
 use sea_orm::DatabaseConnection;
@@ -17,6 +17,7 @@ use crate::{CommentService, PublicCommentsSnapshotStore};
 #[derive(Clone, Default)]
 pub struct BlogGraphqlRuntimeData {
     comments_thread_port: Option<Arc<dyn CommentsThreadPort>>,
+    settings_reader: Option<SharedStaticModuleSettingsReader>,
     public_comments_snapshot_store: Option<Arc<dyn PublicCommentsSnapshotStore>>,
     profile_summary_reader: Option<Arc<dyn ProfileSummaryReader>>,
 }
@@ -24,19 +25,18 @@ pub struct BlogGraphqlRuntimeData {
 pub fn attach_schema_data(inputs: &GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, String> {
     Ok(BlogGraphqlRuntimeData {
         comments_thread_port: inputs.shared_get::<Arc<dyn CommentsThreadPort>>(),
+        settings_reader: inputs.shared_get::<SharedStaticModuleSettingsReader>(),
         public_comments_snapshot_store: inputs.shared_get::<Arc<dyn PublicCommentsSnapshotStore>>(),
         profile_summary_reader: inputs.shared_get::<Arc<dyn ProfileSummaryReader>>(),
     })
 }
 
 impl BlogGraphqlRuntimeData {
-    pub(crate) fn comment_service(
-        &self,
-        db: DatabaseConnection,
-    ) -> CommentService {
-        CommentService::from_optional_comments_thread_port(
+    pub(crate) fn comment_service(&self, db: DatabaseConnection) -> CommentService {
+        CommentService::from_runtime_capabilities(
             db,
             self.comments_thread_port.clone(),
+            self.settings_reader.clone(),
         )
     }
 
@@ -59,10 +59,8 @@ mod tests {
     fn graphql_runtime_data_exposes_comments_port_selection() {
         let factory: fn(&GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, String> =
             attach_schema_data;
-        let selector: fn(
-            &BlogGraphqlRuntimeData,
-            DatabaseConnection,
-        ) -> CommentService = BlogGraphqlRuntimeData::comment_service;
+        let selector: fn(&BlogGraphqlRuntimeData, DatabaseConnection) -> CommentService =
+            BlogGraphqlRuntimeData::comment_service;
         let snapshot_selector: fn(
             &BlogGraphqlRuntimeData,
         ) -> Option<&Arc<dyn PublicCommentsSnapshotStore>> =

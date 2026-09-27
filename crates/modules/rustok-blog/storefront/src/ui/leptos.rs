@@ -185,8 +185,10 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
     let selected_post_content = core::selected_post_content_view(excerpt, content_plain_text);
     let selected_post_header =
         core::selected_post_header_view(post.title, selected_post_meta, selected_post_status);
-    let comment_form_available =
-        matches!(&public_comments.availability, BlogCommentsAvailability::Available);
+    let comment_form_available = matches!(
+        &public_comments.availability,
+        BlogCommentsAvailability::Available
+    );
     let comment_post_id = post_id.clone();
     let comment_locale = effective_locale.clone();
     let submit_comment = Action::new_local(move |content: &rustok_api::RichTextDocument| {
@@ -298,12 +300,22 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
 
 #[component]
 fn PublicCommentsList(comments: BlogCommentList, comments_page: u64) -> impl IntoView {
+    if comments.availability == BlogCommentsAvailability::Disabled {
+        return ().into_any();
+    }
+
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let query_writer = use_route_query_writer();
     let title = t(locale.as_deref(), "blog.comments.title", "Comments");
 
     let degraded_message = match comments.availability {
         BlogCommentsAvailability::Available => None,
+        BlogCommentsAvailability::Disabled => None,
+        BlogCommentsAvailability::ReadOnly => Some(t(
+            locale.as_deref(),
+            "blog.comments.readOnly",
+            "Comments are closed for new replies.",
+        )),
         BlogCommentsAvailability::Unavailable if comments.cached_snapshot => Some(t(
             locale.as_deref(),
             "blog.comments.unavailableCached",
@@ -326,7 +338,11 @@ fn PublicCommentsList(comments: BlogCommentList, comments_page: u64) -> impl Int
         )),
     };
 
-    if comments.availability != BlogCommentsAvailability::Available && !comments.cached_snapshot {
+    if matches!(
+        comments.availability,
+        BlogCommentsAvailability::Unavailable | BlogCommentsAvailability::Timeout
+    ) && !comments.cached_snapshot
+    {
         let message = degraded_message.unwrap_or_else(|| {
             t(
                 locale.as_deref(),

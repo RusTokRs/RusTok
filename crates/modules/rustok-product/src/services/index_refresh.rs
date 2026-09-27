@@ -305,7 +305,10 @@ pub(crate) fn product_locale_refresh_target(event: &DomainEvent) -> Option<Uuid>
         DomainEvent::ProductCreated { product_id }
         | DomainEvent::ProductUpdated { product_id }
         | DomainEvent::ProductPublished { product_id }
-        | DomainEvent::ProductDeleted { product_id } => Some(*product_id),
+        | DomainEvent::ProductDeleted { product_id }
+        | DomainEvent::VariantCreated { product_id, .. }
+        | DomainEvent::VariantUpdated { product_id, .. }
+        | DomainEvent::VariantDeleted { product_id, .. } => Some(*product_id),
         _ => None,
     }
 }
@@ -576,4 +579,53 @@ fn positive_source_version(value: i64, boundary: &str) -> CommerceResult<u64> {
         )));
     }
     Ok(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn product_locale_refresh_target_includes_product_and_variant_events() {
+        let product_id = Uuid::new_v4();
+        let variant_id = Uuid::new_v4();
+
+        assert_eq!(
+            product_locale_refresh_target(&DomainEvent::ProductCreated { product_id }),
+            Some(product_id)
+        );
+        assert_eq!(
+            product_locale_refresh_target(&DomainEvent::ProductUpdated { product_id }),
+            Some(product_id)
+        );
+        assert_eq!(
+            product_locale_refresh_target(&DomainEvent::ProductPublished { product_id }),
+            Some(product_id)
+        );
+        assert_eq!(
+            product_locale_refresh_target(&DomainEvent::ProductDeleted { product_id }),
+            Some(product_id)
+        );
+        assert_eq!(
+            product_locale_refresh_target(&DomainEvent::VariantCreated {
+                variant_id,
+                product_id,
+            }),
+            Some(product_id)
+        );
+        assert_eq!(
+            product_locale_refresh_target(&DomainEvent::VariantUpdated {
+                variant_id,
+                product_id,
+            }),
+            Some(product_id)
+        );
+        assert_eq!(
+            product_locale_refresh_target(&DomainEvent::VariantDeleted {
+                variant_id,
+                product_id,
+            }),
+            Some(product_id)
+        );
+    }
 }

@@ -70,6 +70,15 @@ pub enum BlogError {
     #[error("Comments capability is unavailable")]
     CommentsUnavailable,
 
+    #[error("Blog comments policy is unavailable")]
+    CommentsPolicyUnavailable,
+
+    #[error("Comments are disabled for this Blog")]
+    CommentsDisabled,
+
+    #[error("Comments are read-only for this Blog")]
+    CommentsReadOnly,
+
     #[error("Rich error: {0}")]
     Rich(#[from] Box<RichError>),
 
@@ -112,12 +121,13 @@ impl From<BlogError> for RichError {
                     .with_field("tag_id", id.to_string())
                     .with_error_code("TAG_NOT_FOUND")
             }
-            BlogError::TaxonomyTermNotFound(id) => {
-                RichError::new(ErrorKind::NotFound, format!("Taxonomy term {} not found", id))
-                    .with_user_message("The requested taxonomy term does not exist")
-                    .with_field("term_id", id.to_string())
-                    .with_error_code("TAXONOMY_TERM_NOT_FOUND")
-            }
+            BlogError::TaxonomyTermNotFound(id) => RichError::new(
+                ErrorKind::NotFound,
+                format!("Taxonomy term {} not found", id),
+            )
+            .with_user_message("The requested taxonomy term does not exist")
+            .with_field("term_id", id.to_string())
+            .with_error_code("TAXONOMY_TERM_NOT_FOUND"),
             BlogError::DuplicateSlug { slug } => {
                 RichError::new(ErrorKind::Conflict, format!("Slug '{slug}' already exists"))
                     .with_user_message("A post with this URL slug already exists")
@@ -172,6 +182,24 @@ impl From<BlogError> for RichError {
             )
             .with_user_message("Comments are temporarily unavailable")
             .with_error_code("COMMENTS_PROVIDER_UNAVAILABLE"),
+            BlogError::CommentsPolicyUnavailable => RichError::new(
+                ErrorKind::ExternalService,
+                "Blog comments policy is unavailable",
+            )
+            .with_user_message("Comments are temporarily unavailable")
+            .with_error_code("COMMENTS_POLICY_UNAVAILABLE"),
+            BlogError::CommentsDisabled => RichError::new(
+                ErrorKind::BusinessLogic,
+                "Comments are disabled for this Blog",
+            )
+            .with_user_message("Comments are disabled for this post")
+            .with_error_code("BLOG_COMMENTS_DISABLED"),
+            BlogError::CommentsReadOnly => RichError::new(
+                ErrorKind::BusinessLogic,
+                "Comments are read-only for this Blog",
+            )
+            .with_user_message("Comments are closed for new replies")
+            .with_error_code("BLOG_COMMENTS_READ_ONLY"),
             BlogError::Rich(rich) => *rich,
             BlogError::Core(core) => core.into(),
         }
@@ -233,9 +261,9 @@ impl From<rustok_taxonomy::TaxonomyError> for BlogError {
     fn from(value: rustok_taxonomy::TaxonomyError) -> Self {
         match value {
             rustok_taxonomy::TaxonomyError::Database(err) => Self::Database(err),
-            rustok_taxonomy::TaxonomyError::Internal(message) => Self::Invariant(format!(
-                "Taxonomy dependency failed: {message}"
-            )),
+            rustok_taxonomy::TaxonomyError::Internal(message) => {
+                Self::Invariant(format!("Taxonomy dependency failed: {message}"))
+            }
             rustok_taxonomy::TaxonomyError::Forbidden(message) => Self::Forbidden(message),
             rustok_taxonomy::TaxonomyError::Validation(message) => Self::Validation(message),
             rustok_taxonomy::TaxonomyError::DuplicateCanonicalKey(message)
@@ -262,16 +290,18 @@ impl From<rustok_channel::ChannelError> for BlogError {
             | rustok_channel::ChannelError::InvalidTargetType(message)
             | rustok_channel::ChannelError::InvalidTargetValue(message)
             | rustok_channel::ChannelError::InvalidPolicyDefinition(message)
-            | rustok_channel::ChannelError::InvalidPolicyOperation(message) => Self::Validation(message),
+            | rustok_channel::ChannelError::InvalidPolicyOperation(message) => {
+                Self::Validation(message)
+            }
             rustok_channel::ChannelError::SlugAlreadyExists(message)
             | rustok_channel::ChannelError::TargetAlreadyExists(_, message)
-            | rustok_channel::ChannelError::PolicySetSlugAlreadyExists(message) => Self::Conflict(message),
-            rustok_channel::ChannelError::NotFound(channel_id)
-            | rustok_channel::ChannelError::InactiveChannel(channel_id) => {
-                Self::Invariant(format!(
-                    "Channel dependency referenced unavailable channel {channel_id}"
-                ))
+            | rustok_channel::ChannelError::PolicySetSlugAlreadyExists(message) => {
+                Self::Conflict(message)
             }
+            rustok_channel::ChannelError::NotFound(channel_id)
+            | rustok_channel::ChannelError::InactiveChannel(channel_id) => Self::Invariant(
+                format!("Channel dependency referenced unavailable channel {channel_id}"),
+            ),
             rustok_channel::ChannelError::Serialization(error) => {
                 Self::Invariant(format!("Channel dependency serialization failed: {error}"))
             }
@@ -315,7 +345,8 @@ mod tests {
 
     #[test]
     fn taxonomy_error_classes_survive_the_blog_boundary() {
-        let missing: BlogError = rustok_taxonomy::TaxonomyError::TermNotFound(Uuid::new_v4()).into();
+        let missing: BlogError =
+            rustok_taxonomy::TaxonomyError::TermNotFound(Uuid::new_v4()).into();
         let missing: RichError = missing.into();
         assert_eq!(missing.kind, ErrorKind::NotFound);
         assert_eq!(missing.status_code, 404);

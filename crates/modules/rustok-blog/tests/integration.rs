@@ -6,7 +6,10 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{Permission, RichTextDocument};
+use rustok_api::{
+    Permission, PortError, RichTextDocument, SharedStaticModuleSettingsReader,
+    StaticModuleSettingsReader, StaticModuleSettingsSnapshot,
+};
 use rustok_blog::dto::CreateCommentInput;
 use rustok_blog::dto::{
     CreateCategoryInput, CreatePostInput, CreateTagInput, ListCategoriesFilter, ListCommentsFilter,
@@ -39,6 +42,30 @@ fn richtext(text: &str) -> RichTextDocument {
         }]
     }))
     .expect("test richtext")
+}
+
+struct BlogSettingsReader {
+    comments_mode: &'static str,
+}
+
+#[async_trait]
+impl StaticModuleSettingsReader for BlogSettingsReader {
+    async fn settings(
+        &self,
+        _tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+        Ok(
+            (module_slug == "blog").then(|| StaticModuleSettingsSnapshot {
+                enabled: true,
+                settings: serde_json::json!({ "comments_mode": self.comments_mode }),
+            }),
+        )
+    }
+}
+
+fn blog_settings_reader(comments_mode: &'static str) -> SharedStaticModuleSettingsReader {
+    SharedStaticModuleSettingsReader(Arc::new(BlogSettingsReader { comments_mode }))
 }
 
 #[tokio::test]
@@ -775,6 +802,164 @@ fn drain_event_types(receiver: &mut broadcast::Receiver<EventEnvelope>) -> Vec<S
 }
 
 #[tokio::test]
+async fn test_blog_comment_surface_policy_preserves_comment_data() -> TestResult<()> {
+    let db = setup_blog_test_db().await;
+    ensure_blog_schema(&db).await;
+
+    let transport = MemoryTransport::new();
+    let _receiver = transport.subscribe();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let post_service = PostService::new(db.clone(), event_bus.clone());
+    let open_comments = CommentService::from_runtime_capabilities(
+        db.clone(),
+        Some(in_process_comments_thread_port(
+            db.clone(),
+            event_bus.clone(),
+        )),
+        Some(blog_settings_reader("open")),
+    );
+
+    let tenant_id = Uuid::new_v4();
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let post_id = post_service
+        .create_post(
+            tenant_id,
+            admin.clone(),
+            CreatePostInput {
+                locale: "en".to_string(),
+                title: "Comment policy".to_string(),
+                content: richtext("Post body"),
+                excerpt: None,
+                slug: Some("comment-policy".to_string()),
+                publish: true,
+                tags: vec![],
+                category_id: None,
+                featured_image_url: None,
+                seo_title: None,
+                seo_description: None,
+                channel_slugs: None,
+                metadata: None,
+            },
+        )
+        .await?;
+    let comment = open_comments
+        .create_public_comment(
+            tenant_id,
+            admin.clone(),
+            post_id,
+            None,
+            CreateCommentInput {
+                command_id: Uuid::new_v4(),
+                locale: "en".to_string(),
+                content: richtext("Retained comment"),
+                parent_comment_id: None,
+            },
+        )
+        .await?;
+    open_comments
+        .moderate_comment(
+            tenant_id,
+            comment.id,
+            admin.clone(),
+            ModerateCommentInput {
+                command_id: Uuid::new_v4(),
+                status: ModerateCommentStatus::Approved,
+                locale: Some("en".to_string()),
+            },
+            Some("en"),
+        )
+        .await?;
+
+    let read_only = CommentService::from_runtime_capabilities(
+        db.clone(),
+        Some(in_process_comments_thread_port(
+            db.clone(),
+            event_bus.clone(),
+        )),
+        Some(blog_settings_reader("read_only")),
+    );
+    let read_only_public = rustok_blog::list_public_comments_with_snapshot(
+        &read_only, None, tenant_id, post_id, "en", None, None, 1, 20,
+    )
+    .await?;
+    assert_eq!(
+        read_only_public.availability,
+        rustok_blog::PublicCommentsAvailability::ReadOnly
+    );
+    assert_eq!(read_only_public.total, 1);
+    assert!(matches!(
+        read_only
+            .create_public_comment(
+                tenant_id,
+                admin.clone(),
+                post_id,
+                None,
+                CreateCommentInput {
+                    command_id: Uuid::new_v4(),
+                    locale: "en".to_string(),
+                    content: richtext("Blocked reply"),
+                    parent_comment_id: None,
+                },
+            )
+            .await,
+        Err(BlogError::CommentsReadOnly)
+    ));
+
+    // No Comments provider is supplied here: the disabled Blog policy must
+    // hide the surface before any provider call, while data remains owned by
+    // and retained in Comments.
+    let disabled = CommentService::from_runtime_capabilities(
+        db.clone(),
+        None,
+        Some(blog_settings_reader("disabled")),
+    );
+    let disabled_public = rustok_blog::list_public_comments_with_snapshot(
+        &disabled, None, tenant_id, post_id, "en", None, None, 1, 20,
+    )
+    .await?;
+    assert_eq!(
+        disabled_public.availability,
+        rustok_blog::PublicCommentsAvailability::Disabled
+    );
+    assert_eq!(disabled_public.total, 0);
+    assert!(matches!(
+        disabled
+            .create_public_comment(
+                tenant_id,
+                admin.clone(),
+                post_id,
+                None,
+                CreateCommentInput {
+                    command_id: Uuid::new_v4(),
+                    locale: "en".to_string(),
+                    content: richtext("Blocked comment"),
+                    parent_comment_id: None,
+                },
+            )
+            .await,
+        Err(BlogError::CommentsDisabled)
+    ));
+
+    let (retained, total) = open_comments
+        .list_for_post(
+            tenant_id,
+            SecurityContext::system(),
+            post_id,
+            ListCommentsFilter {
+                locale: Some("en".to_string()),
+                page: 1,
+                per_page: 20,
+            },
+        )
+        .await?;
+    assert_eq!(total, 1);
+    assert_eq!(retained.len(), 1);
+    assert_eq!(retained[0].id, comment.id);
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_create_comment_succeeds_with_required_translation() -> TestResult<()> {
     let db = setup_blog_test_db().await;
     ensure_blog_schema(&db).await;
@@ -784,9 +969,10 @@ async fn test_create_comment_succeeds_with_required_translation() -> TestResult<
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
 
     let post_service = PostService::new(db.clone(), event_bus.clone());
-    let comment_service = CommentService::from_optional_comments_thread_port(
+    let comment_service = CommentService::from_runtime_capabilities(
         db.clone(),
         Some(in_process_comments_thread_port(db.clone(), event_bus)),
+        Some(blog_settings_reader("open")),
     );
 
     let tenant_id = Uuid::new_v4();
@@ -863,9 +1049,10 @@ async fn test_public_comment_create_rejects_draft_and_hidden_channel() -> TestRe
     let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
     let post_service = PostService::new(db.clone(), event_bus.clone());
-    let comment_service = CommentService::from_optional_comments_thread_port(
+    let comment_service = CommentService::from_runtime_capabilities(
         db.clone(),
         Some(in_process_comments_thread_port(db.clone(), event_bus)),
+        Some(blog_settings_reader("open")),
     );
     let tenant_id = Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;
@@ -935,9 +1122,13 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
 
     let post_service = PostService::new(db.clone(), event_bus.clone());
-    let comment_service = CommentService::from_optional_comments_thread_port(
+    let comment_service = CommentService::from_runtime_capabilities(
         db.clone(),
-        Some(in_process_comments_thread_port(db.clone(), event_bus.clone())),
+        Some(in_process_comments_thread_port(
+            db.clone(),
+            event_bus.clone(),
+        )),
+        Some(blog_settings_reader("open")),
     );
 
     let tenant_id = Uuid::new_v4();
@@ -1126,9 +1317,10 @@ async fn test_moderate_comment_with_blog_manage_permission() -> TestResult<()> {
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
 
     let post_service = PostService::new(db.clone(), event_bus.clone());
-    let comment_service = CommentService::from_optional_comments_thread_port(
+    let comment_service = CommentService::from_runtime_capabilities(
         db.clone(),
         Some(in_process_comments_thread_port(db.clone(), event_bus)),
+        Some(blog_settings_reader("open")),
     );
 
     let tenant_id = Uuid::new_v4();

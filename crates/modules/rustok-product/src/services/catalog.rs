@@ -100,6 +100,13 @@ fn map_product_unique_violation(
             locale: locale.to_owned(),
         };
     }
+    if message.contains("idx_product_trans_unique")
+        || message.contains("product_translations_product_id_locale_key")
+    {
+        return CommerceError::Validation(format!(
+            "A translation for locale `{locale}` already exists for this product"
+        ));
+    }
     if message.contains("uq_product_variants_combination") {
         return CommerceError::Validation(
             "A variant with this axis combination already exists for this product".to_owned(),

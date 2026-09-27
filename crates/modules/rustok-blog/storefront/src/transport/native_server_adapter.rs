@@ -2,14 +2,14 @@
 use crate::comments_pagination::COMMENTS_PAGE_SIZE;
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 use crate::core::BlogStorefrontFetchRequest;
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
+use crate::model::StorefrontBlogData;
 use crate::model::{BlogCommentCreateRequest, BlogCommentDetail};
 #[cfg(feature = "ssr")]
 use crate::model::{
     BlogCommentList, BlogCommentListItem, BlogCommentsAvailability, BlogPostDetail, BlogPostList,
     BlogPostListItem,
 };
-#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
-use crate::model::StorefrontBlogData;
 use leptos::prelude::*;
 #[cfg(feature = "ssr")]
 use std::sync::Arc;
@@ -74,8 +74,7 @@ async fn create_blog_comment_native(
             return Err(ServerFnError::new("comments:create required"));
         }
 
-        let runtime_ctx =
-            use_context::<HostRuntimeContext>().ok_or_else(public_internal_error)?;
+        let runtime_ctx = use_context::<HostRuntimeContext>().ok_or_else(public_internal_error)?;
         match rustok_api::is_tenant_module_enabled(runtime_ctx.db(), tenant.id, MODULE_SLUG).await {
             Ok(true) => {}
             Ok(false) => return Err(ServerFnError::new("Blog module is not enabled")),
@@ -188,8 +187,7 @@ async fn storefront_blog_native(
         use rustok_outbox::TransactionalEventBus;
         use rustok_tenant::TenantService;
 
-        let runtime_ctx =
-            use_context::<HostRuntimeContext>().ok_or_else(public_internal_error)?;
+        let runtime_ctx = use_context::<HostRuntimeContext>().ok_or_else(public_internal_error)?;
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(public_internal_error)?;
@@ -218,9 +216,7 @@ async fn storefront_blog_native(
             return Err(public_internal_error());
         }
 
-        let auth_context = leptos_axum::extract::<rustok_api::AuthContext>()
-            .await
-            .ok();
+        let auth_context = leptos_axum::extract::<rustok_api::AuthContext>().await.ok();
         ensure_storefront_tenant_binding(auth_context.as_ref(), tenant_id)?;
         let is_authenticated = auth_context.is_some();
 
@@ -328,12 +324,11 @@ async fn storefront_blog_native(
 }
 
 #[cfg(feature = "ssr")]
-fn comment_service(
-    runtime_ctx: &rustok_api::HostRuntimeContext,
-) -> rustok_blog::CommentService {
-    rustok_blog::CommentService::from_optional_comments_thread_port(
+fn comment_service(runtime_ctx: &rustok_api::HostRuntimeContext) -> rustok_blog::CommentService {
+    rustok_blog::CommentService::from_runtime_capabilities(
         runtime_ctx.db_clone(),
         runtime_ctx.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>(),
+        runtime_ctx.shared_get::<rustok_api::SharedStaticModuleSettingsReader>(),
     )
 }
 
@@ -430,6 +425,8 @@ fn map_comments_availability(
 ) -> BlogCommentsAvailability {
     match availability {
         rustok_blog::PublicCommentsAvailability::Available => BlogCommentsAvailability::Available,
+        rustok_blog::PublicCommentsAvailability::Disabled => BlogCommentsAvailability::Disabled,
+        rustok_blog::PublicCommentsAvailability::ReadOnly => BlogCommentsAvailability::ReadOnly,
         rustok_blog::PublicCommentsAvailability::Unavailable => {
             BlogCommentsAvailability::Unavailable
         }
@@ -522,7 +519,6 @@ fn map_post_list_item(post: rustok_blog::PostSummary) -> BlogPostListItem {
 }
 
 #[cfg(feature = "ssr")]
-
 #[test]
 fn storefront_tenant_binding_rejects_cross_tenant_authenticated_context() {
     let tenant_id = uuid::Uuid::new_v4();
@@ -548,9 +544,8 @@ mod tests {
 
     #[test]
     fn storefront_native_runtime_exposes_comments_port_selection() {
-        let selector: fn(
-            &rustok_api::HostRuntimeContext,
-        ) -> rustok_blog::CommentService = comment_service;
+        let selector: fn(&rustok_api::HostRuntimeContext) -> rustok_blog::CommentService =
+            comment_service;
         let mapper: fn(rustok_blog::PublicCommentsAvailability) -> BlogCommentsAvailability =
             map_comments_availability;
         let _ = (selector, mapper);

@@ -1,14 +1,14 @@
 use anyhow::Context;
-use axum::{Router, http::StatusCode};
 use axum::routing::{get, post};
-use rustok_api::HostRuntimeContext;
+use axum::{Router, http::StatusCode};
+use rustok_api::{HostRuntimeContext, SharedStaticModuleSettingsReader};
 use rustok_comments_api::CommentsThreadPort;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort;
 use rustok_web::{HttpError, HttpResult};
-use uuid::Uuid;
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
+use uuid::Uuid;
 
 use crate::{CategoryService, CommentService};
 
@@ -24,6 +24,7 @@ pub struct BlogHttpRuntime {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     comments_thread_port: Option<Arc<dyn CommentsThreadPort>>,
+    settings_reader: Option<SharedStaticModuleSettingsReader>,
     category_delete_cleanup: Arc<dyn TaxonomyCategoryDeleteCleanupPort>,
 }
 
@@ -42,9 +43,10 @@ impl BlogHttpRuntime {
     }
 
     fn comment_service(&self) -> CommentService {
-        CommentService::from_optional_comments_thread_port(
+        CommentService::from_runtime_capabilities(
             self.db_clone(),
             self.comments_thread_port.clone(),
+            self.settings_reader.clone(),
         )
     }
 }
@@ -63,6 +65,7 @@ impl BlogHttpRuntime {
             db: runtime.db_clone(),
             event_bus,
             comments_thread_port: runtime.shared_get::<Arc<dyn CommentsThreadPort>>(),
+            settings_reader: runtime.shared_get::<SharedStaticModuleSettingsReader>(),
             category_delete_cleanup,
         })
     }

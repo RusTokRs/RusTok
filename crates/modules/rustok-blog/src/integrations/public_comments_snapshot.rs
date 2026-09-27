@@ -21,6 +21,8 @@ pub trait PublicCommentsSnapshotStore: Send + Sync {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PublicCommentsAvailability {
     Available,
+    Disabled,
+    ReadOnly,
     Unavailable,
     Timeout,
 }
@@ -70,6 +72,30 @@ pub async fn list_public_comments_with_snapshot(
         .ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
         .await?;
 
+    let comments_mode = match service.public_comments_mode(tenant_id).await {
+        Ok(mode) => mode,
+        Err(BlogError::CommentsPolicyUnavailable) => {
+            return Ok(PublicCommentsRead {
+                availability: PublicCommentsAvailability::Unavailable,
+                cached_snapshot: false,
+                items: Vec::new(),
+                total: 0,
+            });
+        }
+        Err(error) => return Err(error),
+    };
+    if matches!(
+        comments_mode,
+        crate::domain::comment_policy::BlogCommentsMode::Disabled
+    ) {
+        return Ok(PublicCommentsRead {
+            availability: PublicCommentsAvailability::Disabled,
+            cached_snapshot: false,
+            items: Vec::new(),
+            total: 0,
+        });
+    }
+
     let stable_cursor_before = if snapshot_store.is_some() {
         Some(
             service
@@ -101,9 +127,10 @@ pub async fn list_public_comments_with_snapshot(
                 let projection_revision_after = service
                     .public_comments_projection_cursor(tenant_id, post_id)
                     .await?;
-                if let Some(projection_revision) =
-                    stable_projection_revision(projection_revision_before, projection_revision_after)
-                {
+                if let Some(projection_revision) = stable_projection_revision(
+                    projection_revision_before,
+                    projection_revision_after,
+                ) {
                     let identity = snapshot_identity(
                         tenant_id,
                         post_id,
@@ -126,13 +153,39 @@ pub async fn list_public_comments_with_snapshot(
                 }
             }
             Ok(PublicCommentsRead {
-                availability: PublicCommentsAvailability::Available,
+                availability: match comments_mode {
+                    crate::domain::comment_policy::BlogCommentsMode::Open => {
+                        PublicCommentsAvailability::Available
+                    }
+                    crate::domain::comment_policy::BlogCommentsMode::ReadOnly => {
+                        PublicCommentsAvailability::ReadOnly
+                    }
+                    crate::domain::comment_policy::BlogCommentsMode::Disabled => {
+                        unreachable!("disabled comments policy returned before provider read")
+                    }
+                },
                 cached_snapshot: false,
                 items,
                 total,
             })
         }
         Err(error) => {
+            if matches!(error, BlogError::CommentsDisabled) {
+                return Ok(PublicCommentsRead {
+                    availability: PublicCommentsAvailability::Disabled,
+                    cached_snapshot: false,
+                    items: Vec::new(),
+                    total: 0,
+                });
+            }
+            if matches!(error, BlogError::CommentsPolicyUnavailable) {
+                return Ok(PublicCommentsRead {
+                    availability: PublicCommentsAvailability::Unavailable,
+                    cached_snapshot: false,
+                    items: Vec::new(),
+                    total: 0,
+                });
+            }
             let Some(availability) = degraded_availability(&error) else {
                 return Err(error);
             };

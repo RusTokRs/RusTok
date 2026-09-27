@@ -38,6 +38,8 @@ pub struct BlogPostListItem {
 pub enum BlogCommentsAvailability {
     #[default]
     Available,
+    Disabled,
+    ReadOnly,
     Unavailable,
     Timeout,
 }

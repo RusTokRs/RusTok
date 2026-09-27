@@ -16,6 +16,7 @@ blog-comments-next = Вперёд
 blog-comments-page = Страница
 blog-comments-previous = Назад
 blog-comments-reply = ответ
+blog-comments-readOnly = Комментарии закрыты для новых ответов.
 blog-comments-title = Комментарии
 blog-comments-total = всего
 blog-error-load = Не удалось загрузить storefront-данные блога

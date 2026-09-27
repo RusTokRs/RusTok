@@ -16,6 +16,7 @@ blog-comments-next = Next
 blog-comments-page = Page
 blog-comments-previous = Previous
 blog-comments-reply = reply
+blog-comments-readOnly = Comments are closed for new replies.
 blog-comments-title = Comments
 blog-comments-total = total
 blog-error-load = Failed to load blog storefront data
