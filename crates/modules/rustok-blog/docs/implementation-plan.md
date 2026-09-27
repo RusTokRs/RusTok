@@ -131,7 +131,7 @@ carry a two-second deadline; writes add command-scoped idempotency keys; public
 lists use the dedicated approved-only operation and service actor; richtext input,
 view, and plain-text projections remain typed. `CommentService::new` remains the
 in-process convenience constructor, while public
-`CommentService::with_comments_thread_port` accepts a host-owned
+`CommentService::from_runtime_capabilities` accepts a host-owned
 `Arc<dyn CommentsThreadPort>` without changing the owner service API. The Blog
 facade re-exports `CommentsThreadPort` so UI packages can name the already-public
 injection contract without depending directly on the provider crate. The retained
@@ -160,7 +160,7 @@ comment-form fallback remain planned, and runtime evidence is pending.
 HTTP moderation composition is retained separately. `BlogHttpRuntime::from_host`
 reads an optional `Arc<dyn CommentsThreadPort>` through
 `HostRuntimeContext::shared_get`, and `BlogHttpRuntime::comment_service` selects
-`CommentService::with_comments_thread_port` when the host supplies one while
+`CommentService::from_runtime_capabilities` when the host supplies one while
 preserving `CommentService::new` as the in-process fallback. The moderation
 controller delegates only to that selector. Schema-v1 evidence lives at
 `crates/modules/rustok-blog/contracts/evidence/blog-comments-http-port-injection.json`,
@@ -184,7 +184,7 @@ passes `GraphqlRuntimeInputs` through
 `schema_codegen::attach_module_graphql_data`, and `BlogGraphqlRuntimeData` reads an
 optional `Arc<dyn CommentsThreadPort>` with `GraphqlRuntimeInputs::shared_get`.
 Its single `BlogGraphqlRuntimeData::comment_service` selector chooses
-`CommentService::with_comments_thread_port` or the existing in-process
+`CommentService::from_runtime_capabilities` or the existing in-process
 `CommentService::new` fallback. Public comments, moderation comments, and the
 moderation mutation all consume that schema data rather than constructing a
 provider in resolver source. Schema-v1 evidence lives at
@@ -208,7 +208,7 @@ Storefront native SSR Comments composition is host-attached. The selected-post
 server function reads `HostRuntimeContext`, and its single `comment_service`
 selector looks up an optional `Arc<dyn rustok_blog::CommentsThreadPort>` with
 `HostRuntimeContext::shared_get`. It chooses
-`CommentService::with_comments_thread_port` when the host supplies a port and
+`CommentService::from_runtime_capabilities` when the host supplies a port and
 preserves `CommentService::new` as the in-process fallback. The approved-only
 public read delegates through that selector without changing pagination or typed
 `AVAILABLE` / `UNAVAILABLE` / `TIMEOUT` degradation. Schema-v1 evidence lives at
@@ -237,7 +237,7 @@ Admin native SSR Comments composition is host-attached through the existing
 `NativeContext`. `native_context()` reads an optional
 `Arc<dyn rustok_blog::CommentsThreadPort>` from `HostRuntimeContext`, and the
 single `comment_service(&NativeContext)` selector chooses
-`CommentService::with_comments_thread_port` or the existing in-process
+`CommentService::from_runtime_capabilities` or the existing in-process
 `CommentService::new` fallback. Both `blog/admin/moderation-comments` and
 `blog/admin/moderate-comment` require authenticated/routed tenant equality and
 `blog_posts:manage` before selecting the service. Moderation list pagination
@@ -737,7 +737,7 @@ but exposed only `new(db, event_bus)`, which always constructed the in-process
 provider. A future host-owned remote adapter therefore had no public composition
 seam even though all seven calls already routed through the trait boundary.
 
-Slice 58 adds public `CommentService::with_comments_thread_port`, keeps `new` as
+Slice 58 adds public `CommentService::from_runtime_capabilities`, keeps `new` as
 the in-process convenience path, and adds a compile-only exact-signature harness.
 Comments consumer evidence advances to schema v3 and Blog registry schema v13
 retains the harness under `contract_tests.adapter_injection`. The existing
@@ -1319,7 +1319,7 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
    duplicate-delivery, and restart targets. Retain deterministic rollback,
    cardinality, process-boundary, authorization, moderation, pagination, and
    fail-closed outputs; then implement the remote network transport through
-   `CommentService::with_comments_thread_port`, and retain all-seven-operation
+   `CommentService::from_runtime_capabilities`, and retain all-seven-operation
    adapter parity, naturally contended PostgreSQL retry-frequency evidence, full
    server-host restart recovery, browser parity for typed unavailable/timeout
    article rendering, cached thread snapshots, selected-path comment-form

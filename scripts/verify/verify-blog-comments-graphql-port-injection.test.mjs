@@ -80,13 +80,15 @@ function fixture({
     root,
     runtimeDataPath,
     `
-use rustok_api::graphql::GraphqlRuntimeInputs;
+use rustok_api::{SharedStaticModuleSettingsReader, graphql::GraphqlRuntimeInputs};
 use rustok_comments_api::CommentsThreadPort;
 comments_thread_port: Option<Arc<dyn CommentsThreadPort>>
+settings_reader: Option<SharedStaticModuleSettingsReader>
 pub fn attach_schema_data(
 ${missingHostLookup ? '' : 'inputs.shared_get::<Arc<dyn CommentsThreadPort>>()'}
+${missingHostLookup ? '' : 'inputs.shared_get::<SharedStaticModuleSettingsReader>()'}
 pub(crate) fn comment_service(
-${missingInjectedBranch || missingFallback ? '' : 'CommentService::from_optional_comments_thread_port('}
+${missingInjectedBranch || missingFallback ? '' : 'CommentService::from_runtime_capabilities('}
 ${
   missingHarness
     ? ''
@@ -123,7 +125,7 @@ let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
 .comment_service(db.clone())
 ${
   directMutationConstruction
-    ? 'CommentService::from_optional_comments_thread_port(db.clone(), Some(comments_thread_port))'
+    ? 'CommentService::from_runtime_capabilities(db.clone(), Some(comments_thread_port))'
     : ''
 }
 `,
@@ -131,7 +133,7 @@ ${
   write(
     root,
     servicePath,
-    'pub fn from_optional_comments_thread_port(\ncomments_thread_port: Option<Arc<dyn CommentsThreadPort>>,',
+    'pub fn from_runtime_capabilities(\ncomments_thread_port: Option<Arc<dyn CommentsThreadPort>>,\nsettings_reader: Option<SharedStaticModuleSettingsReader>,',
   );
   write(root, consumerMatrixPath, '{}');
 
@@ -172,8 +174,8 @@ ${
         shared_value: 'Arc<dyn CommentsThreadPort>',
         lookup: 'GraphqlRuntimeInputs::shared_get',
         selector: 'BlogGraphqlRuntimeData::comment_service',
-        injected_constructor: 'CommentService::from_optional_comments_thread_port',
-        fallback_constructor: 'CommentService::from_optional_comments_thread_port',
+        runtime_constructor: 'CommentService::from_runtime_capabilities',
+        settings_reader: 'SharedStaticModuleSettingsReader',
         graphql_operations: ['public_comments', 'moderation_comments', 'moderate_comment'],
       },
       harness: {

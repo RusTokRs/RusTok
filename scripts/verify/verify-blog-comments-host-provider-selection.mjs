@@ -160,7 +160,7 @@ hasAll(
   graphqlConsumer,
   [
     'inputs.shared_get::<Arc<dyn CommentsThreadPort>>()',
-    'CommentService::from_optional_comments_thread_port(',
+    'CommentService::from_runtime_capabilities(',
   ],
   'Blog GraphQL consumer',
 );
@@ -169,7 +169,7 @@ hasAll(
   httpConsumer,
   [
     'runtime.shared_get::<Arc<dyn CommentsThreadPort>>()',
-    'CommentService::from_optional_comments_thread_port(',
+    'CommentService::from_runtime_capabilities(',
   ],
   'Blog HTTP consumer',
 );

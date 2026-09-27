@@ -117,14 +117,14 @@ if (evidence) {
     composition.facade_reexport !== 'pub use rustok_comments_api::CommentsThreadPort;' ||
     composition.lookup !== 'HostRuntimeContext::shared_get' ||
     composition.selector !== 'comment_service' ||
-    composition.injected_constructor !== 'CommentService::from_optional_comments_thread_port' ||
-    composition.fallback_constructor !== 'CommentService::from_optional_comments_thread_port' ||
+    composition.runtime_constructor !== 'CommentService::from_runtime_capabilities' ||
+    composition.settings_reader !== 'SharedStaticModuleSettingsReader' ||
     composition.native_endpoint !== 'blog/storefront-data' ||
     composition.operation !== 'list_public_comments_for_target'
   ) failures.push(`${evidencePath}: composition drift`);
 
   if (
-    !sameSet(evidence.availability?.states ?? [], ['AVAILABLE', 'UNAVAILABLE', 'TIMEOUT']) ||
+    !sameSet(evidence.availability?.states ?? [], ['AVAILABLE', 'DISABLED', 'READ_ONLY', 'UNAVAILABLE', 'TIMEOUT']) ||
     !sameSet(evidence.availability?.degraded_error_kinds ?? [], [
       'ExternalService',
       'Timeout',
@@ -183,7 +183,8 @@ for (const marker of [
   'fn comment_service(',
   'runtime_ctx: &rustok_api::HostRuntimeContext,',
   'runtime_ctx.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>()',
-  'rustok_blog::CommentService::from_optional_comments_thread_port(',
+  'runtime_ctx.shared_get::<rustok_api::SharedStaticModuleSettingsReader>()',
+  'rustok_blog::CommentService::from_runtime_capabilities(',
   'let comments = comment_service(&runtime_ctx);',
   'runtime_ctx.shared_get::<Arc<dyn PublicCommentsSnapshotStore>>()',
   'list_public_comments_with_snapshot(',
@@ -192,13 +193,17 @@ for (const marker of [
   'fn map_comments_availability(',
   'PublicCommentsAvailability::Unavailable',
   'BlogCommentsAvailability::Unavailable',
+  'PublicCommentsAvailability::Disabled',
+  'BlogCommentsAvailability::Disabled',
+  'PublicCommentsAvailability::ReadOnly',
+  'BlogCommentsAvailability::ReadOnly',
   'PublicCommentsAvailability::Timeout',
   'BlogCommentsAvailability::Timeout',
   'fn storefront_native_runtime_exposes_comments_port_selection()',
-  ') -> rustok_blog::CommentService = comment_service;',
+  'comment_service;',
 ]) requireMarker(nativeAdapter, marker, nativeAdapterPath);
 
-if (countMarker(nativeAdapter, 'rustok_blog::CommentService::from_optional_comments_thread_port(') !== 1) {
+if (countMarker(nativeAdapter, 'rustok_blog::CommentService::from_runtime_capabilities(') !== 1) {
   failures.push(`${nativeAdapterPath}: expected one selector constructor branch`);
 }
 if (countMarker(nativeAdapter, 'comment_service(&runtime_ctx)') < 1) {
@@ -213,14 +218,14 @@ const lookupIndex = nativeAdapter.indexOf(
   'runtime_ctx.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>()',
 );
 const constructorIndex = nativeAdapter.indexOf(
-  'rustok_blog::CommentService::from_optional_comments_thread_port(',
+  'rustok_blog::CommentService::from_runtime_capabilities(',
 );
 if (lookupIndex < 0 || constructorIndex < 0) {
   failures.push(`${nativeAdapterPath}: selector constructor drift`);
 }
 
 for (const marker of [
-  'pub fn from_optional_comments_thread_port(',
+  'pub fn from_runtime_capabilities(',
   '.list_public_comments_for_target(',
   'comments_public_read_port_context(',
   'PortActor::service(PUBLIC_COMMENTS_PORT_ACTOR)',

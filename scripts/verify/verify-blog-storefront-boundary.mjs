@@ -211,7 +211,7 @@ for (const marker of [
   "is_visible_for_public_channel",
   "ctx.channel_slug",
   "Blog is not available for the current channel",
-  "CommentService::from_optional_comments_thread_port",
+  "CommentService::from_runtime_capabilities",
   "list_public_comments_with_snapshot(",
   "SecurityContext::public_read()",
   "comments_page,",

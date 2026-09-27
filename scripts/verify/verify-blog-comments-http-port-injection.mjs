@@ -90,8 +90,8 @@ if (evidence) {
     composition.shared_value !== 'Arc<dyn CommentsThreadPort>' ||
     composition.lookup !== 'HostRuntimeContext::shared_get' ||
     composition.selector !== 'BlogHttpRuntime::comment_service' ||
-    composition.injected_constructor !== 'CommentService::from_optional_comments_thread_port' ||
-    composition.fallback_constructor !== 'CommentService::from_optional_comments_thread_port' ||
+    composition.runtime_constructor !== 'CommentService::from_runtime_capabilities' ||
+    composition.settings_reader !== 'SharedStaticModuleSettingsReader' ||
     composition.http_operation !== 'moderate_comment'
   ) failures.push(`${evidencePath}: composition drift`);
   const harness = evidence.harness ?? {};
@@ -106,7 +106,7 @@ if (evidence) {
 
 if (
   matrix?.schema_version !== 3 ||
-  matrix?.adapter_injection?.constructor !== 'CommentService::with_comments_thread_port' ||
+  matrix?.adapter_injection?.constructor !== 'CommentService::from_runtime_capabilities' ||
   matrix?.adapter_injection?.runtime_status !== 'not_run' ||
   matrix?.adapter_injection?.remote_transport_implementation !== 'pending'
 ) failures.push(`${matrixPath}: base injection seam drift`);
@@ -115,9 +115,11 @@ for (const marker of [
   'use rustok_comments_api::CommentsThreadPort;',
   'use std::sync::Arc;',
   'comments_thread_port: Option<Arc<dyn CommentsThreadPort>>',
+  'settings_reader: Option<SharedStaticModuleSettingsReader>',
   'fn comment_service(&self) -> CommentService',
-  'CommentService::from_optional_comments_thread_port(',
+  'CommentService::from_runtime_capabilities(',
   'comments_thread_port: runtime.shared_get::<Arc<dyn CommentsThreadPort>>()',
+  'settings_reader: runtime.shared_get::<SharedStaticModuleSettingsReader>()',
   'mod tests',
   'fn blog_http_runtime_exposes_comments_port_selection()',
   'let selector: fn(&BlogHttpRuntime) -> CommentService = BlogHttpRuntime::comment_service;',
@@ -125,11 +127,12 @@ for (const marker of [
 
 requireMarker(controller, 'let service = runtime.comment_service();', controllerPath);
 requireNoMarker(controller, 'CommentService::new(', controllerPath);
-requireNoMarker(controller, 'CommentService::with_comments_thread_port(', controllerPath);
+requireNoMarker(controller, 'CommentService::from_runtime_capabilities(', controllerPath);
 
 for (const marker of [
-  'pub fn from_optional_comments_thread_port(',
+  'pub fn from_runtime_capabilities(',
   'comments_thread_port: Option<Arc<dyn CommentsThreadPort>>',
+  'settings_reader: Option<SharedStaticModuleSettingsReader>',
 ]) requireMarker(service, marker, servicePath);
 
 for (const marker of [

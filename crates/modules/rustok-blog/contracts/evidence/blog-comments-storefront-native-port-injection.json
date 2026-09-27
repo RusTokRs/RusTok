@@ -29,14 +29,16 @@
     "facade_reexport": "pub use rustok_comments_api::CommentsThreadPort;",
     "lookup": "HostRuntimeContext::shared_get",
     "selector": "comment_service",
-    "injected_constructor": "CommentService::from_optional_comments_thread_port",
-    "fallback_constructor": "CommentService::from_optional_comments_thread_port",
+    "runtime_constructor": "CommentService::from_runtime_capabilities",
+    "settings_reader": "SharedStaticModuleSettingsReader",
     "native_endpoint": "blog/storefront-data",
     "operation": "list_public_comments_for_target"
   },
   "availability": {
     "states": [
       "AVAILABLE",
+      "DISABLED",
+      "READ_ONLY",
       "UNAVAILABLE",
       "TIMEOUT"
     ],
