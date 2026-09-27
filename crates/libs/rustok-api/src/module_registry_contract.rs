@@ -72,6 +72,8 @@ pub struct RegistryModuleContract {
 pub enum ModuleRegistryContractError {
     #[error("modules.toml entries are not available in ModuleRegistry: {0}")]
     MissingInRegistry(String),
+    #[error("ModuleRegistry contains entries not declared by modules.toml: {0}")]
+    UnexpectedInRegistry(String),
     #[error("modules.toml required flags conflict with ModuleRegistry kinds: {0}")]
     RequiredMismatch(String),
     #[error("modules.toml depends_on conflict with ModuleRegistry dependencies: {0}")]
@@ -101,6 +103,18 @@ pub fn validate_module_registry_contract(
     if !missing_in_registry.is_empty() {
         return Err(ModuleRegistryContractError::MissingInRegistry(
             missing_in_registry.join(", "),
+        ));
+    }
+
+    let unexpected_in_registry = registry_modules
+        .values()
+        .filter(|module| !manifest_modules.contains_key(&module.slug))
+        .map(|module| module.slug.clone())
+        .collect::<Vec<_>>();
+
+    if !unexpected_in_registry.is_empty() {
+        return Err(ModuleRegistryContractError::UnexpectedInRegistry(
+            unexpected_in_registry.join(", "),
         ));
     }
 
@@ -220,6 +234,23 @@ mod tests {
 
         validate_module_registry_contract([capability], std::iter::empty())
             .expect("capability-only manifest entry should not require a runtime registry entry");
+    }
+
+    #[test]
+    fn rejects_unexpected_runtime_registry_entries() {
+        let error = validate_module_registry_contract(
+            [manifest_module("blog", false, &[])],
+            [
+                registry_module("blog", false, &[]),
+                registry_module("unmanifested", false, &[]),
+            ],
+        )
+        .expect_err("unmanifested runtime entry should fail");
+
+        assert_eq!(
+            error,
+            ModuleRegistryContractError::UnexpectedInRegistry("unmanifested".to_string())
+        );
     }
 
     #[test]
