@@ -45,20 +45,20 @@ status: active
 
 | Phase | Scope | Audit focus | Status |
 |---|---|---|:---:|
-| FS-00 | Governance & repository topology | manifests, workspace graph, ADR/Docs authority, generated surfaces, scripts, branch/CI conventions, auditability | [ ] |
-| FS-01 | Deployment/server/runtime boundary | process model, HTTP/TLS/proxy assumptions, runtime config, startup/shutdown, secrets, environment, fail-closed behavior, observability, resource limits | [ ] |
-| FS-02 | `apps/server` composition root | routing, middleware, request context, auth/session, tenant/channel/locale resolution, error mapping, GraphQL/REST/server functions, host composition | [ ] |
-| FS-03 | Stable foundation/API crates | `rustok-api`, runtime/web/context contracts, dependency direction, shared types, transport/error contracts, accidental domain leakage | [ ] |
-| FS-04 | Workers, jobs, queue, outbox | worker ownership, retries/idempotency, leases, concurrency, delivery guarantees, dead-letter paths, shutdown/recovery, telemetry | [ ] |
-| FS-05 | Core platform modules | modules/control-plane, tenant, auth, RBAC, channel, cache, email, index/search/outbox/events, lifecycle/settings | [ ] |
-| FS-06 | Commerce domain | cart, customer, product, relations, pricing, inventory, order, payment, fulfillment, commerce orchestration, marketplace family | [ ] |
-| FS-07 | Content/social domain | content, taxonomy, translation, profiles, social graph, reactions, groups, moderation, comments | [ ] |
-| FS-08 | Publishing/community domain | blog, pages, forum, navigation, page-builder, SEO, notifications and cross-module projections | [ ] |
-| FS-09 | Capability/extension modules | AI, MCP, Iggy/connectors, Alloy, Flex, repository connectors and external/provider seams | [ ] |
-| FS-10 | Module-owned UI packages | all module `admin/`, `storefront/`, `next-admin/` packages; transport ownership, auth, locale, tenant and UI/data parity | [ ] |
-| FS-11 | Leptos applications | `apps/admin`, `apps/storefront`; SSR/hydration, routing, server functions, browser trust, caching, i18n, forms and operator paths | [ ] |
-| FS-12 | Next.js applications | `apps/next-admin`, `apps/next-frontend`; server/client boundaries, proxying, auth, GraphQL, SEO, caching, browser security and tenant propagation | [ ] |
-| FS-13 | Shared frontend/browser packages | `packages/*`, UI cores, richtext, generated clients, shared state, URL/security helpers, duplicated semantics | [ ] |
+| FS-00 | Governance & repository topology | manifests, workspace graph, ADR/Docs authority, generated surfaces, scripts, branch/CI conventions, auditability | [x] |
+| FS-01 | Deployment/server/runtime boundary | process model, HTTP/TLS/proxy assumptions, runtime config, startup/shutdown, secrets, environment, fail-closed behavior, observability, resource limits | [x] |
+| FS-02 | `apps/server` composition root | routing, middleware, request context, auth/session, tenant/channel/locale resolution, error mapping, GraphQL/REST/server functions, host composition | [x] |
+| FS-03 | Stable foundation/API crates | `rustok-api`, runtime/web/context contracts, dependency direction, shared types, transport/error contracts, accidental domain leakage | [x] |
+| FS-04 | Workers, jobs, queue, outbox | worker ownership, retries/idempotency, leases, concurrency, delivery guarantees, dead-letter paths, shutdown/recovery, telemetry | [x] |
+| FS-05 | Core platform modules | modules/control-plane, tenant, auth, RBAC, channel, cache, email, index/search/outbox/events, lifecycle/settings | [x] |
+| FS-06 | Commerce domain | cart, customer, product, relations, pricing, inventory, order, payment, fulfillment, commerce orchestration, marketplace family | [x] |
+| FS-07 | Content/social domain | content, taxonomy, translation, profiles, social graph, reactions, groups, moderation, comments | [x] |
+| FS-08 | Publishing/community domain | blog, pages, forum, navigation, page-builder, SEO, notifications and cross-module projections | [x] |
+| FS-09 | Capability/extension modules | AI, MCP, Iggy/connectors, Alloy, Flex, repository connectors and external/provider seams | [x] |
+| FS-10 | Module-owned UI packages | all module `admin/`, `storefront/`, `next-admin/` packages; transport ownership, auth, locale, tenant and UI/data parity | [x] |
+| FS-11 | Leptos applications | `apps/admin`, `apps/storefront`; SSR/hydration, routing, server functions, browser trust, caching, i18n, forms and operator paths | [x] |
+| FS-12 | Next.js applications | `apps/next-admin`, `apps/next-frontend`; server/client boundaries, proxying, auth, GraphQL, SEO, caching, browser security and tenant propagation | [x] |
+| FS-13 | Shared frontend/browser packages | `packages/*`, UI cores, richtext, generated clients, shared state, URL/security helpers, duplicated semantics | [x] |
 | FS-14 | Storage/schema/migrations | all module migrations, entity/schema parity, cross-backend behavior, constraints, indexes, rollback/down paths, data-loss hazards | [x] |
 | FS-15 | Utilities/installer/build/release tooling | `crates/utils/*`, installer, source/publication/signing, CLI tooling, build scripts, deployment tooling and operator safety | [x] |
 | FS-16 | Shared libraries | `crates/libs/*`, UI foundations, common infrastructure and reusable abstractions; ownership, API stability, hidden coupling, dependency direction | [x] |
@@ -974,3 +974,13 @@ _No completed rounds yet. Round 1 is currently in progress._
 - [ ] **ARCH-03 — generated registries and metadata require source-of-truth reconciliation.** Check `cli-registry.toml`, module manifests, generated route/registry artifacts, ADR indexes and other committed generated surfaces for drift against their generators/canonical owners.
 - [ ] **ARCH-04 — stale compatibility/legacy paths require final cutover audit.** Search for public APIs, compatibility shims, deprecated names and old terminology left reachable after the repository’s documented cutovers.
 - [ ] **ARCH-05 — unresolved TODO/placeholder/dead path risk requires closure.** Review production TODO/FIXME/panic placeholders and unreachable/dead compatibility code; remove or explicitly register anything that remains necessary.
+
+
+### FS-19 Pre-Implementation Audit Finding — Source Layout
+
+- [ ] **ARCH-06 — production commerce service still stitches a source file with `include!`.** `crates/modules/rustok-commerce/src/services/checkout_payment_stages.rs` creates a nested `legacy` module by `include!("checkout_payment_stages_legacy.rs")`. This is explicitly forbidden by the repository ACRE contract because it bypasses normal Rust module boundaries and hides ownership/dependency structure from tooling. The existing sibling file must be mounted as a normal `#[path] mod` without changing its API.
+
+
+### FS-19 Pre-Implementation Reconciliation Finding
+
+- [ ] **ARCH-07 — phase table is stale for FS-00 through FS-13.** The live plan history shows those phases already integrated into `main`, but the phase-order table still marks many of them `[ ]`. The single living ledger therefore gives a false “unfinished” state and cannot reliably serve as the one command-driven continuation point.
