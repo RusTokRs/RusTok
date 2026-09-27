@@ -169,8 +169,17 @@ async fn promote_topic_to_post_moves_replies_and_registers_redirects() {
         .await
         .expect("comments lookup should succeed");
     assert_eq!(comments.len(), 2);
-    assert_eq!(comments[0].content, "First reply");
-    assert_eq!(comments[1].content, "Second reply");
+    let comment_bodies = rustok_comments::comment_body::Entity::find()
+        .filter(
+            rustok_comments::comment_body::Column::CommentId
+                .is_in(comments.iter().map(|c| c.id).collect::<Vec<_>>()),
+        )
+        .all(&db)
+        .await
+        .expect("comment bodies lookup should succeed");
+    assert_eq!(comment_bodies.len(), 2);
+    assert!(comment_bodies.iter().any(|b| b.body == "First reply"));
+    assert!(comment_bodies.iter().any(|b| b.body == "Second reply"));
 
     let post_tags = blog_post_tag::Entity::find()
         .filter(blog_post_tag::Column::PostId.eq(promoted.target_id))
