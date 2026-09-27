@@ -1,3 +1,7 @@
+use super::rustok_api_shim as rustok_api;
+use super::rustok_payment_shim as rustok_payment;
+use super::tracing_shim as tracing;
+
 use std::{sync::Arc, time::Duration};
 
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind};
