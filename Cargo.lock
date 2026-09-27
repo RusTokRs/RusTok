@@ -16498,6 +16498,7 @@ dependencies = [
  "rustok-secrets",
  "rustok-seo",
  "rustok-social-graph",
+ "rustok-starter",
  "rustok-storage",
  "rustok-storefront",
  "rustok-taxonomy",

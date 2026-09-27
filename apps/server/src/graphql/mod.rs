@@ -32,6 +32,7 @@ pub mod security;
 pub mod settings;
 pub mod storefront_principal_security;
 pub mod subscriptions;
+pub mod starter;
 pub mod system;
 pub mod tenant_security;
 pub mod transition_lifecycle;

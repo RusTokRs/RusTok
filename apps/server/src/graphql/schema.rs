@@ -39,6 +39,7 @@ use super::profile_summary_policy::ProfileSummaryAudiencePolicy;
 use super::queries::RootQuery;
 use super::security::GraphqlSecurityPolicy;
 use super::settings::{SettingsMutation, SettingsQuery};
+use super::starter::StarterMutation;
 use super::storefront_principal_security::StorefrontPrincipalPolicy;
 use super::subscriptions::BuildSubscription;
 use super::system::SystemQuery;
@@ -114,6 +115,7 @@ pub struct Mutation(
     McpMutation,
     RbacMutation,
     SettingsMutation,
+    StarterMutation,
     schema_codegen::OptionalModuleMutation,
 );
 

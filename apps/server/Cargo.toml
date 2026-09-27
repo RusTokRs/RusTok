@@ -189,6 +189,7 @@ rustok-iggy-connector = { workspace = true, features = ["migrations"] }
 rustok-outbox.workspace = true
 rustok-installer = { path = "../../crates/utils/rustok-installer" }
 rustok-installer-persistence.workspace = true
+rustok-starter.workspace = true
 alloy            = { workspace = true, optional = true }
 rustok-workflow  = { workspace = true, optional = true }
 
