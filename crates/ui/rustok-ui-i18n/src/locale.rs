@@ -117,7 +117,7 @@ pub fn normalize_locale_tag(locale: &str) -> Option<String> {
 /// or unknown locale identities return `None` rather than silently assuming LTR.
 pub fn locale_text_direction(locale: &str) -> Option<TextDirection> {
     let locale = parse_unicode_locale(locale)?;
-    match LocaleDirectionality::new_extended().get(&locale) {
+    match LocaleDirectionality::new_extended().get(&locale.id) {
         Some(IcuDirection::LeftToRight) => Some(TextDirection::LeftToRight),
         Some(IcuDirection::RightToLeft) => Some(TextDirection::RightToLeft),
         _ => None,
