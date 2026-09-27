@@ -732,3 +732,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 - [ ] **CONTENT-01 — content ownership and soft-delete boundaries require audit.** Verify all content/taxonomy/profile/group/comment mutations and reads are tenant-scoped and do not expose soft-deleted or foreign-owner records through alternate lookup paths.
 - [ ] **CONTENT-02 — translation fallback/locale identity requires audit.** Verify locale keys, fallback chains, revisioning and update/delete paths cannot return another tenant's translation or silently overwrite a concurrent revision.
 - [ ] **CONTENT-03 — social graph/reaction/moderation invariants require audit.** Verify duplicate reactions/follows/memberships, authorization edges, moderation state transitions and idempotency remain atomic under retries/concurrency.
+
+
+- [ ] **CONTENT-04 — content state machine loses original creation timestamp across valid transitions.** `ContentNode<Draft>::publish` and `ContentNode<Published>::unpublish` reconstruct state without carrying the original `created_at`; `Archived::restore_to_draft` has the same issue. Because `ContentNode` is publicly exported, a valid lifecycle round-trip can silently rewrite a business/audit timestamp.
