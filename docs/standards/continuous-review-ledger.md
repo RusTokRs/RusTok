@@ -725,3 +725,22 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** commerce mutations use tenant-scoped owner queries; payment amounts/statuses/refunds are backed by service-level transactions and database lifecycle/capacity guards; payment provider operations are journaled/idempotent and reconcile uncertain outcomes; checkout identity is durable and cross-boundary validated; channel-specific storefront inventory visibility is separated from tenant inventory accounting.
 
 **Verification state:** Tests were inspected/added but not executed by the agent. Maintainer execution remains required. FS-06 implementation is ready for integration.
+
+
+### FS-07 Pre-Implementation Audit Findings
+
+- [x] **CONTENT-01 — content ownership/soft-delete boundary audit passed.** Verify all content/taxonomy/profile/group/comment mutations and reads are tenant-scoped and do not expose soft-deleted or foreign-owner records through alternate lookup paths.
+- [x] **CONTENT-02 — translation fallback/locale identity/revision audit passed.** Verify locale keys, fallback chains, revisioning and update/delete paths cannot return another tenant's translation or silently overwrite a concurrent revision.
+- [x] **CONTENT-03 — social graph/reaction/moderation invariant audit passed.** Verify duplicate reactions/follows/memberships, authorization edges, moderation state transitions and idempotency remain atomic under retries/concurrency.
+
+
+- [x] **CONTENT-04 — content state machine loses original creation timestamp across valid transitions.** `ContentNode<Draft>::publish` and `ContentNode<Published>::unpublish` reconstruct state without carrying the original `created_at`; `Archived::restore_to_draft` has the same issue. Because `ContentNode` is publicly exported, a valid lifecycle round-trip can silently rewrite a business/audit timestamp.
+
+
+### FS-07 Result
+
+**Implemented:** `ContentNode` now preserves the original `created_at` through Draft → Published → Draft and Published → Archived → Draft lifecycle transitions. Regression coverage was added for the full lifecycle round-trip.
+
+**Audit passes:** content/comment/group reads and mutations consistently carry tenant ownership and soft-delete constraints; taxonomy category hierarchy mutations use tenant-scoped locks, scope checks and revision CAS; taxonomy translation writes use tenant filters and revision CAS; profile privacy evaluates recipient state under the trusted tenant and checks actor identity; social graph commands use tenant-scoped idempotency receipts and revision CAS; reaction commands enforce tenant/actor admission, catalog revision fencing and aggregate/state consistency; moderation application workers use tenant-scoped lease/revision CAS and transactional case/event transitions.
+
+**Verification state:** Tests were inspected and regression coverage was added, but no test suite was executed by the agent. Maintainer execution remains required. FS-07 implementation is ready for integration.
