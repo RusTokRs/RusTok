@@ -818,3 +818,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 
 - [ ] **NEXT-04 — SEO JSON-LD serialization creates an inline-script XSS sink.** `buildSeoStructuredDataScripts` uses `JSON.stringify` directly for backend-provided `structuredDataBlocks.payload` and renders the result through `dangerouslySetInnerHTML`. JSON permits the literal `<` character, so a payload containing `</script><script>…` can terminate the JSON-LD script element before the browser sees the data as JSON. The serializer must emit script-safe JSON (at minimum escape `<`, `>`, `&`, U+2028 and U+2029).
+
+
+- [ ] **NEXT-05 — NextAuth exposes the RusToK bearer to client JavaScript.** auth.ts stores rustokToken in the NextAuth JWT and copies it into session.user.rustokToken; useSession() therefore exposes the reusable backend access token to browser code. The complete fix requires migrating all client transport consumers to a server-owned session/proxy contract and is tracked in the accepted browser-auth ADR for FS-13. No partial removal is applied in FS-12 because it would break current client transport or create a split trust model.
