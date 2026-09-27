@@ -707,12 +707,21 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 ### FS-06 Pre-Implementation Audit Findings
 
-- [ ] **COMMERCE-01 — commerce cross-tenant mutation boundaries require audit.** Verify every cart/customer/product/pricing/inventory/order/payment/fulfillment mutation predicates all persisted reads/writes by the trusted tenant and never by client-supplied entity ids alone.
-- [ ] **COMMERCE-02 — money and order lifecycle transitions require invariant audit.** Verify currency/amount arithmetic, status transitions, idempotency and capture/refund/fulfillment event ordering cannot produce duplicate or impossible financial state.
-- [ ] **COMMERCE-03 — channel visibility and inventory reservation require race audit.** Verify concurrent cart/order operations cannot oversell or expose products outside the active tenant/channel policy.
+- [x] **COMMERCE-01 — commerce cross-tenant mutation audit passed.** Verify every cart/customer/product/pricing/inventory/order/payment/fulfillment mutation predicates all persisted reads/writes by the trusted tenant and never by client-supplied entity ids alone.
+- [x] **COMMERCE-02 — money/order lifecycle invariant audit passed, with COMMERCE-04 remediated.** Verify currency/amount arithmetic, status transitions, idempotency and capture/refund/fulfillment event ordering cannot produce duplicate or impossible financial state.
+- [x] **COMMERCE-03 — channel visibility audit passed; inventory reservation race remediated as COMMERCE-05.** Verify concurrent cart/order operations cannot oversell or expose products outside the active tenant/channel policy.
 
 
-- [ ] **COMMERCE-04 — capture uses order amount after partial authorization.** `PaymentProviderRegistry` explicitly permits partial authorization, and `capture_collection` correctly limits local capture to `collection.authorized_amount`, but checkout `capture_provider.rs` constructs the external capture request with `request.identity.amount`. A partially authorized collection therefore asks the provider to capture more than the amount authorized by that provider operation. The external request must use the persisted authorized amount as its financial authority.
+- [x] **COMMERCE-04 — capture uses order amount after partial authorization.** `PaymentProviderRegistry` explicitly permits partial authorization, and `capture_collection` correctly limits local capture to `collection.authorized_amount`, but checkout `capture_provider.rs` constructs the external capture request with `request.identity.amount`. A partially authorized collection therefore asks the provider to capture more than the amount authorized by that provider operation. The external request must use the persisted authorized amount as its financial authority.
 
 
-- [ ] **COMMERCE-05 — exported legacy inventory reservation has a read-modify-write race.** `InventoryService::reserve` reads `reserved_quantity`, computes availability, then writes the stale value back. Concurrent reservations on the same inventory level can overwrite one another and return misleading availability. The legacy public path must use the same database-guarded increment semantics as the identity reservation port.
+- [x] **COMMERCE-05 — exported legacy inventory reservation has a read-modify-write race.** `InventoryService::reserve` reads `reserved_quantity`, computes availability, then writes the stale value back. Concurrent reservations on the same inventory level can overwrite one another and return misleading availability. The legacy public path must use the same database-guarded increment semantics as the identity reservation port.
+
+
+### FS-06 Result
+
+**Implemented:** checkout capture now sends the persisted provider-authorized amount to the external provider, preserving the documented partial-authorization contract. The exported legacy `InventoryService::reserve` path now uses a database-guarded atomic increment instead of stale read-modify-write, and returns post-update availability.
+
+**Audit passes:** commerce mutations use tenant-scoped owner queries; payment amounts/statuses/refunds are backed by service-level transactions and database lifecycle/capacity guards; payment provider operations are journaled/idempotent and reconcile uncertain outcomes; checkout identity is durable and cross-boundary validated; channel-specific storefront inventory visibility is separated from tenant inventory accounting.
+
+**Verification state:** Tests were inspected/added but not executed by the agent. Maintainer execution remains required. FS-06 implementation is ready for integration.
