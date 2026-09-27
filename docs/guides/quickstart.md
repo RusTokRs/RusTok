@@ -178,6 +178,38 @@ cargo build -p rustok-cli --bin rustok-cli
 cargo xtask install-dev
 ```
 
+### Starter Blueprints & Demo Data
+
+To populate a provisioned workspace with the official starter content pack (landing page, GrapesJS builder template, blog categories & articles, forum categories & topics, and header navigation):
+
+1. **Via CLI during tenant provisioning:**
+   ```bash
+   rustok-cli seed apply --tenant-slug demo --profile dev --starter default
+   ```
+2. **Via CLI on an existing workspace:**
+   ```bash
+   rustok-cli starter import --tenant-slug demo --starter default
+   ```
+   Or validate the blueprint without database mutations:
+   ```bash
+   rustok-cli starter import --tenant-slug demo --starter default --dry-run
+   ```
+3. **Via GraphQL in the Admin UI:**
+   Execute the `importStarter` mutation under `modules:manage` or `tenants:manage` authority:
+   ```graphql
+   mutation {
+     importStarter(name: "default") {
+       tenantId
+       blueprintId
+       pagesCreated
+       blogPostsCreated
+       forumTopicsCreated
+       durationMs
+     }
+   }
+   ```
+
+
 ### Requirements
 - Rust toolchain (see `rust-toolchain.toml`)
 - Node.js/Bun for Next.js applications

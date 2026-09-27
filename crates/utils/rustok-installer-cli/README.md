@@ -18,10 +18,14 @@ invocation directory; all local runtime paths are derived from that root.
 - `rustok-cli install status` reads the latest durable session through
   `rustok-installer-persistence`.
 - `rustok-cli seed apply` applies the typed seed workflow through owner-owned
-  database writers.
+  database writers. Optionally pass `--starter <name>` (e.g. `--starter default`)
+  to immediately import a starter content blueprint into the provisioned tenant.
+- `rustok-cli starter import` imports a declarative blueprint pack into an existing
+  tenant. Accepts `--starter <name>` (built-in blueprint such as `default`) or
+  `--file <path>` (custom JSON blueprint), with `--dry-run` to validate without mutation.
 
-`install apply --dry-run` validates and renders preflight evidence without
-mutating the target database.
+`install apply --dry-run` and `starter import --dry-run` validate and render preflight
+evidence without mutating the target database.
 
 Distributed plan, preflight, and apply additionally require a platform-signed
 base-distribution receipt and its Ed25519 public key through
