@@ -9,7 +9,53 @@
  */
 
 use rustok_ui_i18n::error::{BundleBuildError, I18nError, MessageKeyError};
-use rustok_ui_i18n::messages::{MAX_MESSAGE_KEY_LEN, UiMessages, validate_message_key};
+use rustok_ui_i18n::messages::{
+    MAX_MESSAGE_KEY_LEN, UiMessages, extract_locale_schemas, validate_catalog_schemas,
+    validate_message_key,
+};
+
+#[test]
+fn schema_extraction_rejects_oversized_locale_before_parsing() {
+    let oversized_locale = "a".repeat(65);
+    let error = extract_locale_schemas(&oversized_locale, "valid = Valid\n")
+        .expect_err("schema extraction must enforce the shared locale input bound");
+    assert!(matches!(
+        error,
+        BundleBuildError::LocaleTooLong {
+            length: 65,
+            max_len: 64
+        }
+    ));
+}
+
+#[test]
+fn schema_extraction_uses_canonical_locale_in_parse_diagnostics() {
+    let error = extract_locale_schemas("en_US", "= invalid message\n")
+        .expect_err("malformed Fluent source must return a parse diagnostic");
+    assert!(matches!(
+        error,
+        BundleBuildError::FluentParse { locale, .. } if locale == "en-US"
+    ));
+}
+
+#[test]
+fn schema_validation_rejects_duplicate_normalized_locale_identities() {
+    const FIRST: &str = "welcome = Hello, { $name }!\n";
+    const SHADOW: &str = "welcome = Hello\n";
+
+    let error = validate_catalog_schemas(&[("en_US", FIRST), ("en-US", SHADOW)], "en-US")
+        .expect_err("normalized duplicate locale must not overwrite the first schema");
+    assert!(matches!(error, BundleBuildError::DuplicateLocale { locale } if locale == "en-US"));
+}
+
+#[test]
+fn schema_validation_normalizes_default_locale_before_lookup() {
+    const EN: &str = "welcome = Hello, { $name }!\n";
+    const RU: &str = "welcome = Привет, { $name }!\n";
+
+    validate_catalog_schemas(&[("en_US", EN), ("ru", RU)], "en_US")
+        .expect("default locale aliases must resolve to canonical catalog identity");
+}
 
 #[test]
 fn same_variables_across_locales_succeeds() {
