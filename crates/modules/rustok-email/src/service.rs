@@ -265,6 +265,18 @@ mod tests {
     }
 
     #[test]
+    fn password_reset_email_debug_redacts_reset_token() {
+        let email = PasswordResetEmail {
+            to: "user@example.com".to_string(),
+            reset_url: "https://example.test/reset?token=super-secret-reset-token".to_string(),
+        };
+        let rendered = format!("{email:?}");
+
+        assert!(!rendered.contains("super-secret-reset-token"));
+        assert!(rendered.contains("<redacted>"));
+    }
+
+    #[test]
     fn password_reset_url_percent_encodes_token() {
         let config = config_with_reset_base_url("https://admin.example.test/reset-password");
 
