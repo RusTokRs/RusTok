@@ -33,7 +33,7 @@ pub enum JwtAlgorithm {
 ///
 /// The server is responsible for constructing this from whatever config source
 /// it uses (YAML, environment variables, etc.). `rustok-auth` never reads config files.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AuthConfig {
     pub secret: String,
     pub access_expiration: u64,
@@ -46,6 +46,29 @@ pub struct AuthConfig {
     pub rsa_private_key_pem: Option<String>,
     /// RSA public key in PEM format. Required when `algorithm = RS256` for token decoding.
     pub rsa_public_key_pem: Option<String>,
+}
+
+
+impl std::fmt::Debug for AuthConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AuthConfig")
+            .field("secret", &"<redacted>")
+            .field("access_expiration", &self.access_expiration)
+            .field("refresh_expiration", &self.refresh_expiration)
+            .field("issuer", &self.issuer)
+            .field("audience", &self.audience)
+            .field("algorithm", &self.algorithm)
+            .field(
+                "rsa_private_key_pem",
+                &self.rsa_private_key_pem.as_ref().map(|_| "<redacted>"),
+            )
+            .field(
+                "rsa_public_key_pem",
+                &self.rsa_public_key_pem.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
 }
 
 impl AuthConfig {
@@ -91,7 +114,7 @@ impl AuthConfig {
 }
 
 /// Helper for loading auth settings from nested YAML `settings.rustok.auth`.
-#[derive(Debug, Deserialize, Default)]
+#[derive(Deserialize, Default)]
 pub struct AuthSettingsOverrides {
     pub refresh_expiration: Option<u64>,
     pub issuer: Option<String>,
@@ -101,6 +124,29 @@ pub struct AuthSettingsOverrides {
     pub rsa_public_key_pem: Option<String>,
     pub rsa_private_key_env: Option<String>,
     pub rsa_public_key_env: Option<String>,
+}
+
+
+impl std::fmt::Debug for AuthSettingsOverrides {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AuthSettingsOverrides")
+            .field("refresh_expiration", &self.refresh_expiration)
+            .field("issuer", &self.issuer)
+            .field("audience", &self.audience)
+            .field("algorithm", &self.algorithm)
+            .field(
+                "rsa_private_key_pem",
+                &self.rsa_private_key_pem.as_ref().map(|_| "<redacted>"),
+            )
+            .field(
+                "rsa_public_key_pem",
+                &self.rsa_public_key_pem.as_ref().map(|_| "<redacted>"),
+            )
+            .field("rsa_private_key_env", &self.rsa_private_key_env)
+            .field("rsa_public_key_env", &self.rsa_public_key_env)
+            .finish()
+    }
 }
 
 impl AuthSettingsOverrides {
