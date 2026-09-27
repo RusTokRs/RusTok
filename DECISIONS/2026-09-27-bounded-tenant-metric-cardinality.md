@@ -2,7 +2,7 @@
 
 - Date: 2026-09-27
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: rustok-telemetry
 - Extends: None
 - Supersedes: None
