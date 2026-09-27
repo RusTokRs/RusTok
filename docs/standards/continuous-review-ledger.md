@@ -894,3 +894,8 @@ _No completed rounds yet. Round 1 is currently in progress._
 - [ ] **LIB-02 — shared context/tenant/auth helpers require direction and authority audit.** Verify helpers distinguish trusted runtime authority from client metadata and do not allow downstream modules to reconstruct security context from transport values.
 - [ ] **LIB-03 — common storage/event/web abstractions require invariant audit.** Check shared repository/storage adapters, event envelopes, web helpers and cache primitives for generic behaviors that weaken tenant scope, error stability, transaction ownership or idempotency at call sites.
 - [ ] **LIB-04 — feature-flag and optional dependency boundaries require audit.** Verify shared crates do not accidentally enable incompatible feature combinations or expose server-only dependencies to browser/transport targets.
+
+
+### FS-16 Pre-Implementation Audit Finding — Rate Limiter
+
+- [ ] **LIB-05 — shared RateLimiter stores and derives Debug output from raw API keys/login identifiers.** `check_api_key` uses `api_key:<raw secret>` as an in-memory bucket key and `check_login` uses `login:<raw identifier>`. `RateLimiter` also derives `Debug`, recursively exposing the bucket map. A diagnostic dump can therefore disclose API credentials and login identifiers. The limiter should use process-local opaque key identities and never render bucket contents.
