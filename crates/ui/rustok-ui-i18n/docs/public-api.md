@@ -40,6 +40,14 @@ The following APIs are intentionally available for callers that need catalog con
 - `resolve_fluent_message`
 - `try_resolve_fluent_message`
 - `with_kebab_key`
+- `MessageSchema`
+- `extract_locale_schemas`
+- `validate_catalog_schemas`
+
+Schema extraction applies the bounded locale-input policy and reports canonical locale
+identities. Catalog schema validation uses the same normalized locale identity for the
+configured default, rejects duplicate normalized locale entries, and compares variable
+sets across non-default messages.
 
 These APIs are deliberately omitted from the prelude so normal module code does not couple itself to catalog internals by default.
 

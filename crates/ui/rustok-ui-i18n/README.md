@@ -83,6 +83,14 @@ an override policy for Rust catalogs.
 - `resolve_fluent_message`
 - `try_resolve_fluent_message`
 - `with_kebab_key`
+- `MessageSchema`
+- `extract_locale_schemas`
+- `validate_catalog_schemas`
+
+Schema extraction validates and normalizes its locale argument through the same
+64-byte-bounded locale parser used by catalog construction. Schema validation
+rejects duplicate normalized locale identities and normalizes the configured
+default locale before comparing it with catalog entries.
 
 ## Interactions
 
