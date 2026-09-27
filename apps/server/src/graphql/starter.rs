@@ -94,3 +94,50 @@ impl StarterMutation {
         Ok(report.into())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::Permission;
+
+    #[test]
+    fn permission_checks_require_modules_or_tenants_manage() {
+        assert!(has_effective_permission(
+            &[Permission::MODULES_MANAGE],
+            &Permission::MODULES_MANAGE,
+        ));
+        assert!(has_effective_permission(
+            &[Permission::TENANTS_MANAGE],
+            &Permission::TENANTS_MANAGE,
+        ));
+    }
+
+    #[test]
+    fn report_payload_conversion_preserves_counts() {
+        let report = rustok_starter::StarterExecutionReport {
+            tenant_id: Uuid::nil(),
+            blueprint_id: "default-starter".to_string(),
+            pages_created: 1,
+            blog_categories_created: 3,
+            blog_posts_created: 3,
+            forum_categories_created: 4,
+            forum_topics_created: 4,
+            forum_replies_created: 2,
+            menus_created: 1,
+            skipped_existing: 0,
+            duration_ms: 123,
+        };
+        let payload: StarterExecutionReportPayload = report.into();
+        assert_eq!(payload.blueprint_id, "default-starter");
+        assert_eq!(payload.pages_created, 1);
+        assert_eq!(payload.blog_categories_created, 3);
+        assert_eq!(payload.blog_posts_created, 3);
+        assert_eq!(payload.forum_categories_created, 4);
+        assert_eq!(payload.forum_topics_created, 4);
+        assert_eq!(payload.forum_replies_created, 2);
+        assert_eq!(payload.menus_created, 1);
+        assert_eq!(payload.skipped_existing, 0);
+        assert_eq!(payload.duration_ms, 123);
+    }
+}
+
