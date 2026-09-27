@@ -57,6 +57,7 @@ mod m20260913_000030_add_product_variant_attribute_value_translation_target;
 mod m20260913_000031_add_product_category_seo_translation_target;
 mod m20260916_000032_clean_product_category_canonical_taxonomy;
 mod m20260918_000033_create_variant_axes_and_invariants;
+mod m20260927_000034_normalize_product_translation_locales;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -122,6 +123,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260913_000031_add_product_category_seo_translation_target::Migration),
         Box::new(m20260916_000032_clean_product_category_canonical_taxonomy::Migration),
         Box::new(m20260918_000033_create_variant_axes_and_invariants::Migration),
+        Box::new(m20260927_000034_normalize_product_translation_locales::Migration),
     ]
 }
 

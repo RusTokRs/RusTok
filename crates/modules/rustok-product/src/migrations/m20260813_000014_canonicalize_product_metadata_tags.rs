@@ -82,28 +82,33 @@ async fn backfill_legacy_metadata_tags(txn: &sea_orm::DatabaseTransaction) -> Re
                 continue;
             };
 
-            let existing_relation = product_tag::Entity::find()
-                .filter(product_tag::Column::TenantId.eq(product.tenant_id))
-                .filter(product_tag::Column::ProductId.eq(product.id))
-                .one(txn)
-                .await?;
+            if !labels.is_empty() {
+                let existing_term_ids: HashSet<Uuid> = product_tag::Entity::find()
+                    .filter(product_tag::Column::TenantId.eq(product.tenant_id))
+                    .filter(product_tag::Column::ProductId.eq(product.id))
+                    .all(txn)
+                    .await?
+                    .into_iter()
+                    .map(|tag| tag.term_id)
+                    .collect();
 
-            if existing_relation.is_none() && !labels.is_empty() {
                 let locale = legacy_tag_locale(&product.metadata);
                 let term_ids =
                     ensure_product_tag_terms(txn, product.tenant_id, &locale, &labels).await?;
                 let created_at = Utc::now();
                 for (position, term_id) in term_ids.into_iter().enumerate() {
-                    product_tag::ActiveModel {
-                        product_id: Set(product.id),
-                        term_id: Set(term_id),
-                        tenant_id: Set(product.tenant_id),
-                        created_at: Set(
-                            (created_at + Duration::microseconds(position as i64)).into()
-                        ),
+                    if !existing_term_ids.contains(&term_id) {
+                        product_tag::ActiveModel {
+                            product_id: Set(product.id),
+                            term_id: Set(term_id),
+                            tenant_id: Set(product.tenant_id),
+                            created_at: Set(
+                                (created_at + Duration::microseconds(position as i64)).into()
+                            ),
+                        }
+                        .insert(txn)
+                        .await?;
                     }
-                    .insert(txn)
-                    .await?;
                 }
             }
 
