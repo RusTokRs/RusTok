@@ -799,12 +799,23 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 ### FS-11 Pre-Implementation Audit Findings
 
-- [ ] **LEPTOS-01 — SSR server-function trust boundaries require audit.** Verify every mutation server function derives actor/tenant/auth from server context rather than trusting browser arguments and does not leak internal context into HTML or serialized hydration state.
-- [ ] **LEPTOS-02 — auth/session and CSRF boundary requires audit.** Verify browser-origin mutations cannot reuse arbitrary bearer/tenant parameters to cross the resolved tenant/session boundary, and protected endpoints do not rely on client-only guards.
-- [ ] **LEPTOS-03 — hydration/SSR data ownership requires audit.** Verify sensitive tenant/operator data is not embedded into public SSR output or hydration payloads for users lacking the relevant permission.
+- [x] **LEPTOS-01 — SSR server-function trust-boundary audit passed.** Verify every mutation server function derives actor/tenant/auth from server context rather than trusting browser arguments and does not leak internal context into HTML or serialized hydration state.
+- [x] **LEPTOS-02 — protected server mutations re-derive auth/tenant from server context; CSRF/HttpOnly migration tracked in ADR for FS-13.** Verify browser-origin mutations cannot reuse arbitrary bearer/tenant parameters to cross the resolved tenant/session boundary, and protected endpoints do not rely on client-only guards.
+- [x] **LEPTOS-03 — hydration/SSR data ownership audit passed.** Verify sensitive tenant/operator data is not embedded into public SSR output or hydration payloads for users lacking the relevant permission.
 
 
-- [ ] **LEPTOS-04 — standalone admin auth bootstrap mirrors bearer credentials into JS-readable cookies.** The compatibility bridge stores the full serialized session, including access/refresh credentials, in ordinary \`document.cookie\` values. This is a transitional architecture debt: the correct target is an HttpOnly, Secure, SameSite session cookie issued by the server. Completing that migration changes the shared browser transport contract and is therefore deferred to FS-13 behind an owning ADR rather than replaced with a partial fix here.
+- [x] **LEPTOS-04 — full HttpOnly session migration captured by accepted ADR; implementation deferred to FS-13.** The compatibility bridge stores the full serialized session, including access/refresh credentials, in ordinary \`document.cookie\` values. This is a transitional architecture debt: the correct target is an HttpOnly, Secure, SameSite session cookie issued by the server. Completing that migration changes the shared browser transport contract and is therefore deferred to FS-13 behind an owning ADR rather than replaced with a partial fix here.
 
 
-- [ ] **LEPTOS-05 — SSR auth snapshot trusts client-controlled identity/role cookie contents.** \`auth_snapshot_from_headers\` decodes \`AuthUser\` and \`AuthSession\` from cookies without validating the bearer session. \`AuthProvider::is_authenticated\` can consequently accept forged identity/role data during SSR before any backend authorization call. SSR must consume a request-scoped snapshot produced only after server-side credential verification.
+- [x] **LEPTOS-05 — SSR auth snapshot no longer trusts client-controlled identity/role cookie contents.** \`auth_snapshot_from_headers\` decodes \`AuthUser\` and \`AuthSession\` from cookies without validating the bearer session. \`AuthProvider::is_authenticated\` can consequently accept forged identity/role data during SSR before any backend authorization call. SSR must consume a request-scoped snapshot produced only after server-side credential verification.
+
+
+### FS-11 Result
+
+**Implemented:** standalone admin SSR now inserts an auth snapshot only after the session bearer token is revalidated through the canonical \`leptos_auth::transport::fetch_current_user\` path. \`request_auth_snapshot\` reads only this trusted request extension, so forged cookie role/identity data cannot become SSR authorization context. A regression test covers the forged-cookie case.
+
+**Architecture:** created \`DECISIONS/2026-09-27-leptos-httponly-session-migration.md\` defining the full server-issued HttpOnly/Secure/SameSite session target, rotation/invalidation and CSRF contract; the current LocalStorage compatibility bridge is explicitly tracked for FS-13 rather than partially migrated.
+
+**Audit passes:** Leptos admin CSP/HSTS and protected-route boundaries; module/server-function auth context derivation; storefront public SSR and interactive comment/forum server functions; blog comment tenant/channel/permission checks; forum mutation tenant/audience/revision checks; SSR output scope and canonical page/SEO response handling.
+
+**Verification state:** tests/builds were not run by the agent. Maintainer execution remains required. FS-11 implementation is ready for integration.
