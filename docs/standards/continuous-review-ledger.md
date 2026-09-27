@@ -802,3 +802,9 @@ _No completed rounds yet. Round 1 is currently in progress._
 - [ ] **LEPTOS-01 — SSR server-function trust boundaries require audit.** Verify every mutation server function derives actor/tenant/auth from server context rather than trusting browser arguments and does not leak internal context into HTML or serialized hydration state.
 - [ ] **LEPTOS-02 — auth/session and CSRF boundary requires audit.** Verify browser-origin mutations cannot reuse arbitrary bearer/tenant parameters to cross the resolved tenant/session boundary, and protected endpoints do not rely on client-only guards.
 - [ ] **LEPTOS-03 — hydration/SSR data ownership requires audit.** Verify sensitive tenant/operator data is not embedded into public SSR output or hydration payloads for users lacking the relevant permission.
+
+
+- [ ] **LEPTOS-04 — standalone admin auth bootstrap mirrors bearer credentials into JS-readable cookies.** The compatibility bridge stores the full serialized session, including access/refresh credentials, in ordinary \`document.cookie\` values. This is a transitional architecture debt: the correct target is an HttpOnly, Secure, SameSite session cookie issued by the server. Completing that migration changes the shared browser transport contract and is therefore deferred to FS-13 behind an owning ADR rather than replaced with a partial fix here.
+
+
+- [ ] **LEPTOS-05 — SSR auth snapshot trusts client-controlled identity/role cookie contents.** \`auth_snapshot_from_headers\` decodes \`AuthUser\` and \`AuthSession\` from cookies without validating the bearer session. \`AuthProvider::is_authenticated\` can consequently accept forged identity/role data during SSR before any backend authorization call. SSR must consume a request-scoped snapshot produced only after server-side credential verification.
