@@ -59,6 +59,7 @@ pub struct Draft {
 /// Published state - content is live
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Published {
+    pub created_at: DateTime<Utc>,
     pub published_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -66,6 +67,7 @@ pub struct Published {
 /// Archived state - content is no longer active
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Archived {
+    pub created_at: DateTime<Utc>,
     pub archived_at: DateTime<Utc>,
     pub reason: String,
 }
@@ -105,7 +107,7 @@ impl ContentNode<Draft> {
             kind,
             category_id: None,
             state: Draft {
-                created_at: now,
+                created_at: self.state.created_at,
                 updated_at: now,
             },
         }
@@ -137,6 +139,7 @@ impl ContentNode<Draft> {
             kind: self.kind,
             category_id: self.category_id,
             state: Published {
+                created_at: self.state.created_at,
                 published_at,
                 updated_at: published_at,
             },
@@ -198,6 +201,7 @@ impl ContentNode<Published> {
             kind: self.kind,
             category_id: self.category_id,
             state: Archived {
+                created_at: self.state.created_at,
                 archived_at,
                 reason,
             },
@@ -236,7 +240,7 @@ impl ContentNode<Archived> {
             kind: self.kind,
             category_id: self.category_id,
             state: Draft {
-                created_at: now,
+                created_at: self.state.created_at,
                 updated_at: now,
             },
         }
@@ -434,6 +438,32 @@ mod tests {
         let node = node.update();
 
         assert!(node.state.updated_at > created_at);
+    }
+
+    #[test]
+    fn lifecycle_transitions_preserve_original_creation_timestamp() {
+        let created_at = Utc::now();
+        let draft = ContentNode {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            author_id: Some(Uuid::new_v4()),
+            parent_id: None,
+            kind: "article".to_string(),
+            category_id: None,
+            state: Draft {
+                created_at,
+                updated_at: created_at,
+            },
+        };
+
+        let published = draft.publish();
+        assert_eq!(published.state.created_at, created_at);
+
+        let archived = published.archive("Test".to_string());
+        assert_eq!(archived.state.created_at, created_at);
+
+        let restored = archived.restore_to_draft();
+        assert_eq!(restored.state.created_at, created_at);
     }
 
     #[test]
