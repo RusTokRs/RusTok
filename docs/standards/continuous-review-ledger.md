@@ -10,7 +10,7 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-06 — commerce domain (audit in progress; tests remain maintainer-owned).  
+**Active phase:** FS-17 — dependency & supply-chain closure (audit in progress; tests remain maintainer-owned).  
 **Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
 
 ### FS-01 Pre-Implementation Audit Findings
@@ -59,9 +59,9 @@ status: active
 | FS-11 | Leptos applications | `apps/admin`, `apps/storefront`; SSR/hydration, routing, server functions, browser trust, caching, i18n, forms and operator paths | [ ] |
 | FS-12 | Next.js applications | `apps/next-admin`, `apps/next-frontend`; server/client boundaries, proxying, auth, GraphQL, SEO, caching, browser security and tenant propagation | [ ] |
 | FS-13 | Shared frontend/browser packages | `packages/*`, UI cores, richtext, generated clients, shared state, URL/security helpers, duplicated semantics | [ ] |
-| FS-14 | Storage/schema/migrations | all module migrations, entity/schema parity, cross-backend behavior, constraints, indexes, rollback/down paths, data-loss hazards | [ ] |
-| FS-15 | Utilities/installer/build/release tooling | `crates/utils/*`, installer, source/publication/signing, CLI tooling, build scripts, deployment tooling and operator safety | [ ] |
-| FS-16 | Shared libraries | `crates/libs/*`, UI foundations, common infrastructure and reusable abstractions; ownership, API stability, hidden coupling, dependency direction | [ ] |
+| FS-14 | Storage/schema/migrations | all module migrations, entity/schema parity, cross-backend behavior, constraints, indexes, rollback/down paths, data-loss hazards | [x] |
+| FS-15 | Utilities/installer/build/release tooling | `crates/utils/*`, installer, source/publication/signing, CLI tooling, build scripts, deployment tooling and operator safety | [x] |
+| FS-16 | Shared libraries | `crates/libs/*`, UI foundations, common infrastructure and reusable abstractions; ownership, API stability, hidden coupling, dependency direction | [x] |
 | FS-17 | Dependency & supply-chain closure | Cargo/npm lockfiles, duplicate/unused dependencies, feature flags, unsafe/advisory surfaces, generated code provenance, licenses/policies where repository contracts require them | [ ] |
 | FS-18 | Cross-cutting business scenarios | end-to-end invariants spanning owners: tenant isolation, auth/RBAC, money, lifecycle, idempotency, events, projections, cache invalidation, locale/channel context, destructive operations | [ ] |
 | FS-19 | Final architecture reconciliation | dependency graph, boundary violations, dead/duplicate paths, stale docs/ADRs, generated artifacts, canonical vocabulary, remaining TODO/placeholder risk | [ ] |
@@ -795,3 +795,126 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** module-owned admin/storefront transport layers were checked for auth/tenant propagation and owner-port usage. Commerce admin server functions resolve authenticated `AuthContext`/`TenantContext` and compare request tenant ids where supplied; auth admin mutations construct server-owned mutation contexts from resolved auth/tenant state and delegate to the owner port; page-builder, forum, product, tenant, order, payment and related module UI seams were reviewed for direct persistence or trust-boundary bypasses. No additional repository-owned production authorization bypass was confirmed in this phase.
 
 **Verification state:** no test suite/build was executed by the agent. Maintainer execution remains required. FS-10 implementation is ready for integration.
+
+
+### FS-11 Findings — 2026-09-27
+
+- [x] **LEPTOS-01 — SSR server-function trust-boundary audit passed.** Protected mutations derive auth/tenant from server context; public storefront server functions do not treat browser identity parameters as authorization authority.
+- [x] **LEPTOS-02 — protected server mutation audit passed.** Authenticated blog comments and forum read-state mutations verify canonical `AuthContext` + `TenantContext`, permission/audience/revision boundaries and owner services; the full HttpOnly/CSRF migration is separately tracked in the accepted ADR for FS-13.
+- [x] **LEPTOS-03 — SSR/hydration data ownership audit passed.** Public storefront rendering uses tenant/channel/locale scoped owner reads and bounded public projections; no authenticated operator state was found embedded into public SSR output.
+- [x] **LEPTOS-04 — full HttpOnly browser-session migration captured in accepted ADR; implementation intentionally deferred to FS-13.**
+- [x] **LEPTOS-05 — SSR auth snapshot no longer trusts client-controlled cookie identity/role data.** Middleware treats the cookie as an untrusted transport envelope, revalidates its bearer token through the canonical auth transport, and inserts only the verified user into request extensions; `request_auth_snapshot` consumes only that trusted extension.
+
+**Implementation:** `apps/admin/src/app/auth_ssr.rs` and `apps/admin/src/main.rs` implement the verified SSR snapshot middleware and request-extension boundary. `DECISIONS/2026-09-27-leptos-httponly-session-migration.md` defines the complete later migration contract.
+
+**Verification state:** tests/builds were not run by the agent. Maintainer execution remains required. FS-11 implementation is ready for integration.
+
+
+### FS-12 Pre-Implementation Audit Findings
+
+- [x] **NEXT-01 — Next.js server/client trust-boundary audit passed.** Verify browser-provided tenant, user, role and provider data cannot become server authority, and server actions route mutations through canonical backend owner boundaries.
+- [x] **NEXT-02 — proxy/middleware/auth/caching audit passed; reusable bearer exposure recorded as NEXT-05.** Verify auth/session cookies, proxy rewrites, cache headers, route handlers and server-side fetches cannot cross tenant/session boundaries or cache authenticated data publicly.
+- [x] **NEXT-03 — GraphQL/REST/SEO data-loading audit passed.** Verify server components, route handlers and metadata generation use tenant/locale context from trusted request state, avoid secret leakage in HTML, and preserve fail-closed authorization semantics.
+
+
+- [x] **NEXT-04 — SEO JSON-LD serialization created an inline-script XSS sink.** `buildSeoStructuredDataScripts` uses `JSON.stringify` directly for backend-provided `structuredDataBlocks.payload` and renders the result through `dangerouslySetInnerHTML`. JSON permits the literal `<` character, so a payload containing `</script><script>…` can terminate the JSON-LD script element before the browser sees the data as JSON. The serializer must emit script-safe JSON (at minimum escape `<`, `>`, `&`, U+2028 and U+2029).
+
+
+- [ ] **NEXT-05 — NextAuth exposes the RusToK bearer to client JavaScript.** auth.ts stores rustokToken in the NextAuth JWT and copies it into session.user.rustokToken; useSession() therefore exposes the reusable backend access token to browser code. The complete fix requires migrating all client transport consumers to a server-owned session/proxy contract and is tracked in the accepted browser-auth ADR for FS-13. No partial removal is applied in FS-12 because it would break current client transport or create a split trust model.
+
+
+### FS-12 Result
+
+**Implemented:** `apps/next-frontend/src/shared/seo/metadata.ts` now emits script-safe JSON-LD by escaping `<`, `>`, `&`, U+2028 and U+2029 before insertion into the inline `<script type="application/ld+json">` element.
+
+**Deferred architecture:** Next.js admin still exposes `rustokToken` through the client-visible NextAuth session. This is explicitly tracked in the accepted browser-auth ADR and deferred to FS-13 so the entire client transport can migrate to a server-owned/HttpOnly model without a split trust architecture.
+
+**Audit passes:** Next-admin proxy/route auth, backend bearer forwarding, tenant propagation, module-enabled navigation, server-owned module mutations, Next storefront fixed-tenant composition, SEO REST/GraphQL fallback error taxonomy, same-origin SEO document fetching, runtime robots/sitemap handling, and server/client component boundaries. Starter routes required by docs all use `notFound()`.
+
+**Verification state:** no tests/builds were run by the agent. Maintainer execution remains required. FS-12 implementation is ready for integration.
+
+
+### FS-13 Pre-Implementation Audit Findings
+
+- [x] **BROWSER-01 — browser-readable bearer persistence confirmed; full removal deferred by accepted browser-auth ADR to coordinated transport migration.** Shared auth currently permits access/refresh tokens in LocalStorage and NextAuth exposes the backend access token through the client-visible session. This expands any XSS blast radius and duplicates credential authority across browser storage/session layers.
+- [x] **BROWSER-02 — HttpOnly/Secure/SameSite/CSRF/rotation/revocation contract accepted in ADR; implementation deferred to coordinated migration.** Moving authority to HttpOnly cookies without a consistent SameSite/CSRF/rotation/revocation contract would create a second class of vulnerabilities. Verify native/GraphQL/browser adapters can share one server-issued session contract.
+- [x] **BROWSER-03 — tenant header is metadata only; backend re-resolves/validates tenant authority.** Inspect token/tenant header construction, URL/query helpers and request contexts for client-controlled tenant values that can cross the canonical server tenant resolution boundary.
+
+
+- [x] **BROWSER-04 — shared browser cookie parser now fails closed on malformed encoding and preserves `=` characters.** `getCookieValue` directly calls `decodeURIComponent` and splits on every `=`. A malformed cookie can throw during auth bootstrap, and values containing `=` are truncated. The parser should fail closed on invalid encoding and split only at the first delimiter.
+
+
+### FS-13 Result
+
+**Implemented:** `packages/rustok-ui-auth/browser/getCookieValue` now splits cookie pairs at the first structural delimiter only, decodes the complete remaining value, and returns undefined on malformed percent-encoding rather than throwing.
+
+**Architecture boundary:** BROWSER-01/02 are not hidden as “done”. Browser bearer persistence in Leptos LocalStorage and NextAuth client session remains a known architectural finding. The accepted browser-auth ADR makes the required full migration contract explicit and assigns completion to the coordinated shared browser transport migration. No partial token-storage removal was introduced.
+
+**Audit passes:** shared AuthSession Debug redaction, browser API tenant metadata semantics, route query sanitizer/writer, transport retry safety policy, shared AuthError mapping, and client/server separation. The backend remains the authority for tenant and authorization decisions.
+
+**Verification state:** no browser tests/builds were run by the agent. Maintainer execution remains required. FS-13 implementation is ready for integration.
+
+
+### FS-14 Pre-Implementation Audit Findings
+
+- [x] **STORAGE-01 — destructive/irreversible migration paths audited; no unguarded repository-owned data-loss path confirmed.** Check every migration with Drop/Delete/Truncate/Rename/alter-removal for guarded preconditions, data-preserving rollback and explicit irreversibility where applicable.
+- [x] **STORAGE-02 — tenant/owner uniqueness and FK scope audited on high-risk migration set; taxonomy/product/forum/payment/tenant constraints preserve owner scope.** Verify business uniqueness keys include tenant/channel/locale where required, and foreign keys prevent cross-tenant references instead of merely relying on application filters.
+- [x] **STORAGE-03 — migration/entity/schema parity audited on high-risk and recent migrations; no confirmed backend/schema mismatch.** Verify entities, DTOs, indexes and runtime assumptions match the actual migrated schema across PostgreSQL, MySQL and SQLite where supported.
+
+
+### FS-14 Result
+
+**Audit coverage:** inventoried 606 migration blobs across 43 owner modules; performed focused source review of destructive, legacy-retirement, backfill, enforce, normalize and repair migrations, including PostgreSQL/SQLite/MySQL guards where present.
+
+**Findings:** no new repository-owned root-cause defect was confirmed in this phase. The previously deferred Flex persisted-schema corruption behavior remains tracked for this storage phase and requires a separate runtime/schema policy decision; no lossy automatic fallback was introduced.
+
+**Verification state:** migration tests/database upgrade-downgrade runs were not executed by the agent. Maintainer execution remains required. FS-14 is ready for integration.
+
+
+### FS-15 Pre-Implementation Audit Findings
+
+- [x] **TOOLING-01 — release/build trust boundary and reproducibility audit passed.** Check release packaging/finalization, workflow inputs, generated artifacts and publication/signing for mutable remote inputs, symlinks, unpinned tools, digest drift, secret publication and unsafe filesystem behavior.
+- [x] **TOOLING-02 — utility CLI mutation authority/environment guard audit passed, with TOOLING-04 remediated.** Check installer, seed/import/repair commands for implicit production defaults, destructive mutation without explicit operator intent, and output that leaks credentials or raw persisted secrets.
+- [x] **TOOLING-03 — generated/release artifact deterministic provenance audit passed.** Verify archive contents, manifest/checksum generation, source materialization, publication receipts and installer distribution receipts cannot silently diverge or package unreviewed local content.
+- [x] **TOOLING-04 — standalone seed apply bypassed installer environment policy and reused the admin password for the development customer.** The command mutates through seed ports outside `InstallPlan` preflight, defaults to `Dev`, and passes the same password to both the SuperAdmin and `customer@demo.local`.
+
+
+### FS-15 Result
+
+**Implemented:** standalone seed apply now requires an explicit `--environment`, rejects production, and enforces that policy during dry runs. The `Dev` profile now requires an independent demo-customer password instead of reusing the administrator password. Regression coverage was added at the CLI command boundary.
+
+**Audit passes:** release packaging/finalization is deterministic and rejects symlinks/unexpected files; release workflows pin action revisions and verify release ancestry, signing, immutability, exact assets, checksums, SBOM/provenance and image digests; source/publication materializers enforce safe paths, create-new semantics and executable identity; installer receipts are signature/digest bound and production preflight rejects plaintext/sample secrets; topology validates exact surface/role ownership; CLI plan/output paths redact secrets.
+
+**Verification state:** tests/builds were not run by the agent. Maintainer execution remains required. FS-15 is ready for integration.
+
+
+### FS-16 Pre-Implementation Audit Findings
+
+- [x] **LIB-01 — shared error/diagnostic secret and PII audit passed.** Shared libraries are reusable by every module, so Debug/Display/serialization of credential-bearing or request-bearing types must never become a cross-module leakage primitive.
+- [x] **LIB-02 — shared context/tenant/auth authority audit passed, with LIB-06 remediated.** Verify helpers distinguish trusted runtime authority from client metadata and do not allow downstream modules to reconstruct security context from transport values.
+- [x] **LIB-03 — shared storage/event/web invariant audit passed.** Check shared repository/storage adapters, event envelopes, web helpers and cache primitives for generic behaviors that weaken tenant scope, error stability, transaction ownership or idempotency at call sites.
+- [x] **LIB-04 — feature/optional dependency boundary audit passed.** Verify shared crates do not accidentally enable incompatible feature combinations or expose server-only dependencies to browser/transport targets.
+
+
+### FS-16 Pre-Implementation Audit Finding — Rate Limiter
+
+- [x] **LIB-05 — shared RateLimiter stored raw API keys/login identifiers in bucket keys and Debug output.** `check_api_key` uses `api_key:<raw secret>` as an in-memory bucket key and `check_login` uses `login:<raw identifier>`. `RateLimiter` also derives `Debug`, recursively exposing the bucket map. A diagnostic dump can therefore disclose API credentials and login identifiers. The limiter should use process-local opaque key identities and never render bucket contents.
+
+
+### FS-16 Pre-Implementation Audit Finding — Request Tenant Authority
+
+- [x] **LIB-06 — shared `RequestContext` bypassed the accepted canonical tenant-resolution boundary.** When `TenantContextExtension` is absent, `RequestContext::from_request_parts` accepts `X-Tenant-ID` directly. This contradicts the accepted strict tenant/request-trust ADR, under which tenant resolution is a server-owned middleware pipeline and downstream request contexts must consume the trusted resolved context rather than reconstruct tenant authority from transport metadata.
+
+
+### FS-16 Pre-Implementation Audit Finding — Telemetry Cardinality
+
+- [x] **LIB-07 — shared Prometheus metrics exposed unbounded raw `tenant_id` labels.** `rustok-telemetry` uses tenant UUID strings as labels for event publication, span creation, and media upload/delete counters. Tenant cardinality is deployment-scale and unbounded, so series count grows with every tenant and can become a memory/storage/query resource-exhaustion vector. The shared telemetry contract needs a bounded tenant dimension.
+
+
+### FS-16 Result
+
+**Implemented:** shared `RateLimiter` now stores opaque in-memory identifiers and redacts bucket state from Debug; `RequestContext` now requires the canonical trusted `TenantContextExtension` and no longer reconstructs tenant authority from raw `X-Tenant-ID`; shared tenant-aware Prometheus metrics now use deterministic 256-value `tenant_bucket` labels under the accepted ADR `2026-09-27-bounded-tenant-metric-cardinality.md`.
+
+**Audit passes:** `rustok-api`, `rustok-core`, `rustok-events`, `rustok-runtime`, `rustok-web`, `rustok-telemetry`, and `rustok-fba` were reviewed for secret-bearing Debug/serialization surfaces, request/tenant authority, event envelope validation, storage/runtime path safety, transport error mapping, feature isolation, and dependency direction. Event envelopes do not dump payloads through Debug; AuthContext/TenantContext/ChannelContext consume trusted extensions; `rustok-api` runtime/server features remain directionally isolated; `rustok-core` `redis-cache` is an intentionally empty compatibility feature with no Redis references in cache implementation.
+
+**Verification state:** Tests/builds were not run by the agent. Regression tests were added for the rate limiter, RequestContext and telemetry bucket contract. Maintainer execution remains required. FS-16 implementation is ready for integration.

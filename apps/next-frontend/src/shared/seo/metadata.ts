@@ -304,7 +304,12 @@ function serializeStructuredData(payload: unknown): string | null {
   }
 
   try {
-    return JSON.stringify(payload);
+    return JSON.stringify(payload)
+      .replace(/</g, "\\u003c")
+      .replace(/>/g, "\\u003e")
+      .replace(/&/g, "\\u0026")
+      .replace(/\u2028/g, "\\u2028")
+      .replace(/\u2029/g, "\\u2029");
   } catch {
     return null;
   }
@@ -374,3 +379,5 @@ export function buildSeoMetadata({
     verification: buildVerification(context?.document.verification),
   };
 }
+
+

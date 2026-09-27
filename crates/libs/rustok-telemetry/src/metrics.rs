@@ -18,7 +18,7 @@ use prometheus::{
 
 lazy_static! {
     /// Total events published through EventBus
-    pub static ref EVENT_BUS_PUBLISHED_TOTAL: IntCounterVec = create_int_counter_vec("rustok_event_bus_published_total", "Total events published through EventBus", &["event_type", "tenant_id"]);
+    pub static ref EVENT_BUS_PUBLISHED_TOTAL: IntCounterVec = create_int_counter_vec("rustok_event_bus_published_total", "Total events published through EventBus", &["event_type", "tenant_bucket"]);
 
     /// Total events dispatched to handlers
     pub static ref EVENT_BUS_DISPATCHED_TOTAL: IntCounterVec = create_int_counter_vec("rustok_event_bus_dispatched_total", "Total events dispatched to handlers", &["event_type", "handler"]);
@@ -99,7 +99,7 @@ lazy_static! {
 
 lazy_static! {
     /// Spans created by operation
-    pub static ref SPANS_CREATED_TOTAL: IntCounterVec = create_int_counter_vec("rustok_spans_created_total", "Total spans created", &["operation", "tenant_id"]);
+    pub static ref SPANS_CREATED_TOTAL: IntCounterVec = create_int_counter_vec("rustok_spans_created_total", "Total spans created", &["operation", "tenant_bucket"]);
 
     /// Span duration by operation
     pub static ref SPAN_DURATION_SECONDS: HistogramVec = create_histogram_vec("rustok_span_duration_seconds", "Span duration in seconds", vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0], &["operation"]);
@@ -236,6 +236,19 @@ lazy_static! {
     pub static ref RATE_LIMIT_EXCEEDED_TOTAL: IntCounterVec = create_int_counter_vec("rustok_rate_limit_exceeded_total", "Total rate-limit exceeded outcomes", &["namespace"]);
 }
 
+const TENANT_METRIC_BUCKETS: u16 = 256;
+
+fn tenant_metric_bucket(tenant_id: &str) -> String {
+    // FNV-1a is used only to bound observability cardinality, not for security.
+    // The fixed algorithm is deterministic across processes and restarts.
+    let mut hash = 0xcbf29ce484222325_u64;
+    for byte in tenant_id.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x00000100000001b3);
+    }
+    (hash % u64::from(TENANT_METRIC_BUCKETS)).to_string()
+}
+
 // ============================================================================
 // Registration Helper
 // ============================================================================
@@ -334,8 +347,9 @@ pub fn register_all(registry: &Registry) -> Result<(), prometheus::Error> {
 
 /// Record EventBus event publication
 pub fn record_event_published(event_type: &str, tenant_id: &str) {
+    let tenant_bucket = tenant_metric_bucket(tenant_id);
     EVENT_BUS_PUBLISHED_TOTAL
-        .with_label_values(&[event_type, tenant_id])
+        .with_label_values(&[event_type, tenant_bucket.as_str()])
         .inc();
 }
 
@@ -458,8 +472,9 @@ pub fn record_cache_duration(cache: &str, operation: &str, duration_secs: f64) {
 
 /// Record span creation
 pub fn record_span_created(operation: &str, tenant_id: &str) {
+    let tenant_bucket = tenant_metric_bucket(tenant_id);
     SPANS_CREATED_TOTAL
-        .with_label_values(&[operation, tenant_id])
+        .with_label_values(&[operation, tenant_bucket.as_str()])
         .inc();
 }
 
@@ -699,13 +714,13 @@ pub fn record_rate_limit_exceeded(namespace: &str) {
 
 lazy_static! {
     /// Total media files uploaded, by tenant and MIME category (image/video/…).
-    pub static ref MEDIA_UPLOADS_TOTAL: IntCounterVec = create_int_counter_vec("rustok_media_uploads_total", "Total media files uploaded", &["tenant_id", "mime_category"]);
+    pub static ref MEDIA_UPLOADS_TOTAL: IntCounterVec = create_int_counter_vec("rustok_media_uploads_total", "Total media files uploaded", &["tenant_bucket", "mime_category"]);
 
     /// Total bytes uploaded, by tenant.
-    pub static ref MEDIA_UPLOAD_BYTES_TOTAL: IntCounterVec = create_int_counter_vec("rustok_media_upload_bytes_total", "Total bytes of media uploaded", &["tenant_id"]);
+    pub static ref MEDIA_UPLOAD_BYTES_TOTAL: IntCounterVec = create_int_counter_vec("rustok_media_upload_bytes_total", "Total bytes of media uploaded", &["tenant_bucket"]);
 
     /// Total media files deleted, by tenant.
-    pub static ref MEDIA_DELETES_TOTAL: IntCounterVec = create_int_counter_vec("rustok_media_deletes_total", "Total media files deleted", &["tenant_id"]);
+    pub static ref MEDIA_DELETES_TOTAL: IntCounterVec = create_int_counter_vec("rustok_media_deletes_total", "Total media files deleted", &["tenant_bucket"]);
 
     /// Storage health status: 1 = healthy, 0 = unhealthy.
     pub static ref MEDIA_STORAGE_HEALTH: IntGaugeVec = create_int_gauge_vec("rustok_media_storage_health", "Storage backend health: 1=healthy 0=unhealthy", &["driver"]);
@@ -722,17 +737,21 @@ lazy_static! {
 /// Record a successful media upload.
 pub fn record_media_upload(tenant_id: &str, mime_type: &str, bytes: u64) {
     let category = mime_type.split('/').next().unwrap_or("other");
+    let tenant_bucket = tenant_metric_bucket(tenant_id);
     MEDIA_UPLOADS_TOTAL
-        .with_label_values(&[tenant_id, category])
+        .with_label_values(&[tenant_bucket.as_str(), category])
         .inc();
     MEDIA_UPLOAD_BYTES_TOTAL
-        .with_label_values(&[tenant_id])
+        .with_label_values(&[tenant_bucket.as_str()])
         .inc_by(bytes);
 }
 
 /// Record a media deletion.
 pub fn record_media_delete(tenant_id: &str) {
-    MEDIA_DELETES_TOTAL.with_label_values(&[tenant_id]).inc();
+    let tenant_bucket = tenant_metric_bucket(tenant_id);
+    MEDIA_DELETES_TOTAL
+        .with_label_values(&[tenant_bucket.as_str()])
+        .inc();
 }
 
 /// Update storage backend health.
@@ -761,4 +780,20 @@ pub fn record_media_upload_session(outcome: &str) {
     MEDIA_UPLOAD_SESSIONS_TOTAL
         .with_label_values(&[outcome])
         .inc();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tenant_metric_bucket;
+
+    #[test]
+    fn tenant_metric_bucket_is_deterministic_and_bounded() {
+        let tenant = "7f4f3e6e-3f1f-4f99-8d4b-3cc2c3b7a2d1";
+        let first = tenant_metric_bucket(tenant);
+        let second = tenant_metric_bucket(tenant);
+
+        assert_eq!(first, second);
+        let bucket = first.parse::<u16>().expect("tenant bucket is numeric");
+        assert!(bucket < 256);
+    }
 }

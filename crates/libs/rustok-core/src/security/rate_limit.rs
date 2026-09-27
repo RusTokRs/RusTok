@@ -7,6 +7,7 @@
 //! - Resource exhaustion
 
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -98,7 +99,6 @@ impl TokenBucket {
 }
 
 /// Rate limiter implementation
-#[derive(Debug)]
 pub struct RateLimiter {
     buckets: Arc<RwLock<HashMap<String, TokenBucket>>>,
     config: RateLimitConfig,
@@ -121,14 +121,14 @@ impl RateLimiter {
 
     /// Check login attempt rate limit
     pub async fn check_login(&self, identifier: &str) -> RateLimitResult {
-        let key = format!("login:{}", identifier);
+        let key = opaque_identifier_key("login", identifier);
         self.check_key(&key, self.config.login_attempts_per_minute)
             .await
     }
 
     /// Check API key rate limit
     pub async fn check_api_key(&self, api_key: &str) -> RateLimitResult {
-        let key = format!("api_key:{}", api_key);
+        let key = opaque_identifier_key("api_key", api_key);
         self.check_key(&key, self.config.api_key_requests_per_minute)
             .await
     }
@@ -164,8 +164,35 @@ impl RateLimiter {
     /// Reset rate limit for a key
     pub async fn reset(&self, key: &str) {
         let mut buckets = self.buckets.write().await;
-        buckets.remove(key);
+        buckets.remove(&normalize_reset_key(key));
     }
+}
+
+impl std::fmt::Debug for RateLimiter {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RateLimiter")
+            .field("config", &self.config)
+            .field("bucket_count", &"<redacted>")
+            .finish()
+    }
+}
+
+fn opaque_identifier_key(kind: &str, value: &str) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    kind.hash(&mut hasher);
+    value.hash(&mut hasher);
+    format!("{kind}:{:016x}", hasher.finish())
+}
+
+fn normalize_reset_key(key: &str) -> String {
+    if let Some(value) = key.strip_prefix("login:") {
+        return opaque_identifier_key("login", value);
+    }
+    if let Some(value) = key.strip_prefix("api_key:") {
+        return opaque_identifier_key("api_key", value);
+    }
+    key.to_string()
 }
 
 /// Audit rate limiting configuration
@@ -223,6 +250,38 @@ mod tests {
         assert!(bucket.consume(1.0));
         // Bucket should be empty now
         assert!(!bucket.consume(1.0));
+    }
+
+    #[tokio::test]
+    async fn api_key_and_login_identifiers_are_not_exposed_by_debug() {
+        let limiter = RateLimiter::new(RateLimitConfig {
+            burst_size: 1,
+            ..Default::default()
+        });
+
+        let api_key = "super-secret-api-key";
+        let login = "user@example.com";
+
+        assert_eq!(
+            limiter.check_api_key(api_key).await,
+            RateLimitResult::Allowed
+        );
+        assert_eq!(
+            limiter.check_login(login).await,
+            RateLimitResult::Allowed
+        );
+
+        let debug = format!("{limiter:?}");
+        assert!(!debug.contains(api_key));
+        assert!(!debug.contains(login));
+        assert!(debug.contains("RateLimiter"));
+
+        // Public reset semantics continue to accept the logical identifier.
+        limiter.reset(&format!("api_key:{api_key}")).await;
+        assert_eq!(
+            limiter.check_api_key(api_key).await,
+            RateLimitResult::Allowed
+        );
     }
 
     #[tokio::test]
