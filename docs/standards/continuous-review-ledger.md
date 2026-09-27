@@ -10,7 +10,7 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-15 — utilities/installer/build/release tooling (audit in progress; tests remain maintainer-owned).  
+**Active phase:** FS-17 — dependency & supply-chain closure (audit in progress; tests remain maintainer-owned).  
 **Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
 
 ### FS-01 Pre-Implementation Audit Findings
@@ -61,7 +61,7 @@ status: active
 | FS-13 | Shared frontend/browser packages | `packages/*`, UI cores, richtext, generated clients, shared state, URL/security helpers, duplicated semantics | [ ] |
 | FS-14 | Storage/schema/migrations | all module migrations, entity/schema parity, cross-backend behavior, constraints, indexes, rollback/down paths, data-loss hazards | [x] |
 | FS-15 | Utilities/installer/build/release tooling | `crates/utils/*`, installer, source/publication/signing, CLI tooling, build scripts, deployment tooling and operator safety | [x] |
-| FS-16 | Shared libraries | `crates/libs/*`, UI foundations, common infrastructure and reusable abstractions; ownership, API stability, hidden coupling, dependency direction | [ ] |
+| FS-16 | Shared libraries | `crates/libs/*`, UI foundations, common infrastructure and reusable abstractions; ownership, API stability, hidden coupling, dependency direction | [x] |
 | FS-17 | Dependency & supply-chain closure | Cargo/npm lockfiles, duplicate/unused dependencies, feature flags, unsafe/advisory surfaces, generated code provenance, licenses/policies where repository contracts require them | [ ] |
 | FS-18 | Cross-cutting business scenarios | end-to-end invariants spanning owners: tenant isolation, auth/RBAC, money, lifecycle, idempotency, events, projections, cache invalidation, locale/channel context, destructive operations | [ ] |
 | FS-19 | Final architecture reconciliation | dependency graph, boundary violations, dead/duplicate paths, stale docs/ADRs, generated artifacts, canonical vocabulary, remaining TODO/placeholder risk | [ ] |
@@ -886,3 +886,35 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** release packaging/finalization is deterministic and rejects symlinks/unexpected files; release workflows pin action revisions and verify release ancestry, signing, immutability, exact assets, checksums, SBOM/provenance and image digests; source/publication materializers enforce safe paths, create-new semantics and executable identity; installer receipts are signature/digest bound and production preflight rejects plaintext/sample secrets; topology validates exact surface/role ownership; CLI plan/output paths redact secrets.
 
 **Verification state:** tests/builds were not run by the agent. Maintainer execution remains required. FS-15 is ready for integration.
+
+
+### FS-16 Pre-Implementation Audit Findings
+
+- [x] **LIB-01 — shared error/diagnostic secret and PII audit passed.** Shared libraries are reusable by every module, so Debug/Display/serialization of credential-bearing or request-bearing types must never become a cross-module leakage primitive.
+- [x] **LIB-02 — shared context/tenant/auth authority audit passed, with LIB-06 remediated.** Verify helpers distinguish trusted runtime authority from client metadata and do not allow downstream modules to reconstruct security context from transport values.
+- [x] **LIB-03 — shared storage/event/web invariant audit passed.** Check shared repository/storage adapters, event envelopes, web helpers and cache primitives for generic behaviors that weaken tenant scope, error stability, transaction ownership or idempotency at call sites.
+- [x] **LIB-04 — feature/optional dependency boundary audit passed.** Verify shared crates do not accidentally enable incompatible feature combinations or expose server-only dependencies to browser/transport targets.
+
+
+### FS-16 Pre-Implementation Audit Finding — Rate Limiter
+
+- [x] **LIB-05 — shared RateLimiter stored raw API keys/login identifiers in bucket keys and Debug output.** `check_api_key` uses `api_key:<raw secret>` as an in-memory bucket key and `check_login` uses `login:<raw identifier>`. `RateLimiter` also derives `Debug`, recursively exposing the bucket map. A diagnostic dump can therefore disclose API credentials and login identifiers. The limiter should use process-local opaque key identities and never render bucket contents.
+
+
+### FS-16 Pre-Implementation Audit Finding — Request Tenant Authority
+
+- [x] **LIB-06 — shared `RequestContext` bypassed the accepted canonical tenant-resolution boundary.** When `TenantContextExtension` is absent, `RequestContext::from_request_parts` accepts `X-Tenant-ID` directly. This contradicts the accepted strict tenant/request-trust ADR, under which tenant resolution is a server-owned middleware pipeline and downstream request contexts must consume the trusted resolved context rather than reconstruct tenant authority from transport metadata.
+
+
+### FS-16 Pre-Implementation Audit Finding — Telemetry Cardinality
+
+- [x] **LIB-07 — shared Prometheus metrics exposed unbounded raw `tenant_id` labels.** `rustok-telemetry` uses tenant UUID strings as labels for event publication, span creation, and media upload/delete counters. Tenant cardinality is deployment-scale and unbounded, so series count grows with every tenant and can become a memory/storage/query resource-exhaustion vector. The shared telemetry contract needs a bounded tenant dimension.
+
+
+### FS-16 Result
+
+**Implemented:** shared `RateLimiter` now stores opaque in-memory identifiers and redacts bucket state from Debug; `RequestContext` now requires the canonical trusted `TenantContextExtension` and no longer reconstructs tenant authority from raw `X-Tenant-ID`; shared tenant-aware Prometheus metrics now use deterministic 256-value `tenant_bucket` labels under the accepted ADR `2026-09-27-bounded-tenant-metric-cardinality.md`.
+
+**Audit passes:** `rustok-api`, `rustok-core`, `rustok-events`, `rustok-runtime`, `rustok-web`, `rustok-telemetry`, and `rustok-fba` were reviewed for secret-bearing Debug/serialization surfaces, request/tenant authority, event envelope validation, storage/runtime path safety, transport error mapping, feature isolation, and dependency direction. Event envelopes do not dump payloads through Debug; AuthContext/TenantContext/ChannelContext consume trusted extensions; `rustok-api` runtime/server features remain directionally isolated; `rustok-core` `redis-cache` is an intentionally empty compatibility feature with no Redis references in cache implementation.
+
+**Verification state:** Tests/builds were not run by the agent. Regression tests were added for the rate limiter, RequestContext and telemetry bucket contract. Maintainer execution remains required. FS-16 implementation is ready for integration.
