@@ -84,9 +84,8 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
 
     // Subscribe before any transport can publish a generation. This also restores shared
     // generations before middleware and authorization paths construct or read their caches.
-    start_tenant_cache_generation_listener(ctx, cache.clone())
-        .await
-        .map_err(|error| Error::Cache(error.to_string()))?;
+    crate::services::cache_redis_status_monitor::start_cache_redis_status_monitor(ctx, cache.clone()).await;
+    start_tenant_cache_generation_listener(ctx, cache.clone()).await?;
     start_rbac_cache_invalidation_listener(ctx, cache.clone()).await?;
 
     let runtime = match delivery_profile {

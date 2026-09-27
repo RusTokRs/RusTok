@@ -254,6 +254,13 @@ pub async fn ready(
                 DependencyCriticality::NonCritical,
                 "dependency",
                 || async {
+                    if !settings.search.enabled
+                        || settings.search.driver.eq_ignore_ascii_case("postgres")
+                        || settings.search.driver.eq_ignore_ascii_case("memory")
+                        || settings.search.url.trim().is_empty()
+                    {
+                        return Ok(());
+                    }
                     let (host, port) = parse_host_port(&settings.search.url)?;
                     TcpStream::connect((host.as_str(), port))
                         .await

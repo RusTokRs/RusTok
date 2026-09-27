@@ -69,15 +69,24 @@ fn require_permission<'a>(
     Ok(auth)
 }
 
-fn require_host_authority(
-    _ctx: &Context<'_>,
+fn require_host_or_permission(
+    ctx: &Context<'_>,
     required: HostAuthority,
-) -> Result<HostAuthorityContext> {
-    crate::host_authority::current_host_authority()
-        .filter(|authority| authority.allows(required))
-        .ok_or_else(|| {
-            <FieldError as GraphQLError>::permission_denied("host-global authority required")
-        })
+    permission: &Permission,
+    message: &str,
+) -> Result<()> {
+    if let Some(authority) = crate::host_authority::current_host_authority() {
+        if authority.allows(required) {
+            return Ok(());
+        }
+    }
+    let auth = ctx
+        .data::<AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+    if has_effective_permission(&auth.permissions, permission) {
+        return Ok(());
+    }
+    Err(<FieldError as GraphQLError>::permission_denied(message))
 }
 
 // ── Query ─────────────────────────────────────────────────────────────────────
@@ -90,7 +99,12 @@ impl SystemQuery {
     /// Detailed system health is a host-operator diagnostic surface. Public
     /// liveness/readiness checks must use the dedicated HTTP health endpoints.
     async fn system_health(&self, ctx: &Context<'_>) -> Result<SystemHealthSummary> {
-        require_host_authority(ctx, HostAuthority::Read)?;
+        require_host_or_permission(
+            ctx,
+            HostAuthority::Read,
+            &Permission::SETTINGS_READ,
+            "host-global authority or settings:read permission required",
+        )?;
         let db = ctx.data::<DatabaseConnection>()?;
         let mut components = Vec::new();
         let mut overall = "ok";
@@ -154,7 +168,12 @@ impl SystemQuery {
     async fn cache_health(&self, ctx: &Context<'_>) -> Result<CacheHealthPayload> {
         use rustok_cache::CacheService;
 
-        require_host_authority(ctx, HostAuthority::Read)?;
+        require_host_or_permission(
+            ctx,
+            HostAuthority::Read,
+            &Permission::SETTINGS_READ,
+            "host-global authority or settings:read permission required",
+        )?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
 
         let Some(cache) = runtime_ctx.shared_get::<CacheService>() else {
@@ -184,7 +203,12 @@ impl SystemQuery {
 
     /// Event transport topology and all-tenant queue counts require host read authority.
     async fn events_status(&self, ctx: &Context<'_>) -> Result<EventsStatusPayload> {
-        require_host_authority(ctx, HostAuthority::Read)?;
+        require_host_or_permission(
+            ctx,
+            HostAuthority::Read,
+            &Permission::SETTINGS_READ,
+            "host-global authority or settings:read permission required",
+        )?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let db = runtime_ctx.db();
         let ev = &runtime_ctx.settings().events;
