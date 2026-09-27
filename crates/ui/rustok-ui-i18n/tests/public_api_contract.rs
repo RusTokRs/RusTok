@@ -34,6 +34,11 @@ fn prelude_exposes_the_supported_high_level_consumer_surface() {
         locale_text_direction("ar"),
         Some(TextDirection::RightToLeft)
     );
+
+    const LAZY_BUNDLES: &[(&str, &str)] = &[("en", EN_FTL)];
+    let lazy: LazyUiMessages = LazyUiMessages::new("en", LAZY_BUNDLES);
+    let lazy_translator: LazyUiLocaleTranslator<'_> = lazy.for_locale(Some("en"));
+    assert_eq!(lazy_translator.t("hello", "fallback"), "Hello");
 }
 
 #[test]

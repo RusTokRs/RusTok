@@ -179,6 +179,13 @@ runtime filesystem discovery.
     the existing no-argument `en`/`ru` compatibility form and custom source form. The engine does not pretend
     to manufacture translated product copy: module owners still provide and review every advertised FTL file.
 
+31. **Opt-in per-locale lazy Fluent parsing.**
+    `LazyUiMessages` and `declare_module_i18n!(lazy, ...)` index canonical locale declarations once but parse
+    and retain only bundles reached by actual fallback chains. Per-locale `OnceLock` cells make concurrent first
+    use deterministic, cache failures, and keep malformed resources fail-soft with inspectable diagnostics.
+    Full `validate()`/`prepare()` remains eager and fail-closed. This addresses startup/resident-state scaling;
+    compile-time `include_str!` bytes remain in the binary, so downloadable catalogs still require a host adapter.
+
 ## Remaining engineering work
 
 ### 1. Public API / semver surface before 1.0

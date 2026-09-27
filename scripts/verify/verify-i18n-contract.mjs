@@ -103,6 +103,21 @@ expectNotContains(
   "fn normalize_locale_tag(",
   "duplicate locale normalizer in rustok-ai metrics",
 );
+expectContains(
+  "crates/ui/rustok-ui-i18n/src/lazy.rs",
+  "pub struct LazyUiMessages",
+  "the shared per-locale lazy catalog facade",
+);
+expectContains(
+  "crates/ui/rustok-ui-i18n/src/macros.rs",
+  "LazyUiMessages",
+  "module macro support for opt-in per-locale lazy catalogs",
+);
+expectNotContains(
+  "crates/ui/rustok-ui-i18n/src/locale.rs",
+  "parse_accept_language",
+  "host-owned Accept-Language negotiation inside the message catalog crate",
+);
 
 const forbiddenLocaleDefaultPatterns = [
   "default('en')",

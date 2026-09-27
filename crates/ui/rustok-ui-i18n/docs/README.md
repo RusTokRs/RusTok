@@ -11,7 +11,7 @@
 
 ## Responsibility Zone
 
-- compile embedded `.ftl` resources into concurrent Fluent bundles;
+- compile embedded `.ftl` resources into concurrent Fluent bundles, either eagerly as one catalog or lazily per locale;
 - parse complete Unicode locales, canonicalize CLDR aliases, and project them to Fluent catalog identities;
 - expose CLDR directionality and likely-script-aware fallback without host-maintained language lists;
 - resolve requested, default, platform and literal fallback paths;
@@ -25,6 +25,12 @@ including extensions, is available through `normalize_unicode_locale`; Fluent ca
 its language/script/region/variant projection through `normalize_locale_tag`. Catalog declarations
 remain extension-free by design. Locale negotiation (headers, cookies, user preferences, q-values)
 remains host policy rather than a hidden responsibility of this crate.
+
+`UiMessages` retains the compatibility behavior of constructing one complete catalog on first access.
+For large embedded language sets, `LazyUiMessages` indexes canonical declarations once and parses only
+locale bundles reached by actual fallback chains. Complete `validate()`/`prepare()` calls remain eager
+and fail closed for CI/startup assurance. Lazy parsing saves startup work and resident bundle state, not
+embedded binary bytes; external/downloadable resources remain an adapter concern.
 
 ## Integration
 

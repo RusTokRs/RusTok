@@ -9,9 +9,11 @@ This document classifies the current surface before 1.0. It does **not** remove 
 New module-owned UI code should prefer `rustok_ui_i18n::prelude::*` when a glob import is appropriate. The prelude intentionally contains only the consumer-facing runtime and macro layer:
 
 - `UiMessages`
+- `LazyUiMessages`
 - `PreparedUiMessages`
 - `UiTranslator`
 - `UiLocaleTranslator`
+- `LazyUiLocaleTranslator`
 - `ResolvedMessage`
 - `TextDirection` / `locale_text_direction`
 - `BundleBuildError`
@@ -24,7 +26,7 @@ New module-owned UI code should prefer `rustok_ui_i18n::prelude::*` when a glob 
 - `validate_message_key`
 - `validate_message_attribute`
 
-`FluentArgs` is retained in this tier because argument-bearing public formatting methods accept it directly and the public macros construct it.
+`FluentArgs` is retained in this tier because argument-bearing public formatting methods accept it directly and the public macros construct it. `LazyUiMessages` is a high-level opt-in rather than a replacement for `UiMessages`: it keeps embedded bytes static but defers each locale's Fluent parse and bundle allocation until lookup reaches that locale. Its `validate()` and `prepare()` methods still inspect the complete catalog.
 
 The prelude is additive. Existing crate-root imports remain valid.
 

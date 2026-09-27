@@ -12,6 +12,7 @@ The crate is structured into focused domain modules:
 - `locale`: complete Unicode locale normalization (`normalize_unicode_locale`), ICU4X/CLDR alias canonicalization, Fluent catalog-identity projection (`normalize_locale_tag`), locale directionality (`locale_text_direction`), canonical admin locale resolution (`normalize_admin_locale`), and structured fallback candidate chains (`locale_candidates`).
 - `bundle`: Concurrent Project Fluent (`.ftl`) bundle (`build_fluent_bundle`) and catalog (`build_fluent_catalog`, `try_build_fluent_catalog`, `bundle::build_fluent_catalog_report`, `FluentCatalog`) construction with Unicode bidi isolation enabled for interpolated values.
 - `messages`: Core thread-safe UI message facade (`UiMessages`), fail-closed prepared runtime (`PreparedUiMessages`), borrowed translator (`UiTranslator`), prepared per-locale translator (`UiLocaleTranslator`), source-locale provenance (`ResolvedMessage`), compound-message attribute lookup, transitive message/term schema validation, stack-buffered safe kebab-case key conversion (`with_kebab_key`), strict/lenient candidate resolution, and cached lazy-initialization diagnostics.
+- `lazy`: Opt-in per-locale Fluent parsing (`LazyUiMessages`, `LazyUiLocaleTranslator`) for large embedded locale sets while preserving the same fallback, formatting, provenance, and validation contracts.
 - `error`: Typed errors (`BundleBuildError`, `I18nError`) for locale, catalog, lookup, and formatting failures. Both public error enums are non-exhaustive; downstream matches must retain a wildcard arm so new diagnostics can be added compatibly.
 - `macros`: Ergonomic macros (`declare_module_i18n!`, `fluent_args!`, `t!`, `module_t!`).
 
@@ -51,6 +52,14 @@ shortcut for the current two-file modules; new multilingual modules can declare 
 The library supplies locale mechanics and CLDR plural selection, not translated product copy: every
 advertised locale still needs an owned, reviewed `.ftl` catalog.
 
+Large embedded catalogs can opt into `LazyUiMessages` directly or use
+`declare_module_i18n!(lazy, default = "en", locales = [...])`. Locale declarations are canonicalized
+and indexed together, while each concurrent Fluent bundle is parsed only when its locale first appears
+in a lookup fallback chain. Failed bundles are cached, diagnosed once, and skipped using the same
+fail-soft fallback semantics as `UiMessages`; `validate()` and `prepare()` remain complete fail-closed
+checks. This reduces startup parsing and resident bundle state, but does **not** remove `include_str!`
+bytes from native/WASM binaries. Truly downloadable catalogs require a host-owned storage adapter.
+
 The Rust locale-input policy rejects raw locale strings longer than 64 bytes before trimming or
 underscore normalization. Runtime lookup, direct bundle construction, strict/lenient catalog
 construction, and default-locale validation use the same bounded-input contract. Oversized diagnostics
@@ -79,6 +88,8 @@ an override policy for Rust catalogs.
 ## Entry Points
 
 - `UiMessages`
+- `LazyUiMessages`
+- `LazyUiLocaleTranslator`
 - `PreparedUiMessages`
 - `UiTranslator`
 - `UiLocaleTranslator`
@@ -116,8 +127,8 @@ default locale before comparing values and attributes with default-locale contra
 
 ## Interactions
 
-- Module-owned UI packages use this crate from local `i18n.rs` files via `declare_module_i18n!`.
-- Host/runtime code owns effective locale selection; this crate only resolves messages for a supplied locale.
+- Module-owned UI packages use this crate from local `i18n.rs` files via `declare_module_i18n!`; large locale sets may choose its explicit `lazy` form.
+- Host/runtime code owns effective locale selection, including `Accept-Language` parsing and tenant/user policy; this crate only resolves messages for a supplied locale.
 - `@rustok/next-fluent` uses the same Project Fluent bidi-safe default and bounded locale-input policy. Extension-aware canonicalization and CLDR likely-script fallback are now the reference behavior that the separately versioned Next adapter must mirror.
 
 ## Boundary Rules

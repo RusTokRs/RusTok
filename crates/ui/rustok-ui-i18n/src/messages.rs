@@ -11,7 +11,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Once, OnceLock};
 
-use fluent_bundle::FluentArgs;
+use fluent_bundle::concurrent::FluentBundle;
+use fluent_bundle::{FluentArgs, FluentResource};
 use fluent_syntax::ast;
 use unic_langid::LanguageIdentifier;
 
@@ -1131,7 +1132,7 @@ impl UiMessages {
     }
 }
 
-fn normalize_default_locale(default_locale: &str) -> Result<String, BundleBuildError> {
+pub(crate) fn normalize_default_locale(default_locale: &str) -> Result<String, BundleBuildError> {
     if default_locale.len() > MAX_LOCALE_TAG_LEN {
         return Err(BundleBuildError::LocaleTooLong {
             length: default_locale.len(),
@@ -1165,7 +1166,7 @@ fn ensure_default_locale_present(
 }
 
 #[inline]
-fn effective_locale(candidates: &[String]) -> &str {
+pub(crate) fn effective_locale(candidates: &[String]) -> &str {
     candidates.first().map(String::as_str).unwrap_or("en")
 }
 
@@ -1275,8 +1276,10 @@ fn truncate_for_diagnostic(s: &str, max_bytes: usize) -> String {
     }
 }
 
+pub(crate) type ConcurrentFluentBundle = FluentBundle<FluentResource>;
+
 #[derive(Clone, Copy)]
-enum MessagePart<'a> {
+pub(crate) enum MessagePart<'a> {
     Value,
     Attribute(&'a str),
 }
@@ -1313,12 +1316,12 @@ enum LookupResult {
     Failed(I18nError),
 }
 
-fn lookup_fluent_candidates<'args>(
-    catalog: &FluentCatalog,
+fn lookup_fluent_candidates_with<'bundle, 'args>(
     candidates: &[String],
     key: &str,
     part: MessagePart<'_>,
     args: Option<&FluentArgs<'args>>,
+    mut bundle_for_locale: impl FnMut(&str) -> Option<&'bundle ConcurrentFluentBundle>,
 ) -> LookupResult {
     if let Err(error) = validate_message_key(key) {
         return LookupResult::Failed(error);
@@ -1331,7 +1334,7 @@ fn lookup_fluent_candidates<'args>(
 
     with_kebab_key(key, |lookup_key| {
         for (candidate_index, candidate) in candidates.iter().enumerate() {
-            let Some(bundle) = catalog.get(candidate.as_str()) else {
+            let Some(bundle) = bundle_for_locale(candidate.as_str()) else {
                 continue;
             };
             let Some(message) = bundle.get_message(lookup_key) else {
@@ -1457,7 +1460,25 @@ fn try_resolve_fluent_candidates_with_locale<'args>(
     part: MessagePart<'_>,
     args: Option<&FluentArgs<'args>>,
 ) -> Result<ResolvedMessage, I18nError> {
-    match lookup_fluent_candidates(catalog, candidates, key, part, args) {
+    try_resolve_candidates_with_provider(
+        candidates,
+        effective_locale,
+        key,
+        part,
+        args,
+        |candidate| catalog.get(candidate),
+    )
+}
+
+pub(crate) fn try_resolve_candidates_with_provider<'bundle, 'args>(
+    candidates: &[String],
+    effective_locale: &str,
+    key: &str,
+    part: MessagePart<'_>,
+    args: Option<&FluentArgs<'args>>,
+    bundle_for_locale: impl FnMut(&str) -> Option<&'bundle ConcurrentFluentBundle>,
+) -> Result<ResolvedMessage, I18nError> {
+    match lookup_fluent_candidates_with(candidates, key, part, args, bundle_for_locale) {
         LookupResult::Found {
             value,
             candidate_index,
@@ -1547,7 +1568,19 @@ fn resolve_fluent_candidates_with_locale<'args>(
     part: MessagePart<'_>,
     args: Option<&FluentArgs<'args>>,
 ) -> Option<ResolvedMessage> {
-    match lookup_fluent_candidates(catalog, candidates, key, part, args) {
+    resolve_candidates_with_provider(candidates, key, part, args, |candidate| {
+        catalog.get(candidate)
+    })
+}
+
+pub(crate) fn resolve_candidates_with_provider<'bundle, 'args>(
+    candidates: &[String],
+    key: &str,
+    part: MessagePart<'_>,
+    args: Option<&FluentArgs<'args>>,
+    bundle_for_locale: impl FnMut(&str) -> Option<&'bundle ConcurrentFluentBundle>,
+) -> Option<ResolvedMessage> {
+    match lookup_fluent_candidates_with(candidates, key, part, args, bundle_for_locale) {
         LookupResult::Found {
             value,
             candidate_index,

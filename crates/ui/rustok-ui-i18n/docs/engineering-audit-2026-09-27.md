@@ -183,12 +183,31 @@ production-парсинге **не подтвердились**.
 - **Граница:** библиотека поддерживает механизмы произвольных языков, но не генерирует
   переводы. Каждый рекламируемый язык всё равно требует проверенный module-owned FTL.
 
+### F-11 — большой embedded catalog целиком парсился при первом lookup
+
+- **Серьёзность:** средняя, высокая при десятках/сотнях языков и в WASM.
+- **Статус до:** подтверждено при scalability-продолжении аудита.
+- **Причина:** `UiMessages` корректно откладывал инициализацию через `OnceLock`, но первый
+  запрос строил `FluentBundle` для каждого объявленного языка, даже если процесс всегда
+  обслуживал одну locale. Рост поддерживаемых языков линейно увеличивал startup work и
+  resident bundle state.
+- **Исправление:** добавлен opt-in `LazyUiMessages` и macro form `lazy`: объявления
+  canonicalize/index один раз, а каждый locale bundle имеет независимый thread-safe
+  `OnceLock`. Lookup загружает только достигнутые fallback-кандидаты, кеширует ошибки,
+  сохраняет provenance/attributes/strict lookup semantics и позволяет инспектировать
+  declaration и loaded-bundle diagnostics. Полная `validate()`/`prepare()` остаётся
+  fail-closed проверкой всего каталога.
+- **Граница:** `include_str!` по-прежнему помещает все FTL bytes в binary. Runtime
+  download/eviction требует отдельного host storage adapter и не маскируется названием
+  «lazy».
+
 ## Проверенные инварианты, не требующие изменения
 
 1. **Bidi:** `set_use_isolating(true)` вызывается при каждой сборке Rust bundle;
    lenient formatting не возвращает частичный malformed output.
-2. **Concurrency:** `UiMessages` использует `OnceLock<FluentCatalogBuildReport>` и
-   `Once` для one-time logging; каталог содержит concurrent `FluentBundle`.
+2. **Concurrency:** `UiMessages` использует `OnceLock<FluentCatalogBuildReport>`, а
+   `LazyUiMessages` — отдельный `OnceLock` для locale index и каждого concurrent
+   `FluentBundle`; diagnostics логируются один раз.
 3. **Locale model:** полная Unicode locale request identity и extension-free Fluent
    catalog identity разделены явно; CLDR canonicalization не смешивает formatting
    preferences с каталогами сообщений.
@@ -209,7 +228,7 @@ host/runtime
   └─ выбирает effective locale (route/cookie/header/user policy)
      └─ rustok-ui-i18n
         ├─ canonical locale + structural fallback
-        ├─ immutable concurrent Fluent catalog
+        ├─ eager validated catalog or opt-in per-locale lazy bundles
         ├─ value / attribute formatting + bidi isolation
         ├─ strict startup schema/reference validation
         ├─ lenient rendering + cached diagnostics
