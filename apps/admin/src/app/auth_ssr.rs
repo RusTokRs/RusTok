@@ -1,4 +1,4 @@
-use axum::http::{HeaderMap, request::Parts};
+use axum::{extract::Request, http::{HeaderMap, request::Parts}, middleware::Next, response::Response};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use leptos::prelude::*;
@@ -82,8 +82,35 @@ pub fn AuthCookieBootstrap() -> impl IntoView {
 
 pub fn request_auth_snapshot() -> ServerAuthSnapshot {
     use_context::<Parts>()
-        .map(|parts| auth_snapshot_from_headers(&parts.headers))
+        .and_then(|parts| parts.extensions.get::<ServerAuthSnapshot>().cloned())
         .unwrap_or_default()
+}
+
+/// Verifies the browser-provided admin session before it becomes SSR auth context.
+///
+/// The cookie is only a transport envelope. Its identity/role fields are never trusted; the
+/// contained bearer token is revalidated by the canonical auth transport and the returned user
+/// becomes the request-scoped snapshot consumed by AuthProvider.
+pub async fn verify_auth_snapshot(mut request: Request, next: Next) -> Response {
+    let candidate = auth_snapshot_from_headers(request.headers());
+    let snapshot = match candidate.session {
+        Some(session) => match leptos_auth::transport::fetch_current_user(
+            session.token.clone(),
+            session.tenant.clone(),
+        )
+        .await
+        {
+            Ok(Some(user)) => ServerAuthSnapshot {
+                session: Some(session),
+                user: Some(user),
+            },
+            _ => ServerAuthSnapshot::default(),
+        },
+        None => ServerAuthSnapshot::default(),
+    };
+
+    request.extensions_mut().insert(snapshot);
+    next.run(request).await
 }
 
 pub fn auth_snapshot_from_headers(headers: &HeaderMap) -> ServerAuthSnapshot {
@@ -168,6 +195,40 @@ mod tests {
         let snapshot = auth_snapshot_from_headers(&headers);
         assert_eq!(snapshot.session, Some(session));
         assert_eq!(snapshot.user, Some(user));
+    }
+
+    #[test]
+    fn request_auth_snapshot_uses_only_trusted_request_extension() {
+        let forged_session = AuthSession {
+            token: "attacker-token".to_string(),
+            refresh_token: "attacker-refresh".to_string(),
+            expires_at: i64::MAX,
+            tenant: "attacker-tenant".to_string(),
+        };
+        let forged_user = AuthUser {
+            id: "attacker".to_string(),
+            email: "attacker@example.test".to_string(),
+            name: Some("Attacker".to_string()),
+            role: "admin".to_string(),
+        };
+        let cookie = format!(
+            "{ADMIN_SESSION_COOKIE}={}; {ADMIN_USER_COOKIE}={}",
+            encoded(&forged_session),
+            encoded(&forged_user),
+        );
+        let (_, parts) = axum::http::Request::builder()
+            .header(axum::http::header::COOKIE, cookie)
+            .body(())
+            .expect("request")
+            .into_parts();
+
+        let owner = Owner::new();
+        let snapshot = owner.with(|| {
+            provide_context(parts);
+            request_auth_snapshot()
+        });
+
+        assert_eq!(snapshot, ServerAuthSnapshot::default());
     }
 
     #[test]
