@@ -815,3 +815,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 - [ ] **NEXT-01 — Next.js server/client trust boundary requires audit.** Verify browser-provided tenant, user, role and provider data cannot become server authority, and server actions route mutations through canonical backend owner boundaries.
 - [ ] **NEXT-02 — proxy/middleware/auth and caching require audit.** Verify auth/session cookies, proxy rewrites, cache headers, route handlers and server-side fetches cannot cross tenant/session boundaries or cache authenticated data publicly.
 - [ ] **NEXT-03 — GraphQL/REST/SEO data loading requires audit.** Verify server components, route handlers and metadata generation use tenant/locale context from trusted request state, avoid secret leakage in HTML, and preserve fail-closed authorization semantics.
+
+
+- [ ] **NEXT-04 — SEO JSON-LD serialization creates an inline-script XSS sink.** `buildSeoStructuredDataScripts` uses `JSON.stringify` directly for backend-provided `structuredDataBlocks.payload` and renders the result through `dangerouslySetInnerHTML`. JSON permits the literal `<` character, so a payload containing `</script><script>…` can terminate the JSON-LD script element before the browser sees the data as JSON. The serializer must emit script-safe JSON (at minimum escape `<`, `>`, `&`, U+2028 and U+2029).
