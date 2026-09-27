@@ -30,6 +30,12 @@ impl CommandProvider for InstallerCommandProvider {
             CommandDescriptor::new("seed", "apply", "Apply a typed tenant seed profile")
                 .with_dry_run(),
             CommandDescriptor::new(
+                "starter",
+                "import",
+                "Import a starter blueprint package into a tenant",
+            )
+            .with_dry_run(),
+            CommandDescriptor::new(
                 "install",
                 "plan",
                 "Validate and render a redacted installer plan without database access",
@@ -63,6 +69,11 @@ impl CommandProvider for InstallerCommandProvider {
                     .await;
             }
             ("install", "status") => return self.install_status_command().await,
+            ("starter", "import") => {
+                return self
+                    .starter_import_command(&request.args, request.dry_run)
+                    .await;
+            }
             ("seed", "apply") => {}
             _ => {
                 return Err(CliCoreError::UnknownCommand {

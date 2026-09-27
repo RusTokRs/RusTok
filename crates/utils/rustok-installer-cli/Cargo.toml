@@ -16,6 +16,7 @@ rustok-installer-persistence.workspace = true
 rustok-outbox.workspace = true
 rustok-runtime.workspace = true
 rustok-starter.workspace = true
+rustok-tenant.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 
