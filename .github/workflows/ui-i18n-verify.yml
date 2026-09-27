@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
@@ -42,16 +43,37 @@ jobs:
         with:
           workspaces: ". -> target"
       - name: Format
-        run: cargo fmt -p rustok-ui-i18n
-      - name: Upload formatted i18n sources
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: rustok-ui-i18n-formatted
-          path: |
-            crates/ui/rustok-ui-i18n/src
-            crates/ui/rustok-ui-i18n/tests
+        run: |
+          cargo fmt -p rustok-ui-i18n
+          git diff -- crates/ui/rustok-ui-i18n > /tmp/rustfmt.patch
       - name: Test
-        run: cargo test -p rustok-ui-i18n --all-features
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set +e
+          cargo test -p rustok-ui-i18n --all-features > /tmp/test.log 2>&1
+          status=$?
+          set -e
+          {
+            echo 'Temporary audit validation output:'
+            echo
+            echo '<details><summary>rustfmt patch</summary>'
+            echo
+            echo '```diff'
+            cat /tmp/rustfmt.patch
+            echo '```'
+            echo '</details>'
+            echo
+            echo '<details><summary>cargo test output</summary>'
+            echo
+            echo '```text'
+            tail -n 400 /tmp/test.log
+            echo '```'
+            echo '</details>'
+          } > /tmp/validation.md
+          gh pr comment "$PR_NUMBER" --body-file /tmp/validation.md
+          exit "$status"
       - name: Clippy
         run: cargo clippy -p rustok-ui-i18n --all-targets --all-features -- -D warnings
       - name: WASM check
