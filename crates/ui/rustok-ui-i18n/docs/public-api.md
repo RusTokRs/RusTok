@@ -9,9 +9,13 @@ This document classifies the current surface before 1.0. It does **not** remove 
 New module-owned UI code should prefer `rustok_ui_i18n::prelude::*` when a glob import is appropriate. The prelude intentionally contains only the consumer-facing runtime and macro layer:
 
 - `UiMessages`
+- `LazyUiMessages`
 - `PreparedUiMessages`
 - `UiTranslator`
 - `UiLocaleTranslator`
+- `LazyUiLocaleTranslator`
+- `ResolvedMessage`
+- `TextDirection` / `locale_text_direction`
 - `BundleBuildError`
 - `I18nError`
 - `FluentArgs`
@@ -19,8 +23,10 @@ New module-owned UI code should prefer `rustok_ui_i18n::prelude::*` when a glob 
 - `fluent_args!`
 - `t!`
 - `module_t!`
+- `validate_message_key`
+- `validate_message_attribute`
 
-`FluentArgs` is retained in this tier because argument-bearing public formatting methods accept it directly and the public macros construct it.
+`FluentArgs` is retained in this tier because argument-bearing public formatting methods accept it directly and the public macros construct it. `LazyUiMessages` is a high-level opt-in rather than a replacement for `UiMessages`: it keeps embedded bytes static but defers each locale's Fluent parse and bundle allocation until lookup reaches that locale. `declared_locales()` reports canonical declarations without claiming their unparsed FTL is usable; `loaded_locales()` reports successful loads. Its `validate()` and `prepare()` methods still inspect the complete catalog.
 
 The prelude is additive. Existing crate-root imports remain valid.
 
@@ -35,19 +41,31 @@ The following APIs are intentionally available for callers that need catalog con
 - `bundle::FluentCatalogBuildReport`
 - `FluentCatalog`
 - `normalize_admin_locale`
+- `try_parse_accept_language` / `parse_accept_language`
+- `accept_language_locales` / `accept_language_catalog_locales`
+- `preferred_locale_from_accept_language` / `preferred_catalog_locale_from_accept_language`
+- `AcceptLanguagePreference` / `AcceptLanguageError`
+- `normalize_unicode_locale`
 - `normalize_locale_tag`
 - `locale_candidates`
-- `resolve_fluent_message`
-- `try_resolve_fluent_message`
+- `resolve_fluent_message` / `resolve_fluent_message_with_locale`
+- `try_resolve_fluent_message` / `try_resolve_fluent_message_with_locale`
+- `resolve_fluent_attribute` / `resolve_fluent_attribute_with_locale`
+- `try_resolve_fluent_attribute` / `try_resolve_fluent_attribute_with_locale`
 - `with_kebab_key`
-- `MessageSchema`
-- `extract_locale_schemas`
+- `MessageSchema` / `MessageEntrySchema`
+- `extract_locale_schemas` / `extract_locale_entry_schemas`
 - `validate_catalog_schemas`
 
 Schema extraction applies the bounded locale-input policy and reports canonical locale
 identities. Catalog schema validation uses the same normalized locale identity for the
 configured default, rejects duplicate normalized locale entries, and compares variable
 sets across non-default messages.
+
+The `Accept-Language` APIs own only bounded field syntax, exact q-value ordering, and locale
+canonicalization/projection. They deliberately do not encode host precedence, tenant allowlists,
+or final default selection. They stay outside the prelude so module-owned UI packages consume an
+effective locale instead of starting local negotiation chains.
 
 These APIs are deliberately omitted from the prelude so normal module code does not couple itself to catalog internals by default.
 

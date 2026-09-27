@@ -9,8 +9,9 @@
  */
 
 use rustok_ui_i18n::{
-    BundleBuildError, I18nError, UiMessages, UiTranslator, build_fluent_catalog, fluent_args,
-    locale_candidates, normalize_locale_tag, try_build_fluent_catalog,
+    BundleBuildError, I18nError, TextDirection, UiMessages, UiTranslator, build_fluent_catalog,
+    fluent_args, locale_candidates, locale_text_direction, normalize_locale_tag,
+    normalize_unicode_locale, try_build_fluent_catalog,
 };
 
 fn strip_bidi_isolates(value: &str) -> String {
@@ -31,7 +32,7 @@ fn fallback_chain_preserves_script_region_and_variant_levels() {
 }
 
 #[test]
-fn locale_contract_is_language_identifier_not_extension_preserving_locale() {
+fn full_unicode_locales_map_to_canonical_catalog_identities() {
     assert_eq!(
         normalize_locale_tag("zh_hant_tw"),
         Some("zh-Hant-TW".to_string())
@@ -40,10 +41,53 @@ fn locale_contract_is_language_identifier_not_extension_preserving_locale() {
         normalize_locale_tag("de-DE-1901"),
         Some("de-DE-1901".to_string())
     );
+    assert_eq!(
+        normalize_unicode_locale("EN_us_u_NU_arab"),
+        Some("en-US-u-nu-arab".to_string())
+    );
+    assert_eq!(
+        normalize_locale_tag("en-US-u-ca-gregory"),
+        Some("en-US".to_string())
+    );
+    assert_eq!(
+        normalize_unicode_locale("de-CH-x-phonebk"),
+        Some("de-CH-x-phonebk".to_string())
+    );
+    assert_eq!(
+        normalize_locale_tag("de-CH-x-phonebk"),
+        Some("de-CH".to_string())
+    );
+}
 
-    // `unic_langid::LanguageIdentifier` intentionally models language/script/
-    // region/variants rather than a full extension-preserving BCP-47 locale.
-    assert_eq!(normalize_locale_tag("en-US-u-ca-gregory"), None);
+#[test]
+fn locale_aliases_and_direction_use_cldr_data() {
+    assert_eq!(normalize_locale_tag("iw_IL"), Some("he-IL".to_string()));
+    assert_eq!(normalize_locale_tag("in-ID"), Some("id-ID".to_string()));
+    assert_eq!(
+        locale_text_direction("en-US"),
+        Some(TextDirection::LeftToRight)
+    );
+    assert_eq!(
+        locale_text_direction("ar-EG-u-nu-arab"),
+        Some(TextDirection::RightToLeft)
+    );
+    assert_eq!(
+        locale_text_direction("az-Arab"),
+        Some(TextDirection::RightToLeft)
+    );
+    assert_eq!(locale_text_direction("not@a@locale"), None);
+}
+
+#[test]
+fn region_only_requests_gain_likely_script_fallback() {
+    assert_eq!(
+        locale_candidates(Some("zh-TW-u-ca-chinese"), "en"),
+        vec!["zh-TW", "zh-Hant-TW", "zh-Hant", "zh", "en"]
+    );
+    assert_eq!(
+        locale_candidates(Some("ru-RU"), "en"),
+        vec!["ru-RU", "ru", "en"]
+    );
 }
 
 #[test]
@@ -60,6 +104,22 @@ fn strict_catalog_rejects_duplicate_normalized_locales() {
         BundleBuildError::DuplicateLocale { locale } => assert_eq!(locale, "en-US"),
         other => panic!("expected DuplicateLocale, got {other:?}"),
     }
+}
+
+#[test]
+fn strict_catalog_rejects_cldr_alias_collisions() {
+    let error = match try_build_fluent_catalog(&[
+        ("iw-IL", "title = Legacy\n"),
+        ("he-IL", "title = Modern\n"),
+    ]) {
+        Ok(_) => panic!("deprecated and modern locale aliases must share one identity"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(
+        error,
+        BundleBuildError::DuplicateLocale { locale } if locale == "he-IL"
+    ));
 }
 
 #[test]

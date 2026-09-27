@@ -3,6 +3,8 @@ use std::{fmt, str::FromStr};
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use thiserror::Error;
 
+pub use rustok_ui_i18n::preferred_catalog_locale_from_accept_language as extract_locale_tag_from_header;
+
 pub const PLATFORM_FALLBACK_LOCALE: &str = "en";
 pub const UNKNOWN_PROVENANCE_LOCALE: &str = "und";
 
@@ -230,38 +232,6 @@ pub fn build_locale_candidates<'a>(
     candidates
 }
 
-/// Selects the highest-quality valid locale tag from an `Accept-Language` value.
-pub fn extract_locale_tag_from_header(accept_language: Option<&str>) -> Option<String> {
-    let header = accept_language?;
-    let mut candidates = header
-        .split(',')
-        .filter_map(|entry| {
-            let mut parts = entry.trim().split(';');
-            let locale = normalize_locale_tag(parts.next()?);
-            let quality = parts
-                .find_map(|part| {
-                    let (key, value) = part.trim().split_once('=')?;
-                    key.eq_ignore_ascii_case("q").then_some(value)
-                })
-                .and_then(|value| value.parse::<f32>().ok())
-                .unwrap_or(1.0);
-            locale.map(|locale| (locale, quality))
-        })
-        .collect::<Vec<_>>();
-
-    candidates.sort_by(|left, right| {
-        right
-            .1
-            .partial_cmp(&left.1)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-
-    candidates
-        .into_iter()
-        .find(|(_, quality)| *quality > 0.0)
-        .map(|(locale, _)| locale)
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -310,6 +280,14 @@ mod tests {
         assert_eq!(
             extract_locale_tag_from_header(Some("en-US;q=0.5, ru-RU;q=0.9")),
             Some("ru-RU".to_string())
+        );
+        assert_eq!(
+            extract_locale_tag_from_header(Some("iw-IL-u-ca-hebrew;q=0.9, en;q=0.5")),
+            Some("he-IL".to_string())
+        );
+        assert_eq!(
+            extract_locale_tag_from_header(Some("fr;q=NaN, en;q=0.5")),
+            Some("en".to_string())
         );
         assert_eq!(extract_locale_tag_from_header(Some("en;q=0")), None);
     }

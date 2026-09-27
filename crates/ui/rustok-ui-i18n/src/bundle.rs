@@ -15,7 +15,7 @@ use fluent_bundle::concurrent::FluentBundle;
 use unic_langid::LanguageIdentifier;
 
 use crate::error::BundleBuildError;
-use crate::locale::MAX_LOCALE_TAG_LEN;
+use crate::locale::{MAX_LOCALE_TAG_LEN, canonicalize_language_identifier};
 
 /// A thread-safe, sorted map of normalized locale tags to their concurrent `FluentBundle`.
 pub type FluentCatalog = BTreeMap<String, FluentBundle<FluentResource>>;
@@ -77,6 +77,7 @@ pub(crate) fn parse_language_identifier(
     let normalized = trimmed.replace('_', "-");
     normalized
         .parse()
+        .map(canonicalize_language_identifier)
         .map_err(|source| BundleBuildError::InvalidLocale {
             locale: locale.to_string(),
             source,

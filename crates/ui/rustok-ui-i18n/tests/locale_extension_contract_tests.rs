@@ -10,30 +10,54 @@
 
 use rustok_ui_i18n::{
     BundleBuildError, build_fluent_bundle, locale_candidates, normalize_locale_tag,
+    normalize_unicode_locale,
 };
 
 const UNICODE_EXTENSION: &str = "en-US-u-ca-gregory";
+const TRANSFORM_EXTENSION: &str = "de-t-en-us-h0-hybrid";
 const PRIVATE_USE_EXTENSION: &str = "de-DE-x-rustok";
 
 #[test]
-fn rust_locale_identity_rejects_extension_bearing_tags() {
-    assert_eq!(normalize_locale_tag(UNICODE_EXTENSION), None);
-    assert_eq!(normalize_locale_tag(PRIVATE_USE_EXTENSION), None);
-}
-
-#[test]
-fn extension_bearing_requested_locale_is_not_silently_stripped() {
+fn complete_locale_normalization_preserves_well_formed_extensions() {
     assert_eq!(
-        locale_candidates(Some(UNICODE_EXTENSION), "fr-CA"),
-        vec!["fr-CA", "fr", "en"]
+        normalize_unicode_locale(UNICODE_EXTENSION),
+        Some(UNICODE_EXTENSION.to_string())
+    );
+    assert_eq!(
+        normalize_unicode_locale(TRANSFORM_EXTENSION),
+        Some(TRANSFORM_EXTENSION.to_string())
+    );
+    assert_eq!(
+        normalize_unicode_locale(PRIVATE_USE_EXTENSION),
+        Some(PRIVATE_USE_EXTENSION.to_string())
     );
 }
 
 #[test]
-fn extension_bearing_catalog_locale_is_a_typed_error() {
+fn request_extensions_are_projected_to_catalog_identity_after_validation() {
+    assert_eq!(
+        normalize_locale_tag(UNICODE_EXTENSION),
+        Some("en-US".to_string())
+    );
+    assert_eq!(
+        normalize_locale_tag(TRANSFORM_EXTENSION),
+        Some("de".to_string())
+    );
+    assert_eq!(
+        normalize_locale_tag(PRIVATE_USE_EXTENSION),
+        Some("de-DE".to_string())
+    );
+    assert_eq!(
+        locale_candidates(Some(UNICODE_EXTENSION), "fr-CA"),
+        vec!["en-US", "en", "fr-CA", "fr"]
+    );
+}
+
+#[test]
+fn extension_bearing_catalog_locale_remains_a_typed_error() {
     let error = match build_fluent_bundle(UNICODE_EXTENSION, "hello = Hello") {
         Err(error) => error,
-        Ok(_) => panic!("extension-bearing locale must not become Rust catalog identity"),
+        Ok(_) => panic!("formatting preferences must not become catalog identity"),
     };
 
     assert!(matches!(error, BundleBuildError::InvalidLocale { .. }));

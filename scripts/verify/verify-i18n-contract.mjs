@@ -69,14 +69,24 @@ expectContains(
   "apps/next-admin to use platform fallback locale 'en'",
 );
 expectContains(
-  "apps/admin/build.rs",
-  'Config::new("en")?',
-  "Leptos admin generated i18n module to use platform fallback locale 'en'",
+  "apps/admin/src/i18n.rs",
+  'declare_module_i18n!(default = "en",',
+  "admin runtime catalog to use platform fallback locale 'en'",
 );
 expectNotContains(
-  "apps/admin/build.rs",
-  'Config::new("ru")?',
-  "legacy Russian default in the Leptos admin generated i18n module",
+  "apps/admin/src/i18n.rs",
+  'declare_module_i18n!(default = "ru",',
+  "legacy Russian default in the admin runtime catalog",
+);
+expectContains(
+  "apps/admin/src/main.rs",
+  "preferred_catalog_locale_from_accept_language",
+  "admin host to use the shared Accept-Language parser",
+);
+expectNotContains(
+  "apps/admin/src/main.rs",
+  "language.split(',').next()",
+  "manual first-range Accept-Language selection in the admin host",
 );
 expectContains(
   "crates/modules/rustok-modules/src/static_package.rs",
@@ -102,6 +112,31 @@ expectNotContains(
   "crates/modules/rustok-ai/src/metrics.rs",
   "fn normalize_locale_tag(",
   "duplicate locale normalizer in rustok-ai metrics",
+);
+expectContains(
+  "crates/ui/rustok-ui-i18n/src/lazy.rs",
+  "pub struct LazyUiMessages",
+  "the shared per-locale lazy catalog facade",
+);
+expectContains(
+  "crates/ui/rustok-ui-i18n/src/macros.rs",
+  "LazyUiMessages",
+  "module macro support for opt-in per-locale lazy catalogs",
+);
+expectContains(
+  "crates/ui/rustok-ui-i18n/src/accept_language.rs",
+  "pub fn try_parse_accept_language",
+  "the shared bounded Accept-Language parser",
+);
+expectContains(
+  "crates/libs/rustok-api/src/locale.rs",
+  "preferred_catalog_locale_from_accept_language as extract_locale_tag_from_header",
+  "rustok-api compatibility API to delegate Accept-Language parsing to rustok-ui-i18n",
+);
+expectNotContains(
+  "crates/modules/rustok-page-builder/src/locale.rs",
+  "fn parse_accept_language(",
+  "a duplicate Page Builder Accept-Language parser",
 );
 
 const forbiddenLocaleDefaultPatterns = [

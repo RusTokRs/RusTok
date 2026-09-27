@@ -13,6 +13,7 @@ const paths = {
   runtimeValidation: 'crates/ui/fly/src/runtime_validation.rs',
   browserContract: 'crates/ui/fly-browser/src/lib.rs',
   pageBuilderLocale: 'crates/modules/rustok-page-builder/src/locale.rs',
+  uiI18nAcceptLanguage: 'crates/ui/rustok-ui-i18n/src/accept_language.rs',
   pageBuilderRender: 'crates/modules/rustok-page-builder/src/render.rs',
   storefrontLocalizedRoute: 'crates/modules/rustok-page-builder-storefront/src/localized_route.rs',
   pagesIntent: 'crates/modules/rustok-pages/admin/src/browser_intent.rs',
@@ -69,7 +70,7 @@ requireMarkers('localePolicy', [
   'runtime_locale_unsupported',
   'translation_required_locale_missing',
   'localized_metadata_required_locale_missing',
-  'legacy_locale_aliases_are_canonicalized',
+  'current_locale_aliases_are_canonicalized',
   'invalid_runtime_locale_is_diagnosed_before_defaulting',
   'required_locale_coverage_is_warning_until_enforcement_is_enabled',
 ], 'Fly project locale policy');
@@ -147,9 +148,14 @@ requireMarkers('browserContract', [
 requireMarkers('pageBuilderLocale', [
   'pub struct PageBuilderLocaleContext',
   'pub fn from_request',
-  'pub fn parse_accept_language',
-  'accept_language_is_sorted_by_quality_and_stable_order',
+  'use rustok_ui_i18n::accept_language_catalog_locales;',
+  'request_context_uses_shared_quality_sorted_accept_language_parser',
 ], 'SSR locale negotiation API');
+requireMarkers('uiI18nAcceptLanguage', [
+  'pub fn try_parse_accept_language',
+  'pub fn accept_language_catalog_locales',
+  'quality_sorting_is_exact_and_source_order_is_stable',
+], 'shared bounded Accept-Language parser');
 requireMarkers('pageBuilderRender', [
   'pub fn with_locale',
   'render_localized_runtime_document_html',
@@ -182,8 +188,8 @@ requireMarkers('browserIntent', [
 requireMarkers('ssrForms', [
   'SsrTranslationUpsertRequest',
   'SsrTranslationRemoveRequest',
-  'EditorCommand::batch(commands)',
-  'removing_translation_removes_its_bindings_in_one_history_entry',
+  '.filter(|binding| binding.path == translation_path)',
+  'Ok(UiIntent::execute(EditorCommand::batch(commands)))',
 ], 'SSR translation form commands');
 requireMarkers('ssrLocale', [
   'data-fly-ssr-locale="true"',

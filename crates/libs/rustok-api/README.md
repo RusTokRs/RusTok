@@ -25,7 +25,7 @@
 - Provide request-level locale and tenant resolution primitives that do not belong in domain crates.
 - Provide `HostRuntimeContext` for server-side Leptos/native adapters that need host-owned runtime handles without importing a host-wide application context.
 - Provide neutral port context/error primitives, policy helpers (`PortCallPolicy`) and typed error constructors for module-owned ports; `rustok-region` and migrated tenant, channel, product, customer, media, workflow, RBAC, tax, fulfillment, payment, pricing, cart, inventory, comments, search, order, index, email delivery, outbox relay, and page-builder publish paths use these shared primitives for FBA read/write boundaries.
-- Own neutral permission contracts (`Permission`, `Action`, `Resource`) and platform locale normalization, matching, candidate, fallback, and `Accept-Language` parsing contracts.
+- Own neutral permission contracts (`Permission`, `Action`, `Resource`) and host request-locale policy contracts. Framework-neutral `Accept-Language` field parsing is delegated to `rustok-ui-i18n`; the legacy `extract_locale_tag_from_header` name remains a compatibility re-export.
 - Carry typed channel-resolution diagnostics (`channel_id`, `channel_slug`, `channel_resolution_source`, `channel_resolution_trace`) from host middleware into module adapters.
 - Keep web-framework-oriented dependencies out of `rustok-core` while still allowing modular reuse.
 - Stay a thin shared host/API layer. It must not absorb module-specific business logic, resolvers, or controllers.
@@ -43,7 +43,7 @@
 - Module crates may depend on `rustok-api` for shared host contracts, but keep module-specific transport code and domain behavior locally.
 - New cross-module request/auth/GraphQL/port helpers should go into `rustok-api` only when they are genuinely shared and host/API-level.
 - UI route/query/input helpers belong in `rustok-ui-core` and `leptos-ui-routing`, not in `rustok-api`.
-- UI message catalog or translation-key resolution helpers belong in `rustok-ui-i18n`, not in `rustok-api`.
+- UI message catalogs, translation-key resolution, Unicode locale mechanics, and reusable `Accept-Language` parsing belong in `rustok-ui-i18n`; `rustok-api` owns host/request precedence and compatibility contracts, not a second parser.
 - Richtext executable policy, profile definitions, validation, rendering, and
   plain-text extraction belong in `rustok-content::richtext`, not here.
 

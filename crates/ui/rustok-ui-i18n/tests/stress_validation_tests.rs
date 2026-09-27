@@ -36,10 +36,10 @@ fn strict_catalog_handles_many_locale_bundles_without_collision() {
     const LOCALE_COUNT: usize = 64;
 
     let owned: Vec<(String, String)> = (1..=LOCALE_COUNT)
-        .map(|region| {
+        .map(|index| {
             (
-                format!("en-{region:03}"),
-                format!("title = Region {region:03}\n"),
+                format!("en-1{index:03}"),
+                format!("title = Variant 1{index:03}\n"),
             )
         })
         .collect();
@@ -51,14 +51,14 @@ fn strict_catalog_handles_many_locale_bundles_without_collision() {
     let catalog = try_build_fluent_catalog(&entries).expect("large valid catalog should build");
     assert_eq!(catalog.len(), LOCALE_COUNT);
 
-    let translator = UiTranslator::new(&catalog, "en-001");
+    let translator = UiTranslator::new(&catalog, "en-1001");
     assert_eq!(
-        translator.t(Some("en-001"), "title", "fallback"),
-        "Region 001"
+        translator.t(Some("en-1001"), "title", "fallback"),
+        "Variant 1001"
     );
     assert_eq!(
-        translator.t(Some("en-064"), "title", "fallback"),
-        "Region 064"
+        translator.t(Some("en-1064"), "title", "fallback"),
+        "Variant 1064"
     );
 }
 
@@ -71,10 +71,10 @@ fn mixed_malformed_batch_retains_bounded_diagnostics_in_input_order() {
 
     let mut owned = Vec::<(String, String)>::new();
 
-    for region in 1..=VALID_COUNT {
+    for index in 1..=VALID_COUNT {
         owned.push((
-            format!("en-{region:03}"),
-            format!("title = Valid {region:03}\n"),
+            format!("en-1{index:03}"),
+            format!("title = Valid 1{index:03}\n"),
         ));
     }
 

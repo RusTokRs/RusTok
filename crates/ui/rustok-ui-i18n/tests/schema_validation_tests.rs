@@ -58,6 +58,17 @@ fn schema_validation_normalizes_default_locale_before_lookup() {
 }
 
 #[test]
+fn default_locale_alias_matches_canonical_catalog_identity() {
+    static MESSAGES: UiMessages = UiMessages::new("iw-IL", &[("he-IL", "hello = שלום\n")]);
+
+    let prepared = MESSAGES
+        .prepare()
+        .expect("deprecated default alias must match the canonical catalog");
+    assert_eq!(prepared.default_locale(), "he-IL");
+    assert_eq!(prepared.t(Some("iw_IL"), "hello", "fallback"), "שלום");
+}
+
+#[test]
 fn same_variables_across_locales_succeeds() {
     const EN: &str = "welcome = Welcome, { $name }!\n";
     const RU: &str = "welcome = Привет, { $name }!\n";

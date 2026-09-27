@@ -109,6 +109,26 @@ macro_rules! module_t {
 /// rustok_ui_i18n::declare_module_i18n!();
 /// ```
 ///
+/// A module can include any explicit set of locale files without hardcoding an
+/// `en`/`ru` pair in generated code:
+/// ```ignore
+/// rustok_ui_i18n::declare_module_i18n!(
+///     default = "en",
+///     locales = ["en", "ar", "de", "es-419", "ja", "zh-Hant"],
+/// );
+/// ```
+///
+/// Large embedded catalogs can opt into per-locale FTL parsing on first use:
+/// ```ignore
+/// rustok_ui_i18n::declare_module_i18n!(
+///     lazy,
+///     default = "en",
+///     locales = ["en", "ar", "de", "es-419", "ja", "zh-Hant"],
+/// );
+/// ```
+/// This avoids eagerly constructing every Fluent bundle, but `include_str!` bytes
+/// remain embedded in the binary. `validate()` still checks the complete catalog.
+///
 /// Custom invocation from an external consumer, including a renamed crate import:
 /// ```
 /// mod consumer {
@@ -141,8 +161,60 @@ macro_rules! declare_module_i18n {
             ]
         );
     };
+    (
+        lazy,
+        default = $default_locale:literal,
+        locales = [$($locale:literal),+ $(,)?]
+        $(,)?
+    ) => {
+        $crate::declare_module_i18n!(
+            lazy,
+            $default_locale,
+            &[
+                $(
+                    (
+                        $locale,
+                        include_str!(concat!("../locales/", $locale, ".ftl")),
+                    ),
+                )+
+            ]
+        );
+    };
+    (
+        default = $default_locale:literal,
+        locales = [$($locale:literal),+ $(,)?]
+        $(,)?
+    ) => {
+        $crate::declare_module_i18n!(
+            $default_locale,
+            &[
+                $(
+                    (
+                        $locale,
+                        include_str!(concat!("../locales/", $locale, ".ftl")),
+                    ),
+                )+
+            ]
+        );
+    };
+    (lazy, $default_locale:expr, $bundles:expr) => {
+        $crate::declare_module_i18n!(
+            @declare,
+            $crate::LazyUiMessages,
+            $default_locale,
+            $bundles
+        );
+    };
     ($default_locale:expr, $bundles:expr) => {
-        static MESSAGES: $crate::UiMessages = $crate::UiMessages::new($default_locale, $bundles);
+        $crate::declare_module_i18n!(
+            @declare,
+            $crate::UiMessages,
+            $default_locale,
+            $bundles
+        );
+    };
+    (@declare, $messages_type:ty, $default_locale:expr, $bundles:expr) => {
+        static MESSAGES: $messages_type = <$messages_type>::new($default_locale, $bundles);
 
         #[inline]
         pub fn t(locale: Option<&str>, key: &str, fallback: &str) -> String {
@@ -157,6 +229,29 @@ macro_rules! declare_module_i18n {
             fallback: &str,
         ) -> String {
             MESSAGES.format(locale, key, args, fallback)
+        }
+
+        #[inline]
+        pub fn format_attribute<'args>(
+            locale: Option<&str>,
+            key: &str,
+            attribute: &str,
+            args: Option<&$crate::FluentArgs<'args>>,
+            fallback: &str,
+        ) -> String {
+            MESSAGES.format_attribute(locale, key, attribute, args, fallback)
+        }
+
+        /// Validates the complete embedded catalog using fail-closed semantics.
+        #[inline]
+        pub fn validate() -> Result<(), $crate::BundleBuildError> {
+            MESSAGES.validate()
+        }
+
+        /// Returns typed diagnostics from catalog initialization.
+        #[inline]
+        pub fn initialization_diagnostics() -> &'static [$crate::BundleBuildError] {
+            MESSAGES.initialization_diagnostics()
         }
     };
 }

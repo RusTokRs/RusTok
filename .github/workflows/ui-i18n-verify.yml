@@ -6,10 +6,34 @@ on:
       - main
     paths:
       - "crates/ui/rustok-ui-i18n/**"
+      - "crates/libs/rustok-api/**"
+      - "crates/modules/rustok-page-builder/Cargo.toml"
+      - "crates/modules/rustok-page-builder/src/locale.rs"
+      - "crates/modules/rustok-notifications/storefront/**"
+      - "apps/admin/src/i18n.rs"
+      - "apps/admin/src/main.rs"
+      - "scripts/verify/verify-i18n-contract.mjs"
+      - "scripts/verify/verify-fly-multilingual.mjs"
+      - "scripts/verify/verify-db-multilingual-contract.mjs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/ui-i18n-verify.yml"
   pull_request:
     paths:
       - "crates/ui/rustok-ui-i18n/**"
+      - "crates/libs/rustok-api/**"
+      - "crates/modules/rustok-page-builder/Cargo.toml"
+      - "crates/modules/rustok-page-builder/src/locale.rs"
+      - "crates/modules/rustok-notifications/storefront/**"
+      - "apps/admin/src/i18n.rs"
+      - "apps/admin/src/main.rs"
+      - "scripts/verify/verify-i18n-contract.mjs"
+      - "scripts/verify/verify-fly-multilingual.mjs"
+      - "scripts/verify/verify-db-multilingual-contract.mjs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/ui-i18n-verify.yml"
   workflow_dispatch:
 
@@ -24,7 +48,9 @@ jobs:
   verify:
     name: Format, Test, Clippy & WASM
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    env:
+      RUSTUP_TOOLCHAIN: "1.96.0"
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: dtolnay/rust-toolchain@stable
@@ -32,14 +58,33 @@ jobs:
           toolchain: "1.96.0"
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
+      - name: Ensure WASM target
+        run: rustup target add --toolchain "$RUSTUP_TOOLCHAIN" wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
       - name: Format
-        run: cargo fmt -p rustok-ui-i18n -- --check
+        run: |
+          cargo fmt -p rustok-ui-i18n -- --check
+          rustfmt --edition 2024 --check \
+            apps/admin/src/i18n.rs \
+            apps/admin/src/main.rs \
+            crates/libs/rustok-api/src/locale.rs \
+            crates/modules/rustok-page-builder/src/locale.rs
+      - name: Repository i18n contracts
+        run: |
+          node scripts/verify/verify-i18n-contract.mjs
+          node scripts/verify/verify-fly-multilingual.mjs
       - name: Test
         run: cargo test -p rustok-ui-i18n --all-features
+      - name: Consumer integration
+        run: |
+          cargo test -p rustok-notifications-storefront
+          cargo test -p rustok-api locale::tests --lib
+          cargo test -p rustok-page-builder locale::tests --lib
       - name: Clippy
-        run: cargo clippy -p rustok-ui-i18n --all-targets --all-features -- -D warnings
+        run: |
+          cargo clippy -p rustok-ui-i18n --all-targets --all-features -- -D warnings
+          cargo clippy -p rustok-api -p rustok-page-builder --lib -- -D warnings
       - name: WASM check
         run: cargo check -p rustok-ui-i18n --all-features --target wasm32-unknown-unknown

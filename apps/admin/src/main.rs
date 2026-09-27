@@ -74,7 +74,9 @@ async fn main() {
         let editor_capabilities =
             pages_editor_capabilities_for_snapshot(role_capabilities, &rollout);
         let default_locale = header_value(&headers, "accept-language")
-            .and_then(|language| language.split(',').next().map(str::to_string))
+            .and_then(|header| {
+                rustok_ui_i18n::preferred_catalog_locale_from_accept_language(Some(header.as_str()))
+            })
             .unwrap_or_else(|| "en".to_string());
         let snapshot = PagesBuilderSaveSnapshot {
             token: Some(token),

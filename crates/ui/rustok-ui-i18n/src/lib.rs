@@ -8,8 +8,10 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+mod accept_language;
 pub mod bundle;
 pub mod error;
+mod lazy;
 pub mod locale;
 #[macro_use]
 pub mod macros;
@@ -23,10 +25,17 @@ pub use fluent_bundle::{FluentArgs, FluentValue};
 )]
 pub use unic_langid::LanguageIdentifier;
 
+pub use accept_language::{
+    AcceptLanguageError, AcceptLanguagePreference, MAX_ACCEPT_LANGUAGE_LEN,
+    MAX_ACCEPT_LANGUAGE_RANGES, accept_language_catalog_locales, accept_language_locales,
+    parse_accept_language, preferred_catalog_locale_from_accept_language,
+    preferred_locale_from_accept_language, try_parse_accept_language,
+};
 pub use bundle::{
     FluentCatalog, build_fluent_bundle, build_fluent_catalog, try_build_fluent_catalog,
 };
 pub use error::{BundleBuildError, I18nError, MessageKeyError};
+pub use lazy::{LazyUiLocaleTranslator, LazyUiMessages};
 #[allow(deprecated)]
 #[deprecated(
     since = "0.1.0",
@@ -39,11 +48,18 @@ pub use locale::push_locale_candidate;
     note = "Internal helper; will be made private before 1.0."
 )]
 pub use locale::push_unique;
-pub use locale::{locale_candidates, normalize_admin_locale, normalize_locale_tag};
+pub use locale::{
+    TextDirection, locale_candidates, locale_text_direction, normalize_admin_locale,
+    normalize_locale_tag, normalize_unicode_locale,
+};
 pub use messages::{
-    MAX_MESSAGE_KEY_LEN, MessageSchema, PreparedUiMessages, UiLocaleTranslator, UiMessages,
-    UiTranslator, extract_locale_schemas, resolve_fluent_message, try_resolve_fluent_message,
-    validate_catalog_schemas, validate_message_key, with_kebab_key,
+    MAX_MESSAGE_KEY_LEN, MessageEntrySchema, MessageSchema, PreparedUiMessages, ResolvedMessage,
+    UiLocaleTranslator, UiMessages, UiTranslator, extract_locale_entry_schemas,
+    extract_locale_schemas, resolve_fluent_attribute, resolve_fluent_attribute_with_locale,
+    resolve_fluent_message, resolve_fluent_message_with_locale, try_resolve_fluent_attribute,
+    try_resolve_fluent_attribute_with_locale, try_resolve_fluent_message,
+    try_resolve_fluent_message_with_locale, validate_catalog_schemas, validate_message_attribute,
+    validate_message_key, with_kebab_key,
 };
 
 #[cfg(test)]
@@ -299,8 +315,9 @@ page-builder-translations-localizedMetadataValuesPlaceholder =
     }
 
     mod mock_module {
-        const EN_FTL: &str = "test-title = Title\ntest-greet = Hello, { $name }!\n";
-        const RU_FTL: &str = "test-title = Заголовок\ntest-greet = Привет, { $name }!\n";
+        const EN_FTL: &str =
+            "test-title = Title\n    .aria-label = English title\ntest-greet = Hello, { $name }!\n";
+        const RU_FTL: &str = "test-title = Заголовок\n    .aria-label = Русский заголовок\ntest-greet = Привет, { $name }!\n";
 
         super::declare_module_i18n!("en", &[("en", EN_FTL), ("ru", RU_FTL)]);
 
@@ -310,6 +327,12 @@ page-builder-translations-localizedMetadataValuesPlaceholder =
             assert_eq!(t(Some("ru"), "test.title", "Fallback"), "Заголовок");
             assert_eq!(t(Some("fr"), "test.title", "Fallback"), "Title");
             assert_eq!(t(Some("en"), "missing.key", "Fallback"), "Fallback");
+            assert_eq!(
+                format_attribute(Some("ru"), "test.title", "aria-label", None, "Fallback",),
+                "Русский заголовок"
+            );
+            assert!(validate().is_ok());
+            assert!(initialization_diagnostics().is_empty());
 
             let args = fluent_args!(name = "Иван");
             assert_eq!(

@@ -1,13 +1,22 @@
-rustok_ui_i18n::declare_module_i18n!();
+rustok_ui_i18n::declare_module_i18n!(default = "en", locales = ["en", "ru"],);
 
-pub fn with_count(template: String, count: u64) -> String {
-    let count = count.to_string();
-    template.replace("{count}", count.as_str())
+pub fn unread_count_label(locale: Option<&str>, count: u64) -> String {
+    let args = rustok_ui_i18n::fluent_args!(count = count);
+    format(
+        locale,
+        "notifications.navigation.unread",
+        Some(&args),
+        "Unread notifications",
+    )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{t, with_count};
+    use super::{t, unread_count_label};
+
+    fn strip_bidi_isolates(value: &str) -> String {
+        value.replace(['\u{2068}', '\u{2069}'], "")
+    }
 
     #[test]
     fn resolves_regional_russian_navigation_copy() {
@@ -20,14 +29,7 @@ mod tests {
             "Уведомления"
         );
         assert_eq!(
-            with_count(
-                t(
-                    Some("ru-RU"),
-                    "notifications.navigation.unread",
-                    "{count} unread notifications"
-                ),
-                4
-            ),
+            strip_bidi_isolates(&unread_count_label(Some("ru-RU"), 4)),
             "Непрочитанных уведомлений: 4"
         );
     }

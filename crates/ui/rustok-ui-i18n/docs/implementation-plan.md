@@ -33,7 +33,8 @@ runtime filesystem discovery.
    duplicate normalized locales and resource-add failures.
 
 4. **Lenient catalog construction with inspectable diagnostics.**
-   `build_fluent_catalog` keeps fail-soft first-input-wins rendering semantics and tracing diagnostics.
+   `build_fluent_catalog` keeps pure fail-soft first-input-wins rendering semantics; the report API
+   retains diagnostics and `UiMessages` logs its cached diagnostics once.
    A parseable locale reserves its normalized identity before FTL parsing, so a malformed first payload
    cannot be silently replaced by a later duplicate. `bundle::build_fluent_catalog_report` returns the
    same usable catalog plus typed diagnostics for every skipped entry in input order.
@@ -62,11 +63,12 @@ runtime filesystem discovery.
    across repeated message lookups, avoiding per-key locale parsing/candidate allocation.
 
 9. **Structured locale fallback.**
-   Rust fallback operates on `LanguageIdentifier` structure rather than serialized suffix chopping:
-   exact locale -> all variants removed as one layer -> region removed -> script removed -> language.
-   This prevents canonical variant sorting from manufacturing arbitrary partial-variant parents.
-   `@rustok/next-fluent` now mirrors that shape with `Intl.Locale`, while additionally allowing an
-   exact extension-bearing match and then probing the extension-free `baseName`.
+   Runtime requests are parsed as complete ICU4X Unicode locales and projected to Fluent's
+   `LanguageIdentifier` catalog identity only after validation and CLDR alias canonicalization.
+   Fallback operates on structure rather than serialized suffix chopping: exact locale -> all variants
+   removed as one layer -> a CLDR likely-script branch when region changes the language's default script
+   -> region removed -> script removed -> language. This prevents canonical variant sorting from
+   manufacturing arbitrary partial-variant parents and resolves region/script cases such as `zh-TW`.
 
 10. **Strict and lenient message resolution.**
     `try_resolve_fluent_message` / strict format APIs report missing keys and Fluent formatting errors;
@@ -126,16 +128,16 @@ runtime filesystem discovery.
 22. **Generated boundary validation with repository-standard tooling.**
     Bounded `proptest` coverage exercises arbitrary Unicode locale inputs across 256 generated cases per
     property. Successful normalization must remain parseable, canonical and idempotent; fallback chains
-    must remain deduplicated, canonical, include platform `en`, and stay within the structural nine-entry
+    must remain deduplicated, canonical, include platform `en`, and stay within the structural eleven-entry
     bound. Oversized raw inputs remain fail-closed. No crate-local `cargo-fuzz` island was introduced.
 
-23. **Explicit extension-free Rust locale identity.**
-    Rust catalog identity is deliberately the `unic_langid::LanguageIdentifier` core model only:
-    language, optional script, region and variants. Unicode (`-u-...`) and private-use (`-x-...`)
-    extensions are rejected as whole inputs instead of being silently stripped into a different catalog
-    identity. Host/runtime code owns any extension-aware selection before passing the effective Rust
-    catalog locale. `@rustok/next-fluent` may still probe an exact extension-bearing locale and then its
-    `Intl.Locale.baseName`, because the JavaScript runtime has an extension-aware locale representation.
+23. **Complete request locale with explicit catalog projection.**
+    Runtime request identity is an ICU4X Unicode locale: Unicode (`-u-...`), transformed (`-t-...`), and
+    private-use (`-x-...`) extensions are parsed and can be preserved with `normalize_unicode_locale`.
+    Deprecated aliases are canonicalized using CLDR data. Fluent 0.16 still requires an extension-free
+    `unic_langid::LanguageIdentifier`, so `normalize_locale_tag` explicitly returns that catalog
+    projection. Catalog declarations/defaults reject extensions to prevent formatting preferences from
+    creating duplicate message identities.
 
 24. **Repository-owned public API consumer inventory.**
     `cargo xtask i18n-api-inventory` uses `cargo metadata --no-deps` to discover workspace packages that
@@ -144,6 +146,52 @@ runtime filesystem discovery.
     same-file-candidate evidence kept distinct. `--json` provides machine-readable output. This removes
     dependency on GitHub code-search availability for pre-1.0 migration reviews without pretending a textual
     scan is compiler proof.
+
+25. **Compound Fluent message support.**
+    Value and attribute lookup now share the same strict/lenient fallback and formatting semantics. Missing
+    attributes can fall through to a parent/default catalog independently from message values. Attribute IDs
+    are bounded and validated as Fluent identifiers, and module macros expose an attribute formatter.
+
+26. **Resolved-locale provenance and locale discovery.**
+    `ResolvedMessage` reports the canonical catalog locale that supplied a formatted result. Provenance-aware
+    APIs cover ordinary and prepared translators, while facade types expose deterministic `available_locales()`
+    iterators. Host code no longer needs to duplicate fallback traversal for cache/diagnostic metadata.
+
+27. **Reference-aware startup schema validation.**
+    Strict preparation separates message-value and attribute contracts, follows message/term references,
+    handles named term arguments, rejects unresolved/cyclic graphs, and validates attribute variable parity.
+    Lazy initialization retains a typed schema diagnostic for otherwise parseable catalogs without changing
+    fail-soft rendering semantics.
+
+28. **Fluent identifier hardening.**
+    Message keys now enforce Fluent's ASCII identifier grammar after allowing the documented dot-to-hyphen
+    alias. Unicode control characters, non-Fluent punctuation, malformed leading characters, and invalid
+    attribute IDs fail as bounded typed errors instead of becoming ambiguous cache misses.
+
+29. **World-language request support.**
+    ICU4X/CLDR data now owns locale aliases, likely scripts, and writing direction instead of hardcoded
+    language lists. Representative integration coverage includes Latin, Cyrillic, Arabic, Hebrew, Persian,
+    Urdu, Indic, Thai, Japanese, Korean, Chinese, and three-letter language codes, plus Arabic's six cardinal
+    plural categories and a no-inflection Japanese selector.
+
+30. **Explicit arbitrary-locale module declaration.**
+    `declare_module_i18n!(default = "en", locales = [...])` embeds any checked-in locale set while preserving
+    the existing no-argument `en`/`ru` compatibility form and custom source form. The engine does not pretend
+    to manufacture translated product copy: module owners still provide and review every advertised FTL file.
+
+31. **Opt-in per-locale lazy Fluent parsing.**
+    `LazyUiMessages` and `declare_module_i18n!(lazy, ...)` index canonical locale declarations once but parse
+    and retain only bundles reached by actual fallback chains. Per-locale `OnceLock` cells make concurrent first
+    use deterministic, cache failures, and keep malformed resources fail-soft with inspectable diagnostics.
+    Full `validate()`/`prepare()` remains eager and fail-closed. This addresses startup/resident-state scaling;
+    compile-time `include_str!` bytes remain in the binary, so downloadable catalogs still require a host adapter.
+
+32. **Shared bounded `Accept-Language` parsing.**
+    The framework-neutral parser moved from duplicate host/module implementations into this crate. It enforces
+    4096-byte/64-range bounds before parsing, represents q-values as exact thousandths, preserves stable ordering,
+    wildcard and `q=0` semantics in the typed result, and offers separate full-Unicode and extension-free catalog
+    projections. `rustok-api` keeps its old function name as a compatibility re-export, while Page Builder and the
+    admin host consume the shared implementation. Host code still owns source precedence, allowlists and defaults.
 
 ## Remaining engineering work
 
@@ -209,15 +257,15 @@ Next.js Fluent parity surface:
 Future test work:
 - native fuzz targets only after shared project fuzz infrastructure exists;
 - retained benchmark evidence for any further hot-path optimization;
-- extension-policy contract tests if the Rust locale model is deliberately widened.
+- parity tests in the separately versioned Next adapter for CLDR aliases, likely-script branches, and exact `Accept-Language` q-value behavior.
 
 ## Change rules
 
 1. Keep Leptos, Dioxus, Axum, GraphQL, cookie, header, query and routing dependencies out of this crate.
-2. Keep locale selection with the host/runtime effective-locale contract.
+2. Keep effective-locale source precedence, allowlists and defaults with the host/runtime contract; keep reusable locale/header parsing in this neutral crate.
 3. Domain modules own their `.ftl` message files; this crate owns the engine and shared formatting boundary.
 4. Do not silently weaken Unicode bidi safety for prettier serialized strings.
-5. Do not claim full Rust BCP-47 extension semantics until the locale representation actually preserves them.
+5. Keep complete Unicode locale identity distinct from the extension-free Fluent catalog projection; do not silently use calendar/number/collation preferences as message-catalog keys.
 6. Keep request-controlled parsing/diagnostics bounded before allocation/logging where the API owns that input boundary.
 7. Make performance changes from benchmark evidence rather than replacing simple structures speculatively.
 8. Treat public enum/type changes as semver work even while the crate remains pre-1.0.

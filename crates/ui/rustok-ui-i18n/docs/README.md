@@ -6,25 +6,38 @@
 
 - provide shared Project Fluent catalog construction and key resolution;
 - support Leptos and future UI adapters through the same non-reactive API;
-- keep locale selection in the host/runtime layer and message resolution in a neutral crate;
+- keep effective-locale policy in the host/runtime layer while centralizing reusable locale/header syntax primitives;
 - preserve Fluent's Unicode bidi isolation around interpolated values by default.
 
 ## Responsibility Zone
 
-- compile embedded `.ftl` resources into concurrent Fluent bundles;
-- normalize Unicode Language Identifiers for catalog lookup;
+- compile embedded `.ftl` resources into concurrent Fluent bundles, either eagerly as one catalog or lazily per locale;
+- parse complete Unicode locales, canonicalize CLDR aliases, and project them to Fluent catalog identities;
+- parse bounded `Accept-Language` values with exact q-values and full/catalog projections;
+- expose CLDR directionality and likely-script-aware fallback without host-maintained language lists;
 - resolve requested, default, platform and literal fallback paths;
+- resolve compound-message values/attributes and report the catalog locale that supplied them;
+- validate value/attribute schemas and transitive Fluent references before strict startup;
 - expose lenient UI rendering and strict validation/resolution APIs with typed diagnostics;
 - provide module declaration and argument-construction macros without framework dependencies.
 
-The catalog identity currently uses `unic_langid::LanguageIdentifier`. This covers language, script,
-region and variants, but does not preserve Unicode/private-use extensions. Extension-aware locale
-negotiation remains a separate follow-up and must not be inferred from the current API.
+Runtime requests use ICU4X Unicode locale parsing and CLDR canonicalization. The complete identity,
+including extensions, is available through `normalize_unicode_locale`; Fluent catalog selection uses
+its language/script/region/variant projection through `normalize_locale_tag`. Catalog declarations
+remain extension-free by design. The crate owns reusable `Accept-Language` field parsing and quality
+ordering; the host still owns query/cookie/header precedence, supported-locale filtering, user/tenant
+policy, and final effective-locale selection.
+
+`UiMessages` retains the compatibility behavior of constructing one complete catalog on first access.
+For large embedded language sets, `LazyUiMessages` indexes canonical declarations once and parses only
+locale bundles reached by actual fallback chains. Complete `validate()`/`prepare()` calls remain eager
+and fail closed for CI/startup assurance. Lazy parsing saves startup work and resident bundle state, not
+embedded binary bytes; external/downloadable resources remain an adapter concern.
 
 ## Integration
 
 - Module-owned UI packages use `UiMessages` directly from local `i18n.rs` files without framework adapter crates.
-- `rustok-api` does not own or re-export UI i18n helpers.
+- `rustok-api` owns request-policy composition and keeps only a compatibility re-export of the shared catalog-oriented `Accept-Language` preference helper.
 - Host applications pass the effective locale; this crate does not inspect cookies, headers,
   route query parameters or framework context.
 - `@rustok/next-fluent` uses the same bidi-safe interpolation default so Rust and Next.js render
@@ -40,5 +53,6 @@ negotiation remains a separate follow-up and must not be inferred from the curre
 
 - [Root README](../README.md)
 - [Implementation Plan](./implementation-plan.md)
+- [Engineering Audit (2026-09-27)](./engineering-audit-2026-09-27.md)
 - [Module UI Package Implementation Guide](../../../../docs/UI/module-package-implementation.md)
 - [Platform Documentation Map](../../../../docs/index.md)

@@ -8,11 +8,25 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+use icu_locale::{
+    Direction as IcuDirection, Locale as IcuLocale, LocaleCanonicalizer, LocaleDirectionality,
+    LocaleExpander,
+};
 use unic_langid::LanguageIdentifier;
 
 pub(crate) const MAX_LOCALE_TAG_LEN: usize = 64;
 
-fn parse_locale_tag(locale: &str) -> Option<LanguageIdentifier> {
+/// The resolved writing direction for a valid locale.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TextDirection {
+    /// Left-to-right writing direction.
+    LeftToRight,
+    /// Right-to-left writing direction.
+    RightToLeft,
+}
+
+fn parse_unicode_locale(locale: &str) -> Option<IcuLocale> {
     if locale.is_empty() || locale.len() > MAX_LOCALE_TAG_LEN {
         return None;
     }
@@ -22,8 +36,33 @@ fn parse_locale_tag(locale: &str) -> Option<LanguageIdentifier> {
         return None;
     }
 
+    // ICU4X 2.x deliberately accepts BCP-47 separators only. Preserve the
+    // compatibility policy of this crate by normalizing legacy underscore input
+    // before parsing the complete Unicode locale, including extensions.
     let normalized = trimmed.replace('_', "-");
-    normalized.parse().ok()
+    let mut locale = normalized.parse::<IcuLocale>().ok()?;
+    let _ = LocaleCanonicalizer::new_extended().canonicalize(&mut locale);
+    Some(locale)
+}
+
+fn icu_to_fluent_langid(locale: &IcuLocale) -> Option<LanguageIdentifier> {
+    // Fluent 0.16 uses unic-langid. Keep that dependency type behind this module
+    // while ICU4X owns full-locale parsing, aliases, and likely-subtag data.
+    locale.id.to_string().parse().ok()
+}
+
+fn parse_locale_tag(locale: &str) -> Option<LanguageIdentifier> {
+    parse_unicode_locale(locale)
+        .as_ref()
+        .and_then(icu_to_fluent_langid)
+}
+
+pub(crate) fn canonicalize_language_identifier(langid: LanguageIdentifier) -> LanguageIdentifier {
+    let Ok(mut locale) = langid.to_string().parse::<IcuLocale>() else {
+        return langid;
+    };
+    let _ = LocaleCanonicalizer::new_extended().canonicalize(&mut locale);
+    icu_to_fluent_langid(&locale).unwrap_or(langid)
 }
 
 /// Normalizes the admin UI effective locale to either "ru" or "en".
@@ -45,36 +84,61 @@ pub fn normalize_admin_locale(locale: Option<&str>) -> &'static str {
     }
 }
 
-/// Parses and normalizes the extension-free BCP 47 subset represented by
-/// [`LanguageIdentifier`], replacing underscores with hyphens.
+/// Parses and canonicalizes a complete Unicode locale identifier.
 ///
-/// Unicode extension sequences (`-u-...`) and private-use sequences (`-x-...`)
-/// are intentionally not part of Rust catalog identity and are therefore rejected
-/// instead of being silently stripped. Hosts that need extension-aware selection
-/// must resolve that policy before passing the effective catalog locale here.
+/// Language aliases are resolved with ICU4X/CLDR data and well-formed Unicode,
+/// transformed, and private-use extensions are preserved. Underscore separators
+/// are accepted for compatibility and serialized as canonical hyphens.
+///
+/// The input is bounded to 64 bytes before trimming and normalization.
+pub fn normalize_unicode_locale(locale: &str) -> Option<String> {
+    parse_unicode_locale(locale).map(|locale| locale.to_string())
+}
+
+/// Maps a complete Unicode locale to its canonical Fluent catalog identity.
+///
+/// Fluent 0.16 catalogs are keyed by a `LanguageIdentifier` (language, script,
+/// region, and variants), not by formatting preferences. Valid Unicode,
+/// transformed, and private-use extensions are therefore parsed and deliberately
+/// removed *after* validation instead of causing the whole locale request to be
+/// rejected. Deprecated language/region aliases are canonicalized with ICU4X.
+/// Use [`normalize_unicode_locale`] when extension preferences must be retained
+/// for date, number, calendar, or collation services.
 ///
 /// Raw inputs longer than 64 bytes are rejected before trimming or normalization
-/// work. BCP 47 language identifiers are ASCII, so the byte limit matches the
-/// shared Next.js locale policy for valid core tags while keeping request-scope
-/// lookup work bounded.
+/// work. Oversized request work therefore remains bounded.
 pub fn normalize_locale_tag(locale: &str) -> Option<String> {
     parse_locale_tag(locale).map(|langid| langid.to_string())
+}
+
+/// Returns the CLDR writing direction for a complete Unicode locale.
+///
+/// Missing scripts are inferred from language/region likely-subtag data. Invalid
+/// or unknown locale identities return `None` rather than silently assuming LTR.
+pub fn locale_text_direction(locale: &str) -> Option<TextDirection> {
+    let locale = parse_unicode_locale(locale)?;
+    match LocaleDirectionality::new_extended().get(&locale.id) {
+        Some(IcuDirection::LeftToRight) => Some(TextDirection::LeftToRight),
+        Some(IcuDirection::RightToLeft) => Some(TextDirection::RightToLeft),
+        _ => None,
+    }
 }
 
 /// Generates a deduplicated ordered list of locale fallback candidates.
 ///
 /// Order of precedence:
-/// 1. Requested locale from most-specific to least-specific
-///    (e.g. `zh-Hans-CN` -> `zh-Hans` -> `zh`)
-/// 2. Default locale from most-specific to least-specific
-/// 3. Canonical platform fallback (`"en"`)
+/// 1. Requested catalog locale from most-specific to least-specific.
+/// 2. If a request has a region but no script, CLDR likely-subtag data adds the
+///    inferred script branch before the base language (`zh-TW` -> `zh-Hant`).
+/// 3. Default locale from most-specific to least-specific.
+/// 4. Canonical platform fallback (`"en"`).
 ///
 /// Variant subtags are treated as one unordered specificity layer. `unic_langid`
 /// canonicalizes variants as an ordered set, so peeling the serialized tag one
 /// hyphen at a time can manufacture an arbitrary partial-variant parent. The
 /// fallback therefore removes all variants together before region and script.
-/// Extension-bearing tags are rejected as a whole; this function never strips an
-/// extension to manufacture a Rust catalog candidate.
+/// Valid locale extensions are ignored for catalog selection only after the full
+/// locale has been parsed and validated.
 pub fn locale_candidates(locale: Option<&str>, default_locale: &str) -> Vec<String> {
     let mut candidates = Vec::new();
 
@@ -97,6 +161,19 @@ fn push_locale_candidate_internal(candidates: &mut Vec<String>, locale: Option<&
         push_langid_candidate(candidates, &langid);
     }
 
+    // A region often determines the writing system (for example zh-TW and
+    // sr-RS). Add that CLDR-backed branch without inventing a region for a plain
+    // language request such as `en`.
+    if langid.script.is_none()
+        && langid.region.is_some()
+        && let Some(inferred) = infer_script(&langid)
+    {
+        push_langid_candidate(candidates, &inferred);
+        let mut script_parent = inferred;
+        script_parent.region = None;
+        push_langid_candidate(candidates, &script_parent);
+    }
+
     if langid.region.is_some() {
         langid.region = None;
         push_langid_candidate(candidates, &langid);
@@ -106,6 +183,27 @@ fn push_locale_candidate_internal(candidates: &mut Vec<String>, locale: Option<&
         langid.script = None;
         push_langid_candidate(candidates, &langid);
     }
+}
+
+fn infer_script(langid: &LanguageIdentifier) -> Option<LanguageIdentifier> {
+    let expander = LocaleExpander::new_extended();
+    let mut regional = langid
+        .to_string()
+        .parse::<icu_locale::LanguageIdentifier>()
+        .ok()?;
+    let mut language = regional.clone();
+    language.region = None;
+
+    let _ = expander.maximize(&mut regional);
+    let _ = expander.maximize(&mut language);
+
+    // Add an inferred branch only when the region changes the language's usual
+    // script. This keeps common chains compact (`ru-RU` -> `ru`) while fixing
+    // genuinely ambiguous cases such as `zh-TW` (Hant vs the default Hans).
+    if regional.script.is_none() || regional.script == language.script {
+        return None;
+    }
+    regional.to_string().parse().ok()
 }
 
 /// Pushes a normalized locale and its progressively less-specific structural
