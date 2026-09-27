@@ -10,7 +10,7 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** ACTIVE  
-**Active phase:** FS-03 — stable foundation/API crates (audit in progress; tests remain maintainer-owned).  
+**Active phase:** FS-04 — workers, jobs, queue, outbox (audit in progress; tests remain maintainer-owned).  
 **Phase base SHA:** `17bf569d735739b6781fa36933db15b2077cf955`
 
 ### FS-01 Pre-Implementation Audit Findings
@@ -669,3 +669,8 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Implemented:** the stable module-registry contract now requires the runtime registry set to be a subset of the declared `modules.toml` set; unmanifested runtime entries fail validation with a typed contract error. A regression test covers the extra-runtime-entry case.
 
 **Verification state:** Tests were not run by the agent. Maintainer execution remains required. FS-03 implementation is ready for integration.
+
+
+### FS-04 Pre-Implementation Audit Findings
+
+- [ ] **WORKER-01 — EventDispatcher queue depth is unbounded despite a max_queue_depth contract.** `DispatcherConfig` exposes `max_queue_depth`, but `EventDispatcher::start` spawns one Tokio dispatch task per received event and only limits per-handler concurrency with a semaphore. Under sustained load, dispatch tasks can accumulate while waiting for handler permits, so memory/task pressure is not bounded by the configured queue depth. The fix must enforce queue admission before task creation and preserve explicit backpressure behavior rather than silently growing an in-process queue.
