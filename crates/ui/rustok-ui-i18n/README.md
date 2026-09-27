@@ -9,7 +9,7 @@ RusToK module-owned UI packages and future UI adapters.
 
 The crate is structured into focused domain modules:
 
-- `locale`: Unicode Language Identifier normalization (`normalize_locale_tag`), canonical admin locale resolution (`normalize_admin_locale`), and structured fallback candidate chains (`locale_candidates`).
+- `locale`: complete Unicode locale normalization (`normalize_unicode_locale`), ICU4X/CLDR alias canonicalization, Fluent catalog-identity projection (`normalize_locale_tag`), locale directionality (`locale_text_direction`), canonical admin locale resolution (`normalize_admin_locale`), and structured fallback candidate chains (`locale_candidates`).
 - `bundle`: Concurrent Project Fluent (`.ftl`) bundle (`build_fluent_bundle`) and catalog (`build_fluent_catalog`, `try_build_fluent_catalog`, `bundle::build_fluent_catalog_report`, `FluentCatalog`) construction with Unicode bidi isolation enabled for interpolated values.
 - `messages`: Core thread-safe UI message facade (`UiMessages`), fail-closed prepared runtime (`PreparedUiMessages`), borrowed translator (`UiTranslator`), prepared per-locale translator (`UiLocaleTranslator`), source-locale provenance (`ResolvedMessage`), compound-message attribute lookup, transitive message/term schema validation, stack-buffered safe kebab-case key conversion (`with_kebab_key`), strict/lenient candidate resolution, and cached lazy-initialization diagnostics.
 - `error`: Typed errors (`BundleBuildError`, `I18nError`) for locale, catalog, lookup, and formatting failures. Both public error enums are non-exhaustive; downstream matches must retain a wildcard arm so new diagnostics can be added compatibly.
@@ -23,7 +23,9 @@ The crate is structured into focused domain modules:
 - Resolve message values and attributes from the host-provided effective locale with stack buffering for dotted keys up to 128 bytes.
 - Return the canonical source locale on provenance-aware lookup paths, so callers can observe parent/default fallback without duplicating resolver logic.
 - Validate message IDs against Fluent's ASCII identifier grammar (with documented dotted aliases) and reject Unicode control characters before lookup.
-- Apply a structured platform UI fallback chain (exact locale -> variants removed as one layer -> region -> script -> language -> default locale -> `"en"` -> fallback string) without depending on Leptos, Dioxus, Next.js, or host routing.
+- Accept arbitrary well-formed Unicode locale requests, canonicalize deprecated CLDR aliases, and safely project formatting/private-use extensions onto extension-free Fluent catalog identities.
+- Apply a structured platform UI fallback chain (exact locale -> variants removed as one layer -> CLDR-inferred script for region-disambiguated languages -> region -> script -> language -> default locale -> `"en"` -> fallback string) without depending on Leptos, Dioxus, Next.js, or host routing.
+- Expose CLDR writing direction instead of forcing hosts to maintain incomplete RTL language lists.
 - Provide strict startup preparation (`UiMessages::prepare`) and fail-soft initialization diagnostics without rebuilding the lazy catalog.
 - Keep request/catalog/default locale normalization bounded on raw input before trim/normalization work.
 - Keep UI i18n catalog logic out of `rustok-api` and framework-specific crates.
@@ -31,16 +33,28 @@ The crate is structured into focused domain modules:
 
 ## Locale Model
 
-Catalog keys are represented by `unic_langid::LanguageIdentifier`: language, optional script,
-optional region, and variants. Unicode/private-use extensions are not retained as part of catalog
-identity. Callers that require extension-aware locale semantics must keep that policy in the host layer
-until the locale model is deliberately widened.
+Runtime requests are parsed as complete Unicode locale identifiers with ICU4X. This accepts language,
+script, region, variants, Unicode (`-u-`), transformed (`-t-`), and private-use (`-x-`) extensions and
+canonicalizes deprecated aliases with CLDR data. `normalize_unicode_locale` preserves that complete
+identity for host date/number/calendar/collation services. `normalize_locale_tag` deliberately projects
+it to the extension-free language identifier required by Fluent 0.16 catalog lookup.
+
+Catalog declarations and the configured default remain extension-free: formatting preferences must not
+create duplicate message catalogs. They are canonicalized through the same alias data, so legacy and
+modern spellings cannot silently become separate identities. Region-only requests whose region changes
+the language's likely writing system receive a CLDR-backed script branch, for example
+`zh-TW-u-ca-chinese -> zh-TW -> zh-Hant-TW -> zh-Hant -> zh`.
+
+The engine is not limited to English and Russian. The no-argument module macro remains a compatibility
+shortcut for the current two-file modules; new multilingual modules can declare any checked-in set with
+`declare_module_i18n!(default = "en", locales = ["en", "ar", "de", "ja", "zh-Hant"]);`.
+The library supplies locale mechanics and CLDR plural selection, not translated product copy: every
+advertised locale still needs an owned, reviewed `.ftl` catalog.
 
 The Rust locale-input policy rejects raw locale strings longer than 64 bytes before trimming or
 underscore normalization. Runtime lookup, direct bundle construction, strict/lenient catalog
-construction, and default-locale validation use the same contract. Oversized diagnostics retain only
-length metadata and never copy or log the full untrusted payload. `@rustok/next-fluent` mirrors the
-raw 64-code-unit boundary for its locale entry points and keeps oversized configuration diagnostics bounded.
+construction, and default-locale validation use the same bounded-input contract. Oversized diagnostics
+retain only length metadata and never copy or log the full untrusted payload.
 
 ## Key Identity and Catalog Collisions
 
@@ -76,7 +90,9 @@ an override policy for Rust catalogs.
 - `t!`
 - `module_t!`
 - `normalize_admin_locale`
+- `normalize_unicode_locale`
 - `normalize_locale_tag`
+- `locale_text_direction` / `TextDirection`
 - `locale_candidates`
 - `build_fluent_bundle`
 - `build_fluent_catalog`
@@ -102,7 +118,7 @@ default locale before comparing values and attributes with default-locale contra
 
 - Module-owned UI packages use this crate from local `i18n.rs` files via `declare_module_i18n!`.
 - Host/runtime code owns effective locale selection; this crate only resolves messages for a supplied locale.
-- `@rustok/next-fluent` uses the same Project Fluent bidi-safe default, bounded locale-input policy, and structured script/region/variant fallback shape for core Rust/Next parity.
+- `@rustok/next-fluent` uses the same Project Fluent bidi-safe default and bounded locale-input policy. Extension-aware canonicalization and CLDR likely-script fallback are now the reference behavior that the separately versioned Next adapter must mirror.
 
 ## Boundary Rules
 

@@ -16928,6 +16928,7 @@ dependencies = [
  "criterion",
  "fluent-bundle",
  "fluent-syntax",
+ "icu_locale",
  "proptest",
  "tracing",
  "unic-langid",

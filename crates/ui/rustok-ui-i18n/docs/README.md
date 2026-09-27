@@ -12,16 +12,19 @@
 ## Responsibility Zone
 
 - compile embedded `.ftl` resources into concurrent Fluent bundles;
-- normalize Unicode Language Identifiers for catalog lookup;
+- parse complete Unicode locales, canonicalize CLDR aliases, and project them to Fluent catalog identities;
+- expose CLDR directionality and likely-script-aware fallback without host-maintained language lists;
 - resolve requested, default, platform and literal fallback paths;
 - resolve compound-message values/attributes and report the catalog locale that supplied them;
 - validate value/attribute schemas and transitive Fluent references before strict startup;
 - expose lenient UI rendering and strict validation/resolution APIs with typed diagnostics;
 - provide module declaration and argument-construction macros without framework dependencies.
 
-The catalog identity currently uses `unic_langid::LanguageIdentifier`. This covers language, script,
-region and variants, but does not preserve Unicode/private-use extensions. Extension-aware locale
-negotiation remains a separate follow-up and must not be inferred from the current API.
+Runtime requests use ICU4X Unicode locale parsing and CLDR canonicalization. The complete identity,
+including extensions, is available through `normalize_unicode_locale`; Fluent catalog selection uses
+its language/script/region/variant projection through `normalize_locale_tag`. Catalog declarations
+remain extension-free by design. Locale negotiation (headers, cookies, user preferences, q-values)
+remains host policy rather than a hidden responsibility of this crate.
 
 ## Integration
 

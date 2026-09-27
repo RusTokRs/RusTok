@@ -39,7 +39,10 @@ pub use locale::push_locale_candidate;
     note = "Internal helper; will be made private before 1.0."
 )]
 pub use locale::push_unique;
-pub use locale::{locale_candidates, normalize_admin_locale, normalize_locale_tag};
+pub use locale::{
+    TextDirection, locale_candidates, locale_text_direction, normalize_admin_locale,
+    normalize_locale_tag, normalize_unicode_locale,
+};
 pub use messages::{
     MAX_MESSAGE_KEY_LEN, MessageEntrySchema, MessageSchema, PreparedUiMessages, ResolvedMessage,
     UiLocaleTranslator, UiMessages, UiTranslator, extract_locale_entry_schemas,

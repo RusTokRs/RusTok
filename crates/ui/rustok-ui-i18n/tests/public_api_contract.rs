@@ -29,6 +29,11 @@ fn prelude_exposes_the_supported_high_level_consumer_surface() {
 
     let locale_translator: UiLocaleTranslator<'_> = prepared.for_locale(Some("en"));
     assert_eq!(locale_translator.t("hello", "fallback"), "Hello");
+
+    assert_eq!(
+        locale_text_direction("ar"),
+        Some(TextDirection::RightToLeft)
+    );
 }
 
 #[test]

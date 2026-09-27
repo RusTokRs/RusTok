@@ -48,10 +48,11 @@ proptest! {
     ) {
         let candidates = locale_candidates(requested.as_deref(), &default_locale);
 
-        // One LanguageIdentifier can contribute at most four structural levels:
-        // exact, variants-cleared, region-cleared, script-cleared. Requested and
-        // default locales therefore contribute at most eight entries, plus "en".
-        prop_assert!(candidates.len() <= 9);
+        // One request can contribute at most five levels: exact,
+        // variants-cleared, two CLDR inferred-script levels, and the base
+        // language. Requested/default chains therefore contribute at most ten
+        // entries, plus the canonical platform fallback.
+        prop_assert!(candidates.len() <= 11);
 
         let unique = candidates.iter().collect::<HashSet<_>>();
         prop_assert_eq!(unique.len(), candidates.len());

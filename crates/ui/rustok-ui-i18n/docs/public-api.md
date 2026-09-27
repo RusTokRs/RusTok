@@ -13,6 +13,7 @@ New module-owned UI code should prefer `rustok_ui_i18n::prelude::*` when a glob 
 - `UiTranslator`
 - `UiLocaleTranslator`
 - `ResolvedMessage`
+- `TextDirection` / `locale_text_direction`
 - `BundleBuildError`
 - `I18nError`
 - `FluentArgs`
@@ -38,6 +39,7 @@ The following APIs are intentionally available for callers that need catalog con
 - `bundle::FluentCatalogBuildReport`
 - `FluentCatalog`
 - `normalize_admin_locale`
+- `normalize_unicode_locale`
 - `normalize_locale_tag`
 - `locale_candidates`
 - `resolve_fluent_message` / `resolve_fluent_message_with_locale`

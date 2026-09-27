@@ -17,7 +17,7 @@
 
 pub use crate::{
     BundleBuildError, FluentArgs, I18nError, MAX_MESSAGE_KEY_LEN, MessageKeyError,
-    PreparedUiMessages, ResolvedMessage, UiLocaleTranslator, UiMessages, UiTranslator,
-    declare_module_i18n, fluent_args, module_t, t, validate_message_attribute,
-    validate_message_key,
+    PreparedUiMessages, ResolvedMessage, TextDirection, UiLocaleTranslator, UiMessages,
+    UiTranslator, declare_module_i18n, fluent_args, locale_text_direction, module_t, t,
+    validate_message_attribute, validate_message_key,
 };

@@ -167,17 +167,34 @@ production-парсинге **не подтвердились**.
   возврат к `ru` как default. Unit test подтверждает fallback для `None` и
   неподдерживаемой locale.
 
+### F-10 — request locale contract не покрывал мировой Unicode locale surface
+
+- **Серьёзность:** высокая для международного продукта.
+- **Статус до:** подтверждено при продолжении аудита.
+- **Причина:** движок умел хранить произвольные language/script/region catalogs, но
+  отклонял целиком валидные locale requests с `-u-`, `-t-` и `-x-` extensions,
+  не canonicalize устаревшие aliases, не давал CLDR directionality и не учитывал
+  region-dependent likely script (`zh-TW` → `zh-Hant`). No-arg macro дополнительно
+  создавал впечатление, что поддерживаются только `en`/`ru`.
+- **Исправление:** request parsing и metadata переведены на ICU4X/CLDR; полная locale
+  сохраняется отдельным API, а Fluent получает явно документированную extension-free
+  projection. Добавлены alias canonicalization, direction API, likely-script branch,
+  arbitrary-locale macro form и world-language/plural integration matrix.
+- **Граница:** библиотека поддерживает механизмы произвольных языков, но не генерирует
+  переводы. Каждый рекламируемый язык всё равно требует проверенный module-owned FTL.
+
 ## Проверенные инварианты, не требующие изменения
 
 1. **Bidi:** `set_use_isolating(true)` вызывается при каждой сборке Rust bundle;
    lenient formatting не возвращает частичный malformed output.
 2. **Concurrency:** `UiMessages` использует `OnceLock<FluentCatalogBuildReport>` и
    `Once` для one-time logging; каталог содержит concurrent `FluentBundle`.
-3. **Locale model:** extension-bearing tags намеренно отклоняются; Rust identity —
-   `LanguageIdentifier` (language/script/region/variants), а extension policy остаётся
-   у host.
-4. **Fallback:** exact → variants removed → region removed → script removed →
-   language → default hierarchy → `en`; candidates canonical и deduplicated.
+3. **Locale model:** полная Unicode locale request identity и extension-free Fluent
+   catalog identity разделены явно; CLDR canonicalization не смешивает formatting
+   preferences с каталогами сообщений.
+4. **Fallback:** exact → variants removed → region-dependent likely script → region
+   removed → script removed → language → default hierarchy → `en`; candidates
+   canonical и deduplicated.
 5. **No I/O:** production crate не сканирует filesystem и пригоден для WASM.
 6. **Strict/lenient split:** strict preparation fail-closed; legacy rendering
    fail-soft с typed cached diagnostics.

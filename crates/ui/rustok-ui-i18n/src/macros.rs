@@ -109,6 +109,15 @@ macro_rules! module_t {
 /// rustok_ui_i18n::declare_module_i18n!();
 /// ```
 ///
+/// A module can include any explicit set of locale files without hardcoding an
+/// `en`/`ru` pair in generated code:
+/// ```ignore
+/// rustok_ui_i18n::declare_module_i18n!(
+///     default = "en",
+///     locales = ["en", "ar", "de", "es-419", "ja", "zh-Hant"],
+/// );
+/// ```
+///
 /// Custom invocation from an external consumer, including a renamed crate import:
 /// ```
 /// mod consumer {
@@ -138,6 +147,23 @@ macro_rules! declare_module_i18n {
             &[
                 ("en", include_str!("../locales/en.ftl")),
                 ("ru", include_str!("../locales/ru.ftl")),
+            ]
+        );
+    };
+    (
+        default = $default_locale:literal,
+        locales = [$($locale:literal),+ $(,)?]
+        $(,)?
+    ) => {
+        $crate::declare_module_i18n!(
+            $default_locale,
+            &[
+                $(
+                    (
+                        $locale,
+                        include_str!(concat!("../locales/", $locale, ".ftl")),
+                    ),
+                )+
             ]
         );
     };

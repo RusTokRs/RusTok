@@ -9,6 +9,7 @@ description = "Framework-agnostic UI message catalog and resolution helpers for 
 [dependencies]
 fluent-bundle.workspace = true
 fluent-syntax.workspace = true
+icu_locale.workspace = true
 unic-langid.workspace = true
 tracing.workspace = true
 

@@ -70,12 +70,12 @@ expectContains(
 );
 expectContains(
   "apps/admin/src/i18n.rs",
-  'declare_module_i18n!(\n    "en",',
+  'declare_module_i18n!(\n    default = "en",',
   "admin runtime catalog to use platform fallback locale 'en'",
 );
 expectNotContains(
   "apps/admin/src/i18n.rs",
-  'declare_module_i18n!(\n    "ru",',
+  'declare_module_i18n!(\n    default = "ru",',
   "legacy Russian default in the admin runtime catalog",
 );
 expectContains(
