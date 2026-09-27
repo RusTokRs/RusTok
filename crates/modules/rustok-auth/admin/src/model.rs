@@ -171,6 +171,19 @@ pub struct CreateUserInput {
     pub status: Option<String>,
 }
 
+impl std::fmt::Debug for CreateUserInput {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CreateUserInput")
+            .field("email", &self.email)
+            .field("password", &"<redacted>")
+            .field("name", &self.name)
+            .field("role", &self.role)
+            .field("status", &self.status)
+            .finish()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UpdateUserInput {
     pub name: Option<String>,

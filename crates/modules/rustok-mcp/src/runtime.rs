@@ -19,14 +19,31 @@ fn default_metadata() -> serde_json::Value {
     serde_json::json!({})
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct McpSessionContext {
     #[serde(default = "default_transport")]
     pub transport: String,
+    #[serde(skip_serializing, skip_deserializing)]
+    #[schemars(skip)]
     pub plaintext_token: Option<String>,
     pub correlation_id: Option<String>,
     #[serde(default = "default_metadata")]
     pub metadata: serde_json::Value,
+}
+
+impl std::fmt::Debug for McpSessionContext {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("McpSessionContext")
+            .field("transport", &self.transport)
+            .field(
+                "plaintext_token",
+                &self.plaintext_token.as_ref().map(|_| "<redacted>"),
+            )
+            .field("correlation_id", &self.correlation_id)
+            .field("metadata", &self.metadata)
+            .finish()
+    }
 }
 
 impl Default for McpSessionContext {
@@ -212,6 +229,23 @@ pub type SharedMcpScaffoldDraftStore = Arc<dyn McpScaffoldDraftStore>;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn session_context_does_not_serialize_plaintext_token_or_expose_it_in_debug() {
+        let token = "super-secret-mcp-token".to_string();
+        let session = McpSessionContext::default().with_plaintext_token(token.clone());
+
+        let debug = format!("{session:?}");
+        assert!(!debug.contains(&token));
+        assert!(debug.contains("<redacted>"));
+
+        let serialized = serde_json::to_value(&session).expect("session context serializes");
+        assert!(serialized.get("plaintext_token").is_none());
+
+        let round_tripped: McpSessionContext =
+            serde_json::from_value(serialized).expect("session context deserializes");
+        assert!(round_tripped.plaintext_token.is_none());
+    }
 
     #[test]
     fn session_context_defaults_to_stdio() {

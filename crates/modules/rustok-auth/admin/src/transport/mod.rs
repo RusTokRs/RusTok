@@ -23,19 +23,45 @@ pub async fn request_password_reset(email: String, tenant: String) -> Result<Str
         .map_err(|error| error.to_string())
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct ApiRequestContext {
     pub token: Option<String>,
     pub tenant_slug: Option<String>,
     pub locale: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ServerGraphqlRequest {
     pub query: String,
     pub variables: Value,
     pub persisted_query_sha256: Option<String>,
     pub context: ApiRequestContext,
+}
+
+impl std::fmt::Debug for ApiRequestContext {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ApiRequestContext")
+            .field("token", &self.token.as_ref().map(|_| "<redacted>"))
+            .field("tenant_slug", &self.tenant_slug)
+            .field("locale", &self.locale)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for ServerGraphqlRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ServerGraphqlRequest")
+            .field("query", &self.query)
+            .field("variables", &"<redacted>")
+            .field(
+                "persisted_query_sha256",
+                &self.persisted_query_sha256,
+            )
+            .field("context", &self.context)
+            .finish()
+    }
 }
 
 pub fn get_graphql_url() -> String {
@@ -785,11 +811,21 @@ pub struct CreateOAuthAppResponse {
     pub create_oauth_app: CreateOAuthAppResult,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateOAuthAppResult {
     pub app: OAuthApp,
     pub client_secret: String,
+}
+
+impl std::fmt::Debug for CreateOAuthAppResult {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CreateOAuthAppResult")
+            .field("app", &self.app)
+            .field("client_secret", &"<redacted>")
+            .finish()
+    }
 }
 
 #[derive(serde::Serialize)]
