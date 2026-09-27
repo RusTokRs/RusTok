@@ -272,6 +272,7 @@ mod tests {
             .body(())
             .expect("request");
         let (mut parts, _) = request.into_parts();
+        insert_test_tenant(&mut parts, Uuid::nil(), "en");
 
         let runtime = Runtime::new().expect("tokio runtime");
         let rejection = runtime
@@ -369,6 +370,7 @@ mod tests {
             .body(())
             .expect("request");
         let (mut parts, _) = request.into_parts();
+        insert_test_tenant(&mut parts, Uuid::nil(), "en");
 
         let runtime = Runtime::new().expect("tokio runtime");
         let context = runtime
@@ -387,6 +389,7 @@ mod tests {
             .body(())
             .expect("request");
         let (mut parts, _) = request.into_parts();
+        insert_test_tenant(&mut parts, Uuid::nil(), "en");
 
         let runtime = Runtime::new().expect("tokio runtime");
         let context = runtime
@@ -404,6 +407,7 @@ mod tests {
             .body(())
             .expect("request");
         let (mut parts, _) = request.into_parts();
+        insert_test_tenant(&mut parts, Uuid::nil(), "en");
 
         let runtime = Runtime::new().expect("tokio runtime");
         let context = runtime
@@ -423,6 +427,7 @@ mod tests {
             .body(())
             .expect("request");
         let (mut parts, _) = request.into_parts();
+        insert_test_tenant(&mut parts, Uuid::nil(), "en");
 
         let runtime = Runtime::new().expect("tokio runtime");
         let context = runtime
