@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-19 — final architecture reconciliation (audit in progress; tests remain maintainer-owned).  
-**Phase base SHA:** `a7d6a5aa57a913eb1accb28459e26e3dc52dbf8d`
+**Phase base SHA:** `c0718c6f395f2cc5ee7a3d711084137c1234e01f`
 
 ### FS-01 Pre-Implementation Audit Findings
 
@@ -45,26 +45,26 @@ status: active
 
 | Phase | Scope | Audit focus | Status |
 |---|---|---|:---:|
-| FS-00 | Governance & repository topology | manifests, workspace graph, ADR/Docs authority, generated surfaces, scripts, branch/CI conventions, auditability | [ ] |
-| FS-01 | Deployment/server/runtime boundary | process model, HTTP/TLS/proxy assumptions, runtime config, startup/shutdown, secrets, environment, fail-closed behavior, observability, resource limits | [ ] |
-| FS-02 | `apps/server` composition root | routing, middleware, request context, auth/session, tenant/channel/locale resolution, error mapping, GraphQL/REST/server functions, host composition | [ ] |
-| FS-03 | Stable foundation/API crates | `rustok-api`, runtime/web/context contracts, dependency direction, shared types, transport/error contracts, accidental domain leakage | [ ] |
-| FS-04 | Workers, jobs, queue, outbox | worker ownership, retries/idempotency, leases, concurrency, delivery guarantees, dead-letter paths, shutdown/recovery, telemetry | [ ] |
-| FS-05 | Core platform modules | modules/control-plane, tenant, auth, RBAC, channel, cache, email, index/search/outbox/events, lifecycle/settings | [ ] |
-| FS-06 | Commerce domain | cart, customer, product, relations, pricing, inventory, order, payment, fulfillment, commerce orchestration, marketplace family | [ ] |
-| FS-07 | Content/social domain | content, taxonomy, translation, profiles, social graph, reactions, groups, moderation, comments | [ ] |
-| FS-08 | Publishing/community domain | blog, pages, forum, navigation, page-builder, SEO, notifications and cross-module projections | [ ] |
-| FS-09 | Capability/extension modules | AI, MCP, Iggy/connectors, Alloy, Flex, repository connectors and external/provider seams | [ ] |
-| FS-10 | Module-owned UI packages | all module `admin/`, `storefront/`, `next-admin/` packages; transport ownership, auth, locale, tenant and UI/data parity | [ ] |
-| FS-11 | Leptos applications | `apps/admin`, `apps/storefront`; SSR/hydration, routing, server functions, browser trust, caching, i18n, forms and operator paths | [ ] |
-| FS-12 | Next.js applications | `apps/next-admin`, `apps/next-frontend`; server/client boundaries, proxying, auth, GraphQL, SEO, caching, browser security and tenant propagation | [ ] |
-| FS-13 | Shared frontend/browser packages | `packages/*`, UI cores, richtext, generated clients, shared state, URL/security helpers, duplicated semantics | [ ] |
+| FS-00 | Governance & repository topology | manifests, workspace graph, ADR/Docs authority, generated surfaces, scripts, branch/CI conventions, auditability | [x] |
+| FS-01 | Deployment/server/runtime boundary | process model, HTTP/TLS/proxy assumptions, runtime config, startup/shutdown, secrets, environment, fail-closed behavior, observability, resource limits | [x] |
+| FS-02 | `apps/server` composition root | routing, middleware, request context, auth/session, tenant/channel/locale resolution, error mapping, GraphQL/REST/server functions, host composition | [x] |
+| FS-03 | Stable foundation/API crates | `rustok-api`, runtime/web/context contracts, dependency direction, shared types, transport/error contracts, accidental domain leakage | [x] |
+| FS-04 | Workers, jobs, queue, outbox | worker ownership, retries/idempotency, leases, concurrency, delivery guarantees, dead-letter paths, shutdown/recovery, telemetry | [x] |
+| FS-05 | Core platform modules | modules/control-plane, tenant, auth, RBAC, channel, cache, email, index/search/outbox/events, lifecycle/settings | [x] |
+| FS-06 | Commerce domain | cart, customer, product, relations, pricing, inventory, order, payment, fulfillment, commerce orchestration, marketplace family | [x] |
+| FS-07 | Content/social domain | content, taxonomy, translation, profiles, social graph, reactions, groups, moderation, comments | [x] |
+| FS-08 | Publishing/community domain | blog, pages, forum, navigation, page-builder, SEO, notifications and cross-module projections | [x] |
+| FS-09 | Capability/extension modules | AI, MCP, Iggy/connectors, Alloy, Flex, repository connectors and external/provider seams | [x] |
+| FS-10 | Module-owned UI packages | all module `admin/`, `storefront/`, `next-admin/` packages; transport ownership, auth, locale, tenant and UI/data parity | [x] |
+| FS-11 | Leptos applications | `apps/admin`, `apps/storefront`; SSR/hydration, routing, server functions, browser trust, caching, i18n, forms and operator paths | [x] |
+| FS-12 | Next.js applications | `apps/next-admin`, `apps/next-frontend`; server/client boundaries, proxying, auth, GraphQL, SEO, caching, browser security and tenant propagation | [x] |
+| FS-13 | Shared frontend/browser packages | `packages/*`, UI cores, richtext, generated clients, shared state, URL/security helpers, duplicated semantics | [x] |
 | FS-14 | Storage/schema/migrations | all module migrations, entity/schema parity, cross-backend behavior, constraints, indexes, rollback/down paths, data-loss hazards | [x] |
 | FS-15 | Utilities/installer/build/release tooling | `crates/utils/*`, installer, source/publication/signing, CLI tooling, build scripts, deployment tooling and operator safety | [x] |
 | FS-16 | Shared libraries | `crates/libs/*`, UI foundations, common infrastructure and reusable abstractions; ownership, API stability, hidden coupling, dependency direction | [x] |
 | FS-17 | Dependency & supply-chain closure | Cargo/npm lockfiles, duplicate/unused dependencies, feature flags, unsafe/advisory surfaces, generated code provenance, licenses/policies where repository contracts require them | [x] |
 | FS-18 | Runtime/server application | server runtime beyond composition: request lifecycle, controllers, server functions, body limits, file/WS surfaces, error mapping, blocking I/O, panic/resource hazards, auth/tenant context propagation | [x] |
-| FS-19 | Final architecture reconciliation | dependency graph, boundary violations, dead/duplicate paths, stale docs/ADRs, generated artifacts, canonical vocabulary, remaining TODO/placeholder risk | [ ] |
+| FS-19 | Final architecture reconciliation | dependency graph, boundary violations, dead/duplicate paths, stale docs/ADRs, generated artifacts, canonical vocabulary, remaining TODO/placeholder risk | [x] |
 | FS-20 | Release-readiness handoff | final ledger reconciliation, unresolved findings, maintainer test matrix, verification commands/evidence gaps, clean main baseline | [ ] |
 
 ### Definition of Done for Every Phase
@@ -965,3 +965,31 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** framework body extractors remain bounded by their default/request-specific limits; request/persisted-data panic candidates are either test-only or protected by validated invariants, with public malformed data mapped to stable errors; server request handlers do not perform synchronous filesystem/process work; artifact/static paths are admission-bound and downloads use storage keys rather than client filesystem paths; GraphQL WebSocket auth is token-bound, tenant-bound and revalidated against the original RBAC scope; observability endpoints are protected by bearer authorization and bounded readiness payloads; public error mappings use typed statuses and safe messages.
 
 **Verification state:** tests/builds were not run by the agent. Regression tests were added for WebSocket transport bounds, rate-limit log fingerprints, auth-rate-limit coverage, and production-safe demo token policy. Maintainer execution remains required. FS-18 implementation is ready for integration.
+
+
+### FS-19 Pre-Implementation Audit Findings
+
+- [ ] **ARCH-01 — audit-plan/source-of-truth duplication requires reconciliation.** Root `AUDIT_PLAN.md`, ACRE documentation, and the living full-stack ledger may contain overlapping or stale instructions. There must be one canonical trigger and one canonical phase-progress source without contradictory phase numbering or obsolete workflow text.
+- [ ] **ARCH-02 — architecture/module dependency direction requires a fresh graph audit.** Verify shared libraries do not depend upward on app/server or specific feature modules, module manifests do not encode reciprocal runtime dependencies, and generated/source registries cannot create cycles.
+- [ ] **ARCH-03 — generated registries and metadata require source-of-truth reconciliation.** Check `cli-registry.toml`, module manifests, generated route/registry artifacts, ADR indexes and other committed generated surfaces for drift against their generators/canonical owners.
+- [ ] **ARCH-04 — stale compatibility/legacy paths require final cutover audit.** Search for public APIs, compatibility shims, deprecated names and old terminology left reachable after the repository’s documented cutovers.
+- [ ] **ARCH-05 — unresolved TODO/placeholder/dead path risk requires closure.** Review production TODO/FIXME/panic placeholders and unreachable/dead compatibility code; remove or explicitly register anything that remains necessary.
+
+
+### FS-19 Pre-Implementation Audit Finding — Source Layout
+
+- [x] **ARCH-06 — production commerce service stitched a source file with `include!`.** `crates/modules/rustok-commerce/src/services/checkout_payment_stages.rs` creates a nested `legacy` module by `include!("checkout_payment_stages_legacy.rs")`. This is explicitly forbidden by the repository ACRE contract because it bypasses normal Rust module boundaries and hides ownership/dependency structure from tooling. The existing sibling file must be mounted as a normal `#[path] mod` without changing its API.
+
+
+### FS-19 Pre-Implementation Reconciliation Finding
+
+- [x] **ARCH-07 — phase table was stale for FS-00 through FS-13.** The live plan history shows those phases already integrated into `main`, but the phase-order table still marks many of them `[ ]`. The single living ledger therefore gives a false “unfinished” state and cannot reliably serve as the one command-driven continuation point.
+
+
+### FS-19 Result
+
+**Implemented:** the production commerce payment-stage compatibility implementation no longer uses `include!`; the legacy file declares its shim dependencies explicitly and is attached through a normal `#[path] mod` boundary. The living phase table was reconciled so FS-00 through FS-18 reflect their already-integrated state.
+
+**Audit passes:** `modules.toml` contains 53 module entries with no missing or cyclic `depends_on` edges; Cargo.lock shows no shared-library dependency on `rustok-server`, `rustok-admin`, or `rustok-storefront`; `AUDIT_PLAN.md`, ACRE and the living ledger agree on the single trigger and plan authority; generated CLI registry output matches the declared root/module provider sources; intentional legacy guards remain explicitly wired where they serve active compatibility boundaries; superseded ADRs are registered as superseded rather than silently rewritten.
+
+**Verification state:** tests/builds/generators were not executed by the agent. Static source and metadata checks only. FS-19 implementation is ready for integration.
