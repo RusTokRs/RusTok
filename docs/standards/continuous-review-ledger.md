@@ -795,3 +795,10 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** module-owned admin/storefront transport layers were checked for auth/tenant propagation and owner-port usage. Commerce admin server functions resolve authenticated `AuthContext`/`TenantContext` and compare request tenant ids where supplied; auth admin mutations construct server-owned mutation contexts from resolved auth/tenant state and delegate to the owner port; page-builder, forum, product, tenant, order, payment and related module UI seams were reviewed for direct persistence or trust-boundary bypasses. No additional repository-owned production authorization bypass was confirmed in this phase.
 
 **Verification state:** no test suite/build was executed by the agent. Maintainer execution remains required. FS-10 implementation is ready for integration.
+
+
+### FS-11 Pre-Implementation Audit Findings
+
+- [ ] **LEPTOS-01 — SSR server-function trust boundaries require audit.** Verify every mutation server function derives actor/tenant/auth from server context rather than trusting browser arguments and does not leak internal context into HTML or serialized hydration state.
+- [ ] **LEPTOS-02 — auth/session and CSRF boundary requires audit.** Verify browser-origin mutations cannot reuse arbitrary bearer/tenant parameters to cross the resolved tenant/session boundary, and protected endpoints do not rely on client-only guards.
+- [ ] **LEPTOS-03 — hydration/SSR data ownership requires audit.** Verify sensitive tenant/operator data is not embedded into public SSR output or hydration payloads for users lacking the relevant permission.
