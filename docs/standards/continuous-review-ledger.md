@@ -899,3 +899,8 @@ _No completed rounds yet. Round 1 is currently in progress._
 ### FS-16 Pre-Implementation Audit Finding — Rate Limiter
 
 - [ ] **LIB-05 — shared RateLimiter stores and derives Debug output from raw API keys/login identifiers.** `check_api_key` uses `api_key:<raw secret>` as an in-memory bucket key and `check_login` uses `login:<raw identifier>`. `RateLimiter` also derives `Debug`, recursively exposing the bucket map. A diagnostic dump can therefore disclose API credentials and login identifiers. The limiter should use process-local opaque key identities and never render bucket contents.
+
+
+### FS-16 Pre-Implementation Audit Finding — Request Tenant Authority
+
+- [ ] **LIB-06 — shared `RequestContext` bypasses the accepted canonical tenant-resolution boundary.** When `TenantContextExtension` is absent, `RequestContext::from_request_parts` accepts `X-Tenant-ID` directly. This contradicts the accepted strict tenant/request-trust ADR, under which tenant resolution is a server-owned middleware pipeline and downstream request contexts must consume the trusted resolved context rather than reconstruct tenant authority from transport metadata.
