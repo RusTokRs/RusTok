@@ -647,6 +647,13 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 ### FS-02 Pre-Implementation Audit Findings
 
-- [ ] **SERVER-COMP-01 — registry v2 routing requires tenant resolution for global registry operations.** `tenant_route_scope` currently classifies `/v2/catalog/*` as `TenantBound`, but registry publish/governance and remote-runner handlers intentionally use platform-scoped command contexts; the remote runner token has no tenant context. Only `/v2/catalog/publish/{request_id}/platform-build-stage` explicitly binds a tenant-scoped platform build. In full runtime this can reject legitimate registry runner/global operations before registry authorization executes.
-- [ ] **SERVER-COMP-02 — duplicated route-policy condition.** `tenant_route_scope` contains the same `/catalog` descendant predicate twice. The second branch is unreachable and obscures the actual global-route contract.
-- [ ] **SERVER-COMP-03 — remote executor token uses non-constant-time comparison in the controller.** The registry middleware already performs constant-time runner-token authentication, but `require_remote_executor_access` rechecks the same secret with ordinary string inequality. Keep defense-in-depth while using the same constant-time comparison semantics at both boundaries.
+- [x] **SERVER-COMP-01 — registry v2 routing requires tenant resolution for global registry operations.** `tenant_route_scope` currently classifies `/v2/catalog/*` as `TenantBound`, but registry publish/governance and remote-runner handlers intentionally use platform-scoped command contexts; the remote runner token has no tenant context. Only `/v2/catalog/publish/{request_id}/platform-build-stage` explicitly binds a tenant-scoped platform build. In full runtime this can reject legitimate registry runner/global operations before registry authorization executes.
+- [x] **SERVER-COMP-02 — duplicated route-policy condition.** `tenant_route_scope` contains the same `/catalog` descendant predicate twice. The second branch is unreachable and obscures the actual global-route contract.
+- [x] **SERVER-COMP-03 — remote executor token uses non-constant-time comparison in the controller.** The registry middleware already performs constant-time runner-token authentication, but `require_remote_executor_access` rechecks the same secret with ordinary string inequality. Keep defense-in-depth while using the same constant-time comparison semantics at both boundaries.
+
+
+### FS-02 Result
+
+**Implemented:** registry route scope now separates platform-global registry operations from the single tenant-bound platform-build staging operation; the duplicate `/catalog` predicate was removed; controller-side remote-runner token validation now uses constant-time comparison to match the registry middleware.
+
+**Verification state:** Tests were inspected but not executed by the agent. Maintainer verification remains required. FS-02 implementation is ready for integration.
