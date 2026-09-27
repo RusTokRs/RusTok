@@ -29,7 +29,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
@@ -65,22 +64,6 @@ jobs:
       - name: Consumer integration
         run: cargo test -p rustok-notifications-storefront
       - name: Clippy
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set +e
-          cargo clippy -p rustok-ui-i18n --all-targets --all-features -- -D warnings > /tmp/lazy-clippy.log 2>&1
-          status=$?
-          set -e
-          {
-            echo 'Temporary lazy-catalog Clippy diagnostics:'
-            echo
-            echo '```text'
-            tail -n 500 /tmp/lazy-clippy.log
-            echo '```'
-          } > /tmp/lazy-clippy.md
-          gh pr comment "$PR_NUMBER" --body-file /tmp/lazy-clippy.md
-          exit "$status"
+        run: cargo clippy -p rustok-ui-i18n --all-targets --all-features -- -D warnings
       - name: WASM check
         run: cargo check -p rustok-ui-i18n --all-features --target wasm32-unknown-unknown

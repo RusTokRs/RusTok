@@ -74,10 +74,15 @@ impl LazyCatalogIndex {
             match parse_language_identifier(locale) {
                 Ok(langid) => {
                     let normalized = langid.to_string();
-                    if entries.contains_key(&normalized) {
-                        diagnostics.push(BundleBuildError::DuplicateLocale { locale: normalized });
-                    } else {
-                        entries.insert(normalized, LazyBundle::new(source));
+                    match entries.entry(normalized) {
+                        std::collections::btree_map::Entry::Vacant(entry) => {
+                            entry.insert(LazyBundle::new(source));
+                        }
+                        std::collections::btree_map::Entry::Occupied(entry) => {
+                            diagnostics.push(BundleBuildError::DuplicateLocale {
+                                locale: entry.key().clone(),
+                            });
+                        }
                     }
                 }
                 Err(error) => diagnostics.push(error),
