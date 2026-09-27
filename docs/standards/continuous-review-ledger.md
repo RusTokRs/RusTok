@@ -760,3 +760,24 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** blog/page public reads enforce Published state, tenant ownership, locale resolution and channel gates; forum public discovery and search-result eligibility re-evaluate exact audience visibility for topic/reply candidates and retain tenant/revision/deletion boundaries; page canonical routes and aliases are tenant/locale scoped and fail closed on ambiguity, with published-route snapshots and tombstones transactionally maintained; immutable Page Builder artifacts verify tenant/page/locale identity plus payload/build/materialization hashes and bounded resource policy before activation or audit; navigation menu creation/translation/binding uses tenant/channel scope and exact locale coverage with revision CAS; SEO redirect caches are keyed by tenant and invalidate transactionally, target hosts are constrained, redirect chains reject immediate loops, and sitemap jobs/deliveries use tenant-scoped idempotency; notification source inbox/fanout jobs use tenant-scoped identities, leases, bounded pages, cursor-advance proofs and idempotent fanout item keys.
 
 **Verification state:** tests were inspected but not executed by the agent. Maintainer execution remains required. FS-08 implementation is complete and ready for integration.
+
+
+### FS-09 Pre-Implementation Audit Findings
+
+- [x] **EXT-01 — external/provider URL trust boundaries audit passed.** Check all connector/provider/network-capable modules for SSRF, private-network access, DNS rebinding assumptions, redirect following, credential leakage, and unbounded response/resource use.
+- [x] **EXT-02 — capability execution authorization audit passed.** Verify AI/MCP/connector/automation actions are tenant-scoped, permission-checked, bounded by explicit capability allowlists and cannot turn user-controlled metadata into arbitrary privileged tool execution.
+- [x] **EXT-03 — external side effects idempotency/retry audit passed.** Verify webhook/connector/provider retries cannot duplicate writes or side effects and that ambiguous outcomes are reconciled without weakening authorization boundaries.
+
+
+- [x] **EXT-04 — MCP session plaintext token leaks through derived Debug/serialization.** `McpSessionContext` carries `plaintext_token` and derives both `Debug` and `Serialize`/`Deserialize`. Session contexts can therefore expose the authentication bearer material through diagnostics or serialized runtime state. The token must remain in-memory-only and redact from Debug/schema surfaces.
+
+
+### FS-09 Result
+
+**Implemented:** `McpSessionContext` keeps `plaintext_token` in memory only, omits it from JSON/schema output, and redacts it from Debug output. Regression coverage was added.
+
+**Audit passes:** MCP tool authorization is policy/permission based with unknown tools denied; Alloy authoring requires authenticated tenant-matching scripts.manage context and resolves the tenant server-side; imported Alloy drafts fail closed when parent policy is unavailable; AI tool inventory/context/tool-call bounds are enforced and untrusted provider/tool data cannot create authority; agent permissions are an initiator/agent/descriptor intersection; provider targets are deployment-owned and their endpoints pass deployment egress policy; structured AI accounting uses tenant-scoped budgets, provider concurrency, leases and classification gates; Iggy producers partition by tenant and consumer acknowledgement is bound to stream/topic/partition plus the outstanding delivery; connector retries/DLQ preserve raw payload without widening authorization.
+
+**Additional observation for later phase:** Flex persisted-schema presentation currently maps malformed stored \`fields_config\` to an empty view in \`standalone_schema_view_from_source\`; this is a storage-corruption resilience concern and is deferred to FS-14 rather than silently changed here.
+
+**Verification state:** tests were inspected and regression coverage was added but not executed by the agent. Maintainer execution remains required. FS-09 implementation is ready for integration.
