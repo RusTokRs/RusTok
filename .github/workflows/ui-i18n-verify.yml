@@ -29,6 +29,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
@@ -54,9 +55,28 @@ jobs:
         with:
           workspaces: ". -> target"
       - name: Format
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          cargo fmt -p rustok-ui-i18n -- --check
-          rustfmt --edition 2024 --check apps/admin/src/i18n.rs
+          set +e
+          cargo fmt -p rustok-ui-i18n -- --check > /tmp/lazy-fmt.log 2>&1
+          crate_status=$?
+          rustfmt --edition 2024 --check apps/admin/src/i18n.rs > /tmp/admin-fmt.log 2>&1
+          admin_status=$?
+          set -e
+          {
+            echo 'Temporary lazy-catalog formatter diagnostics:'
+            echo
+            echo '```diff'
+            cat /tmp/lazy-fmt.log
+            cat /tmp/admin-fmt.log
+            echo '```'
+          } > /tmp/lazy-fmt.md
+          gh pr comment "$PR_NUMBER" --body-file /tmp/lazy-fmt.md
+          if [ "$crate_status" -ne 0 ] || [ "$admin_status" -ne 0 ]; then
+            exit 1
+          fi
       - name: Repository i18n contract
         run: node scripts/verify/verify-i18n-contract.mjs
       - name: Test
