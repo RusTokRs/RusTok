@@ -21,4 +21,12 @@ serde_json.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+base64.workspace = true
+chrono.workspace = true
+ed25519-dalek.workspace = true
+hex.workspace = true
+rustok-api.workspace = true
+rustok-modules.workspace = true
+sha2.workspace = true
 tokio.workspace = true
+

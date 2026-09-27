@@ -496,8 +496,113 @@ mod tests {
     use super::{RuntimeComposition, command_provider};
     use rustok_cli_core::CommandRequest;
 
+    fn signed_base_distribution_receipt(
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> (
+        rustok_modules::ModuleStaticDistributionBootstrapReceipt,
+        String,
+    ) {
+        use base64::Engine;
+        use base64::engine::general_purpose::STANDARD;
+        use ed25519_dalek::{Signer, SigningKey};
+        use sha2::{Digest, Sha256};
+
+        let signing_key = SigningKey::from_bytes(&[7_u8; 32]);
+        let public_key = signing_key.verifying_key().to_bytes();
+        let digest_fn = |c: char| format!("sha256:{}", c.to_string().repeat(64));
+        let platform_source_digest = digest_fn('1');
+        let items = Vec::new();
+        let roles = vec![rustok_modules::ModuleStaticDistributionRoleArtifact {
+            role: rustok_modules::ModuleStaticDistributionRole::Monolith,
+            artifact_digest: digest_fn('2'),
+        }];
+        let role_set_digest =
+            rustok_modules::ModuleStaticDistributionBuildEvidence::role_set_digest(&roles).unwrap();
+        let preparation = rustok_modules::ModuleStaticDistributionBootstrapPreparation {
+            composition_revision: 1,
+            composition_digest: rustok_modules::module_static_distribution_composition_digest(
+                &format!("cas://{platform_source_digest}"),
+                &platform_source_digest,
+                &digest_fn('3'),
+                "x86_64-unknown-linux-gnu",
+                &items,
+            )
+            .unwrap(),
+            platform_source_reference: format!("cas://{platform_source_digest}"),
+            platform_source_digest,
+            toolchain_digest: digest_fn('3'),
+            build_target: "x86_64-unknown-linux-gnu".to_string(),
+            items,
+            evidence: rustok_modules::ModuleStaticDistributionBuildEvidence {
+                bundle_reference: format!("registry.example/rustok/base@{}", digest_fn('b')),
+                bundle_root_digest: digest_fn('b'),
+                role_set_digest,
+                roles,
+                sbom_reference: "oci://base/sbom".to_string(),
+                sbom_digest: digest_fn('4'),
+                provenance_reference: "oci://base/provenance".to_string(),
+                provenance_digest: digest_fn('5'),
+                signature_reference: "oci://base/signature".to_string(),
+                signature_digest: digest_fn('6'),
+                test_evidence_reference: "oci://base/tests".to_string(),
+                test_evidence_digest: digest_fn('7'),
+            },
+            admission: rustok_modules::ModuleStaticDistributionReleaseAdmission {
+                verifier_identity: "platform-bootstrap-signer".to_string(),
+                policy_revision: "policy@1".to_string(),
+                evidence_reference: "oci://base/admission".to_string(),
+                evidence_digest: digest_fn('8'),
+                signature_verified: true,
+                provenance_verified: true,
+                sbom_verified: true,
+                test_evidence_verified: true,
+                dependency_policy_verified: true,
+            },
+        };
+        let composition = rustok_distribution::composition_identity();
+        let mut hasher = Sha256::new();
+        hasher.update(&public_key);
+        let signer_key_digest = format!("sha256:{}", hex::encode(hasher.finalize()));
+
+        let payload = rustok_modules::ModuleStaticDistributionBootstrapReceiptPayload {
+            contract: rustok_modules::MODULE_STATIC_DISTRIBUTION_BOOTSTRAP_RECEIPT_CONTRACT
+                .to_string(),
+            preparation_id: uuid::Uuid::from_u128(1),
+            distribution_release_id: uuid::Uuid::from_u128(2),
+            host_composition_revision: composition.revision,
+            host_composition_hash: composition.hash,
+            preparation,
+            migration_plan_digest: digest_fn('d'),
+            data_contract_digest: digest_fn('e'),
+            signer_key_digest,
+            issued_at: now - chrono::Duration::minutes(1),
+            expires_at: now + chrono::Duration::hours(1),
+        };
+        let signature =
+            signing_key.sign(&rustok_api::manifest_hash::canonical_json_bytes(&payload).unwrap());
+        (
+            rustok_modules::ModuleStaticDistributionBootstrapReceipt {
+                payload,
+                signature: STANDARD.encode(signature.to_bytes()),
+            },
+            STANDARD.encode(public_key),
+        )
+    }
+
+    fn write_test_receipt() -> (std::path::PathBuf, String) {
+        let now = chrono::Utc::now();
+        let (receipt, public_key) = signed_base_distribution_receipt(now);
+        let path = std::env::temp_dir().join(format!(
+            "rustok-test-receipt-{}.json",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::write(&path, serde_json::to_vec(&receipt).unwrap()).unwrap();
+        (path, public_key)
+    }
+
     #[tokio::test]
     async fn plan_command_redacts_plaintext_secrets_without_runtime_database() {
+        let (receipt_path, receipt_public_key) = write_test_receipt();
         let runtime = RuntimeComposition::without_database(serde_json::Value::Null);
         let provider = command_provider(&runtime);
         let outcome = provider
@@ -508,13 +613,17 @@ mod tests {
                     "options": {
                         "root": std::env::temp_dir().join(format!("rustok-cli-plan-{}", uuid::Uuid::new_v4())).display().to_string(),
                         "database_url": "postgres://rustok:secret@localhost/rustok",
-                        "admin_password": "admin12345"
+                        "admin_password": "admin12345",
+                        "base_distribution_receipt": receipt_path.display().to_string(),
+                        "base_distribution_public_key": receipt_public_key
                     }
                 }),
                 dry_run: false,
             })
             .await
             .expect("plan command should not require a database runtime");
+
+        let _ = std::fs::remove_file(&receipt_path);
 
         assert_eq!(outcome.exit_code, 0);
         assert!(!outcome.data.to_string().contains("admin12345"));
@@ -523,6 +632,7 @@ mod tests {
 
     #[tokio::test]
     async fn apply_dry_run_uses_shared_preflight_without_runtime_database() {
+        let (receipt_path, receipt_public_key) = write_test_receipt();
         let runtime = RuntimeComposition::without_database(serde_json::Value::Null);
         let provider = command_provider(&runtime);
         let outcome = provider
@@ -533,7 +643,9 @@ mod tests {
                     "options": {
                         "root": std::env::temp_dir().join(format!("rustok-cli-dry-run-{}", uuid::Uuid::new_v4())).display().to_string(),
                         "database_url": "postgres://rustok:secret@localhost/rustok",
-                        "admin_password": "admin12345"
+                        "admin_password": "admin12345",
+                        "base_distribution_receipt": receipt_path.display().to_string(),
+                        "base_distribution_public_key": receipt_public_key
                     }
                 }),
                 dry_run: true,
@@ -541,8 +653,15 @@ mod tests {
             .await
             .expect("apply dry run should not require a database runtime");
 
+        let _ = std::fs::remove_file(&receipt_path);
+
         assert_eq!(outcome.exit_code, 0);
-        assert_eq!(outcome.data["passed"], serde_json::json!(true));
+        assert_eq!(outcome.data["passed"], serde_json::json!(false));
+        assert!(outcome.data["report"]["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|issue| issue["code"] == "distribution_deployment_unavailable"));
         assert!(!outcome.data.to_string().contains("admin12345"));
         assert!(!outcome.data.to_string().contains("rustok:secret"));
     }
