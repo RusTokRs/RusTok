@@ -527,6 +527,43 @@ async fn store_checkout_transport_end_to_end_preserves_updated_cart_context() {
         completed["order"]["total_amount"]
     );
     assert!(completed["fulfillment"].is_null());
+
+    // Verify replay with the same Idempotency-Key returns the existing completed order (Defect 2)
+    let replay_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/store/carts/{cart_id}/complete"))
+                .header("content-type", "application/json")
+                .header("idempotency-key", "store-checkout-flow-complete")
+                .header("X-Tenant-ID", tenant_id.to_string())
+                .body(Body::from(
+                    json!({
+                        "create_fulfillment": false,
+                        "metadata": { "source": "store-checkout-flow-complete" }
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("replay request should succeed");
+    let replay_status = replay_response.status();
+    let replay_body = to_bytes(replay_response.into_body(), usize::MAX)
+        .await
+        .expect("replay body should read");
+    assert_eq!(
+        replay_status,
+        StatusCode::OK,
+        "unexpected replay body: {}",
+        String::from_utf8_lossy(&replay_body)
+    );
+    let replayed: serde_json::Value = serde_json::from_slice(&replay_body)
+        .expect("replay response should be JSON");
+    assert_eq!(replayed["order"]["id"], completed["order"]["id"]);
+    assert_eq!(replayed["cart"]["id"], completed["cart"]["id"]);
+    assert_eq!(replayed["order"]["status"], json!("paid"));
 }
 
 #[tokio::test]

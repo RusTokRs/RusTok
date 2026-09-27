@@ -17,7 +17,7 @@ use rustok_product::dto::{
 };
 use rustok_test_utils::{db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus};
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter, Set,
     Statement,
 };
 use sea_orm_migration::SchemaManager;
@@ -442,3 +442,181 @@ async fn fulfillment_shipping_consumes_reservation_and_gates_order_delivery() {
         "order delivery must not double-consume inventory already shipped by fulfillment"
     );
 }
+
+#[tokio::test]
+async fn checkout_order_inventory_lifecycle_guard_rejects_inventory_reserved_and_requires_order_created_with_adopted_ledger() {
+    let (db, catalog, inventory, orders) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (product_id, variant_id) = create_product_and_variant(&catalog, tenant_id).await;
+
+    inventory
+        .set_inventory(tenant_id, actor_id, variant_id, 10)
+        .await
+        .expect("inventory should be stocked");
+
+    // Install migration 000013 cutover checkout inventory lifecycle trigger
+    let manager = SchemaManager::new(&db);
+    let cutover = commerce_migrations::migrations()
+        .into_iter()
+        .find(|m| m.name() == "m20260713_000013_cutover_checkout_inventory_lifecycle")
+        .expect("cutover migration should exist");
+    cutover
+        .up(&manager)
+        .await
+        .expect("cutover migration should apply on SQLite");
+
+    let operation_id = Uuid::new_v4();
+    let cart_id = Uuid::new_v4();
+
+    // Create a pending order bound to checkout operation_id in metadata
+    let order = orders
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: None,
+                currency_code: "USD".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(product_id),
+                    variant_id: Some(variant_id),
+                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
+                    shipping_profile_slug: Some("default".to_string()),
+                    seller_id: None,
+                    sku: Some("RESERVED-SKU".to_string()),
+                    title: "Reserved product".to_string(),
+                    quantity: 2,
+                    unit_price: Decimal::new(1000, 2),
+                    metadata: serde_json::json!({}),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({
+                    "checkout": {
+                        "operation_id": operation_id.to_string(),
+                    }
+                }),
+            },
+        )
+        .await
+        .expect("pending order should be created");
+
+    let now = chrono::Utc::now().fixed_offset();
+
+    // Insert checkout operation at stage 'inventory_reserved' (Defect 1 scenario)
+    use rustok_commerce::entities::{checkout_inventory_reservation, checkout_operation};
+
+    let op = checkout_operation::ActiveModel {
+        id: Set(operation_id),
+        tenant_id: Set(tenant_id),
+        cart_id: Set(cart_id),
+        idempotency_key: Set("test-key".to_string()),
+        request_hash: Set("req-hash".to_string()),
+        snapshot_hash: Set(Some("snap-hash".to_string())),
+        status: Set("executing".to_string()),
+        stage: Set("inventory_reserved".to_string()),
+        order_id: Set(Some(order.id)),
+        payment_collection_id: Set(None),
+        attempt_count: Set(1),
+        lease_owner: Set(Some("test-worker".to_string())),
+        lease_expires_at: Set(Some(now + chrono::Duration::seconds(60))),
+        last_error_code: Set(None),
+        last_error_message: Set(None),
+        created_at: Set(now),
+        updated_at: Set(now),
+        completed_at: Set(None),
+    };
+    checkout_operation::Entity::insert(op)
+        .exec(&db)
+        .await
+        .expect("operation inserted");
+
+    // Attempting to confirm order directly from `inventory_reserved` must fail via DB trigger
+    let confirm_err = orders.confirm_order(tenant_id, actor_id, order.id).await;
+    assert!(
+        confirm_err.is_err(),
+        "confirming order on `inventory_reserved` MUST be rejected by DB trigger"
+    );
+
+    // Update operation to `order_created`, but without adopted inventory ledger
+    checkout_operation::Entity::update_many()
+        .col_expr(
+            checkout_operation::Column::Stage,
+            sea_orm::sea_query::Expr::value("order_created"),
+        )
+        .filter(checkout_operation::Column::Id.eq(operation_id))
+        .exec(&db)
+        .await
+        .expect("operation stage updated");
+
+    let confirm_no_ledger_err = orders.confirm_order(tenant_id, actor_id, order.id).await;
+    assert!(
+        confirm_no_ledger_err.is_err(),
+        "confirming order without adopted inventory reservations MUST be rejected by DB trigger"
+    );
+
+    // Now insert the adopted reservation in both reservation_items (inventory) and checkout_inventory_reservations (commerce)
+    let item = inventory_item::Entity::find()
+        .filter(inventory_item::Column::VariantId.eq(variant_id))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let level = inventory_level::Entity::find()
+        .filter(inventory_level::Column::InventoryItemId.eq(item.id))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let res_item_id = Uuid::new_v4();
+    let reservation_record = reservation_item::ActiveModel {
+        id: Set(res_item_id),
+        inventory_item_id: Set(item.id),
+        location_id: Set(level.location_id),
+        quantity: Set(2),
+        line_item_id: Set(Some(order.line_items[0].id)),
+        description: Set(None),
+        external_id: Set(None),
+        metadata: Set(serde_json::json!({})),
+        created_at: Set(now),
+        updated_at: Set(now),
+        deleted_at: Set(None),
+    };
+    reservation_item::Entity::insert(reservation_record)
+        .exec(&db)
+        .await
+        .unwrap();
+
+    let cir = checkout_inventory_reservation::ActiveModel {
+        reservation_id: Set(res_item_id),
+        tenant_id: Set(tenant_id),
+        checkout_operation_id: Set(operation_id),
+        cart_line_item_id: Set(Uuid::new_v4()),
+        order_line_item_id: Set(Some(order.line_items[0].id)),
+        external_id: Set("ext-1".to_string()),
+        variant_id: Set(variant_id),
+        quantity: Set(2),
+        location_id: Set(None),
+        status: Set("reserved".to_string()),
+        last_error_code: Set(None),
+        last_error_message: Set(None),
+        created_at: Set(now),
+        updated_at: Set(now),
+        released_at: Set(None),
+        consumed_at: Set(None),
+    };
+    checkout_inventory_reservation::Entity::insert(cir)
+        .exec(&db)
+        .await
+        .unwrap();
+
+    // Now confirmation must succeed because stage is `order_created` and inventory is adopted!
+    orders
+        .confirm_order(tenant_id, actor_id, order.id)
+        .await
+        .expect("order confirmation MUST succeed once stage is order_created and inventory is adopted");
+}
+

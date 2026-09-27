@@ -794,8 +794,12 @@ fn ensure_same_request(
     existing: &checkout_operation::Model,
     input: &BeginCheckoutOperation,
 ) -> CheckoutOperationResult<()> {
-    if existing.request_hash != input.request_hash || existing.snapshot_hash != input.snapshot_hash
-    {
+    let snapshot_hash_mismatch = match (&existing.snapshot_hash, &input.snapshot_hash) {
+        (Some(existing_hash), Some(input_hash)) => existing_hash != input_hash,
+        (None, Some(_)) => true,
+        (_, None) => false,
+    };
+    if existing.request_hash != input.request_hash || snapshot_hash_mismatch {
         return Err(CheckoutOperationError::Conflict(format!(
             "idempotency key `{}` is already bound to a different checkout request",
             input.idempotency_key

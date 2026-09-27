@@ -687,3 +687,76 @@ async fn retry_after_preflight_failure_creates_checkout_artifacts() {
     assert_eq!(retried.order.status, "paid");
     assert_eq!(retried.payment_collection.status, "captured");
 }
+
+#[tokio::test]
+async fn checkout_operation_lease_renewal_and_fencing_prevents_expired_executor_side_effects() {
+    let (db, _, _, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let cart_id = Uuid::new_v4();
+    let journal = rustok_commerce::services::CheckoutOperationJournal::new(db.clone());
+
+    let op = journal
+        .begin(rustok_commerce::services::BeginCheckoutOperation {
+            tenant_id,
+            cart_id,
+            idempotency_key: "lease-fencing-test".to_string(),
+            request_hash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+            snapshot_hash: Some("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789".to_string()),
+        })
+        .await
+        .expect("operation created");
+
+    // Executor A claims execution with 10 seconds lease
+    let claimed_a = journal
+        .claim_execution(tenant_id, op.id, "executor-A", 10)
+        .await
+        .expect("claim succeeds")
+        .expect("claimed by A");
+    assert_eq!(claimed_a.lease_owner.as_deref(), Some("executor-A"));
+
+    // Executor A successfully renews lease while valid
+    let renewed_a = journal
+        .renew_lease(tenant_id, op.id, "executor-A", 30)
+        .await
+        .expect("A can renew valid lease");
+    assert_eq!(renewed_a.lease_owner.as_deref(), Some("executor-A"));
+
+    // Foreign executor B cannot renew A's lease
+    let foreign_err = journal
+        .renew_lease(tenant_id, op.id, "executor-B", 30)
+        .await;
+    assert!(foreign_err.is_err(), "executor B must not be able to renew executor A's lease");
+
+    // Simulate lease expiration by setting lease_expires_at in the past
+    use sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+    rustok_commerce::entities::checkout_operation::Entity::update_many()
+        .col_expr(
+            rustok_commerce::entities::checkout_operation::Column::LeaseExpiresAt,
+            sea_orm::sea_query::Expr::value(chrono::Utc::now().fixed_offset() - chrono::Duration::seconds(10)),
+        )
+        .filter(rustok_commerce::entities::checkout_operation::Column::Id.eq(op.id))
+        .exec(&db)
+        .await
+        .expect("lease expired");
+
+    // Executor A's renew_lease now FAILS because the lease has expired (fencing)
+    let expired_err = journal
+        .renew_lease(tenant_id, op.id, "executor-A", 30)
+        .await;
+    assert!(expired_err.is_err(), "expired lease renewal MUST be rejected (fencing)");
+
+    // New executor B can now reclaim execution
+    let claimed_b = journal
+        .claim_execution(tenant_id, op.id, "executor-B", 30)
+        .await
+        .expect("reclaim succeeds")
+        .expect("claimed by B");
+    assert_eq!(claimed_b.lease_owner.as_deref(), Some("executor-B"));
+
+    // Stale executor A is completely locked out
+    let stale_err = journal
+        .renew_lease(tenant_id, op.id, "executor-A", 30)
+        .await;
+    assert!(stale_err.is_err(), "stale executor A is fenced from renewing lease");
+}
+

@@ -302,7 +302,8 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 SELECT CASE WHEN NOT EXISTS (
                     SELECT 1
                     FROM checkout_operations co
-                    WHERE CAST(co.id AS TEXT) = json_extract(NEW.metadata, '$.checkout.operation_id')
+                    WHERE (CAST(co.id AS TEXT) = json_extract(NEW.metadata, '$.checkout.operation_id')
+                        OR lower(hex(co.id)) = lower(replace(json_extract(NEW.metadata, '$.checkout.operation_id'), '-', '')))
                       AND co.tenant_id = NEW.tenant_id
                       AND co.order_id = NEW.id
                       AND co.status = 'executing'
@@ -323,7 +324,8 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                             ON ri.id = cir.reservation_id
                           JOIN inventory_items ii
                             ON ii.id = ri.inventory_item_id
-                          WHERE CAST(co.id AS TEXT) = json_extract(NEW.metadata, '$.checkout.operation_id')
+                          WHERE (CAST(co.id AS TEXT) = json_extract(NEW.metadata, '$.checkout.operation_id')
+                              OR lower(hex(co.id)) = lower(replace(json_extract(NEW.metadata, '$.checkout.operation_id'), '-', '')))
                             AND cir.tenant_id = NEW.tenant_id
                             AND cir.order_line_item_id = oli.id
                             AND cir.status = 'reserved'
@@ -341,7 +343,8 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                     FROM checkout_inventory_reservations cir
                     JOIN checkout_operations co
                       ON co.id = cir.checkout_operation_id
-                    WHERE CAST(co.id AS TEXT) = json_extract(NEW.metadata, '$.checkout.operation_id')
+                    WHERE (CAST(co.id AS TEXT) = json_extract(NEW.metadata, '$.checkout.operation_id')
+                        OR lower(hex(co.id)) = lower(replace(json_extract(NEW.metadata, '$.checkout.operation_id'), '-', '')))
                       AND cir.tenant_id = NEW.tenant_id
                       AND (
                           cir.status <> 'reserved'

@@ -252,8 +252,7 @@ fn log_cart_delivery_group_enrichment_error(
         FulfillmentError::InvalidTransition { .. } => {
             ("fulfillment.invalid_transition", "conflict", false)
         }
-        FulfillmentError::Database(err) => {
-            eprintln!("DEBUG FULFILLMENT DB ERROR: {err:?}");
+        FulfillmentError::Database(_) => {
             ("fulfillment.database_unavailable", "unavailable", true)
         }
     };
