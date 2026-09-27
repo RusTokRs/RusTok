@@ -9,9 +9,9 @@ status: active
 
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
-**Status:** ACTIVE  
-**Active phase:** FS-19 — final architecture reconciliation (audit in progress; tests remain maintainer-owned).  
-**Phase base SHA:** `c0718c6f395f2cc5ee7a3d711084137c1234e01f`
+**Status:** COMPLETE  
+**Active phase:** none — 2026-09-27 Deep Full-Stack Audit Cycle complete. The next `реализуй план аудита` invocation must create a new dated audit round.  
+**Final main baseline before handoff merge:** `fa47d64d6faee9507891d0bca145b4672c39dfc9`
 
 ### FS-01 Pre-Implementation Audit Findings
 
@@ -65,7 +65,7 @@ status: active
 | FS-17 | Dependency & supply-chain closure | Cargo/npm lockfiles, duplicate/unused dependencies, feature flags, unsafe/advisory surfaces, generated code provenance, licenses/policies where repository contracts require them | [x] |
 | FS-18 | Runtime/server application | server runtime beyond composition: request lifecycle, controllers, server functions, body limits, file/WS surfaces, error mapping, blocking I/O, panic/resource hazards, auth/tenant context propagation | [x] |
 | FS-19 | Final architecture reconciliation | dependency graph, boundary violations, dead/duplicate paths, stale docs/ADRs, generated artifacts, canonical vocabulary, remaining TODO/placeholder risk | [x] |
-| FS-20 | Release-readiness handoff | final ledger reconciliation, unresolved findings, maintainer test matrix, verification commands/evidence gaps, clean main baseline | [ ] |
+| FS-20 | Release-readiness handoff | final ledger reconciliation, unresolved findings, maintainer test matrix, verification commands/evidence gaps, clean main baseline | [x] |
 
 ### Definition of Done for Every Phase
 
@@ -993,3 +993,38 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** `modules.toml` contains 53 module entries with no missing or cyclic `depends_on` edges; Cargo.lock shows no shared-library dependency on `rustok-server`, `rustok-admin`, or `rustok-storefront`; `AUDIT_PLAN.md`, ACRE and the living ledger agree on the single trigger and plan authority; generated CLI registry output matches the declared root/module provider sources; intentional legacy guards remain explicitly wired where they serve active compatibility boundaries; superseded ADRs are registered as superseded rather than silently rewritten.
 
 **Verification state:** tests/builds/generators were not executed by the agent. Static source and metadata checks only. FS-19 implementation is ready for integration.
+
+
+### FS-20 Release-Readiness Handoff
+
+**Audit cycle state:** all phases FS-00 through FS-19 are integrated and marked complete in this living ledger. The deep cycle has no remaining unchecked production finding entries. FS-20 is documentation/verification handoff only; no product-code change is required by the audit result. The handoff itself is now the final completion artifact for this cycle.
+
+**Fresh main baseline:** `fa47d64d6faee9507891d0bca145b4672c39dfc9`.
+
+**Maintainer verification matrix — not executed by the agent:**
+
+| Area | Suggested verification | Agent status |
+|---|---|:---:|
+| Core/shared security fixes | targeted `cargo test` for rustok-core, rustok-api, rustok-telemetry, rustok-auth, rustok-email, rustok-mcp | not run |
+| Commerce fixes | targeted `cargo test` for rustok-payment, rustok-inventory, rustok-content, rustok-commerce | not run |
+| Server runtime fixes | targeted `cargo test` for rustok-server, including GraphQL WS, auth-rate-limit, settings/demo-policy cases | not run |
+| CLI/installer fix | targeted `cargo test -p rustok-installer-cli` for seed environment/credential boundary | not run |
+| Workspace compilation | maintainer `cargo check --workspace` / release-profile check appropriate to deployment | not run |
+| Rust test suites | maintainer workspace/package test matrix | not run |
+| ADR registry | `npm run verify:adrs` | not run |
+| Generated CLI registry | `npm run verify:cli-registry` | not run |
+| Workflow pinning | `node scripts/verify/verify-workflow-action-pins.mjs` | not run |
+| Existing API/runtime verifiers | applicable `scripts/verify/*` contracts touched by the audited areas | not run |
+| Dependency audits | repository-declared Cargo/npm advisory and unused-dependency checks | not run |
+
+**Evidence limitations:** the agent performed source-level inspection, repository metadata analysis, dependency/manifest graph inspection, static diff review and targeted regression-test authoring. No test suite, compiler, formatter, cargo-deny/cargo-audit, npm verifier, generator or runtime environment was executed. Therefore the audit establishes code-level findings/remediations and architecture reasoning, not runtime pass/fail evidence.
+
+**Post-merge baseline rule:** after this handoff is merged, the repository's `main` contains the completed audit cycle and the next invocation of `реализуй план аудита` must start a new audit round rather than re-entering FS-00..FS-20. Any new phase/round should create its own dated ledger section and preserve this cycle as historical evidence.
+
+**Cycle completion criteria:**
+- [x] Single canonical trigger documented in `AUDIT_PLAN.md`, ACRE and `AGENTS.md`.
+- [x] Single living audit-progress ledger reconciled.
+- [x] All FS-00..FS-19 phases integrated into `main` through dedicated branches/PRs.
+- [x] No unchecked production finding remains in the completed phase blocks.
+- [x] All known test/build/verification gaps explicitly handed to the maintainer.
+- [x] Final FS-20 handoff commit is the release-readiness merge for this audit cycle.
