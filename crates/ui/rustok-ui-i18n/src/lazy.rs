@@ -52,9 +52,7 @@ impl LazyBundle {
     }
 
     fn loaded_error(&self) -> Option<&BundleBuildError> {
-        self.bundle
-            .get()
-            .and_then(|result| result.as_ref().err())
+        self.bundle.get().and_then(|result| result.as_ref().err())
     }
 
     fn is_loaded(&self) -> bool {
@@ -68,10 +66,7 @@ struct LazyCatalogIndex {
 }
 
 impl LazyCatalogIndex {
-    fn new(
-        default_locale: &str,
-        bundles: &'static [(&'static str, &'static str)],
-    ) -> Self {
+    fn new(default_locale: &str, bundles: &'static [(&'static str, &'static str)]) -> Self {
         let mut entries = BTreeMap::new();
         let mut diagnostics = Vec::new();
 
@@ -80,9 +75,7 @@ impl LazyCatalogIndex {
                 Ok(langid) => {
                     let normalized = langid.to_string();
                     if entries.contains_key(&normalized) {
-                        diagnostics.push(BundleBuildError::DuplicateLocale {
-                            locale: normalized,
-                        });
+                        diagnostics.push(BundleBuildError::DuplicateLocale { locale: normalized });
                     } else {
                         entries.insert(normalized, LazyBundle::new(source));
                     }
@@ -132,10 +125,7 @@ impl std::fmt::Debug for LazyUiMessages {
                 "declared_locales",
                 &self.available_locales().collect::<Vec<_>>(),
             )
-            .field(
-                "loaded_locales",
-                &self.loaded_locales().collect::<Vec<_>>(),
-            )
+            .field("loaded_locales", &self.loaded_locales().collect::<Vec<_>>())
             .finish()
     }
 }

@@ -10,8 +10,8 @@
 
 pub mod bundle;
 pub mod error;
-pub mod locale;
 mod lazy;
+pub mod locale;
 #[macro_use]
 pub mod macros;
 pub mod messages;
@@ -28,6 +28,7 @@ pub use bundle::{
     FluentCatalog, build_fluent_bundle, build_fluent_catalog, try_build_fluent_catalog,
 };
 pub use error::{BundleBuildError, I18nError, MessageKeyError};
+pub use lazy::{LazyUiLocaleTranslator, LazyUiMessages};
 #[allow(deprecated)]
 #[deprecated(
     since = "0.1.0",
@@ -40,7 +41,6 @@ pub use locale::push_locale_candidate;
     note = "Internal helper; will be made private before 1.0."
 )]
 pub use locale::push_unique;
-pub use lazy::{LazyUiLocaleTranslator, LazyUiMessages};
 pub use locale::{
     TextDirection, locale_candidates, locale_text_direction, normalize_admin_locale,
     normalize_locale_tag, normalize_unicode_locale,
