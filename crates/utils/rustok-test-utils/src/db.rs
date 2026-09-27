@@ -48,7 +48,7 @@ pub async fn setup_test_db() -> DatabaseConnection {
     // migrations can observe inconsistent DDL across pooled connections.
     // Keep test databases on a single connection for deterministic schema
     // visibility during migrations and test execution.
-    opts.max_connections(1)
+    opts.max_connections(5)
         .min_connections(1)
         .sqlx_logging(false);
 

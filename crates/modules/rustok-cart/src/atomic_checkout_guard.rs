@@ -51,6 +51,23 @@ impl AtomicCartCheckoutHandle {
                 map_atomic_checkout_error(&context, PREPARE_ATOMIC_CART_CHECKOUT_OPERATION, error)
             })
     }
+
+    pub async fn read_snapshot(
+        &self,
+        tenant_id: Uuid,
+    ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
+        let context = atomic_handle_context(tenant_id, self.cart_id());
+        self.inner
+            .read_snapshot(tenant_id)
+            .await
+            .map_err(|error| {
+                map_atomic_checkout_error(
+                    &context,
+                    READ_ATOMIC_CART_CHECKOUT_SNAPSHOT_OPERATION,
+                    error,
+                )
+            })
+    }
 }
 
 pub fn bind_in_process_atomic_cart_checkout(

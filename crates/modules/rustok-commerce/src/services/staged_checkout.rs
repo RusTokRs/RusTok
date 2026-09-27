@@ -241,7 +241,7 @@ impl StagedCheckoutService {
     ) -> StagedCheckoutResult<CompleteCheckoutResponse> {
         let prepared = self
             .atomic_cart_checkout
-            .prepare(tenant_id, true)
+            .read_snapshot(tenant_id)
             .await
             .map_err(|error| checkout_port_error("read_completed_cart_checkout", error))?;
         let operation = self.journal.get(tenant_id, operation_id).await?;

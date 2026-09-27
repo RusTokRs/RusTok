@@ -156,6 +156,7 @@ modules.local.toml
 .*-codex*/
 *-codex*/
 .codex/
+.codegraph/
 .playwright-cli/
 /output/
 

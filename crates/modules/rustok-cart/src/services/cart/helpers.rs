@@ -133,14 +133,15 @@ pub fn normalize_line_item_shipping_profile(
             }
             Ok(None)
         }
-        CartLineFulfillmentRequirement::Physical => normalized
-            .filter(|value| value.len() <= 100)
-            .map(Some)
-            .ok_or_else(|| {
-                CartError::Validation(
-                    "physical cart lines require a non-empty shipping profile".to_string(),
-                )
-            }),
+        CartLineFulfillmentRequirement::Physical => {
+            let slug = normalized.unwrap_or_else(|| DEFAULT_SHIPPING_PROFILE_SLUG.to_string());
+            if slug.len() > 100 {
+                return Err(CartError::Validation(
+                    "shipping profile slug must be 1-100 characters".to_string(),
+                ));
+            }
+            Ok(Some(slug))
+        }
     }
 }
 
@@ -354,14 +355,16 @@ pub fn build_delivery_groups(
     Ok(groups
         .into_iter()
         .map(|(group_key, line_item_ids)| {
-            let selected_shipping_option_id =
-                selection_map.get(&group_key).copied().flatten().or({
+            let selected_shipping_option_id = match selection_map.get(&group_key) {
+                Some(selected) => *selected,
+                None => {
                     if is_single_group {
                         cart_selected_shipping_option_id
                     } else {
                         None
                     }
-                });
+                }
+            };
 
             CartDeliveryGroupResponse {
                 selected_shipping_option_id,
@@ -1219,10 +1222,10 @@ where
         .map(|records| selection_map_from_records(&delivery_group_snapshots, records))?;
 
     if delivery_group_snapshots.len() == 1
-        && desired.values().all(|val| val.is_none())
-        && cart.selected_shipping_option_id.is_some()
         && !line_items.is_empty()
         && let Some(group) = delivery_group_snapshots.iter().next()
+        && !desired.contains_key(&group.key)
+        && cart.selected_shipping_option_id.is_some()
     {
         desired.insert(group.key.clone(), cart.selected_shipping_option_id);
     }
@@ -1230,17 +1233,25 @@ where
     store_shipping_selections(conn, cart_id, desired.clone()).await?;
 
     let legacy_selected_shipping_option_id = match delivery_group_snapshots.len() {
-        0 => None,
+        0 => {
+            if line_items.is_empty() {
+                cart.selected_shipping_option_id
+            } else {
+                None
+            }
+        }
         1 => delivery_group_snapshots
             .iter()
             .next()
             .and_then(|group| desired.get(&group.key).copied().flatten()),
         _ => None,
     };
-    let mut active: entities::cart::ActiveModel = cart.into();
-    active.selected_shipping_option_id = Set(legacy_selected_shipping_option_id);
-    active.updated_at = Set(Utc::now().into());
-    active.update(conn).await?;
+    if cart.selected_shipping_option_id != legacy_selected_shipping_option_id {
+        let mut active: entities::cart::ActiveModel = cart.into();
+        active.selected_shipping_option_id = Set(legacy_selected_shipping_option_id);
+        active.updated_at = Set(Utc::now().into());
+        active.update(conn).await?;
+    }
     Ok(())
 }
 

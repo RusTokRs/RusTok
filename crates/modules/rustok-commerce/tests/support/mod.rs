@@ -488,6 +488,7 @@ async fn ensure_product_attribute_tables(db: &DatabaseConnection) {
             tenant_id TEXT NOT NULL,
             attribute_id TEXT NOT NULL,
             locale TEXT NOT NULL,
+            label TEXT NOT NULL DEFAULT '',
             name TEXT NOT NULL,
             description TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

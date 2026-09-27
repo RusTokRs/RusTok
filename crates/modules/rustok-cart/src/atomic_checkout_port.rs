@@ -150,17 +150,40 @@ impl AtomicCartCheckoutHandle {
             ));
         }
 
-        let snapshot = self
-            .snapshot_port
-            .prepare_checkout(
-                snapshot_port_context(tenant_id, &self.prepare_request),
-                self.prepare_request.clone(),
-            )
-            .await?;
+        let snapshot = if status == CartStatus::Completed {
+            self.snapshot_port
+                .read_checkout_snapshot(
+                    snapshot_port_context(tenant_id, &self.prepare_request),
+                    self.prepare_request.cart_id,
+                )
+                .await?
+        } else {
+            self.snapshot_port
+                .prepare_checkout(
+                    snapshot_port_context(tenant_id, &self.prepare_request),
+                    self.prepare_request.clone(),
+                )
+                .await?
+        };
         if status == CartStatus::CheckingOut {
             store_snapshot(&self.prepared_state, snapshot.clone())?;
         }
         Ok(snapshot)
+    }
+
+    pub async fn read_snapshot(
+        &self,
+        tenant_id: Uuid,
+    ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
+        if let Some(snapshot) = stored_snapshot(&self.prepared_state)? {
+            return Ok(snapshot);
+        }
+        self.snapshot_port
+            .read_checkout_snapshot(
+                snapshot_port_context(tenant_id, &self.prepare_request),
+                self.prepare_request.cart_id,
+            )
+            .await
     }
 }
 
@@ -306,10 +329,12 @@ async fn prepare_bound_cart(
         .map_err(cart_error_to_port_error)?;
     let current_status = cart_status(&current)?;
 
-    if matches!(
-        current_status,
-        CartStatus::CheckingOut | CartStatus::Completed
-    ) {
+    if allow_existing_lock
+        && matches!(
+            current_status,
+            CartStatus::CheckingOut | CartStatus::Completed
+        )
+    {
         return Ok(current);
     }
 

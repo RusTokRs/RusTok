@@ -335,6 +335,45 @@ impl CheckoutOperationJournal {
         self.get(tenant_id, id).await.map(Some)
     }
 
+    pub async fn renew_lease(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        lease_owner: impl Into<String>,
+        lease_seconds: i64,
+    ) -> CheckoutOperationResult<checkout_operation::Model> {
+        let lease_owner = normalize_lease_owner(lease_owner.into())?;
+        let lease_seconds = normalize_lease_seconds(lease_seconds)?;
+        let now = Utc::now().fixed_offset();
+        let lease_expires_at = now + Duration::seconds(lease_seconds);
+
+        let update = checkout_operation::Entity::update_many()
+            .col_expr(
+                checkout_operation::Column::LeaseExpiresAt,
+                Expr::value(Some(lease_expires_at)),
+            )
+            .col_expr(
+                checkout_operation::Column::UpdatedAt,
+                Expr::current_timestamp(),
+            )
+            .filter(checkout_operation::Column::TenantId.eq(tenant_id))
+            .filter(checkout_operation::Column::Id.eq(id))
+            .filter(
+                checkout_operation::Column::Status.eq(CheckoutOperationStatus::Executing.as_str()),
+            )
+            .filter(checkout_operation::Column::LeaseOwner.eq(lease_owner.clone()))
+            .filter(checkout_operation::Column::LeaseExpiresAt.gt(now))
+            .exec(&self.db)
+            .await?;
+
+        if update.rows_affected == 0 {
+            return Err(CheckoutOperationError::Conflict(format!(
+                "checkout operation {id} lease is no longer held by `{lease_owner}` or has expired"
+            )));
+        }
+        self.get(tenant_id, id).await
+    }
+
     pub async fn checkpoint(
         &self,
         input: CheckoutOperationCheckpoint,

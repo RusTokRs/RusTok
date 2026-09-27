@@ -401,13 +401,16 @@ fn map_owner_error(
             false,
             false,
         ),
-        FulfillmentError::Database(_) => (
-            PortErrorKind::Unavailable,
-            "fulfillment.database_unavailable",
-            "fulfillment storage is temporarily unavailable",
-            true,
-            true,
-        ),
+        FulfillmentError::Database(err) => {
+            eprintln!("DEBUG FULFILLMENT SERVICE DB ERROR: {err:?}");
+            (
+                PortErrorKind::Unavailable,
+                "fulfillment.database_unavailable",
+                "fulfillment storage is temporarily unavailable",
+                true,
+                true,
+            )
+        }
     };
     let context_facts = shipping_option_read_context_facts(context);
 
