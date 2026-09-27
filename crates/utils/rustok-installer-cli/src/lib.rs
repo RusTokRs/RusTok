@@ -639,6 +639,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn seed_apply_requires_explicit_non_production_environment_in_dry_run() {
+        let runtime = RuntimeComposition::without_database(serde_json::Value::Null);
+        let provider = command_provider(&runtime);
+
+        let missing_environment = provider
+            .execute(CommandRequest {
+                namespace: "seed".to_string(),
+                name: "apply".to_string(),
+                args: serde_json::json!({
+                    "options": {
+                        "profile": "dev"
+                    }
+                }),
+                dry_run: true,
+            })
+            .await
+            .expect_err("seed apply must require explicit environment");
+        assert!(missing_environment.to_string().contains("explicit --environment"));
+
+        let production = provider
+            .execute(CommandRequest {
+                namespace: "seed".to_string(),
+                name: "apply".to_string(),
+                args: serde_json::json!({
+                    "options": {
+                        "environment": "production",
+                        "profile": "dev"
+                    }
+                }),
+                dry_run: true,
+            })
+            .await
+            .expect_err("seed apply must reject production");
+        assert!(production
+            .to_string()
+            .contains("not allowed for production installations"));
+
+        let local = provider
+            .execute(CommandRequest {
+                namespace: "seed".to_string(),
+                name: "apply".to_string(),
+                args: serde_json::json!({
+                    "options": {
+                        "environment": "local",
+                        "profile": "dev"
+                    }
+                }),
+                dry_run: true,
+            })
+            .await
+            .expect("non-production seed dry run should validate");
+
+        assert_eq!(local.exit_code, 0);
+        assert_eq!(local.data["environment"], "local");
+        assert_eq!(local.data["profile"], "dev");
+    }
+
+    #[tokio::test]
     async fn plan_command_redacts_plaintext_secrets_without_runtime_database() {
         let (receipt_path, receipt_public_key) = write_test_receipt();
         let runtime = RuntimeComposition::without_database(serde_json::Value::Null);
