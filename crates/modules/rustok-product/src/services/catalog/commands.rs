@@ -13,15 +13,6 @@ async fn find_product_for_update_in_tx(
         DatabaseBackend::Postgres | DatabaseBackend::MySql => {
             query.lock_exclusive().one(txn).await?
         }
-        DatabaseBackend::Sqlite => {
-            let statement = sea_orm::Statement::from_sql_and_values(
-                DatabaseBackend::Sqlite,
-                "UPDATE products SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
-                [tenant_id.into(), product_id.into()],
-            );
-            txn.execute_raw(statement).await?;
-            query.one(txn).await?
-        }
         _ => query.one(txn).await?,
     };
     product.ok_or(CommerceError::ProductNotFound(product_id))
@@ -38,18 +29,31 @@ async fn find_variant_for_update_in_tx(
         DatabaseBackend::Postgres | DatabaseBackend::MySql => {
             query.lock_exclusive().one(txn).await?
         }
-        DatabaseBackend::Sqlite => {
-            let statement = sea_orm::Statement::from_sql_and_values(
-                DatabaseBackend::Sqlite,
-                "UPDATE product_variants SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
-                [tenant_id.into(), variant_id.into()],
-            );
-            txn.execute_raw(statement).await?;
-            query.one(txn).await?
-        }
         _ => query.one(txn).await?,
     };
     variant.ok_or(CommerceError::VariantNotFound(variant_id))
+}
+
+fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
+    let mut seen = HashSet::new();
+    for price in prices {
+        let currency = price.currency_code.trim().to_ascii_uppercase();
+        if currency.len() != 3 {
+            return Err(CommerceError::Validation(format!(
+                "Currency code `{}` must be exactly 3 characters (ISO 4217)",
+                price.currency_code
+            )));
+        }
+        let channel_slug = normalize_public_channel_slug(price.channel_slug.as_deref());
+        let key = (price.channel_id, channel_slug, currency);
+        if !seen.insert(key) {
+            return Err(CommerceError::Validation(format!(
+                "Duplicate price for currency `{}` and channel",
+                price.currency_code
+            )));
+        }
+    }
+    Ok(())
 }
 
 impl CatalogService {
@@ -83,6 +87,9 @@ impl CatalogService {
             return Err(CommerceError::NoVariants);
         }
         validate_variant_axes_and_combinations(&input.variant_axes, &input.variants)?;
+        for var_input in &input.variants {
+            validate_variant_prices(&var_input.prices)?;
+        }
         self.validate_primary_category(tenant_id, input.primary_category_id)
             .await?;
         if input.publish {
@@ -161,15 +168,23 @@ impl CatalogService {
 
         let translation_locales = collect_translation_locales(&input.translations);
 
-        let mut seen = HashSet::new();
+        let mut seen_locales = HashSet::new();
+        let mut seen_handles = HashSet::new();
         for trans_input in &input.translations {
+            if !seen_locales.insert(trans_input.locale.clone()) {
+                return Err(CommerceError::Validation(format!(
+                    "Duplicate translation locale `{}` in product input",
+                    trans_input.locale
+                )));
+            }
+
             let handle = trans_input
                 .handle
                 .clone()
                 .unwrap_or_else(|| slugify(&trans_input.title));
 
             let key = format!("{}::{}", trans_input.locale, handle.clone());
-            if !seen.insert(key) {
+            if !seen_handles.insert(key) {
                 warn!(handle = %handle, locale = %trans_input.locale, "Duplicate handle detected");
                 return Err(CommerceError::DuplicateHandle {
                     handle,
@@ -300,7 +315,7 @@ impl CatalogService {
                     channel_slug: normalize_public_channel_slug(
                         price_input.channel_slug.as_deref(),
                     ),
-                    currency_code: price_input.currency_code.clone(),
+                    currency_code: price_input.currency_code.trim().to_ascii_uppercase(),
                     amount: price_input.amount,
                     compare_at_amount: price_input.compare_at_amount,
                 });
@@ -333,6 +348,15 @@ impl CatalogService {
             DomainEvent::ProductCreated { product_id },
         )
         .await?;
+
+        if input.publish {
+            txn.publish(
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::ProductPublished { product_id },
+            )
+            .await?;
+        }
 
         txn.commit().await?;
         debug!("Transaction committed");
@@ -437,6 +461,30 @@ impl CatalogService {
         if let Some((metadata, _)) = metadata_update.as_ref() {
             product_active.metadata = Set(metadata.clone());
         }
+
+        let will_become_active = match input.status.as_ref() {
+            Some(entities::product::ProductStatus::Active) => {
+                existing_product.status != entities::product::ProductStatus::Active
+            }
+            _ => false,
+        };
+        let will_deactivate = match input.status.as_ref() {
+            Some(status) => {
+                *status != entities::product::ProductStatus::Active
+                    && existing_product.status == entities::product::ProductStatus::Active
+            }
+            _ => false,
+        };
+
+        if will_become_active {
+            ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
+                .validate_product_publish_requirements_in(&txn, tenant_id, product_id)
+                .await?;
+            product_active.published_at = Set(Some(Utc::now().into()));
+        } else if will_deactivate {
+            product_active.published_at = Set(None);
+        }
+
         if let Some(status) = input.status {
             product_active.status = Set(status);
         }
@@ -464,8 +512,16 @@ impl CatalogService {
         let translation_inputs = input.translations.clone();
 
         if let Some(translations) = translation_inputs {
-            let mut seen = HashSet::new();
+            let mut seen_locales = HashSet::new();
+            let mut seen_handles = HashSet::new();
             for translation_input in translations {
+                if !seen_locales.insert(translation_input.locale.clone()) {
+                    return Err(CommerceError::Validation(format!(
+                        "Duplicate translation locale `{}` in product input",
+                        translation_input.locale
+                    )));
+                }
+
                 let handle = translation_input
                     .handle
                     .clone()
@@ -473,7 +529,7 @@ impl CatalogService {
 
                 let locale = translation_input.locale.clone();
                 let key = format!("{}::{}", locale, handle.clone());
-                if !seen.insert(key) {
+                if !seen_handles.insert(key) {
                     return Err(CommerceError::DuplicateHandle { handle, locale });
                 }
 
@@ -510,6 +566,50 @@ impl CatalogService {
                     translation.insert(&txn).await.map_err(|error| {
                         map_product_unique_violation(error, &handle, &locale, None)
                     })?;
+
+                    let variants = entities::product_variant::Entity::find()
+                        .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
+                        .filter(entities::product_variant::Column::ProductId.eq(product_id))
+                        .all(&txn)
+                        .await?;
+
+                    if !variants.is_empty() {
+                        let variant_ids: Vec<Uuid> = variants.iter().map(|v| v.id).collect();
+                        let existing_trans_variant_ids: HashSet<Uuid> =
+                            entities::variant_translation::Entity::find()
+                                .filter(
+                                    entities::variant_translation::Column::VariantId
+                                        .is_in(variant_ids),
+                                )
+                                .filter(entities::variant_translation::Column::Locale.eq(&locale))
+                                .all(&txn)
+                                .await?
+                                .into_iter()
+                                .map(|vt| vt.variant_id)
+                                .collect();
+
+                        let mut new_variant_translations = Vec::new();
+                        for variant in variants {
+                            if !existing_trans_variant_ids.contains(&variant.id) {
+                                let variant_title = generate_variant_title(&variant);
+                                new_variant_translations.push(
+                                    entities::variant_translation::ActiveModel {
+                                        id: Set(generate_id()),
+                                        variant_id: Set(variant.id),
+                                        locale: Set(locale.clone()),
+                                        title: Set(Some(variant_title)),
+                                    },
+                                );
+                            }
+                        }
+                        if !new_variant_translations.is_empty() {
+                            entities::variant_translation::Entity::insert_many(
+                                new_variant_translations,
+                            )
+                            .exec(&txn)
+                            .await?;
+                        }
+                    }
                 }
             }
         }
@@ -528,6 +628,14 @@ impl CatalogService {
             DomainEvent::ProductUpdated { product_id },
         )
         .await?;
+        if will_become_active {
+            txn.publish(
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::ProductPublished { product_id },
+            )
+            .await?;
+        }
         if primary_category_changed {
             txn.publish(
                 tenant_id,
@@ -565,7 +673,7 @@ impl CatalogService {
             .db
             .query_one_raw(Statement::from_sql_and_values(
                 self.db.get_database_backend(),
-                "SELECT kind FROM catalog_categories WHERE tenant_id = $1 AND id = $2",
+                "SELECT kind FROM catalog_categories WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL",
                 [tenant_id.into(), category_id.into()],
             ))
             .await?;
@@ -642,6 +750,7 @@ impl CatalogService {
 
         let mut product_active: entities::product::ActiveModel = product.into();
         product_active.status = Set(entities::product::ProductStatus::Draft);
+        product_active.published_at = Set(None);
         product_active.updated_at = Set(Utc::now().into());
         product_active.update(&txn).await?;
 
@@ -780,6 +889,7 @@ impl CatalogService {
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
+        validate_variant_prices(&input.prices)?;
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
@@ -880,7 +990,7 @@ impl CatalogService {
                 variant_id,
                 channel_id: price_input.channel_id,
                 channel_slug: normalize_public_channel_slug(price_input.channel_slug.as_deref()),
-                currency_code: price_input.currency_code.clone(),
+                currency_code: price_input.currency_code.trim().to_ascii_uppercase(),
                 amount: price_input.amount,
                 compare_at_amount: price_input.compare_at_amount,
             });
@@ -923,6 +1033,9 @@ impl CatalogService {
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
+        if let Some(prices) = input.prices.as_deref() {
+            validate_variant_prices(prices)?;
+        }
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
@@ -1038,7 +1151,7 @@ impl CatalogService {
                     channel_slug: normalize_public_channel_slug(
                         price_input.channel_slug.as_deref(),
                     ),
-                    currency_code: price_input.currency_code.clone(),
+                    currency_code: price_input.currency_code.trim().to_ascii_uppercase(),
                     amount: price_input.amount,
                     compare_at_amount: price_input.compare_at_amount,
                 });
@@ -1691,5 +1804,74 @@ pub(crate) fn validate_variant_axes_and_combinations(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rust_decimal::Decimal;
+
+    #[test]
+    fn validate_variant_prices_accepts_valid_prices() {
+        let prices = vec![
+            PriceInput {
+                currency_code: "USD".to_string(),
+                channel_id: None,
+                channel_slug: Some("web".to_string()),
+                amount: Decimal::new(1000, 2),
+                compare_at_amount: None,
+            },
+            PriceInput {
+                currency_code: "EUR".to_string(),
+                channel_id: None,
+                channel_slug: Some("web".to_string()),
+                amount: Decimal::new(950, 2),
+                compare_at_amount: None,
+            },
+            PriceInput {
+                currency_code: "usd".to_string(),
+                channel_id: None,
+                channel_slug: Some("pos".to_string()),
+                amount: Decimal::new(1000, 2),
+                compare_at_amount: None,
+            },
+        ];
+        assert!(validate_variant_prices(&prices).is_ok());
+    }
+
+    #[test]
+    fn validate_variant_prices_rejects_duplicate_currency_for_same_channel() {
+        let prices = vec![
+            PriceInput {
+                currency_code: "USD".to_string(),
+                channel_id: None,
+                channel_slug: Some("web".to_string()),
+                amount: Decimal::new(1000, 2),
+                compare_at_amount: None,
+            },
+            PriceInput {
+                currency_code: "usd".to_string(),
+                channel_id: None,
+                channel_slug: Some("web".to_string()),
+                amount: Decimal::new(1200, 2),
+                compare_at_amount: None,
+            },
+        ];
+        let err = validate_variant_prices(&prices).unwrap_err();
+        assert!(matches!(err, CommerceError::Validation(_)));
+    }
+
+    #[test]
+    fn validate_variant_prices_rejects_invalid_currency_code_length() {
+        let prices = vec![PriceInput {
+            currency_code: "US".to_string(),
+            channel_id: None,
+            channel_slug: None,
+            amount: Decimal::new(1000, 2),
+            compare_at_amount: None,
+        }];
+        let err = validate_variant_prices(&prices).unwrap_err();
+        assert!(matches!(err, CommerceError::Validation(_)));
+    }
 }
 
