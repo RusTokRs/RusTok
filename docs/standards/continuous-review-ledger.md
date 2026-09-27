@@ -918,3 +918,11 @@ _No completed rounds yet. Round 1 is currently in progress._
 **Audit passes:** `rustok-api`, `rustok-core`, `rustok-events`, `rustok-runtime`, `rustok-web`, `rustok-telemetry`, and `rustok-fba` were reviewed for secret-bearing Debug/serialization surfaces, request/tenant authority, event envelope validation, storage/runtime path safety, transport error mapping, feature isolation, and dependency direction. Event envelopes do not dump payloads through Debug; AuthContext/TenantContext/ChannelContext consume trusted extensions; `rustok-api` runtime/server features remain directionally isolated; `rustok-core` `redis-cache` is an intentionally empty compatibility feature with no Redis references in cache implementation.
 
 **Verification state:** Tests/builds were not run by the agent. Regression tests were added for the rate limiter, RequestContext and telemetry bucket contract. Maintainer execution remains required. FS-16 implementation is ready for integration.
+
+
+### FS-17 Pre-Implementation Audit Findings
+
+- [ ] **SUPPLY-01 — Cargo lock/dependency graph requires duplicate-source and unpinned-source audit.** Detect multiple versions of security/serialization/network primitives, git dependencies without immutable revs, path dependencies escaping the workspace, and lockfile entries whose provenance cannot be reconciled to manifests.
+- [ ] **SUPPLY-02 — JavaScript dependency graph and generated client surfaces require lock/provenance audit.** Verify package-lock integrity, workspace/package boundary, postinstall scripts, local file/link dependencies, and build-time downloads do not introduce mutable or unreviewed code execution.
+- [ ] **SUPPLY-03 — CI/CD action and release workflow pins require immutable provenance audit.** Every third-party GitHub Action used in release/build/security-sensitive workflows should be pinned to an immutable commit SHA where repository policy requires it; mutable tags/branches are not acceptable for privileged automation.
+- [ ] **SUPPLY-04 — cargo-deny/toolchain/license policy must be reconciled with the actual graph.** Verify `deny.toml`, `rust-toolchain.toml`, advisory/license/source policies and repository scripts actually constrain the dependency graph they claim to govern.
