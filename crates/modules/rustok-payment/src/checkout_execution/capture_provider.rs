@@ -377,3 +377,39 @@ impl InProcessCheckoutPaymentExecutionPort {
         })
     }
 }
+
+
+fn capture_provider_amount(collection: &PaymentCollectionResponse) -> Decimal {
+    collection.authorized_amount
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn capture_uses_persisted_authorized_amount_for_partial_authorization() {
+        let collection = PaymentCollectionResponse {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            cart_id: None,
+            order_id: None,
+            customer_id: None,
+            status: "authorized".to_string(),
+            currency_code: "USD".to_string(),
+            amount: Decimal::new(100, 0),
+            authorized_amount: Decimal::new(75, 0),
+            captured_amount: Decimal::ZERO,
+            provider_id: Some("gateway".to_string()),
+            cancellation_reason: None,
+            metadata: Value::Object(Default::default()),
+            created_at: chrono::Utc::now().fixed_offset(),
+            updated_at: chrono::Utc::now().fixed_offset(),
+            authorized_at: None,
+            captured_at: None,
+            cancelled_at: None,
+        };
+
+        assert_eq!(capture_provider_amount(&collection), Decimal::new(75, 0));
+    }
+}
