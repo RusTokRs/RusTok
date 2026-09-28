@@ -807,7 +807,7 @@ fn oauth_app_from_mutation_record(record: rustok_auth::OAuthAppMutationRecord) -
         managed_by_manifest: record.auto_created && record.manifest_ref.is_some(),
         is_active: record.is_active,
         can_edit: can_manage,
-        can_rotate_secret: record.app_type != "embedded",
+        can_rotate_secret: record.can_rotate_secret,
         can_revoke: can_manage,
         active_token_count: record.active_token_count,
         last_used_at: record.last_used_at,
