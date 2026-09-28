@@ -18,8 +18,10 @@ mapping the storefront read model. Delivery grouping uses canonical
 identity.
 
 The Axum guest-cart capability adapter is owner-owned in
-`rustok_cart::guest_access_http`; hosts compose it around REST/GraphQL requests
-without reimplementing token parsing, cookie emission, or task-local scope.
+`rustok_cart::guest_access_http`; hosts compose it around REST/GraphQL and native
+server-function requests without reimplementing token parsing, cookie emission,
+or task-local scope. Native storefront server functions must validate the same
+request-scoped guest capability before operating on a guest cart.
 
 The canonical `CartStatus` remains the only cart lifecycle type. Atomic checkout
 admission, existing-lock adoption, pricing resolution, and transition-race

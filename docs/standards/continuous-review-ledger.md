@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `09fd976184fc839b1a3e7cee0351f2ad02bd79d9`  
+**Current main SHA:** `486a3c3e8c33ee1c4332f318f141d2829a4d40e2`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -129,7 +129,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.07 — `apps/server/src/middleware/channel.rs`** — one-module audit.
 - [x] **FS-22.02.08 — `apps/server/src/middleware/locale.rs`** — one-module audit.
 - [x] **FS-22.02.09 — `apps/server/src/middleware/tenant.rs`** — one-module audit.
-- [ ] **FS-22.02.10 — `apps/server/src/middleware/guest_access_http.rs` or its host adapter** — one-module audit.
+- [x] **FS-22.02.10 — `crates/modules/rustok-cart/src/guest_access_http.rs` + native storefront capability adapters** — one-owner boundary audit.
 - [ ] **FS-22.02.11 — `apps/server/src/middleware/security_headers.rs`** — one-module audit.
 - [ ] **FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`** — one-module audit.
 - [ ] **FS-22.02.13 — `apps/server/src/services/app_runtime.rs`** — one-module audit.
@@ -311,6 +311,26 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently re-read the complete changed tenant middleware, cache key construction, generation-stable load loop, bootstrap/error propagation, regression tests, and the immediate router/runtime boundaries without relying on the original finding list. No remaining repository-owned defect was found inside `tenant.rs` or its direct remediation path.
 - **Verification:** repository-content/static reasoning and branch-diff review only. Per maintainer execution rules, no tests, clippy, gatekeeper, build, or runtime commands were executed by the agent.
 - **Status:** module-level fresh second pass clean; `FS-22.02.09` complete and ready for integration. Next planned primary module is `FS-22.02.10 — apps/server/src/middleware/guest_access_http.rs` (exact filename to be re-confirmed from current module inventory when starting that iteration).
+
+### FS-22.02.10 Iteration 1 — guest-cart HTTP capability boundary
+
+- **Base:** refreshed `main` to `09869dd906942739f6e4082cc17fa1114f22ee3a` immediately before this iteration; this also incorporates the previous tenant-cache hardening.
+- **Dedicated iteration branch:** `codex/audit-fs-22.02.10-guest-cart-access`.
+- **Actual owner:** the planned server middleware file `apps/server/src/middleware/guest_access_http.rs` does not exist. The canonical HTTP capability adapter is owner-owned at `crates/modules/rustok-cart/src/guest_access_http.rs`, globally composed by `apps/server/src/services/app_router.rs`, with capability verification consumed from `rustok-cart/src/guest_access.rs` and its storefront/native boundary.
+- **Invariant map:** every guest-owned cart read/write path must require the request's guest capability; plaintext guest capability must remain request-scoped and never persisted; conflicting capability representations must fail closed; authenticated customer carts remain customer-owned; capability-bearing cart responses must be non-cacheable; native server functions must preserve the same guest-access boundary as REST/GraphQL.
+- **Confirmed finding GUEST-CART-22.02.10-01:** cart storefront native server functions previously used direct `CartService` reads/writes plus a local customer-only ownership helper. For guest carts (`customer_id=None`), that helper returned success, so `cart/storefront-data`, `cart/decrement-line-item`, and `cart/remove-line-item` could access a tenant/cart UUID without validating the HTTP guest token.
+- **Remediation GUEST-CART-22.02.10-01:** added owner-owned `verify_current_guest_cart_access` over the request-scoped task-local capability and applied it to both native adapter variants selected by feature profile. Customer-owned carts still require the resolved customer identity; service/system actors no longer bypass guest capability through these storefront server functions.
+- **Confirmed finding GUEST-CART-22.02.10-02:** the HTTP capability adapter added `Cache-Control: no-store` only when a new token was issued. Existing-token guest requests could therefore return capability-protected cart state without an explicit cache prohibition.
+- **Remediation GUEST-CART-22.02.10-02:** any request carrying an existing guest capability, or issuing one during cart creation, now receives `Cache-Control: no-store`.
+- **Confirmed finding GUEST-CART-22.02.10-03:** the parser used only one header value and the first matching cookie, so repeated guest capability inputs could be silently resolved by ordering.
+- **Remediation GUEST-CART-22.02.10-03:** all guest token header values and all matching cookie occurrences are now examined; duplicates fail closed, invalid primary header capability cannot fall back to a cookie, and header/cookie disagreement remains an explicit conflict.
+- **Adjacent-boundary review:** REST/GraphQL commerce handlers already consume the guarded cart storefront provider and separately enforce authenticated customer ownership. The native server-function adapters were the missing enforcement path. Tenant scoping remains owner-enforced through the cart service/port, and app-router placement ensures the request-scoped capability is established before downstream server functions execute.
+- **Boundary security decision:** no `Secure` cookie flag was added in this owner module. The repository's production host validation requires HTTPS/HSTS declaration at the server boundary; forcing `Secure` here would couple the reusable cart capability module to host/proxy deployment semantics and would break ordinary HTTP development profiles.
+- **Regression correction during review:** the second pass caught malformed indentation in newly added test blocks; the test source was normalized before closeout.
+- **Fresh second pass:** independently re-read the owner capability state, HTTP extraction, duplicate handling, cache policy, both native adapter feature variants, transport selection, app-router composition, customer ownership resolution, guarded port behavior, and cart owner persistence. No remaining repository-owned in-scope guest-access bypass was found.
+- **Verification:** repository-content/static reasoning and branch-diff review only. No tests, clippy, gatekeeper, build, or runtime commands were executed by the agent.
+- **Merged:** PR #4178, merge commit `486a3c3e8c33ee1c4332f318f141d2829a4d40e2`.
+- **Status:** module-level fresh second pass clean; `FS-22.02.10` complete and integrated into `main`. Next planned primary module is `FS-22.02.11 — `apps/server/src/middleware/security_headers.rs`.
 
 ### Deferred owning-module findings discovered during FS-22
 
