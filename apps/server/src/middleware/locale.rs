@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
     time::Duration,
@@ -28,6 +28,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 const TENANT_LOCALE_CACHE_TTL: Duration = Duration::from_secs(60);
 const TENANT_LOCALE_CACHE_MAX_WEIGHT_BYTES: u64 = 8 * 1024 * 1024;
 const TENANT_LOCALE_PORT_TIMEOUT: Duration = Duration::from_secs(2);
+const TENANT_LOCALE_CACHE_MAX_TENANT_VERSIONS: usize = 16 * 1024;
 
 #[derive(Debug, Clone)]
 struct TenantLocaleRecord {
@@ -47,8 +48,89 @@ pub struct TenantLocaleCacheStats {
 }
 
 #[derive(Clone)]
+struct TenantLocaleCacheVersionState {
+    next_version: u64,
+    default_version: u64,
+    tenant_versions: HashMap<Uuid, u64>,
+    exhausted: bool,
+}
+
+impl Default for TenantLocaleCacheVersionState {
+    fn default() -> Self {
+        Self {
+            next_version: 1,
+            default_version: 1,
+            tenant_versions: HashMap::new(),
+            exhausted: false,
+        }
+    }
+}
+
+impl TenantLocaleCacheVersionState {
+    fn token(&self, tenant_id: Uuid) -> Option<u64> {
+        if self.exhausted {
+            return None;
+        }
+        Some(
+            self.tenant_versions
+                .get(&tenant_id)
+                .copied()
+                .unwrap_or(self.default_version),
+        )
+    }
+
+    fn invalidate(&mut self, tenant_id: Uuid, maximum_tenants: usize) -> bool {
+        if self.exhausted {
+            return true;
+        }
+
+        let Some(next_version) = self.next_version.checked_add(1) else {
+            self.exhausted = true;
+            self.tenant_versions.clear();
+            return true;
+        };
+        self.next_version = next_version;
+
+        if !self.tenant_versions.contains_key(&tenant_id)
+            && self.tenant_versions.len() >= maximum_tenants.max(1)
+        {
+            self.default_version = next_version;
+            self.tenant_versions.clear();
+            self.tenant_versions.insert(tenant_id, next_version);
+            return true;
+        }
+
+        self.tenant_versions.insert(tenant_id, next_version);
+        false
+    }
+
+    fn invalidate_all(&mut self) {
+        if self.exhausted {
+            self.tenant_versions.clear();
+            return;
+        }
+
+        let Some(next_version) = self.next_version.checked_add(1) else {
+            self.exhausted = true;
+            self.tenant_versions.clear();
+            return;
+        };
+        self.next_version = next_version;
+        self.default_version = next_version;
+        self.tenant_versions.clear();
+    }
+}
+
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+struct TenantLocaleCacheKey {
+    tenant_id: Uuid,
+    version: u64,
+}
+
 struct TenantLocaleCache {
-    cache: Cache<Uuid, Arc<Vec<TenantLocaleRecord>>>,
+    cache: Cache<TenantLocaleCacheKey, Arc<Vec<TenantLocaleRecord>>>,
+    versions: Arc<Mutex<TenantLocaleCacheVersionState>>,
+    max_tenant_versions: usize,
     hits: Arc<AtomicU64>,
     misses: Arc<AtomicU64>,
     db_queries: Arc<AtomicU64>,
@@ -70,12 +152,29 @@ impl TenantLocaleCache {
             hits: Arc::new(AtomicU64::new(0)),
             misses: Arc::new(AtomicU64::new(0)),
             db_queries: Arc::new(AtomicU64::new(0)),
+            versions: Arc::new(Mutex::new(TenantLocaleCacheVersionState::default())),
+            max_tenant_versions: TENANT_LOCALE_CACHE_MAX_TENANT_VERSIONS,
             invalidations: Arc::new(AtomicU64::new(0)),
         }
     }
 
+    fn tenant_version(&self, tenant_id: Uuid) -> Option<u64> {
+        self.versions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .token(tenant_id)
+    }
+
+    fn cache_key(&self, tenant_id: Uuid, version: u64) -> TenantLocaleCacheKey {
+        TenantLocaleCacheKey { tenant_id, version }
+    }
+
     async fn get(&self, tenant_id: Uuid) -> Option<Arc<Vec<TenantLocaleRecord>>> {
-        let cached = self.cache.get(&tenant_id).await;
+        let Some(version) = self.tenant_version(tenant_id) else {
+            self.misses.fetch_add(1, Ordering::Relaxed);
+            return None;
+        };
+        let cached = self.cache.get(&self.cache_key(tenant_id, version)).await;
         if cached.is_some() {
             self.hits.fetch_add(1, Ordering::Relaxed);
         } else {
@@ -89,13 +188,24 @@ impl TenantLocaleCache {
         ctx: &ServerRuntimeContext,
         tenant_id: Uuid,
     ) -> Result<Arc<Vec<TenantLocaleRecord>>, sea_orm::DbErr> {
-        if let Some(locales) = self.get(tenant_id).await {
+        let Some(version) = self.tenant_version(tenant_id) else {
+            self.record_db_query();
+            return load_tenant_locales(ctx, tenant_id).await.map(Arc::new);
+        };
+
+        if let Some(locales) = self
+            .cache
+            .get(&self.cache_key(tenant_id, version))
+            .await
+        {
+            self.hits.fetch_add(1, Ordering::Relaxed);
             return Ok(locales);
         }
+        self.misses.fetch_add(1, Ordering::Relaxed);
 
         let cache = self.clone();
         self.cache
-            .try_get_with(tenant_id, async move {
+            .try_get_with(self.cache_key(tenant_id, version), async move {
                 cache.record_db_query();
                 load_tenant_locales(ctx, tenant_id).await.map(Arc::new)
             })
@@ -107,7 +217,57 @@ impl TenantLocaleCache {
 
     async fn invalidate(&self, tenant_id: Uuid) {
         self.invalidations.fetch_add(1, Ordering::Relaxed);
-        self.cache.invalidate(&tenant_id).await;
+
+        let (old_version, invalidate_all) = {
+            let mut versions = self
+                .versions
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let old_version = versions.token(tenant_id);
+            let invalidate_all = versions.invalidate(tenant_id, self.max_tenant_versions);
+            (old_version, invalidate_all)
+        };
+
+        if invalidate_all {
+            self.cache.invalidate_all();
+            self.cache.run_pending_tasks().await;
+            return;
+        }
+
+        if let Some(old_version) = old_version {
+            self.cache
+                .invalidate(&self.cache_key(tenant_id, old_version))
+                .await;
+            self.cache.run_pending_tasks().await;
+        }
+    }
+
+    async fn invalidate_all(&self) {
+        self.invalidations.fetch_add(1, Ordering::Relaxed);
+        self.versions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .invalidate_all();
+        self.cache.invalidate_all();
+        self.cache.run_pending_tasks().await;
+    }
+
+    #[cfg(test)]
+    fn tracked_tenant_versions(&self) -> usize {
+        self.versions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .tenant_versions
+            .len()
+    }
+
+    #[cfg(test)]
+    fn exhaust_versions(&self) {
+        let mut versions = self
+            .versions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        versions.next_version = u64::MAX;
     }
 
     fn record_db_query(&self) {
@@ -163,10 +323,8 @@ pub async fn resolve_locale(
         let locales = get_tenant_locales_cached(&ctx, tenant.id)
             .await
             .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
-        if !locales.is_empty() {
-            resolved.effective_locale =
-                constrain_locale_to_tenant(&resolved, locales.as_ref(), &tenant.default_locale);
-        }
+        resolved.effective_locale =
+            constrain_locale_to_tenant(&resolved, locales.as_ref(), &tenant.default_locale);
     }
 
     let locale = Locale::parse(&resolved.effective_locale).unwrap_or_default();
@@ -279,7 +437,10 @@ fn constrain_locale_to_tenant(
         .iter()
         .find(|record| record.is_enabled)
         .map(|record| record.locale.clone())
-        .unwrap_or_else(|| resolved.effective_locale.clone())
+        .unwrap_or_else(|| {
+            rustok_api::normalize_locale_tag(tenant_default_locale)
+                .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string())
+        })
 }
 
 /// Invalidate every process-local tenant-locale entry after an unverified or gapped durable
@@ -288,9 +449,7 @@ pub async fn invalidate_all_tenant_locale_cache(ctx: &ServerRuntimeContext) {
     let Some(cache) = ctx.shared_get::<Arc<TenantLocaleCache>>() else {
         return;
     };
-    cache.invalidations.fetch_add(1, Ordering::Relaxed);
-    cache.cache.invalidate_all();
-    cache.cache.run_pending_tasks().await;
+    cache.invalidate_all().await;
 }
 
 #[cfg(test)]
