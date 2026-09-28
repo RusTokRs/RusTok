@@ -219,18 +219,42 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             return Ok(());
         };
 
-        let reset_token = encode_password_reset_token(
+        let reset_token = match encode_password_reset_token(
             &self.auth_config,
             context.tenant_id,
             &user.email,
             &user.password_hash,
             DEFAULT_RESET_TOKEN_TTL_SECS,
-        )
-        .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
-        let email_service = email_service_from_ctx(&self.runtime_ctx, context.locale.as_str())
-            .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
-        let reset_url = password_reset_url(&self.runtime_ctx, &reset_token)
-            .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
+        ) {
+            Ok(token) => token,
+            Err(_) => {
+                tracing::warn!(
+                    "Password reset email could not be prepared; keeping the public response generic"
+                );
+                return Ok(());
+            }
+        };
+        let email_service = match email_service_from_ctx(
+            &self.runtime_ctx,
+            context.locale.as_str(),
+        ) {
+            Ok(service) => service,
+            Err(_) => {
+                tracing::warn!(
+                    "Password reset email could not be prepared; keeping the public response generic"
+                );
+                return Ok(());
+            }
+        };
+        let reset_url = match password_reset_url(&self.runtime_ctx, &reset_token) {
+            Ok(url) => url,
+            Err(_) => {
+                tracing::warn!(
+                    "Password reset email could not be prepared; keeping the public response generic"
+                );
+                return Ok(());
+            }
+        };
         let recipient = user.email;
 
         tokio::spawn(async move {
@@ -428,3 +452,4 @@ fn map_lifecycle_error(error: AuthLifecycleError) -> AuthLifecycleMutationError 
         AuthLifecycleError::Internal(err) => AuthLifecycleMutationError::Internal(err.to_string()),
     }
 }
+
