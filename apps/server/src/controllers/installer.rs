@@ -11,7 +11,10 @@ use rustok_installer::{
     InstallExecutor, InstallPlan, bind_instance_placement, evaluate_preflight_with_deployment,
     load_base_distribution_receipt, redact_install_plan,
 };
-use rustok_installer_persistence::{InstallerPersistenceService, entities::install_step_receipt};
+use rustok_installer_persistence::{
+    InstallerPersistenceService,
+    entities::{install_session, install_step_receipt},
+};
 use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -181,6 +184,7 @@ async fn apply(
             .unwrap_or_else(|| "http".to_string()),
         lock_ttl_secs: request.lock_ttl_secs.unwrap_or(900),
         pg_admin_url: request.pg_admin_url,
+        requested_session_id: Some(job_id),
         bootstrap_public_key_base64: configured_value(
             "RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY",
         ),
@@ -380,16 +384,50 @@ fn configured_value(name: &str) -> Option<String> {
 
 async fn job_status(
     headers: HeaderMap,
+    State(ctx): State<ServerRuntimeContext>,
     Path(job_id): Path<Uuid>,
 ) -> Result<Json<InstallJobStatusResponse>> {
     require_setup_token(&headers)?;
-    INSTALL_JOBS
-        .lock()
+    if let Some(status) = INSTALL_JOBS.lock().await.get(&job_id).cloned() {
+        return Ok(Json(status));
+    }
+
+    let persistence = InstallerPersistenceService::new(ctx.db_clone());
+    let session = persistence
+        .get_session(job_id)
         .await
-        .get(&job_id)
-        .cloned()
-        .map(Json)
+        .map_err(|error| internal_error(format!("failed to read installer job state: {error}")))?;
+
+    session
+        .map(|session| Json(job_status_from_session(job_id, session)))
         .ok_or_else(|| not_found_error(format!("installer job {job_id} not found")))
+}
+
+fn job_status_from_session(
+    job_id: Uuid,
+    session: install_session::Model,
+) -> InstallJobStatusResponse {
+    let status = match session.status.as_str() {
+        "completed" => InstallJobState::Succeeded,
+        "failed" | "fresh_install_cleaned" | "recovery_required" => InstallJobState::Failed,
+        _ => InstallJobState::Running,
+    };
+    let terminal = matches!(
+        status,
+        InstallJobState::Succeeded | InstallJobState::Failed
+    );
+
+    InstallJobStatusResponse {
+        job_id,
+        status,
+        submitted_at: session.created_at,
+        started_at: Some(session.created_at),
+        finished_at: terminal.then_some(session.completed_at.unwrap_or(session.updated_at)),
+        session_id: Some(session.id),
+        tenant_id: session.tenant_id,
+        output: None,
+        error: session.error_message,
+    }
 }
 
 async fn receipts(
