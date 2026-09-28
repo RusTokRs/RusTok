@@ -67,15 +67,16 @@ impl ColumnWidth {
     }
 
     pub fn resizable(default_px: u32, min_px: u32, max_px: u32) -> Self {
-        Self {
-            min: min_px,
-            max: max_px,
-            current: default_px.clamp(min_px, max_px),
-        }
+        // A reversed range is a configuration error, but silently producing a
+        // value that cannot be clamped is considerably worse. Normalize it at
+        // the boundary so every ColumnWidth has the invariant min <= max.
+        let (min, max) = if min_px <= max_px { (min_px, max_px) } else { (max_px, min_px) };
+        Self { min, max, current: default_px.clamp(min, max) }
     }
 
     pub fn clamp(&self, px: u32) -> u32 {
-        px.clamp(self.min, self.max)
+        let (min, max) = if self.min <= self.max { (self.min, self.max) } else { (self.max, self.min) };
+        px.clamp(min, max)
     }
 }
 
@@ -146,27 +147,19 @@ impl GridColumnDef {
     }
 
     pub fn width(mut self, px: u32) -> Self {
-        self.width = ColumnWidth {
-            min: 50,
-            max: 1200,
-            current: px,
-        };
+        self.width = ColumnWidth::resizable(px, 50, 1200);
         self
     }
 
     pub fn min_width(mut self, min_px: u32) -> Self {
-        self.width.min = min_px;
-        if self.width.current < min_px {
-            self.width.current = min_px;
-        }
+        self.width.min = min_px.min(self.width.max);
+        self.width.current = self.width.clamp(self.width.current);
         self
     }
 
     pub fn max_width(mut self, max_px: u32) -> Self {
-        self.width.max = max_px;
-        if self.width.current > max_px {
-            self.width.current = max_px;
-        }
+        self.width.max = max_px.max(self.width.min);
+        self.width.current = self.width.clamp(self.width.current);
         self
     }
 
@@ -200,5 +193,17 @@ impl GridColumnDef {
     pub fn pin(mut self, side: PinnedSide) -> Self {
         self.pinned = Some(side);
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn width_builders_preserve_invariants() {
+        let width = ColumnWidth::resizable(10, 300, 100);
+        assert_eq!((width.min, width.max, width.current), (100, 300, 100));
+        assert_eq!(GridColumnDef::new("x", "X").width(2_000).width.current, 1_200);
     }
 }

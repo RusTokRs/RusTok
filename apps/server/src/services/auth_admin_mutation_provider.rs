@@ -1,11 +1,15 @@
 use async_trait::async_trait;
 use rustok_api::{Permission, has_any_effective_permission, has_effective_permission};
+use rustok_core::UserRole;
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, AuthorizedOAuthAppRecord,
     CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord, OAuthAppSecretResult,
     UpdateOAuthAppCommand, UserMutationRecord,
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect,
+};
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -16,6 +20,89 @@ use crate::services::rbac_service::RbacService;
 
 mod super_admin_guard;
 mod user_admin;
+
+const MAX_AUTH_ADMIN_LIST_LIMIT: u64 = 100;
+
+fn clamp_auth_admin_list_limit(limit: u64) -> u64 {
+    limit.clamp(1, MAX_AUTH_ADMIN_LIST_LIMIT)
+}
+
+fn internal_admin_error<E>(error: E) -> AuthAdminMutationError
+where
+    E: std::fmt::Display,
+{
+    tracing::error!(
+        error = %error,
+        "Auth administration operation failed"
+    );
+    AuthAdminMutationError::Internal("Auth administration operation failed".to_string())
+}
+
+pub(crate) async fn build_oauth_app_record<C>(
+    db: &C,
+    context: &AuthAdminMutationContext,
+    app: oauth_apps::Model,
+) -> Result<OAuthAppMutationRecord, AuthAdminMutationError>
+where
+    C: ConnectionTrait,
+{
+    let locale = context.locale.as_deref().ok_or_else(|| {
+        AuthAdminMutationError::Validation(
+            "auth administration requires a host-resolved effective locale".to_string(),
+        )
+    })?;
+    let locale = oauth_apps::normalize_runtime_copy_locale(locale).map_err(|_| {
+        AuthAdminMutationError::Validation(
+            "auth administration requires a valid effective locale other than und"
+                .to_string(),
+        )
+    })?;
+    let app = oauth_apps::hydrate_exact_translation(db, app, locale.as_str())
+        .await
+        .map_err(internal_admin_error)?;
+    let active_token_count = oauth_tokens::Entity::find()
+        .filter(oauth_tokens::Column::AppId.eq(app.id))
+        .filter(oauth_tokens::Column::TenantId.eq(context.tenant_id))
+        .filter(oauth_tokens::Column::RevokedAt.is_null())
+        .filter(oauth_tokens::Column::ExpiresAt.gt(chrono::Utc::now()))
+        .count(db)
+        .await
+        .map_err(internal_admin_error)?;
+
+    let redirect_uris = app.redirect_uris_list();
+    let scopes = app.scopes_list();
+    let grant_types = app.grant_types_list();
+    let granted_permissions = app.granted_permissions_list();
+    let managed_by_manifest = app.managed_by_manifest();
+    let is_active = app.is_active();
+    let can_edit = app.can_edit();
+    let can_rotate_secret = app.can_rotate_secret();
+    let can_revoke = app.can_revoke();
+
+    Ok(OAuthAppMutationRecord {
+        id: app.id,
+        name: app.name,
+        slug: app.slug,
+        description: app.description,
+        icon_url: app.icon_url,
+        app_type: app.app_type,
+        client_id: app.client_id,
+        redirect_uris,
+        scopes,
+        grant_types,
+        granted_permissions,
+        manifest_ref: app.manifest_ref,
+        auto_created: app.auto_created,
+        managed_by_manifest,
+        is_active,
+        can_edit,
+        can_rotate_secret,
+        can_revoke,
+        active_token_count: i64::try_from(active_token_count).unwrap_or(i64::MAX),
+        last_used_at: app.last_used_at.map(Into::into),
+        created_at: app.created_at.into(),
+    })
+}
 
 #[derive(Clone)]
 pub struct ServerAuthAdminMutationProvider {
@@ -70,18 +157,12 @@ impl ServerAuthAdminMutationProvider {
         }
     }
 
-    async fn user_record(
-        &self,
+    fn user_record(
         user: users::Model,
-    ) -> Result<UserMutationRecord, AuthAdminMutationError> {
-        let role = RbacService::get_user_role(&self.db, &user.tenant_id, &user.id)
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        let tenant_name = tenants::Entity::find_by_id(&self.db, user.tenant_id)
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?
-            .map(|tenant| tenant.name);
-        Ok(UserMutationRecord {
+        role: UserRole,
+        tenant_name: Option<String>,
+    ) -> UserMutationRecord {
+        UserMutationRecord {
             id: user.id,
             email: user.email,
             name: user.name,
@@ -91,7 +172,22 @@ impl ServerAuthAdminMutationProvider {
             tenant_name,
             tenant_id: user.tenant_id,
             metadata: user.metadata,
-        })
+        }
+    }
+
+    async fn tenant_name<C>(
+        &self,
+        db: &C,
+        tenant_id: Uuid,
+    ) -> Result<Option<String>, AuthAdminMutationError>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        tenants::Entity::find_by_id(tenant_id)
+            .one(db)
+            .await
+            .map_err(internal_admin_error)
+            .map(|tenant| tenant.map(|value| value.name))
     }
 
     async fn authorize(
@@ -129,59 +225,12 @@ impl ServerAuthAdminMutationProvider {
         Ok(())
     }
 
-    async fn localize_app(
-        &self,
-        context: &AuthAdminMutationContext,
-        app: oauth_apps::Model,
-    ) -> Result<oauth_apps::Model, AuthAdminMutationError> {
-        let locale = self.effective_locale(context)?;
-        oauth_apps::hydrate_exact_translation(&self.db, app, locale.as_str())
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))
-    }
-
     async fn record(
         &self,
         context: &AuthAdminMutationContext,
         app: oauth_apps::Model,
     ) -> Result<OAuthAppMutationRecord, AuthAdminMutationError> {
-        let app = self.localize_app(context, app).await?;
-        let active_token_count = oauth_tokens::Entity::count_active_by_app(&self.db, app.id)
-            .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        let redirect_uris = app.redirect_uris_list();
-        let scopes = app.scopes_list();
-        let grant_types = app.grant_types_list();
-        let granted_permissions = app.granted_permissions_list();
-        let managed_by_manifest = app.managed_by_manifest();
-        let is_active = app.is_active();
-        let can_edit = app.can_edit();
-        let can_rotate_secret = app.can_rotate_secret();
-        let can_revoke = app.can_revoke();
-
-        Ok(OAuthAppMutationRecord {
-            id: app.id,
-            name: app.name,
-            slug: app.slug,
-            description: app.description,
-            icon_url: app.icon_url,
-            app_type: app.app_type,
-            client_id: app.client_id,
-            redirect_uris,
-            scopes,
-            grant_types,
-            granted_permissions,
-            manifest_ref: app.manifest_ref,
-            auto_created: app.auto_created,
-            managed_by_manifest,
-            is_active,
-            can_edit,
-            can_rotate_secret,
-            can_revoke,
-            active_token_count: i64::try_from(active_token_count).unwrap_or(i64::MAX),
-            last_used_at: app.last_used_at.map(Into::into),
-            created_at: app.created_at.into(),
-        })
+        build_oauth_app_record(&self.db, context, app).await
     }
 }
 
@@ -190,7 +239,7 @@ fn map_service_error(error: crate::error::Error) -> AuthAdminMutationError {
         crate::error::Error::NotFound => AuthAdminMutationError::NotFound("oauth app".to_string()),
         crate::error::Error::BadRequest(message) => AuthAdminMutationError::Validation(message),
         crate::error::Error::Unauthorized(_) => AuthAdminMutationError::Unauthorized,
-        other => AuthAdminMutationError::Internal(other.to_string()),
+        other => internal_admin_error(other),
     }
 }
 
@@ -208,14 +257,14 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
             .filter(oauth_apps::Column::IsActive.eq(true))
             .filter(oauth_apps::Column::RevokedAt.is_null())
             .order_by_desc(oauth_apps::Column::CreatedAt)
-            .limit(limit);
+            .limit(clamp_auth_admin_list_limit(limit));
         if let Some(app_type) = app_type {
             query = query.filter(oauth_apps::Column::AppType.eq(app_type));
         }
         let apps = query
             .all(&self.db)
             .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+            .map_err(|error| internal_admin_error(error))?;
         let mut records = Vec::with_capacity(apps.len());
         for app in apps {
             records.push(self.record(context, app).await?);
@@ -233,7 +282,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
             .filter(oauth_apps::Column::TenantId.eq(context.tenant_id))
             .one(&self.db)
             .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+            .map_err(|error| internal_admin_error(error))?;
         match app {
             Some(app) => Ok(Some(self.record(context, app).await?)),
             None => Ok(None),
@@ -250,11 +299,11 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
             .filter(oauth_consents::Column::TenantId.eq(context.tenant_id))
             .filter(oauth_consents::Column::RevokedAt.is_null())
             .order_by_desc(oauth_consents::Column::GrantedAt)
-            .limit(limit)
+            .limit(clamp_auth_admin_list_limit(limit))
             .find_also_related(oauth_apps::Entity)
             .all(&self.db)
             .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+            .map_err(|error| internal_admin_error(error))?;
         let mut records = Vec::with_capacity(consents.len());
         for (consent, app) in consents {
             if let Some(app) = app.filter(|app| app.is_active()) {
@@ -344,7 +393,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         let app = oauth_apps::Entity::find_by_id(app_id)
             .one(&self.db)
             .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?
+            .map_err(|error| internal_admin_error(error))?
             .filter(|app| app.tenant_id == context.tenant_id)
             .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
         let result = OAuthAppService::rotate_secret(&self.db, app.id)
@@ -365,7 +414,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         let app = oauth_apps::Entity::find_by_id(app_id)
             .one(&self.db)
             .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?
+            .map_err(|error| internal_admin_error(error))?
             .filter(|app| app.tenant_id == context.tenant_id)
             .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
         let revoked = OAuthAppService::revoke_app(&self.db, app.id)
@@ -384,7 +433,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
             .filter(oauth_apps::Column::TenantId.eq(context.tenant_id))
             .one(&self.db)
             .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?
+            .map_err(|error| internal_admin_error(error))?
             .filter(|app| app.is_active())
             .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
         OAuthAppService::grant_consent(
@@ -406,5 +455,59 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         OAuthAppService::revoke_user_consent(&self.db, app_id, context.actor_id, context.tenant_id)
             .await
             .map_err(map_service_error)
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::{ServerAuthAdminMutationProvider, clamp_auth_admin_list_limit, internal_admin_error};
+    use rustok_auth::AuthAdminMutationError;
+    use rustok_core::UserRole;
+    use serde_json::json;
+    use uuid::Uuid;
+
+    #[test]
+    fn internal_admin_errors_are_redacted() {
+        let error = internal_admin_error("database password leaked");
+        assert!(matches!(
+            error,
+            AuthAdminMutationError::Internal(message)
+                if message == "Auth administration operation failed"
+        ));
+    }
+
+    #[test]
+    fn auth_admin_list_limit_is_bounded() {
+        assert_eq!(clamp_auth_admin_list_limit(0), 1);
+        assert_eq!(clamp_auth_admin_list_limit(50), 50);
+        assert_eq!(clamp_auth_admin_list_limit(100), 100);
+        assert_eq!(clamp_auth_admin_list_limit(101), 100);
+        assert_eq!(clamp_auth_admin_list_limit(u64::MAX), 100);
+    }
+
+    #[test]
+    fn user_record_projection_is_post_commit_independent() {
+        let user = crate::models::users::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            email: "admin@example.com".to_string(),
+            password_hash: String::new(),
+            name: Some("Admin".to_string()),
+            status: rustok_core::UserStatus::Active,
+            email_verified_at: None,
+            last_login_at: None,
+            metadata: json!({"team": "platform"}),
+            created_at: chrono::Utc::now().into(),
+            updated_at: chrono::Utc::now().into(),
+        };
+        let record = ServerAuthAdminMutationProvider::user_record(
+            user.clone(),
+            UserRole::Admin,
+            Some("Tenant".to_string()),
+        );
+        assert_eq!(record.id, user.id);
+        assert_eq!(record.role, "admin");
+        assert_eq!(record.status, "active");
+        assert_eq!(record.tenant_name.as_deref(), Some("Tenant"));
+        assert_eq!(record.metadata, user.metadata);
     }
 }

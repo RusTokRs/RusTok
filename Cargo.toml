@@ -182,6 +182,8 @@ rustok-ui-dioxus = { path = "crates/ui/rustok-ui/dioxus" }
 dioxus = { version = "0.6" }
 rustok-forms = { path = "crates/ui/rustok-forms" }
 rustok-forms-leptos = { path = "crates/ui/rustok-forms/leptos" }
+rustok-forms-dioxus = { path = "crates/ui/rustok-forms/dioxus" }
+dioxus = { version = "0.6", default-features = false }
 rustok-ui-auth = { path = "crates/ui/rustok-ui-auth" }
 leptos-use = "0.19.0"
 gloo-storage = "0.4.0"

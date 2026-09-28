@@ -101,7 +101,7 @@ pub fn GridPaginationBar(
                                 <button
                                     type="button"
                                     disabled=move || !has_prev()
-                                    on:click=move |_| on_page_change.run(cur - 1)
+                                    on:click=move |_| on_page_change.run(cur.saturating_sub(1))
                                     class="px-2 py-1 rounded border border-border disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted font-medium text-foreground transition-colors"
                                 >
                                     "‹ Previous"
@@ -112,7 +112,7 @@ pub fn GridPaginationBar(
                                 <button
                                     type="button"
                                     disabled=move || !has_next()
-                                    on:click=move |_| on_page_change.run(cur + 1)
+                                    on:click=move |_| on_page_change.run(cur.saturating_add(1))
                                     class="px-2 py-1 rounded border border-border disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted font-medium text-foreground transition-colors"
                                 >
                                     "Next ›"

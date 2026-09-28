@@ -72,10 +72,14 @@ does not create a package-local locale fallback.
    `rustok-cli auth sessions-cleanup` removes expired auth sessions without the
    server task bridge.
 
-7. **Keep bootstrap identity provisioning in the auth owner.**
+7. **Completed — keep bootstrap identity provisioning in the auth owner.**
    `AuthUserBootstrapDbWriter` provides idempotent tenant-scoped user creation
    from an explicit database handle for installer and future standalone seed
-   composition. RBAC role assignment remains a separate owner boundary.
+   composition. Email lookup is canonicalized case-insensitively, database/row
+   failures are redacted, and unsupported backends fail closed without process
+   panics. RBAC role assignment remains a separate owner boundary and installer
+   seed composition keeps identity and role assignment in one caller-owned
+   transaction.
 
 8. **Provide a lightweight owner-owned OAuth transaction regression target.**
    The current server-lib test target compiles embedded UI, storage, cloud, and

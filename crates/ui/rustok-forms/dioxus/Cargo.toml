@@ -1,14 +1,14 @@
 [package]
-name = "rustok-forms-leptos"
+name = "rustok-forms-dioxus"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors = ["RusToK Team"]
-description = "Leptos structural form components for rustok-forms"
+description = "Dioxus 0.6 structural form components for rustok-forms"
 repository = "https://github.com/RusTokRs/RusTok"
-documentation = "https://docs.rs/rustok-forms-leptos"
+documentation = "https://docs.rs/rustok-forms-dioxus"
 readme = "README.md"
-keywords = ["leptos", "forms", "ui", "wai-aria", "components"]
+keywords = ["dioxus", "forms", "ui", "wai-aria", "components"]
 categories = ["gui", "web-programming"]
 
 [package.metadata.docs.rs]
@@ -18,12 +18,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[features]
-default = ["ssr"]
-ssr = ["leptos/ssr"]
-hydrate = ["leptos/hydrate"]
-csr = ["leptos/csr"]
-
 [dependencies]
-leptos = { workspace = true }
+dioxus = { version = "0.6", default-features = false }
 rustok-forms = { workspace = true }
+serde = { version = "1.0", features = ["derive"] }

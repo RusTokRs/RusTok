@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `b79e0cab819493c2a8d975ba2ce33723f82320d0`  
+**Current main SHA:** `b58131afbb87bf6b11193c22358c0bf08fa66d7a`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -247,7 +247,7 @@ Hard limits for every iteration:
 - **Verification:** repository-content/static inspection and branch/PR diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.02.32` complete. Next primary module: `FS-22.03` must first be decomposed into one-primary-module iterations.
 
-- [ ] **FS-22.03 — identity/auth propagation:** in progress; decomposed into one-primary-module iterations.
+- [x] **FS-22.03 — identity/auth propagation:** complete; all currently decomposed primary modules through FS-22.03.18 were audited in sequential module-specific iterations.
 - [x] **FS-22.03.01 — `apps/server/src/extractors/auth/mod.rs`** — completed with one security-boundary remediation and a fresh independent second pass.
 - [x] **FS-22.03.02 — `apps/server/src/middleware/auth_context.rs`** — completed with one principal-admission remediation and a fresh independent second pass.
 - [x] **FS-22.03.03 — `apps/server/src/controllers/auth.rs`** — completed with one account-enumeration remediation and a fresh independent second pass.
@@ -258,6 +258,14 @@ Hard limits for every iteration:
 - [x] **FS-22.03.08 — `crates/modules/rustok-auth/src/credentials.rs`** — completed with one RNG-failure remediation and a fresh independent post-merge second pass.
 - [x] **FS-22.03.09 — `crates/modules/rustok-auth/src/config.rs`** — fresh module audit found no remaining owner-level defect requiring code remediation; auth-settings parse-failure handling is deferred to the host adapter track.
 - [x] **FS-22.03.10 — `apps/server/src/auth.rs`** — completed with one fail-closed configuration parsing remediation and a fresh post-merge second pass.
+- [x] **FS-22.03.11 — `crates/modules/rustok-auth/src/lifecycle.rs`** — complete.
+- [x] **FS-22.03.12 — `apps/server/src/services/auth_lifecycle.rs`** — complete.
+- [x] **FS-22.03.13 — `apps/server/src/services/auth_lifecycle_provider.rs`** — complete.
+- [x] **FS-22.03.14 — `crates/modules/rustok-auth/src/backfill.rs`** — complete.
+- [x] **FS-22.03.15 — `crates/modules/rustok-auth/src/bootstrap.rs`** — complete.
+- [x] **FS-22.03.16 — `crates/modules/rustok-auth/src/admin_mutations.rs`** — complete.
+- [x] **FS-22.03.17 — `apps/server/src/services/auth_admin_mutation_provider.rs`** — complete.
+- [x] **FS-22.03.18 — `apps/server/src/services/oauth_admin_guard.rs`** — complete after PR #4277.
 - [ ] **FS-22.04 — tenant/channel/locale propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.06 — REST/controller composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
@@ -367,6 +375,54 @@ Hard limits for every iteration:
 - **Documentation:** `crates/modules/rustok-auth/docs/README.md` now records the checked JWT expiration boundary.
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.07` complete after merge; continue to the next unchecked primary module in FS-22.03.
+
+### FS-22.03.18 Iterations 1-3 — `apps/server/src/services/oauth_admin_guard.rs`
+
+- **Base:** refreshed `main` at `b58131afbb87bf6b11193c22358c0bf08fa66d7a` after PR #4277 merge; the implementation originated on dedicated branch `codex/audit-fs-22.03.18-oauth-admin-guard`.
+- **Invariant map:** OAuth admin mutations must consume the request-bound tenant/permission snapshot; delegated permissions may never exceed current authority; secret rotation must serialize per OAuth app; internal failures must not expose DB/credential diagnostics; mutation responses must describe the state that was actually persisted; all derived reads must remain tenant-qualified.
+- **Iteration 1 — fail-closed guard boundaries:** bounded OAuth admin list inputs at `1..=100`, retained `settings:manage` as the admin authority gate, redacted internal guard/service diagnostics, propagated fallible client-secret generation instead of formatting a `Result`, and made the SQLite mutation fence fail closed on unsupported/failed fencing.
+- **Iteration 2 — serialized secret rotation:** OAuth client-secret rotation now acquires an exclusive app-row lock on PostgreSQL/MySQL and a SQLite write fence before rereading the authoritative tenant-scoped app row. Delegated permissions are validated from that locked row, eliminating the earlier pre-lock snapshot race.
+- **Iteration 3 — atomic response projection:** removed the stale pre-lock `OAuthAppMutationRecord` from the rotation path. The updated app is now projected through one shared server-owned OAuth admin record builder while the mutation transaction is still open; localization and active-token count are tenant-scoped there, and projection failures therefore roll back instead of surfacing after a committed secret change. The native admin transport now propagates the authoritative `can_rotate_secret` flag instead of recomputing a weaker rule from app type.
+- **Immediate/adjacent/fresh audits:** re-read the complete guard plus `OAuthAdminPort`, server OAuth admin provider, OAuth app/model persistence transactions, token-count query, GraphQL query/mutation entry points, native server functions, admin UI capability flags, consent guard, runtime provider registration, and tenant/RBAC request-scope boundary. No direct GraphQL/native OAuth admin mutation path bypassing the guarded runtime was found.
+- **Regression coverage:** preserved the guard tests for grant dependencies, bounded list limits, and redacted internal errors; added a native transport regression proving `can_rotate_secret` follows the authoritative mutation record.
+- **Verification:** repository source/static inspection, branch diff review, PR integration, and post-merge `main` re-read only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.03.18` complete after PR #4277 merge. Continue to the next unchecked primary module in FS-22.03.
+
+### FS-22.03.17 Iterations 1-4 — `apps/server/src/services/auth_admin_mutation_provider.rs`
+
+- **Base:** refreshed `main` at `8951800d7e53f12add957e2679041ec4ece9ce1d`; dedicated branch `codex/audit-fs-22.03.17-auth-admin-provider`. During implementation, `main` advanced with unrelated UI PR #4272; the final branch was merged with an explicit 3-way merge-tree so that unrelated `main` changes were preserved.
+- **Iteration 1 — user mutation fences:** SQLite user mutation locking now checks the conditional write fence, rereads the current row, and rejects unsupported backends without panic. User custom-field updates compare the pre-lock metadata snapshot with the locked row and fail with a conflict on concurrent metadata changes. This prevents stale snapshots from overwriting concurrent user changes.
+- **Iteration 2 — admin error boundary:** raw DB/service diagnostics in the user and OAuth admin providers now pass through `internal_admin_error`, logging server-side while exposing only `Auth administration operation failed`. Validation, permission, conflict and not-found categories remain stable and user-facing where appropriate.
+- **Iteration 3 — response consistency:** create/update user mutations resolve tenant name and authoritative resulting role before transaction commit, then construct `UserMutationRecord` without post-commit RBAC/tenant reads. A successful committed mutation can therefore no longer become a client-visible failure because a projection read failed afterward.
+- **Iteration 4 — provider read budget:** OAuth admin app/authorized-app lists now enforce a service-level `1..=100` limit regardless of transport caller. Existing GraphQL caps remain unchanged.
+- **Immediate/adjacent/fresh audits:** reviewed user admin lock ordering, RBAC authoritative reads, super-admin continuity, durable invalidation generation, event/outbox publication, OAuth tenant filters, GraphQL error mapping, and installer/user transaction boundaries. A fresh pass caught and corrected a temporary file-truncation hazard in the GitHub content workflow before PR creation.
+- **Final post-merge second pass:** after PR #4273 merged at `be01c8b24b729cbcabe7abd4fc7f0d6989517e3b`, both provider files were reread from `main`; no remaining in-scope owner/provider defect was found.
+- **Deferred:** OAuth client-secret rotation Result handling in `apps/server/src/services/oauth_admin_guard.rs` remains the next dedicated provider module. Further response-projection atomicity beyond this user-admin provider boundary remains explicitly deferred.
+- **Verification:** repository source inspection, iterative caller/callee review, branch diff review, and post-merge source re-read only. No tests, clippy, build, gatekeeper, migrations, or runtime commands were executed by the agent.
+- **Status:** `FS-22.03.17` complete. Next primary module: `FS-22.03.18 — apps/server/src/services/oauth_admin_guard.rs`.
+
+### FS-22.03.16 Iteration 1 — `crates/modules/rustok-auth/src/admin_mutations.rs`
+
+- **Base:** refreshed `main` at `780775b9fccb6dcd2e8668a60190d07669ee89e4`; dedicated branch `codex/audit-fs-22.03.16-auth-admin-mutations`.
+- **Invariant map:** auth admin ports must remain transport-neutral, preserve tenant/actor context, expose no secret material, distinguish authorization/validation/conflict/not-found/internal categories, and keep user/OAuth mutation contracts separate from concrete server persistence.
+- **Discovery:** re-read the complete admin mutation contract plus GraphQL error mapping, server user-admin provider, OAuth admin provider/guard, OAuth app service, RBAC authoritative role checks, and installer/admin boundaries.
+- **Finding assessment:** no remaining owner-level defect was confirmed inside `rustok-auth/src/admin_mutations.rs`. `OAuthAppSecretResult` has explicit secret-redacted `Debug`; command/record types contain no plaintext secret fields except the deliberate one-time `client_secret` response; the port surface remains framework-neutral.
+- **Deferred adjacent finding ADMINPROVIDER-22.03.16-01:** `apps/server/src/services/oauth_admin_guard.rs` formats `generate_refresh_token()` results directly into the rotated client secret even though the auth credential API returns `Result<String, AuthError>`. This is a compile-level provider defect assigned to the next concrete OAuth-admin provider track, not the module-owned contract.
+- **Deferred adjacent finding ADMINPROVIDER-22.03.16-02:** server user/OAuth admin providers still create `AuthAdminMutationError::Internal(String)` from raw DB/service diagnostics, while GraphQL maps `Internal` directly to client-visible internal-error text. This is a server adapter error-boundary issue and will be handled in the concrete provider tracks.
+- **Deferred adjacent finding ADMINPROVIDER-22.03.16-03:** OAuth admin list methods accept raw `u64` limits in the port; transport caps exist in some GraphQL paths but owner/provider enforcement needs a concrete provider audit. This remains separate from the contract-only module.
+- **Fresh second pass:** re-read the contract, secret redaction test, GraphQL mapping and direct provider boundaries. No contract-level secret leak, framework coupling, or malformed error-category defect remained.
+- **Verification:** repository source inspection and branch-diff review only. Adjacent findings are intentionally not patched through the contract layer; no tests, clippy, build, gatekeeper, migrations, or runtime commands were executed by the agent.
+- **Status:** `FS-22.03.16` complete. Next primary module: `FS-22.03.17 — apps/server/src/services/auth_admin_mutation_provider.rs`.
+
+### FS-22.03.15 Iterations 1-2 — `crates/modules/rustok-auth/src/bootstrap.rs`
+
+- **Base:** refreshed `main` at `625773e736fd8d93d2d377b8c380c1968af7fad0`; dedicated branch `codex/audit-fs-22.03.15-auth-bootstrap`.
+- **Iteration 1 — bootstrap identity boundary:** bootstrap email lookup was not canonicalized consistently with identity creation; DB/hash/row diagnostics were returned as internal strings; unsupported backend handling contained process-level `unreachable!`. Remediation canonicalized email to lowercase, introduced stable internal-error redaction, and made backend selection fail closed without panic.
+- **Iteration 2 — fresh re-audit remediation:** re-read the full owner and installer seed boundary, confirmed installer identity + RBAC remain in one caller-owned transaction, removed residual `unreachable!` paths in `find_user_on`, and routed all row-decoding errors through the redaction helper. Unit coverage was added for email normalization, stable error text, and unsupported backends including SeaORM Mock.
+- **Concurrency/non-findings:** `ON CONFLICT (tenant_id,email) DO NOTHING` plus post-conflict reread remains the canonical idempotency strategy; existing-user bootstrap does not reset credentials, matching installer seed idempotency semantics. No status filtering was added because the owner contract describes tenant-scoped identities rather than active-only identities.
+- **Final fresh second pass:** after PR #4267 merged at `c021a0a318495fa1c0b561930da72ed6b5a362ac`, the complete owner file and installer caller were re-read; no additional in-scope bootstrap defect remained.
+- **Verification:** repository source inspection, installer atomicity review, immediate re-audits, and branch-diff review only. No tests, clippy, build, gatekeeper, migrations, or runtime commands were executed by the agent.
+- **Status:** `FS-22.03.15` complete. Next primary module: `FS-22.03.16 — crates/modules/rustok-auth/src/admin_mutations.rs`.
 
 ### FS-22.03.14 Iterations 1-3 — `crates/modules/rustok-auth/src/backfill.rs`
 

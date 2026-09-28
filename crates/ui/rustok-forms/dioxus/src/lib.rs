@@ -1,33 +1,33 @@
-//! `rustok-forms-leptos` — Leptos 0.8 adapter for the framework-agnostic `rustok-forms` library.
+//! `rustok-forms-dioxus` — Dioxus 0.6 adapter for the framework-agnostic `rustok-forms` library.
 //!
 //! Provides structural form layout components, accessible input controls,
 //! lifecycle-aware submit buttons, and reactive context coordination.
 //!
 //! # Overview
 //!
-//! `rustok-forms-leptos` bridges the framework-agnostic form primitives of
-//! [`rustok-forms`](https://docs.rs/rustok-forms) with Leptos 0.8 reactive views:
+//! `rustok-forms-dioxus` bridges the framework-agnostic form primitives of
+//! [`rustok-forms`](https://docs.rs/rustok-forms) with Dioxus 0.6 reactive RSX views:
 //!
 //! - **Context Coordination**: [`Form`] provides [`FormContext`], [`FormField`] provides [`FieldContext`].
 //! - **Automatic Accessibility**: Propagates `aria-invalid`, `aria-describedby`, and `aria-errormessage` IDs automatically.
 //! - **Dirty Tracking**: Automatically tracks modified inputs using `DirtyTracker`.
-//! - **Lifecycle-Aware Buttons**: [`SubmitButton`] disables itself and renders a loading spinner during async submission; [`ResetButton`] resets values and clear error/dirty flags.
+//! - **Lifecycle-Aware Buttons**: [`SubmitButton`] disables itself and renders a loading spinner during async submission; [`ResetButton`] resets values and clears error/dirty flags.
 //! - **Rich Input Controls**: Text, Password (with toggle), Number, Search, Color, Range, Split OTP/2FA, Textarea, Select, Checkbox, Switch, RadioGroup, and File input.
 //!
 //! # Example
 //!
 //! ```rust,ignore
-//! use leptos::prelude::*;
+//! use dioxus::prelude::*;
 //! use rustok_forms::{FormState, FormValidator};
-//! use rustok_forms_leptos::*;
+//! use rustok_forms_dioxus::*;
 //!
 //! #[component]
-//! pub fn MyForm() -> impl IntoView {
-//!     let form_state = RwSignal::new(FormState::idle());
-//!     let (title, set_title) = signal(String::new());
+//! pub fn MyForm() -> Element {
+//!     let mut form_state = use_signal(FormState::idle);
+//!     let mut title = use_signal(String::new);
 //!
 //!     let on_submit = move |_| {
-//!         let val = title.get();
+//!         let val = title.read().clone();
 //!         let validation = FormValidator::new()
 //!             .required("title", &val, "Title is required")
 //!             .finish();
@@ -35,25 +35,35 @@
 //!         match validation {
 //!             Ok(_) => {
 //!                 // execute async action...
-//!                 form_state.update(|s| s.set_submitted_success());
+//!                 form_state.write().set_submitted_success();
 //!             }
 //!             Err(errs) => {
-//!                 form_state.update(|s| s.set_field_errors(errs));
+//!                 form_state.write().set_field_errors(errs);
 //!             }
 //!         }
 //!     };
 //!
-//!     view! {
-//!         <Form state=form_state on_submit=on_submit>
-//!             <FormError />
-//!             <FormField name="title">
-//!                 <FormLabel required=true>"Title"</FormLabel>
-//!                 <FormInput value=title on_input=set_title placeholder="Enter post title..." />
-//!                 <FormDescription>"Public title of this resource"</FormDescription>
-//!                 <FormMessage />
-//!             </FormField>
-//!             <SubmitButton submitting_text="Saving...">"Save"</SubmitButton>
-//!         </Form>
+//!     rsx! {
+//!         Form {
+//!             state: form_state,
+//!             on_submit: on_submit,
+//!             FormError {}
+//!             FormField {
+//!                 name: "title",
+//!                 FormLabel { required: true, "Title" }
+//!                 FormInput {
+//!                     value: title.read().clone(),
+//!                     on_input: move |v| title.set(v),
+//!                     placeholder: "Enter post title...",
+//!                 }
+//!                 FormDescription { "Public title of this resource" }
+//!                 FormMessage {}
+//!             }
+//!             SubmitButton {
+//!                 submitting_text: "Saving...",
+//!                 "Save"
+//!             }
+//!         }
 //!     }
 //! }
 //! ```
