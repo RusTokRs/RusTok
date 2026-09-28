@@ -18,7 +18,7 @@ use sea_orm::{
 use std::net::SocketAddr;
 
 use crate::auth::{
-    decode_email_verification_token, decode_invite_token, encode_email_verification_token,
+    decode_email_verification_token, encode_email_verification_token,
     encode_password_reset_token, hash_refresh_token,
 };
 use crate::common::{RequestContext, demo_mode_token_exposure_enabled, is_production_environment};
@@ -212,28 +212,17 @@ async fn accept_invite(
         .auth_config()
         .cloned()
         .ok_or(Error::InternalServerError)?;
-    let claims = decode_invite_token(&config, &params.token)?;
-
-    if claims.tenant_id != tenant.id {
-        return Err(Error::Unauthorized("Invalid invite token".into()));
-    }
-
-    let email = claims.sub.clone();
-    let role = claims.role.clone();
-    let runtime_ctx = ctx.runtime_ctx();
-
-    AuthLifecycleService::create_user_runtime(
-        runtime_ctx,
+    let accepted = AuthLifecycleService::accept_invite_once_runtime(
+        ctx.runtime_ctx(),
+        &config,
         tenant.id,
-        &email,
+        &params.token,
         &params.password,
         params.name,
-        role.clone(),
-        Some(rustok_core::UserStatus::Active),
     )
     .await
-    .map_err(|e: AuthLifecycleError| match e {
-        AuthLifecycleError::EmailAlreadyExists => {
+    .map_err(|error| match error {
+        crate::services::auth_invite::InviteAcceptanceError::EmailAlreadyExists => {
             Error::BadRequest("A user with this email already exists".into())
         }
         other => Error::from(other),
@@ -241,8 +230,8 @@ async fn accept_invite(
 
     Ok(json_response(InviteAcceptResponse {
         status: "ok",
-        email,
-        role,
+        email: accepted.email,
+        role: accepted.role,
     }))
 }
 
