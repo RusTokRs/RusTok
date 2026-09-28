@@ -25,8 +25,6 @@ use uuid::Uuid;
 
 use crate::{InstallerPersistenceService, entities::install_session};
 
-const DEFAULT_PG_ADMIN_URL: &str = "postgres://postgres:postgres@localhost:5432/postgres";
-
 async fn import_base_distribution(
     runtime: &DatabaseConnection,
     plan: &InstallPlan,
@@ -649,14 +647,12 @@ impl InstallDatabasePort for SeaOrmInstallerPorts {
                     "--create-database is only supported for postgres install plans",
                 ));
             }
-            created_database = ensure_postgres_database(
-                options
-                    .pg_admin_url
-                    .as_deref()
-                    .unwrap_or(DEFAULT_PG_ADMIN_URL),
-                &target,
-            )
-            .await?;
+            let admin_url = options.pg_admin_url.as_deref().ok_or_else(|| {
+                InstallExecutionError::new(
+                    "pg_admin_url is required when create_if_missing is enabled",
+                )
+            })?;
+            created_database = ensure_postgres_database(admin_url, &target).await?;
         }
         let runtime = Database::connect(database_url)
             .await
