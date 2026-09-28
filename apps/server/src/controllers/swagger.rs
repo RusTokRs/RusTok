@@ -4,8 +4,13 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
+use serde_json::Value;
+use std::collections::HashSet;
 use utoipa::OpenApi;
 use utoipa::openapi::OpenApi as OpenApiDoc;
+use utoipa::openapi::security::{
+    ApiKey, ApiKeyValue, SecurityRequirement, SecurityScheme,
+};
 
 use crate::common::settings::RustokSettings;
 use crate::error::{Error, Result};
@@ -26,12 +31,21 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
         crate::controllers::auth::logout,
         crate::controllers::auth::me,
         crate::controllers::auth::accept_invite,
+        crate::controllers::auth::request_reset,
+        crate::controllers::auth::confirm_reset,
         crate::controllers::auth::request_verification,
         crate::controllers::auth::confirm_verification,
+        crate::controllers::auth::list_sessions,
+        crate::controllers::auth::revoke_all_sessions,
+        crate::controllers::auth::change_password,
+        crate::controllers::auth::update_profile,
+        crate::controllers::auth::login_history,
+        crate::controllers::auth::revoke_session,
         // Health
         crate::controllers::health::health,
         crate::controllers::health::live,
         crate::controllers::health::ready,
+        crate::controllers::health::runtime,
         crate::controllers::health::modules,
         // Metrics
         crate::controllers::metrics::metrics,
@@ -47,7 +61,14 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
         crate::controllers::marketplace_registry::validate_publish_request_step,
         crate::controllers::marketplace_registry::approve_publish_request,
         crate::controllers::marketplace_registry::reject_publish_request,
+        crate::controllers::marketplace_registry::request_changes_publish_request,
+        crate::controllers::marketplace_registry::hold_publish_request,
+        crate::controllers::marketplace_registry::resume_publish_request,
         crate::controllers::marketplace_registry::report_validation_stage,
+        crate::controllers::marketplace_registry::claim_remote_validation_stage,
+        crate::controllers::marketplace_registry::heartbeat_remote_validation_stage,
+        crate::controllers::marketplace_registry::complete_remote_validation_stage,
+        crate::controllers::marketplace_registry::fail_remote_validation_stage,
         crate::controllers::marketplace_registry::transfer_owner,
         crate::controllers::marketplace_registry::yank,
         // RBAC artifact permissions
@@ -59,6 +80,9 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
         // Admin Events
         crate::controllers::admin_events::list_dlq,
         crate::controllers::admin_events::replay_dlq_event,
+        // Users
+        crate::controllers::users::list_users,
+        crate::controllers::users::get_user,
         // Flex standalone
         crate::controllers::flex::list_schemas,
         crate::controllers::flex::get_schema,
@@ -77,15 +101,27 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
             crate::controllers::auth::RegisterParams,
             crate::controllers::auth::RefreshRequest,
             crate::controllers::auth::AcceptInviteParams,
+            crate::controllers::auth::ConfirmResetParams,
             crate::controllers::auth::InviteAcceptResponse,
+            crate::controllers::auth::RequestResetParams,
             crate::controllers::auth::RequestVerificationParams,
             crate::controllers::auth::ConfirmVerificationParams,
             crate::controllers::auth::VerificationRequestResponse,
+            crate::controllers::auth::ResetRequestResponse,
             crate::controllers::auth::GenericStatusResponse,
+            crate::controllers::auth::ChangePasswordParams,
+            crate::controllers::auth::UpdateProfileParams,
+            crate::controllers::auth::SessionItem,
+            crate::controllers::auth::SessionsResponse,
             crate::controllers::auth::UserResponse,
             crate::controllers::auth::AuthResponse,
             crate::controllers::auth::UserInfo,
             crate::controllers::auth::LogoutResponse,
+
+            // Users
+            crate::controllers::users::UserItem,
+            crate::controllers::users::UsersListParams,
+            crate::controllers::users::UsersResponse,
 
             // Common
             crate::common::PaginationMeta,
@@ -99,6 +135,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
             crate::services::marketplace_catalog::RegistryMutationResponse,
             crate::services::marketplace_catalog::RegistryPublishRequest,
             crate::services::marketplace_catalog::RegistryPublishDecisionRequest,
+            crate::services::marketplace_catalog::RegistryPublishValidationRequest,
             crate::services::marketplace_catalog::RegistryPublishStatusResponse,
             crate::services::marketplace_catalog::RegistryExternalPrebuiltStageRequest,
             crate::services::marketplace_catalog::RegistryExternalPrebuiltStageResponse,
@@ -111,6 +148,23 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
             crate::services::marketplace_catalog::RegistryPublishUiPackagesRequest,
             crate::services::marketplace_catalog::RegistryPublishUiPackageRequest,
             crate::services::marketplace_catalog::RegistryYankRequest,
+            crate::services::marketplace_catalog::RegistryValidationStageReportRequest,
+            crate::services::marketplace_catalog::RegistryRunnerClaimRequest,
+            crate::services::marketplace_catalog::RegistryRunnerClaimResponse,
+            crate::services::marketplace_catalog::RegistryRunnerClaimPayload,
+            crate::services::marketplace_catalog::RegistryRunnerHeartbeatRequest,
+            crate::services::marketplace_catalog::RegistryRunnerCompletionRequest,
+            crate::services::marketplace_catalog::RegistryRunnerMutationResponse,
+            crate::services::marketplace_catalog::RegistryOwnerTransferRequest,
+            // Runtime guardrails
+            crate::services::runtime_guardrails::RuntimeGuardrailSnapshot,
+            crate::services::runtime_guardrails::RuntimeGuardrailStatus,
+            crate::services::runtime_guardrails::RuntimeGuardrailRollout,
+            crate::services::runtime_guardrails::RateLimitGuardrailSnapshot,
+            crate::services::runtime_guardrails::RateLimitPolicySnapshot,
+            crate::services::runtime_guardrails::EventBusGuardrailSnapshot,
+            crate::services::runtime_guardrails::EventTransportGuardrailSnapshot,
+            crate::services::runtime_guardrails::RemoteExecutorGuardrailSnapshot,
             // RBAC artifact permissions
             crate::controllers::artifact_permissions::ArtifactRolePermissionAssignmentRequest,
             crate::controllers::artifact_permissions::ArtifactRolePermissionAssignmentResponse,
@@ -144,7 +198,8 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
         (name = "flex", description = "Flex standalone schemas and entries endpoints"),
         (name = "health", description = "Health check endpoints"),
         (name = "observability", description = "Observability and metrics endpoints"),
-        (name = "admin", description = "Admin operations")
+        (name = "admin", description = "Admin operations"),
+        (name = "users", description = "User administration endpoints")
     )
 )]
 pub struct ApiDoc;
@@ -177,8 +232,148 @@ pub fn build_openapi_document(settings: &RustokSettings) -> OpenApiDoc {
             .paths
             .paths
             .retain(|path, _| REGISTRY_ONLY_OPENAPI_PATHS.contains(&path.as_str()));
+        prune_unused_registry_components(&mut openapi);
     }
     openapi
+}
+
+fn prune_unused_registry_components(openapi: &mut OpenApiDoc) {
+    let path_document = match serde_json::to_value(&openapi.paths) {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::error!(%error, "Failed to serialize registry-only OpenAPI paths for component pruning");
+            return;
+        }
+    };
+
+    let mut schema_names = HashSet::new();
+    let mut security_names = HashSet::new();
+    let mut tag_names = HashSet::new();
+    collect_component_references(
+        &path_document,
+        &mut schema_names,
+        &mut security_names,
+        &mut tag_names,
+    );
+
+    if let Some(global_security) = openapi.security.as_ref() {
+        if let Ok(value) = serde_json::to_value(global_security) {
+            let mut unused_schema_names = HashSet::new();
+            let mut unused_tag_names = HashSet::new();
+            collect_component_references(
+                &value,
+                &mut unused_schema_names,
+                &mut security_names,
+                &mut unused_tag_names,
+            );
+        }
+    }
+
+    if let Some(components) = openapi.components.as_mut() {
+        // Schema components can recursively reference other schema components.
+        let mut pending: Vec<String> = schema_names.iter().cloned().collect();
+        let mut index = 0;
+        while index < pending.len() {
+            let name = &pending[index];
+            index += 1;
+
+            let Some(schema) = components.schemas.get(name) else {
+                continue;
+            };
+            let schema_document = match serde_json::to_value(schema) {
+                Ok(value) => value,
+                Err(error) => {
+                    tracing::error!(
+                        %error,
+                        schema = %name,
+                        "Failed to serialize OpenAPI schema during registry-only pruning"
+                    );
+                    continue;
+                }
+            };
+
+            let mut nested_schema_names = HashSet::new();
+            let mut unused_security_names = HashSet::new();
+            let mut unused_tag_names = HashSet::new();
+            collect_component_references(
+                &schema_document,
+                &mut nested_schema_names,
+                &mut unused_security_names,
+                &mut unused_tag_names,
+            );
+
+            for nested in nested_schema_names {
+                if schema_names.insert(nested.clone()) {
+                    pending.push(nested);
+                }
+            }
+        }
+
+        components
+            .schemas
+            .retain(|name, _| schema_names.contains(name));
+        components
+            .security_schemes
+            .retain(|name, _| security_names.contains(name));
+    }
+
+    if let Some(tags) = openapi.tags.as_mut() {
+        tags.retain(|tag| tag_names.contains(&tag.name));
+    }
+}
+
+fn collect_component_references(
+    value: &Value,
+    schema_names: &mut HashSet<String>,
+    security_names: &mut HashSet<String>,
+    tag_names: &mut HashSet<String>,
+) {
+    match value {
+        Value::Array(values) => {
+            for value in values {
+                collect_component_references(
+                    value,
+                    schema_names,
+                    security_names,
+                    tag_names,
+                );
+            }
+        }
+        Value::Object(map) => {
+            if let Some(Value::String(reference)) = map.get("$ref") {
+                const SCHEMA_PREFIX: &str = "#/components/schemas/";
+                if let Some(name) = reference.strip_prefix(SCHEMA_PREFIX) {
+                    schema_names.insert(name.to_string());
+                }
+            }
+
+            if let Some(Value::Array(requirements)) = map.get("security") {
+                for requirement in requirements {
+                    if let Value::Object(entries) = requirement {
+                        security_names.extend(entries.keys().cloned());
+                    }
+                }
+            }
+
+            if let Some(Value::Array(tags)) = map.get("tags") {
+                for tag in tags {
+                    if let Value::String(name) = tag {
+                        tag_names.insert(name.clone());
+                    }
+                }
+            }
+
+            for value in map.values() {
+                collect_component_references(
+                    value,
+                    schema_names,
+                    security_names,
+                    tag_names,
+                );
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+    }
 }
 
 /// GET /api/openapi.json — OpenAPI specification in JSON format
@@ -236,13 +431,37 @@ impl utoipa::Modify for SecurityAddon {
         if let Some(components) = openapi.components.as_mut() {
             components.add_security_scheme(
                 "bearer_auth",
-                utoipa::openapi::security::SecurityScheme::Http(
+                SecurityScheme::Http(
                     utoipa::openapi::security::HttpBuilder::new()
                         .scheme(utoipa::openapi::security::HttpAuthScheme::Bearer)
                         .bearer_format("JWT")
                         .build(),
                 ),
-            )
+            );
+            components.add_security_scheme(
+                "runner_token",
+                SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::with_description(
+                    "x-rustok-runner-token",
+                    "Shared token required for remote registry validation runner operations.",
+                ))),
+            );
+        }
+
+        // Remote runner operations are authenticated by a dedicated shared
+        // header rather than a user/session bearer token. Keep that distinction
+        // explicit in the machine-readable contract.
+        for path in [
+            "/v2/catalog/runner/claim",
+            "/v2/catalog/runner/{claim_id}/heartbeat",
+            "/v2/catalog/runner/{claim_id}/complete",
+            "/v2/catalog/runner/{claim_id}/fail",
+        ] {
+            if let Some(operation) = openapi.paths.get_path_item(path).and_then(|item| item.post.as_mut()) {
+                operation.security = Some(vec![SecurityRequirement::new(
+                    "runner_token",
+                    std::iter::empty::<String>(),
+                )]);
+            }
         }
     }
 }
@@ -252,6 +471,184 @@ mod tests {
     use super::{ApiDoc, build_openapi_document};
     use crate::common::settings::{RuntimeHostMode, RustokSettings};
     use utoipa::OpenApi;
+
+
+
+    #[test]
+    fn openapi_includes_all_documented_core_paths() {
+        let openapi = ApiDoc::openapi();
+
+        let expected_paths = [
+            "/api/auth/register",
+            "/api/auth/login",
+            "/api/auth/refresh",
+            "/api/auth/logout",
+            "/api/auth/me",
+            "/api/auth/invite/accept",
+            "/api/auth/reset/request",
+            "/api/auth/reset/confirm",
+            "/api/auth/verify/request",
+            "/api/auth/verify/confirm",
+            "/api/auth/sessions",
+            "/api/auth/sessions/revoke-all",
+            "/api/auth/change-password",
+            "/api/auth/profile",
+            "/api/auth/history",
+            "/api/auth/sessions/{id}",
+            "/health",
+            "/health/live",
+            "/health/ready",
+            "/health/runtime",
+            "/health/modules",
+            "/metrics",
+            "/catalog",
+            "/catalog/{slug}",
+            "/v2/catalog/publish",
+            "/v2/catalog/publish/{request_id}",
+            "/v2/catalog/publish/{request_id}/artifact",
+            "/v2/catalog/publish/{request_id}/external-prebuilt-stage",
+            "/v2/catalog/publish/{request_id}/platform-build-stage",
+            "/v2/catalog/publish/{request_id}/author-signature",
+            "/v2/catalog/publish/{request_id}/validate",
+            "/v2/catalog/publish/{request_id}/stages",
+            "/v2/catalog/publish/{request_id}/approve",
+            "/v2/catalog/publish/{request_id}/reject",
+            "/v2/catalog/publish/{request_id}/request-changes",
+            "/v2/catalog/publish/{request_id}/hold",
+            "/v2/catalog/publish/{request_id}/resume",
+            "/v2/catalog/runner/claim",
+            "/v2/catalog/runner/{claim_id}/heartbeat",
+            "/v2/catalog/runner/{claim_id}/complete",
+            "/v2/catalog/runner/{claim_id}/fail",
+            "/v2/catalog/yank",
+            "/v2/catalog/owner-transfer",
+            "/api/rbac/artifact-permissions/roles/{role_id}",
+            "/api/admin/events/dlq",
+            "/api/admin/events/dlq/{id}/replay",
+            "/api/users",
+            "/api/users/{id}",
+            "/api/v1/flex/schemas",
+            "/api/v1/flex/schemas/{schema_id}",
+            "/api/v1/flex/schemas/{schema_id}/entries",
+            "/api/v1/flex/schemas/{schema_id}/entries/{entry_id}",
+            "/api/openapi.json",
+            "/api/openapi.yaml",
+        ];
+
+        for path in expected_paths {
+            assert!(
+                openapi.paths.paths.contains_key(path),
+                "OpenAPI spec must include documented core path {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn openapi_marks_remote_runner_operations_with_runner_auth() {
+        let openapi = ApiDoc::openapi();
+
+        let security = openapi
+            .paths
+            .get_path_operation(
+                "/v2/catalog/runner/claim",
+                utoipa::openapi::HttpMethod::Post,
+            )
+            .and_then(|operation| operation.security.as_ref())
+            .expect("runner claim must require runner_token");
+
+        assert_eq!(
+            serde_json::to_value(security).expect("security serializes"),
+            serde_json::json!([{ "runner_token": [] }])
+        );
+
+        let runner_scheme = openapi
+            .components
+            .as_ref()
+            .and_then(|components| components.security_schemes.get("runner_token"))
+            .expect("runner_token security scheme must exist");
+
+        assert_eq!(
+            serde_json::to_value(runner_scheme).expect("runner scheme serializes"),
+            serde_json::json!({
+                "type": "apiKey",
+                "in": "header",
+                "name": "x-rustok-runner-token",
+                "description": "Shared token required for remote registry validation runner operations."
+            })
+        );
+    }
+
+    #[test]
+    fn openapi_documents_expected_methods_on_shared_paths() {
+        let openapi = ApiDoc::openapi();
+
+        use utoipa::openapi::HttpMethod;
+
+        for (path, method) in [
+            ("/api/rbac/artifact-permissions/roles/{role_id}", HttpMethod::Put),
+            ("/api/rbac/artifact-permissions/roles/{role_id}", HttpMethod::Delete),
+            ("/api/users", HttpMethod::Get),
+            ("/api/v1/flex/schemas", HttpMethod::Get),
+            ("/api/v1/flex/schemas", HttpMethod::Post),
+            ("/api/v1/flex/schemas/{schema_id}", HttpMethod::Get),
+            ("/api/v1/flex/schemas/{schema_id}", HttpMethod::Put),
+            ("/api/v1/flex/schemas/{schema_id}", HttpMethod::Delete),
+            (
+                "/api/v1/flex/schemas/{schema_id}/entries",
+                HttpMethod::Get,
+            ),
+            (
+                "/api/v1/flex/schemas/{schema_id}/entries",
+                HttpMethod::Post,
+            ),
+            (
+                "/api/v1/flex/schemas/{schema_id}/entries/{entry_id}",
+                HttpMethod::Get,
+            ),
+            (
+                "/api/v1/flex/schemas/{schema_id}/entries/{entry_id}",
+                HttpMethod::Put,
+            ),
+            (
+                "/api/v1/flex/schemas/{schema_id}/entries/{entry_id}",
+                HttpMethod::Delete,
+            ),
+        ] {
+            assert!(
+                openapi.paths.get_path_operation(path, method).is_some(),
+                "OpenAPI spec must include {method:?} operation for {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn openapi_declares_documented_runtime_schemas() {
+        let openapi = ApiDoc::openapi();
+        let schemas = openapi
+            .components
+            .as_ref()
+            .expect("OpenAPI components must exist");
+
+        for name in [
+            "ResetRequestResponse",
+            "SessionsResponse",
+            "RuntimeGuardrailSnapshot",
+            "RegistryPublishValidationRequest",
+            "RegistryValidationStageReportRequest",
+            "RegistryRunnerClaimRequest",
+            "RegistryRunnerClaimResponse",
+            "RegistryRunnerClaimPayload",
+            "RegistryRunnerHeartbeatRequest",
+            "RegistryRunnerCompletionRequest",
+            "RegistryRunnerMutationResponse",
+            "RegistryOwnerTransferRequest",
+        ] {
+            assert!(
+                schemas.schemas.contains_key(name),
+                "OpenAPI components must contain schema {name}"
+            );
+        }
+    }
 
     #[test]
     fn openapi_includes_registry_catalog_path() {
