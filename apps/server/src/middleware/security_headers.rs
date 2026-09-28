@@ -1,4 +1,3 @@
-use axum::http::HeaderValue;
 /// Security Headers Middleware
 ///
 /// Adds OWASP-recommended security response headers to every HTTP response:
@@ -12,6 +11,7 @@ use axum::http::HeaderValue;
 /// - `Strict-Transport-Security` — enforces HTTPS (only in production)
 ///
 /// Mounted globally in application router composition via `axum::middleware::from_fn`.
+use axum::http::HeaderValue;
 use axum::{extract::Request, middleware::Next, response::Response};
 use rustok_web::CspNonce;
 
@@ -28,6 +28,9 @@ const RICHTEXT_FRAME_CSP: &str = "default-src 'none'; script-src 'self'; script-
 const UI_CSP_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; script-src-attr 'none'; style-src 'self' {nonce}; style-src-attr 'none'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src {connect_sources}; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 const SECURE_UI_CONNECT_SOURCES: &str = "'self' https: wss:";
 const DEVELOPMENT_UI_CONNECT_SOURCES: &str = "'self' https: ws: wss:";
+const RICHTEXT_FRAME_PATH: &str = "/richtext/frame";
+const RICHTEXT_FRAME_ASSET_PREFIX: &str = "/richtext/frame/";
+const RICHTEXT_ADAPTER_ASSET: &str = "leptos-adapter.mjs";
 
 /// Reporting mirror for strict UI violations. It carries the same trusted nonce as the enforced
 /// policy, additionally fixes worker sources, and reports violations without weakening enforcement.
@@ -39,6 +42,17 @@ const REPORTING_ENDPOINTS: &str = "rustok-csp=\"/api/security/csp-report\"";
 /// executable host rejects production startup without the same declaration.
 const HSTS: &str = "max-age=31536000; includeSubDomains";
 
+/// Handles the fixed CSP report endpoint at a layer below the configured public
+/// rate limiter but above tenant/auth middleware, so reports remain unauthenticated and
+/// tenant-independent without bypassing the public API abuse budget.
+pub async fn handle_csp_report(request: Request, next: Next) -> Response {
+    if csp_reports::is_report_request(&request) {
+        csp_reports::handle(request).await
+    } else {
+        next.run(request).await
+    }
+}
+
 pub async fn security_headers(mut request: Request, next: Next) -> Response {
     let path = request.uri().path().to_string();
     let csp_nonce =
@@ -47,13 +61,7 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
         request.extensions_mut().insert(nonce.clone());
     }
 
-    // This middleware is the outermost application layer, so the fixed report
-    // endpoint is handled before tenant/auth routing and never inherits a tenant.
-    let mut response = if csp_reports::is_report_request(&request) {
-        csp_reports::handle(request).await
-    } else {
-        next.run(request).await
-    };
+    let mut response = next.run(request).await;
     let headers = response.headers_mut();
 
     // Content-Security-Policy. Missing nonce state on a UI path falls back to the API deny policy
@@ -114,15 +122,8 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
              magnetometer=(), microphone=(), payment=(), usb=()",
         ),
     );
-    if is_richtext_frame_surface(&path) {
-        headers.insert(
-            "cache-control",
-            HeaderValue::from_static(if path == "/richtext/frame" {
-                "no-store"
-            } else {
-                "public, max-age=31536000, immutable"
-            }),
-        );
+    if let Some(cache_control) = richtext_cache_control(&path) {
+        headers.insert("cache-control", HeaderValue::from_static(cache_control));
     }
 
     // Strict-Transport-Security — only for an explicitly declared HTTPS deployment.
@@ -157,16 +158,7 @@ fn parse_env_flag(value: &str) -> bool {
 }
 
 fn plaintext_websocket_allowed() -> bool {
-    !["RUSTOK_ENV", "RUST_ENV", "APP_ENV"].iter().any(|key| {
-        std::env::var(key)
-            .map(|value| {
-                matches!(
-                    value.trim().to_ascii_lowercase().as_str(),
-                    "prod" | "production"
-                )
-            })
-            .unwrap_or(false)
-    })
+    !crate::common::is_production_environment()
 }
 
 fn is_api_surface(path: &str) -> bool {
@@ -178,7 +170,32 @@ fn is_api_surface(path: &str) -> bool {
 }
 
 fn is_richtext_frame_surface(path: &str) -> bool {
-    path == "/richtext/frame" || path.starts_with("/richtext/frame/")
+    if path == RICHTEXT_FRAME_PATH {
+        return true;
+    }
+
+    let Some(asset) = path.strip_prefix(RICHTEXT_FRAME_ASSET_PREFIX) else {
+        return false;
+    };
+
+    if asset == RICHTEXT_ADAPTER_ASSET {
+        return true;
+    }
+
+    let Some(hash_and_extension) = asset.strip_prefix("richtext-frame.") else {
+        return false;
+    };
+    let Some((hash, extension)) = hash_and_extension.rsplit_once('.') else {
+        return false;
+    };
+
+    hash.len() == 16
+        && hash.as_bytes().iter().all(u8::is_ascii_hexdigit)
+        && matches!(extension, "js" | "css")
+}
+
+fn richtext_cache_control(path: &str) -> Option<&'static str> {
+    (path == RICHTEXT_FRAME_PATH).then_some("no-store")
 }
 
 fn select_csp(path: &str, csp_nonce: Option<&CspNonce>, allow_plaintext_websocket: bool) -> String {
@@ -213,8 +230,8 @@ fn select_report_only_csp(path: &str, csp_nonce: Option<&CspNonce>) -> Option<St
 #[cfg(test)]
 mod tests {
     use super::{
-        API_CSP, REPORTING_ENDPOINTS, parse_env_flag, security_headers, select_csp,
-        select_report_only_csp,
+        API_CSP, REPORTING_ENDPOINTS, handle_csp_report, parse_env_flag, security_headers,
+        select_csp, select_report_only_csp,
     };
     use crate::middleware::csp_reports::CSP_REPORT_PATH;
     use axum::{
@@ -225,7 +242,13 @@ mod tests {
         routing::get,
     };
     use rustok_web::CspNonce;
+    use std::sync::Arc;
     use tower::ServiceExt;
+
+    use crate::middleware::rate_limit::{
+        PathRateLimitMiddlewareState, PathRateLimitPolicy, RateLimitConfig, RateLimiter,
+        rate_limit_for_paths,
+    };
 
     fn directive<'a>(policy: &'a str, name: &str) -> Option<&'a str> {
         policy
@@ -251,6 +274,39 @@ mod tests {
         assert!(policy.contains("connect-src 'none'"));
         assert!(policy.contains("frame-ancestors 'self'"));
         assert_eq!(select_report_only_csp("/richtext/frame", None), None);
+    }
+
+    #[test]
+    fn richtext_surface_is_exactly_bounded() {
+        for path in [
+            RICHTEXT_FRAME_PATH,
+            "/richtext/frame/leptos-adapter.mjs",
+            "/richtext/frame/richtext-frame.0123456789abcdef.js",
+            "/richtext/frame/richtext-frame.0123456789abcdef.css",
+        ] {
+            assert!(is_richtext_frame_surface(path), "{path}");
+        }
+
+        for path in [
+            "/richtext/frame/",
+            "/richtext/frame/index.html",
+            "/richtext/frame/unknown.js",
+            "/richtext/frame/richtext-frame.0123456789abcde.js",
+            "/richtext/frame/richtext-frame.0123456789abcdef.mjs",
+            "/richtext/frame/nested/app.js",
+        ] {
+            assert!(!is_richtext_frame_surface(path), "{path}");
+        }
+
+        assert_eq!(richtext_cache_control(RICHTEXT_FRAME_PATH), Some("no-store"));
+        assert_eq!(
+            richtext_cache_control("/richtext/frame/leptos-adapter.mjs"),
+            None
+        );
+        assert_eq!(
+            richtext_cache_control("/richtext/frame/richtext-frame.0123456789abcdef.js"),
+            None
+        );
     }
 
     #[test]
@@ -365,9 +421,104 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn outer_security_layer_collects_report_without_registered_route() {
+    async fn outer_security_layer_covers_edge_short_circuit_responses() {
+        let app = crate::middleware::http_stack::apply_http_edge_stack(
+            Router::new(),
+            false,
+            None,
+            10,
+        )
+        .layer(middleware::from_fn(security_headers));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("OPTIONS")
+                    .uri("/api/edge-probe")
+                    .header("origin", "http://localhost:3000")
+                    .header("access-control-request-method", "GET")
+                    .body(Body::empty())
+                    .expect("CORS preflight request"),
+            )
+            .await
+            .expect("CORS preflight response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get("content-security-policy")
+                .and_then(|value| value.to_str().ok()),
+            Some(API_CSP)
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("x-content-type-options")
+                .and_then(|value| value.to_str().ok()),
+            Some("nosniff")
+        );
+    }
+
+    #[tokio::test]
+    async fn csp_reports_are_rate_limited_before_collection_and_keep_security_headers() {
+        let state = PathRateLimitMiddlewareState {
+            policies: Arc::new(vec![PathRateLimitPolicy {
+                limiter: Arc::new(RateLimiter::new_with_namespace(
+                    RateLimitConfig::new(1, 60),
+                    "test-csp-report",
+                )),
+                prefixes: Arc::new(vec!["/api/"]),
+            }]),
+            auth_config: None,
+            trusted_auth_dimensions: false,
+            request_trust: Default::default(),
+        };
+        let app = Router::new()
+            .layer(middleware::from_fn(handle_csp_report))
+            .layer(middleware::from_fn_with_state(
+                state,
+                rate_limit_for_paths,
+            ))
+            .layer(middleware::from_fn(security_headers));
+
+        let request = || {
+            Request::builder()
+                .method("POST")
+                .uri(CSP_REPORT_PATH)
+                .header("content-type", "application/csp-report")
+                .body(Body::from(
+                    r#"{"csp-report":{"document-uri":"https://admin.example.com/orders","blocked-uri":"inline","violated-directive":"script-src-elem"}}"#,
+                ))
+                .expect("CSP report request")
+        };
+
+        let first = app.clone().oneshot(request()).await.expect("first report");
+        assert_eq!(first.status(), StatusCode::NO_CONTENT);
+        assert_eq!(
+            first
+                .headers()
+                .get("content-security-policy")
+                .and_then(|value| value.to_str().ok()),
+            Some(API_CSP)
+        );
+
+        let second = app.oneshot(request()).await.expect("second report");
+        assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            second
+                .headers()
+                .get("content-security-policy")
+                .and_then(|value| value.to_str().ok()),
+            Some(API_CSP)
+        );
+    }
+
+    #[tokio::test]
+    async fn csp_report_layer_collects_report_without_registered_route() {
         let app = Router::new()
             .route("/probe", get(|| async { StatusCode::OK }))
+            .layer(middleware::from_fn(handle_csp_report))
             .layer(middleware::from_fn(security_headers));
         let response = app
             .oneshot(

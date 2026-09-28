@@ -9,7 +9,7 @@ status: active
 
 ## Purpose
 
-This inventory defines the target browser policy, the report collection boundary and the evidence required before the UI CSP removes its remaining enforced inline-style-attribute allowance. Inline scripts and trusted style elements already require a per-response nonce, inline event handlers are blocked, `unsafe-eval` is prohibited and production connections are HTTPS/WSS-only.
+This inventory defines the current browser policy, the report collection boundary and the evidence required to preserve the strict default UI CSP while monitoring remaining browser-policy dependencies. Inline scripts and trusted style elements already require a per-response nonce, inline event handlers are blocked, `unsafe-eval` is prohibited and production connections are HTTPS/WSS-only.
 
 No violation in this document is an automatic allowlist request. The preferred resolution is to remove the dependency, move code into a same-origin static asset, attach a per-response nonce/hash to a trusted element, or replace a style attribute with a reviewed CSS class, native element attribute, SVG geometry contract or bounded DOM adapter.
 
@@ -20,6 +20,7 @@ No violation in this document is an automatic allowlist request. The preferred r
 - Maximum request body: 64 KiB.
 - Maximum processed Reporting API entries: 20 per request.
 - The outer security middleware handles the endpoint before tenant and authentication routing.
+- The configured public `/api/` rate limiter runs before the unauthenticated collector, so report traffic cannot bypass the normal API abuse budget.
 - Responses contain no report body and return `204` for accepted reports.
 - Invalid content types, JSON and report shapes are rejected with bounded status codes.
 - The standalone admin process does not advertise a report endpoint it cannot receive; it emits enforced CSP only.
@@ -34,8 +35,8 @@ Accepted reports emit structured events with target `rustok.security.csp` and bo
 |---|---|
 | `report_format` | `legacy`, `reporting_api` |
 | `directive` | `script-src`, `style-src`, `connect-src`, `img-src`, `font-src`, `worker-src`, `frame-src`, `frame-ancestors`, `object-src`, `base-uri`, `form-action`, `default-src`, `other` |
-| `disposition` | Browser-provided report/enforce disposition |
-| locations | Origin only, fixed keyword, scheme-only value or `opaque` |
+| `disposition` | Normalized `report`, `enforce` or `other` value |
+| locations | Origin only, fixed keyword, scheme-only value, `oversized` marker or `opaque` |
 | source position | Optional line and column |
 | status | Optional document response status |
 
@@ -80,11 +81,11 @@ The Prometheus family `rustok_module_errors_total` records the same bounded dire
 
 ## Current Migration State
 
-The default enforced UI policies still retain:
+The default enforced UI policies now use:
 
-- `style-src-attr 'unsafe-inline'`.
+- `style-src-attr 'none'`.
 
-This is now a rollout guard rather than source-level migration debt. The strict main-server report-only policy already uses `style-src-attr 'none'`. Source promotion prerequisites are complete, but default enforced promotion remains blocked until cross-stack browser smoke runs show no unexplained `style-src-attr` or `style-src` violations.
+The strict parent-document policy is therefore the current executable behavior, not a future rollout variant. The isolated richtext editor frame remains an intentional exception because its dedicated document CSP permits `style-src-attr 'unsafe-inline'` inside the sandboxed editor document only.
 
 ### Rust-hosted boundary
 
@@ -104,17 +105,13 @@ The gate scans every `.tsx` and `.jsx` file under `apps/next-admin` and `apps/ne
 
 The bundled classic admin bootstrap no longer writes `document.documentElement.style`. It toggles only the `dark` class, while `apps/admin/input.css` owns `color-scheme: light` and `color-scheme: dark`; the document declares `<meta name="color-scheme" content="light dark">`.
 
-## Strict Enforcement Smoke Profile
+## Strict CSP Smoke Profile
 
-Both the main server host and the standalone admin host support the same opt-in environment flag:
+Browser smoke runs use the current default enforced policy directly; there is no executable `RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES` switch in the current hosts.
 
-```bash
-export RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES=true
-```
+The main server and standalone admin both enforce `style-src-attr 'none'` by default, preserve per-response nonces for trusted script/style elements, keep production connections on HTTPS/WSS, and retain the dedicated isolated richtext-frame exception. Browser smoke should therefore exercise the production-equivalent default rather than a separate opt-in policy.
 
-Truthy values use the existing normalized flag grammar: `1`, `true`, `yes` or `on`. With the flag enabled, UI responses use the strict static template containing `style-src-attr 'none'`. Without the flag, the default enforced template retains `'unsafe-inline'`; API paths remain on the scriptless deny policy in either mode.
-
-The flag is intended for browser smoke and staged rollout evidence. It does not change the report-only policy, nonce handling, production connection profile or tenant/auth routing. Global default promotion should occur only after the strict profile succeeds across embedded admin, standalone admin, Next admin and storefront journeys.
+The report-only policy remains independently bounded and continues to surface unexplained `style-src` or `style-src-attr` dependencies without weakening enforced policy. Global security-policy changes should occur only after cross-stack browser smoke evidence confirms the current default across embedded admin, standalone admin, Next admin and storefront journeys.
 
 ### Required smoke evidence
 
@@ -128,7 +125,7 @@ For every reviewed surface, retain the response CSP header, the browser console 
 | Storefront | home/module route, JSON-LD page, search suggestions, presets, filters and results |
 | Page Builder | canvas, viewport size/zoom, overlays, selection, resize handles and nested layers |
 
-Rollback for smoke environments is limited to unsetting `RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES`; no source exception or broader CSP source should be restored.
+Rollback for a smoke environment should use the last known reviewed release/policy. Do not restore blanket `style-src-attr 'unsafe-inline'`, `unsafe-eval`, or plaintext connection sources.
 
 ## Completed Attribute and Runtime-Style Migrations
 
