@@ -159,8 +159,16 @@ impl AuthUserBootstrapDbWriter {
             DbBackend::Postgres => {
                 "SELECT id, email FROM users WHERE tenant_id = $1 AND email = $2 LIMIT 1"
             }
-            DbBackend::MySql => unreachable!("unsupported backend rejected before SQL rendering"),
-            _ => unreachable!("unsupported SeaORM database backend"),
+            DbBackend::MySql => {
+                return Err(AuthLifecycleMutationError::Internal(
+                    "auth user bootstrap does not support mysql".to_string(),
+                ));
+            }
+            _ => {
+                return Err(AuthLifecycleMutationError::Internal(
+                    "auth user bootstrap does not support this database backend".to_string(),
+                ));
+            }
         };
         let row = db
             .query_one_raw(Statement::from_sql_and_values(
@@ -175,10 +183,10 @@ impl AuthUserBootstrapDbWriter {
             Ok(AuthUserBootstrapRecord {
                 id: row
                     .try_get("", "id")
-                    .map_err(|error| AuthLifecycleMutationError::Internal(error.to_string()))?,
+                    .map_err(internal_bootstrap_error)?,
                 email: row
                     .try_get("", "email")
-                    .map_err(|error| AuthLifecycleMutationError::Internal(error.to_string()))?,
+                    .map_err(internal_bootstrap_error)?,
                 created: false,
             })
         })
@@ -220,6 +228,12 @@ mod tests {
             AuthLifecycleMutationError::Internal(message)
                 if message == "Auth user bootstrap operation failed"
         ));
+    }
+
+    #[test]
+    fn unsupported_backend_is_rejected_without_panicking() {
+        assert!(ensure_supported_backend(DbBackend::MySql).is_err());
+        assert!(ensure_supported_backend(DbBackend::Mock).is_err());
     }
 
     #[test]
