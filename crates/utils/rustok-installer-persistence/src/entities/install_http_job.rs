@@ -10,6 +10,8 @@ use uuid::Uuid;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
+    pub idempotency_key: Option<String>,
+    pub request_hash: Option<String>,
     pub status: String,
     pub submitted_at: DateTime<Utc>,
     pub started_at: DateTime<Utc>,
