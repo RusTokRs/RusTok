@@ -202,6 +202,55 @@ fn build_rate_limit_key_ignores_invalid_bearer_token() {
 }
 
 #[test]
+fn build_rate_limit_key_accepts_case_insensitive_bearer_scheme() {
+    let config = test_auth_config();
+    let tenant_id = Uuid::new_v4();
+    let token = encode_access_token(
+        &config,
+        Uuid::new_v4(),
+        tenant_id,
+        UserRole::Admin,
+        Uuid::new_v4(),
+    )
+    .expect("token");
+
+    let mut headers = HeaderMap::new();
+    headers.insert("x-forwarded-for", "1.2.3.4".parse().unwrap());
+    headers.insert(
+        header::AUTHORIZATION,
+        format!("BEARER {token}").parse().unwrap(),
+    );
+    let request = request_with_peer_ip(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 10)));
+
+    let key = build_rate_limit_key(
+        &headers,
+        &request,
+        Some(&config),
+        true,
+        &trusted_request_trust(),
+    );
+    assert_eq!(key, format!("ip:1.2.3.4|tenant:{tenant_id}"));
+}
+
+#[test]
+fn retry_after_never_reports_zero_for_an_active_window() {
+    assert_eq!(rate_limit_retry_after(Duration::from_millis(999)), 1);
+    assert_eq!(rate_limit_retry_after(Duration::from_secs(2)), 2);
+    assert_eq!(rate_limit_retry_after(Duration::ZERO), 1);
+}
+
+#[test]
+fn diagnostic_key_fingerprint_is_stable_and_redacted() {
+    let raw = "ip:192.0.2.10|tenant:550e8400-e29b-41d4-a716-446655440000";
+    let fingerprint = rate_limit_key_fingerprint(raw);
+
+    assert_eq!(fingerprint.len(), 16);
+    assert_ne!(fingerprint, raw);
+    assert!(!fingerprint.contains("192.0.2.10"));
+    assert!(!fingerprint.contains("550e8400"));
+}
+
+#[test]
 fn build_rate_limit_key_adds_trusted_tenant_dimension_for_direct_token() {
     let config = test_auth_config();
     let tenant_id = Uuid::new_v4();

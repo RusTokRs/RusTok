@@ -10,7 +10,7 @@ status: verified
 
 ## Overview
 
-RusToK uses a sliding-window HTTP rate limiter in `apps/server` to protect API paths from brute force, abuse, and short traffic spikes.
+RusToK uses a fixed-window HTTP rate limiter in `apps/server` to protect API paths from brute force, abuse, and short traffic spikes.
 
 This limiter is an HTTP-layer control. It does not replace `rustok-core::security::RateLimiter`, which remains an internal security primitive.
 
@@ -33,8 +33,9 @@ Requests without a valid bearer token stay on the plain IP bucket. This is espec
 
 ## Namespaces
 
-Current wiring in `apps/server/src/app.rs` uses separate limiter namespaces:
+Current wiring in `apps/server/src/services/app_runtime.rs` uses separate limiter namespaces:
 
+- `/health/ready` -> `api`
 - `/api/*` -> `api`
 - `/api/auth/login`, `/api/auth/register`, `/api/auth/reset*` -> `auth`
 - `/api/oauth/token`, `/api/oauth/revoke`, `/api/oauth/authorize` -> `oauth`
@@ -152,4 +153,4 @@ cargo check -p rustok-server --bin rustok-server
 
 - By default the limiter keys requests by the real peer/socket IP and falls back to `ip:unknown`.
 - `Forwarded` / `X-Forwarded-*` participate in IP derivation only when `settings.rustok.runtime.request_trust.forwarded_headers_mode=trusted_only` and the peer IP matches `trusted_proxy_cidrs`.
-- The middleware now selects exactly one policy per request in priority order `oauth -> auth -> api`, so `/api/auth/*` no longer consumes multiple limiter buckets for a single call.
+- The middleware now selects exactly one policy per request in priority order `oauth -> readiness -> auth -> api`, so `/api/auth/*` no longer consumes multiple limiter buckets for a single call. Public `/health/ready` uses the distributed `api` bucket.

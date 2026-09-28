@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `d0c3464826787509846dd72eac732e71cd368172`  
+**Current main SHA:** `84f7553d1e13a63aee1afaf7d03a50de81a07fd7`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -124,7 +124,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.02 — `apps/server/src/middleware/registry_artifact_access.rs`** — one-module audit.
 - [x] **FS-22.02.03 — `apps/server/src/middleware/registry_remote_claim.rs`** — one-module audit.
 - [x] **FS-22.02.04 — `apps/server/src/middleware/registry_publish_policy.rs`** — one-module audit.
-- [ ] **FS-22.02.05 — `apps/server/src/middleware/rate_limit.rs`** — one-module audit.
+- [x] **FS-22.02.05 — `apps/server/src/middleware/rate_limit.rs`** — one-module audit.
 - [ ] **FS-22.02.06 — `apps/server/src/middleware/auth_context.rs`** — one-module audit.
 - [ ] **FS-22.02.07 — `apps/server/src/middleware/channel.rs`** — one-module audit.
 - [ ] **FS-22.02.08 — `apps/server/src/middleware/locale.rs`** — one-module audit.
@@ -227,6 +227,25 @@ Hard limits for every iteration:
 - **Verification:** repository-content/static inspection and branch-diff review only. No tests, clippy, gatekeeper, build, or runtime commands were executed by the agent, per maintainer-owned verification rules.
 - **Status:** module-level second pass clean; `FS-22.02.04` complete. Next planned primary module is `FS-22.02.05 — rate_limit.rs`.
 - **Merged:** PR #4171, merge commit `ca7a569a58cb8ebde50efce51de74b2b9123215c`.
+
+### FS-22.02.05 Iteration 1 — `rate_limit.rs`
+
+- **Base:** refreshed `main` to `9074d5a7635e3660d294c8e8d6a55cbea688e41f` after concurrent work advanced `main`; the earlier branch based on `18b1d203...` was deliberately not merged.
+- **Dedicated iteration branch:** `audit/fs-22.02.05-i1-refresh2-20260928`.
+- **Invariant map:** rate limiting must fail closed when a configured Redis backend is unavailable; memory updates must remain atomically race-safe and bounded; distributed keys must remain opaque; client-IP resolution must obey the canonical proxy-trust policy; verified tenant/OAuth dimensions must never come from spoofable input; path policies must cover public expensive endpoints without changing unrelated routing behavior; response status/header contracts must remain stable; middleware ordering must preserve independent authenticated/tenant policy resolution; all host profiles must retain the required abuse boundary.
+- **Confirmed finding RATE-22.02.05-01:** public `GET /health/ready` was outside the path-rate-limit policy even though it executes multiple database, cache, event-transport, search, outbox, worker, and module-health checks. The production observability middleware sanitizes its response but intentionally leaves aggregate readiness public. The route is now attached to the distributed `api` limiter, using the same backend/configuration across host profiles.
+- **Confirmed finding RATE-22.02.05-02:** the memory backend logged the complete rate-limit identity, including IP/tenant/OAuth dimensions, while the Redis path was already opaque. The memory rejection warning and legacy middleware debug path now log only a stable 16-hex SHA-256 fingerprint.
+- **Confirmed finding RATE-22.02.05-03:** the memory backend could calculate `Retry-After: 0` during the final sub-second of an active fixed window. The retry value is now clamped to at least one second; Redis already used the same minimum.
+- **Confirmed finding RATE-22.02.05-04:** the limiter bearer parser accepted only exact `Bearer`/`bearer` prefixes while the normal HTTP authentication contract treats the auth scheme case-insensitively. Uppercase or mixed-case bearer schemes could therefore lose verified tenant/OAuth rate-limit dimensions and collapse requests onto the plain IP bucket. The parser now normalizes the scheme case-insensitively and rejects empty tokens.
+- **Confirmed finding RATE-22.02.05-05:** source and guide documentation described the implementation as a sliding-window limiter, while both memory and Redis implementations are fixed-window counters. The implementation comments and rate-limit guide were reconciled, including the actual `services/app_runtime.rs` wiring path and public readiness coverage.
+- **Adjacent-boundary review:** current router composition still installs the path limiter before authenticated tenant/context middleware and before registry guards, while health is always mounted. `metrics_auth` continues to expose only the readiness aggregate publicly and protects detailed runtime/module diagnostics in production. `RequestTrustSettings` remains the canonical source for forwarded-IP trust.
+- **Backend/concurrency review:** memory retains the 100,000-entry cap, atomic Moka upsert, and idle expiry; Redis remains an atomic Lua `INCR/EXPIRE/TTL` operation with a two-second timeout and hashed storage key; backend failures remain HTTP 503/fail-closed. No silent backend or cleanup errors were introduced.
+- **Regression audit:** no rate quota values, tenant isolation model, Redis namespace, registry lease behavior, or host-profile router contract was loosened. The remediation changes only rate-limit boundary coverage, diagnostics, bearer parsing, retry semantics, and related documentation/tests.
+- **Fresh second pass:** re-read the complete changed rate-limit wrapper/base/tests, the actual `app_runtime` policy vector, current `app_router` and HTTP edge composition after concurrent main changes, health/observability behavior, request-trust implementation, settings defaults, and the rate-limit guide. No remaining repository-owned in-scope defect was found in `rate_limit.rs`.
+- **Deferred finding SETTINGS-RATE-01:** `SettingsService::RateLimitSettingsValidator` validates a different JSON schema (`requests_per_second`/`burst_size`) than the live `RustokSettings.rate_limit` contract (`requests_per_minute`, `burst`, auth/oauth variants), while runtime bootstrap reads the host settings snapshot rather than these DB category overrides. Owning follow-up: settings/configuration integration boundary; not folded into this middleware iteration.
+- **Verification:** repository-content inspection, static reasoning, and branch diff review only. Per maintainer execution rules, no tests, clippy, gatekeeper, build, or runtime commands were executed by the agent.
+- **Status:** module-level fresh second pass clean; `FS-22.02.05` complete. Next planned primary module is `FS-22.02.06 — apps/server/src/middleware/auth_context.rs`.
+- **Merged:** PR #4173, merge commit `84f7553d1e13a63aee1afaf7d03a50de81a07fd7`.
 
 ### Deferred owning-module findings discovered during FS-22
 
