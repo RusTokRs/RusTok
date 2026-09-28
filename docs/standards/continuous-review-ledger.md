@@ -146,7 +146,18 @@ Hard limits for every iteration:
 - [x] **FS-22.02.24 — `apps/server/src/controllers/artifact_permissions.rs`** — one-module audit; fresh discovery and independent second pass found no repository-owned in-scope defect requiring code remediation.
 - [x] **FS-22.02.25 — `apps/server/src/controllers/admin_events.rs`** — one-module audit; completed with two remediation units and a fresh independent second pass protecting DLQ database error/status semantics and replay claim ownership.
 - [x] **FS-22.02.26 — `apps/server/src/controllers/channel.rs`** — one-module audit; completed with one remediation unit and a fresh independent second pass restoring typed HTTP error semantics; OpenAPI aggregation omission deferred to FS-22.02.31.
-- [x] **FS-22.02.27 — `apps/server/src/controllers/flex.rs`** — one-module audit; completed with one root-cause remediation slice and a fresh independent second pass restoring atomic mutation+outbox consistency.
+- [x] **FS-22.02.27 — `apps/server/src/controllers/flex.rs`** — one-module audit; completed with two remediation iterations and final reconciliation: atomic mutation+outbox consistency was merged in PR #4217, then a separate route-contract defect was found and fixed against the refreshed `main`.
+
+
+### FS-22.02.27 Iteration 2 — `apps/server/src/controllers/flex.rs` post-merge reconciliation
+
+- **Base:** refreshed `main` at `0f19f0f64072f455bf3518e8daafed81e6e804d0` after PR #4217 had already merged the atomic Flex mutation/outbox remediation.
+- **Confirmed residual finding FLEX-22.02.27-02:** the schema collection route remained registered as `/api/v1/flex/schemas/` while its utoipa/OpenAPI contract declared `/api/v1/flex/schemas`. Because Axum path matching is exact, the documented canonical URL and live route were inconsistent.
+- **Remediation:** changed only the live route to `/api/v1/flex/schemas`; no duplicate transaction/event code was reintroduced. Existing OpenAPI declaration and swagger aggregation already use the non-slashed path.
+- **Fresh second pass:** re-read the current controller, canonical Flex persistence adapter, route/OpenAPI registration, and merged PR #4217. Confirmed the transaction/outbox fix is already on `main`; this iteration contains only the residual route correction plus ledger reconciliation.
+- **Verification:** repository-content inspection and branch diff review only. No tests, clippy, build, gatekeeper, migrations, or runtime commands were run by the agent.
+- **Status:** `FS-22.02.27` fully reconciled; next primary module: `FS-22.02.28 — apps/server/src/controllers/installer.rs`.
+
 - [ ] **FS-22.02.28 — `apps/server/src/controllers/installer.rs`** — one-module audit.
 - [ ] **FS-22.02.29 — `apps/server/src/controllers/mcp.rs`** — one-module audit.
 - [ ] **FS-22.02.30 — `apps/server/src/controllers/oauth_metadata.rs`** — one-module audit.
