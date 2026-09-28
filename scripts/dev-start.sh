@@ -137,7 +137,7 @@ print_service_urls() {
     echo ""
     echo -e "${GREEN}Storefronts:${NC}"
     echo -e "  Next.js Storefront: ${BLUE}http://localhost:3100${NC}"
-    echo -e "  Leptos Storefront:  ${BLUE}http://localhost:3101${NC}"
+    echo -e "  Leptos Storefront:  ${BLUE}embedded in server at http://localhost:5150${NC}"
     echo ""
     echo -e "${GREEN}Database:${NC}"
     echo -e "  PostgreSQL:        ${BLUE}localhost:5432${NC}"
