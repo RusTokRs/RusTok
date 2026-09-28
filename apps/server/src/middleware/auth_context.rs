@@ -28,6 +28,11 @@ pub async fn resolve_optional(
     let pages_inline_authoring_surface = is_pages_inline_authoring_surface(request_path.as_str());
     let pages_inline_authoring = pages_inline_authoring_surface
         || is_pages_inline_authoring_server_fn(request_path.as_str());
+    let bypass_user_jwt =
+        !matches!(
+            super::tenant_route_policy::tenant_route_scope(request_path.as_str()),
+            super::tenant_route_policy::TenantRouteScope::TenantBound
+        );
     let presented_credentials = parts.headers.contains_key(AUTHORIZATION);
     let host_authority = match take_host_authority(&mut parts.headers) {
         Ok(authority) => authority,
@@ -60,7 +65,11 @@ pub async fn resolve_optional(
     let request_method = parts.method.clone();
     let mut rbac_scope = None;
 
-    match resolve_current_user(&mut parts, &ctx).await {
+    if bypass_user_jwt {
+        // Global/operator routes and self-resolving handshakes own their authentication
+        // contract. Preserve Authorization so route-specific auth can consume it.
+    } else {
+        match resolve_current_user(&mut parts, &ctx).await {
         Ok(current_user) => {
             if human_user_only && current_user.actor_kind != SecurityActorKind::User {
                 return pages_inline_authoring_response(
@@ -147,6 +156,7 @@ pub async fn resolve_optional(
             );
         }
         Err(_) => {}
+        }
     }
 
     if let Some(host_authority) = host_authority {
@@ -292,6 +302,31 @@ mod tests {
         assert!(!headers.contains_key(AUTHORIZATION));
         headers.insert(AUTHORIZATION, "Bearer invalid".parse().unwrap());
         assert!(headers.contains_key(AUTHORIZATION));
+    }
+
+    #[test]
+    fn non_tenant_bound_routes_skip_user_jwt_without_stripping_authorization() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            AUTHORIZATION,
+            "Bearer route-owned-token".parse().unwrap(),
+        );
+
+        for path in ["/api/install/apply", "/metrics", "/webhooks/demo/order-created"] {
+            assert!(!matches!(
+                super::super::tenant_route_policy::tenant_route_scope(path),
+                super::super::tenant_route_policy::TenantRouteScope::TenantBound
+            ));
+            assert!(headers.contains_key(AUTHORIZATION));
+        }
+    }
+
+    #[test]
+    fn tenant_bound_routes_remain_on_user_jwt_path() {
+        assert_eq!(
+            super::super::tenant_route_policy::tenant_route_scope("/api/graphql"),
+            super::super::tenant_route_policy::TenantRouteScope::TenantBound
+        );
     }
 
     #[test]

@@ -107,6 +107,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 - [ ] **FS-22.10 Error/observability boundary:** inspect server-wide error mapping and logging for secret, identity, tenant, raw domain-error, and stack/payload leakage; verify stable public contracts.
 - [ ] **FS-22.11 Fresh second-pass composition audit:** after all FS-22 fixes, re-read the composition root from scratch without using the original findings list and record any newly discovered defects.
 
+- [ ] **FS-22.02/22.10 finding in progress — non-TenantBound JWT collision.** The global operator/self-resolving route classes now bypass generic user-JWT verification while preserving `Authorization` for route-owned credentials (installer setup bearer, observability bearer, or handshake-specific auth). Tenant-bound routes retain normal JWT processing.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
