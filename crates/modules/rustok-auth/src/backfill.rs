@@ -87,10 +87,10 @@ impl AuthUserBackfillReadPort for AuthUserBackfillDbReader {
                         .map_err(internal_backfill_error)?,
                     email: row
                         .try_get("", "email")
-                        .map_err(|error| AuthLifecycleMutationError::Internal(error.to_string()))?,
+                        .map_err(internal_backfill_error)?,
                     name: row
                         .try_get("", "name")
-                        .map_err(|error| AuthLifecycleMutationError::Internal(error.to_string()))?,
+                        .map_err(internal_backfill_error)?,
                 })
             })
             .collect()
