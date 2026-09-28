@@ -436,7 +436,11 @@ impl AuthLifecycleService {
                 .await
                 .map_err(AuthLifecycleError::from),
             DatabaseBackend::Sqlite => {
-                let existing = query.one(txn).await.map_err(AuthLifecycleError::from)?;
+                let existing = query
+                    .clone()
+                    .one(txn)
+                    .await
+                    .map_err(AuthLifecycleError::from)?;
                 if let Some(existing) = existing.as_ref() {
                     let statement = Statement::from_sql_and_values(
                         DatabaseBackend::Sqlite,
