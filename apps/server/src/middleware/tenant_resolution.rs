@@ -9,7 +9,10 @@ use uuid::Uuid;
 
 use crate::common::{
     extract_effective_host, peer_ip_from_extensions,
-    settings::{RustokSettings, TenantFallbackMode, TenantResolutionMode, TenantRuntimeProfile},
+    settings::{
+        RustokSettings, TenantFallbackMode, TenantResolutionMode, TenantRuntimeProfile,
+        TenantSettings,
+    },
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -514,10 +517,10 @@ mod tests {
         let mut request = request("/api/users");
         request
             .headers_mut()
-            .append("X-Tenant-ID", "first".parse().expect("header"));
+            .append("X-Tenant-ID", axum::http::HeaderValue::from_static("first"));
         request
             .headers_mut()
-            .append("X-Tenant-ID", "second".parse().expect("header"));
+            .append("X-Tenant-ID", axum::http::HeaderValue::from_static("second"));
 
         let error = resolve_request(&request, &RustokSettings::default())
             .expect_err("duplicate tenant header values must fail closed");
@@ -533,10 +536,10 @@ mod tests {
         let mut request = request("/api/users");
         request
             .headers_mut()
-            .append("X-Tenant-Slug", "first".parse().expect("header"));
+            .append("X-Tenant-Slug", axum::http::HeaderValue::from_static("first"));
         request
             .headers_mut()
-            .append("X-Tenant-Slug", "second".parse().expect("header"));
+            .append("X-Tenant-Slug", axum::http::HeaderValue::from_static("second"));
 
         let error = resolve_request(&request, &RustokSettings::default())
             .expect_err("duplicate compatibility header values must fail closed");
@@ -613,7 +616,8 @@ mod tests {
             .header("Host", "tenant.example.test.")
             .body(Body::empty())
             .expect("request");
-        let resolution = resolve_request(&request, &settings).expect("trailing dot must canonicalize");
+        let resolution =
+            resolve_request(&request, &settings).expect("trailing dot must canonicalize");
         assert_eq!(
             resolution.identifier,
             ResolvedTenantIdentifier::Slug("tenant".to_string())
