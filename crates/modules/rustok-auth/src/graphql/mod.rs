@@ -8,7 +8,7 @@ pub mod types;
 use std::sync::Arc;
 
 use async_graphql::{Context, ErrorExtensions, FieldError, Result};
-use rustok_api::{AuthContext, TenantContext, graphql::GraphQLError};
+use rustok_api::{AuthContext, AuthPrincipalContext, TenantContext, graphql::GraphQLError};
 use rustok_core::{Locale, ModuleRuntimeExtensions, i18n::translate};
 
 use crate::{
@@ -71,10 +71,12 @@ fn auth_lifecycle_context(
     let tenant = ctx.data::<TenantContext>()?;
     let locale = ctx.data::<Locale>().copied().unwrap_or_default();
     let user_auth = auth.filter(|auth| auth.grant_type != "client_credentials");
+    let principal_kind = ctx.data::<AuthPrincipalContext>().ok().map(|context| context.kind);
     Ok(AuthLifecycleContext {
         tenant_id: tenant.id,
         user_id: user_auth.map(|auth| auth.user_id),
         session_id: user_auth.map(|auth| auth.session_id),
+        principal_kind,
         permissions: user_auth
             .map(|auth| auth.permissions.clone())
             .unwrap_or_default(),
