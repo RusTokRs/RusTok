@@ -8,6 +8,7 @@ use rustok_auth::{
 };
 
 use crate::auth::{AuthConfig, encode_password_reset_token};
+use crate::common::RustokSettings;
 use crate::models::users;
 use crate::services::auth_invite::InviteAcceptanceError;
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService, AuthTokens};
@@ -27,6 +28,18 @@ impl ServerAuthLifecycleProvider {
         Self {
             runtime_ctx,
             auth_config,
+        }
+    }
+
+    fn ensure_registration_enabled(
+        settings: &RustokSettings,
+    ) -> Result<(), AuthLifecycleMutationError> {
+        if settings.features.registration_enabled {
+            Ok(())
+        } else {
+            Err(AuthLifecycleMutationError::Validation(
+                "Registration is disabled".to_string(),
+            ))
         }
     }
 
@@ -177,6 +190,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         password: String,
         name: Option<String>,
     ) -> Result<AuthTokenRecord, AuthLifecycleMutationError> {
+        Self::ensure_registration_enabled(self.runtime_ctx.settings())?;
         let (user, tokens) = AuthLifecycleService::register_runtime(
             &self.runtime_ctx,
             &self.auth_config,
@@ -453,3 +467,22 @@ fn map_lifecycle_error(error: AuthLifecycleError) -> AuthLifecycleMutationError 
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::ServerAuthLifecycleProvider;
+    use crate::common::RustokSettings;
+
+    #[test]
+    fn registration_policy_fails_closed_at_provider_boundary() {
+        let enabled = RustokSettings::default();
+        assert!(ServerAuthLifecycleProvider::ensure_registration_enabled(&enabled).is_ok());
+
+        let mut disabled = RustokSettings::default();
+        disabled.features.registration_enabled = false;
+        assert!(matches!(
+            ServerAuthLifecycleProvider::ensure_registration_enabled(&disabled),
+            Err(rustok_auth::AuthLifecycleMutationError::Validation(message))
+                if message == "Registration is disabled"
+        ));
+    }
+}
