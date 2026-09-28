@@ -152,6 +152,16 @@ impl InstallerPersistenceService {
             .await
     }
 
+    pub async fn has_completed_session(&self) -> Result<bool, sea_orm::DbErr> {
+        install_session::Entity::find()
+            .filter(install_session::Column::Status.eq(install_state_value(
+                InstallState::Completed,
+            )))
+            .one(&self.db)
+            .await
+            .map(|session| session.is_some())
+    }
+
     pub async fn list_receipts(
         &self,
         session_id: Uuid,
