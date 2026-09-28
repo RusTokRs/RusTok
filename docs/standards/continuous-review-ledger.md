@@ -146,7 +146,16 @@ Hard limits for every iteration:
 - [x] **FS-22.02.24 — `apps/server/src/controllers/artifact_permissions.rs`** — one-module audit; fresh discovery and independent second pass found no repository-owned in-scope defect requiring code remediation.
 - [x] **FS-22.02.25 — `apps/server/src/controllers/admin_events.rs`** — one-module audit; completed with two remediation units and a fresh independent second pass protecting DLQ database error/status semantics and replay claim ownership.
 - [x] **FS-22.02.26 — `apps/server/src/controllers/channel.rs`** — one-module audit; completed with one remediation unit and a fresh independent second pass restoring typed HTTP error semantics; OpenAPI aggregation omission deferred to FS-22.02.31.
-- [x] **FS-22.02.27 — `apps/server/src/controllers/flex.rs`** — one-module audit; completed with one root-cause remediation slice and a fresh independent second pass restoring atomic mutation+outbox consistency.
+- [x] **FS-22.02.27 — `apps/server/src/controllers/flex.rs`** — one-module audit; completed with two remediation iterations and final reconciliation: atomic mutation+outbox consistency was merged in PR #4217, then the residual schema-collection route mismatch was fixed after refreshing `main`.
+
+
+### FS-22.02.27 Iteration 2 — post-merge route reconciliation
+
+- **Base:** refreshed `main` at `fa6615b07999584cb36c89933310df4773a5b102`; PR #4217's event-atomic mutation fix is already integrated.
+- **Finding:** the live collection route remained `/api/v1/flex/schemas/` while the OpenAPI contract declared `/api/v1/flex/schemas`.
+- **Fix:** aligned the Axum route to the canonical non-slashed path. No event/outbox code was duplicated.
+- **Second pass:** re-read the current controller and swagger registration after the concurrent installer merge; no further controller-owned issue remained.
+
 - [ ] **FS-22.02.28 — `apps/server/src/controllers/installer.rs`** — one-module audit.
 - [ ] **FS-22.02.29 — `apps/server/src/controllers/mcp.rs`** — one-module audit.
 - [ ] **FS-22.02.30 — `apps/server/src/controllers/oauth_metadata.rs`** — one-module audit.
