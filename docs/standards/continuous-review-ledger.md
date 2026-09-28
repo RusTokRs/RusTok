@@ -11,8 +11,8 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `82e0c5e4b44f9a8b349241e750b495c76dc22545`  
-**Active branch:** `codex/audit-fs-22.04.04`
+**Current main SHA:** `6151373006e5169b71064ef29f7eb83e0dcf4e22`  
+**Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
 
