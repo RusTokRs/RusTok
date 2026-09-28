@@ -211,6 +211,23 @@ remain separate unfinished control-plane work.
 - OAuth discovery metadata also uses `ServerAuthRuntime` as the single source of auth config.
 - OAuth REST token, authorize/consent, browser-session, and revoke handlers extract `ServerAuthRuntime`
   or `ServerRuntimeContext`; host-wide context does not participate in OAuth request state.
+- Access-token authentication resolves active OAuth applications through a security-only lookup that does
+  not hydrate tenant locale or presentation translations; authentication must not depend on
+  `oauth_app_translations`.
+- OAuth grant admission uses the exact persisted `grant_types` set. Manifest-managed first-party admin/storefront
+  applications declare `authorization_code`, `refresh_token`, and `client_credentials` explicitly; the auth
+  model does not expand `refresh_token` implicitly for auto-created applications.
+- The OAuth token endpoint resolves clients through the security-only OAuth app lookup, so token issuance does
+  not depend on tenant locale or `oauth_app_translations` presentation data.
+- Auth self-service endpoints (`/api/auth/me`, sessions, password change, profile, and history) require
+  the typed `AuthPrincipalKind::DirectUser` principal. Delegated OAuth user principals are valid for
+  delegated OAuth/storefront flows but do not inherit the direct-session self-service contract.
+- Password-reset and email-verification request endpoints keep their public response generic even when
+  email transport setup or URL preparation fails for an existing account; delivery/preparation failures
+  are server-observable but must not become account-enumeration signals.
+- OAuth browser-session and consent flows use the same case-insensitive Bearer authentication scheme
+  parsing as the HTTP authentication boundary; the browser-session helper requires exactly one Bearer
+  token and does not silently accept Basic or multi-token authorization values.
 - Marketplace registry/governance REST handlers extract `ServerRuntimeContext`; catalog projection,
   artifact storage and remote executor policy are read through DB/settings/shared handles neutral runtime.
 - Per-registry marketplace freshness is projected through
