@@ -18,6 +18,12 @@ use crate::services::rbac_service::RbacService;
 mod super_admin_guard;
 mod user_admin;
 
+const MAX_AUTH_ADMIN_LIST_LIMIT: u64 = 100;
+
+fn clamp_auth_admin_list_limit(limit: u64) -> u64 {
+    limit.clamp(1, MAX_AUTH_ADMIN_LIST_LIMIT)
+}
+
 fn internal_admin_error<E>(error: E) -> AuthAdminMutationError
 where
     E: std::fmt::Display,
@@ -138,3 +144,348 @@ impl ServerAuthAdminMutationProvider {
         for value in requested_permissions {
             let permission = Permission::from_str(value.trim()).map_err(|error| {
                 AuthAdminMutationError::Validation(format!(
+                    "invalid delegated permission `{value}`: {error}"
+                ))
+            })?;
+            if !has_effective_permission(&actor_permissions, &permission) {
+                return Err(AuthAdminMutationError::Forbidden(format!(
+                    "cannot delegate permission outside the current request authority: {permission}"
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    async fn localize_app(
+        &self,
+        context: &AuthAdminMutationContext,
+        app: oauth_apps::Model,
+    ) -> Result<oauth_apps::Model, AuthAdminMutationError> {
+        let locale = self.effective_locale(context)?;
+        oauth_apps::hydrate_exact_translation(&self.db, app, locale.as_str())
+            .await
+            .map_err(internal_admin_error)
+    }
+
+    async fn record(
+        &self,
+        context: &AuthAdminMutationContext,
+        app: oauth_apps::Model,
+    ) -> Result<OAuthAppMutationRecord, AuthAdminMutationError> {
+        let app = self.localize_app(context, app).await?;
+        let active_token_count = oauth_tokens::Entity::count_active_by_app(&self.db, app.id)
+            .await
+            .map_err(internal_admin_error)?;
+        let redirect_uris = app.redirect_uris_list();
+        let scopes = app.scopes_list();
+        let grant_types = app.grant_types_list();
+        let granted_permissions = app.granted_permissions_list();
+        let managed_by_manifest = app.managed_by_manifest();
+        let is_active = app.is_active();
+        let can_edit = app.can_edit();
+        let can_rotate_secret = app.can_rotate_secret();
+        let can_revoke = app.can_revoke();
+
+        Ok(OAuthAppMutationRecord {
+            id: app.id,
+            name: app.name,
+            slug: app.slug,
+            description: app.description,
+            icon_url: app.icon_url,
+            app_type: app.app_type,
+            client_id: app.client_id,
+            redirect_uris,
+            scopes,
+            grant_types,
+            granted_permissions,
+            manifest_ref: app.manifest_ref,
+            auto_created: app.auto_created,
+            managed_by_manifest,
+            is_active,
+            can_edit,
+            can_rotate_secret,
+            can_revoke,
+            active_token_count: i64::try_from(active_token_count).unwrap_or(i64::MAX),
+            last_used_at: app.last_used_at.map(Into::into),
+            created_at: app.created_at.into(),
+        })
+    }
+}
+
+fn map_service_error(error: crate::error::Error) -> AuthAdminMutationError {
+    match error {
+        crate::error::Error::NotFound => AuthAdminMutationError::NotFound("oauth app".to_string()),
+        crate::error::Error::BadRequest(message) => AuthAdminMutationError::Validation(message),
+        crate::error::Error::Unauthorized(_) => AuthAdminMutationError::Unauthorized,
+        other => AuthAdminMutationError::Internal(other.to_string()),
+    }
+}
+
+#[async_trait]
+impl OAuthAdminPort for ServerAuthAdminMutationProvider {
+    async fn list_oauth_apps(
+        &self,
+        context: &AuthAdminMutationContext,
+        app_type: Option<String>,
+        limit: u64,
+    ) -> Result<Vec<OAuthAppMutationRecord>, AuthAdminMutationError> {
+        self.authorize(context).await?;
+        let mut query = oauth_apps::Entity::find()
+            .filter(oauth_apps::Column::TenantId.eq(context.tenant_id))
+            .filter(oauth_apps::Column::IsActive.eq(true))
+            .filter(oauth_apps::Column::RevokedAt.is_null())
+            .order_by_desc(oauth_apps::Column::CreatedAt)
+            .limit(clamp_auth_admin_list_limit(limit));
+        if let Some(app_type) = app_type {
+            query = query.filter(oauth_apps::Column::AppType.eq(app_type));
+        }
+        let apps = query
+            .all(&self.db)
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+        let mut records = Vec::with_capacity(apps.len());
+        for app in apps {
+            records.push(self.record(context, app).await?);
+        }
+        Ok(records)
+    }
+
+    async fn get_oauth_app(
+        &self,
+        context: &AuthAdminMutationContext,
+        app_id: Uuid,
+    ) -> Result<Option<OAuthAppMutationRecord>, AuthAdminMutationError> {
+        self.authorize(context).await?;
+        let app = oauth_apps::Entity::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(context.tenant_id))
+            .one(&self.db)
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+        match app {
+            Some(app) => Ok(Some(self.record(context, app).await?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn list_authorized_oauth_apps(
+        &self,
+        context: &AuthAdminMutationContext,
+        limit: u64,
+    ) -> Result<Vec<AuthorizedOAuthAppRecord>, AuthAdminMutationError> {
+        let consents = oauth_consents::Entity::find()
+            .filter(oauth_consents::Column::UserId.eq(context.actor_id))
+            .filter(oauth_consents::Column::TenantId.eq(context.tenant_id))
+            .filter(oauth_consents::Column::RevokedAt.is_null())
+            .order_by_desc(oauth_consents::Column::GrantedAt)
+            .limit(clamp_auth_admin_list_limit(limit))
+            .find_also_related(oauth_apps::Entity)
+            .all(&self.db)
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+        let mut records = Vec::with_capacity(consents.len());
+        for (consent, app) in consents {
+            if let Some(app) = app.filter(|app| app.is_active()) {
+                records.push(AuthorizedOAuthAppRecord {
+                    app: self.record(context, app).await?,
+                    scopes: consent.scopes_list(),
+                    granted_at: consent.granted_at.into(),
+                });
+            }
+        }
+        Ok(records)
+    }
+
+    async fn create_oauth_app(
+        &self,
+        context: &AuthAdminMutationContext,
+        command: CreateOAuthAppCommand,
+    ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
+        self.authorize(context).await?;
+        self.authorize_delegated_permissions(context, &command.granted_permissions)
+            .await?;
+        let locale = self.effective_locale(context)?;
+        let result = oauth_apps::scope_runtime_copy_locale(
+            locale,
+            OAuthAppService::create_app(
+                &self.db,
+                context.tenant_id,
+                oauth_app::CreateOAuthAppInput {
+                    name: command.name,
+                    slug: command.slug,
+                    description: command.description,
+                    app_type: command.app_type,
+                    icon_url: command.icon_url,
+                    redirect_uris: command.redirect_uris,
+                    scopes: command.scopes,
+                    grant_types: command.grant_types,
+                    granted_permissions: command.granted_permissions,
+                },
+            ),
+        )
+        .await
+        .map_err(map_service_error)?;
+
+        Ok(OAuthAppSecretResult {
+            app: self.record(context, result.app).await?,
+            client_secret: result.client_secret,
+        })
+    }
+
+    async fn update_oauth_app(
+        &self,
+        context: &AuthAdminMutationContext,
+        command: UpdateOAuthAppCommand,
+    ) -> Result<OAuthAppMutationRecord, AuthAdminMutationError> {
+        self.authorize(context).await?;
+        self.authorize_delegated_permissions(context, &command.granted_permissions)
+            .await?;
+        let locale = self.effective_locale(context)?;
+        let app = oauth_apps::scope_runtime_copy_locale(
+            locale,
+            OAuthAppService::update_app(
+                &self.db,
+                context.tenant_id,
+                command.id,
+                oauth_app::UpdateOAuthAppInput {
+                    name: command.name,
+                    description: command.description,
+                    icon_url: command.icon_url,
+                    redirect_uris: command.redirect_uris,
+                    scopes: command.scopes,
+                    grant_types: command.grant_types,
+                    granted_permissions: command.granted_permissions,
+                },
+            ),
+        )
+        .await
+        .map_err(map_service_error)?;
+        self.record(context, app).await
+    }
+
+    async fn rotate_oauth_app_secret(
+        &self,
+        context: &AuthAdminMutationContext,
+        app_id: Uuid,
+    ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
+        self.authorize(context).await?;
+        let app = oauth_apps::Entity::find_by_id(app_id)
+            .one(&self.db)
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?
+            .filter(|app| app.tenant_id == context.tenant_id)
+            .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
+        let result = OAuthAppService::rotate_secret(&self.db, app.id)
+            .await
+            .map_err(map_service_error)?;
+        Ok(OAuthAppSecretResult {
+            app: self.record(context, result.app).await?,
+            client_secret: result.client_secret,
+        })
+    }
+
+    async fn revoke_oauth_app(
+        &self,
+        context: &AuthAdminMutationContext,
+        app_id: Uuid,
+    ) -> Result<OAuthAppMutationRecord, AuthAdminMutationError> {
+        self.authorize(context).await?;
+        let app = oauth_apps::Entity::find_by_id(app_id)
+            .one(&self.db)
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?
+            .filter(|app| app.tenant_id == context.tenant_id)
+            .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
+        let revoked = OAuthAppService::revoke_app(&self.db, app.id)
+            .await
+            .map_err(map_service_error)?;
+        self.record(context, revoked).await
+    }
+
+    async fn grant_oauth_app_consent(
+        &self,
+        context: &AuthAdminMutationContext,
+        app_id: Uuid,
+        scopes: Vec<String>,
+    ) -> Result<(), AuthAdminMutationError> {
+        let app = oauth_apps::Entity::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(context.tenant_id))
+            .one(&self.db)
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?
+            .filter(|app| app.is_active())
+            .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
+        OAuthAppService::grant_consent(
+            &self.db,
+            app.id,
+            context.actor_id,
+            context.tenant_id,
+            scopes,
+        )
+        .await
+        .map_err(map_service_error)
+    }
+
+    async fn revoke_oauth_app_consent(
+        &self,
+        context: &AuthAdminMutationContext,
+        app_id: Uuid,
+    ) -> Result<(), AuthAdminMutationError> {
+        OAuthAppService::revoke_user_consent(&self.db, app_id, context.actor_id, context.tenant_id)
+            .await
+            .map_err(map_service_error)
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::{ServerAuthAdminMutationProvider, clamp_auth_admin_list_limit, internal_admin_error};
+    use rustok_auth::AuthAdminMutationError;
+    use rustok_core::UserRole;
+    use serde_json::json;
+    use uuid::Uuid;
+
+    #[test]
+    fn internal_admin_errors_are_redacted() {
+        let error = internal_admin_error("database password leaked");
+        assert!(matches!(
+            error,
+            AuthAdminMutationError::Internal(message)
+                if message == "Auth administration operation failed"
+        ));
+    }
+
+    #[test]
+    fn auth_admin_list_limit_is_bounded() {
+        assert_eq!(clamp_auth_admin_list_limit(0), 1);
+        assert_eq!(clamp_auth_admin_list_limit(50), 50);
+        assert_eq!(clamp_auth_admin_list_limit(100), 100);
+        assert_eq!(clamp_auth_admin_list_limit(101), 100);
+        assert_eq!(clamp_auth_admin_list_limit(u64::MAX), 100);
+    }
+
+    #[test]
+    fn user_record_projection_is_post_commit_independent() {
+        let user = crate::models::users::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            email: "admin@example.com".to_string(),
+            password_hash: String::new(),
+            name: Some("Admin".to_string()),
+            status: rustok_core::UserStatus::Active,
+            email_verified_at: None,
+            last_login_at: None,
+            metadata: json!({"team": "platform"}),
+            created_at: chrono::Utc::now().into(),
+            updated_at: chrono::Utc::now().into(),
+        };
+        let record = ServerAuthAdminMutationProvider::user_record(
+            user.clone(),
+            UserRole::Admin,
+            Some("Tenant".to_string()),
+        );
+        assert_eq!(record.id, user.id);
+        assert_eq!(record.role, "admin");
+        assert_eq!(record.status, "active");
+        assert_eq!(record.tenant_name.as_deref(), Some("Tenant"));
+        assert_eq!(record.metadata, user.metadata);
+    }
+}
