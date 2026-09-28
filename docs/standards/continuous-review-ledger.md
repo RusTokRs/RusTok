@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `4a38082383e42ed09ec7710fb9087608b882751a`  
+**Current main SHA:** `d8fbeba9f90200edccab4682a7434861318e8be0`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -250,6 +250,7 @@ Hard limits for every iteration:
 - [ ] **FS-22.03 — identity/auth propagation:** in progress; decomposed into one-primary-module iterations.
 - [x] **FS-22.03.01 — `apps/server/src/extractors/auth/mod.rs`** — completed with one security-boundary remediation and a fresh independent second pass.
 - [x] **FS-22.03.02 — `apps/server/src/middleware/auth_context.rs`** — completed with one principal-admission remediation and a fresh independent second pass.
+- [x] **FS-22.03.03 — `apps/server/src/controllers/auth.rs`** — completed with one account-enumeration remediation and a fresh independent second pass.
 - [ ] **FS-22.04 — tenant/channel/locale propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.06 — REST/controller composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
@@ -286,6 +287,20 @@ Hard limits for every iteration:
 - **Documentation:** `apps/server/docs/README.md` now states that auth self-service endpoints require `AuthPrincipalKind::DirectUser` and delegated OAuth users do not inherit the direct-session contract.
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.02` complete after merge; continue to the next unchecked primary module in FS-22.03.
+
+### FS-22.03.03 Iteration 1 — `apps/server/src/controllers/auth.rs`
+
+- **Base:** refreshed `main` at `a3b710661bc98fb48b5637843762b22731197b0e` after FS-22.03.02 integration; dedicated branch `codex/audit-fs-22.03.03-auth-controller`.
+- **Invariant map:** authentication recovery endpoints must not disclose whether a tenant account exists; reset/verification request responses must remain externally uniform across account-present, account-absent, and email-delivery/configuration failure states; reset tokens remain credential-bound; tenant and token claims remain validated by canonical auth helpers; asynchronous delivery failures must not turn into unhandled request failures.
+- **Finding AUTHCTRL-22.03.03-01:** `/api/auth/reset/request` and `/api/auth/verify/request` returned a generic 200 for unknown addresses but returned 500 when an existing account reached an unavailable email service or invalid reset URL. The difference exposed account existence whenever mail transport configuration or URL preparation failed. Normal successful delivery was already asynchronous, so request success should not depend on transport availability.
+- **Remediation:** both request endpoints now treat email-service construction and URL preparation failures as non-fatal, log only a bounded generic server-side warning, and preserve the same public success envelope. Existing asynchronous send failures remain server-observable and non-fatal. No token is logged or exposed in production.
+- **Immediate re-audit:** re-read the controller's register/login/refresh/logout/reset/verification/session/profile routes and their lifecycle consumers. Reset token generation remains credential-fingerprint-bound and confirmation delegates to the canonical lifecycle path; verification confirmation still binds tenant, user id, and normalized email.
+- **Adjacent-boundary re-audit:** auth rate limiting covers login/register/reset/verify prefixes; tenant resolution remains required for these routes; `rustok-auth` owns token primitives and REST DTOs; email delivery remains a host concern. No new account-existence branch was introduced.
+- **Regression audit:** unknown-account requests still skip email preparation and return success; existing-account requests now return the same status even when email setup is unavailable; demo-only token exposure remains constrained by non-production/demo mode; logout continues to validate the supplied refresh token directly.
+- **Fresh second pass:** independently checked response paths for existing/non-existing accounts, email-service construction failures, reset URL failures, asynchronous send failures, tenant mismatch during verification confirmation, and route rate-limit coverage. No additional repository-owned defect remained in the primary `auth.rs` controller requiring another remediation unit.
+- **Documentation:** `apps/server/docs/README.md` now records the generic public response contract for reset/verification request delivery failures.
+- **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.03.03` complete after merge; continue to the next unchecked primary module in FS-22.03.
 
 ### FS-22.02.11 Iteration 1 — `security_headers.rs` pre-implementation findings
 
