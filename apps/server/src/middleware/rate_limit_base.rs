@@ -824,20 +824,20 @@ mod path_matching_tests {
                 .expect("nested auth route")
                 .limiter
                 .namespace(),
-            "api"
+            "auth"
         );
         assert_eq!(
             matching_path_policy(&policies, "/api/auth/login-extra")
                 .expect("generic api route")
                 .limiter
                 .namespace(),
-            "default"
+            "api"
         );
     }
 
     #[test]
     fn root_prefix_matches_itself_and_descendants_only() {
-        let policies = vec![policy("/api/auth/reset")];
+        let policies = vec![policy("/api/auth/reset", "auth")];
 
         assert!(matching_path_policy(&policies, "/api/auth/reset").is_some());
         assert!(matching_path_policy(&policies, "/api/auth/reset/confirm").is_some());
