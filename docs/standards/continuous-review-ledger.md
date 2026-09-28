@@ -141,6 +141,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.05 finding in progress — GraphQL fragment-policy recursion safety.** The GraphQL policy extensions (`security`, `module_security`, `dashboard_security`, `storefront_principal_security`, `forum_principal_security`) run document classification during `prepare_request`, before async-graphql's standard fragment-cycle validation. Their recursive fragment traversals now use per-call recursion stacks and remove entries on unwind, so cyclic fragments are classified safely instead of recursing indefinitely. Dedicated cyclic-fragment regression tests were added to each policy extension.
 
+- [ ] **FS-22.07 finding in progress — admin registry server-function credential proxy.** The admin registry `#[server]` functions previously accepted bearer token and tenant selector values as serialized client arguments and used them to make privileged registry REST calls. The native functions now bind to the outer `AuthContext`, `TenantContext`, and request Authorization header; client transport arguments remain only for direct GraphQL/headless paths, and are no longer serialized into the native server-function contract.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
