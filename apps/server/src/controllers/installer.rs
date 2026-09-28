@@ -244,13 +244,13 @@ async fn apply(
 
 async fn ensure_setup_not_completed(ctx: &ServerRuntimeContext) -> Result<()> {
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
-    match persistence.latest_session().await {
-        Ok(Some(session)) if setup_is_closed(Some(session.status.as_str())) => Err(http_error(HttpError::new(
+    match persistence.has_completed_session().await {
+        Ok(true) => Err(http_error(HttpError::new(
             StatusCode::CONFLICT,
             "installer_completed",
             "Installer setup is disabled after a completed installation",
         ))),
-        Ok(_) => Ok(()),
+        Ok(false) => Ok(()),
         Err(error) if installer_schema_missing(&error) => Ok(()),
         Err(error) => Err(internal_error(format!(
             "failed to verify installer setup state: {error}"
