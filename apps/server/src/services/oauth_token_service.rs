@@ -207,7 +207,7 @@ async fn resolve_client(
     let client_id = required(request.client_id.as_deref(), "client_id is required")?;
     let client_id = Uuid::parse_str(client_id)
         .map_err(|_| OAuthTokenProtocolError::invalid_client("Invalid client_id format"))?;
-    let app = OAuthAppService::find_by_client_id(db, client_id)
+    let app = oauth_apps::Entity::find_active_security_by_client_id(db, client_id)
         .await
         .map_err(|_| OAuthTokenProtocolError::server_error("Failed to resolve OAuth client"))?
         .ok_or_else(|| OAuthTokenProtocolError::invalid_client("Unknown or inactive client"))?;
@@ -611,11 +611,12 @@ fn required<'a>(
 mod tests {
     use super::{
         PreparedUserTokens, REFRESH_TOKEN_GRANT, commit_refresh_rotation, require_grant,
-        validate_requested_scopes,
+        resolve_client, validate_requested_scopes,
     };
     use crate::models::{oauth_apps, oauth_tokens};
+    use rustok_auth::TokenRequest;
     use sea_orm::{
-        ActiveModelTrait, ConnectionTrait, Database, EntityTrait, PaginatorTrait, Set,
+        ActiveModelTrait, ConnectionTrait, Database, EntityTrait, PaginatorTrait, Schema, Set,
         prelude::DateTimeWithTimeZone,
     };
     use uuid::Uuid;
@@ -645,6 +646,43 @@ mod tests {
             created_at: now,
             updated_at: now,
         }
+    }
+
+    #[tokio::test]
+    async fn resolve_client_does_not_depend_on_presentation_translations() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("SQLite database");
+        let schema = Schema::new(db.get_database_backend());
+        db.execute(schema.create_table_from_entity(oauth_apps::Entity))
+            .await
+            .expect("OAuth apps table");
+
+        let tenant_id = Uuid::new_v4();
+        let app = app(
+            serde_json::json!(["catalog:read"]),
+            serde_json::json!(["client_credentials"]),
+        );
+        let client_id = app.client_id;
+        let mut active: oauth_apps::ActiveModel = app.into();
+        active.tenant_id = Set(tenant_id);
+        active.insert(&db).await.expect("OAuth app");
+
+        let request = TokenRequest {
+            grant_type: "client_credentials".to_string(),
+            client_id: Some(client_id.to_string()),
+            client_secret: None,
+            scope: Some("catalog:read".to_string()),
+            code: None,
+            redirect_uri: None,
+            code_verifier: None,
+            refresh_token: None,
+        };
+
+        let resolved = resolve_client(&db, tenant_id, &request)
+            .await
+            .expect("security client lookup");
+        assert_eq!(resolved.client_id, client_id);
     }
 
     #[test]
