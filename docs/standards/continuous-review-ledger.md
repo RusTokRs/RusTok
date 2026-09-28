@@ -208,6 +208,7 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently rechecked the module from the transport entrypoint outward, including unusual path forms, whitespace identities, empty identities, unsupported stages, malformed/oversized bodies, disabled/misconfigured executor, missing/invalid token, stale terminal revision, expired lease, and non-runner pass-through. No remaining repository-owned in-scope defect was found in `registry_remote_claim.rs`.
 - **Verification:** repository-content/static inspection and branch-diff review only. No tests, clippy, gatekeeper, build, or runtime commands were executed by the agent, per maintainer-owned verification rules.
 - **Status:** module-level second pass clean; `FS-22.02.03` complete. Next planned primary module is `FS-22.02.04 — registry_publish_policy.rs`.
+- **Merged:** PR #4170, merge commit `a1207f53863e6a57e764d4b4a9a08fc549c80d73`.
 
 ### Deferred owning-module findings discovered during FS-22
 
