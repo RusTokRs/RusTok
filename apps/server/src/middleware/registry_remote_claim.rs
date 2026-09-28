@@ -116,13 +116,10 @@ async fn handle_claim(ctx: &ServerRuntimeContext, lease_ttl_ms: u64, bytes: &[u8
     if let Err(response) = validate_schema_version(input.schema_version) {
         return *response;
     }
-    if input.runner_id.trim().is_empty() {
-        return response(
-            StatusCode::BAD_REQUEST,
-            "invalid_request",
-            "Runner claim requires a non-empty runner_id",
-        );
-    }
+    let runner_id = match normalize_runner_id(&input.runner_id) {
+        Ok(runner_id) => runner_id,
+        Err(response) => return *response,
+    };
     if input.supported_stages.is_empty() {
         return response(
             StatusCode::BAD_REQUEST,
@@ -133,7 +130,7 @@ async fn handle_claim(ctx: &ServerRuntimeContext, lease_ttl_ms: u64, bytes: &[u8
 
     let claim = match claim_remote_validation_stage_atomic(
         ctx.db(),
-        &input.runner_id,
+        &runner_id,
         &input.supported_stages,
         lease_ttl_ms,
     )
@@ -152,7 +149,7 @@ async fn handle_claim(ctx: &ServerRuntimeContext, lease_ttl_ms: u64, bytes: &[u8
             );
         }
         Err(error) => {
-            tracing::error!(%error, runner_id = %input.runner_id, "Atomic registry runner claim failed");
+            tracing::error!(%error, runner_id = %runner_id, "Atomic registry runner claim failed");
             return response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal_error",
@@ -204,11 +201,15 @@ async fn handle_heartbeat(
     if let Err(response) = validate_schema_version(input.schema_version) {
         return *response;
     }
+    let runner_id = match normalize_runner_id(&input.runner_id) {
+        Ok(runner_id) => runner_id,
+        Err(response) => return *response,
+    };
 
     match heartbeat_remote_validation_stage_atomic(
         ctx.db(),
         claim_id,
-        &input.runner_id,
+        &runner_id,
         lease_ttl_ms,
     )
     .await
@@ -237,11 +238,15 @@ async fn handle_terminal(
     if let Err(response) = validate_schema_version(input.schema_version) {
         return *response;
     }
+    let runner_id = match normalize_runner_id(&input.runner_id) {
+        Ok(runner_id) => runner_id,
+        Err(response) => return *response,
+    };
 
     match finish_remote_validation_stage_atomic(
         ctx.db(),
         claim_id,
-        &input.runner_id,
+        &runner_id,
         input.expected_request_revision,
         outcome,
         input.detail.as_deref(),
@@ -270,6 +275,18 @@ fn validate_schema_version(schema_version: u32) -> RegistryClaimValidationResult
             "Runner request schema_version is not supported",
         )))
     }
+}
+
+fn normalize_runner_id(runner_id: &str) -> RegistryClaimValidationResult<String> {
+    let runner_id = runner_id.trim();
+    if runner_id.is_empty() {
+        return Err(Box::new(response(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Runner request requires a non-empty runner_id",
+        )));
+    }
+    Ok(runner_id.to_string())
 }
 
 fn mutation_response(claim_id: &str, status: &str) -> Response {
@@ -322,17 +339,18 @@ fn runner_route(path: &str) -> Option<RunnerRoute> {
     if path == CLAIM_PATH {
         return Some(RunnerRoute::Claim);
     }
-    let segments = path.trim_matches('/').split('/').collect::<Vec<_>>();
-    if segments.len() != 5
-        || segments[0] != "v2"
-        || segments[1] != "catalog"
-        || segments[2] != "runner"
-        || segments[3].is_empty()
+    let segments = path.split('/').collect::<Vec<_>>();
+    if segments.len() != 6
+        || segments[0] != ""
+        || segments[1] != "v2"
+        || segments[2] != "catalog"
+        || segments[3] != "runner"
+        || segments[4].is_empty()
     {
         return None;
     }
-    let claim_id = segments[3].to_string();
-    match segments[4] {
+    let claim_id = segments[4].to_string();
+    match segments[5] {
         "heartbeat" => Some(RunnerRoute::Heartbeat { claim_id }),
         "complete" => Some(RunnerRoute::Complete { claim_id }),
         "fail" => Some(RunnerRoute::Fail { claim_id }),
@@ -378,5 +396,15 @@ mod tests {
         );
         assert_eq!(MAX_RUNNER_BODY_BYTES, 64 * 1024);
         assert_eq!(PUBLISH_PATH, "/v2/catalog/publish");
+        assert_eq!(runner_route("/v2/catalog/runner/rvc_1/heartbeat/"), None);
+        assert_eq!(runner_route("//v2/catalog/runner/rvc_1/heartbeat"), None);
+    }
+
+    #[test]
+    fn runner_id_normalization_matches_controller_contract() {
+        let normalized = super::normalize_runner_id("  runner-1  ")
+            .expect("runner id should be normalized");
+        assert_eq!(normalized, "runner-1");
+        assert!(super::normalize_runner_id("   ").is_err());
     }
 }
