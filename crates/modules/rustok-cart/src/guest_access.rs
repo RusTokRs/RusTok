@@ -148,6 +148,10 @@ pub fn verify_guest_cart_token(metadata: &Value, presented_token: Option<&str>) 
     constant_time_hex_eq(expected_hash, &hash_guest_cart_token(token))
 }
 
+pub fn verify_current_guest_cart_access(metadata: &Value) -> bool {
+    verify_guest_cart_token(metadata, current_guest_cart_token().as_deref())
+}
+
 pub fn hash_guest_cart_token(token: &str) -> String {
     Sha256::digest(token.as_bytes())
         .iter()
