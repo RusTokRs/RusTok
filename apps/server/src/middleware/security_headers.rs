@@ -1,4 +1,3 @@
-use axum::http::HeaderValue;
 /// Security Headers Middleware
 ///
 /// Adds OWASP-recommended security response headers to every HTTP response:
@@ -12,6 +11,7 @@ use axum::http::HeaderValue;
 /// - `Strict-Transport-Security` — enforces HTTPS (only in production)
 ///
 /// Mounted globally in application router composition via `axum::middleware::from_fn`.
+use axum::http::HeaderValue;
 use axum::{extract::Request, middleware::Next, response::Response};
 use rustok_web::CspNonce;
 
@@ -527,7 +527,8 @@ mod tests {
     async fn csp_report_layer_collects_report_without_registered_route() {
         let app = Router::new()
             .route("/probe", get(|| async { StatusCode::OK }))
-            .layer(middleware::from_fn(handle_csp_report));
+            .layer(middleware::from_fn(handle_csp_report))
+            .layer(middleware::from_fn(security_headers));
         let response = app
             .oneshot(
                 Request::builder()
