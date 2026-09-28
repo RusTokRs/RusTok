@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `b6f8d78269827bc1b61ba9fdd60896d0cbd995f0`  
+**Current main SHA:** `4a38082383e42ed09ec7710fb9087608b882751a`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -233,7 +233,20 @@ Hard limits for every iteration:
 - [x] **FS-22.02.31 — `apps/server/src/controllers/swagger.rs`** — one-module audit; completed with six Swagger contract findings, an adjacent users route compatibility fix, and a fresh independent second pass.
 
 
-- [ ] **FS-22.02.32 — `apps/server/src/channels/builds.rs`** — one-module audit.
+- [x] **FS-22.02.32 — `apps/server/src/channels/builds.rs`** — one-module audit; completed with one authorization remediation unit and a fresh independent second pass.
+### FS-22.02.32 Iteration 1 — `apps/server/src/channels/builds.rs`
+
+- **Base:** refreshed `main` at `df10d9af5770e4bdcea395a161761d48ce7240e7`; dedicated branch `codex/audit-fs-22.02.32-builds-channel`; merged as PR #4228 at `4a38082383e42ed09ec7710fb9087608b882751a`.
+- **Invariant map:** the build progress stream is a platform control-plane read surface; WebSocket upgrade must require authenticated request context and canonical module-read authority; GraphQL and native transports must not diverge on authorization; build event scope remains platform-global and no tenant attribution is introduced in the transport.
+- **Finding BUILDS-22.02.32-01:** `GET /ws/builds` documented Bearer authentication, but the normal `auth_context::resolve_optional` middleware permits anonymous requests to continue. The handler upgraded anonymous clients because it had no route-local authentication/permission admission.
+- **Remediation:** the WebSocket handler now fails with HTTP 401 without an authenticated `AuthContextExtension`, and requires one of the canonical effective module permissions: `modules:read`, `modules:list`, or `modules:manage`. This matches the existing GraphQL `build_progress` subscription admission contract.
+- **Adjacent-boundary re-audit:** `auth_context.rs` still supplies the request-scoped permission snapshot and principal facts; GraphQL performs the same module-read authorization; `build_event_hub.rs` shares one context-owned broadcast hub; the global `BuildEventScope::Platform` contract remains unchanged. No duplicate auth, tenant policy, or event ownership was introduced.
+- **Regression audit:** anonymous requests can no longer reach `on_upgrade`; unrelated permissions are rejected; accepted module-read levels remain compatible with manage/list/read semantics. No lifecycle, broadcast, or wire-message behavior was changed by the remediation.
+- **Fresh second pass:** re-read `builds.rs`, its runtime route registration in `host.rs`, middleware ordering in `app_router.rs`/`auth_context.rs`, GraphQL build subscription, build hub initialization, and the local server responsibility documentation. No additional repository-owned defect was found in the primary module that required another remediation unit.
+- **Documentation:** `apps/server/docs/README.md` now records the `/ws/builds` authorization contract.
+- **Verification:** repository-content/static inspection and branch/PR diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.02.32` complete. Next primary module: `FS-22.03` must first be decomposed into one-primary-module iterations.
+
 - [ ] **FS-22.03 — identity/auth propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.04 — tenant/channel/locale propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
