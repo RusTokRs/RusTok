@@ -140,10 +140,7 @@ struct TenantLocaleCache {
 
 impl TenantLocaleCache {
     fn new() -> Self {
-        Self::with_limits(
-            TENANT_LOCALE_CACHE_MAX_WEIGHT_BYTES,
-            TENANT_LOCALE_CACHE_MAX_TENANT_VERSIONS,
-        )
+        Self::with_max_weight(TENANT_LOCALE_CACHE_MAX_WEIGHT_BYTES)
     }
 
     fn with_max_weight(max_weight_bytes: u64) -> Self {
