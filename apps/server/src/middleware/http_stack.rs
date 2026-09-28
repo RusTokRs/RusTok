@@ -110,7 +110,7 @@ pub async fn adaptive_timeout(request: Request, next: Next) -> Response {
     }
 }
 
-pub fn is_upload_request(request: &Request) -> bool {
+pub fn is_upload_request<B>(request: &axum::http::Request<B>) -> bool {
     let method = request.method();
     // Only mutation methods can upload payloads; GET/HEAD must never be granted
     // extended upload deadlines (prevents slowloris attacks on static media downloads).

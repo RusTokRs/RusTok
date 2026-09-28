@@ -644,7 +644,7 @@ pub fn router() -> crate::routes::ServerRouter {
 fn clamp_session_limit(limit: Option<u64>) -> u64 {
     limit.unwrap_or(50).clamp(1, 100)
 }
-\n#[cfg(test)]
+#[cfg(test)]
 mod tests {
     use super::ensure_registration_enabled;
     use crate::common::RustokSettings;

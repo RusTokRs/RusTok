@@ -1,0 +1,10 @@
+[package]
+name = "rustok-forms"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors = ["RusToK Team"]
+description = "Framework-agnostic form state, validation, field contracts, and dirty tracking"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }

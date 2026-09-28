@@ -1,0 +1,14 @@
+[package]
+name = "rustok-forms-leptos"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors = ["RusToK Team"]
+description = "Leptos structural form components for rustok-forms"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+leptos = { workspace = true }
+rustok-forms = { workspace = true }

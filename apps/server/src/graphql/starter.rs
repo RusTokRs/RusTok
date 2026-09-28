@@ -85,9 +85,7 @@ impl StarterMutation {
 
         let engine = rustok_starter::StarterEngine::new(db, event_bus);
         let mut security = rustok_core::SecurityContext::system();
-        if let Some(user_id) = auth.user_id {
-            security.user_id = Some(user_id);
-        }
+        security.user_id = Some(auth.user_id);
 
         let report = engine
             .import_blueprint(tenant.id, &security, &blueprint)

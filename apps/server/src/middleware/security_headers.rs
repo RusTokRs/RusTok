@@ -230,7 +230,8 @@ fn select_report_only_csp(path: &str, csp_nonce: Option<&CspNonce>) -> Option<St
 #[cfg(test)]
 mod tests {
     use super::{
-        API_CSP, REPORTING_ENDPOINTS, handle_csp_report, parse_env_flag, security_headers,
+        API_CSP, REPORTING_ENDPOINTS, RICHTEXT_FRAME_PATH, handle_csp_report,
+        is_richtext_frame_surface, parse_env_flag, richtext_cache_control, security_headers,
         select_csp, select_report_only_csp,
     };
     use crate::middleware::csp_reports::CSP_REPORT_PATH;

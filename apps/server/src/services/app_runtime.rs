@@ -158,7 +158,7 @@ pub async fn bootstrap_app_runtime(
         );
 
         #[cfg(feature = "mod-workflow")]
-        if workflow_cron_enabled(settings) {
+        if workflow_cron_enabled(&settings) {
             init_workflow_runtime(&runtime_ctx);
         } else {
             tracing::info!(
@@ -191,7 +191,7 @@ pub async fn bootstrap_app_runtime(
 
     let graphql_schema = init_graphql_schema(&runtime_ctx)?;
     let rate_limits =
-        init_rate_limit_layers(&runtime_ctx, settings, &cache_service, Some(auth_config))?;
+        init_rate_limit_layers(&runtime_ctx, &settings, &cache_service, Some(auth_config))?;
 
     Ok(AppRuntimeBootstrap {
         deployment_surfaces,

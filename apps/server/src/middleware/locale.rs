@@ -161,7 +161,7 @@ impl TenantLocaleCache {
             misses: Arc::new(AtomicU64::new(0)),
             db_queries: Arc::new(AtomicU64::new(0)),
             versions: Arc::new(Mutex::new(TenantLocaleCacheVersionState::default())),
-            max_tenant_versions: TENANT_LOCALE_CACHE_MAX_TENANT_VERSIONS,
+            max_tenant_versions,
             invalidations: Arc::new(AtomicU64::new(0)),
         }
     }
@@ -460,7 +460,7 @@ pub async fn invalidate_all_tenant_locale_cache(ctx: &ServerRuntimeContext) {
 #[cfg(test)]
 mod tests {
     use super::{
-        TenantLocaleCache, TenantLocaleRecord, constrain_locale_to_tenant,
+        TenantLocaleCache, TenantLocaleCacheKey, TenantLocaleRecord, constrain_locale_to_tenant,
         tenant_locale_entry_weight,
     };
     use rustok_api::request::ResolvedRequestLocale;

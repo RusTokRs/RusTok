@@ -182,7 +182,7 @@ fn persisted_query_hash(req: &async_graphql::Request) -> Option<&str> {
         return None;
     };
 
-    let hash = hash.as_ref();
+    let hash = hash.as_str();
     (hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit())).then_some(hash)
 }
 
@@ -560,7 +560,8 @@ mod tests {
         common::settings::RustokSettings, middleware::tenant,
         services::server_runtime_context::ServerRuntimeContext,
     };
-    use axum::http::{HeaderMap, header};
+    use async_graphql::http::WebSocketProtocols;
+    use axum::http::{HeaderMap, StatusCode, header};
     use rustok_api::{Permission, Resource};
     use rustok_cache::CacheService;
     use rustok_migrations::SqliteTestMigrator as Migrator;

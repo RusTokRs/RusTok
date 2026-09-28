@@ -50,6 +50,12 @@ impl Locale {
     }
 }
 
+impl std::fmt::Display for Locale {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Look up a translation. Returns `Some(&'static str)` or `None` if key is unknown.
 ///
 /// O(1) — uses `match`, no heap allocation, no HashMap iteration.
@@ -402,5 +408,15 @@ mod tests {
         );
         assert_eq!(extract_locale_from_header(Some("es")), Locale::Es);
         assert_eq!(extract_locale_from_header(None), Locale::En);
+    }
+
+    #[test]
+    fn test_locale_display() {
+        assert_eq!(Locale::En.to_string(), "en");
+        assert_eq!(Locale::Ru.to_string(), "ru");
+        assert_eq!(Locale::Es.to_string(), "es");
+        assert_eq!(Locale::De.to_string(), "de");
+        assert_eq!(Locale::Fr.to_string(), "fr");
+        assert_eq!(Locale::Zh.to_string(), "zh");
     }
 }
