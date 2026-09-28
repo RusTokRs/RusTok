@@ -158,7 +158,10 @@ mod tests {
         constant_time_eq, is_protected_observability_path, parse_bearer_token,
         readiness_http_status,
     };
-    use axum::http::StatusCode;
+    use axum::{
+        body::Body,
+        http::{StatusCode, header},
+    };
 
     #[test]
     fn protects_metrics_and_detailed_health_only() {
@@ -210,7 +213,7 @@ mod tests {
         let request = axum::http::Request::builder()
             .uri("/metrics")
             .header(header::AUTHORIZATION, "Bearer observability-token")
-            .body(())
+            .body(Body::empty())
             .expect("request");
         assert_eq!(supplied_token(&request), Some("observability-token"));
     }
