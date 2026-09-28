@@ -207,6 +207,41 @@ async fn oauth_service_token_intersects_app_permissions_with_scopes() {
 }
 
 #[tokio::test]
+async fn oauth_service_token_authentication_does_not_depend_on_translation_storage() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    ensure_oauth_apps_table(&db).await;
+    let tenant = tenants::ActiveModel::new(
+        "OAuth security lookup tenant",
+        &format!("tenant-{}", Uuid::new_v4()),
+    )
+    .insert(&db)
+    .await
+    .expect("create tenant");
+    let app = insert_oauth_app(&db, tenant.id, "service", &["client_credentials"], true).await;
+
+    db.execute_unprepared("DROP TABLE IF EXISTS oauth_app_translations")
+        .await
+        .expect("drop translation table to isolate authentication lookup");
+
+    let (permissions, inferred_role) = resolve_service_token_permissions(
+        &db,
+        tenant.id,
+        app.id,
+        app.client_id,
+        UserRole::Customer,
+        &["forum:*".to_string()],
+    )
+    .await
+    .expect("OAuth authentication must not depend on presentation translations");
+
+    assert_eq!(
+        permissions,
+        vec![Permission::from_str("forum_topics:list").expect("forum permission")]
+    );
+    assert_eq!(inferred_role, UserRole::Customer);
+}
+
+#[tokio::test]
 async fn oauth_service_token_with_empty_scopes_has_no_effective_permissions() {
     let db = setup_test_db_with_migrations::<Migrator>().await;
     ensure_oauth_apps_table(&db).await;
