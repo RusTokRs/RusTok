@@ -413,7 +413,9 @@ fn marketplace_provider_check(ctx: &ServerRuntimeContext) -> ReadinessCheck {
     path = "/health/runtime",
     tag = "health",
     responses(
-        (status = 200, description = "Runtime guardrail snapshot", body = RuntimeGuardrailSnapshot)
+        (status = 200, description = "Runtime guardrail snapshot", body = RuntimeGuardrailSnapshot),
+        (status = 401, description = "Host authority is required"),
+        (status = 403, description = "Host read authority is required")
     )
 )]
 pub async fn runtime(State(ctx): State<ServerRuntimeContext>) -> Result<Response> {
@@ -429,7 +431,9 @@ pub async fn runtime(State(ctx): State<ServerRuntimeContext>) -> Result<Response
     path = "/health/modules",
     tag = "health",
     responses(
-        (status = 200, description = "Module health statuses", body = ModulesHealthResponse)
+        (status = 200, description = "Module health statuses", body = ModulesHealthResponse),
+        (status = 401, description = "Host authority is required"),
+        (status = 403, description = "Host read authority is required")
     )
 )]
 pub async fn modules(Extension(registry): Extension<ModuleRegistry>) -> Result<Response> {
