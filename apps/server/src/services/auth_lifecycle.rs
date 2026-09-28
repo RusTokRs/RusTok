@@ -6,7 +6,8 @@ use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use chrono::{Duration, Utc};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
+    DatabaseTransaction, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect, Set,
+    Statement,
     TransactionTrait, sea_query::Expr,
 };
 
