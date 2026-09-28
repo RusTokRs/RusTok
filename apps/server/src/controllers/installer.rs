@@ -137,9 +137,10 @@ async fn status(
             lock_expires_at: None,
             completed_at: None,
         })),
-        Err(error) => Err(internal_error(format!(
-            "failed to read installer status: {error}"
-        ))),
+        Err(error) => {
+            tracing::error!(error = %error, "Failed to read installer status");
+            Err(internal_error("failed to read installer status"))
+        }
     }
 }
 
@@ -431,7 +432,14 @@ async fn receipts(
     let receipts = persistence
         .list_receipts(session_id)
         .await
-        .map_err(|error| internal_error(format!("failed to read installer receipts: {error}")))?;
+        .map_err(|error| {
+            tracing::error!(
+                session_id = %session_id,
+                error = %error,
+                "Failed to read installer receipts"
+            );
+            internal_error("failed to read installer receipts")
+        })?;
 
     Ok(Json(InstallReceiptsResponse {
         session_id,
