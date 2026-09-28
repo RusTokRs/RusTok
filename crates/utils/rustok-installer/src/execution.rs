@@ -15,6 +15,10 @@ pub struct InstallApplyOptions {
     pub lock_owner: String,
     pub lock_ttl_secs: i64,
     pub pg_admin_url: Option<String>,
+    /// Optional host-selected durable identity for an HTTP apply job.
+    /// CLI callers leave this unset and keep the executor-generated session id.
+    #[serde(skip)]
+    pub requested_session_id: Option<Uuid>,
     /// Host-selected Ed25519 authority for a signed fresh-target distribution
     /// receipt. This value is deliberately skipped by transport
     /// serialization: HTTP adapters must resolve it from host configuration,
@@ -29,6 +33,7 @@ impl Default for InstallApplyOptions {
             lock_owner: "installer".to_string(),
             lock_ttl_secs: 900,
             pg_admin_url: None,
+            requested_session_id: None,
             bootstrap_public_key_base64: None,
         }
     }
@@ -167,6 +172,7 @@ pub trait InstallPersistencePort<R>: Send + Sync {
         &self,
         runtime: &R,
         plan: &InstallPlan,
+        requested_session_id: Option<Uuid>,
     ) -> Result<InstallSessionRecord, InstallExecutionError>;
     async fn acquire_lock(
         &self,
@@ -266,7 +272,13 @@ where
         .await?;
     ports.apply_owner_schema(&database.runtime).await?;
     let snapshot = crate::redact_install_plan(&plan);
-    let mut session = ports.create_session(&database.runtime, &plan).await?;
+    let mut session = ports
+        .create_session(
+            &database.runtime,
+            &plan,
+            options.requested_session_id,
+        )
+        .await?;
     session = ports
         .acquire_lock(
             &database.runtime,
