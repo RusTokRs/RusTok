@@ -406,7 +406,8 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
 
 #[cfg(test)]
 mod tests {
-    use super::require_media_permission;
+    use super::{media_error, require_media_permission, MediaError};
+    use axum::response::IntoResponse;
     use rustok_api::{Action, AuthContext, Permission, Resource, TenantContext};
     use uuid::Uuid;
 
