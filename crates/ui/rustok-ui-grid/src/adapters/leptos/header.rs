@@ -13,13 +13,14 @@ pub fn GridHeader(
     sort_state: Signal<SortState>,
     filters: Signal<ColumnFilters>,
     all_selected: Signal<bool>,
-    _has_selectable: bool,
+    has_selectable: bool,
     on_toggle_all: Callback<bool>,
     on_sort: Callback<String>,
     on_resize: Callback<(String, u32)>,
     on_filter_change: Callback<(String, FilterValue)>,
     on_clear_filters: Callback<()>,
 ) -> impl IntoView {
+    let _ = has_selectable;
     let has_any_filterable = columns.iter().any(|c| c.filterable);
     let columns_for_filters = columns.clone();
 

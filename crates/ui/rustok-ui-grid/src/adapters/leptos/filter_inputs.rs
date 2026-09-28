@@ -14,22 +14,23 @@ pub fn GridFilterCell(
     match filter_type {
         GridFilterType::Text { placeholder } => {
             let col = column_id.clone();
+            let initial_text = current_value
+                .get_untracked()
+                .and_then(|v| match v {
+                    FilterValue::Text(s) => Some(s),
+                    _ => None,
+                })
+                .unwrap_or_default();
+
+            let (text_input, set_text_input) = signal(initial_text);
+
             let debounced_change = use_debounce_fn(
-                move |val: String| {
+                move || {
+                    let val = text_input.get_untracked();
                     on_change.run((col.clone(), FilterValue::Text(val)));
                 },
                 250.0,
             );
-
-            let text_val = move || {
-                current_value
-                    .get()
-                    .and_then(|v| match v {
-                        FilterValue::Text(s) => Some(s),
-                        _ => None,
-                    })
-                    .unwrap_or_default()
-            };
 
             let ph = placeholder.unwrap_or_else(|| "Search...".to_string());
 
@@ -38,9 +39,10 @@ pub fn GridFilterCell(
                     <input
                         type="text"
                         placeholder=ph
-                        prop:value=text_val
+                        prop:value=move || text_input.get()
                         on:input=move |ev| {
-                            debounced_change(event_target_value(&ev));
+                            set_text_input.set(event_target_value(&ev));
+                            debounced_change();
                         }
                         class="w-full text-xs rounded border border-border/80 bg-background/50 px-2 py-1 placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
                     />
@@ -94,68 +96,57 @@ pub fn GridFilterCell(
             max_placeholder,
             step,
         } => {
-            let col_min = column_id.clone();
-            let col_max = column_id.clone();
+            let col = column_id.clone();
 
-            let min_val = move || {
-                current_value
-                    .get()
-                    .and_then(|v| match v {
-                        FilterValue::NumberRange { min, .. } => min.map(|n| n.to_string()),
-                        _ => None,
-                    })
-                    .unwrap_or_default()
-            };
+            let initial_min = current_value
+                .get_untracked()
+                .and_then(|v| match v {
+                    FilterValue::NumberRange { min, .. } => min.map(|n| n.to_string()),
+                    _ => None,
+                })
+                .unwrap_or_default();
 
-            let max_val = move || {
-                current_value
-                    .get()
-                    .and_then(|v| match v {
-                        FilterValue::NumberRange { max, .. } => max.map(|n| n.to_string()),
-                        _ => None,
-                    })
-                    .unwrap_or_default()
-            };
+            let initial_max = current_value
+                .get_untracked()
+                .and_then(|v| match v {
+                    FilterValue::NumberRange { max, .. } => max.map(|n| n.to_string()),
+                    _ => None,
+                })
+                .unwrap_or_default();
+
+            let (min_input, set_min_input) = signal(initial_min);
+            let (max_input, set_max_input) = signal(initial_max);
+
+            let debounced_range = use_debounce_fn(
+                move || {
+                    let min_parsed = min_input.get_untracked().trim().parse::<f64>().ok();
+                    let max_parsed = max_input.get_untracked().trim().parse::<f64>().ok();
+                    on_change.run((
+                        col.clone(),
+                        FilterValue::NumberRange {
+                            min: min_parsed,
+                            max: max_parsed,
+                        },
+                    ));
+                },
+                250.0,
+            );
 
             let step_attr = step.map(|s| s.to_string()).unwrap_or_else(|| "any".to_string());
             let min_ph = min_placeholder.unwrap_or_else(|| "From".to_string());
             let max_ph = max_placeholder.unwrap_or_else(|| "To".to_string());
 
-            let debounced_min = use_debounce_fn(
-                move |val: String| {
-                    let parsed = val.trim().parse::<f64>().ok();
-                    let current_max = current_value.get().and_then(|v| match v {
-                        FilterValue::NumberRange { max, .. } => max,
-                        _ => None,
-                    });
-                    on_change.run((
-                        col_min.clone(),
-                        FilterValue::NumberRange {
-                            min: parsed,
-                            max: current_max,
-                        },
-                    ));
-                },
-                250.0,
-            );
+            let debounced_min = debounced_range.clone();
+            let on_min_input = move |ev| {
+                set_min_input.set(event_target_value(&ev));
+                debounced_min();
+            };
 
-            let debounced_max = use_debounce_fn(
-                move |val: String| {
-                    let parsed = val.trim().parse::<f64>().ok();
-                    let current_min = current_value.get().and_then(|v| match v {
-                        FilterValue::NumberRange { min, .. } => min,
-                        _ => None,
-                    });
-                    on_change.run((
-                        col_max.clone(),
-                        FilterValue::NumberRange {
-                            min: current_min,
-                            max: parsed,
-                        },
-                    ));
-                },
-                250.0,
-            );
+            let debounced_max = debounced_range;
+            let on_max_input = move |ev| {
+                set_max_input.set(event_target_value(&ev));
+                debounced_max();
+            };
 
             view! {
                 <div class="flex items-center gap-1">
@@ -163,8 +154,8 @@ pub fn GridFilterCell(
                         type="number"
                         step=step_attr.clone()
                         placeholder=min_ph
-                        prop:value=min_val
-                        on:input=move |ev| debounced_min(event_target_value(&ev))
+                        prop:value=move || min_input.get()
+                        on:input=on_min_input
                         class="w-1/2 text-xs rounded border border-border/80 bg-background/50 px-1 py-1 placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none"
                     />
                     <span class="text-[10px] text-muted-foreground">-</span>
@@ -172,8 +163,8 @@ pub fn GridFilterCell(
                         type="number"
                         step=step_attr
                         placeholder=max_ph
-                        prop:value=max_val
-                        on:input=move |ev| debounced_max(event_target_value(&ev))
+                        prop:value=move || max_input.get()
+                        on:input=on_max_input
                         class="w-1/2 text-xs rounded border border-border/80 bg-background/50 px-1 py-1 placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none"
                     />
                 </div>
@@ -283,7 +274,7 @@ pub fn GridFilterCell(
                         match val.as_str() {
                             "true" => on_change.run((col.clone(), FilterValue::Boolean(true))),
                             "false" => on_change.run((col.clone(), FilterValue::Boolean(false))),
-                            _ => on_change.run((col.clone(), FilterValue::Text(String::new()))), // cleared
+                            _ => on_change.run((col.clone(), FilterValue::Text(String::new()))),
                         }
                     }
                     class="w-full text-xs rounded border border-border/80 bg-background/50 px-1.5 py-1 text-foreground focus:border-primary focus:outline-none"

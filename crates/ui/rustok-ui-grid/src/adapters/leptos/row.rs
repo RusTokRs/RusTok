@@ -4,7 +4,7 @@ use leptos::prelude::*;
 use crate::core::{ColumnAlign, ColumnWidths, GridColumnDef};
 
 #[component]
-pub fn GridRow<T: Clone + 'static>(
+pub fn GridRow<T: Send + Sync + Clone + 'static>(
     item: T,
     row_id: String,
     columns: Vec<GridColumnDef>,

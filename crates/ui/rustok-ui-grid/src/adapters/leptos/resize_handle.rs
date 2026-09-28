@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 use web_sys::PointerEvent;
+use web_sys::wasm_bindgen::JsCast;
 
 use crate::core::calculate_resized_width;
 

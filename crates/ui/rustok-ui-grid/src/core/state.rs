@@ -1,12 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use super::{
-    column::{ColumnId, GridColumnDef},
-    filter::ColumnFilters,
-    pagination::GridPagination,
-    resize::ColumnWidths,
-    selection::RowSelection,
-    sort::SortState,
+    filter::ColumnFilters, pagination::GridPagination, resize::ColumnWidths,
+    selection::RowSelection, sort::SortState,
 };
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

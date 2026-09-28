@@ -8,7 +8,7 @@ use super::{
 };
 use crate::core::{
     ColumnFilters, ColumnWidths, FilterValue, GridColumnDef, GridPagination, PaginationMode,
-    RowSelection, SortDirection, SortState,
+    RowSelection, SortState,
 };
 
 #[component]
@@ -33,9 +33,9 @@ pub fn DataGrid<T, K, KF>(
     #[prop(optional)] bulk_actions: Option<Callback<usize, AnyView>>,
 ) -> impl IntoView
 where
-    T: Clone + 'static,
+    T: Send + Sync + Clone + 'static,
     K: std::fmt::Display + 'static,
-    KF: Fn(&T) -> K + Copy + 'static,
+    KF: Fn(&T) -> K + Send + Sync + Copy + 'static,
 {
     let local_columns = RwSignal::new(columns);
     let local_widths = RwSignal::new(ColumnWidths::new());
