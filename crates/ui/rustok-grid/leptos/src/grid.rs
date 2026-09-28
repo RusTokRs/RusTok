@@ -93,7 +93,9 @@ where
 
     // Handle column resize
     let handle_resize = Callback::new(move |(col_id, width): (String, u32)| {
-        local_widths.update(|w| w.set(col_id, width));
+        if let Some(column) = local_columns.get_untracked().iter().find(|c| c.id.0 == col_id) {
+            local_widths.update(|w| w.set_clamped(col_id, width, column.width.min, column.width.max));
+        }
     });
 
     // Handle single filter change
@@ -197,10 +199,9 @@ where
         if let Some(cb) = on_load_more {
             cb.run(());
         } else {
-            let next_page = local_pagination.get().page + 1;
+            let next_page = local_pagination.get().page.saturating_add(1);
             local_pagination.update(|p| {
-                p.page = next_page;
-                p.has_next = (p.page * p.page_size) < p.total as usize;
+                p.set_page(next_page);
             });
             if let Some(cb) = on_page_change {
                 cb.run(next_page);
@@ -228,19 +229,21 @@ where
             // Table Scroll Container
             <div class="w-full overflow-x-auto relative">
                 <table class="w-full border-collapse text-left">
-                    <GridHeader
-                        columns=local_columns.get()
-                        column_widths=local_widths.into()
-                        sort_state=local_sort.into()
-                        filters=local_filters.into()
-                        all_selected=all_selected
-                        has_selectable=has_selectable.get()
-                        on_toggle_all=handle_toggle_all_select
-                        on_sort=handle_sort
-                        on_resize=handle_resize
-                        on_filter_change=handle_filter_change
-                        on_clear_filters=handle_clear_filters
-                    />
+                    {move || view! {
+                        <GridHeader
+                            columns=local_columns.get()
+                            column_widths=local_widths.into()
+                            sort_state=local_sort.into()
+                            filters=local_filters.into()
+                            all_selected=all_selected
+                            has_selectable=has_selectable.get()
+                            on_toggle_all=handle_toggle_all_select
+                            on_sort=handle_sort
+                            on_resize=handle_resize
+                            on_filter_change=handle_filter_change
+                            on_clear_filters=handle_clear_filters
+                        />
+                    }}
 
                     <tbody class="divide-y divide-border/40 bg-background">
                         {move || {

@@ -5,7 +5,7 @@ use crate::{
     selection::RowSelection, sort::SortState,
 };
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct GridState {
     pub column_widths: ColumnWidths,
     pub filters: ColumnFilters,
