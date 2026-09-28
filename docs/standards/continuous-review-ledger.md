@@ -111,6 +111,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.02 finding in progress — observability bearer/JWT middleware collision.** Protected observability uses `Authorization: Bearer <token>`, but JWT `auth_context` also consumes that header. The fix moves observability authentication to the outer composition edge and removes the observability credential before downstream JWT processing, including the readiness path.
 
+- [ ] **FS-22.01 finding in progress — metrics route canonicalization.** The metrics controller exposed only `/metrics/`, while its OpenAPI declaration and observability policy use `/metrics`; the trailing-slash path was also tenant-bound even though metrics are global. The router now exposes canonical `/metrics` plus an explicit compatibility alias `/metrics/`, and both forms are globally classified and protected.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |

@@ -181,6 +181,12 @@ mod tests {
     }
 
     #[test]
+    fn protects_both_metrics_slash_forms() {
+        assert!(is_protected_observability_path("/metrics"));
+        assert!(is_protected_observability_path("/metrics/"));
+    }
+
+    #[test]
     fn readiness_status_controls_http_availability() {
         assert_eq!(readiness_http_status("ok"), StatusCode::OK);
         assert_eq!(readiness_http_status("degraded"), StatusCode::OK);
