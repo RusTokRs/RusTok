@@ -888,7 +888,10 @@ pub fn router() -> crate::routes::ServerRouter {
         )
         .route("/api/oauth/consent", post(consent_handler))
         .route("/api/oauth/token", post(token_handler))
-        .route("/api/oauth/userinfo", get(userinfo_handler))
+        .route(
+            "/api/oauth/userinfo",
+            get(userinfo_handler).post(userinfo_handler),
+        )
         .route("/api/oauth/revoke", post(revoke_handler))
 }
 
