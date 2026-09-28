@@ -125,6 +125,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.04/22.09 finding in progress — effective environment validation drift.** `load_config` derives the default environment from build mode, but `RustokSettings::from_settings` derives production-ness independently from environment variables. A release binary launched without `RUSTOK_ENV` could therefore load production config semantics while tenant validation still treated the process as non-production. The host now validates `tenant` again against the already-resolved `production` decision, making the composition root's effective environment authoritative.
 
+- [ ] **FS-22.09 finding in progress — production environment source-of-truth drift.** Host config loading and settings validation used separate production detectors, both treating absent env vars as development. A release binary could therefore select `production.yaml` while settings still allowed development-only policies. The environment detector is now centralized in `common::settings` and treats an unset environment as production for release builds, matching the host config default.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |

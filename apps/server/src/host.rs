@@ -9,7 +9,7 @@ use serde::Deserialize;
 
 use crate::{
     channels,
-    common::settings::RustokSettings,
+    common::settings::{RustokSettings, is_production_environment},
     controllers,
     error::{Error, Result},
     middleware::security_headers::hsts_enabled,
@@ -255,19 +255,6 @@ fn jwt_secret_looks_like_placeholder(secret: &str) -> bool {
             .collect::<std::collections::HashSet<_>>()
             .len()
             < 16
-}
-
-fn is_production_environment() -> bool {
-    ["RUSTOK_ENV", "RUST_ENV", "APP_ENV"].iter().any(|key| {
-        std::env::var(key)
-            .map(|value| {
-                matches!(
-                    value.trim().to_ascii_lowercase().as_str(),
-                    "prod" | "production"
-                )
-            })
-            .unwrap_or(false)
-    })
 }
 
 fn application_router(host_mode: crate::common::settings::RuntimeHostMode) -> ServerRouter {
