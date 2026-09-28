@@ -838,7 +838,7 @@ All OAuth2 events are written to the audit log:
 - [x] Built-in SDK for frontend (`npm pkg @rustok/sdk`) - Moved to Next.js Admin integrations (`Next.js Admin OAuth UI`)
 - [x] Instructions/documentation "How to connect a third-party application" - Added to `docs/guides/connect-external-apps.md`
 - [x] CLI tools/scripts for quick app creation in dev environment (via `rustok-cli oauth create-app`)
-- [x] `/.well-known/oauth-authorization-server` metadata endpoint (+ `/openid-configuration`)
+- [x] `/.well-known/oauth-authorization-server` metadata endpoint (+ `/openid-configuration` RFC 8414 alias; not a full OIDC Provider Configuration)
 - [x] OpenID Connect basic support (`/oauth/userinfo`)
 - [x] Documentation for module developers — included in `docs/guides/connect-external-apps.md`
 
@@ -850,7 +850,7 @@ All OAuth2 events are written to the audit log:
 - [x] RFC 7636 (PKCE) — S256 transform, Appendix B test vector, constant-time comparison (7 tests)
 - [x] RFC 7519 (JWT) — claims validation, expiration, issuer/audience/signature check (5 tests)
 - [x] RFC 7009 (Token Revocation) — always-200 semantics, token_type_hint values (2 tests)
-- [x] RFC 8414 (Metadata) — required fields, well-known paths, implementation match (3 tests)
+- [x] RFC 8414 (Metadata) — issuer/endpoint consistency, strict issuer validation, response-mode and UserInfo-claim metadata alignment, well-known paths (7 tests)
 - [x] OAuth2 scope enforcement — `AuthContext.require_scope()` for direct/OAuth2 tokens (7 tests)
 - [x] Credential security — entropy, Argon2, SHA-256, salt uniqueness (6 tests)
 - [x] Documentation — `docs/guides/testing-oauth2-rfc.md`
