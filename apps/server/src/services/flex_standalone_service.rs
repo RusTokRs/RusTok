@@ -908,6 +908,7 @@ mod tests {
     use flex::FlexStandaloneService;
     use rustok_core::field_schema::{FieldDefinition, FieldType};
     use rustok_test_utils::db::setup_test_db;
+    use sea_orm_migration::MigrationTrait;
     use sea_orm::{
         ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
         QueryFilter, Set,
