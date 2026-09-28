@@ -119,6 +119,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.10 finding in progress — GlobalOperator/Authorization collision.** Global operator routes such as installer and registry-runner use route-specific host credentials, but `auth_context` previously interpreted any `Authorization: Bearer ...` as a user JWT even when tenant resolution was deliberately bypassed. User-auth middleware now suppresses `Authorization` on `GlobalOperator` routes, leaving route-specific credentials to their owning middleware/controller; tenant-bound routes retain normal JWT processing.
 
+- [ ] **FS-22.03 finding in progress — auth verifier tenant-first query isolation.** Direct-token session lookup, user lookup, and active OAuth-app lookup previously selected rows by global identifiers and checked tenant ownership only after loading them. The verifier now applies `tenant_id` in each query and retains the explicit post-load tenant checks as defense in depth.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
