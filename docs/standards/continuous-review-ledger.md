@@ -143,6 +143,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.07 finding in progress — admin registry server-function credential proxy.** The admin registry `#[server]` functions previously accepted bearer token and tenant selector values as serialized client arguments and used them to make privileged registry REST calls. The native functions now bind to the outer `AuthContext`, `TenantContext`, and request Authorization header; client transport arguments remain only for direct GraphQL/headless paths, and are no longer serialized into the native server-function contract.
 
+- [ ] **FS-22.10 finding in progress — operator health exposure.** `/health/runtime` and `/health/modules` expose rollout/module dependency state and are documented as operator-facing, but were previously public because tenant middleware classified all `/health/*` as global. They now require typed host `read`/`manage` authority; `/health`, `/health/live`, and `/health/ready` remain probe-friendly.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
