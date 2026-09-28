@@ -44,6 +44,7 @@
 - New cross-module request/auth/GraphQL/port helpers should go into `rustok-api` only when they are genuinely shared and host/API-level.
 - UI route/query/input helpers belong in `rustok-ui-core` and `leptos-ui-routing`, not in `rustok-api`.
 - UI message catalogs, translation-key resolution, Unicode locale mechanics, and reusable `Accept-Language` parsing belong in `rustok-ui-i18n`; `rustok-api` owns host/request precedence and compatibility contracts, not a second parser.
+- `RequestContext` is a projection of trusted request extensions; it never reconstructs tenant or effective-locale authority when upstream middleware evidence is missing.
 - Richtext executable policy, profile definitions, validation, rendering, and
   plain-text extraction belong in `rustok-content::richtext`, not here.
 

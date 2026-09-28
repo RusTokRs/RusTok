@@ -17,7 +17,7 @@ persistence, caller transactions, outbox composition, cache invalidation after
 commit, and process telemetry.
 
 Request permission snapshots enter the owner `PermissionResolver` through an
-authenticated host adapter; single, any, and all decisions run the owner tenant
+authenticated host adapter; HTTP `RequestContext` likewise consumes only the upstream trusted tenant/locale/channel/auth extensions and does not reconstruct those dimensions. single, any, and all decisions run the owner tenant
 policy engine and preserve the request permission ceiling. Persisted role-user
 membership queries delegate to `load_role_user_ids_on`. The server contains no
 independent permission-membership decision branch or role-membership SQL query
