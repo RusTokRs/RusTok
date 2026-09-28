@@ -56,10 +56,10 @@ impl AuthUserBackfillReadPort for AuthUserBackfillDbReader {
         let backend = self.db.get_database_backend();
         let sql = match backend {
             DbBackend::Sqlite => {
-                "SELECT id, email, name FROM users WHERE tenant_id = ?1 ORDER BY created_at ASC LIMIT ?2"
+                "SELECT id, email, name FROM users WHERE tenant_id = ?1 ORDER BY created_at ASC, id ASC LIMIT ?2"
             }
             _ => {
-                "SELECT id, email, name FROM users WHERE tenant_id = $1 ORDER BY created_at ASC LIMIT $2"
+                "SELECT id, email, name FROM users WHERE tenant_id = $1 ORDER BY created_at ASC, id ASC LIMIT $2"
             }
         };
         let statement = Statement::from_sql_and_values(
