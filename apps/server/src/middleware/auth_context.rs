@@ -28,9 +28,11 @@ pub async fn resolve_optional(
     let pages_inline_authoring_surface = is_pages_inline_authoring_surface(request_path.as_str());
     let pages_inline_authoring = pages_inline_authoring_surface
         || is_pages_inline_authoring_server_fn(request_path.as_str());
-    let suppress_user_authorization =
-        super::tenant_route_policy::tenant_route_scope(request_path.as_str())
-            == super::tenant_route_policy::TenantRouteScope::GlobalOperator;
+    let suppress_user_authorization = matches!(
+        super::tenant_route_policy::tenant_route_scope(request_path.as_str()),
+        super::tenant_route_policy::TenantRouteScope::GlobalOperator
+            | super::tenant_route_policy::TenantRouteScope::SelfResolvingHandshake
+    );
     let presented_credentials = parts.headers.contains_key(AUTHORIZATION);
     let host_authority = match take_host_authority(&mut parts.headers) {
         Ok(authority) => authority,
@@ -315,6 +317,20 @@ mod tests {
         assert_eq!(
             super::super::tenant_route_policy::tenant_route_scope("/api/install/apply"),
             super::super::tenant_route_policy::TenantRouteScope::GlobalOperator
+        );
+        assert!(headers.contains_key(AUTHORIZATION));
+    }
+
+    #[test]
+    fn self_resolving_handshakes_skip_http_jwt_parsing_but_preserve_authorization() {
+        assert_eq!(
+            super::super::tenant_route_policy::tenant_route_scope("/api/graphql/ws"),
+            super::super::tenant_route_policy::TenantRouteScope::SelfResolvingHandshake
+        );
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            AUTHORIZATION,
+            "Bearer handshake-token".parse().unwrap(),
         );
         assert!(headers.contains_key(AUTHORIZATION));
     }
