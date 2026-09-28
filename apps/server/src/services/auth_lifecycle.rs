@@ -479,7 +479,11 @@ impl AuthLifecycleService {
                 .await
                 .map_err(AuthLifecycleError::from)?,
             DatabaseBackend::Sqlite => {
-                let existing = query.one(txn).await.map_err(AuthLifecycleError::from)?;
+                let existing = query
+                    .clone()
+                    .one(txn)
+                    .await
+                    .map_err(AuthLifecycleError::from)?;
                 if let Some(existing) = existing.as_ref() {
                     let statement = Statement::from_sql_and_values(
                         DatabaseBackend::Sqlite,
@@ -490,11 +494,22 @@ impl AuthLifecycleService {
                             token_hash.to_string().into(),
                         ],
                     );
-                    txn.execute_raw(statement)
+                    let result = txn
+                        .execute_raw(statement)
                         .await
                         .map_err(AuthLifecycleError::from)?;
+                    if result.rows_affected() != 1 {
+                        let current = sessions::Entity::find_by_id(existing.id)
+                            .filter(sessions::Column::TenantId.eq(tenant_id))
+                            .one(txn)
+                            .await
+                            .map_err(AuthLifecycleError::from)?;
+                        return Ok(current.filter(|session| session.token_hash == token_hash));
+                    }
+
+                    return query.one(txn).await.map_err(AuthLifecycleError::from);
                 }
-                existing
+                Ok(None)
             }
             _ => query.one(txn).await.map_err(AuthLifecycleError::from)?,
         };
