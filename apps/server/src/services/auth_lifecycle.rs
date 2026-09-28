@@ -450,6 +450,7 @@ impl AuthLifecycleService {
         }
 
         let user = users::Entity::find_by_id(session.user_id)
+            .filter(users::Column::TenantId.eq(tenant_id))
             .one(&txn)
             .await
             .map_err(AuthLifecycleError::from)?
@@ -752,7 +753,12 @@ impl AuthLifecycleService {
         C: ConnectionTrait,
     {
         let user_role_links = crate::models::_entities::user_roles::Entity::find()
+            .join(
+                JoinType::InnerJoin,
+                crate::models::_entities::user_roles::Relation::Role.def(),
+            )
             .filter(crate::models::_entities::user_roles::Column::UserId.eq(user_id))
+            .filter(crate::models::_entities::roles::Column::TenantId.eq(tenant_id))
             .all(db)
             .await
             .map_err(Error::from)?;

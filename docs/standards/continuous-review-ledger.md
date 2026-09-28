@@ -121,6 +121,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.03 finding in progress — auth verifier tenant-first query isolation.** Direct-token session lookup, user lookup, and active OAuth-app lookup previously selected rows by global identifiers and checked tenant ownership only after loading them. The verifier now applies `tenant_id` in each query and retains the explicit post-load tenant checks as defense in depth.
 
+- [ ] **FS-22.03 finding in progress — refresh/RBAC role tenant-first query isolation.** Refresh user lookup now filters `users.tenant_id`, and effective-role resolution joins `user_roles` directly to tenant-scoped `roles` before role IDs are considered. This closes the remaining auth lifecycle reads that could otherwise select tenantless relationship rows before the tenant boundary was applied.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
