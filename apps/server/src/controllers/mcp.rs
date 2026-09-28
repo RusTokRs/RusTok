@@ -739,7 +739,7 @@ async fn rotate_token(
         client_id,
     )
     .await
-    .map_err(|error| crate::error::Error::Forbidden(error.to_string()))?;
+    .map_err(map_mcp_management_authority_error)?;
 
     let result = McpManagementService::rotate_token(
         ctx.db(),
@@ -777,7 +777,7 @@ async fn update_policy(
         &input.granted_permissions,
     )
     .await
-    .map_err(|error| crate::error::Error::Forbidden(error.to_string()))?;
+    .map_err(map_mcp_management_authority_error)?;
 
     let policy = McpManagementService::update_policy(
         ctx.db(),
