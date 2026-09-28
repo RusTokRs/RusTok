@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `09fd976184fc839b1a3e7cee0351f2ad02bd79d9`  
+**Current main SHA:** `486a3c3e8c33ee1c4332f318f141d2829a4d40e2`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -329,7 +329,8 @@ Hard limits for every iteration:
 - **Regression correction during review:** the second pass caught malformed indentation in newly added test blocks; the test source was normalized before closeout.
 - **Fresh second pass:** independently re-read the owner capability state, HTTP extraction, duplicate handling, cache policy, both native adapter feature variants, transport selection, app-router composition, customer ownership resolution, guarded port behavior, and cart owner persistence. No remaining repository-owned in-scope guest-access bypass was found.
 - **Verification:** repository-content/static reasoning and branch-diff review only. No tests, clippy, gatekeeper, build, or runtime commands were executed by the agent.
-- **Status:** module-level fresh second pass clean; `FS-22.02.10` complete and ready for integration. Next planned primary module is `FS-22.02.11 — apps/server/src/middleware/security_headers.rs`.
+- **Merged:** PR #4178, merge commit `486a3c3e8c33ee1c4332f318f141d2829a4d40e2`.
+- **Status:** module-level fresh second pass clean; `FS-22.02.10` complete and integrated into `main`. Next planned primary module is `FS-22.02.11 — `apps/server/src/middleware/security_headers.rs`.
 
 ### Deferred owning-module findings discovered during FS-22
 
