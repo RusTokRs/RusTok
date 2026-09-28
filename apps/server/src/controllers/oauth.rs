@@ -775,22 +775,32 @@ async fn userinfo_handler(
 async fn userinfo_handler_inner(
     current_user: CurrentUser,
 ) -> Result<Json<serde_json::Value>, TokenErrorResponse> {
-    // We already know the token is valid, active, and belongs to a user because
-    // the CurrentUser extractor succeeds only if these conditions are met.
+    if current_user.principal_kind != rustok_api::AuthPrincipalKind::DelegatedUser {
+        return Err(TokenErrorResponse {
+            error: "insufficient_scope".to_string(),
+            error_description: "UserInfo requires an OAuth user access token".to_string(),
+        });
+    }
 
-    // In a full OIDC implementation, we'd check if the token had the `openid` scope specifically.
-    // We assume CurrentUser claims contain the scopes if needed, but since we rely on RBAC
-    // returning the user profile here is generally safe for authenticated apps.
+    if !current_user
+        .scopes
+        .iter()
+        .any(|scope| matches!(scope.as_str(), "openid" | "profile"))
+    {
+        return Err(TokenErrorResponse {
+            error: "insufficient_scope".to_string(),
+            error_description: "UserInfo requires the openid or profile scope".to_string(),
+        });
+    }
 
     let user = current_user.user;
     let inferred_role = current_user.inferred_role;
 
-    // standard OIDC claims
     let userinfo = serde_json::json!({
         "sub": user.id.to_string(),
         "name": user.name.unwrap_or_default(),
         "email": user.email,
-        "email_verified": true, // We assume true for simplicity here, adjust if rustok tracks verification
+        "email_verified": user.is_email_verified(),
         "role": inferred_role.to_string(),
         "tenant_id": user.tenant_id.to_string(),
     });
