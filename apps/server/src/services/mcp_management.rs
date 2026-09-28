@@ -1018,7 +1018,8 @@ fn normalize_metadata(value: serde_json::Value) -> serde_json::Value {
 }
 
 fn map_db_err(err: sea_orm::DbErr) -> Error {
-    Error::BadRequest(err.to_string())
+    tracing::error!(error = %err, "MCP management database operation failed");
+    Error::InternalServerError
 }
 
 #[cfg(test)]
