@@ -26,12 +26,21 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
         crate::controllers::auth::logout,
         crate::controllers::auth::me,
         crate::controllers::auth::accept_invite,
+        crate::controllers::auth::request_reset,
+        crate::controllers::auth::confirm_reset,
         crate::controllers::auth::request_verification,
         crate::controllers::auth::confirm_verification,
+        crate::controllers::auth::list_sessions,
+        crate::controllers::auth::revoke_all_sessions,
+        crate::controllers::auth::change_password,
+        crate::controllers::auth::update_profile,
+        crate::controllers::auth::login_history,
+        crate::controllers::auth::revoke_session,
         // Health
         crate::controllers::health::health,
         crate::controllers::health::live,
         crate::controllers::health::ready,
+        crate::controllers::health::runtime,
         crate::controllers::health::modules,
         // Metrics
         crate::controllers::metrics::metrics,
@@ -47,7 +56,14 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
         crate::controllers::marketplace_registry::validate_publish_request_step,
         crate::controllers::marketplace_registry::approve_publish_request,
         crate::controllers::marketplace_registry::reject_publish_request,
+        crate::controllers::marketplace_registry::request_changes_publish_request,
+        crate::controllers::marketplace_registry::hold_publish_request,
+        crate::controllers::marketplace_registry::resume_publish_request,
         crate::controllers::marketplace_registry::report_validation_stage,
+        crate::controllers::marketplace_registry::claim_remote_validation_stage,
+        crate::controllers::marketplace_registry::heartbeat_remote_validation_stage,
+        crate::controllers::marketplace_registry::complete_remote_validation_stage,
+        crate::controllers::marketplace_registry::fail_remote_validation_stage,
         crate::controllers::marketplace_registry::transfer_owner,
         crate::controllers::marketplace_registry::yank,
         // RBAC artifact permissions
@@ -77,11 +93,18 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
             crate::controllers::auth::RegisterParams,
             crate::controllers::auth::RefreshRequest,
             crate::controllers::auth::AcceptInviteParams,
+            crate::controllers::auth::ConfirmResetParams,
             crate::controllers::auth::InviteAcceptResponse,
+            crate::controllers::auth::RequestResetParams,
             crate::controllers::auth::RequestVerificationParams,
             crate::controllers::auth::ConfirmVerificationParams,
             crate::controllers::auth::VerificationRequestResponse,
+            crate::controllers::auth::ResetRequestResponse,
             crate::controllers::auth::GenericStatusResponse,
+            crate::controllers::auth::ChangePasswordParams,
+            crate::controllers::auth::UpdateProfileParams,
+            crate::controllers::auth::SessionItem,
+            crate::controllers::auth::SessionsResponse,
             crate::controllers::auth::UserResponse,
             crate::controllers::auth::AuthResponse,
             crate::controllers::auth::UserInfo,
@@ -111,6 +134,23 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
             crate::services::marketplace_catalog::RegistryPublishUiPackagesRequest,
             crate::services::marketplace_catalog::RegistryPublishUiPackageRequest,
             crate::services::marketplace_catalog::RegistryYankRequest,
+            crate::services::marketplace_catalog::RegistryValidationStageReportRequest,
+            crate::services::marketplace_catalog::RegistryRunnerClaimRequest,
+            crate::services::marketplace_catalog::RegistryRunnerClaimResponse,
+            crate::services::marketplace_catalog::RegistryRunnerClaimPayload,
+            crate::services::marketplace_catalog::RegistryRunnerHeartbeatRequest,
+            crate::services::marketplace_catalog::RegistryRunnerCompletionRequest,
+            crate::services::marketplace_catalog::RegistryRunnerMutationResponse,
+            crate::services::marketplace_catalog::RegistryOwnerTransferRequest,
+            // Runtime guardrails
+            crate::services::runtime_guardrails::RuntimeGuardrailSnapshot,
+            crate::services::runtime_guardrails::RuntimeGuardrailStatus,
+            crate::services::runtime_guardrails::RuntimeGuardrailRollout,
+            crate::services::runtime_guardrails::RateLimitGuardrailSnapshot,
+            crate::services::runtime_guardrails::RateLimitPolicySnapshot,
+            crate::services::runtime_guardrails::EventBusGuardrailSnapshot,
+            crate::services::runtime_guardrails::EventTransportGuardrailSnapshot,
+            crate::services::runtime_guardrails::RemoteExecutorGuardrailSnapshot,
             // RBAC artifact permissions
             crate::controllers::artifact_permissions::ArtifactRolePermissionAssignmentRequest,
             crate::controllers::artifact_permissions::ArtifactRolePermissionAssignmentResponse,
@@ -252,6 +292,104 @@ mod tests {
     use super::{ApiDoc, build_openapi_document};
     use crate::common::settings::{RuntimeHostMode, RustokSettings};
     use utoipa::OpenApi;
+
+
+
+    #[test]
+    fn openapi_includes_all_documented_core_paths() {
+        let openapi = ApiDoc::openapi();
+
+        let expected_paths = [
+            "/api/auth/register",
+            "/api/auth/login",
+            "/api/auth/refresh",
+            "/api/auth/logout",
+            "/api/auth/me",
+            "/api/auth/invite/accept",
+            "/api/auth/reset/request",
+            "/api/auth/reset/confirm",
+            "/api/auth/verify/request",
+            "/api/auth/verify/confirm",
+            "/api/auth/sessions",
+            "/api/auth/sessions/revoke-all",
+            "/api/auth/change-password",
+            "/api/auth/profile",
+            "/api/auth/history",
+            "/api/auth/sessions/{id}",
+            "/health",
+            "/health/live",
+            "/health/ready",
+            "/health/runtime",
+            "/health/modules",
+            "/metrics",
+            "/catalog",
+            "/catalog/{slug}",
+            "/v2/catalog/publish",
+            "/v2/catalog/publish/{request_id}",
+            "/v2/catalog/publish/{request_id}/artifact",
+            "/v2/catalog/publish/{request_id}/external-prebuilt-stage",
+            "/v2/catalog/publish/{request_id}/platform-build-stage",
+            "/v2/catalog/publish/{request_id}/author-signature",
+            "/v2/catalog/publish/{request_id}/validate",
+            "/v2/catalog/publish/{request_id}/stages",
+            "/v2/catalog/publish/{request_id}/approve",
+            "/v2/catalog/publish/{request_id}/reject",
+            "/v2/catalog/publish/{request_id}/request-changes",
+            "/v2/catalog/publish/{request_id}/hold",
+            "/v2/catalog/publish/{request_id}/resume",
+            "/v2/catalog/runner/claim",
+            "/v2/catalog/runner/{claim_id}/heartbeat",
+            "/v2/catalog/runner/{claim_id}/complete",
+            "/v2/catalog/runner/{claim_id}/fail",
+            "/v2/catalog/yank",
+            "/v2/catalog/owner-transfer",
+            "/api/rbac/artifact-permissions/roles/{role_id}",
+            "/api/admin/events/dlq",
+            "/api/admin/events/dlq/{id}/replay",
+            "/api/v1/flex/schemas",
+            "/api/v1/flex/schemas/{schema_id}",
+            "/api/v1/flex/schemas/{schema_id}/entries",
+            "/api/v1/flex/schemas/{schema_id}/entries/{entry_id}",
+            "/api/openapi.json",
+            "/api/openapi.yaml",
+        ];
+
+        for path in expected_paths {
+            assert!(
+                openapi.paths.paths.contains_key(path),
+                "OpenAPI spec must include documented core path {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn openapi_declares_documented_runtime_schemas() {
+        let openapi = ApiDoc::openapi();
+        let schemas = openapi
+            .components
+            .as_ref()
+            .expect("OpenAPI components must exist");
+
+        for name in [
+            "ResetRequestResponse",
+            "SessionsResponse",
+            "RuntimeGuardrailSnapshot",
+            "RegistryPublishValidationRequest",
+            "RegistryValidationStageReportRequest",
+            "RegistryRunnerClaimRequest",
+            "RegistryRunnerClaimResponse",
+            "RegistryRunnerClaimPayload",
+            "RegistryRunnerHeartbeatRequest",
+            "RegistryRunnerCompletionRequest",
+            "RegistryRunnerMutationResponse",
+            "RegistryOwnerTransferRequest",
+        ] {
+            assert!(
+                schemas.schemas.contains_key(name),
+                "OpenAPI components must contain schema {name}"
+            );
+        }
+    }
 
     #[test]
     fn openapi_includes_registry_catalog_path() {
