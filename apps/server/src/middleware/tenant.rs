@@ -6,8 +6,9 @@ use axum::{
     response::Response,
 };
 use rustok_cache::{
-    CacheEnvelope, CacheKeyBuilder as CanonicalCacheKeyBuilder, CacheLoadPolicy, CacheLoadSource,
-    CacheService, CacheTtlPolicy, NegativeCachePolicy,
+    cache_backend_generation_snapshot, CacheBackendGenerationSnapshot, CacheEnvelope,
+    CacheKeyBuilder as CanonicalCacheKeyBuilder, CacheLoadPolicy, CacheLoadSource, CacheService,
+    CacheTtlPolicy, NegativeCachePolicy,
 };
 use rustok_core::{CacheBackend, Error as CoreError};
 use rustok_tenant::{
@@ -38,6 +39,7 @@ const TENANT_NEGATIVE_CACHE_MAX_WEIGHT_BYTES: u64 = 1024 * 1024;
 const TENANT_NEGATIVE_MAX_ENCODED_BYTES: usize = 64 * 1024;
 const TENANT_CACHE_LOADER_TIMEOUT: Duration = Duration::from_secs(10);
 const TENANT_CACHE_JITTER_PERCENT: u8 = 10;
+const TENANT_CACHE_GENERATION_STABILITY_ATTEMPTS: usize = 4;
 #[cfg(feature = "redis-cache")]
 const TENANT_CACHE_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -281,23 +283,52 @@ impl TenantCacheKeyBuilder {
         Self { version }
     }
 
-    fn tenant_key(&self, kind: TenantIdentifierKind, value: &str) -> String {
-        self.build("resolution", kind, value)
+    fn tenant_key(
+        &self,
+        kind: TenantIdentifierKind,
+        value: &str,
+        generation: u64,
+    ) -> String {
+        self.build("resolution", kind, value, generation)
     }
 
-    fn negative_key(&self, kind: TenantIdentifierKind, value: &str) -> String {
-        self.build("negative", kind, value)
+    fn negative_key(
+        &self,
+        kind: TenantIdentifierKind,
+        value: &str,
+        generation: u64,
+    ) -> String {
+        self.build("negative", kind, value, generation)
     }
 
-    fn kind_key(&self, kind: TenantIdentifierKind, value: &str) -> String {
-        self.tenant_key(kind, normalize_identifier_value(kind, value).as_str())
+    fn kind_key(&self, kind: TenantIdentifierKind, value: &str, generation: u64) -> String {
+        self.tenant_key(
+            kind,
+            normalize_identifier_value(kind, value).as_str(),
+            generation,
+        )
     }
 
-    fn kind_negative_key(&self, kind: TenantIdentifierKind, value: &str) -> String {
-        self.negative_key(kind, normalize_identifier_value(kind, value).as_str())
+    fn kind_negative_key(
+        &self,
+        kind: TenantIdentifierKind,
+        value: &str,
+        generation: u64,
+    ) -> String {
+        self.negative_key(
+            kind,
+            normalize_identifier_value(kind, value).as_str(),
+            generation,
+        )
     }
 
-    fn build(&self, resource: &str, kind: TenantIdentifierKind, value: &str) -> String {
+    fn build(
+        &self,
+        resource: &str,
+        kind: TenantIdentifierKind,
+        value: &str,
+        generation: u64,
+    ) -> String {
         CanonicalCacheKeyBuilder::new(
             "rustok-server",
             "runtime",
@@ -309,6 +340,8 @@ impl TenantCacheKeyBuilder {
         .expect("tenant cache fixed key components are valid")
         .named_identity("kind", kind.as_str())
         .expect("tenant identifier kind is non-empty")
+        .named_identity("generation", generation.to_string())
+        .expect("tenant cache generation is a bounded decimal value")
         .named_identity("value", value)
         .expect("validated tenant identifier is non-empty")
         .build()
@@ -452,28 +485,30 @@ where
 }
 
 impl TenantCacheInfrastructure {
-    async fn new(cache_service: &CacheService) -> Self {
-        let _ = crate::services::tenant_cache_generation::bind_tenant_backend_generations();
+    async fn new(cache_service: &CacheService) -> crate::error::Result<Self> {
+        crate::services::tenant_cache_generation::bind_tenant_backend_generations()
+            .map_err(|error| crate::error::Error::Cache(error.to_string()))?;
+
         let ttl = CacheTtlPolicy::deterministic_jitter(
             TENANT_CACHE_TTL,
             TENANT_CACHE_JITTER_PERCENT,
             "tenant-resolution-v2",
         )
-        .expect("tenant cache jitter policy is valid");
+        .map_err(|error| crate::error::Error::Cache(error.to_string()))?;
         let load_policy = CacheLoadPolicy::new(ttl)
             .with_loader_timeout(TENANT_CACHE_LOADER_TIMEOUT)
-            .expect("tenant loader timeout is positive");
+            .map_err(|error| crate::error::Error::Cache(error.to_string()))?;
         let negative_policy = NegativeCachePolicy::deterministic_jittered(
             TENANT_NEGATIVE_SCHEMA_VERSION,
             TENANT_NEGATIVE_CACHE_TTL,
             TENANT_CACHE_JITTER_PERCENT,
             "tenant-negative-v2",
         )
-        .expect("tenant negative cache policy is valid")
+        .map_err(|error| crate::error::Error::Cache(error.to_string()))?
         .with_max_encoded_bytes(TENANT_NEGATIVE_MAX_ENCODED_BYTES)
-        .expect("tenant negative cache size limit is positive");
+        .map_err(|error| crate::error::Error::Cache(error.to_string()))?;
 
-        Self {
+        Ok(Self {
             tenant_cache: cache_service
                 .backend_weighted(
                     &format!("tenant-cache:{}:data", TENANT_CACHE_VERSION),
@@ -493,7 +528,7 @@ impl TenantCacheInfrastructure {
             load_policy,
             negative_policy,
             cache_service: cache_service.clone(),
-        }
+        })
     }
 
     async fn check_negative(
@@ -617,18 +652,18 @@ impl TenantCacheInfrastructure {
 pub async fn init_tenant_cache_infrastructure(
     ctx: &ServerRuntimeContext,
     cache_service: &CacheService,
-) {
+) -> crate::error::Result<()> {
     if !ctx.shared_contains::<CacheService>() {
         ctx.shared_insert(cache_service.clone());
     }
 
     if ctx.shared_contains::<Arc<TenantCacheInfrastructure>>() {
-        return;
+        return Ok(());
     }
 
-    ctx.shared_insert(Arc::new(
-        TenantCacheInfrastructure::new(cache_service).await,
-    ));
+    let infrastructure = TenantCacheInfrastructure::new(cache_service).await?;
+    ctx.shared_insert(Arc::new(infrastructure));
+    Ok(())
 }
 
 fn tenant_infra(ctx: &ServerRuntimeContext) -> Option<Arc<TenantCacheInfrastructure>> {
@@ -644,76 +679,111 @@ pub(crate) async fn load_tenant_context(
     };
 
     let identifier_value = identifier.value();
-    let cache_key = infra
-        .key_builder
-        .kind_key(identifier.kind(), &identifier_value);
-    let negative_key = infra
-        .key_builder
-        .kind_negative_key(identifier.kind(), &identifier_value);
 
-    if let Some(reason) = infra.check_negative(&negative_key).await? {
-        return Err(reason.into());
+    for _attempt in 0..TENANT_CACHE_GENERATION_STABILITY_ATTEMPTS {
+        let generation = tenant_cache_generation_snapshot()?;
+        let cache_key = infra
+            .key_builder
+            .kind_key(identifier.kind(), &identifier_value, generation.generation);
+        let negative_key = infra.key_builder.kind_negative_key(
+            identifier.kind(),
+            &identifier_value,
+            generation.generation,
+        );
+
+        if let Some(reason) = infra.check_negative(&negative_key).await? {
+            if tenant_cache_generation_snapshot()? == generation {
+                return Err(reason.into());
+            }
+            continue;
+        }
+
+        let tenant_service = TenantService::new(ctx.db_clone());
+        let tenant_request = tenant_read_request(identifier);
+        let tenant_port_context = tenant_read_context(identifier);
+        let negative_key_clone = negative_key.clone();
+        let infra_clone = infra.clone();
+
+        let result = infra
+            .get_or_load_with_coalescing(&cache_key, || async move {
+                if let Some(reason) = infra_clone
+                    .check_negative(&negative_key_clone)
+                    .await
+                    .map_err(|err| CoreError::Cache(err.to_string()))?
+                {
+                    return Err(match reason {
+                        CachedTenantMiss::NotFound => {
+                            CoreError::NotFound("tenant not found".to_string())
+                        }
+                        CachedTenantMiss::Disabled => {
+                            CoreError::Forbidden("tenant disabled".to_string())
+                        }
+                    });
+                }
+
+                let projection = match tenant_service
+                    .read_tenant(tenant_port_context, tenant_request)
+                    .await
+                {
+                    Ok(projection) => projection,
+                    Err(error) if error.kind == PortErrorKind::NotFound => {
+                        if let Err(cache_error) = infra_clone
+                            .set_negative(negative_key_clone.clone(), CachedTenantMiss::NotFound)
+                            .await
+                        {
+                            tracing::warn!(%cache_error, "Tenant not-found negative cache write failed");
+                        }
+                        return Err(CoreError::NotFound(error.message));
+                    }
+                    Err(error) => return Err(tenant_port_error_to_core_error(error)),
+                };
+
+                match tenant_context_from_projection(projection) {
+                    Ok(context) => Ok(context),
+                    Err(CachedTenantMiss::Disabled) => {
+                        if let Err(cache_error) = infra_clone
+                            .set_negative(negative_key_clone.clone(), CachedTenantMiss::Disabled)
+                            .await
+                        {
+                            tracing::warn!(%cache_error, "Disabled-tenant negative cache write failed");
+                        }
+                        Err(CoreError::Forbidden("tenant disabled".to_string()))
+                    }
+                    Err(CachedTenantMiss::NotFound) => {
+                        if let Err(cache_error) = infra_clone
+                            .set_negative(negative_key_clone.clone(), CachedTenantMiss::NotFound)
+                            .await
+                        {
+                            tracing::warn!(%cache_error, "Tenant projection negative cache write failed");
+                        }
+                        Err(CoreError::NotFound("tenant not found".to_string()))
+                    }
+                }
+            })
+            .await;
+
+        if tenant_cache_generation_snapshot()? != generation {
+            continue;
+        }
+
+        return result;
     }
 
-    let tenant_service = TenantService::new(ctx.db_clone());
-    let tenant_request = tenant_read_request(identifier);
-    let tenant_port_context = tenant_read_context(identifier);
-    let negative_key_clone = negative_key.clone();
-    let infra_clone = infra.clone();
+    Err(TenantContextLoadError::BackendUnavailable(
+        "tenant cache generation changed continuously during resolution".to_string(),
+    ))
+}
 
-    infra
-        .get_or_load_with_coalescing(&cache_key, || async move {
-            if let Some(reason) = infra_clone
-                .check_negative(&negative_key_clone)
-                .await
-                .map_err(|err| CoreError::Cache(err.to_string()))?
-            {
-                return Err(match reason {
-                    CachedTenantMiss::NotFound => CoreError::NotFound("tenant not found".to_string()),
-                    CachedTenantMiss::Disabled => CoreError::Forbidden("tenant disabled".to_string()),
-                });
-            }
-
-            let projection = match tenant_service
-                .read_tenant(tenant_port_context, tenant_request)
-                .await
-            {
-                Ok(projection) => projection,
-                Err(error) if error.kind == PortErrorKind::NotFound => {
-                    if let Err(cache_error) = infra_clone
-                        .set_negative(negative_key_clone.clone(), CachedTenantMiss::NotFound)
-                        .await
-                    {
-                        tracing::warn!(%cache_error, "Tenant not-found negative cache write failed");
-                    }
-                    return Err(CoreError::NotFound(error.message));
-                }
-                Err(error) => return Err(tenant_port_error_to_core_error(error)),
-            };
-
-            match tenant_context_from_projection(projection) {
-                Ok(context) => Ok(context),
-                Err(CachedTenantMiss::Disabled) => {
-                    if let Err(cache_error) = infra_clone
-                        .set_negative(negative_key_clone.clone(), CachedTenantMiss::Disabled)
-                        .await
-                    {
-                        tracing::warn!(%cache_error, "Disabled-tenant negative cache write failed");
-                    }
-                    Err(CoreError::Forbidden("tenant disabled".to_string()))
-                }
-                Err(CachedTenantMiss::NotFound) => {
-                    if let Err(cache_error) = infra_clone
-                        .set_negative(negative_key_clone.clone(), CachedTenantMiss::NotFound)
-                        .await
-                    {
-                        tracing::warn!(%cache_error, "Tenant projection negative cache write failed");
-                    }
-                    Err(CoreError::NotFound("tenant not found".to_string()))
-                }
-            }
-        })
-        .await
+fn tenant_cache_generation_snapshot(
+) -> Result<CacheBackendGenerationSnapshot, TenantContextLoadError> {
+    cache_backend_generation_snapshot(
+        crate::services::tenant_cache_generation::TENANT_CACHE_BACKEND_PREFIX,
+    )
+    .map_err(|error| {
+        TenantContextLoadError::BackendUnavailable(format!(
+            "tenant cache generation snapshot unavailable: {error}"
+        ))
+    })
 }
 
 fn record_resolution_outcome(
