@@ -156,7 +156,8 @@ pub struct GraphqlSchemaDependencies {
         feature = "mod-forum",
         feature = "mod-comments"
     ))]
-    pub content_orchestration: rustok_content_orchestration::SharedContentOrchestrationService,
+    pub content_orchestration:
+        Option<rustok_content_orchestration::SharedContentOrchestrationService>,
     #[cfg(feature = "mod-media")]
     pub storage: StorageRuntime,
 }
@@ -290,7 +291,11 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         feature = "mod-forum",
         feature = "mod-comments"
     ))]
-    let builder = builder.data(content_orchestration);
+    let builder = if let Some(content_orchestration) = content_orchestration {
+        builder.data(content_orchestration)
+    } else {
+        builder
+    };
 
     #[cfg(feature = "mod-media")]
     let builder = builder.data(storage);
