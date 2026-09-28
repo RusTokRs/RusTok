@@ -296,6 +296,10 @@ pub struct ProductDraft {
     pub compare_at_amount: String,
     pub inventory_quantity: i32,
     pub publish_now: bool,
+    pub status: Option<String>,
+    pub meta_title: Option<String>,
+    pub meta_description: Option<String>,
+    pub tags: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

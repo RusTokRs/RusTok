@@ -291,15 +291,16 @@ pub fn CategoriesPage() -> impl IntoView {
                                                         <button
                                                             type="button"
                                                             class="h-6 px-2 rounded text-[11px] font-medium border border-border text-foreground hover:bg-accent"
+                                                            title=if is_ru { "Создать категорию на основе этой" } else { "Create category from this template" }
                                                             on:click=move |_| {
                                                                 set_editing_id.set(Some(cat_id.clone()));
-                                                                set_cat_name.set(cat_name_val.clone());
-                                                                set_cat_slug.set(cat_slug_val.clone());
-                                                                set_cat_code.set(cat_code_val.clone());
+                                                                set_cat_name.set(format!("{} (copy)", cat_name_val));
+                                                                set_cat_slug.set(format!("{}-copy", cat_slug_val));
+                                                                set_cat_code.set(format!("{}_COPY", cat_code_val));
                                                                 set_cat_kind.set(cat_kind_val.clone());
                                                             }
                                                         >
-                                                            {if is_ru { "Изм." } else { "Edit" }}
+                                                            {if is_ru { "Копия" } else { "Clone" }}
                                                         </button>
                                                     </div>
                                                 </td>
@@ -317,7 +318,7 @@ pub fn CategoriesPage() -> impl IntoView {
                     <div class="flex items-center justify-between border-b border-border pb-2.5">
                         <h2 class="text-sm font-semibold text-foreground">
                             {move || if editing_id.get().is_some() {
-                                if is_ru { "Редактировать категорию" } else { "Edit Category" }
+                                if is_ru { "Категория на основе шаблона" } else { "Category from Template" }
                             } else {
                                 if is_ru { "Новая категория" } else { "Add Category" }
                             }}

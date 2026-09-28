@@ -25,6 +25,8 @@ pub fn ProductGridPage() -> impl IntoView {
     let (error_msg, set_error_msg) = signal(Option::<String>::None);
     let (search_query, set_search_query) = signal(String::new());
     let (dropdown_open, set_dropdown_open) = signal(false);
+    let (confirm_delete_id, set_confirm_delete_id) = signal(Option::<String>::None);
+    let (confirm_bulk, set_confirm_bulk) = signal(false);
 
     // Grid state
     let columns = product_grid_columns(locale.as_deref());
@@ -367,14 +369,49 @@ pub fn ProductGridPage() -> impl IntoView {
                         >
                             {status_icon}
                         </button>
-                        <button
-                            type="button"
-                            class="inline-flex items-center justify-center w-7 h-7 rounded-md text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
-                            title=if is_ru { "Удалить" } else { "Delete" }
-                            on:click=move |_| on_del(item_id_del.clone())
-                        >
-                            "🗑"
-                        </button>
+                        {move || {
+                            let id_to_check = item_id_del.clone();
+                            if confirm_delete_id.get().as_deref() == Some(&id_to_check) {
+                                let id_del = id_to_check.clone();
+                                view! {
+                                    <div class="inline-flex items-center gap-1 animate-in fade-in duration-100">
+                                        <button
+                                            type="button"
+                                            class="inline-flex items-center justify-center h-7 px-2 rounded-md text-xs font-semibold bg-rose-600 text-white hover:bg-rose-700 transition"
+                                            title=if is_ru { "Подтвердить удаление" } else { "Confirm deletion" }
+                                            on:click=move |_| {
+                                                set_confirm_delete_id.set(None);
+                                                on_del(id_del.clone());
+                                            }
+                                        >
+                                            "✓"
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="inline-flex items-center justify-center h-7 px-2 rounded-md text-xs border border-border text-muted-foreground hover:text-foreground transition"
+                                            title=if is_ru { "Отмена" } else { "Cancel" }
+                                            on:click=move |_| set_confirm_delete_id.set(None)
+                                        >
+                                            "✕"
+                                        </button>
+                                    </div>
+                                }
+                                .into_any()
+                            } else {
+                                let id_del = id_to_check.clone();
+                                view! {
+                                    <button
+                                        type="button"
+                                        class="inline-flex items-center justify-center w-7 h-7 rounded-md text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                                        title=if is_ru { "Удалить" } else { "Delete" }
+                                        on:click=move |_| set_confirm_delete_id.set(Some(id_del.clone()))
+                                    >
+                                        "🗑"
+                                    </button>
+                                }
+                                .into_any()
+                            }
+                        }}
                     </div>
                 }
                 .into_any()
@@ -533,52 +570,80 @@ pub fn ProductGridPage() -> impl IntoView {
                             {move || format!("{} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" })}
                         </span>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <button
-                            type="button"
-                            class="h-7 px-2.5 rounded-lg border border-border bg-background text-[11px] font-medium text-foreground hover:bg-accent transition"
-                            on:click={
-                                let bulk_st = on_bulk_status.clone();
-                                move |_| bulk_st("ACTIVE")
+                    {move || {
+                        if confirm_bulk.get() {
+                            let bulk_del = on_bulk_delete.clone();
+                            view! {
+                                <div class="flex items-center gap-2 animate-in fade-in duration-100">
+                                    <span class="text-xs font-medium text-rose-600 dark:text-rose-400">
+                                        {if is_ru { "Удалить выбранные товары безвозвратно?" } else { "Permanently delete selected products?" }}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        class="h-7 px-3 rounded-lg bg-rose-600 text-white text-[11px] font-semibold hover:bg-rose-700 transition"
+                                        on:click=move |_| {
+                                            set_confirm_bulk.set(false);
+                                            bulk_del();
+                                        }
+                                    >
+                                        {if is_ru { "Да, удалить" } else { "Yes, delete" }}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="h-7 px-2.5 rounded-lg border border-border bg-background text-[11px] hover:bg-accent transition"
+                                        on:click=move |_| set_confirm_bulk.set(false)
+                                    >
+                                        {if is_ru { "Отмена" } else { "Cancel" }}
+                                    </button>
+                                </div>
                             }
-                        >
-                            {if is_ru { "Активировать" } else { "Set Active" }}
-                        </button>
-                        <button
-                            type="button"
-                            class="h-7 px-2.5 rounded-lg border border-border bg-background text-[11px] font-medium text-foreground hover:bg-accent transition"
-                            on:click={
-                                let bulk_st = on_bulk_status.clone();
-                                move |_| bulk_st("DRAFT")
+                            .into_any()
+                        } else {
+                            let bulk_st_act = on_bulk_status.clone();
+                            let bulk_st_drf = on_bulk_status.clone();
+                            let bulk_st_arc = on_bulk_status.clone();
+                            view! {
+                                <div class="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        class="h-7 px-2.5 rounded-lg border border-border bg-background text-[11px] font-medium text-foreground hover:bg-accent transition"
+                                        on:click=move |_| bulk_st_act("ACTIVE")
+                                    >
+                                        {if is_ru { "Активировать" } else { "Set Active" }}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="h-7 px-2.5 rounded-lg border border-border bg-background text-[11px] font-medium text-foreground hover:bg-accent transition"
+                                        on:click=move |_| bulk_st_drf("DRAFT")
+                                    >
+                                        {if is_ru { "В черновик" } else { "Set Draft" }}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="h-7 px-2.5 rounded-lg border border-border bg-background text-[11px] font-medium text-foreground hover:bg-accent transition"
+                                        on:click=move |_| bulk_st_arc("ARCHIVED")
+                                    >
+                                        {if is_ru { "В архив" } else { "Archive" }}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="h-7 px-2.5 rounded-lg border border-rose-300 dark:border-rose-900 bg-rose-500/10 text-[11px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 transition"
+                                        on:click=move |_| set_confirm_bulk.set(true)
+                                    >
+                                        {if is_ru { "Удалить выбранные" } else { "Delete Selected" }}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="h-7 px-2 rounded-lg text-[11px] text-muted-foreground hover:text-foreground transition"
+                                        on:click=move |_| selection.update(|s| s.clear())
+                                    >
+                                        {if is_ru { "Снять выбор" } else { "Clear" }}
+                                    </button>
+                                </div>
                             }
-                        >
-                            {if is_ru { "В черновик" } else { "Set Draft" }}
-                        </button>
-                        <button
-                            type="button"
-                            class="h-7 px-2.5 rounded-lg border border-border bg-background text-[11px] font-medium text-foreground hover:bg-accent transition"
-                            on:click={
-                                let bulk_st = on_bulk_status.clone();
-                                move |_| bulk_st("ARCHIVED")
-                            }
-                        >
-                            {if is_ru { "В архив" } else { "Archive" }}
-                        </button>
-                        <button
-                            type="button"
-                            class="h-7 px-2.5 rounded-lg border border-rose-300 dark:border-rose-900 bg-rose-500/10 text-[11px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 transition"
-                            on:click=move |_| on_bulk_delete()
-                        >
-                            {if is_ru { "Удалить выбранные" } else { "Delete Selected" }}
-                        </button>
-                        <button
-                            type="button"
-                            class="h-7 px-2 rounded-lg text-[11px] text-muted-foreground hover:text-foreground transition"
-                            on:click=move |_| selection.update(|s| s.clear())
-                        >
-                            {if is_ru { "Снять выбор" } else { "Clear" }}
-                        </button>
-                    </div>
+                            .into_any()
+                        }
+                    }}
                 </div>
             </Show>
 

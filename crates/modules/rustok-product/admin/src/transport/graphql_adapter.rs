@@ -296,6 +296,7 @@ struct CreateProductInput {
     shipping_profile_slug: Option<String>,
     #[serde(rename = "primaryCategoryId")]
     primary_category_id: Option<String>,
+    tags: Option<Vec<String>>,
     publish: Option<bool>,
 }
 
@@ -311,6 +312,7 @@ struct UpdateProductInput {
     shipping_profile_slug: Option<String>,
     #[serde(rename = "primaryCategoryId")]
     primary_category_id: Option<String>,
+    tags: Option<Vec<String>>,
     status: Option<String>,
 }
 
@@ -925,7 +927,8 @@ pub(super) async fn update_product(
                     product_type: optional_text(draft.product_type.as_str()),
                     shipping_profile_slug: draft.shipping_profile_slug.clone(),
                     primary_category_id: draft.primary_category_id.clone(),
-                    status: None,
+                    tags: if draft.tags.is_empty() { None } else { Some(draft.tags.clone()) },
+                    status: draft.status.clone(),
                 },
             },
         }),
@@ -958,6 +961,7 @@ pub(super) async fn change_product_status(
                     product_type: None,
                     shipping_profile_slug: None,
                     primary_category_id: None,
+                    tags: None,
                     status: Some(status.to_string()),
                 },
             },
@@ -1020,6 +1024,7 @@ fn build_create_product_input(draft: ProductDraft) -> CreateProductInput {
         product_type: optional_text(draft.product_type.as_str()),
         shipping_profile_slug: draft.shipping_profile_slug,
         primary_category_id: draft.primary_category_id,
+        tags: if draft.tags.is_empty() { None } else { Some(draft.tags.clone()) },
         publish: Some(draft.publish_now),
     }
 }
@@ -1030,7 +1035,7 @@ fn build_translation_input(draft: &ProductDraft) -> ProductTranslationInput {
         title: draft.title.trim().to_string(),
         handle: optional_text(draft.handle.as_str()),
         description: optional_text(draft.description.as_str()),
-        meta_title: None,
-        meta_description: None,
+        meta_title: draft.meta_title.clone(),
+        meta_description: draft.meta_description.clone(),
     }
 }

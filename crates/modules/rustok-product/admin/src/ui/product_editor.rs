@@ -5,7 +5,7 @@ use leptos_router::hooks::use_navigate;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    build_product_image_view_models, build_variant_row_view_models, slugify, DraftForm,
+    build_product_image_view_models, build_variant_row_view_models, slugify,
     ProductKind,
 };
 use crate::model::{
@@ -335,6 +335,11 @@ pub fn ProductEditorPage(
         let kind = active_kind.get_untracked();
         let nav = navigate.clone();
 
+        let mt = meta_title.get_untracked().trim().to_string();
+        let md = meta_description.get_untracked().trim().to_string();
+        let tg = tags.get_untracked();
+        let target_status = current_status_val.clone();
+
         let draft = ProductDraft {
             locale: loc.unwrap_or_else(|| "en".to_string()),
             title: t_val,
@@ -351,7 +356,11 @@ pub fn ProductEditorPage(
             amount: amount.get_untracked(),
             compare_at_amount: compare_at_amount.get_untracked(),
             inventory_quantity: inventory_quantity.get_untracked(),
-            publish_now: current_status_val.to_uppercase() == "ACTIVE",
+            publish_now: target_status.to_uppercase() == "ACTIVE",
+            status: Some(target_status.clone()),
+            meta_title: if mt.is_empty() { None } else { Some(mt) },
+            meta_description: if md.is_empty() { None } else { Some(md) },
+            tags: tg,
         };
 
         spawn_local(async move {
@@ -362,13 +371,25 @@ pub fn ProductEditorPage(
             };
 
             if let Some(pid) = edit_id_opt {
+                let status_to_change = target_status.clone();
                 let res = transport::update_product(
+                    tok.clone(),
+                    ten.clone(),
+                    bootstrap.current_tenant.id.clone(),
+                    bootstrap.me.id.clone(),
+                    pid.clone(),
+                    draft,
+                )
+                .await;
+
+                // Also update status to ensure state transition is persisted
+                let _ = transport::change_product_status(
                     tok,
                     ten,
                     bootstrap.current_tenant.id,
                     bootstrap.me.id,
-                    pid.clone(),
-                    draft,
+                    pid,
+                    &status_to_change,
                 )
                 .await;
 

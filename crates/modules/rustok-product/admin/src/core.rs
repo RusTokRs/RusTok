@@ -1356,6 +1356,10 @@ pub(crate) fn build_save_command(
             compare_at_amount: form.compare_at_amount,
             inventory_quantity: form.inventory_quantity,
             publish_now: form.publish_now,
+            status: None,
+            meta_title: None,
+            meta_description: None,
+            tags: Vec::new(),
         },
     })
 }

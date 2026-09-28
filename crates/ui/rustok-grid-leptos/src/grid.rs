@@ -47,6 +47,49 @@ where
     let empty_msg = empty_message.unwrap_or_else(|| "No records found.".to_string());
     let loading_signal = is_loading.unwrap_or_else(|| Signal::derive(|| false));
 
+    // Synchronize client-side pagination total reactively
+    if on_page_change.is_none() {
+        Effect::new(move |_| {
+            let total_len = data.get().len() as u64;
+            let current_total = local_pagination.get_untracked().total;
+            if current_total != total_len {
+                local_pagination.update(|p| {
+                    p.total = total_len;
+                    p.set_page(p.page);
+                });
+            }
+        });
+    }
+
+    // Display items with client-side slicing when applicable
+    let display_items = move || {
+        let items = data.get();
+        if on_page_change.is_none() {
+            let pag = local_pagination.get();
+            match pag.mode {
+                PaginationMode::Paged => {
+                    if items.len() > pag.page_size {
+                        let start = (pag.page.saturating_sub(1)) * pag.page_size;
+                        let end = (start + pag.page_size).min(items.len());
+                        if start < items.len() {
+                            items[start..end].to_vec()
+                        } else {
+                            Vec::new()
+                        }
+                    } else {
+                        items
+                    }
+                }
+                PaginationMode::Infinite => {
+                    let end = (pag.page * pag.page_size).min(items.len());
+                    items[..end.min(items.len())].to_vec()
+                }
+            }
+        } else {
+            items
+        }
+    };
+
     // Handle column resize
     let handle_resize = Callback::new(move |(col_id, width): (String, u32)| {
         local_widths.update(|w| w.set(col_id, width));
@@ -97,9 +140,9 @@ where
         }
     });
 
-    // Handle toggle all current page selection
+    // Handle toggle all visible rows selection
     let handle_toggle_all_select = Callback::new(move |check_all: bool| {
-        let current_ids: Vec<String> = data.get().iter().map(|item| key_fn(item).to_string()).collect();
+        let current_ids: Vec<String> = display_items().iter().map(|item| key_fn(item).to_string()).collect();
         local_selection.update(|s| {
             if check_all {
                 s.select_all(current_ids);
@@ -114,7 +157,7 @@ where
 
     // Are all current rows selected?
     let all_selected = Signal::derive(move || {
-        let items = data.get();
+        let items = display_items();
         if items.is_empty() {
             return false;
         }
@@ -154,7 +197,10 @@ where
             cb.run(());
         } else {
             let next_page = local_pagination.get().page + 1;
-            local_pagination.update(|p| p.page = next_page);
+            local_pagination.update(|p| {
+                p.page = next_page;
+                p.has_next = (p.page * p.page_size) < p.total as usize;
+            });
             if let Some(cb) = on_page_change {
                 cb.run(next_page);
             }
@@ -197,7 +243,7 @@ where
 
                     <tbody class="divide-y divide-border/40 bg-background">
                         {move || {
-                            let items = data.get();
+                            let items = display_items();
                             let loading = loading_signal.get();
 
                             if loading && items.is_empty() {
