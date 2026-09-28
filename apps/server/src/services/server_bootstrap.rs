@@ -27,7 +27,7 @@ pub async fn initialize_server_context(
     check_production_secrets(
         jwt_secret,
         database_uri,
-        crate::common::is_production_environment(),
+        crate::common::is_production_environment() || !cfg!(debug_assertions),
     )?;
     start_rbac_invalidation_generation_watchdog(runtime_ctx).await?;
     let cache = ensure_cache_service(runtime_ctx);
