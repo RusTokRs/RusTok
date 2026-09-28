@@ -96,7 +96,7 @@ assertContains(lib, "mod transport;", `${libPath}: crate root must wire transpor
 assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
 assertContains(
   lib,
-  /pub use ui::(?:leptos|catalog_admin)::ProductAdmin;/,
+  /pub use ui::(?:leptos|catalog_admin|root)::ProductAdmin;/,
   `${libPath}: crate root must re-export ProductAdmin`,
 );
 assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api adapter`);

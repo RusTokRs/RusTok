@@ -1,27 +1,19 @@
 #![allow(clippy::too_many_arguments)]
-mod catalog_controls;
-mod core;
-mod i18n;
-#[path = "catalog_transport.rs"]
-mod legacy_transport;
-mod lifecycle_retry_identity;
-mod model;
-#[path = "transport/product_lifecycle_graphql.rs"]
-mod product_lifecycle_graphql;
-#[path = "transport/product_schema_graphql.rs"]
-mod product_schema_graphql;
-mod schema_retry_identity;
-#[path = "catalog_transport_retry.rs"]
-mod transport;
-mod ui;
 
-pub use legacy_transport::*;
+pub mod catalog_controls;
+pub mod core;
+mod i18n;
+pub mod model;
+pub mod transport;
+pub mod ui;
+
+pub use core::{product_grid_columns, ProductKind};
 pub use model::{
     AxisAllowedValue, ProductCatalogSearchOption, ProductCatalogSearchOptions, SetVariantAxesDraft,
     VariantAxisConfig, VariantAxisDraft, VariantAxisValue, VariantAxisValueDraft,
 };
-pub use core::{product_grid_columns, ProductKind};
-pub use product_schema_graphql::*;
+pub use transport::fetch_catalog_search_options;
+pub use ui::catalog_admin::ProductAdmin as CatalogProductAdmin;
+pub use ui::leptos::ProductAdmin as LeptosProductAdmin;
 pub use ui::root::ProductAdmin;
 pub use ui::{CategoriesPage, ProductEditorPage, ProductGridPage};
-

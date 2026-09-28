@@ -1,9 +1,18 @@
 #![allow(dead_code)]
 
-#[path = "transport/graphql_adapter.rs"]
-mod graphql_adapter;
-#[path = "transport/native_server_adapter.rs"]
-mod native_server_adapter;
+pub mod admin_catalog_graphql;
+pub mod admin_catalog_native;
+pub mod graphql_adapter;
+pub mod graphql_error_safety;
+pub mod lifecycle_retry_identity;
+pub mod native_server_adapter;
+pub mod product_lifecycle_graphql;
+pub mod retry;
+
+pub(crate) use retry::{
+    add_product_image, create_product_variant, delete_product_image, delete_product_variant,
+    reorder_product_images, update_product_image, update_product_variant,
+};
 
 use crate::model::{
     BindCategoryAttributeDraft, BindSchemaAttributeDraft, CatalogCategoryDraft,
@@ -229,7 +238,7 @@ pub(crate) async fn create_product(
     user_id: String,
     draft: ProductDraft,
 ) -> Result<ProductDetail, ApiError> {
-    graphql_adapter::create_product(token, tenant_slug, tenant_id, user_id, draft).await
+    retry::create_product(token, tenant_slug, tenant_id, user_id, draft).await
 }
 
 pub(crate) async fn create_product_attribute(
@@ -534,7 +543,7 @@ pub(crate) async fn update_product(
     id: String,
     draft: ProductDraft,
 ) -> Result<ProductDetail, ApiError> {
-    graphql_adapter::update_product(token, tenant_slug, tenant_id, user_id, id, draft).await
+    retry::update_product(token, tenant_slug, tenant_id, user_id, id, draft).await
 }
 
 pub(crate) async fn change_product_status(
@@ -545,7 +554,7 @@ pub(crate) async fn change_product_status(
     id: String,
     status: &str,
 ) -> Result<ProductDetail, ApiError> {
-    graphql_adapter::change_product_status(token, tenant_slug, tenant_id, user_id, id, status).await
+    retry::change_product_status(token, tenant_slug, tenant_id, user_id, id, status).await
 }
 
 pub(crate) async fn delete_product(
@@ -555,5 +564,5 @@ pub(crate) async fn delete_product(
     user_id: String,
     id: String,
 ) -> Result<bool, ApiError> {
-    graphql_adapter::delete_product(token, tenant_slug, tenant_id, user_id, id).await
+    retry::delete_product(token, tenant_slug, tenant_id, user_id, id).await
 }
