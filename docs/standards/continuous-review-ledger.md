@@ -209,7 +209,30 @@ Hard limits for every iteration:
 - [x] **FS-22.02.30 — `apps/server/src/controllers/oauth_metadata.rs`** — one-module audit; completed with four metadata-contract remediation findings plus documentation/compatibility reconciliation and a fresh independent post-merge second pass.
 
 
-- [ ] **FS-22.02.31 — `apps/server/src/controllers/swagger.rs`** — one-module audit.
+### FS-22.02.31 Iteration 1 — `apps/server/src/controllers/swagger.rs`
+
+- **Base:** refreshed `main` at `ada2d6f5635b9426581524915db486f34634fa07`; dedicated branch `codex/audit-fs-22.02.31-swagger-v2`.
+- **Invariant map:** OpenAPI must describe the same documented operations actually owned by the server controllers; response/request schemas referenced by documented operations must exist in `components.schemas`; composite paths with multiple HTTP methods must retain all operations; special host modes must not publish hidden contracts; authentication requirements must be machine-readable rather than implied by prose.
+- **Finding SWAGGER-22.02.31-01:** `ApiDoc` omitted 10 existing auth operations despite their controllers carrying `#[utoipa::path]` contracts: password reset request/confirm, session listing/revocation, revoke-all sessions, password change, profile update, and login history.
+- **Remediation:** registered all omitted auth operations and their request/response schemas.
+- **Finding SWAGGER-22.02.31-02:** `ApiDoc` omitted `/health/runtime`, despite the route being explicitly annotated and serving the runtime guardrail snapshot.
+- **Remediation:** registered the runtime health operation and its ToSchema contract, including the guardrail snapshot types.
+- **Finding SWAGGER-22.02.31-03:** `ApiDoc` omitted seven documented marketplace registry operations: request-changes, hold, resume, and the four remote-runner lifecycle operations.
+- **Remediation:** registered all seven operations and their request/response schemas, including runner claim payloads and owner-transfer/validation request models.
+- **Finding SWAGGER-22.02.31-04:** `ApiDoc` omitted both documented user-administration operations from `controllers/users.rs`.
+- **Remediation:** registered `/api/users` and `/api/users/{id}`, including `UserItem`, `UsersListParams`, and `UsersResponse` schemas.
+- **Finding SWAGGER-22.02.31-05:** remote registry runner endpoints require the dedicated `x-rustok-runner-token` header, but the OpenAPI document exposed no corresponding security scheme/operation requirement.
+- **Remediation:** added a named `runner_token` API-key security scheme and attached it to all four remote runner operations while retaining the existing user bearer scheme for session-backed routes.
+- **Finding SWAGGER-22.02.31-06:** registry-only OpenAPI filtered paths but left unrelated auth/admin/user schemas, security schemes, and tags in the public document.
+- **Remediation:** added reference-driven pruning for schema dependencies, security schemes, and tags after registry-only path filtering. Recursive schema references are retained; unused security/tag metadata is removed.
+- **Adjacent route finding:** while enumerating all documented controller operations, `controllers/users.rs` was found to document `/api/users` but only mount `/api/users/`. Added the canonical non-slashed route while retaining the trailing-slash route for compatibility.
+- **Focused regression coverage added:** complete documented core path inventory, shared-path HTTP method coverage, runtime schema presence, remote-runner authentication metadata, and registry-only hidden-component/tag isolation.
+- **Fresh second pass:** re-read all `apps/server/src/controllers/*.rs` files containing `#[utoipa::path]`, compared 59 documented operations against the `ApiDoc` path registry, verified request/response schema coverage, rechecked the user route compatibility fix, and refreshed the branch over the concurrent `main` advance instead of carrying a stale branch base. No further repository-owned omission remained in the primary Swagger contract.
+- **Verification:** repository-content/static inspection plus current `utoipa 5.5` API documentation review. No cargo tests, clippy, build, reference-artifact export, gatekeeper, migrations, or runtime commands were run by the agent per maintainer-owned execution policy.
+- **Status:** `FS-22.02.31` complete. Next primary module: `FS-22.02.32 — apps/server/src/channels/builds.rs`.
+- [x] **FS-22.02.31 — `apps/server/src/controllers/swagger.rs`** — one-module audit; completed with six Swagger contract findings, an adjacent users route compatibility fix, and a fresh independent second pass.
+
+
 - [ ] **FS-22.02.32 — `apps/server/src/channels/builds.rs`** — one-module audit.
 - [ ] **FS-22.03 — identity/auth propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.04 — tenant/channel/locale propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
