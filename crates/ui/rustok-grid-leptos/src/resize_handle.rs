@@ -7,14 +7,14 @@ use rustok_grid::calculate_resized_width;
 #[component]
 pub fn ColumnResizeHandle(
     column_id: String,
-    current_width: u32,
+    current_width: Signal<u32>,
     min_width: u32,
     max_width: u32,
     on_resize: Callback<(String, u32)>,
 ) -> impl IntoView {
     let (is_dragging, set_is_dragging) = signal(false);
     let (start_x, set_start_x) = signal(0.0);
-    let (initial_width, set_initial_width) = signal(current_width);
+    let (initial_width, set_initial_width) = signal(current_width.get_untracked());
 
     let id_for_move = column_id.clone();
     let on_pointer_down = move |ev: PointerEvent| {
@@ -25,7 +25,7 @@ pub fn ColumnResizeHandle(
             }
         }
         set_start_x.set(ev.client_x() as f64);
-        set_initial_width.set(current_width);
+        set_initial_width.set(current_width.get());
         set_is_dragging.set(true);
     };
 

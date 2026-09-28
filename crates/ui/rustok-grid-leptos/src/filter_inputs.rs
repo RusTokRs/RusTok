@@ -24,6 +24,12 @@ pub fn GridFilterCell(
 
             let (text_input, set_text_input) = signal(initial_text);
 
+            Effect::new(move |_| {
+                if current_value.get().is_none() && !text_input.get_untracked().is_empty() {
+                    set_text_input.set(String::new());
+                }
+            });
+
             let debounced_change = use_debounce_fn(
                 move || {
                     let val = text_input.get_untracked();
@@ -116,6 +122,17 @@ pub fn GridFilterCell(
 
             let (min_input, set_min_input) = signal(initial_min);
             let (max_input, set_max_input) = signal(initial_max);
+
+            Effect::new(move |_| {
+                if current_value.get().is_none() {
+                    if !min_input.get_untracked().is_empty() {
+                        set_min_input.set(String::new());
+                    }
+                    if !max_input.get_untracked().is_empty() {
+                        set_max_input.set(String::new());
+                    }
+                }
+            });
 
             let debounced_range = use_debounce_fn(
                 move || {

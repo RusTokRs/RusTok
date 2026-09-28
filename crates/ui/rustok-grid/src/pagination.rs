@@ -59,6 +59,8 @@ impl GridPagination {
     pub fn from_index(&self) -> usize {
         if self.total == 0 {
             0
+        } else if self.mode == PaginationMode::Infinite {
+            1
         } else {
             (self.page - 1) * self.page_size + 1
         }

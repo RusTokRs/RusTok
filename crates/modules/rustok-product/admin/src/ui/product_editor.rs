@@ -241,8 +241,14 @@ pub fn ProductEditorPage(
                     return;
                 };
 
+                let media_id = if uuid::Uuid::parse_str(&url).is_ok() {
+                    url
+                } else {
+                    uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, url.as_bytes()).to_string()
+                };
+
                 let draft = ProductImageDraft {
-                    media_id: if url.is_empty() { uuid::Uuid::new_v4().to_string() } else { url },
+                    media_id,
                     alt_text: if alt.is_empty() { None } else { Some(alt) },
                     position: None,
                     locale: loc.clone(),
@@ -384,14 +390,50 @@ pub fn ProductEditorPage(
 
                 // Also update status to ensure state transition is persisted
                 let _ = transport::change_product_status(
-                    tok,
-                    ten,
-                    bootstrap.current_tenant.id,
-                    bootstrap.me.id,
-                    pid,
+                    tok.clone(),
+                    ten.clone(),
+                    bootstrap.current_tenant.id.clone(),
+                    bootstrap.me.id.clone(),
+                    pid.clone(),
                     &status_to_change,
                 )
                 .await;
+
+                // Update default variant pricing, stock, SKU, and barcode
+                if let Some(detail) = loaded_product.get_untracked() {
+                    if let Some(variant) = detail.variants.first() {
+                        let cur_sku = sku.get_untracked();
+                        let cur_bc = barcode.get_untracked();
+                        let cur_qty = inventory_quantity.get_untracked();
+                        let cur_cur = currency_code.get_untracked();
+                        let cur_amt = amount.get_untracked();
+                        let cur_comp = compare_at_amount.get_untracked();
+
+                        let v_draft = crate::model::VariantDraft {
+                            sku: if cur_sku.trim().is_empty() { None } else { Some(cur_sku) },
+                            barcode: if cur_bc.trim().is_empty() { None } else { Some(cur_bc) },
+                            shipping_profile_slug: None,
+                            axis_values: Vec::new(),
+                            prices: vec![crate::model::VariantPriceDraft {
+                                currency_code: if cur_cur.trim().is_empty() { "USD".to_string() } else { cur_cur },
+                                amount: if cur_amt.trim().is_empty() { "0.00".to_string() } else { cur_amt },
+                                compare_at_amount: if cur_comp.trim().is_empty() { None } else { Some(cur_comp) },
+                            }],
+                            inventory_quantity: Some(cur_qty),
+                            inventory_policy: Some(inventory_policy.get_untracked()),
+                        };
+
+                        let _ = transport::update_product_variant(
+                            tok,
+                            ten,
+                            bootstrap.current_tenant.id,
+                            bootstrap.me.id,
+                            variant.id.clone(),
+                            v_draft,
+                        )
+                        .await;
+                    }
+                }
 
                 set_is_busy.set(false);
                 match res {

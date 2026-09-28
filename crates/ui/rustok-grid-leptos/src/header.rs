@@ -110,7 +110,7 @@ pub fn GridHeader(
                                     view! {
                                         <ColumnResizeHandle
                                             column_id=col_id_for_resize
-                                            current_width=current_w()
+                                            current_width=Signal::derive(move || current_w())
                                             min_width=col.width.min
                                             max_width=col.width.max
                                             on_resize=on_resize

@@ -2099,6 +2099,20 @@ pub fn matches_product_filter(item: &ProductListItem, column_id: &str, filter: &
             let q = query.trim().to_lowercase();
             q.is_empty() || item.primary_category_id.as_deref().map(|s| s.to_lowercase().contains(&q)).unwrap_or(false)
         }
+        ("created_at", FilterValue::DateRange { from, to }) => {
+            let item_date = item.created_at.split('T').next().unwrap_or(&item.created_at);
+            if let Some(ref f) = from {
+                if !f.trim().is_empty() && item_date < f.as_str() {
+                    return false;
+                }
+            }
+            if let Some(ref t) = to {
+                if !t.trim().is_empty() && item_date > t.as_str() {
+                    return false;
+                }
+            }
+            true
+        }
         _ => true,
     }
 }
