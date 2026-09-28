@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `5ed699dde20885c249598e5b985112c2c676f634`  
+**Current main SHA:** `bf13bf0aaf462d06d9e07f9567a20c4d28faa27f`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -267,7 +267,7 @@ Hard limits for every iteration:
 - [x] **FS-22.03.17 — `apps/server/src/services/auth_admin_mutation_provider.rs`** — complete.
 - [x] **FS-22.03.18 — `apps/server/src/services/oauth_admin_guard.rs`** — complete after PR #4277.
 - [ ] **FS-22.04 — tenant/channel/locale propagation:** in progress; decomposed into one-primary-module iterations focused on the shared request-context boundary first, then tenant resolution/cache, channel resolution/cache, locale policy/cache, and transport propagation boundaries.
-- [ ] **FS-22.04.01 — `crates/libs/rustok-api/src/request.rs`** — shared RequestContext/locale extraction boundary; audit trusted tenant/auth/channel extensions, effective-locale provenance, URL query decoding, correlation propagation, and downstream extractor compatibility.
+- [x] **FS-22.04.01 — `crates/libs/rustok-api/src/request.rs`** — completed with trusted request-context projection, canonical locale evidence, URL form decoding, and tenant-consistency fences.
 - [ ] **FS-22.04.02 — `apps/server/src/middleware/tenant_resolution.rs`** — typed tenant identifier/source resolution and request-trust boundary.
 - [ ] **FS-22.04.03 — `apps/server/src/middleware/tenant.rs`** — tenant read-port/cache/context materialization and invalidation propagation.
 - [ ] **FS-22.04.04 — `apps/server/src/middleware/channel.rs`** — channel RequestFacts, selector/host/OAuth/locale propagation and cache identity.
@@ -401,7 +401,8 @@ Hard limits for every iteration:
 - **Regression audit:** direct user identity still comes only from `AuthContextExtension`; tenant remains mandatory; GraphQL WebSocket behavior is unchanged because it constructs its context after explicit tenant/auth/locale policy resolution; encoded locale selectors now canonicalize before policy middleware constrains them.
 - **Fresh second pass:** independently re-read `request.rs`, app-router middleware order, the tenant locale policy contract, URL parsing dependency availability, GraphQL/auth RequestContext consumers, and the current request-context tests. No additional repository-owned defect remained in this primary module.
 - **Verification:** repository-content/source inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
-- **Status:** `FS-22.04.01` implementation complete on the dedicated branch; continue only after PR integration and post-merge reconciliation.
+- **Status:** `FS-22.04.01` complete after PR #4279 merged into `main` at `bf13bf0aaf462d06d9e07f9567a20c4d28faa27f`. Post-merge source re-read confirmed the canonical locale requirement, tenant-consistency checks, and form-decoded query parsing are present on `main`.
+- **Next primary module:** `FS-22.04.02 — apps/server/src/middleware/tenant_resolution.rs`.
 
 ### FS-22.03.18 Iterations 1-3 — `apps/server/src/services/oauth_admin_guard.rs`
 
