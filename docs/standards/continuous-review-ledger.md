@@ -159,6 +159,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.02 finding in progress — rate-limit prefix overmatching.** `matching_path_policy` used raw `starts_with`, so an endpoint such as `/api/auth/login-extra` could inherit the `/api/auth/login` limiter. Matching is now segment-aware; exact route and descendants match the specialized policy, while lookalike prefixes fall through to the generic `/api/` policy. The regression tests explicitly distinguish policy namespaces.
 
+- [ ] **FS-22.02/22.04 finding in progress — self-resolving handshake Authorization collision.** `SelfResolvingHandshake` routes intentionally resolve their own tenant/auth context, but the generic JWT middleware previously still attempted to parse the HTTP `Authorization` header when present, causing requests such as signed webhooks or GraphQL WS handshakes with an unrelated bearer header to fail before their owning protocol handler. `auth_context` now skips user-JWT parsing for `SelfResolvingHandshake` while preserving the header for the route owner.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
