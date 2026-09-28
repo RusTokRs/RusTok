@@ -14,7 +14,7 @@ Quick start for local development with two admin panels (Next.js + Leptos) and t
 
 | Profile | Hosts | Ports | Profile Owner | Canonical source |
 |---|---|---|---|---|
-| `dev-start:full` | `apps/server`, `apps/next-admin`, `apps/admin`, `apps/next-frontend`, `apps/storefront`, PostgreSQL | `5150`, `3000`, `3001`, `3100`, `3101`, `5432` | Platform + DevEx | `scripts/dev-start.sh`, `docs/guides/quickstart.md` |
+| `dev-start:full` | `apps/server`, `apps/next-admin`, `apps/admin`, `apps/next-frontend`, PostgreSQL | `5150`, `3000`, `3001`, `3100`, `5432` | Platform + DevEx | `scripts/dev-start.sh`, `docs/guides/quickstart.md` |
 | `dev-start:admin` | `apps/server`, `apps/next-admin`, `apps/admin`, PostgreSQL | `5150`, `3000`, `3001`, `5432` | Platform + DevEx | `scripts/dev-start.sh start admin`, `docs/guides/quickstart.md` |
 | `local:ssr-install` | `apps/server` (installer/apply pipeline), PostgreSQL | `5150`, `5432` | Platform foundation | `cargo xtask install-dev`, `apps/server/config/development.yaml` |
 | `standalone:next-admin` | `apps/server` + `apps/next-admin` | `5150`, `3000` | Frontend admin owner | `apps/next-admin`, `docs/UI/admin-server-connection-quickstart.md` |
@@ -44,7 +44,8 @@ The script automatically:
 - starts PostgreSQL;
 - launches the backend (`apps/server`);
 - launches both admin panels (Next.js on `:3000`, Leptos on `:3001`);
-- launches both storefronts (Next.js on `:3100`, Leptos on `:3101`).
+- launches the Next.js storefront on `:3100`;
+- serves the Leptos storefront embedded by `apps/server` on `:5150` (it is not a separate `dev-start` service).
 
 Source: [`scripts/dev-start.sh`](../../scripts/dev-start.sh).
 
@@ -53,7 +54,7 @@ Source: [`scripts/dev-start.sh`](../../scripts/dev-start.sh).
 ### Backend
 - **API Server**: <http://localhost:5150>
 - **GraphQL Endpoint**: <http://localhost:5150/api/graphql>
-- **Health Check**: <http://localhost:5150/api/health>
+- **Health Check**: <http://localhost:5150/health>
 
 ### Admin Panels
 - **Next.js Admin**: <http://localhost:3000>
