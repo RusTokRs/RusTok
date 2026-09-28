@@ -62,8 +62,8 @@ fn validate_compiled_surface_contract(
 pub async fn bootstrap_app_runtime(
     runtime_ctx: ServerRuntimeContext,
     auth_config: AuthConfig,
-    settings: &RustokSettings,
 ) -> Result<AppRuntimeBootstrap> {
+    let settings = runtime_ctx.settings().clone();
     let cache_service = ensure_cache_service(&runtime_ctx);
 
     // Cache parsed settings so per-request middleware avoids repeated JSON deserialization.
@@ -631,7 +631,7 @@ mod tests {
         let auth_config =
             crate::auth::auth_config_from_host_settings("test-secret".to_string(), 3_600, None)
                 .expect("test auth configuration should be valid");
-        let runtime = super::bootstrap_app_runtime(runtime_ctx, auth_config, &settings)
+        let runtime = super::bootstrap_app_runtime(runtime_ctx, auth_config)
             .await
             .expect("registry-only runtime should bootstrap");
 
