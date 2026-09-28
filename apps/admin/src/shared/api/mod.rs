@@ -4,15 +4,6 @@ pub mod queries;
 #[cfg(target_arch = "wasm32")]
 use gloo_storage::Storage as GlooStorage;
 use leptos::prelude::ServerFnError;
-#[cfg(not(any(
-    all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")),
-    feature = "ssr"
-)))]
-use rustok_graphql::GraphqlHttpError;
-#[cfg(any(
-    all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")),
-    feature = "ssr"
-))]
 use rustok_graphql::{
     GraphqlHttpError, GraphqlRequest, execute as execute_graphql, persisted_query_extension,
 };
@@ -116,10 +107,6 @@ fn build_request_context(token: Option<String>, tenant_slug: Option<String>) -> 
     }
 }
 
-#[cfg(any(
-    all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")),
-    feature = "ssr"
-))]
 async fn execute_server_graphql(request: ServerGraphqlRequest) -> Result<Value, GraphqlHttpError> {
     let mut graphql_request = GraphqlRequest::new(request.query, Some(request.variables));
 
