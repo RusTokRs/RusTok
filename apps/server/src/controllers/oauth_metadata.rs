@@ -109,7 +109,7 @@ fn parse_metadata_issuer(issuer: &str) -> Result<Url, Error> {
         ));
     }
 
-    if url.username() != "" || url.password().is_some() {
+    if !url.username().is_empty() || url.password().is_some() {
         return Err(Error::Message(
             "OAuth metadata issuer must not contain userinfo".into(),
         ));
@@ -194,8 +194,7 @@ mod tests {
 
     #[test]
     fn metadata_advertises_only_supported_query_response_mode() {
-        let metadata =
-            metadata_for_issuer("https://api.example.com").expect("valid issuer");
+        let metadata = metadata_for_issuer("https://api.example.com").expect("valid issuer");
 
         assert_eq!(
             metadata.response_modes_supported,
