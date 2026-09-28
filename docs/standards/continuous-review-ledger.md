@@ -368,6 +368,18 @@ Hard limits for every iteration:
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.07` complete after merge; continue to the next unchecked primary module in FS-22.03.
 
+### FS-22.03.18 Iterations 1-3 — `apps/server/src/services/oauth_admin_guard.rs`
+
+- **Base:** refreshed `main` at `b58131afbb87bf6b11193c22358c0bf08fa66d7a` after PR #4277 merge; the implementation originated on dedicated branch `codex/audit-fs-22.03.18-oauth-admin-guard`.
+- **Invariant map:** OAuth admin mutations must consume the request-bound tenant/permission snapshot; delegated permissions may never exceed current authority; secret rotation must serialize per OAuth app; internal failures must not expose DB/credential diagnostics; mutation responses must describe the state that was actually persisted; all derived reads must remain tenant-qualified.
+- **Iteration 1 — fail-closed guard boundaries:** bounded OAuth admin list inputs at `1..=100`, retained `settings:manage` as the admin authority gate, redacted internal guard/service diagnostics, propagated fallible client-secret generation instead of formatting a `Result`, and made the SQLite mutation fence fail closed on unsupported/failed fencing.
+- **Iteration 2 — serialized secret rotation:** OAuth client-secret rotation now acquires an exclusive app-row lock on PostgreSQL/MySQL and a SQLite write fence before rereading the authoritative tenant-scoped app row. Delegated permissions are validated from that locked row, eliminating the earlier pre-lock snapshot race.
+- **Iteration 3 — atomic response projection:** removed the stale pre-lock `OAuthAppMutationRecord` from the rotation path. The updated app is now projected through one shared server-owned OAuth admin record builder while the mutation transaction is still open; localization and active-token count are tenant-scoped there, and projection failures therefore roll back instead of surfacing after a committed secret change. The native admin transport now propagates the authoritative `can_rotate_secret` flag instead of recomputing a weaker rule from app type.
+- **Immediate/adjacent/fresh audits:** re-read the complete guard plus `OAuthAdminPort`, server OAuth admin provider, OAuth app/model persistence transactions, token-count query, GraphQL query/mutation entry points, native server functions, admin UI capability flags, consent guard, runtime provider registration, and tenant/RBAC request-scope boundary. No direct GraphQL/native OAuth admin mutation path bypassing the guarded runtime was found.
+- **Regression coverage:** preserved the guard tests for grant dependencies, bounded list limits, and redacted internal errors; added a native transport regression proving `can_rotate_secret` follows the authoritative mutation record.
+- **Verification:** repository source/static inspection, branch diff review, PR integration, and post-merge `main` re-read only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.03.18` complete after PR #4277 merge. Continue to the next unchecked primary module in FS-22.03.
+
 ### FS-22.03.17 Iterations 1-4 — `apps/server/src/services/auth_admin_mutation_provider.rs`
 
 - **Base:** refreshed `main` at `8951800d7e53f12add957e2679041ec4ece9ce1d`; dedicated branch `codex/audit-fs-22.03.17-auth-admin-provider`. During implementation, `main` advanced with unrelated UI PR #4272; the final branch was merged with an explicit 3-way merge-tree so that unrelated `main` changes were preserved.
