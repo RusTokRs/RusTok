@@ -99,6 +99,8 @@ static AUTH_CHANGE_PASSWORD_SESSIONS_REVOKED_TOTAL: AtomicU64 = AtomicU64::new(0
 static AUTH_FLOW_INCONSISTENCY_TOTAL: AtomicU64 = AtomicU64::new(0);
 static AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL: AtomicU64 = AtomicU64::new(0);
 
+const MAX_SESSION_LIST_LIMIT: u64 = 100;
+
 impl AuthLifecycleService {
     pub fn metrics_snapshot() -> AuthLifecycleMetricsSnapshot {
         AuthLifecycleMetricsSnapshot {
@@ -799,6 +801,7 @@ impl AuthLifecycleService {
         user_id: uuid::Uuid,
         limit: u64,
     ) -> std::result::Result<Vec<sessions::Model>, AuthLifecycleError> {
+        let limit = clamp_session_list_limit(limit);
         let rows = sessions::Entity::find()
             .filter(sessions::Column::TenantId.eq(tenant_id))
             .filter(sessions::Column::UserId.eq(user_id))
@@ -976,6 +979,10 @@ impl AuthLifecycleService {
         Ok(infer_user_role_from_permissions(&permissions))
     }
 
+    fn clamp_session_list_limit(limit: u64) -> u64 {
+        limit.clamp(1, MAX_SESSION_LIST_LIMIT)
+    }
+
     async fn revoke_user_sessions_db_with_connection<C>(
         db: &C,
         tenant_id: uuid::Uuid,
@@ -1105,6 +1112,15 @@ mod tests {
         assert_eq!(snapshot.change_password_sessions_revoked_total, 0);
         assert_eq!(snapshot.flow_inconsistency_total, 0);
         assert_eq!(snapshot.login_inactive_user_attempt_total, 0);
+    }
+
+    #[test]
+    fn session_list_limit_is_bounded() {
+        assert_eq!(clamp_session_list_limit(0), 1);
+        assert_eq!(clamp_session_list_limit(50), 50);
+        assert_eq!(clamp_session_list_limit(100), 100);
+        assert_eq!(clamp_session_list_limit(101), 100);
+        assert_eq!(clamp_session_list_limit(u64::MAX), 100);
     }
 
     #[test]
