@@ -549,7 +549,7 @@ impl AuthLifecycleService {
         let now = Utc::now();
         let new_refresh_token = generate_refresh_token().map_err(AuthLifecycleError::from)?;
         let new_token_hash = hash_refresh_token(&new_refresh_token);
-        let expires_at = now + Duration::seconds(config.refresh_expiration as i64);
+        let expires_at = session_expiration(now, config.refresh_expiration)?;
 
         let session_id = session.id;
         let mut session_model: sessions::ActiveModel = session.into();
@@ -914,7 +914,7 @@ impl AuthLifecycleService {
         let now = Utc::now();
         let refresh_token = generate_refresh_token().map_err(AuthLifecycleError::from)?;
         let token_hash = hash_refresh_token(&refresh_token);
-        let expires_at = now + Duration::seconds(config.refresh_expiration as i64);
+        let expires_at = session_expiration(now, config.refresh_expiration)?;
 
         let session = sessions::ActiveModel::new(
             tenant_id, user.id, token_hash, expires_at, ip_address, user_agent,
@@ -939,6 +939,16 @@ impl AuthLifecycleService {
             expires_in: config.access_expiration,
             effective_role,
         })
+    }
+
+    fn session_expiration(
+        now: chrono::DateTime<Utc>,
+        ttl_seconds: u64,
+    ) -> std::result::Result<chrono::DateTime<Utc>, AuthLifecycleError> {
+        let ttl_seconds = i64::try_from(ttl_seconds)
+            .map_err(|_| AuthLifecycleError::Internal(Error::InternalServerError))?;
+        now.checked_add_signed(Duration::seconds(ttl_seconds))
+            .ok_or(AuthLifecycleError::Internal(Error::InternalServerError))
     }
 
     pub(crate) async fn resolve_effective_role<C>(
@@ -1121,6 +1131,23 @@ mod tests {
         assert_eq!(clamp_session_list_limit(100), 100);
         assert_eq!(clamp_session_list_limit(101), 100);
         assert_eq!(clamp_session_list_limit(u64::MAX), 100);
+    }
+
+    #[test]
+    fn session_expiration_rejects_out_of_range_ttl() {
+        let now = Utc::now();
+
+        assert!(
+            AuthLifecycleService::session_expiration(now, u64::MAX).is_err()
+        );
+        assert!(
+            AuthLifecycleService::session_expiration(now, i64::MAX as u64).is_err()
+        );
+        assert!(
+            AuthLifecycleService::session_expiration(now, 3_600)
+                .expect("normal session ttl should be representable")
+                > now
+        );
     }
 
     #[test]
