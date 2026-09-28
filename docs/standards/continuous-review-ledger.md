@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `4903e6e7db1477271e976012a4a8ec0e7ade59e4`  
+**Current main SHA:** `b6f8d78269827bc1b61ba9fdd60896d0cbd995f0`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -142,7 +142,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.20 — `apps/server/src/controllers/health.rs`** — one-module audit; completed with two remediation iterations and a final fresh second pass.
 - [x] **FS-22.02.21 — `apps/server/src/controllers/metrics.rs`** — one-module audit; completed with three remediation iterations and a final fresh second pass.
 - [x] **FS-22.02.22 — `apps/server/src/controllers/marketplace_registry.rs`** — one-module audit; completed with five remediation iterations and a final fresh second pass.
-- [ ] **FS-22.02.23 — `apps/server/src/controllers/artifact_http.rs`** — one-module audit.
+- [x] **FS-22.02.23 — `apps/server/src/controllers/artifact_http.rs`** — one-module audit; completed with three remediation iterations and a final fresh second pass.
 - [ ] **FS-22.02.24 — `apps/server/src/controllers/artifact_permissions.rs`** — one-module audit.
 - [ ] **FS-22.02.25 — `apps/server/src/controllers/admin_events.rs`** — one-module audit.
 - [ ] **FS-22.02.26 — `apps/server/src/controllers/channel.rs`** — one-module audit.
@@ -220,6 +220,25 @@ Hard limits for every iteration:
 - **Non-findings:** `GET /v2/catalog/publish/{request_id}` was reviewed against the owner status-snapshot contract and remains an optional-authority status read; no evidence in the active registry contract required converting it into a separately authenticated mutation boundary. Direct `ManifestManager` use in the global catalog remains intentional because the accepted architecture explicitly defines active platform composition plus global registry governance projection as the source for these two deployment-global routes.
 - **Verification:** repository source inspection, architecture/API/settings owner review, migration/schema inspection, immediate re-audits after each remediation, final source-level regression pass, and commit history reconciliation only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Next primary module:** FS-22.02.23 — `apps/server/src/controllers/artifact_http.rs`.
+
+### FS-22.02.23 Result — `controllers/artifact_http.rs`
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Fresh main base before track:** `a31f1ef1d30880c7023f157720c2fa9e6ca4a584`.
+- **Iteration 1:** commit `e8ae64a7c3343beb9d4b3798123c98ca250fe916`.
+  - **Finding:** the HTTP transport parsed the request with Axum's `Json` extractor before the controller could enforce the binding's declared `max_body_bytes`, and then normalized the wildcard path with `trim_matches('/')`. A body could therefore be parsed before the per-binding limit was applied, while a trailing slash could execute the slash-less admitted route.
+  - **Remediation:** HTTP dispatch now receives raw `Bytes`, resolves the exact binding before parsing, rejects bodies above the admitted byte limit first, and preserves the wildcard path literally. The HTTP wildcard route is additionally capped at the descriptor-wide maximum of 1 MiB.
+- **Iteration 2:** commit `267a3460459a781540ef85025136e15745e7ee89`.
+  - **Finding:** successful artifact transport/UI responses are tenant-, actor-, permission-, and often locale-dependent but were returned without an explicit cache policy.
+  - **Remediation:** all successful artifact HTTP/UI JSON responses now carry `Cache-Control: private, no-store`.
+- **Iteration 3:** commit `b6f8d78269827bc1b61ba9fdd60896d0cbd995f0`.
+  - **Finding:** the wildcard artifact HTTP route used `any(...)` even though the admitted contract supports only GET/POST/PUT/PATCH/DELETE, causing unsupported methods to reach handler-level validation and potentially body extraction.
+  - **Remediation:** the route now registers only the five admitted HTTP methods explicitly; the handler retains its defensive method mapping.
+- **Immediate re-audits:** after each remediation, re-read the changed controller and its lower binding/runtime boundary. Confirmed the exact installation is preserved, the lower dispatcher still enforces canonical body/output bounds, and the sandbox still clamps wall-clock timeout to the admitted binding timeout.
+- **Adjacent-boundary audit:** host composition explicitly mounts `controllers::artifact_http::router()`; tenant/auth middleware remains in the full application composition. Artifact permission authorization continues to use the canonical owner service. No evidence was found that artifact HTTP should be restricted to direct human sessions in the same way as the artifact-permission control-plane mutation surface, so no cross-module principal policy was invented.
+- **Fresh second pass:** independently re-read the complete controller, `host.rs` composition, authentication/principal context, tenant extractor/middleware, artifact binding service, module dispatcher/runtime, API architecture contract, and current AGENTS governance. Rechecked exact route matching, supported-method surface, raw body limits, JSON parsing/error mapping, output bounds, exact installation identity, effective policy/RBAC, idempotency, timeout clamping, cache behavior, and sensitive-data handling. No remaining repository-owned in-scope controller defect was found.
+- **Verification:** repository source inspection, immediate re-audits, cross-boundary contract review, and final source-level regression pass only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.24 — `apps/server/src/controllers/artifact_permissions.rs`.
 
 ### FS-22.02.21 Result — `controllers/metrics.rs`
 
