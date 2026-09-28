@@ -277,7 +277,11 @@ pub fn compose_application_router(
                 middleware::locale::resolve_locale,
             ))
             .layer(axum_middleware::from_fn(
-                middleware::security_headers::security_headers,
+                middleware::security_headers::handle_csp_report,
+            ))
+            .layer(axum_middleware::from_fn_with_state(
+                runtime.rate_limit_state,
+                rate_limit_for_paths,
             ));
         return Ok(middleware::http_stack::apply_http_edge_stack(
             router,
@@ -439,10 +443,6 @@ pub fn compose_application_router(
             middleware::mcp_scaffold_workspace::authorize_workspace,
         ))
         .layer(axum_middleware::from_fn_with_state(
-            runtime.rate_limit_state,
-            rate_limit_for_paths,
-        ))
-        .layer(axum_middleware::from_fn_with_state(
             middleware_runtime_ctx.clone(),
             middleware::channel::resolve,
         ))
@@ -461,6 +461,13 @@ pub fn compose_application_router(
         .layer(axum_middleware::from_fn_with_state(
             middleware_runtime_ctx,
             middleware::tenant::resolve,
+        ))
+        .layer(axum_middleware::from_fn(
+            middleware::security_headers::handle_csp_report,
+        ))
+        .layer(axum_middleware::from_fn_with_state(
+            runtime.rate_limit_state,
+            rate_limit_for_paths,
         ))
         .layer(axum_middleware::from_fn(
             middleware::security_headers::security_headers,
