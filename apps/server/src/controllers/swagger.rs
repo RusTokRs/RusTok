@@ -248,7 +248,13 @@ fn prune_unused_registry_components(openapi: &mut OpenApiDoc) {
 
     let mut schema_names = HashSet::new();
     let mut security_names = HashSet::new();
-    collect_component_references(&path_document, &mut schema_names, &mut security_names);
+    let mut tag_names = HashSet::new();
+    collect_component_references(
+        &path_document,
+        &mut schema_names,
+        &mut security_names,
+        &mut tag_names,
+    );
 
     if let Some(global_security) = openapi.security.as_ref() {
         if let Ok(value) = serde_json::to_value(global_security) {
@@ -285,10 +291,12 @@ fn prune_unused_registry_components(openapi: &mut OpenApiDoc) {
 
             let mut nested_schema_names = HashSet::new();
             let mut unused_security_names = HashSet::new();
+            let mut unused_tag_names = HashSet::new();
             collect_component_references(
                 &schema_document,
                 &mut nested_schema_names,
                 &mut unused_security_names,
+                &mut unused_tag_names,
             );
 
             for nested in nested_schema_names {
@@ -305,12 +313,17 @@ fn prune_unused_registry_components(openapi: &mut OpenApiDoc) {
             .security_schemes
             .retain(|name, _| security_names.contains(name));
     }
+
+    if let Some(tags) = openapi.tags.as_mut() {
+        tags.retain(|tag| tag_names.contains(&tag.name));
+    }
 }
 
 fn collect_component_references(
     value: &Value,
     schema_names: &mut HashSet<String>,
     security_names: &mut HashSet<String>,
+    tag_names: &mut HashSet<String>,
 ) {
     match value {
         Value::Array(values) => {
@@ -334,8 +347,21 @@ fn collect_component_references(
                 }
             }
 
+            if let Some(Value::Array(tags)) = map.get("tags") {
+                for tag in tags {
+                    if let Value::String(name) = tag {
+                        tag_names.insert(name.clone());
+                    }
+                }
+            }
+
             for value in map.values() {
-                collect_component_references(value, schema_names, security_names);
+                collect_component_references(
+                    value,
+                    schema_names,
+                    security_names,
+                    tag_names,
+                );
             }
         }
         Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
