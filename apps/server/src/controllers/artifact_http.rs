@@ -9,7 +9,7 @@ use axum::{
         header::{CACHE_CONTROL, CONTENT_TYPE},
     },
     response::Response,
-    routing::{any, get, post},
+    routing::{delete, get, patch, post},
 };
 use rustok_api::request::ResolvedRequestLocale;
 use rustok_modules::{ModuleHttpMethod, find_artifact_command_binding, find_artifact_http_binding};
@@ -246,7 +246,11 @@ pub fn router() -> crate::routes::ServerRouter {
     let http_router = axum::Router::new()
         .route(
             "/api/artifacts/{installation_id}/{*path}",
-            any(dispatch_http),
+            get(dispatch_http)
+                .post(dispatch_http)
+                .put(dispatch_http)
+                .patch(dispatch_http)
+                .delete(dispatch_http),
         )
         .layer(DefaultBodyLimit::max(MAX_ARTIFACT_HTTP_BODY_BYTES));
 
