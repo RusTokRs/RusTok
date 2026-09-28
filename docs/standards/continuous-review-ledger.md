@@ -121,7 +121,7 @@ Hard limits for every iteration:
 **FS-22 — apps/server composition root**
 
 - [x] **FS-22.02.01 — `apps/server/src/middleware/metrics_auth.rs`** — module track: observability authentication, readiness sanitization, bearer parsing, production/development fail-closed behavior, response status contract, and direct middleware placement evidence. **This module may take multiple consecutive iterations; do not advance to FS-22.02.02 until its module-level second pass is clean or remaining issues are explicitly blocked.**
-- [ ] **FS-22.02.02 — `apps/server/src/middleware/registry_artifact_access.rs`** — one-module audit.
+- [x] **FS-22.02.02 — `apps/server/src/middleware/registry_artifact_access.rs`** — one-module audit.
 - [ ] **FS-22.02.03 — `apps/server/src/middleware/registry_remote_claim.rs`** — one-module audit.
 - [ ] **FS-22.02.04 — `apps/server/src/middleware/registry_publish_policy.rs`** — one-module audit.
 - [ ] **FS-22.02.05 — `apps/server/src/middleware/rate_limit.rs`** — one-module audit.
@@ -174,6 +174,25 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently rechecked path coverage, fail-closed policy, bearer parsing, constant-time comparison, readiness sanitization/status normalization, body-size bound, header behavior, environment fallback, direct placement, and adjacent health/metrics/HTTP-edge contracts. No remaining repository-owned in-scope defect was found in `metrics_auth.rs`.
 - **Verification:** repository-content/static inspection and branch-diff review only. No tests, clippy, gatekeeper, build, or runtime commands were executed by the agent, per maintainer-owned verification rules.
 - **Status:** module-level second pass clean; `FS-22.02.01` is complete and the next audit trigger should start `FS-22.02.02`.
+
+### FS-22.02.02 Iteration 1 — `registry_artifact_access.rs`
+
+- **Base:** refreshed `main` at `df08de4d1d3dbf57a2655ae884392652c7deb52e` before the refreshed branch was created; the earlier stale iteration branch was intentionally not merged.
+- **Dedicated iteration branch:** `audit/fs-22.02.02-i1-refresh2-20260928`.
+- **Invariant map:** session-backed registry mutations require authenticated user authority; OAuth service tokens and legacy registry actor headers cannot become registry authority; request-specific publish actions must be owner/requester/modules:manage constrained; runner access is a host-global shared-token contract unless the protocol explicitly carries claim binding; uploads must be bounded and use owner-issued immutable storage slots; owner-transfer validation must not be mistaken for the authoritative persistence invariant; routing/method classification must not create an authorization bypass.
+- **Discovery:** read the complete middleware and direct app-router placement, plus the registry marketplace controller route family, registry publish policy, registry principal mapping, remote-runner claim/transition adapters, server governance adapter, and owner persistence implementation for artifact upload/download, validation/review, release yank, owner transfer, and remote validation claim lifecycle.
+- **Finding isolation:** no repository-owned security or data-access bypass remains in `registry_artifact_access.rs`. The seemingly broad runner-token artifact-download path is consistent with the current owner contract: the remote claim exposes a request-specific download URL while runner authentication and download routing remain host-owned. Adding claim-id binding here would require a protocol change not represented by the existing contract.
+- **Confirmed deferred root cause — REGISTRY-GOV-01:** the middleware checks that an owner-transfer target user is active and in the caller tenant, but the authoritative `SeaOrmModuleGovernanceService::transfer_owner` transaction validates only principal shape before updating `registry_module_owners`. A concurrent target deactivation/deletion between the middleware preflight and persistence can therefore bind the registry owner to an inactive/nonexistent user. The fix belongs in the owning persistence module at the transaction boundary and is recorded separately below.
+- **Immediate re-audit:** complete middleware re-read found zero runtime `unwrap`, `expect`, `panic!`, `todo!`, or silent-error suppression; DB access is parameterized; body reads are bounded; authentication context is copied before the relevant await; runner-token comparison uses constant-time equality; upload content type is normalized deliberately; unknown/non-matching routes pass through to their owning controller.
+- **Adjacent-boundary re-audit:** live publish/upload/validation/review controller paths reconstruct authority through `authority_from_auth`, which rejects OAuth service tokens and legacy headers; owner services reauthorize request mutations at the owner boundary; remote runner claim/heartbeat/terminal transitions use atomic claim/lease predicates; release yank and owner transfer are authorized in owner transactions; artifact storage slots are content-addressed/create-only.
+- **Regression audit:** verified profile-independent placement in `compose_application_router`, method/path dispatch, body-size behavior, anonymous access to request status/artifacts, runner-token failure behavior, and duplicated controller authorization. No new bypass was introduced by existing middleware behavior.
+- **Fresh second pass:** independently compared middleware classification against all registry controller route families. Specialized external-prebuilt/platform-build/signature/yank paths intentionally retain controller + owner authorization rather than duplicating partial policy here. The module itself remains clean.
+- **Verification:** repository-content/static inspection and branch-diff review only. No test suites, clippy, gatekeeper, build, or runtime commands were executed by the agent, per maintainer-owned test rules.
+- **Status:** module-level second pass clean; `FS-22.02.02` complete. Next planned primary module remains `FS-22.02.03 — registry_remote_claim.rs`; REGISTRY-GOV-01 must be handled in a dedicated later owning-module iteration.
+
+### Deferred owning-module findings discovered during FS-22
+
+- [ ] **REGISTRY-GOV-01 — owner transfer target liveness is checked only in host middleware, not at the authoritative owner transaction boundary.** `registry_artifact_access.rs` verifies an active/same-tenant target user before dispatch, but `SeaOrmModuleGovernanceService::transfer_owner` only validates the new owner principal shape before the owner-binding update. A concurrent user deletion/deactivation can therefore violate the active-user owner invariant. **Owning component:** `crates/modules/rustok-modules/src/governance.rs` owner-transfer transaction. Handle as a separate primary-module iteration; do not fold it into another server middleware pass.
 
 ### FS-22 Legacy Phase Index
 
