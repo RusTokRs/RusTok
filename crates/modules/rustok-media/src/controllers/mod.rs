@@ -69,9 +69,18 @@ fn media_error(error: MediaError) -> HttpError {
             "media_file_too_large",
             format!("File too large: {size} bytes (max {max} bytes)"),
         ),
-        MediaError::Storage(error) => HttpError::internal(error.to_string()),
-        MediaError::StorageKey(error) => HttpError::internal(error.to_string()),
-        MediaError::Db(error) => HttpError::internal(error.to_string()),
+        MediaError::Storage(error) => {
+            tracing::error!(error = %error, "Media storage operation failed");
+            HttpError::internal("Media storage is temporarily unavailable".to_string())
+        }
+        MediaError::StorageKey(error) => {
+            tracing::error!(error = %error, "Media storage key validation failed");
+            HttpError::internal("Media storage is temporarily unavailable".to_string())
+        }
+        MediaError::Db(error) => {
+            tracing::error!(error = %error, "Media database operation failed");
+            HttpError::internal("Media service is temporarily unavailable".to_string())
+        }
         MediaError::InvalidLocale(locale) => {
             HttpError::bad_request("invalid_media_locale", format!("Invalid locale: {locale}"))
         }
@@ -140,9 +149,16 @@ fn media_error(error: MediaError) -> HttpError {
             "Presigned upload is unavailable for the configured storage backend",
         ),
         MediaError::ImageProcessing(error) => {
-            HttpError::bad_request("media_image_processing_failed", error.to_string())
+            tracing::warn!(error = %error, "Media image processing failed");
+            HttpError::bad_request(
+                "media_image_processing_failed",
+                "Image processing failed",
+            )
         }
-        MediaError::Json(error) => HttpError::internal(error.to_string()),
+        MediaError::Json(error) => {
+            tracing::error!(error = %error, "Media JSON encoding failed");
+            HttpError::internal("Media service is temporarily unavailable".to_string())
+        }
     }
 }
 
