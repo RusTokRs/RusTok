@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `a10cfc7982fac9bdaa3013a825c8598869c53442`  
+**Current main SHA:** `b94da56d40452b120bf27d8eda6989f439b7d765`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -131,7 +131,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.09 — `apps/server/src/middleware/tenant.rs`** — one-module audit.
 - [x] **FS-22.02.10 — `crates/modules/rustok-cart/src/guest_access_http.rs` + native storefront capability adapters** — one-owner boundary audit.
 - [x] **FS-22.02.11 — `apps/server/src/middleware/security_headers.rs`** — one-module audit.
-- [ ] **FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`** — one-module audit.
+- [x] **FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`** — one-module audit; completed with three consecutive remediation iterations and a final fresh second pass. Remaining full worker rollback/join/abort lifecycle gaps are explicitly deferred to FS-24.
 - [ ] **FS-22.02.13 — `apps/server/src/services/app_runtime.rs`** — one-module audit.
 - [ ] **FS-22.02.14 — `apps/server/src/services/server_runtime_context.rs`** — one-module audit.
 - [ ] **FS-22.02.15 — `apps/server/src/services/graphql_schema.rs`** — one-module audit.
@@ -195,6 +195,25 @@ Hard limits for every iteration:
 - **Regression correction during implementation:** the first edge-layer rearrangement temporarily duplicated rate limiting in the registry/worker branch; later re-read caught and corrected it. A second temporary inner `security_headers` layer that would have produced two CSP nonces was also caught and removed before PR creation.
 - **Verification:** repository source inspection, static reasoning, cross-file contract review, and branch-diff review only. No tests, cargo check/clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Next primary module:** FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`.
+
+### FS-22.02.12 Result — `server_bootstrap.rs`
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Fresh main base:** `51d2ea5508426d7eadc064454fb50b3c1cc11ec7`.
+- **Final main after this module track:** `b94da56d40452b120bf27d8eda6989f439b7d765`.
+- **Iteration 1:** PR #4180, merge commit `e01357b2655022b3719e71670fb408aff92860a3`.
+  - **Finding SRV-22.02.12-01:** production bootstrap errors exposed matched development JWT fragments, sample database credentials, and sample superadmin passwords through `Error::Message`.
+  - **Remediation:** secret matchers remain available for detection, but their matched values are never interpolated into errors. Production validation is explicit and rejects an empty JWT secret. A deterministic test set was added.
+- **Iteration 2:** PR #4181, merge commit `f78f21893afb857aa970d7a8c8c43cb2dd14f403`.
+  - **Finding SRV-22.02.12-02:** bootstrap started multiple background sidecars/workers before the fallible final router composition step.
+  - **Remediation:** complete Axum router composition now occurs before bootstrap-owned sidecar/worker startup; `runtime_ctx` is cloned at the auth-runtime boundary so the context remains available for subsequent startup.
+- **Iteration 3 / regression correction:** PR #4182, merge commit `b94da56d40452b120bf27d8eda6989f439b7d765`.
+  - **Fresh finding:** using only the runtime production env flag would have skipped the bootstrap secret guard for release builds that select the production config by build mode without exporting `RUSTOK_ENV`.
+  - **Remediation:** bootstrap secret validation is enabled when either the runtime explicitly declares production or the binary is a release build, preserving the release-default production guard while still enabling explicit production checks for debug builds.
+- **Final fresh second pass:** re-read `server_bootstrap.rs`, its `host.rs` caller, `app_runtime.rs`/router contracts, worker start paths, and the adjacent security/lifecycle documentation. No remaining **unblocked** repository-owned defect was found in the primary module.
+- **Explicitly deferred lifecycle debt:** `initialize_server_context` and `bootstrap_app_runtime` can start asynchronous components before all later bootstrap steps have become irreversible, and the full worker/runtime lifecycle still lacks one unified join/abort/rollback boundary. This remains explicitly deferred to FS-24 per the existing phase-scope decision; this module track does not claim those lifecycle gaps are fixed.
+- **Verification:** source-level static checks, direct caller/callee inspection, branch-diff review and regression re-audit only. No tests, compiler, clippy, gatekeeper, generator or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.13 — `apps/server/src/services/app_runtime.rs`.
 
 ### FS-22.02.01 Iteration 1 — `metrics_auth.rs`
 
