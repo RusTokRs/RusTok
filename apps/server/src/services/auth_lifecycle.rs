@@ -1434,7 +1434,7 @@ mod tests {
             .expect("failed to create tenant");
         let ctx = ServerRuntimeContext::new(db.clone(), crate::common::settings::RustokSettings::default());
         let config = AuthConfig::new("register-atomic-secret".to_string())
-            .with_rs256("", super::super::jwt::TEST_RSA_PUBLIC_KEY);
+            .with_rs256("not-a-valid-private-key", "not-a-valid-public-key");
 
         let result = AuthLifecycleService::register_runtime(
             &ctx,
@@ -1456,13 +1456,12 @@ mod tests {
             .expect("failed to inspect rolled-back users");
         assert!(users.is_empty());
 
-        let sessions = sessions::Entity::find()
+        let session_count = sessions::Entity::find()
             .filter(sessions::Column::TenantId.eq(tenant.id))
-            .filter(sessions::Column::UserId.eq(uuid::Uuid::nil()))
-            .all(&db)
+            .count(&db)
             .await
             .expect("failed to inspect sessions");
-        assert!(sessions.is_empty());
+        assert_eq!(session_count, 0);
     }
 
     #[tokio::test]
