@@ -12,6 +12,7 @@ server = [
   "runtime",
   "dep:async-graphql",
   "dep:axum",
+  "dep:url",
 ]
 
 [dependencies]
@@ -29,7 +30,7 @@ rustok-ui-i18n.workspace = true
 thiserror.workspace = true
 utoipa.workspace = true
 uuid.workspace = true
-url.workspace = true
+url = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio.workspace = true
