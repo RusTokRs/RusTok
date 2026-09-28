@@ -107,7 +107,7 @@ async fn sync_rate_limit_metrics(ctx: &ServerRuntimeContext) {
     }
 
     if let Some(shared) = ctx.shared_get::<SharedOAuthRateLimiter>()
-        && let Err(error) = shared.0.sync_runtime_metrics().await
+        && shared.0.sync_runtime_metrics().await.is_err()
     {
         warn!(namespace = "oauth", "failed to sync rate-limit metrics");
     }
