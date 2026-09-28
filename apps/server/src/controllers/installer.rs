@@ -15,6 +15,7 @@ use rustok_installer_persistence::{
 };
 use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::common::settings::is_production_environment;
