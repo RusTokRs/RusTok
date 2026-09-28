@@ -63,7 +63,7 @@ mod tests {
 
     #[test]
     fn refresh_token_hash_sha256() {
-        let token = generate_refresh_token();
+        let token = generate_refresh_token().expect("refresh token");
         let hash = hash_refresh_token(&token);
         assert_eq!(hash.len(), 64);
         assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
