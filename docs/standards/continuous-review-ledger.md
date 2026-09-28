@@ -93,6 +93,20 @@ The audit must move slowly enough to discover second-order defects. A phase is n
 ### Phase Granularity Rule
 
 The numbered FS phases define architectural ownership, not a permission to inspect an entire subsystem in one pass. Before implementation, the active phase must be decomposed in the ledger into ordered subchecks small enough that each production path can be read end-to-end and re-audited after each fix. A subcheck may cover one bounded flow (for example: one middleware chain, one auth/session path, one tenant-resolution path, one route family, or one persistence boundary). Do not advance to the next subcheck while an introduced regression or unexplained invariant violation remains.
+### FS-22 Subchecks — execute strictly in this order
+
+- [ ] **FS-22.01 Route graph:** enumerate every server route family and fallback; prove which host modes expose which routes, detect accidental shadowing/overlap, and reconcile route documentation.
+- [ ] **FS-22.02 Global middleware order:** trace the actual Axum layer nesting and request lifecycle; verify security headers, metrics auth, registry guards, rate limiting, auth context, channel, locale, tenant, and guest-access ordering against trust assumptions.
+- [ ] **FS-22.03 Identity/auth propagation:** trace token parsing, principal construction, optional/required auth, session/refresh behavior, impersonation/agent paths, and transport boundary identity reconstruction.
+- [ ] **FS-22.04 Tenant/channel/locale propagation:** follow context from HTTP headers/claims through middleware, GraphQL, REST, server functions, cache keys, DB access, and downstream module calls; specifically test conceptual cross-tenant/channel/locale leakage cases by code inspection.
+- [ ] **FS-22.05 GraphQL composition:** trace schema construction, resolver registration, runtime data factories, error conversion, request context, authorization, limits, introspection/IDE exposure, and feature-flag/module interactions.
+- [ ] **FS-22.06 REST/controller composition:** trace controller registration, shared state extraction, response envelopes, status mapping, body/multipart handling, and per-route authorization.
+- [ ] **FS-22.07 Server-function composition:** inspect `/api/fn/*`, context provisioning, CSRF/browser trust assumptions, auth and tenant propagation, and error/serialization boundaries.
+- [ ] **FS-22.08 Embedded UI composition:** trace admin/storefront mounting, asset fallback behavior, nonce/CSP interaction, cache validators, route precedence, and headless/embedded profile combinations.
+- [ ] **FS-22.09 Feature/config interaction matrix:** inspect compile-time feature flags vs runtime module enablement/host modes and identify states that compile but produce incomplete or unsafe runtime composition.
+- [ ] **FS-22.10 Error/observability boundary:** inspect server-wide error mapping and logging for secret, identity, tenant, raw domain-error, and stack/payload leakage; verify stable public contracts.
+- [ ] **FS-22.11 Fresh second-pass composition audit:** after all FS-22 fixes, re-read the composition root from scratch without using the original findings list and record any newly discovered defects.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
