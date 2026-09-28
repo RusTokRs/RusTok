@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `8d0061b53dd5bf94bbc1f043db1af0eb84771d61`  
+**Current main SHA:** `5c92615b38e880af3fe00eda71d75d91ad8a9c4a`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -367,6 +367,69 @@ Hard limits for every iteration:
 - **Documentation:** `crates/modules/rustok-auth/docs/README.md` now records the checked JWT expiration boundary.
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.07` complete after merge; continue to the next unchecked primary module in FS-22.03.
+
+### FS-22.03.16 Iteration 1 — `crates/modules/rustok-auth/src/admin_mutations.rs`
+
+- **Base:** refreshed `main` at `780775b9fccb6dcd2e8668a60190d07669ee89e4`; dedicated branch `codex/audit-fs-22.03.16-auth-admin-mutations`.
+- **Invariant map:** auth admin ports must remain transport-neutral, preserve tenant/actor context, expose no secret material, distinguish authorization/validation/conflict/not-found/internal categories, and keep user/OAuth mutation contracts separate from concrete server persistence.
+- **Discovery:** re-read the complete admin mutation contract plus GraphQL error mapping, server user-admin provider, OAuth admin provider/guard, OAuth app service, RBAC authoritative role checks, and installer/admin boundaries.
+- **Finding assessment:** no remaining owner-level defect was confirmed inside `rustok-auth/src/admin_mutations.rs`. `OAuthAppSecretResult` has explicit secret-redacted `Debug`; command/record types contain no plaintext secret fields except the deliberate one-time `client_secret` response; the port surface remains framework-neutral.
+- **Deferred adjacent finding ADMINPROVIDER-22.03.16-01:** `apps/server/src/services/oauth_admin_guard.rs` formats `generate_refresh_token()` results directly into the rotated client secret even though the auth credential API returns `Result<String, AuthError>`. This is a compile-level provider defect assigned to the next concrete OAuth-admin provider track, not the module-owned contract.
+- **Deferred adjacent finding ADMINPROVIDER-22.03.16-02:** server user/OAuth admin providers still create `AuthAdminMutationError::Internal(String)` from raw DB/service diagnostics, while GraphQL maps `Internal` directly to client-visible internal-error text. This is a server adapter error-boundary issue and will be handled in the concrete provider tracks.
+- **Deferred adjacent finding ADMINPROVIDER-22.03.16-03:** OAuth admin list methods accept raw `u64` limits in the port; transport caps exist in some GraphQL paths but owner/provider enforcement needs a concrete provider audit. This remains separate from the contract-only module.
+- **Fresh second pass:** re-read the contract, secret redaction test, GraphQL mapping and direct provider boundaries. No contract-level secret leak, framework coupling, or malformed error-category defect remained.
+- **Verification:** repository source inspection and branch-diff review only. Adjacent findings are intentionally not patched through the contract layer; no tests, clippy, build, gatekeeper, migrations, or runtime commands were executed by the agent.
+- **Status:** `FS-22.03.16` complete. Next primary module: `FS-22.03.17 — apps/server/src/services/auth_admin_mutation_provider.rs`.
+
+### FS-22.03.15 Iterations 1-2 — `crates/modules/rustok-auth/src/bootstrap.rs`
+
+- **Base:** refreshed `main` at `625773e736fd8d93d2d377b8c380c1968af7fad0`; dedicated branch `codex/audit-fs-22.03.15-auth-bootstrap`.
+- **Iteration 1 — bootstrap identity boundary:** bootstrap email lookup was not canonicalized consistently with identity creation; DB/hash/row diagnostics were returned as internal strings; unsupported backend handling contained process-level `unreachable!`. Remediation canonicalized email to lowercase, introduced stable internal-error redaction, and made backend selection fail closed without panic.
+- **Iteration 2 — fresh re-audit remediation:** re-read the full owner and installer seed boundary, confirmed installer identity + RBAC remain in one caller-owned transaction, removed residual `unreachable!` paths in `find_user_on`, and routed all row-decoding errors through the redaction helper. Unit coverage was added for email normalization, stable error text, and unsupported backends including SeaORM Mock.
+- **Concurrency/non-findings:** `ON CONFLICT (tenant_id,email) DO NOTHING` plus post-conflict reread remains the canonical idempotency strategy; existing-user bootstrap does not reset credentials, matching installer seed idempotency semantics. No status filtering was added because the owner contract describes tenant-scoped identities rather than active-only identities.
+- **Final fresh second pass:** after PR #4267 merged at `c021a0a318495fa1c0b561930da72ed6b5a362ac`, the complete owner file and installer caller were re-read; no additional in-scope bootstrap defect remained.
+- **Verification:** repository source inspection, installer atomicity review, immediate re-audits, and branch-diff review only. No tests, clippy, build, gatekeeper, migrations, or runtime commands were executed by the agent.
+- **Status:** `FS-22.03.15` complete. Next primary module: `FS-22.03.16 — crates/modules/rustok-auth/src/admin_mutations.rs`.
+
+### FS-22.03.14 Iterations 1-3 — `crates/modules/rustok-auth/src/backfill.rs`
+
+- **Base:** refreshed `main` at `2b99979f1aceb2cbd9538822dc82c9953a08abaa`; dedicated branch `codex/audit-fs-22.03.14-auth-backfill`.
+- **Iteration 1 — bounded owner read contract:** `AuthUserBackfillDbReader` accepted arbitrary `u64` limits and cast them to `i64`. The owner now enforces `1..=500`, matching the Profiles CLI default, and rejects invalid values before query construction. Boundary tests cover `0`, `1`, `500`, `501`, and `u64::MAX`.
+- **Iteration 2 — error redaction:** DB query and row-decoding failures previously became raw `Internal(String)` diagnostics. They now pass through one stable `Auth user backfill read failed` error while retaining server-side error logging. Regression coverage verifies the external message.
+- **Iteration 3 — deterministic batch order and conversion hardening:** the SQL selection order now uses `created_at ASC, id ASC`; the SQL LIMIT binding uses checked `i64::try_from` after validation, eliminating lossy integer conversion. A fresh pass caught and corrected the intermediate invalid `i64::from(u64)` conversion before integration.
+- **Consumer reconciliation:** the Profiles CLI already defaults to `500` and supplies an explicit tenant UUID; no consumer runtime change was required. The reader returns only auth-owned identity projection fields `id/email/name` and does not import Profiles storage.
+- **Final fresh second pass:** re-read the complete owner reader after PR #4264 merged at `c608b07bd7f5df1a14232ea4c9a2f55fa14a9f75`. Rechecked tenant predicate, batch bounds, SQL parameter conversion, ordering stability, raw row parsing and error redaction. No remaining in-scope owner defect was found.
+- **Verification:** repository source inspection, direct consumer review, immediate re-audits after each remediation, and branch-diff review only. No tests, clippy, build, gatekeeper, migrations, or runtime commands were executed by the agent.
+- **Status:** `FS-22.03.14` complete. Next primary module: `FS-22.03.15 — crates/modules/rustok-auth/src/bootstrap.rs`.
+
+### FS-22.03.13 Iterations 1-5 — `apps/server/src/services/auth_lifecycle_provider.rs`
+
+- **Iteration 1 — password-reset privacy:** Base `3240a5b3b2497d7773dc2bfb4801d5debb3d2a30`. `forgot_password` no longer reveals account existence when reset-token encoding, email-service resolution, or reset-URL preparation fails; preparation failures return the same generic success result as the unknown-account path. PR #4257 merged at `817e87a2d40fb96066bfd9cf180821483dfde28a`.
+- **Iteration 2 — registration-policy parity:** Base `817e87a2d40fb96066bfd9cf180821483dfde28a`. Provider `sign_up` now enforces the same host-owned `features.registration_enabled` policy already enforced by REST. Delegated/service/anonymous contexts cannot bypass the disabled-registration state. PR #4258 merged at `ddcfe94d90ad117cc55a3162a20ca9ac0c49e861`.
+- **Iteration 3 — internal error redaction:** Base `ddcfe94d90ad117cc55a3162a20ca9ac0c49e861`. Unified provider DB/lifecycle/invite error mapping now logs server-side and exposes only stable `Auth lifecycle operation failed` text, preventing GraphQL from receiving raw diagnostic strings. Regression coverage verifies the stable external message. PR #4259 merged at `f190dc0c109bf614c83dbce78239626da85130d5`.
+- **Iteration 4 — token-response consistency:** Base `f190dc0c109bf614c83dbce78239626da85130d5`. When sign-in/sign-up/refresh successfully issue a session but provider RBAC projection fails, the freshly-issued session is compensatorily revoked using the signed access-token session claim before the error is returned. Tenant mismatch and compensation failure are logged without token material. PR #4260 merged at `e0585ed77e3a9685bced4392a859b5bd4c7e475e`. The follow-up pass also corrected compensation logging to use debug formatting because `AuthLifecycleError` does not implement `Display`.
+- **Iteration 5 — typed principal parity:** Base `e0585ed77e3a9685bced4392a859b5bd4c7e475e`. `AuthLifecycleContext` now carries the canonical optional `AuthPrincipalKind`; GraphQL populates it from the trusted `AuthPrincipalContext` extension; provider self-service operations require `DirectUser`. This closes the delegated-OAuth path that previously could reach current-user/session/profile/revoke operations outside HTTP middleware. Provider regression coverage covers direct, delegated, service and anonymous contexts. PR #4261 merged at `c0591e1332b407dd2c7b8e76603b2b8c37880938`.
+- **Immediate/adjacent/fresh second passes:** after every remediation, re-read direct callers/callees and relevant auth/GraphQL/RBAC context boundaries; the final post-merge pass rechecked all five fixes together and found no remaining provider-owned defect.
+- **Explicit cross-owner follow-up:** the provider still performs a post-issuance RBAC projection; compensation is fail-closed when the DB remains writable, but an outage that prevents compensation can leave the newly issued session persisted while the response fails. A fully atomic token-plus-permission projection would require reopening the lifecycle-service owner track and is not patched through the provider.
+- **Explicit deferred owner finding:** `AuthUserBackfillDbReader` still casts its caller-supplied `limit: u64` to `i64`; the root owner is `rustok-auth/src/backfill.rs`, not this provider. It remains for a dedicated future owner-module iteration.
+- **Event non-finding:** canonical `UserAccountRegistered`/`UserLoggedIn` event types were reviewed against current consumers and no active repository-owned consumer requiring provider publication was identified; no speculative event producer was added.
+- **Verification:** repository source inspection and branch-diff review only. Per maintainer-owned policy, no tests, clippy, build, gatekeeper, migrations, or runtime commands were executed by the agent.
+- **Status:** `FS-22.03.13` complete. Next primary module: `FS-22.03.14 — crates/modules/rustok-auth/src/backfill.rs`.
+
+### FS-22.03.12 Iterations 1-6 — `apps/server/src/services/auth_lifecycle.rs`
+
+- **Base:** refreshed `main` at `bb2bfe5c4a3a6417510a000d18615ad7ac4089fc`; module track `codex/audit-fs-22.03.12-auth-lifecycle-service`.
+- **Iteration 1 — atomic registration/session issuance:** registration previously committed the user before session/token creation, and session insertion could commit before later role/JWT failures. Introduced `create_session_and_tokens_in_tx`, moved registration to one transaction, and added rollback coverage.
+- **Iteration 2 — login identity fence:** login now rechecks and locks the tenant-scoped user after password verification, rejects password/status drift, and commits `last_login_at` plus session/token issuance atomically. SQLite uses a write fence and rereads the row.
+- **Iteration 3 — password-change session fence:** password changes revalidate credential/status under a user lock and require the current session to remain active under a second lock. SQLite write-fence paths require one affected row and reread current state; lock ordering remains user then session.
+- **Iteration 4 — SQLite refresh replay fence:** conditional refresh-session fencing now checks `rows_affected`; a zero-row race rereads the current session and only preserves it when the presented token hash remains current, preventing replay after rotation while preserving expiry semantics after revocation.
+- **Iteration 5 — bounded session reads:** the service now clamps direct session-list limits to `1..=100`, matching REST/GraphQL and preventing lower-level callers from bypassing the read budget.
+- **Iteration 6 — expiration arithmetic:** both refresh rotation and initial session issuance now use checked `i64` conversion and `DateTime::checked_add_signed`, eliminating lossy `u64 -> i64` arithmetic.
+- **Immediate/adjacent/regression audits:** after every remediation, re-read the changed path and direct callers; reviewed DB transaction semantics, RBAC role resolution, auth extractor session checks, admin user mutation lock ordering, event/outbox boundaries, and GraphQL/native lifecycle consumers.
+- **Fresh final second pass:** searched the complete service for unsafe casts, process-level panics, silent error suppression, unrestricted session reads, unchecked expiration arithmetic, stale SQLite snapshots, and commit-before-fallible-step patterns. No remaining repository-owned in-scope defect was found.
+- **Verification:** repository source inspection and branch-diff review only. Per maintainer-owned verification policy, no tests, clippy, build, gatekeeper, migrations, or runtime commands were executed by the agent.
+- **Integration:** iterations merged through PRs #4248, #4249, #4250, #4251, #4253, and #4254; latest integrated `main` before closeout is `f9b69054270dc0a23cfd0d9cfeb453667e0a3f90`.
+- **Status:** `FS-22.03.12` complete. Next primary module: `FS-22.03.13 — apps/server/src/services/auth_lifecycle_provider.rs`.
 
 ### FS-22.03.11 Iteration 1 — `crates/modules/rustok-auth/src/lifecycle.rs`
 

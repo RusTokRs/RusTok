@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use rustok_api::AuthPrincipalKind;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use rustok_auth::{
@@ -7,13 +8,25 @@ use rustok_auth::{
     AuthUserBackfillReadRequest, AuthUserBackfillRecord, AuthUserRecord,
 };
 
-use crate::auth::{AuthConfig, encode_password_reset_token};
+use crate::auth::{AuthConfig, decode_access_token, encode_password_reset_token};
+use crate::common::RustokSettings;
 use crate::models::users;
 use crate::services::auth_invite::InviteAcceptanceError;
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService, AuthTokens};
 use crate::services::email::{PasswordResetEmail, email_service_from_ctx, password_reset_url};
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+
+fn internal_lifecycle_error<E>(error: E) -> AuthLifecycleMutationError
+where
+    E: std::fmt::Display,
+{
+    tracing::error!(
+        error = %error,
+        "Auth lifecycle provider operation failed"
+    );
+    AuthLifecycleMutationError::Internal("Auth lifecycle operation failed".to_string())
+}
 
 const DEFAULT_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
 
@@ -30,6 +43,18 @@ impl ServerAuthLifecycleProvider {
         }
     }
 
+    fn ensure_registration_enabled(
+        settings: &RustokSettings,
+    ) -> Result<(), AuthLifecycleMutationError> {
+        if settings.features.registration_enabled {
+            Ok(())
+        } else {
+            Err(AuthLifecycleMutationError::Validation(
+                "Registration is disabled".to_string(),
+            ))
+        }
+    }
+
     async fn permission_strings(
         &self,
         tenant_id: uuid::Uuid,
@@ -38,7 +63,7 @@ impl ServerAuthLifecycleProvider {
         let permissions =
             RbacService::get_user_permissions(self.runtime_ctx.db(), &tenant_id, &user_id)
                 .await
-                .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
+                .map_err(internal_lifecycle_error)?;
         let mut values = permissions
             .iter()
             .map(ToString::to_string)
@@ -54,7 +79,14 @@ impl ServerAuthLifecycleProvider {
         user: users::Model,
         tokens: AuthTokens,
     ) -> Result<AuthTokenRecord, AuthLifecycleMutationError> {
-        let permissions = self.permission_strings(tenant_id, user.id).await?;
+        let permissions = match self.permission_strings(tenant_id, user.id).await {
+            Ok(permissions) => permissions,
+            Err(error) => {
+                self.compensate_issued_session(tenant_id, &tokens.access_token)
+                    .await;
+                return Err(error);
+            }
+        };
         Ok(AuthTokenRecord {
             access_token: tokens.access_token,
             refresh_token: tokens.refresh_token,
@@ -68,6 +100,61 @@ impl ServerAuthLifecycleProvider {
                 permissions,
             },
         })
+    }
+
+    async fn compensate_issued_session(&self, tenant_id: uuid::Uuid, access_token: &str) {
+        let claims = match decode_access_token(&self.auth_config, access_token) {
+            Ok(claims) => claims,
+            Err(_) => {
+                tracing::error!(
+                    %tenant_id,
+                    "Auth token response failed after issuance and issued session could not be decoded for compensation"
+                );
+                return;
+            }
+        };
+
+        if claims.tenant_id != tenant_id {
+            tracing::error!(
+                %tenant_id,
+                token_tenant_id = %claims.tenant_id,
+                "Auth token response failed after issuance and token tenant did not match provider tenant"
+            );
+            return;
+        }
+
+        if let Err(error) = AuthLifecycleService::logout_runtime(
+            &self.runtime_ctx,
+            tenant_id,
+            claims.session_id,
+        )
+        .await
+        {
+            tracing::error!(
+                error = ?error,
+                %tenant_id,
+                session_id = %claims.session_id,
+                "Auth token response failed after issuance and issued session compensation failed"
+            );
+        }
+    }
+
+    fn require_direct_user_id(
+        context: &AuthLifecycleContext,
+    ) -> Result<uuid::Uuid, AuthLifecycleMutationError> {
+        if context.principal_kind != Some(AuthPrincipalKind::DirectUser) {
+            return Err(AuthLifecycleMutationError::Unauthorized);
+        }
+        Self::require_user_id(context)
+    }
+
+    fn require_direct_session_id(
+        context: &AuthLifecycleContext,
+    ) -> Result<uuid::Uuid, AuthLifecycleMutationError> {
+        if context.principal_kind != Some(AuthPrincipalKind::DirectUser) {
+            return Err(AuthLifecycleMutationError::Unauthorized);
+        }
+        Self::require_session_id(context)
     }
 
     fn require_user_id(
@@ -93,12 +180,12 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         &self,
         context: &AuthLifecycleContext,
     ) -> Result<AuthUserRecord, AuthLifecycleMutationError> {
-        let user_id = Self::require_user_id(context)?;
+        let user_id = Self::require_direct_user_id(context)?;
         let user = users::Entity::find_by_id(user_id)
             .filter(users::Column::TenantId.eq(context.tenant_id))
             .one(self.runtime_ctx.db())
             .await
-            .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?
+            .map_err(internal_lifecycle_error)?
             .ok_or(AuthLifecycleMutationError::Unauthorized)?;
 
         let role = AuthLifecycleService::resolve_effective_role(
@@ -124,7 +211,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         context: &AuthLifecycleContext,
         limit: u64,
     ) -> Result<Vec<AuthSessionRecord>, AuthLifecycleMutationError> {
-        let user_id = Self::require_user_id(context)?;
+        let user_id = Self::require_direct_user_id(context)?;
         AuthLifecycleService::list_sessions_runtime(
             &self.runtime_ctx,
             context.tenant_id,
@@ -177,6 +264,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         password: String,
         name: Option<String>,
     ) -> Result<AuthTokenRecord, AuthLifecycleMutationError> {
+        Self::ensure_registration_enabled(self.runtime_ctx.settings())?;
         let (user, tokens) = AuthLifecycleService::register_runtime(
             &self.runtime_ctx,
             &self.auth_config,
@@ -213,24 +301,48 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
     ) -> Result<(), AuthLifecycleMutationError> {
         let user = users::Entity::find_by_email(self.runtime_ctx.db(), context.tenant_id, &email)
             .await
-            .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
+            .map_err(internal_lifecycle_error)?;
 
         let Some(user) = user else {
             return Ok(());
         };
 
-        let reset_token = encode_password_reset_token(
+        let reset_token = match encode_password_reset_token(
             &self.auth_config,
             context.tenant_id,
             &user.email,
             &user.password_hash,
             DEFAULT_RESET_TOKEN_TTL_SECS,
-        )
-        .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
-        let email_service = email_service_from_ctx(&self.runtime_ctx, context.locale.as_str())
-            .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
-        let reset_url = password_reset_url(&self.runtime_ctx, &reset_token)
-            .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
+        ) {
+            Ok(token) => token,
+            Err(_) => {
+                tracing::warn!(
+                    "Password reset email could not be prepared; keeping the public response generic"
+                );
+                return Ok(());
+            }
+        };
+        let email_service = match email_service_from_ctx(
+            &self.runtime_ctx,
+            context.locale.as_str(),
+        ) {
+            Ok(service) => service,
+            Err(_) => {
+                tracing::warn!(
+                    "Password reset email could not be prepared; keeping the public response generic"
+                );
+                return Ok(());
+            }
+        };
+        let reset_url = match password_reset_url(&self.runtime_ctx, &reset_token) {
+            Ok(url) => url,
+            Err(_) => {
+                tracing::warn!(
+                    "Password reset email could not be prepared; keeping the public response generic"
+                );
+                return Ok(());
+            }
+        };
         let recipient = user.email;
 
         tokio::spawn(async move {
@@ -253,7 +365,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         context: &AuthLifecycleContext,
         name: Option<String>,
     ) -> Result<AuthUserRecord, AuthLifecycleMutationError> {
-        let user_id = Self::require_user_id(context)?;
+        let user_id = Self::require_direct_user_id(context)?;
         let updated = AuthLifecycleService::update_profile_runtime(
             &self.runtime_ctx,
             context.tenant_id,
@@ -290,8 +402,8 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         AuthLifecycleService::change_password_runtime(
             &self.runtime_ctx,
             context.tenant_id,
-            Self::require_user_id(context)?,
-            Self::require_session_id(context)?,
+            Self::require_direct_user_id(context)?,
+            Self::require_direct_session_id(context)?,
             &current_password,
             &new_password,
         )
@@ -323,7 +435,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         AuthLifecycleService::logout_runtime(
             &self.runtime_ctx,
             context.tenant_id,
-            Self::require_session_id(context)?,
+            Self::require_direct_session_id(context)?,
         )
         .await
         .map_err(map_lifecycle_error)
@@ -337,7 +449,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         AuthLifecycleService::revoke_session_runtime(
             &self.runtime_ctx,
             context.tenant_id,
-            Self::require_user_id(context)?,
+            Self::require_direct_user_id(context)?,
             session_id,
         )
         .await
@@ -351,8 +463,8 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         AuthLifecycleService::revoke_all_other_sessions_runtime(
             &self.runtime_ctx,
             context.tenant_id,
-            Self::require_user_id(context)?,
-            Self::require_session_id(context)?,
+            Self::require_direct_user_id(context)?,
+            Self::require_direct_session_id(context)?,
         )
         .await
         .map_err(map_lifecycle_error)
@@ -385,46 +497,43 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
 
 #[async_trait]
 impl AuthUserBackfillReadPort for ServerAuthLifecycleProvider {
-    async fn list_users_for_profile_backfill(
-        &self,
-        request: AuthUserBackfillReadRequest,
-    ) -> Result<Vec<AuthUserBackfillRecord>, AuthLifecycleMutationError> {
-        AuthUserBackfillDbReader::new(self.runtime_ctx.db_clone())
-            .list_users_for_profile_backfill(request)
-            .await
-    }
-}
+#[cfg(test)]
+mod tests {
+    use super::ServerAuthLifecycleProvider;
+    use rustok_api::AuthPrincipalKind;
+    use rustok_auth::{AuthLifecycleContext, AuthLifecycleMutationError};
 
-fn permission_strings_from_context(context: &AuthLifecycleContext) -> Vec<String> {
-    let mut values = context
-        .permissions
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>();
-    values.sort();
-    values.dedup();
-    values
-}
-
-fn map_invite_error(error: InviteAcceptanceError) -> AuthLifecycleMutationError {
-    match error {
-        InviteAcceptanceError::InvalidToken => AuthLifecycleMutationError::InvalidInviteToken,
-        InviteAcceptanceError::EmailAlreadyExists => AuthLifecycleMutationError::EmailAlreadyExists,
-        InviteAcceptanceError::Internal(error) => {
-            AuthLifecycleMutationError::Internal(error.to_string())
+    fn context(kind: Option<AuthPrincipalKind>) -> AuthLifecycleContext {
+        AuthLifecycleContext {
+            tenant_id: uuid::Uuid::new_v4(),
+            user_id: Some(uuid::Uuid::new_v4()),
+            session_id: Some(uuid::Uuid::new_v4()),
+            principal_kind: kind,
+            permissions: Vec::new(),
+            locale: rustok_core::Locale::default(),
         }
     }
-}
 
-fn map_lifecycle_error(error: AuthLifecycleError) -> AuthLifecycleMutationError {
-    match error {
-        AuthLifecycleError::EmailAlreadyExists => AuthLifecycleMutationError::EmailAlreadyExists,
-        AuthLifecycleError::InvalidCredentials => AuthLifecycleMutationError::InvalidCredentials,
-        AuthLifecycleError::UserInactive => AuthLifecycleMutationError::UserInactive,
-        AuthLifecycleError::InvalidRefreshToken => AuthLifecycleMutationError::InvalidRefreshToken,
-        AuthLifecycleError::SessionExpired => AuthLifecycleMutationError::SessionExpired,
-        AuthLifecycleError::UserNotFound => AuthLifecycleMutationError::UserNotFound,
-        AuthLifecycleError::InvalidResetToken => AuthLifecycleMutationError::InvalidResetToken,
-        AuthLifecycleError::Internal(err) => AuthLifecycleMutationError::Internal(err.to_string()),
+    #[test]
+    fn direct_self_service_requires_canonical_direct_user_principal() {
+        let direct = context(Some(AuthPrincipalKind::DirectUser));
+        assert!(ServerAuthLifecycleProvider::require_direct_user_id(&direct).is_ok());
+        assert!(ServerAuthLifecycleProvider::require_direct_session_id(&direct).is_ok());
+
+        for kind in [
+            None,
+            Some(AuthPrincipalKind::DelegatedUser),
+            Some(AuthPrincipalKind::Service),
+        ] {
+            let context = context(kind);
+            assert!(matches!(
+                ServerAuthLifecycleProvider::require_direct_user_id(&context),
+                Err(AuthLifecycleMutationError::Unauthorized)
+            ));
+            assert!(matches!(
+                ServerAuthLifecycleProvider::require_direct_session_id(&context),
+                Err(AuthLifecycleMutationError::Unauthorized)
+            ));
+        }
     }
 }

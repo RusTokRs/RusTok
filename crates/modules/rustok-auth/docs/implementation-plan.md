@@ -51,13 +51,14 @@ does not create a package-local locale fallback.
    **Done when:** the module README, metadata, and FFA/FBA evidence describe the
    same runtime surface without a server-local bypass.
 
-4. **Provide bounded identity reads for owner-owned operations.**
+4. **Completed — provide bounded identity reads for owner-owned operations.**
    `AuthUserBackfillReadPort` exposes only tenant-scoped user id, email and
-   display-name data in creation order for profile provisioning. The
-   host-independent `AuthUserBackfillDbReader` implements that port from an
-   explicit database handle, while the server provider delegates to it.
-   **Done when:** the selected CLI composition resolves the auth port without
-   importing server models or expanding the profile domain with auth storage.
+   display-name data in deterministic creation order for profile provisioning.
+   `AuthUserBackfillDbReader` now enforces a strict `1..=500` batch bound,
+   performs checked SQL-limit conversion and redacts storage/row-read failures.
+   The host-independent reader continues to use only an explicit database
+   handle, while the Profiles CLI delegates through the owner contract without
+   importing auth persistence models.
 
 5. **Keep OAuth bootstrap in the auth-owned CLI adapter.**
    `rustok-cli oauth create-app` creates the development application through
@@ -71,10 +72,14 @@ does not create a package-local locale fallback.
    `rustok-cli auth sessions-cleanup` removes expired auth sessions without the
    server task bridge.
 
-7. **Keep bootstrap identity provisioning in the auth owner.**
+7. **Completed — keep bootstrap identity provisioning in the auth owner.**
    `AuthUserBootstrapDbWriter` provides idempotent tenant-scoped user creation
    from an explicit database handle for installer and future standalone seed
-   composition. RBAC role assignment remains a separate owner boundary.
+   composition. Email lookup is canonicalized case-insensitively, database/row
+   failures are redacted, and unsupported backends fail closed without process
+   panics. RBAC role assignment remains a separate owner boundary and installer
+   seed composition keeps identity and role assignment in one caller-owned
+   transaction.
 
 8. **Provide a lightweight owner-owned OAuth transaction regression target.**
    The current server-lib test target compiles embedded UI, storage, cloud, and

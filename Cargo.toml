@@ -7,7 +7,7 @@ members = [
     "crates/libs/*",
     "crates/ui/*",
     "crates/ui/rustok-forms/leptos",
-    "crates/ui/rustok-forms/dioxus",
+    "crates/ui/rustok-grid/leptos",
     "crates/utils/*",
     "crates/workers/*",
     "crates/modules/*",
@@ -330,7 +330,7 @@ rustok-worker-transport = { path = "crates/workers/rustok-worker-transport" }
 rustok-graphql = { path = "crates/ui/rustok-graphql" }
 rustok-ui-core = { path = "crates/ui/rustok-ui-core" }
 rustok-grid = { path = "crates/ui/rustok-grid" }
-rustok-grid-leptos = { path = "crates/ui/rustok-grid-leptos" }
+rustok-grid-leptos = { path = "crates/ui/rustok-grid/leptos" }
 rustok-ui-i18n = { path = "crates/ui/rustok-ui-i18n" }
 rustok-ui-transport = { path = "crates/ui/rustok-ui-transport" }
 leptos-ui-routing = { path = "crates/ui/leptos-ui-routing" }

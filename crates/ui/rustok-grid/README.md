@@ -16,4 +16,4 @@ Following Hexagonal / Ports & Adapters architecture, `rustok-grid` is 100% pure 
 
 ## Adapters
 
-- `rustok-grid-leptos`: SSR-first Leptos 0.8 `<DataGrid />` UI adapter.
+- [`rustok-grid-leptos`](./leptos): SSR-first Leptos 0.8 `<DataGrid />` UI adapter.
