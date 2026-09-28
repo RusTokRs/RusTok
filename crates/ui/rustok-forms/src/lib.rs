@@ -19,8 +19,10 @@ pub mod dirty;
 pub mod error;
 pub mod field;
 pub mod state;
+pub mod validation;
 
 pub use dirty::DirtyTracker;
 pub use error::{FieldError, ValidationIssue, issues_to_field_errors};
 pub use field::{FieldConstraints, FieldDescriptor, FieldKind, FieldOption};
 pub use state::{FormState, FormSubmissionStatus};
+pub use validation::{FormValidator, rules as validation_rules};

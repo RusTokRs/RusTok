@@ -144,7 +144,7 @@ async fn test_starter_engine_import_default_blueprint_and_verify_storefront_visi
     assert_eq!(report.blueprint_id, "default-starter");
     assert_eq!(report.pages_created, 1);
     assert_eq!(report.blog_categories_created, 3);
-    assert_eq!(report.blog_posts_created, 3);
+    assert_eq!(report.blog_posts_created, 4);
     assert_eq!(report.forum_categories_created, 4);
     assert_eq!(report.forum_topics_created, 4);
     assert_eq!(report.forum_replies_created, 4);

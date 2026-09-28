@@ -1,14 +1,12 @@
 [workspace]
 resolver = "2"
-exclude = [
-    "crates/ui/rustok-forms",
-]
 members = [
     "apps/server",
     "apps/admin",
     "apps/storefront",
     "crates/libs/*",
     "crates/ui/*",
+    "crates/ui/rustok-forms/leptos",
     "crates/utils/*",
     "crates/workers/*",
     "crates/modules/*",
@@ -176,6 +174,8 @@ leptos-auth = { path = "crates/ui/leptos-auth", default-features = false }
 iu-leptos = { path = "UI/leptos" }
 leptos-ui = { path = "crates/ui/leptos-ui" }
 rustok-ui-forms = { path = "crates/ui/rustok-ui-forms" }
+rustok-forms = { path = "crates/ui/rustok-forms" }
+rustok-forms-leptos = { path = "crates/ui/rustok-forms/leptos" }
 rustok-ui-auth = { path = "crates/ui/rustok-ui-auth" }
 leptos-use = "0.19.0"
 gloo-storage = "0.4.0"

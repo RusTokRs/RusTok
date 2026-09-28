@@ -13626,6 +13626,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-forms"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "rustok-forms-leptos"
+version = "0.1.0"
+dependencies = [
+ "leptos",
+ "rustok-forms",
+]
+
+[[package]]
 name = "rustok-forum"
 version = "0.1.0"
 dependencies = [

@@ -9,6 +9,12 @@ description = "Leptos structural form components for rustok-forms"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = ["ssr"]
+ssr = ["leptos/ssr"]
+hydrate = ["leptos/hydrate"]
+csr = ["leptos/csr"]
+
 [dependencies]
 leptos = { workspace = true }
 rustok-forms = { workspace = true }

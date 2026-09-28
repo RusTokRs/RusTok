@@ -23,6 +23,7 @@ invocation directory; all local runtime paths are derived from that root.
 - `rustok-cli starter import` imports a declarative blueprint pack into an existing
   tenant. Accepts `--starter <name>` (built-in blueprint such as `default`) or
   `--file <path>` (custom JSON blueprint), with `--dry-run` to validate without mutation.
+  See the [Starter Blueprints & Demo Data Guide](../../../docs/guides/starter-blueprints.md) for architectural details.
 
 `install apply --dry-run` and `starter import --dry-run` validate and render preflight
 evidence without mutating the target database.

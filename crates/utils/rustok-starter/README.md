@@ -29,3 +29,8 @@
 - Driven by `rustok-installer-cli` / `rustok-cli` during seed and installation workflows.
 - Invoked by `apps/server` via GraphQL mutation `importStarter` under `system:manage` authorization.
 - Interacts strictly with module-owned public application services (`PageService`, `PostService`, `CategoryService`, `TopicService`, `TaxonomyService`, `NavigationService`).
+
+## Documentation
+
+See the canonical platform guide: [Starter Blueprints & Demo Data Guide](../../../docs/guides/starter-blueprints.md).
+
