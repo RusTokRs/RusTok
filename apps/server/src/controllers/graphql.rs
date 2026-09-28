@@ -416,6 +416,10 @@ async fn build_ws_connection_data(
         current_user.permissions.clone(),
         current_user.inferred_role.clone(),
     );
+
+    let locale = resolve_ws_locale(&runtime_ctx, &tenant_ctx, payload.locale.as_deref())
+        .await?;
+
     auth_lease
         .set(GraphqlWsAuthLease {
             tenant_id: tenant_ctx.id,
@@ -423,9 +427,6 @@ async fn build_ws_connection_data(
             initial_scope: request_scope.clone(),
         })
         .map_err(|_| async_graphql::Error::new("RBAC connection scope was already initialized"))?;
-
-    let locale = resolve_ws_locale(&runtime_ctx, &tenant_ctx, payload.locale.as_deref())
-        .await?;
     let principal_context = AuthPrincipalContext::new(current_user.principal_kind);
     let auth_ctx = AuthContext {
         user_id: current_user.user.id,
@@ -702,6 +703,22 @@ mod tests {
                 Err(error) => error,
             };
         assert_eq!(disabled.client_message(), "Tenant is disabled");
+    }
+
+    #[test]
+    fn websocket_auth_lease_is_published_after_fallible_locale_resolution() {
+        let source = include_str!("graphql.rs");
+        let locale_call = source
+            .find("let locale = resolve_ws_locale")
+            .expect("locale resolution call should exist");
+        let lease_set = source
+            .find("auth_lease
+        .set(GraphqlWsAuthLease")
+            .expect("auth lease publication should exist");
+        assert!(
+            locale_call < lease_set,
+            "auth lease must not be published before locale policy resolution"
+        );
     }
 
     #[test]
