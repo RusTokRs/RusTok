@@ -1,8 +1,7 @@
 use rustok_api::locale_tags_match;
 use rustok_ui_core::{AdminQueryKey, UiRouteQueryIntent, normalize_ui_text};
 use rustok_ui_grid::core::{
-    ColumnAlign, ColumnFilters, ColumnWidth, FilterOption, FilterValue, GridColumnDef,
-    GridFilterType,
+    ColumnAlign, ColumnFilters, FilterOption, FilterValue, GridColumnDef, GridFilterType,
 };
 use std::collections::HashMap;
 

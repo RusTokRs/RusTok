@@ -204,8 +204,22 @@ pub fn compose_application_router(
             middleware::registry_remote_claim::claim_atomic,
         ));
 
+    let is_production = crate::common::is_production_environment();
+    let allowed_origins = middleware::cors::resolve_cors_allowed_origins_from_env().or_else(|| {
+        settings_snapshot
+            .pointer("/rustok/cors/allowed_origins")
+            .and_then(|val| val.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(ToOwned::to_owned))
+                    .collect::<Vec<String>>()
+            })
+            .filter(|list| !list.is_empty())
+    });
+    let timeout_seconds = middleware::http_stack::resolve_http_timeout_seconds();
+
     if rustok_settings.runtime.is_registry_only() || rustok_settings.runtime.is_worker_only() {
-        return Ok(router
+        let router = router
             .layer(Extension(runtime.registry))
             .layer(axum_middleware::from_fn_with_state(
                 runtime.rate_limit_state,
@@ -221,7 +235,13 @@ pub fn compose_application_router(
             ))
             .layer(axum_middleware::from_fn(
                 middleware::security_headers::security_headers,
-            )));
+            ));
+        return Ok(middleware::http_stack::apply_http_edge_stack(
+            router,
+            is_production,
+            allowed_origins.as_deref(),
+            timeout_seconds,
+        ));
     }
 
     let effective_policy_reader = ServerEffectiveModulePolicyReader::shared(
@@ -401,7 +421,14 @@ pub fn compose_application_router(
         ))
         .layer(axum_middleware::from_fn(
             middleware::security_headers::security_headers,
-        )))
+        ));
+
+    Ok(middleware::http_stack::apply_http_edge_stack(
+        router,
+        is_production,
+        allowed_origins.as_deref(),
+        timeout_seconds,
+    ))
 }
 
 #[cfg(test)]

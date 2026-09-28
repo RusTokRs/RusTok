@@ -108,7 +108,10 @@ pub fn apply_http_edge_stack(
         .on_failure(DefaultOnFailure::new().level(tracing::Level::ERROR));
     let sensitive_headers_layer =
         SetSensitiveRequestHeadersLayer::new([header::AUTHORIZATION, header::COOKIE]);
-    let timeout_layer = TimeoutLayer::new(Duration::from_secs(timeout_seconds));
+    let timeout_layer = TimeoutLayer::with_status_code(
+        Duration::from_secs(timeout_seconds),
+        axum::http::StatusCode::REQUEST_TIMEOUT,
+    );
     let compression_layer = CompressionLayer::new();
 
     let service_stack = ServiceBuilder::new()

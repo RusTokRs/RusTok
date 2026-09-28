@@ -20,5 +20,8 @@ pub use model::{
     AxisAllowedValue, ProductCatalogSearchOption, ProductCatalogSearchOptions, SetVariantAxesDraft,
     VariantAxisConfig, VariantAxisDraft, VariantAxisValue, VariantAxisValueDraft,
 };
+pub use core::{product_grid_columns, ProductKind};
 pub use product_schema_graphql::*;
-pub use ui::catalog_admin::ProductAdmin;
+pub use ui::root::ProductAdmin;
+pub use ui::{CategoriesPage, ProductEditorPage, ProductGridPage};
+
