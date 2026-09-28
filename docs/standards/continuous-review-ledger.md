@@ -124,7 +124,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.02 — `apps/server/src/middleware/registry_artifact_access.rs`** — one-module audit.
 - [x] **FS-22.02.03 — `apps/server/src/middleware/registry_remote_claim.rs`** — one-module audit.
 - [x] **FS-22.02.04 — `apps/server/src/middleware/registry_publish_policy.rs`** — one-module audit.
-- [ ] **FS-22.02.05 — `apps/server/src/middleware/rate_limit.rs`** — one-module audit.
+- [x] **FS-22.02.05 — `apps/server/src/middleware/rate_limit.rs`** — one-module audit.
 - [ ] **FS-22.02.06 — `apps/server/src/middleware/auth_context.rs`** — one-module audit.
 - [ ] **FS-22.02.07 — `apps/server/src/middleware/channel.rs`** — one-module audit.
 - [ ] **FS-22.02.08 — `apps/server/src/middleware/locale.rs`** — one-module audit.
@@ -245,6 +245,7 @@ Hard limits for every iteration:
 - **Deferred finding SETTINGS-RATE-01:** `SettingsService::RateLimitSettingsValidator` validates a different JSON schema (`requests_per_second`/`burst_size`) than the live `RustokSettings.rate_limit` contract (`requests_per_minute`, `burst`, auth/oauth variants), while runtime bootstrap reads the host settings snapshot rather than these DB category overrides. Owning follow-up: settings/configuration integration boundary; not folded into this middleware iteration.
 - **Verification:** repository-content inspection, static reasoning, and branch diff review only. Per maintainer execution rules, no tests, clippy, gatekeeper, build, or runtime commands were executed by the agent.
 - **Status:** module-level fresh second pass clean; `FS-22.02.05` complete. Next planned primary module is `FS-22.02.06 — apps/server/src/middleware/auth_context.rs`.
+- **Merged:** PR #4173, merge commit `84f7553d1e13a63aee1afaf7d03a50de81a07fd7`.
 
 ### Deferred owning-module findings discovered during FS-22
 
