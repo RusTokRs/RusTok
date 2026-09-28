@@ -3,7 +3,6 @@ use axum::{
     extract::{Path, State},
     routing::get,
 };
-use rustok_events::EventEnvelope;
 use uuid::Uuid;
 
 use crate::error::Result;
@@ -16,7 +15,6 @@ use crate::extractors::{
     },
     tenant::CurrentTenant,
 };
-use crate::services::event_bus::event_bus_from_context;
 use crate::services::flex_standalone_service::FlexStandaloneSeaOrmService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use flex::rest::{
@@ -95,7 +93,7 @@ async fn create_schema(
     Json(input): Json<CreateFlexSchemaRequest>,
 ) -> Result<Json<FlexSchemaResponse>> {
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
-    let (row, event) = flex::create_schema_with_event(
+    let (row, event) = flex::create_schema(
         &service,
         tenant.id,
         Some(user.user.id),
@@ -104,7 +102,6 @@ async fn create_schema(
     .await
     .map_err(map_flex_rest_error)?;
 
-    publish_event(&ctx, event);
     Ok(Json(FlexSchemaResponse::from(row)))
 }
 
@@ -130,7 +127,7 @@ async fn update_schema(
     Json(input): Json<UpdateFlexSchemaRequest>,
 ) -> Result<Json<FlexSchemaResponse>> {
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
-    let (row, event) = flex::update_schema_with_event(
+    let (row, event) = flex::update_schema(
         &service,
         tenant.id,
         Some(user.user.id),
@@ -140,7 +137,6 @@ async fn update_schema(
     .await
     .map_err(map_flex_rest_error)?;
 
-    publish_event(&ctx, event);
     Ok(Json(FlexSchemaResponse::from(row)))
 }
 
@@ -164,11 +160,10 @@ async fn delete_schema(
     Path(schema_id): Path<Uuid>,
 ) -> Result<Json<DeleteFlexResponse>> {
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
-    let event = flex::delete_schema_with_event(&service, tenant.id, Some(user.user.id), schema_id)
+    let event = flex::delete_schema(&service, tenant.id, Some(user.user.id), schema_id)
         .await
         .map_err(map_flex_rest_error)?;
 
-    publish_event(&ctx, event);
     Ok(Json(DeleteFlexResponse::success()))
 }
 
@@ -250,7 +245,7 @@ async fn create_entry(
     Json(input): Json<CreateFlexEntryRequest>,
 ) -> Result<Json<FlexEntryResponse>> {
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
-    let (row, event) = flex::create_entry_with_event(
+    let (row, event) = flex::create_entry(
         &service,
         tenant.id,
         Some(user.user.id),
@@ -259,7 +254,6 @@ async fn create_entry(
     .await
     .map_err(map_flex_rest_error)?;
 
-    publish_event(&ctx, event);
     Ok(Json(FlexEntryResponse::from(row)))
 }
 
@@ -288,7 +282,7 @@ async fn update_entry(
     Json(input): Json<UpdateFlexEntryRequest>,
 ) -> Result<Json<FlexEntryResponse>> {
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
-    let (row, event) = flex::update_entry_with_event(
+    let (row, event) = flex::update_entry(
         &service,
         tenant.id,
         Some(user.user.id),
@@ -299,7 +293,6 @@ async fn update_entry(
     .await
     .map_err(map_flex_rest_error)?;
 
-    publish_event(&ctx, event);
     Ok(Json(FlexEntryResponse::from(row)))
 }
 
@@ -327,11 +320,10 @@ async fn delete_entry(
 ) -> Result<Json<DeleteFlexResponse>> {
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let event =
-        flex::delete_entry_with_event(&service, tenant.id, Some(user.user.id), schema_id, entry_id)
+        flex::delete_entry(&service, tenant.id, Some(user.user.id), schema_id, entry_id)
             .await
             .map_err(map_flex_rest_error)?;
 
-    publish_event(&ctx, event);
     Ok(Json(DeleteFlexResponse::success()))
 }
 
@@ -353,13 +345,6 @@ pub fn router() -> crate::routes::ServerRouter {
             "/api/v1/flex/schemas/{schema_id}/entries/{entry_id}",
             get(get_entry).patch(update_entry).delete(delete_entry),
         )
-}
-
-fn publish_event(ctx: &ServerRuntimeContext, event: EventEnvelope) {
-    let bus = event_bus_from_context(ctx);
-    if let Err(error) = bus.publish_envelope(event) {
-        tracing::warn!(error = %error, "Failed to publish flex standalone REST event");
-    }
 }
 
 fn map_flex_config_parse_error(
