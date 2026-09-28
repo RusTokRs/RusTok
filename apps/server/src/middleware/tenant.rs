@@ -60,11 +60,9 @@ struct CachedTenantContext {
     is_active: bool,
 }
 
-impl TryFrom<TenantContext> for CachedTenantContext {
-    type Error = serde_json::Error;
-
-    fn try_from(context: TenantContext) -> Result<Self, Self::Error> {
-        Ok(Self {
+impl From<TenantContext> for CachedTenantContext {
+    fn from(context: TenantContext) -> Self {
+        Self {
             id: context.id,
             name: context.name,
             slug: context.slug,
@@ -72,15 +70,13 @@ impl TryFrom<TenantContext> for CachedTenantContext {
             settings: context.settings,
             default_locale: context.default_locale,
             is_active: context.is_active,
-        })
+        }
     }
 }
 
-impl TryFrom<CachedTenantContext> for TenantContext {
-    type Error = serde_json::Error;
-
-    fn try_from(context: CachedTenantContext) -> Result<Self, Self::Error> {
-        Ok(Self {
+impl From<CachedTenantContext> for TenantContext {
+    fn from(context: CachedTenantContext) -> Self {
+        Self {
             id: context.id,
             name: context.name,
             slug: context.slug,
@@ -88,7 +84,7 @@ impl TryFrom<CachedTenantContext> for TenantContext {
             settings: context.settings,
             default_locale: context.default_locale,
             is_active: context.is_active,
-        })
+        }
     }
 }
 
@@ -607,11 +603,7 @@ impl TenantCacheInfrastructure {
                 self.load_policy.clone(),
                 || async move {
                     let context = loader().await?;
-                    let cached = CachedTenantContext::try_from(context).map_err(|error| {
-                        CoreError::Cache(format!(
-                            "tenant cache settings serialization failed: {error}"
-                        ))
-                    })?;
+                    let cached = CachedTenantContext::from(context);
                     let generated_at = current_unix_ms().map_err(|error| {
                         CoreError::Cache(format!("tenant cache timestamp creation failed: {error}"))
                     })?;
@@ -644,11 +636,7 @@ impl TenantCacheInfrastructure {
                 .await;
         }
 
-        TenantContext::try_from(result.value).map_err(|error| {
-            TenantContextLoadError::CacheUnavailable(format!(
-                "tenant cache settings deserialization failed: {error}"
-            ))
-        })
+        Ok(TenantContext::from(result.value))
     }
 }
 
