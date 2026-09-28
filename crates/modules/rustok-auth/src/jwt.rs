@@ -194,7 +194,7 @@ pub fn encode_email_verification_token(
     ttl_seconds: u64,
 ) -> Result<String> {
     let now = Utc::now();
-    let exp = now + Duration::seconds(ttl_seconds as i64);
+    let exp = token_expiration(now, ttl_seconds)?;
 
     let claims = EmailVerificationClaims {
         sub: email.to_lowercase(),
@@ -235,7 +235,7 @@ pub fn encode_invite_token(
     ttl_seconds: u64,
 ) -> Result<String> {
     let now = Utc::now();
-    let exp = now + Duration::seconds(ttl_seconds as i64);
+    let exp = token_expiration(now, ttl_seconds)?;
 
     let claims = InviteClaims {
         sub: email.to_lowercase(),
