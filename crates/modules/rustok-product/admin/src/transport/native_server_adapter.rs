@@ -562,6 +562,7 @@ async fn product_admin_attributes_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
+        let _ = (tenant_id, locale);
         Err(ServerFnError::new(
             "product/admin/attributes requires the `ssr` feature",
         ))
@@ -601,6 +602,7 @@ async fn product_admin_categories_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
+        let _ = (tenant_id, locale);
         Err(ServerFnError::new(
             "product/admin/categories requires the `ssr` feature",
         ))
@@ -693,6 +695,7 @@ async fn product_admin_attribute_schemas_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
+        let _ = (tenant_id, locale);
         Err(ServerFnError::new(
             "product/admin/attribute-schemas requires the `ssr` feature",
         ))
@@ -830,6 +833,7 @@ async fn product_admin_effective_form_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
+        let _ = (tenant_id, product_id, category_id, locale);
         Err(ServerFnError::new(
             "product/admin/effective-form requires the `ssr` feature",
         ))
@@ -868,6 +872,7 @@ async fn product_admin_attribute_values_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
+        let _ = (tenant_id, product_id, locale);
         Err(ServerFnError::new(
             "product/admin/attribute-values requires the `ssr` feature",
         ))
@@ -913,6 +918,7 @@ async fn product_admin_save_attribute_values_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
+        let _ = (tenant_id, product_id, locale, patches);
         Err(ServerFnError::new(
             "product/admin/save-attribute-values requires the `ssr` feature",
         ))
@@ -963,6 +969,7 @@ async fn product_admin_clear_detached_attribute_values_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
+        let _ = (tenant_id, product_id, locale, attribute_ids);
         Err(ServerFnError::new(
             "product/admin/clear-detached-attribute-values requires the `ssr` feature",
         ))
@@ -1026,6 +1033,7 @@ async fn product_admin_create_attribute_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
+        let _ = (tenant_id, locale, draft);
         Err(ServerFnError::new(
             "product/admin/create-attribute requires the `ssr` feature",
         ))
@@ -1073,6 +1081,7 @@ async fn product_admin_create_attribute_option_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
+        let _ = (tenant_id, locale, draft);
         Err(ServerFnError::new(
             "product/admin/create-attribute-option requires the `ssr` feature",
         ))
@@ -1126,6 +1135,7 @@ async fn product_admin_create_category_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
+        let _ = (tenant_id, locale, draft);
         Err(ServerFnError::new(
             "product/admin/create-category requires the `ssr` feature",
         ))
@@ -1172,6 +1182,7 @@ async fn product_admin_create_schema_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
+        let _ = (tenant_id, locale, draft);
         Err(ServerFnError::new(
             "product/admin/create-attribute-schema requires the `ssr` feature",
         ))
@@ -1220,6 +1231,7 @@ async fn product_admin_set_category_schema_mode_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
+        let _ = (tenant_id, draft);
         Err(ServerFnError::new(
             "product/admin/set-category-schema-mode requires the `ssr` feature",
         ))
@@ -1267,6 +1279,7 @@ async fn product_admin_bind_schema_attribute_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
+        let _ = (tenant_id, draft);
         Err(ServerFnError::new(
             "product/admin/bind-schema-attribute requires the `ssr` feature",
         ))
@@ -1314,6 +1327,7 @@ async fn product_admin_create_schema_group_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
+        let _ = (tenant_id, locale, draft);
         Err(ServerFnError::new(
             "product/admin/create-schema-group requires the `ssr` feature",
         ))
@@ -1361,6 +1375,7 @@ async fn product_admin_create_category_group_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
+        let _ = (tenant_id, locale, draft);
         Err(ServerFnError::new(
             "product/admin/create-category-group requires the `ssr` feature",
         ))
@@ -1409,6 +1424,7 @@ async fn product_admin_bind_category_attribute_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
+        let _ = (tenant_id, draft);
         Err(ServerFnError::new(
             "product/admin/bind-category-attribute requires the `ssr` feature",
         ))
