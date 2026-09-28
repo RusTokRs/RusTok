@@ -103,6 +103,7 @@ async fn get_user(
 
 pub fn router() -> crate::routes::ServerRouter {
     axum::Router::new()
+        .route("/api/users", get(list_users))
         .route("/api/users/", get(list_users))
         .route("/api/users/{id}", get(get_user))
 }

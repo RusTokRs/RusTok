@@ -113,6 +113,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.01 finding in progress — metrics route canonicalization.** The metrics controller exposed only `/metrics/`, while its OpenAPI declaration and observability policy use `/metrics`; the trailing-slash path was also tenant-bound even though metrics are global. The router now exposes canonical `/metrics` plus an explicit compatibility alias `/metrics/`, and both forms are globally classified and protected.
 
+- [ ] **FS-22.01 finding in progress — REST/OpenAPI route canonicalization (Flex + Users).** OpenAPI annotations declared `/api/v1/flex/schemas` and `/api/users`, but runtime routers exposed only their trailing-slash variants. Both canonical paths are now registered while explicit trailing-slash aliases remain for compatibility; this item stays open until the immediate and independent route re-audit is clean.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
