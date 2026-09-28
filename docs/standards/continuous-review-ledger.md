@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `8fcc3c42dfb71c02f6a995045347dfdc7acd33d0`  
+**Current main SHA:** `54ad2e75f2f5f0984ae5937358119316117db86b`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -255,6 +255,7 @@ Hard limits for every iteration:
 - [x] **FS-22.03.05 — `apps/server/src/models/oauth_apps.rs`** — completed with one exact-grant-policy remediation and a fresh independent second pass.
 - [x] **FS-22.03.06 — `apps/server/src/services/oauth_token_service.rs`** — completed with one security/presentation boundary remediation and a fresh independent second pass.
 - [x] **FS-22.03.07 — `crates/modules/rustok-auth/src/jwt.rs`** — completed with one input-range remediation and a fresh independent second pass.
+- [x] **FS-22.03.08 — `crates/modules/rustok-auth/src/credentials.rs`** — completed with one RNG-failure remediation and a fresh independent post-merge second pass.
 - [ ] **FS-22.04 — tenant/channel/locale propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.06 — REST/controller composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
@@ -364,6 +365,20 @@ Hard limits for every iteration:
 - **Documentation:** `crates/modules/rustok-auth/docs/README.md` now records the checked JWT expiration boundary.
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.07` complete after merge; continue to the next unchecked primary module in FS-22.03.
+
+### FS-22.03.08 Iteration 1 — `crates/modules/rustok-auth/src/credentials.rs`
+
+- **Base:** refreshed `main` at `5d331ddecd1f23f49199147cc1dfd2b3c98912e1`; dedicated branch `codex/audit-fs-22.03.08-auth-credentials`.
+- **Invariant map:** refresh-token generation must preserve 256-bit entropy, must not expose token material or backend diagnostics, and an operating-system RNG failure must fail the authentication operation through the typed auth/server error boundary rather than panic the host process. Every production caller must propagate the failure instead of assuming an infallible string result.
+- **Finding AUTHCRED-22.03.08-01:** `generate_refresh_token` used infallible `OsRng.fill_bytes`, which can panic when the operating-system randomness source is unavailable. The helper sits on login/session creation and refresh-token rotation paths, so an RNG failure could abort an authentication request at process level instead of producing a controlled server error.
+- **Remediation:** `generate_refresh_token` now returns `Result<String>` and uses `OsRng.try_fill_bytes`; RNG failure is mapped to the owner-owned `AuthError::RefreshTokenGenerationFailed`. The server adapter maps that typed error to the stable internal-server-error boundary, and both production session/token creation call sites propagate the error through `AuthLifecycleError`.
+- **Regression/source audit:** the existing token shape and entropy checks were retained and updated for the fallible API; the final post-merge pass found one missed test call site and fixed it in PR #4238 before closeout. No remaining `generate_refresh_token` caller treats the result as an infallible string.
+- **Adjacent-boundary review:** password hashing already propagates its own RNG/hash failures as `Result`; refresh-token hashing remains deterministic; OAuth token/service and auth controller boundaries consume the lifecycle service rather than constructing refresh tokens independently. No new retry, fallback, logging, token persistence, or protocol behavior was introduced.
+- **Regression audit:** normal successful token generation remains 32 random bytes encoded as 64 hexadecimal characters; refresh rotation and initial session creation now fail closed if secure randomness cannot be obtained. No secret or RNG error detail is propagated to the client.
+- **Fresh post-merge second pass:** after PR #4237 merged at `20f7e24b8ab8aa691af11e5cb80652965f52c7ef`, the full changed credentials/error/adapter/lifecycle surface was re-read. That pass identified the remaining test migration defect; PR #4238 merged it at `54ad2e75f2f5f0984ae5937358119316117db86b`. A second fresh pass then confirmed all production and test call sites use the fallible contract and no further in-scope defect remained.
+- **Verification:** repository source inspection and branch-diff review only. Per maintainer-owned verification policy, no tests, clippy, build, gatekeeper, migrations, or runtime commands were executed by the agent.
+- **Integration:** PR #4237 merged the production remediation into `main`; PR #4238 merged the post-merge test-contract correction. Current `main) after closeout is `54ad2e75f2f5f0984ae5937358119316117db86b`.
+- **Status:** `FS-22.03.08` complete. Next primary module: `FS-22.03.09 — crates/modules/rustok-auth/src/config.rs`.
 
 ### FS-22.02.11 Iteration 1 — `security_headers.rs` pre-implementation findings
 
