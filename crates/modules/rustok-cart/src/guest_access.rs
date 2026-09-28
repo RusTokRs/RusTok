@@ -148,6 +148,10 @@ pub fn verify_guest_cart_token(metadata: &Value, presented_token: Option<&str>) 
     constant_time_hex_eq(expected_hash, &hash_guest_cart_token(token))
 }
 
+pub fn verify_current_guest_cart_access(metadata: &Value) -> bool {
+    verify_guest_cart_token(metadata, current_guest_cart_token().as_deref())
+}
+
 pub fn hash_guest_cart_token(token: &str) -> String {
     Sha256::digest(token.as_bytes())
         .iter()
@@ -207,6 +211,19 @@ mod tests {
             prepare_guest_cart_metadata(Some(Uuid::new_v4()), json!({"source": "account"}));
         assert!(token.is_none());
         assert!(metadata.get(GUEST_CART_TOKEN_HASH_METADATA_KEY).is_none());
+    }
+
+    #[tokio::test]
+    async fn current_guest_cart_access_uses_request_scoped_token() {
+        let (metadata, token) = prepare_guest_cart_metadata(None, json!({}));
+        let token = token.expect("guest token");
+
+        assert!(!verify_current_guest_cart_access(&metadata));
+
+        with_guest_cart_request_scope(Some(token), async {
+            assert!(verify_current_guest_cart_access(&metadata));
+        })
+        .await;
     }
 
     #[test]

@@ -144,7 +144,7 @@ fn ensure_storefront_cart_access(
     storefront_customer_id: Option<Uuid>,
 ) -> Result<(), ServerFnError> {
     if let Some(owner_customer_id) = cart.customer_id {
-        match storefront_customer_id {
+        return match storefront_customer_id {
             Some(customer_id) if customer_id == owner_customer_id => Ok(()),
             Some(_) => Err(ServerFnError::new(
                 "Cart does not belong to the current storefront customer",
@@ -152,9 +152,15 @@ fn ensure_storefront_cart_access(
             None => Err(ServerFnError::new(
                 "Authentication required to access this cart",
             )),
-        }
-    } else {
+        };
+    }
+
+    if rustok_cart::verify_current_guest_cart_access(&cart.metadata) {
         Ok(())
+    } else {
+        Err(ServerFnError::new(
+            "A valid guest cart access token is required",
+        ))
     }
 }
 
