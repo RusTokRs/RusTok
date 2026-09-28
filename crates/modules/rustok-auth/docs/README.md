@@ -5,6 +5,7 @@ its canonical persisted spelling. Host translation snapshots consume this owner
 type directly rather than defining another lifecycle enum.
 
 `rustok-auth` is the core authentication module of the platform. It holds JWT lifecycle,
+The `AuthLifecycleContext` carries the trusted optional `AuthPrincipalKind` classification; lifecycle self-service operations that depend on a direct user session must reject delegated OAuth and service principals rather than deriving principal kind from transport fields.
 credential hashing, refresh/reset/invite/email-verification token flows and
 runtime RBAC surface `users:*`.
 
