@@ -19,6 +19,7 @@ pub async fn resolve(request: Request<Body>, next: Next) -> Response {
         Err(message) => return (StatusCode::UNAUTHORIZED, message).into_response(),
     };
 
+    let presented_token_present = presented_token.is_some();
     let (mut response, issued_token) =
         crate::with_guest_cart_request_scope(presented_token, async move {
             let response = next.run(request).await;
@@ -26,6 +27,12 @@ pub async fn resolve(request: Request<Body>, next: Next) -> Response {
             (response, issued_token)
         })
         .await;
+
+    if presented_token_present || issued_token.is_some() {
+        response
+            .headers_mut()
+            .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
 
     if let Some(token) = issued_token {
         if let Ok(header_value) = HeaderValue::from_str(&token) {
@@ -42,20 +49,14 @@ pub async fn resolve(request: Request<Body>, next: Next) -> Response {
         if let Ok(cookie_value) = HeaderValue::from_str(&cookie) {
             response.headers_mut().append(SET_COOKIE, cookie_value);
         }
-        response
-            .headers_mut()
-            .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
     }
 
     response
 }
 
 fn extract_presented_token(headers: &HeaderMap) -> Result<Option<String>, &'static str> {
-    let header_token = headers
-        .get(crate::GUEST_CART_TOKEN_HEADER)
-        .and_then(|value| value.to_str().ok())
-        .and_then(crate::normalize_presented_guest_cart_token);
-    let cookie_token = extract_cookie_token(headers);
+    let header_token = extract_header_token(headers)?;
+    let cookie_token = extract_cookie_token(headers)?;
 
     match (header_token, cookie_token) {
         (Some(header), Some(cookie)) if header != cookie => {
@@ -67,15 +68,53 @@ fn extract_presented_token(headers: &HeaderMap) -> Result<Option<String>, &'stat
     }
 }
 
-fn extract_cookie_token(headers: &HeaderMap) -> Option<String> {
-    let raw = headers.get(COOKIE)?.to_str().ok()?;
-    raw.split(';').find_map(|entry| {
-        let (name, value) = entry.trim().split_once('=')?;
-        if name != crate::GUEST_CART_TOKEN_COOKIE {
-            return None;
+fn extract_header_token(headers: &HeaderMap) -> Result<Option<String>, &'static str> {
+    let values = headers.get_all(crate::GUEST_CART_TOKEN_HEADER);
+    let mut token = None;
+
+    for value in values.iter() {
+        let text = value
+            .to_str()
+            .map_err(|_| "Invalid guest cart access token")?;
+        let normalized = crate::normalize_presented_guest_cart_token(text)
+            .ok_or("Invalid guest cart access token")?;
+
+        if token.is_some() {
+            return Err("Duplicate guest cart access tokens");
         }
-        crate::normalize_presented_guest_cart_token(value)
-    })
+        token = Some(normalized);
+    }
+
+    Ok(token)
+}
+
+fn extract_cookie_token(headers: &HeaderMap) -> Result<Option<String>, &'static str> {
+    let mut token = None;
+
+    for raw_header in headers.get_all(COOKIE).iter() {
+        let raw = raw_header
+            .to_str()
+            .map_err(|_| "Invalid guest cart cookie")?;
+
+        for entry in raw.split(';') {
+            let entry = entry.trim();
+            let Some((name, value)) = entry.split_once('=') else {
+                continue;
+            };
+            if name != crate::GUEST_CART_TOKEN_COOKIE {
+                continue;
+            }
+
+            let normalized = crate::normalize_presented_guest_cart_token(value)
+                .ok_or("Invalid guest cart access token")?;
+            if token.is_some() {
+                return Err("Duplicate guest cart access tokens");
+            }
+            token = Some(normalized);
+        }
+    }
+
+    Ok(token)
 }
 
 #[cfg(test)]
