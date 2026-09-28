@@ -265,14 +265,16 @@ pub async fn ready(
                     TcpStream::connect((host.as_str(), port))
                         .await
                         .map(|_| ())
-                        .map_err(|error| format!("search connect error: {error}"))
+                        .map_err(|_| "search backend connection failed".to_string())
                 },
             )
             .await,
         );
         checks.push(check_runtime_guardrails(&ctx).await);
         checks.push(check_outbox_pending_lag(&ctx, settings).await);
-        checks.push(check_search_index_lag(&ctx, settings).await);
+        if settings.features.search_indexing {
+            checks.push(check_search_index_lag(&ctx, settings).await);
+        }
         checks.push(email_backend_check(settings));
         checks.extend(check_runtime_workers(&ctx, settings));
 
@@ -462,7 +464,7 @@ async fn check_storage_backend(ctx: &ServerRuntimeContext) -> std::result::Resul
         uuid::Uuid::nil(),
         "probe",
     )
-    .map_err(|e| format!("invalid health probe key: {e}"))?
+    .map_err(|_| "storage health probe could not be constructed".to_string())?
     .into_path();
     let data = bytes::Bytes::from_static(b"ok");
     let result = async {
@@ -470,12 +472,12 @@ async fn check_storage_backend(ctx: &ServerRuntimeContext) -> std::result::Resul
             .objects
             .put_opts(&probe, data.into(), storage.put_options("text/plain"))
             .await
-            .map_err(|e| format!("storage write failed: {e}"))?;
+            .map_err(|_| "storage health probe write failed".to_string())?;
         storage
             .objects
             .delete(&probe)
             .await
-            .map_err(|e| format!("storage delete failed: {e}"))?;
+            .map_err(|_| "storage health probe cleanup failed".to_string())?;
         Ok(())
     }
     .await;
@@ -487,7 +489,7 @@ async fn check_database(db: &DatabaseConnection) -> std::result::Result<(), Stri
     db.execute_unprepared("SELECT 1")
         .await
         .map(|_| ())
-        .map_err(|error| format!("database check failed: {error}"))
+        .map_err(|_| "database connectivity check failed".to_string())
 }
 
 async fn check_required_database_schema(
@@ -496,8 +498,8 @@ async fn check_required_database_schema(
 ) -> std::result::Result<(), String> {
     for table in required_database_schema_tables(settings) {
         let query = format!("SELECT 1 FROM {table} LIMIT 1");
-        if let Err(error) = ctx.db().execute_unprepared(&query).await {
-            return Err(format!("required table `{table}` is unavailable: {error}"));
+        if ctx.db().execute_unprepared(&query).await.is_err() {
+            return Err(format!("required table `{table}` is unavailable"));
         }
     }
 
@@ -526,9 +528,7 @@ async fn check_cache_backend(ctx: &ServerRuntimeContext) -> std::result::Result<
     if report.is_healthy() {
         Ok(())
     } else {
-        Err(report
-            .redis_error
-            .unwrap_or_else(|| "redis unhealthy".to_string()))
+        Err("cache backend is unhealthy".to_string())
     }
 }
 
@@ -544,9 +544,9 @@ async fn check_tenant_invalidation_listener(
         TenantInvalidationListenerStatus::Starting => {
             Err("tenant invalidation listener is starting".to_string())
         }
-        TenantInvalidationListenerStatus::Degraded => Err(snapshot
-            .last_error
-            .unwrap_or_else(|| "tenant invalidation listener is degraded".to_string())),
+        TenantInvalidationListenerStatus::Degraded => {
+            Err("tenant invalidation listener is degraded".to_string())
+        }
     }
 }
 
@@ -595,9 +595,9 @@ async fn check_outbox_pending_lag(
             }
         }
         Ok(None) => (ReadinessStatus::Ok, None),
-        Err(error) => (
+        Err(_) => (
             ReadinessStatus::Degraded,
-            Some(format!("outbox lag check failed: {error}")),
+            Some("outbox lag check failed".to_string()),
         ),
     };
 
@@ -642,9 +642,9 @@ async fn check_search_index_lag(
             ReadinessStatus::Degraded,
             Some("search_documents relation is not available for lag check".to_string()),
         ),
-        Err(error) => (
+        Err(_) => (
             ReadinessStatus::Degraded,
-            Some(format!("search lag check failed: {error}")),
+            Some("search lag check failed".to_string()),
         ),
     };
 
@@ -820,21 +820,21 @@ async fn check_rate_limit_backend(
             .0
             .check_backend_health()
             .await
-            .map_err(|error| format!("api rate-limit backend check failed: {error}")),
+            .map_err(|_| "api rate-limit backend check failed".to_string()),
         "auth" => ctx
             .shared_get::<SharedAuthRateLimiter>()
             .ok_or_else(|| "auth rate limiter not initialized in shared_store".to_string())?
             .0
             .check_backend_health()
             .await
-            .map_err(|error| format!("auth rate-limit backend check failed: {error}")),
+            .map_err(|_| "auth rate-limit backend check failed".to_string()),
         "oauth" => ctx
             .shared_get::<SharedOAuthRateLimiter>()
             .ok_or_else(|| "oauth rate limiter not initialized in shared_store".to_string())?
             .0
             .check_backend_health()
             .await
-            .map_err(|error| format!("oauth rate-limit backend check failed: {error}")),
+            .map_err(|_| "oauth rate-limit backend check failed".to_string()),
         _ => Err(format!("unknown rate-limit namespace: {namespace}")),
     }
 }
@@ -1002,22 +1002,63 @@ fn collect_reasons(checks: &[ReadinessCheck], modules: &[ReadinessCheck]) -> Vec
 }
 
 fn parse_host_port(url: &str) -> std::result::Result<(String, u16), String> {
-    let without_scheme = url.split_once("://").map(|(_, rest)| rest).unwrap_or(url);
+    let (scheme, authority_source) = match url.split_once("://") {
+        Some((scheme, rest)) => (Some(scheme.trim().to_ascii_lowercase()), rest),
+        None => (None, url),
+    };
+    let default_port = match scheme.as_deref() {
+        Some("https") => 443,
+        _ => 80,
+    };
 
-    let authority = without_scheme.split('/').next().unwrap_or_default().trim();
+    let authority = authority_source
+        .split('/')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .rsplit_once('@')
+        .map(|(_, host)| host)
+        .unwrap_or_default();
 
     if authority.is_empty() {
-        return Err("search URL is empty".to_string());
+        return Err("search backend URL is empty or invalid".to_string());
+    }
+
+    if authority.starts_with('[') {
+        let end = authority
+            .find(']')
+            .ok_or_else(|| "search backend URL contains an invalid host".to_string())?;
+        let host = &authority[1..end];
+        if host.is_empty() {
+            return Err("search backend URL contains an invalid host".to_string());
+        }
+        let remainder = &authority[end + 1..];
+        let port = if remainder.is_empty() {
+            default_port
+        } else if let Some(port) = remainder.strip_prefix(':') {
+            port.parse::<u16>()
+                .map_err(|_| "search backend URL contains an invalid port".to_string())?
+        } else {
+            return Err("search backend URL contains an invalid host".to_string());
+        };
+        return Ok((host.to_string(), port));
+    }
+
+    if authority.matches(':').count() > 1 {
+        return Ok((authority.to_string(), default_port));
     }
 
     if let Some((host, port)) = authority.rsplit_once(':') {
         let port = port
             .parse::<u16>()
-            .map_err(|_| format!("invalid search port: {port}"))?;
+            .map_err(|_| "search backend URL contains an invalid port".to_string())?;
+        if host.is_empty() {
+            return Err("search backend URL contains an invalid host".to_string());
+        }
         return Ok((host.to_string(), port));
     }
 
-    Ok((authority.to_string(), 80))
+    Ok((authority.to_string(), default_port))
 }
 
 pub fn router() -> crate::routes::ServerRouter {
@@ -1137,6 +1178,21 @@ mod tests {
         let (host, port) = parse_host_port("http://localhost:7700/search").expect("valid url");
         assert_eq!(host, "localhost");
         assert_eq!(port, 7700);
+    }
+
+    #[test]
+    fn parse_host_port_uses_https_default_port() {
+        let (host, port) = parse_host_port("https://search.example.test/search").expect("valid url");
+        assert_eq!(host, "search.example.test");
+        assert_eq!(port, 443);
+    }
+
+    #[test]
+    fn parse_host_port_strips_userinfo_and_supports_bracketed_ipv6() {
+        let (host, port) =
+            parse_host_port("https://user:secret@[2001:db8::1]:9443/search").expect("valid url");
+        assert_eq!(host, "2001:db8::1");
+        assert_eq!(port, 9443);
     }
 
     #[test]

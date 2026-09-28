@@ -62,8 +62,8 @@ async fn list_users(
     }
 
     let paginator = query.paginate(ctx.db(), page_size);
-    let total = paginator.num_items().await.unwrap_or(0);
-    let rows = paginator.fetch_page(page - 1).await.unwrap_or_default();
+    let total = paginator.num_items().await?;
+    let rows = paginator.fetch_page(page - 1).await?;
 
     Ok(json_response(UsersResponse {
         users: rows.into_iter().map(map_user).collect(),
@@ -94,8 +94,7 @@ async fn get_user(
     let user = users::Entity::find_by_id(user_id)
         .filter(UserColumn::TenantId.eq(tenant.id))
         .one(ctx.db())
-        .await
-        .map_err(|e| Error::Message(e.to_string()))?
+        .await?
         .ok_or(Error::NotFound)?;
 
     Ok(json_response(map_user(user)))

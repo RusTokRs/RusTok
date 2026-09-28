@@ -4,10 +4,10 @@
 
 use axum::{
     Json,
-    extract::{ConnectInfo, Form, Query, State},
+    extract::{ConnectInfo, Form, FromRequest, Query, Request, State},
     http::{
         HeaderMap, StatusCode,
-        header::{AUTHORIZATION, COOKIE, LOCATION, SET_COOKIE},
+        header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, LOCATION, PRAGMA, SET_COOKIE},
     },
     response::{Html, IntoResponse},
     routing::{get, post},
@@ -35,6 +35,7 @@ fn oauth_error_response(error: TokenErrorResponse) -> axum::response::Response {
         "invalid_client" => StatusCode::UNAUTHORIZED,
         "invalid_grant" | "unsupported_grant_type" => StatusCode::BAD_REQUEST,
         "invalid_scope" => StatusCode::BAD_REQUEST,
+        "insufficient_scope" => StatusCode::FORBIDDEN,
         _ => StatusCode::BAD_REQUEST,
     };
     (status, Json(error)).into_response()
@@ -49,24 +50,83 @@ struct ValidatedAuthorizeRequest {
     code_challenge: String,
 }
 
+fn oauth_token_http_response(
+    status: StatusCode,
+    body: impl serde::Serialize,
+) -> axum::response::Response {
+    let mut response = (status, Json(body)).into_response();
+    response.headers_mut().insert(
+        CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    response.headers_mut().insert(
+        PRAGMA,
+        axum::http::HeaderValue::from_static("no-cache"),
+    );
+    response
+}
+
 async fn token_handler(
     State(ctx): State<ServerAuthRuntime>,
     tenant_ctx: TenantContext,
-    Json(req): Json<TokenRequest>,
+    request: Request,
 ) -> axum::response::Response {
+    let req = match parse_token_request(request, &ctx).await {
+        Ok(request) => request,
+        Err(error) => return oauth_token_http_response(error.status, error),
+    };
+
     match OAuthTokenService::exchange(&ctx, tenant_ctx.id, &req).await {
-        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
-        Err(error) => (
+        Ok(response) => oauth_token_http_response(StatusCode::OK, response),
+        Err(error) => oauth_token_http_response(
             error.status,
-            Json(TokenErrorResponse {
+            TokenErrorResponse {
                 error: error.error.to_string(),
                 error_description: error.description,
-            }),
-        )
-            .into_response(),
+            },
+        ),
     }
 }
 
+async fn parse_token_request(
+    request: Request,
+    state: &ServerAuthRuntime,
+) -> Result<TokenRequest, TokenErrorResponse> {
+    let is_form = request
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(is_form_encoded_content_type)
+        .unwrap_or(false);
+
+    if is_form {
+        Form::<TokenRequest>::from_request(request, state)
+            .await
+            .map(|Form(request)| request)
+            .map_err(|_| TokenErrorResponse {
+                error: "invalid_request".to_string(),
+                error_description: "Invalid OAuth token request".to_string(),
+            })
+    } else {
+        Json::<TokenRequest>::from_request(request, state)
+            .await
+            .map(|Json(request)| request)
+            .map_err(|_| TokenErrorResponse {
+                error: "invalid_request".to_string(),
+                error_description: "Invalid OAuth token request".to_string(),
+            })
+    }
+}
+
+fn is_form_encoded_content_type(value: &str) -> bool {
+    value
+        .split(';')
+        .next()
+        .map(str::trim)
+        .is_some_and(|media_type| {
+            media_type.eq_ignore_ascii_case("application/x-www-form-urlencoded")
+        })
+}
 async fn authorize_handler(
     State(ctx): State<ServerRuntimeContext>,
     tenant_ctx: TenantContext,
@@ -775,27 +835,45 @@ async fn userinfo_handler(
 async fn userinfo_handler_inner(
     current_user: CurrentUser,
 ) -> Result<Json<serde_json::Value>, TokenErrorResponse> {
-    // We already know the token is valid, active, and belongs to a user because
-    // the CurrentUser extractor succeeds only if these conditions are met.
+    if matches!(
+        current_user.principal_kind,
+        rustok_api::AuthPrincipalKind::Service
+    ) {
+        return Err(TokenErrorResponse {
+            error: "insufficient_scope".to_string(),
+            error_description: "UserInfo requires an end-user access token".to_string(),
+        });
+    }
 
-    // In a full OIDC implementation, we'd check if the token had the `openid` scope specifically.
-    // We assume CurrentUser claims contain the scopes if needed, but since we rely on RBAC
-    // returning the user profile here is generally safe for authenticated apps.
+    if !oauth_scope_contains(&current_user.scopes, "openid") {
+        return Err(TokenErrorResponse {
+            error: "insufficient_scope".to_string(),
+            error_description: "openid scope is required for UserInfo".to_string(),
+        });
+    }
 
     let user = current_user.user;
     let inferred_role = current_user.inferred_role;
-
-    // standard OIDC claims
-    let userinfo = serde_json::json!({
+    let mut userinfo = serde_json::json!({
         "sub": user.id.to_string(),
-        "name": user.name.unwrap_or_default(),
-        "email": user.email,
-        "email_verified": true, // We assume true for simplicity here, adjust if rustok tracks verification
         "role": inferred_role.to_string(),
         "tenant_id": user.tenant_id.to_string(),
     });
 
+    if oauth_scope_contains(&current_user.scopes, "profile") {
+        userinfo["name"] = serde_json::Value::String(user.name.unwrap_or_default());
+    }
+
+    if oauth_scope_contains(&current_user.scopes, "email") {
+        userinfo["email"] = serde_json::Value::String(user.email);
+        userinfo["email_verified"] = serde_json::Value::Bool(user.email_verified_at.is_some());
+    }
+
     Ok(Json(userinfo))
+}
+
+fn oauth_scope_contains(scopes: &[String], required_scope: &str) -> bool {
+    scopes.iter().any(|scope| scope == required_scope)
 }
 
 pub fn router() -> crate::routes::ServerRouter {
@@ -810,7 +888,10 @@ pub fn router() -> crate::routes::ServerRouter {
         )
         .route("/api/oauth/consent", post(consent_handler))
         .route("/api/oauth/token", post(token_handler))
-        .route("/api/oauth/userinfo", get(userinfo_handler))
+        .route(
+            "/api/oauth/userinfo",
+            get(userinfo_handler).post(userinfo_handler),
+        )
         .route("/api/oauth/revoke", post(revoke_handler))
 }
 
@@ -867,6 +948,33 @@ mod tests {
         settings
     }
 
+    #[test]
+    fn oauth_token_http_response_disables_caching() {
+        let response = oauth_token_http_response(
+            StatusCode::OK,
+            TokenErrorResponse {
+                error: "invalid_request".to_string(),
+                error_description: "test".to_string(),
+            },
+        );
+
+        assert_eq!(
+            response.headers().get(CACHE_CONTROL).and_then(|value| value.to_str().ok()),
+            Some("no-store"),
+        );
+        assert_eq!(
+            response.headers().get(PRAGMA).and_then(|value| value.to_str().ok()),
+            Some("no-cache"),
+        );
+    }
+    #[test]
+    fn token_form_content_type_accepts_optional_parameters() {
+        assert!(is_form_encoded_content_type("application/x-www-form-urlencoded"));
+        assert!(is_form_encoded_content_type(
+            "Application/X-WWW-Form-Urlencoded; charset=UTF-8",
+        ));
+        assert!(!is_form_encoded_content_type("application/json"));
+    }
     #[test]
     fn browser_cookie_is_parsed_and_authorization_header_wins() {
         let mut headers = HeaderMap::new();
@@ -978,6 +1086,19 @@ mod tests {
         assert!(html.contains("&quot;quoted-state&quot;"));
     }
 
+    #[test]
+    fn userinfo_scope_checks_require_openid_and_gate_claims() {
+        assert!(oauth_scope_contains(
+            &["openid".to_string(), "profile".to_string()],
+            "openid"
+        ));
+        assert!(!oauth_scope_contains(
+            &["profile".to_string(), "email".to_string()],
+            "openid"
+        ));
+        assert!(oauth_scope_contains(&["email".to_string()], "email"));
+        assert!(!oauth_scope_contains(&["profile".to_string()], "email"));
+    }
     #[test]
     fn consent_requirement_depends_on_app_type() {
         assert!(validated_request("third_party").app.requires_user_consent());

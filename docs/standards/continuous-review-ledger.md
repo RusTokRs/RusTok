@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `c1b808e1766fdadc89f8b5d986c5cc0726b53cbd`  
+**Current main SHA:** `7cdc78d34cf20a14d1871dffa6cee0fc569b5cd3`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -137,9 +137,9 @@ Hard limits for every iteration:
 - [x] **FS-22.02.15 — `apps/server/src/services/graphql_schema.rs`** — one-module audit; completed with five consecutive remediation iterations and a fresh post-merge second pass. Cross-module runtime-fallback candidates remain explicitly deferred to their owner modules.
 - [x] **FS-22.02.16 — `apps/server/src/controllers/graphql.rs`** — one-module audit; completed with six consecutive remediation iterations and a final fresh second pass. Remaining RBAC self-mutation invalidation and full detached WebSocket worker lifecycle are explicitly deferred to their owner/FS-24 tracks.
 - [x] **FS-22.02.17 — `apps/server/src/controllers/auth.rs`** — one-module audit; completed with two remediation iterations and a final fresh second pass. Registration-policy and invite-consumption boundaries are now enforced.
-- [ ] **FS-22.02.18 — `apps/server/src/controllers/oauth.rs`** — one-module audit.
-- [ ] **FS-22.02.19 — `apps/server/src/controllers/users.rs`** — one-module audit.
-- [ ] **FS-22.02.20 — `apps/server/src/controllers/health.rs`** — one-module audit.
+- [x] **FS-22.02.18 — `apps/server/src/controllers/oauth.rs`** — one-module audit; completed with four remediation iterations and a final fresh second pass. OAuth/OIDC transport, scope, caching, and handshake boundaries are now aligned with the reviewed contract.
+- [x] **FS-22.02.19 — `apps/server/src/controllers/users.rs`** — one-module audit; completed with two remediation iterations and a final fresh second pass. Tenant isolation, permission boundaries, pagination semantics, and database error handling were reverified.
+- [x] **FS-22.02.20 — `apps/server/src/controllers/health.rs`** — one-module audit; completed with two remediation iterations and a final fresh second pass.
 - [ ] **FS-22.02.21 — `apps/server/src/controllers/metrics.rs`** — one-module audit.
 - [ ] **FS-22.02.22 — `apps/server/src/controllers/marketplace_registry.rs`** — one-module audit.
 - [ ] **FS-22.02.23 — `apps/server/src/controllers/artifact_http.rs`** — one-module audit.
@@ -195,6 +195,60 @@ Hard limits for every iteration:
 - **Regression correction during implementation:** the first edge-layer rearrangement temporarily duplicated rate limiting in the registry/worker branch; later re-read caught and corrected it. A second temporary inner `security_headers` layer that would have produced two CSP nonces was also caught and removed before PR creation.
 - **Verification:** repository source inspection, static reasoning, cross-file contract review, and branch-diff review only. No tests, cargo check/clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Next primary module:** FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`.
+
+### FS-22.02.20 Result — `controllers/health.rs`
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Fresh main base before track:** `c79806106f246a75e21f497d262aed74a42519e2`.
+- **Iteration 1:** commits `6004963c8f99cbc0b1d3a1b3e61e834459b67a71` and `18ae033e4a7dcf1617ed350d9bca23873eb9d189`.
+  - **Finding:** public `/health/ready` propagated raw database, cache, tenant-invalidation, storage, outbox, search, and rate-limit backend errors into readiness reasons.
+  - **Remediation:** public readiness diagnostics now use stable non-sensitive messages while preserving the existing readiness status semantics.
+  - **Finding:** search-index lag was checked even when `settings.features.search_indexing` was disabled, despite `search_documents` being optional under that feature.
+  - **Remediation:** search lag readiness is now evaluated only when search indexing is enabled.
+- **Iteration 2:** commit `7cdc78d34cf20a14d1871dffa6cee0fc569b5cd3`.
+  - **Finding:** search backend URL parsing defaulted no-port endpoints to port 80 regardless of scheme and did not safely handle userinfo or bracketed IPv6 authorities.
+  - **Remediation:** parser now selects HTTPS port 443, strips userinfo before probing, supports bracketed IPv6 with explicit ports, and returns stable validation errors; focused parser tests were added.
+- **Final fresh second pass:** independently re-read the complete controller after all patches and rechecked public error redaction, feature gating, readiness aggregation/circuit behavior, module-health handling, and search endpoint parsing. No remaining unblocked controller-owned defect was found.
+- **Verification:** repository source inspection, settings/search owner-contract review, immediate re-audits after each remediation, and post-change source/diff review only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.21 — `apps/server/src/controllers/metrics.rs`.
+
+### FS-22.02.19 Result — `controllers/users.rs`
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Fresh main base before track:** `9e35c1d58a46db3c0be2a669fa0dd5586311c9ec`.
+- **Final main after this module track:** `c79806106f246a75e21f497d262aed74a42519e2`.
+- **Iteration 1:** PR #4211, merge commit `e6a5393f519703e2c51f452965cfda377a524cdd`.
+  - **Finding:** `list_users` swallowed `num_items()` and `fetch_page()` database errors with `unwrap_or*`, returning HTTP 200 with a misleading empty user list during DB failures.
+  - **Remediation:** database failures now propagate through the canonical server `Error::Database` boundary.
+- **Iteration 2:** PR #4212, merge commit `c79806106f246a75e21f497d262aed74a42519e2`.
+  - **Finding:** `get_user` converted `DbErr` to `Error::Message(e.to_string())` unnecessarily instead of using the canonical database error variant.
+  - **Remediation:** `DbErr` now propagates with `await?`; tenant filtering and `404 NotFound` behavior remain unchanged.
+- **Final fresh second pass:** independently re-read the complete controller after both merges and rechecked tenant scoping on list/get, permission checks, page bounds, query filters, DB-error propagation, and response mapping. No remaining unblocked controller-owned defect was found.
+- **Non-findings:** the current list ordering is deterministic by `CreatedAt` only but is not treated as a blocker because page-number pagination remains inherently mutation-sensitive; no security boundary is crossed and adding a tie-breaker would be a separate API-semantics change.
+- **Verification:** repository source inspection, adjacent server error-boundary review, immediate re-audits after each patch, fresh second pass, and branch-diff review only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.20 — `apps/server/src/controllers/health.rs`.
+
+### FS-22.02.18 Result — `controllers/oauth.rs`
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Fresh main base before track:** `b744f8189ebf7959223d2db3781fc80f3a707f17`.
+- **Final main after this module track:** `5625810cbd8dc4e17f7361d4087c2744efc07651`.
+- **Iteration 1:** PR #4206, merge commit `1c949e8f3a840bb1da40dae39821acd00e8476a1`.
+  - **Finding:** `/api/oauth/userinfo` returned claims without requiring `openid`, exposed `profile/email` claims without corresponding scopes, accepted service principals, and hardcoded `email_verified=true`.
+  - **Remediation:** require end-user principal + `openid`; gate `name` by `profile`, `email/email_verified` by `email`; derive verification state from `email_verified_at`; map `insufficient_scope` to HTTP 403.
+- **Iteration 2:** PR #4207, merge commit `31fdde1f8ceef5a9414a05bfa57dce0d8046a7fc`.
+  - **Finding:** token endpoint declared JSON or form-encoded `TokenRequest` compatibility but accepted JSON only.
+  - **Remediation:** controller now selects Axum `Form<TokenRequest>` for `application/x-www-form-urlencoded` and retains JSON parsing otherwise, while preserving the existing token service.
+- **Iteration 3:** PR #4208, merge commit `2b21f4dd301238a58b1d65004155a3d50ae98179`.
+  - **Finding:** OAuth token responses lacked `Cache-Control: no-store` and `Pragma: no-cache`, despite the endpoint returning access/refresh tokens.
+  - **Remediation:** all token endpoint success and error responses now pass through one helper that sets both anti-cache headers.
+- **Iteration 4:** PR #4209, merge commit `5625810cbd8dc4e17f7361d4087c2744efc07651`.
+  - **Finding:** UserInfo was exposed as GET-only, while OpenID Connect Core requires support for both GET and POST.
+  - **Remediation:** GET and POST now share the same authenticated UserInfo handler; no authorization semantics were duplicated.
+- **Fresh second-pass verification:** re-read the complete controller after all merges and rechecked authorization-code PKCE, exact redirect URI binding, active-client lookup, tenant binding, refresh rotation, browser-session cookie trust/attributes, token request content negotiation, UserInfo scope/principal policy, and token-response cache headers. No remaining unblocked controller-owned defect was found.
+- **Explicitly deferred owner/module observations:** OAuth token-service internals and OAuth metadata/discovery remain separate owner/primary-module tracks; no controller shim was introduced for those boundaries. The controller deliberately retains `redirect_with_*().expect("validated redirect URI")` as an explicit post-validation invariant.
+- **Verification:** repository source inspection, owner-service and model review, protocol verification against OAuth 2.0 / OpenID Connect specifications, immediate re-audits after each patch, fresh second pass, and branch-diff review only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.19 — `apps/server/src/controllers/users.rs`.
 
 ### FS-22.02.17 Result — `controllers/auth.rs`
 
