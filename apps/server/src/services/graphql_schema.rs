@@ -33,17 +33,6 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Result<Arc<AppSchema>>
         return Ok(shared.0.clone());
     }
 
-    // Select the public-image provider before any host snapshot is built. The enriched extension
-    // registry is stored back in ServerRuntimeContext, so GraphQL and later server-function
-    // composition receive the exact same deployment-selected provider wrapper.
-    let runtime_extensions =
-        attach_profile_media_public_image_provider(ctx, module_runtime_extensions_from_ctx(ctx));
-    let event_bus = event_bus_from_context(ctx);
-    let transactional_event_bus = transactional_event_bus_from_context(ctx);
-    let stop_handle = stop_handle_from_context(ctx);
-
-    #[cfg(feature = "mod-alloy")]
-    let alloy_runtime = alloy_runtime_from_context(ctx);
     let registry = ctx.shared_get::<rustok_core::ModuleRegistry>().ok_or_else(|| {
         Error::Message(
             "ModuleRegistry is unavailable; GraphQL schema composition requires boot-owned registry state"
@@ -58,6 +47,18 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Result<Arc<AppSchema>>
                     .to_string(),
             )
         })?;
+
+    // Select the public-image provider before any host snapshot is built. The enriched extension
+    // registry is stored back in ServerRuntimeContext, so GraphQL and later server-function
+    // composition receive the exact same deployment-selected provider wrapper.
+    let runtime_extensions =
+        attach_profile_media_public_image_provider(ctx, module_runtime_extensions_from_ctx(ctx));
+    let event_bus = event_bus_from_context(ctx);
+    let transactional_event_bus = transactional_event_bus_from_context(ctx);
+    let stop_handle = stop_handle_from_context(ctx);
+
+    #[cfg(feature = "mod-alloy")]
+    let alloy_runtime = alloy_runtime_from_context(ctx);
     let static_module_registry_reader =
         static_module_registry_reader_from_context(ctx, registry.clone());
     let host_runtime = rustok_api::HostRuntimeContext::new(ctx.db_clone())
