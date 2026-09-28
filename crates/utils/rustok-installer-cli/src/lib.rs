@@ -381,6 +381,7 @@ fn parse_apply_options(args: &serde_json::Value) -> Result<InstallApplyOptions, 
             .unwrap_or_else(|| "rustok-cli install apply".to_string()),
         lock_ttl_secs,
         pg_admin_url: option(options, "pg_admin_url"),
+        requested_session_id: None,
         bootstrap_public_key_base64: option(options, "base_distribution_public_key")
             .or_else(|| environment("RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY")),
     })
