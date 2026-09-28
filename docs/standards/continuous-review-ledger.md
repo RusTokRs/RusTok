@@ -111,6 +111,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.04 finding in progress — self-resolving webhook tenant boundary.** Workflow webhooks resolve `tenant_slug` from the route and then execute tenant-scoped workflows after signature verification. Host tenant middleware now classifies `/webhooks/*` as `SelfResolvingHandshake`, so a conflicting header/host assertion cannot inject a different tenant context before the webhook handler.
 
+- [ ] **FS-22.05/FS-22.10 finding in progress — GraphQL raw-header credential boundary.** The Blog GraphQL rate-limit extension needs only the host-derived `x-rustok-trusted-client-ip`, but the HTTP GraphQL handler was passing the entire `HeaderMap` into GraphQL request data. The transport now supplies only that trusted derived header; Authorization/cookies and arbitrary client headers stay outside resolver context.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
