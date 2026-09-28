@@ -254,6 +254,7 @@ Hard limits for every iteration:
 - [x] **FS-22.03.04 — `apps/server/src/controllers/oauth.rs`** — completed with one Bearer-parser compatibility remediation and a fresh independent second pass.
 - [x] **FS-22.03.05 — `apps/server/src/models/oauth_apps.rs`** — completed with one exact-grant-policy remediation and a fresh independent second pass.
 - [x] **FS-22.03.06 — `apps/server/src/services/oauth_token_service.rs`** — completed with one security/presentation boundary remediation and a fresh independent second pass.
+- [x] **FS-22.03.07 — `crates/modules/rustok-auth/src/jwt.rs`** — completed with one input-range remediation and a fresh independent second pass.
 - [ ] **FS-22.04 — tenant/channel/locale propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.06 — REST/controller composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
@@ -348,6 +349,21 @@ Hard limits for every iteration:
 - **Documentation:** `apps/server/docs/README.md` now states that the OAuth token endpoint resolves clients through the security-only app lookup and is independent of presentation translations.
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.06` complete after merge; continue to the next unchecked primary module in FS-22.03.
+
+### FS-22.03.07 Iteration 1 — `crates/modules/rustok-auth/src/jwt.rs`
+
+- **Base:** refreshed `main` at `243dd84f5e65fefafbed34b7a2090a29014dbf19`; dedicated branch `codex/audit-fs-22.03.07-jwt-ttl`.
+- **Invariant map:** token expiration must remain a valid UTC timestamp; TTL inputs must not lose information through lossy integer conversion; all JWT encoders must share one bounded expiration rule; special-purpose token purpose/claims and algorithm selection must remain unchanged; overflow errors must not disclose secret material.
+- **Finding AUTHJWT-22.03.07-01:** the JWT owner cast public `u64` TTL inputs to `i64` with `as i64`. Values larger than the signed range could wrap into a negative or otherwise invalid duration before the expiration claim was constructed.
+- **Remediation:** added one owner-local `token_expiration` helper using `i64::try_from` followed by `chrono::DateTime::checked_add_signed`; all five encoders (`access`, OAuth access, password-reset, email-verification, invite) now use that checked path and return a generic `AuthError::Internal` on out-of-range input.
+- **Regression coverage:** added a boundary regression that supplies `u64::MAX` to each of the five encoder APIs and requires rejection.
+- **Immediate re-audit:** re-read JWT claim construction, strict issuer/audience/expiry validation, algorithm pinning for HS256/RS256, special-purpose claim checks, key handling, and every TTL call site. No existing small-range expiration behavior or purpose binding was changed.
+- **Adjacent-boundary re-audit:** `rustok-auth::config` continues to enforce deployment-facing access/refresh TTL bounds; the new checked conversion is an additional owner API safety boundary and does not replace configured policy. Server adapters consume the same auth-owned encoder contract.
+- **Regression audit:** normal configured TTLs still flow through the same `chrono` addition semantics; oversized inputs now fail before token serialization instead of producing wrapped timestamps. No secret material is included in the new error text.
+- **Fresh second pass:** independently searched `jwt.rs` for all `Duration::seconds` TTL constructions and integer casts, verified exactly five encoder calls now use `token_expiration`, confirmed no `ttl_seconds as i64` remains, and rechecked the new regression coverage against all encoder paths.
+- **Documentation:** `crates/modules/rustok-auth/docs/README.md` now records the checked JWT expiration boundary.
+- **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.03.07` complete after merge; continue to the next unchecked primary module in FS-22.03.
 
 ### FS-22.02.11 Iteration 1 — `security_headers.rs` pre-implementation findings
 

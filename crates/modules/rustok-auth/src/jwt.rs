@@ -82,7 +82,7 @@ pub fn encode_access_token(
     session_id: Uuid,
 ) -> Result<String> {
     let now = Utc::now();
-    let exp = now + Duration::seconds(config.access_expiration as i64);
+    let exp = token_expiration(now, config.access_expiration)?;
 
     let claims = Claims {
         sub: user_id,
@@ -107,7 +107,7 @@ pub fn encode_oauth_access_token(
     input: OauthAccessTokenInput<'_>,
 ) -> Result<String> {
     let now = Utc::now();
-    let exp = now + Duration::seconds(input.expires_in_secs as i64);
+    let exp = token_expiration(now, input.expires_in_secs)?;
 
     let claims = Claims {
         sub: input.app_id,
@@ -154,7 +154,7 @@ pub fn encode_password_reset_token(
     ttl_seconds: u64,
 ) -> Result<String> {
     let now = Utc::now();
-    let exp = now + Duration::seconds(ttl_seconds as i64);
+    let exp = token_expiration(now, ttl_seconds)?;
 
     let claims = PasswordResetClaims {
         sub: email.to_lowercase(),
@@ -194,7 +194,7 @@ pub fn encode_email_verification_token(
     ttl_seconds: u64,
 ) -> Result<String> {
     let now = Utc::now();
-    let exp = now + Duration::seconds(ttl_seconds as i64);
+    let exp = token_expiration(now, ttl_seconds)?;
 
     let claims = EmailVerificationClaims {
         sub: email.to_lowercase(),
@@ -235,7 +235,7 @@ pub fn encode_invite_token(
     ttl_seconds: u64,
 ) -> Result<String> {
     let now = Utc::now();
-    let exp = now + Duration::seconds(ttl_seconds as i64);
+    let exp = token_expiration(now, ttl_seconds)?;
 
     let claims = InviteClaims {
         sub: email.to_lowercase(),
@@ -264,6 +264,14 @@ pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteCla
     }
 
     Ok(claims)
+}
+
+fn token_expiration(now: chrono::DateTime<Utc>, ttl_seconds: u64) -> Result<chrono::DateTime<Utc>> {
+    let ttl_seconds = i64::try_from(ttl_seconds)
+        .map_err(|_| AuthError::Internal("Token expiration is out of range".to_string()))?;
+
+    now.checked_add_signed(Duration::seconds(ttl_seconds))
+        .ok_or_else(|| AuthError::Internal("Token expiration is out of range".to_string()))
 }
 
 // ─── Key helpers ─────────────────────────────────────────────────────
@@ -480,6 +488,62 @@ mod tests {
         let invite_claims = decode_invite_token(&config, &invite_token).unwrap();
         assert_eq!(invite_claims.sub, "invited@example.com");
         assert_eq!(invite_claims.role, UserRole::Admin);
+    }
+
+    #[test]
+    fn token_encoders_reject_ttl_values_that_cannot_be_represented_safely() {
+        let config = test_config();
+
+        let access = AuthConfig {
+            access_expiration: u64::MAX,
+            ..config.clone()
+        };
+        assert!(encode_access_token(
+            &access,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .is_err());
+
+        assert!(encode_oauth_access_token(
+            &config,
+            OauthAccessTokenInput {
+                app_id: Uuid::new_v4(),
+                tenant_id: Uuid::new_v4(),
+                role: UserRole::Customer,
+                client_id: Uuid::new_v4(),
+                scopes: &[],
+                grant_type: "client_credentials",
+                expires_in_secs: u64::MAX,
+            },
+        )
+        .is_err());
+
+        assert!(
+            encode_password_reset_token(&config, Uuid::new_v4(), "user@example.com", u64::MAX)
+                .is_err()
+        );
+        assert!(
+            encode_email_verification_token(
+                &config,
+                Uuid::new_v4(),
+                "user@example.com",
+                u64::MAX
+            )
+            .is_err()
+        );
+        assert!(
+            encode_invite_token(
+                &config,
+                Uuid::new_v4(),
+                "user@example.com",
+                UserRole::Customer,
+                u64::MAX
+            )
+            .is_err()
+        );
     }
 
     #[test]

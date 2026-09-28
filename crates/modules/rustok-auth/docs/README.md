@@ -26,7 +26,7 @@ controller modules re-export or import those owner DTOs only for OpenAPI/route c
 ## Scope
 
 - auth configuration, JWT algorithms and host-provided override assembly/validation;
-- encode/decode helpers for access/reset/invite/email-verification token flows;
+- encode/decode helpers for access/reset/invite/email-verification token flows; JWT encoders reject TTL values that cannot be represented safely as a checked `chrono` duration;
 - password hashing, verify and refresh-token helpers;
 - auth-owned migrations;
 - auth-owned auth/OAuth/users REST DTO/OpenAPI schema surface in `rest.rs`, with host controllers
