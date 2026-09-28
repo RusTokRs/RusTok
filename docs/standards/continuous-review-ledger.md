@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `c79806106f246a75e21f497d262aed74a42519e2`  
+**Current main SHA:** `7cdc78d34cf20a14d1871dffa6cee0fc569b5cd3`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -139,7 +139,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.17 — `apps/server/src/controllers/auth.rs`** — one-module audit; completed with two remediation iterations and a final fresh second pass. Registration-policy and invite-consumption boundaries are now enforced.
 - [x] **FS-22.02.18 — `apps/server/src/controllers/oauth.rs`** — one-module audit; completed with four remediation iterations and a final fresh second pass. OAuth/OIDC transport, scope, caching, and handshake boundaries are now aligned with the reviewed contract.
 - [x] **FS-22.02.19 — `apps/server/src/controllers/users.rs`** — one-module audit; completed with two remediation iterations and a final fresh second pass. Tenant isolation, permission boundaries, pagination semantics, and database error handling were reverified.
-- [ ] **FS-22.02.20 — `apps/server/src/controllers/health.rs`** — one-module audit.
+- [x] **FS-22.02.20 — `apps/server/src/controllers/health.rs`** — one-module audit; completed with two remediation iterations and a final fresh second pass.
 - [ ] **FS-22.02.21 — `apps/server/src/controllers/metrics.rs`** — one-module audit.
 - [ ] **FS-22.02.22 — `apps/server/src/controllers/marketplace_registry.rs`** — one-module audit.
 - [ ] **FS-22.02.23 — `apps/server/src/controllers/artifact_http.rs`** — one-module audit.
@@ -195,6 +195,22 @@ Hard limits for every iteration:
 - **Regression correction during implementation:** the first edge-layer rearrangement temporarily duplicated rate limiting in the registry/worker branch; later re-read caught and corrected it. A second temporary inner `security_headers` layer that would have produced two CSP nonces was also caught and removed before PR creation.
 - **Verification:** repository source inspection, static reasoning, cross-file contract review, and branch-diff review only. No tests, cargo check/clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Next primary module:** FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`.
+
+### FS-22.02.20 Result — `controllers/health.rs`
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Fresh main base before track:** `c79806106f246a75e21f497d262aed74a42519e2`.
+- **Iteration 1:** commits `6004963c8f99cbc0b1d3a1b3e61e834459b67a71` and `18ae033e4a7dcf1617ed350d9bca23873eb9d189`.
+  - **Finding:** public `/health/ready` propagated raw database, cache, tenant-invalidation, storage, outbox, search, and rate-limit backend errors into readiness reasons.
+  - **Remediation:** public readiness diagnostics now use stable non-sensitive messages while preserving the existing readiness status semantics.
+  - **Finding:** search-index lag was checked even when `settings.features.search_indexing` was disabled, despite `search_documents` being optional under that feature.
+  - **Remediation:** search lag readiness is now evaluated only when search indexing is enabled.
+- **Iteration 2:** commit `7cdc78d34cf20a14d1871dffa6cee0fc569b5cd3`.
+  - **Finding:** search backend URL parsing defaulted no-port endpoints to port 80 regardless of scheme and did not safely handle userinfo or bracketed IPv6 authorities.
+  - **Remediation:** parser now selects HTTPS port 443, strips userinfo before probing, supports bracketed IPv6 with explicit ports, and returns stable validation errors; focused parser tests were added.
+- **Final fresh second pass:** independently re-read the complete controller after all patches and rechecked public error redaction, feature gating, readiness aggregation/circuit behavior, module-health handling, and search endpoint parsing. No remaining unblocked controller-owned defect was found.
+- **Verification:** repository source inspection, settings/search owner-contract review, immediate re-audits after each remediation, and post-change source/diff review only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.21 — `apps/server/src/controllers/metrics.rs`.
 
 ### FS-22.02.19 Result — `controllers/users.rs`
 
