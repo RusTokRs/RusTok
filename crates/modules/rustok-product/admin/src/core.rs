@@ -2101,12 +2101,12 @@ pub fn matches_product_filter(item: &ProductListItem, column_id: &str, filter: &
         }
         ("created_at", FilterValue::DateRange { from, to }) => {
             let item_date = item.created_at.split('T').next().unwrap_or(&item.created_at);
-            if let Some(ref f) = from {
+            if let Some(f) = from {
                 if !f.trim().is_empty() && item_date < f.as_str() {
                     return false;
                 }
             }
-            if let Some(ref t) = to {
+            if let Some(t) = to {
                 if !t.trim().is_empty() && item_date > t.as_str() {
                     return false;
                 }

@@ -2,7 +2,7 @@ use leptos::prelude::*;
 
 use crate::{filter_inputs::GridFilterCell, resize_handle::ColumnResizeHandle};
 use rustok_grid::{
-    ColumnAlign, ColumnFilters, ColumnWidths, FilterValue, GridColumnDef, PinnedSide,
+    ColumnAlign, ColumnFilters, ColumnWidths, FilterValue, GridColumnDef,
     SortDirection, SortState,
 };
 
@@ -37,11 +37,11 @@ pub fn GridHeader(
                         let col_id_for_sort_dir = id.clone();
                         let col_id_for_resize = id.clone();
                         let is_checkbox = id == "__checkbox";
-                        let _is_actions = col.pinned == Some(PinnedSide::Right);
-
-                        let current_w = move || {
-                            column_widths.get().get(&id, col.width.current)
-                        };
+                        let id_for_w = id.clone();
+                        let default_w = col.width.current;
+                        let current_w = Signal::derive(move || {
+                            column_widths.get().get(&id_for_w, default_w)
+                        });
 
                         let sort_dir = move || {
                             sort_state.get().is_sorted_by(&col_id_for_sort_dir)
@@ -56,7 +56,7 @@ pub fn GridHeader(
                         view! {
                             <th
                                 class="relative px-3 py-2.5 font-semibold text-foreground/80 tracking-wide border-r border-border/40 last:border-r-0 group/th"
-                                style=move || format!("width: {}px; min-width: {}px; max-width: {}px;", current_w(), col.width.min, col.width.max)
+                                style=move || format!("width: {}px; min-width: {}px; max-width: {}px;", current_w.get(), col.width.min, col.width.max)
                             >
                                 <div class=format!("flex items-center gap-1.5 {align_class}")>
                                     {if is_checkbox {
@@ -110,7 +110,7 @@ pub fn GridHeader(
                                     view! {
                                         <ColumnResizeHandle
                                             column_id=col_id_for_resize
-                                            current_width=Signal::derive(move || current_w())
+                                            current_width=current_w
                                             min_width=col.width.min
                                             max_width=col.width.max
                                             on_resize=on_resize

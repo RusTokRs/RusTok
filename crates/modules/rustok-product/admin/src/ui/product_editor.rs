@@ -244,7 +244,7 @@ pub fn ProductEditorPage(
                 let media_id = if uuid::Uuid::parse_str(&url).is_ok() {
                     url
                 } else {
-                    uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, url.as_bytes()).to_string()
+                    uuid::Uuid::new_v4().to_string()
                 };
 
                 let draft = ProductImageDraft {

@@ -76,6 +76,7 @@ pub fn ProductGridPage() -> impl IntoView {
                         || item.handle.to_lowercase().contains(&query)
                         || item.seller_id.as_deref().map(|s| s.to_lowercase().contains(&query)).unwrap_or(false)
                         || item.vendor.as_deref().map(|v| v.to_lowercase().contains(&query)).unwrap_or(false)
+                        || item.tags.iter().any(|t| t.to_lowercase().contains(&query))
                 })
                 .collect()
         }
@@ -462,7 +463,10 @@ pub fn ProductGridPage() -> impl IntoView {
                             type="text"
                             placeholder=if is_ru { "Быстрый поиск..." } else { "Quick search..." }
                             prop:value=move || search_query.get()
-                            on:input=move |ev| set_search_query.set(event_target_value(&ev))
+                            on:input=move |ev| {
+                                set_search_query.set(event_target_value(&ev));
+                                pagination.update(|p| p.set_page(1));
+                            }
                             class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition"
                         />
                     </div>
