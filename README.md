@@ -63,7 +63,7 @@ In traditional backend projects, engineering teams spend up to 70% of their init
 ### 2. Safety by Design, Not by Discipline
 In traditional Node.js, Python, or PHP platforms, security and data isolation depend on whether developers remember to check permissions or `tenant_id` filters on every query. One missed check leads to catastrophic cross-tenant data leaks.
 
-In RusTok, multi-tenant isolation and data integrity are enforced through **composite database primary keys (`tenant_id`, `id`) and strongly-typed request context (`PortContext`)**. Rust's compile-time type safety ensures exhaustiveness across domain boundaries, while transport boundaries strictly reject unvalidated caller headers (`X-User-ID`), reconstructing identities strictly post-token validation. Every cross-module call passes typed trace context and timeout deadlines (`deadline_ms`).
+In RusTok, multi-tenant isolation and data integrity are enforced through **composite database primary keys (`tenant_id`, `id`) and strongly-typed request context (`PortContext`)**. HTTP `RequestContext` is a projection of trusted tenant/auth/channel/locale extensions rather than a source of authority; transport boundaries strictly reject unvalidated caller headers (`X-User-ID`), reconstructing identities strictly post-token validation. Every cross-module call passes typed trace context and timeout deadlines (`deadline_ms`).
 
 ### 3. Alloy — Self-Evolving Dynamic Runtime & Instant Integrations
 Compiled applications traditionally require code modifications, Pull Requests, CI/CD pipelines, and server restarts to change business rules. **Alloy** ([crates/modules/alloy](crates/modules/alloy/README.md)) bridges the gap between compiled performance and dynamic flexibility:
