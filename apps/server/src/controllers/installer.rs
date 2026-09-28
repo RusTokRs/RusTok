@@ -94,7 +94,14 @@ pub struct InstallStatusResponse {
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-async fn status(State(ctx): State<ServerRuntimeContext>) -> Result<Json<InstallStatusResponse>> {
+async fn status(
+    headers: HeaderMap,
+    State(ctx): State<ServerRuntimeContext>,
+) -> Result<Json<InstallStatusResponse>> {
+    require_setup_token(
+        &headers,
+        crate::common::settings::is_production_environment(),
+    )?;
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
     match persistence.latest_session().await {
         Ok(Some(session)) => {
@@ -236,8 +243,16 @@ async fn apply(
                 job.error = None;
             }
             Err(error) => {
+                tracing::error!(
+                    job_id = %job_id,
+                    error = %error,
+                    "Installer apply job failed"
+                );
                 job.status = InstallJobState::Failed;
-                job.error = Some(error.to_string());
+                job.error = Some(
+                    "installer execution failed; inspect server logs and durable install receipts"
+                        .to_string(),
+                );
             }
         }
         job.finished_at = Some(finished_at);
