@@ -7,7 +7,7 @@ use rustok_auth::{
     AuthUserBackfillReadRequest, AuthUserBackfillRecord, AuthUserRecord,
 };
 
-use crate::auth::{AuthConfig, encode_password_reset_token};
+use crate::auth::{AuthConfig, decode_access_token, encode_password_reset_token};
 use crate::common::RustokSettings;
 use crate::models::users;
 use crate::services::auth_invite::InviteAcceptanceError;
@@ -78,7 +78,14 @@ impl ServerAuthLifecycleProvider {
         user: users::Model,
         tokens: AuthTokens,
     ) -> Result<AuthTokenRecord, AuthLifecycleMutationError> {
-        let permissions = self.permission_strings(tenant_id, user.id).await?;
+        let permissions = match self.permission_strings(tenant_id, user.id).await {
+            Ok(permissions) => permissions,
+            Err(error) => {
+                self.compensate_issued_session(tenant_id, &tokens.access_token)
+                    .await;
+                return Err(error);
+            }
+        };
         Ok(AuthTokenRecord {
             access_token: tokens.access_token,
             refresh_token: tokens.refresh_token,
@@ -92,6 +99,43 @@ impl ServerAuthLifecycleProvider {
                 permissions,
             },
         })
+    }
+
+    async fn compensate_issued_session(&self, tenant_id: uuid::Uuid, access_token: &str) {
+        let claims = match decode_access_token(&self.auth_config, access_token) {
+            Ok(claims) => claims,
+            Err(_) => {
+                tracing::error!(
+                    %tenant_id,
+                    "Auth token response failed after issuance and issued session could not be decoded for compensation"
+                );
+                return;
+            }
+        };
+
+        if claims.tenant_id != tenant_id {
+            tracing::error!(
+                %tenant_id,
+                token_tenant_id = %claims.tenant_id,
+                "Auth token response failed after issuance and token tenant did not match provider tenant"
+            );
+            return;
+        }
+
+        if let Err(error) = AuthLifecycleService::logout_runtime(
+            &self.runtime_ctx,
+            tenant_id,
+            claims.session_id,
+        )
+        .await
+        {
+            tracing::error!(
+                error = ?error,
+                %tenant_id,
+                session_id = %claims.session_id,
+                "Auth token response failed after issuance and issued session compensation failed"
+            );
+        }
     }
 
     fn require_user_id(
@@ -434,63 +478,3 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
 
 #[async_trait]
 impl AuthUserBackfillReadPort for ServerAuthLifecycleProvider {
-    async fn list_users_for_profile_backfill(
-        &self,
-        request: AuthUserBackfillReadRequest,
-    ) -> Result<Vec<AuthUserBackfillRecord>, AuthLifecycleMutationError> {
-        AuthUserBackfillDbReader::new(self.runtime_ctx.db_clone())
-            .list_users_for_profile_backfill(request)
-            .await
-            .map_err(redact_lifecycle_error)
-    }
-}
-
-fn redact_lifecycle_error(error: AuthLifecycleMutationError) -> AuthLifecycleMutationError {
-    match error {
-        AuthLifecycleMutationError::Internal(message) => {
-            internal_lifecycle_error(message)
-        }
-        other => other,
-    }
-}
-
-fn permission_strings_from_context(context: &AuthLifecycleContext) -> Vec<String> {
-    let mut values = context
-        .permissions
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>();
-    values.sort();
-    values.dedup();
-    values
-}
-
-fn map_invite_error(error: InviteAcceptanceError) -> AuthLifecycleMutationError {
-    match error {
-        InviteAcceptanceError::InvalidToken => AuthLifecycleMutationError::InvalidInviteToken,
-        InviteAcceptanceError::EmailAlreadyExists => AuthLifecycleMutationError::EmailAlreadyExists,
-        InviteAcceptanceError::Internal(error) => internal_lifecycle_error(error),
-    }
-}
-
-fn map_lifecycle_error(error: AuthLifecycleError) -> AuthLifecycleMutationError {
-    match error {
-        AuthLifecycleError::EmailAlreadyExists => AuthLifecycleMutationError::EmailAlreadyExists,
-        AuthLifecycleError::InvalidCredentials => AuthLifecycleMutationError::InvalidCredentials,
-        AuthLifecycleError::UserInactive => AuthLifecycleMutationError::UserInactive,
-#[cfg(test)]
-mod tests {
-    use super::internal_lifecycle_error;
-    use rustok_auth::AuthLifecycleMutationError;
-
-    #[test]
-    fn internal_provider_errors_are_redacted() {
-        let error = internal_lifecycle_error("database connection failed: secret-value");
-
-        assert!(matches!(
-            error,
-            AuthLifecycleMutationError::Internal(message)
-                if message == "Auth lifecycle operation failed"
-        ));
-    }
-}
