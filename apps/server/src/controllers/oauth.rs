@@ -7,7 +7,7 @@ use axum::{
     extract::{ConnectInfo, Form, FromRequest, Query, Request, State},
     http::{
         HeaderMap, StatusCode,
-        header::{AUTHORIZATION, CONTENT_TYPE, COOKIE, LOCATION, SET_COOKIE},
+        header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, LOCATION, PRAGMA, SET_COOKIE},
     },
     response::{Html, IntoResponse},
     routing::{get, post},
@@ -50,6 +50,22 @@ struct ValidatedAuthorizeRequest {
     code_challenge: String,
 }
 
+fn oauth_token_http_response(
+    status: StatusCode,
+    body: impl serde::Serialize,
+) -> axum::response::Response {
+    let mut response = (status, Json(body)).into_response();
+    response.headers_mut().insert(
+        CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    response.headers_mut().insert(
+        PRAGMA,
+        axum::http::HeaderValue::from_static("no-cache"),
+    );
+    response
+}
+
 async fn token_handler(
     State(ctx): State<ServerAuthRuntime>,
     tenant_ctx: TenantContext,
@@ -57,19 +73,18 @@ async fn token_handler(
 ) -> axum::response::Response {
     let req = match parse_token_request(request, &ctx).await {
         Ok(request) => request,
-        Err(error) => return oauth_error_response(error),
+        Err(error) => return oauth_token_http_response(error.status, error),
     };
 
     match OAuthTokenService::exchange(&ctx, tenant_ctx.id, &req).await {
-        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
-        Err(error) => (
+        Ok(response) => oauth_token_http_response(StatusCode::OK, response),
+        Err(error) => oauth_token_http_response(
             error.status,
-            Json(TokenErrorResponse {
+            TokenErrorResponse {
                 error: error.error.to_string(),
                 error_description: error.description,
-            }),
-        )
-            .into_response(),
+            },
+        ),
     }
 }
 
@@ -930,6 +945,25 @@ mod tests {
         settings
     }
 
+    #[test]
+    fn oauth_token_http_response_disables_caching() {
+        let response = oauth_token_http_response(
+            StatusCode::OK,
+            TokenErrorResponse {
+                error: "invalid_request".to_string(),
+                error_description: "test".to_string(),
+            },
+        );
+
+        assert_eq!(
+            response.headers().get(CACHE_CONTROL).and_then(|value| value.to_str().ok()),
+            Some("no-store"),
+        );
+        assert_eq!(
+            response.headers().get(PRAGMA).and_then(|value| value.to_str().ok()),
+            Some("no-cache"),
+        );
+    }
     #[test]
     fn token_form_content_type_accepts_optional_parameters() {
         assert!(is_form_encoded_content_type("application/x-www-form-urlencoded"));
