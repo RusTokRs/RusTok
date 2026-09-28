@@ -4,7 +4,10 @@ use axum::{
     Json,
     body::Bytes,
     extract::{DefaultBodyLimit, Extension, Path, State},
-    http::{HeaderMap, Method, StatusCode, header::CONTENT_TYPE},
+    http::{
+        HeaderMap, HeaderValue, Method, StatusCode,
+        header::{CACHE_CONTROL, CONTENT_TYPE},
+    },
     response::Response,
     routing::{any, get, post},
 };
@@ -28,6 +31,7 @@ use crate::{
 
 const IDEMPOTENCY_KEY_HEADER: &str = "idempotency-key";
 const MAX_ARTIFACT_HTTP_BODY_BYTES: usize = 1_048_576;
+const ARTIFACT_PRIVATE_CACHE_CONTROL: &str = "private, no-store";
 
 async fn dispatch_http(
     State(ctx): State<ServerRuntimeContext>,
@@ -67,7 +71,7 @@ async fn dispatch_http(
         },
     )
     .await?;
-    Ok(json_response(output))
+    Ok(artifact_json_response(output))
 }
 
 async fn dispatch_command(
@@ -92,7 +96,7 @@ async fn dispatch_command(
         ArtifactBindingOperation::Command { binding_id, input },
     )
     .await?;
-    Ok(json_response(output))
+    Ok(artifact_json_response(output))
 }
 
 /// Executes one host-rendered declarative action or form. The caller names the
@@ -118,7 +122,7 @@ async fn dispatch_ui_action(
         header_idempotency_key(&headers)?,
     )
     .await?;
-    Ok(json_response(output))
+    Ok(artifact_json_response(output))
 }
 
 /// Returns declarative UI metadata that the host may render for its resolved
@@ -139,7 +143,7 @@ async fn list_ui_contributions(
         &locale.effective_locale,
     )
     .await?;
-    Ok(json_response(contributions))
+    Ok(artifact_json_response(contributions))
 }
 
 /// Lists redacted audit evidence for one host-rendered action or form. The
@@ -159,7 +163,7 @@ async fn list_ui_action_audit(
         &contribution_id,
     )
     .await?;
-    Ok(json_response(evidence))
+    Ok(artifact_json_response(evidence))
 }
 
 fn header_idempotency_key(headers: &HeaderMap) -> Result<Option<Uuid>> {
@@ -183,6 +187,15 @@ fn header_idempotency_key(headers: &HeaderMap) -> Result<Option<Uuid>> {
                 })
         })
         .transpose()
+}
+
+fn artifact_json_response<T: serde::Serialize>(value: T) -> Response {
+    let mut response = json_response(value);
+    response.headers_mut().insert(
+        CACHE_CONTROL,
+        HeaderValue::from_static(ARTIFACT_PRIVATE_CACHE_CONTROL),
+    );
+    response
 }
 
 fn parse_artifact_http_body(body: &[u8], max_body_bytes: u64) -> Result<serde_json::Value> {
@@ -260,6 +273,15 @@ pub fn router() -> crate::routes::ServerRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn artifact_json_responses_are_private_and_not_stored() {
+        let response = artifact_json_response(serde_json::json!({"ok": true}));
+        assert_eq!(
+            response.headers().get(CACHE_CONTROL).and_then(|value| value.to_str().ok()),
+            Some(ARTIFACT_PRIVATE_CACHE_CONTROL)
+        );
+    }
 
     #[test]
     fn artifact_http_body_enforces_raw_binding_limit_before_json_parsing() {
