@@ -270,12 +270,7 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         app_id: Uuid,
     ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
         let authority = self.require_settings_manage(context)?;
-        let app = self
-            .inner
-            .get_oauth_app(context, app_id)
-            .await?
-            .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
-        self.rotate_secret_transactionally(context, app_id, app, &authority)
+        self.rotate_secret_transactionally(context, app_id, &authority)
             .await
     }
 
