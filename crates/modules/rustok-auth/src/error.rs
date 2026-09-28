@@ -23,6 +23,9 @@ pub enum AuthError {
     #[error("Password hashing failed")]
     PasswordHashFailed,
 
+    #[error("Refresh token generation failed")]
+    RefreshTokenGenerationFailed,
+
     #[error("Internal error: {0}")]
     Internal(String),
 }

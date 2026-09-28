@@ -24,10 +24,12 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
 }
 
 /// Generate a cryptographically secure 256-bit refresh token (64 hex chars).
-pub fn generate_refresh_token() -> String {
+pub fn generate_refresh_token() -> Result<String> {
     let mut bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut bytes);
-    hex::encode(bytes)
+    OsRng
+        .try_fill_bytes(&mut bytes)
+        .map_err(|_| AuthError::RefreshTokenGenerationFailed)?;
+    Ok(hex::encode(bytes))
 }
 
 /// SHA-256 hash of a refresh token for secure storage.
@@ -43,7 +45,7 @@ mod tests {
 
     #[test]
     fn refresh_token_256_bit_entropy() {
-        let token = generate_refresh_token();
+        let token = generate_refresh_token().expect("refresh token");
         assert_eq!(
             token.len(),
             64,
@@ -54,8 +56,8 @@ mod tests {
 
     #[test]
     fn refresh_token_unique() {
-        let t1 = generate_refresh_token();
-        let t2 = generate_refresh_token();
+        let t1 = generate_refresh_token().expect("refresh token");
+        let t2 = generate_refresh_token().expect("refresh token");
         assert_ne!(t1, t2);
     }
 

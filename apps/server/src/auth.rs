@@ -212,8 +212,8 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
     rustok_auth::verify_password(password, password_hash).map_err(auth_err)
 }
 
-pub fn generate_refresh_token() -> String {
-    rustok_auth::generate_refresh_token()
+pub fn generate_refresh_token() -> Result<String> {
+    rustok_auth::generate_refresh_token().map_err(auth_err)
 }
 
 pub fn hash_refresh_token(token: &str) -> String {
@@ -231,9 +231,9 @@ pub fn auth_err(err: AuthError) -> Error {
         AuthError::InvalidResetToken
         | AuthError::InvalidVerificationToken
         | AuthError::InvalidInviteToken => Error::Unauthorized(err.to_string()),
-        AuthError::TokenEncodingFailed | AuthError::PasswordHashFailed => {
-            Error::InternalServerError
-        }
+        AuthError::TokenEncodingFailed
+        | AuthError::PasswordHashFailed
+        | AuthError::RefreshTokenGenerationFailed => Error::InternalServerError,
         AuthError::Internal(_) => Error::InternalServerError,
     }
 }

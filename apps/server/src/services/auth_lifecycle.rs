@@ -460,7 +460,7 @@ impl AuthLifecycleService {
         }
 
         let now = Utc::now();
-        let new_refresh_token = generate_refresh_token();
+        let new_refresh_token = generate_refresh_token().map_err(AuthLifecycleError::from)?;
         let new_token_hash = hash_refresh_token(&new_refresh_token);
         let expires_at = now + Duration::seconds(config.refresh_expiration as i64);
 
@@ -714,7 +714,7 @@ impl AuthLifecycleService {
         user_agent: Option<String>,
     ) -> std::result::Result<AuthTokens, AuthLifecycleError> {
         let now = Utc::now();
-        let refresh_token = generate_refresh_token();
+        let refresh_token = generate_refresh_token().map_err(AuthLifecycleError::from)?;
         let token_hash = hash_refresh_token(&refresh_token);
         let expires_at = now + Duration::seconds(config.refresh_expiration as i64);
 

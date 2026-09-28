@@ -27,7 +27,7 @@ controller modules re-export or import those owner DTOs only for OpenAPI/route c
 
 - auth configuration, JWT algorithms and host-provided override assembly/validation;
 - encode/decode helpers for access/reset/invite/email-verification token flows; JWT encoders reject TTL values that cannot be represented safely as a checked `chrono` duration;
-- password hashing, verify and refresh-token helpers;
+- password hashing, password verification and refresh-token helpers; refresh-token generation uses the OS RNG and propagates RNG failures as a typed `AuthError::RefreshTokenGenerationFailed` instead of panicking;
 - auth-owned migrations;
 - auth-owned auth/OAuth/users REST DTO/OpenAPI schema surface in `rest.rs`, with host controllers
   limited to transport extraction, persistence adapters and response mapping;
