@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `68de093f69723c21c6c7d538e54ade63e119da03`  
+**Current main SHA:** `6151373006e5169b71064ef29f7eb83e0dcf4e22`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -269,8 +269,8 @@ Hard limits for every iteration:
 - [ ] **FS-22.04 — tenant/channel/locale propagation:** in progress; decomposed into one-primary-module iterations focused on the shared request-context boundary first, then tenant resolution/cache, channel resolution/cache, locale policy/cache, and transport propagation boundaries.
 - [x] **FS-22.04.01 — `crates/libs/rustok-api/src/request.rs`** — completed with trusted request-context projection, canonical locale evidence, URL form decoding, and tenant-consistency fences.
 - [x] **FS-22.04.02 — `apps/server/src/middleware/tenant_resolution.rs`** — typed tenant identifier/source resolution and request-trust boundary; completed after PR #4281 and post-merge reconciliation. Next primary module: `FS-22.04.03 — apps/server/src/middleware/tenant.rs`.
-- [ ] **FS-22.04.03 — `apps/server/src/middleware/tenant.rs`** — tenant read-port/cache/context materialization and invalidation propagation.
-- [ ] **FS-22.04.04 — `apps/server/src/middleware/channel.rs`** — channel RequestFacts, selector/host/OAuth/locale propagation and cache identity.
+- [x] **FS-22.04.03 — `apps/server/src/middleware/tenant.rs`** — tenant read-port/cache/context materialization and invalidation propagation; completed after PR #4284 and post-merge reconciliation. Next primary module: `FS-22.04.04 — apps/server/src/middleware/channel.rs`..
+- [x] **FS-22.04.04 — `apps/server/src/middleware/channel.rs`** — channel RequestFacts, selector/host/OAuth/locale propagation and cache identity; completed after PR #4286 and post-merge reconciliation. Next primary module: `FS-22.04.05 — apps/server/src/middleware/locale.rs`.
 - [ ] **FS-22.04.05 — `apps/server/src/middleware/locale.rs`** — tenant locale policy enforcement and cache/generation propagation.
 - [ ] **FS-22.04.06 — `apps/server/src/controllers/graphql.rs`** — HTTP/WebSocket tenant/channel/locale context propagation only; GraphQL resolver composition remains FS-22.05.
 - [ ] **FS-22.04.07 — `apps/server/src/middleware/channel_native_wrapper.rs`** — native mutation context propagation and channel invalidation boundary.
@@ -419,6 +419,35 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently re-read the complete modified `tenant_resolution.rs` from the iteration branch, including all error/status mappings and tests, then compared the branch against refreshed `main`. No remaining repository-owned defect was found in this primary module.
 - **Verification:** GitHub source inspection and branch diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.04.02` complete after PR #4281 merged into `main` at `68de093f69723c21c6c7d538e54ade63e119da03`. Post-merge source re-read confirmed the duplicate-header rejection, terminal-dot host canonicalization, slug-preserving subdomain resolution, and bounded diagnostics.
+### FS-22.04.03 Iterations 1-3 — `apps/server/src/middleware/tenant.rs`
+
+- **Base:** refreshed `main` at `3a52404b2563c568011bb91c93d4d1eb52510ec9`; dedicated branch `codex/audit-fs-22.04.03`.
+- **Invariant map:** tenant cache entries must deserialize completely within the typed cache boundary; malformed or incompatible values must become cache misses and be invalidated; tenant context must contain only active tenants; positive/negative entries must be generation-consistent with source-of-truth mutations; cache initialization must bind one canonical `CacheService` and one infrastructure instance; cache failures must degrade to explicit availability failures rather than silently serving an unsafe value.
+- **Finding TENANTCTX-22.04.03-01:** `CachedTenantContext` stored `TenantContext.settings` as a nested `settings_json: String`. The typed cache layer could therefore successfully deserialize the envelope while the later `TenantContext::try_from` failed on the nested JSON. Such a malformed cache value was not invalidated by the typed cache layer and could repeat a 500 until TTL.
+- **Remediation:** cache payload now stores `settings: serde_json::Value` directly; tenant context envelope schema version advanced from 2 to 3 so all pre-change entries are treated as schema misses; conversions are now infallible `From` implementations, eliminating the post-cache nested-deserialization failure path.
+- **Finding TENANTCTX-22.04.03-02:** `init_tenant_cache_infrastructure` used check-then-insert for the shared `CacheService` and cache infrastructure. Concurrent callers using different cache-service instances could observe absence and replace the canonical shared service while independently constructing infrastructure against another instance.
+- **Remediation:** shared cache service insertion now uses `shared_insert_if_absent`; the already-published canonical service is retrieved and used to construct the tenant cache infrastructure; infrastructure publication also uses `shared_insert_if_absent`.
+- **Regression coverage:** aligned the structured-cache round-trip test with schema version 3 and added source guards proving typed settings, infallible conversions, schema versioning and atomic cache initialization.
+- **Immediate/adjacent re-audit:** re-read the complete `tenant.rs`, `tenant_tests.rs`, cache typed-envelope/load path, weighted/generation-aware backends, tenant generation listener/bootstrap, `rustok-tenant::TenantReadPort`, tenant settings bounds, route policy and the application bootstrap caller. Generation fencing still wraps the full negative-check/load/fill operation and tenant owner writes continue to publish durable generation invalidation.
+- **Regression audit:** old schema-2 entries cannot be consumed because the expected schema is now 3; positive/negative cache keys retain the same generation semantics; active-tenant admission remains enforced before caching; repeated initialization is idempotent and canonical-service-bound; tenant owner settings remain bounded to 16 KiB before entering the cache path.
+- **Fresh second pass:** independently re-read the modified production module and its companion tests after all remediation units, checked for the removed `settings_json` path and false-fallible conversions, and compared the complete branch against refreshed `main`. No additional repository-owned defect remained in the primary module.
+- **Verification:** repository source inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migrations or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.04.03` complete after PR #4284 merged into `main` at `9f1a6cfb929bbc9073643c9bba320113bf72fa91`. Post-merge source re-read confirmed typed `settings` payloads, schema version 3, infallible cache-context conversion, and atomic canonical cache-service/infrastructure initialization.
+
+### FS-22.04.04 Iteration 1 — `apps/server/src/middleware/channel.rs`
+
+- **Base:** refreshed `main` at `82e0c5e4b44f9a8b349241e750b495c76dc22545`; dedicated branch `codex/audit-fs-22.04.04`.
+- **Invariant map:** channel context must describe the same channel resolution decision that actually matched the request; host/OAuth/locale facts must retain their canonical semantics through caching; cache identity must remain tenant- and fact-complete; invalidation/registration must not introduce split runtime state; the middleware must remain a thin transport boundary over `rustok-channel`.
+- **Finding CHANNELCTX-22.04.04-01:** host resolution returned a full channel detail, but `CachedChannelResolution::from_decision` always projected the channel's primary/first target into `ChannelContext.target_type/target_value`. When a non-primary web-domain target matched the effective host, downstream consumers therefore received a target different from the target that actually caused resolution.
+- **Remediation:** `from_decision` now receives the original `RequestFacts` and, for `Host` resolution, selects the concrete normalized `web_domain` target matching `facts.host`; primary/first target remains the representation for non-host resolution.
+- **Regression coverage:** added an end-to-end middleware companion test with two web-domain targets on one channel, where the non-primary target matches the request; the resulting cached context must expose that concrete target.
+- **Source guard:** `channel_cache_architecture_guard.rs` now locks the request-facts-aware projection and concrete host-target matching contract.
+- **Immediate/adjacent re-audit:** re-read the modified middleware, companion tests, `ChannelResolver`, `ChannelTargetType`, `ChannelReadPort`, controller mutation paths, locale/auth request extensions, request-trust host helper, durable invalidation runtime and cache-generation guards. The owner resolver remains the source of precedence and tenant scoping; the middleware only projects its decision into the shared host context.
+- **Regression audit:** explicit ID/slug/query precedence is unchanged; host canonicalization remains owned by `ChannelTargetType`; OAuth and locale remain dimensions of `RequestFacts` and the cache key; generation rollover/exhaustion still fails safe; REST/native mutation invalidation paths are untouched. A separate adjacent owner issue was noted but not patched here: a missing explicit `X-Channel-ID` currently propagates `ChannelError::NotFound` from `ChannelResolver` instead of being represented as a selector miss/fallback; that belongs to the `rustok-channel/src/resolution.rs` owner track, not this middleware iteration.
+- **Fresh second pass:** independently re-read the complete `channel.rs` after the remediation, the new regression, the source guard, and all direct caller/callee contracts. No additional repository-owned defect remained in this primary middleware module.
+- **Verification:** repository source inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migrations or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.04.04` complete after PR #4286 merged into `main` at `ff2abdebc890f962df5596e96fa37bf1ee25cadd`. Post-merge source re-read confirmed request-facts-aware host-target projection and the synchronized API/server/channel documentation and source guard.
+
 
 ### FS-22.03.18 Iterations 1-3 — `apps/server/src/services/oauth_admin_guard.rs`
 

@@ -26,7 +26,7 @@ channel context for delivery surfaces and channel-aware runtime resolution.
 
 - used by `apps/server` as a mandatory `Core` module and as a runtime composition root;
 - `/api/channels/*` remains a server-mounted HTTP adapter, but request/response shape and rule-payload normalization belong to `rustok-channel`;
-- publishes a shared host contract through `rustok-api` (`ChannelContext`, request-level metadata, `resolution_trace`);
+- publishes a shared host contract through `rustok-api` (`ChannelContext`, request-level metadata, `resolution_trace`); when a host target resolves a channel, `target_type/target_value` represent the concrete matched target.
 - uses `rustok-auth` as the source of truth for OAuth applications and access tokens;
 - already serves as a runtime proof point for `rustok-pages`, `rustok-blog`, `rustok-commerce` and `rustok-forum`, with their source/docs synchronization locked by `npm run verify:channel:proof-points`.
 
