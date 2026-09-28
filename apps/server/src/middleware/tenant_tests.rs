@@ -69,9 +69,9 @@ fn cached_tenant_context_round_trips_structured_settings() {
     });
 
     let cached = CachedTenantContext::try_from(context.clone()).expect("serialize settings");
-    let envelope = rustok_cache::CacheEnvelope::new(2, 1_000, cached).expect("build envelope");
+    let envelope = rustok_cache::CacheEnvelope::new(3, 1_000, cached).expect("build envelope");
     let encoded = envelope.encode().expect("encode Postcard envelope");
-    let decoded = rustok_cache::CacheEnvelope::<CachedTenantContext>::decode(&encoded, 2)
+    let decoded = rustok_cache::CacheEnvelope::<CachedTenantContext>::decode(&encoded, 3)
         .expect("decode Postcard envelope");
     let restored = crate::context::TenantContext::try_from(decoded.into_payload())
         .expect("deserialize settings");
