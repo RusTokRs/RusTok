@@ -562,7 +562,7 @@ pub async fn sync_app_connections(
                 &sf.public_url,
                 &sf.redirect_uris,
                 &["storefront:*"],
-                &["authorization_code", "client_credentials"],
+                &["authorization_code", "refresh_token", "client_credentials"],
                 &role_permissions(UserRole::Customer),
             )
             .await?;
@@ -581,7 +581,7 @@ pub async fn sync_app_connections(
             &manifest.build.admin.public_url,
             &manifest.build.admin.redirect_uris,
             &["admin:*"],
-            &["authorization_code", "client_credentials"],
+            &["authorization_code", "refresh_token", "client_credentials"],
             &role_permissions(UserRole::Admin),
         )
         .await?;
@@ -1944,6 +1944,14 @@ mod tests {
             next_admin.metadata["public_url"],
             serde_json::json!("https://admin.example.com")
         );
+        assert_eq!(
+            next_admin.grant_types_list(),
+            vec![
+                "authorization_code".to_string(),
+                "refresh_token".to_string(),
+                "client_credentials".to_string(),
+            ],
+        );
 
         let storefront = apps
             .iter()
@@ -1953,6 +1961,14 @@ mod tests {
         assert_eq!(
             storefront.redirect_uris_list(),
             vec!["https://shop.example.com/auth/callback".to_string()]
+        );
+        assert_eq!(
+            storefront.grant_types_list(),
+            vec![
+                "authorization_code".to_string(),
+                "refresh_token".to_string(),
+                "client_credentials".to_string(),
+            ],
         );
 
         let orphan = apps
