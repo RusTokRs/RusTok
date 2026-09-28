@@ -1,12 +1,17 @@
 use chrono::Utc;
-use rustok_installer::{InstallPlan, InstallReceipt, InstallState, redact_install_plan};
+use rustok_installer::{InstallApplyOutput, InstallPlan, InstallReceipt, InstallState, redact_install_plan};
 use sea_orm::{
     AccessMode, ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection,
     DatabaseTransaction, EntityTrait, IsolationLevel, QueryFilter, QueryOrder, TransactionTrait,
 };
 use uuid::Uuid;
 
-use crate::entities::{install_session, install_step_receipt};
+use crate::entities::{install_http_job, install_session, install_step_receipt};
+
+const MAX_HTTP_INSTALL_JOB_OUTPUT_BYTES: usize = 256 * 1024;
+const HTTP_INSTALL_JOB_RUNNING_STATUS: &str = "running";
+const HTTP_INSTALL_JOB_SUCCEEDED_STATUS: &str = "succeeded";
+const HTTP_INSTALL_JOB_FAILED_STATUS: &str = "failed";
 
 #[derive(Clone)]
 pub struct InstallerPersistenceService {
@@ -16,6 +21,106 @@ pub struct InstallerPersistenceService {
 impl InstallerPersistenceService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
+    }
+
+    pub async fn create_http_job(
+        &self,
+        job_id: Uuid,
+        submitted_at: chrono::DateTime<Utc>,
+    ) -> Result<install_http_job::Model, sea_orm::DbErr> {
+        install_http_job::ActiveModel {
+            id: Set(job_id),
+            status: Set(HTTP_INSTALL_JOB_RUNNING_STATUS.to_string()),
+            submitted_at: Set(submitted_at),
+            started_at: Set(submitted_at),
+            finished_at: Set(None),
+            session_id: Set(None),
+            tenant_id: Set(None),
+            output: Set(None),
+            error_message: Set(None),
+            updated_at: Set(submitted_at),
+        }
+        .insert(&self.db)
+        .await
+    }
+
+    pub async fn get_http_job(
+        &self,
+        job_id: Uuid,
+    ) -> Result<Option<install_http_job::Model>, sea_orm::DbErr> {
+        install_http_job::Entity::find_by_id(job_id)
+            .one(&self.db)
+            .await
+    }
+
+    pub async fn finish_http_job_succeeded(
+        &self,
+        job_id: Uuid,
+        session_id: Uuid,
+        tenant_id: Option<Uuid>,
+        output: &InstallApplyOutput,
+    ) -> Result<install_http_job::Model, sea_orm::DbErr> {
+        let now = Utc::now();
+        let serialized = serde_json::to_value(output).map_err(|error| {
+            sea_orm::DbErr::Custom(format!("failed to serialize installer job output: {error}"))
+        })?;
+        let output = match serde_json::to_vec(&serialized) {
+            Ok(bytes) if bytes.len() <= MAX_HTTP_INSTALL_JOB_OUTPUT_BYTES => Some(serialized),
+            Ok(_) => None,
+            Err(error) => {
+                return Err(sea_orm::DbErr::Custom(format!(
+                    "failed to size installer job output: {error}"
+                )));
+            }
+        };
+
+        let result = install_http_job::Entity::update_many()
+            .filter(install_http_job::Column::Id.eq(job_id))
+            .filter(install_http_job::Column::Status.eq(HTTP_INSTALL_JOB_RUNNING_STATUS))
+            .set(install_http_job::ActiveModel {
+                status: Set(HTTP_INSTALL_JOB_SUCCEEDED_STATUS.to_string()),
+                finished_at: Set(Some(now)),
+                session_id: Set(Some(session_id)),
+                tenant_id: Set(Some(tenant_id)),
+                output: Set(output),
+                error_message: Set(None),
+                updated_at: Set(now),
+                ..Default::default()
+            })
+            .exec(&self.db)
+            .await?;
+
+        ensure_http_job_transition_applied(job_id, result.rows_affected)?;
+        self.get_http_job(job_id)
+            .await?
+            .ok_or_else(|| sea_orm::DbErr::RecordNotFound(format!("installer HTTP job {job_id}")))
+    }
+
+    pub async fn finish_http_job_failed(
+        &self,
+        job_id: Uuid,
+        error_message: &str,
+    ) -> Result<install_http_job::Model, sea_orm::DbErr> {
+        let message = bounded_http_job_error_message(error_message);
+        let now = Utc::now();
+        let result = install_http_job::Entity::update_many()
+            .filter(install_http_job::Column::Id.eq(job_id))
+            .filter(install_http_job::Column::Status.eq(HTTP_INSTALL_JOB_RUNNING_STATUS))
+            .set(install_http_job::ActiveModel {
+                status: Set(HTTP_INSTALL_JOB_FAILED_STATUS.to_string()),
+                finished_at: Set(Some(now)),
+                error_message: Set(Some(message)),
+                output: Set(None),
+                updated_at: Set(now),
+                ..Default::default()
+            })
+            .exec(&self.db)
+            .await?;
+
+        ensure_http_job_transition_applied(job_id, result.rows_affected)?;
+        self.get_http_job(job_id)
+            .await?
+            .ok_or_else(|| sea_orm::DbErr::RecordNotFound(format!("installer HTTP job {job_id}")))
     }
 
     pub async fn create_session(
@@ -164,6 +269,23 @@ impl InstallerPersistenceService {
     }
 }
 
+fn ensure_http_job_transition_applied(
+    job_id: Uuid,
+    rows_affected: u64,
+) -> Result<(), sea_orm::DbErr> {
+    if rows_affected == 1 {
+        return Ok(());
+    }
+
+    Err(sea_orm::DbErr::Custom(format!(
+        "installer HTTP job {job_id} is not in running state"
+    )))
+}
+
+fn bounded_http_job_error_message(_error_message: &str) -> String {
+    "installer apply failed; inspect durable installer receipts for recovery details".to_string()
+}
+
 async fn acquire_lock_in_transaction(
     txn: &DatabaseTransaction,
     session: install_session::Model,
@@ -230,4 +352,192 @@ fn serde_name<T: serde::Serialize>(value: T) -> String {
     json.as_str()
         .expect("installer enum serialization must produce a string")
         .to_string()
+}
+
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+    use rustok_installer::{
+        InstallApplyOutput, InstallComposition, InstallDistributionBinding,
+        InstallDistributionDeployment, InstallDistributionDeploymentReceipt,
+    };
+    use sea_orm::{ConnectionTrait, Database};
+
+    use super::*;
+
+    async fn setup_http_jobs_table() -> DatabaseConnection {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database");
+        db.execute_unprepared(
+            r#"
+            CREATE TABLE install_http_jobs (
+                id TEXT PRIMARY KEY NOT NULL,
+                status TEXT NOT NULL,
+                submitted_at TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                finished_at TEXT NULL,
+                session_id TEXT NULL,
+                tenant_id TEXT NULL,
+                output TEXT NULL,
+                error_message TEXT NULL,
+                updated_at TEXT NOT NULL
+            )
+            "#,
+        )
+        .await
+        .expect("install_http_jobs table");
+        db
+    }
+
+    fn sample_output(session_id: Uuid, tenant_id: Uuid) -> InstallApplyOutput {
+        InstallApplyOutput {
+            status: "completed".to_string(),
+            session_id,
+            tenant_id: Some(tenant_id),
+            lock_owner: Some("http".to_string()),
+            lock_expires_at: None,
+            preflight_receipt_id: Uuid::new_v4(),
+            preflight_receipt_checksum: "a".to_string(),
+            config_receipt_id: Uuid::new_v4(),
+            config_receipt_checksum: "b".to_string(),
+            database_receipt_id: Uuid::new_v4(),
+            database_receipt_checksum: "c".to_string(),
+            migrate_receipt_id: Uuid::new_v4(),
+            migrate_receipt_checksum: "d".to_string(),
+            seed_receipt_id: Uuid::new_v4(),
+            seed_receipt_checksum: "e".to_string(),
+            admin_receipt_id: Uuid::new_v4(),
+            admin_receipt_checksum: "f".to_string(),
+            verify_receipt_id: Uuid::new_v4(),
+            verify_receipt_checksum: "g".to_string(),
+            finalize_receipt_id: Uuid::new_v4(),
+            finalize_receipt_checksum: "h".to_string(),
+            deployment_receipt: InstallDistributionDeploymentReceipt {
+                deployment: InstallDistributionDeployment {
+                    composition: InstallComposition {
+                        revision: "test-revision".to_string(),
+                        hash: "test-hash".to_string(),
+                    },
+                    distribution: InstallDistributionBinding {
+                        preparation_id: Uuid::new_v4(),
+                        distribution_release_id: Uuid::new_v4(),
+                        bundle_reference: "test@sha256:test".to_string(),
+                        bundle_root_digest: "sha256:test".to_string(),
+                        role_set_digest: "sha256:test".to_string(),
+                        roles: Vec::new(),
+                        bootstrap_receipt: None,
+                    },
+                    rollout_id: Uuid::new_v4(),
+                    deployment_reference: "test-deployment".to_string(),
+                    observations: Vec::new(),
+                },
+                receipt_id: Uuid::new_v4(),
+                receipt_checksum: "i".to_string(),
+            },
+            next: Some("done".to_string()),
+        }
+    }
+
+    #[tokio::test]
+    async fn durable_http_job_is_visible_across_persistence_service_instances() {
+        let db = setup_http_jobs_table().await;
+        let job_id = Uuid::new_v4();
+        let submitted_at = Utc::now();
+
+        let writer = InstallerPersistenceService::new(db.clone());
+        writer
+            .create_http_job(job_id, submitted_at)
+            .await
+            .expect("job should be created");
+
+        let reader = InstallerPersistenceService::new(db.clone());
+        let stored = reader
+            .get_http_job(job_id)
+            .await
+            .expect("job should be readable")
+            .expect("job should exist");
+
+        assert_eq!(stored.id, job_id);
+        assert_eq!(stored.status, "running");
+        assert_eq!(stored.submitted_at, submitted_at);
+        assert_eq!(stored.started_at, submitted_at);
+    }
+
+    #[tokio::test]
+    async fn http_job_terminal_update_is_compare_and_set() {
+        let db = setup_http_jobs_table().await;
+        let job_id = Uuid::new_v4();
+        let writer = InstallerPersistenceService::new(db.clone());
+
+        writer
+            .create_http_job(job_id, Utc::now())
+            .await
+            .expect("job should be created");
+
+        let output = sample_output(Uuid::new_v4(), Uuid::new_v4());
+        writer
+            .finish_http_job_succeeded(
+                job_id,
+                output.session_id,
+                output.tenant_id,
+                &output,
+            )
+            .await
+            .expect("job should finish");
+
+        assert!(
+            writer
+                .finish_http_job_failed(job_id, "second terminal transition")
+                .await
+                .is_err()
+        );
+
+        let stored = writer
+            .get_http_job(job_id)
+            .await
+            .expect("job should be readable")
+            .expect("job should exist");
+        assert_eq!(stored.status, "succeeded");
+        assert_eq!(stored.session_id, Some(output.session_id));
+        assert_eq!(stored.tenant_id, output.tenant_id);
+        assert!(stored.output.is_some());
+    }
+
+    #[tokio::test]
+    async fn failed_http_job_does_not_persist_executor_error_text() {
+        let db = setup_http_jobs_table().await;
+        let job_id = Uuid::new_v4();
+        let service = InstallerPersistenceService::new(db);
+
+        service
+            .create_http_job(job_id, Utc::now())
+            .await
+            .expect("job should be created");
+        service
+            .finish_http_job_failed(
+                job_id,
+                "postgres://secret-user:super-secret-password@db/internal error",
+            )
+            .await
+            .expect("failure state should persist");
+
+        let stored = service
+            .get_http_job(job_id)
+            .await
+            .expect("job should be readable")
+            .expect("job should exist");
+        assert_eq!(
+            stored.error_message.as_deref(),
+            Some(
+                "installer apply failed; inspect durable installer receipts for recovery details"
+            )
+        );
+        assert!(!stored
+            .error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("super-secret-password"));
+    }
 }

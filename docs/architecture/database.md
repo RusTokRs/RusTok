@@ -62,6 +62,7 @@ Foundation storage includes:
 - `sessions`
 - `install_sessions`
 - `install_step_receipts`
+- `install_http_jobs`
 - `platform_settings`
 - `tenant_modules`
 - `tenant_locales`
@@ -76,6 +77,10 @@ Foundation storage includes:
 - `sessions` and auth-related tables support the auth/session lifecycle
 - `install_sessions` and `install_step_receipts` capture resumable installer
   state, input checksums, outcomes and diagnostics; secrets are not stored there
+- `install_http_jobs` is host-runtime durable state for the asynchronous HTTP
+  wizard job itself. Its `session_id` is an opaque reference because the target
+  install database may differ from the server runtime database; the optional
+  output projection is bounded and failure text is stable/public-safe.
 - `platform_settings` currently stores generic tenant platform categories, but it
   is not a semantic owner. The accepted settings architecture requires every
   surviving category to move behind its consuming owner with typed validation,

@@ -48,6 +48,7 @@ mod m20260718_000002_add_registry_publication_idempotency;
 mod m20260723_000001_create_event_delivery_settings;
 mod m20260803_000001_create_owner_operation_receipts;
 mod m20260808_000099_create_module_operation_override_states;
+mod m20260928_000001_create_install_http_jobs;
 
 pub mod schema_diff;
 pub use schema_diff::*;
@@ -1129,6 +1130,18 @@ mod tests {
             "server migrator must include search typo-tolerance indexes migration"
         );
     }
+    #[test]
+    fn migrator_includes_durable_http_installer_jobs() {
+        let names = Migrator::migrations()
+            .into_iter()
+            .map(|migration| migration.name().to_string())
+            .collect::<Vec<_>>();
+        assert!(
+            names.iter().any(|name| name == "m20260928_000001_create_install_http_jobs"),
+            "server migrator must include durable HTTP installer job storage"
+        );
+    }
+
     #[test]
     fn migrator_includes_iggy_connector_settings() {
         let names: Vec<String> = Migrator::migrations()
