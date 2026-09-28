@@ -47,6 +47,9 @@ fn management_context(auth: &AuthContext) -> McpManagementContext {
 
 fn map_error(error: McpManagementMutationError) -> FieldError {
     match error {
+        McpManagementMutationError::Forbidden(message) => {
+            <FieldError as GraphQLError>::permission_denied(&message)
+        }
         McpManagementMutationError::Validation(message)
         | McpManagementMutationError::Conflict(message) => {
             <FieldError as GraphQLError>::bad_user_input(&message)

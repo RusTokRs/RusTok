@@ -433,11 +433,15 @@ fn actor_type_slug(actor_type: McpActorType) -> &'static str {
 }
 
 fn map_db_err(err: sea_orm::DbErr) -> Error {
-    Error::BadRequest(err.to_string())
+    tracing::error!(error = %err, "MCP runtime database operation failed");
+    Error::InternalServerError
 }
 
 #[cfg(test)]
 mod tests {
+    use super::map_db_err;
+    use axum::{http::StatusCode, response::IntoResponse};
+
     use super::{access_context_for_client, actor_user_id_from_runtime_context};
     use crate::models::{mcp_clients, mcp_policies};
     use rustok_mcp::{
@@ -445,6 +449,13 @@ mod tests {
         McpSessionContext, TOOL_MCP_WHOAMI,
     };
     use sea_orm::entity::prelude::Uuid;
+
+    #[test]
+    fn database_errors_map_to_internal_server_error() {
+        let response = map_db_err(sea_orm::DbErr::Custom("database failure".to_string()))
+            .into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
 
     #[test]
     fn missing_policy_falls_back_to_whoami_only_access() {

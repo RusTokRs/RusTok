@@ -39,9 +39,11 @@ impl GuardedMcpManagementProvider {
 
 fn map_authority_error(error: McpManagementAuthorityError) -> McpManagementMutationError {
     match error {
-        McpManagementAuthorityError::Invalid(message)
-        | McpManagementAuthorityError::Forbidden(message) => {
+        McpManagementAuthorityError::Invalid(message) => {
             McpManagementMutationError::Validation(message)
+        }
+        McpManagementAuthorityError::Forbidden(message) => {
+            McpManagementMutationError::Forbidden(message)
         }
         McpManagementAuthorityError::NotFound(message) => {
             McpManagementMutationError::NotFound(message)

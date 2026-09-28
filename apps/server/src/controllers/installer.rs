@@ -88,34 +88,42 @@ pub struct InstallStatusResponse {
 
 async fn status(State(ctx): State<ServerRuntimeContext>) -> Result<Json<InstallStatusResponse>> {
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
-    match persistence.latest_session().await {
-        Ok(Some(session)) => {
-            let completed = session.status == "completed";
-            Ok(Json(InstallStatusResponse {
-                status: session.status,
-                initialized: true,
-                completed,
-                session_id: Some(session.id),
-                tenant_id: session.tenant_id,
-                lock_owner: session.lock_owner,
-                lock_expires_at: session.lock_expires_at,
-                completed_at: session.completed_at,
-            }))
+    let completed = match persistence.has_completed_session().await {
+        Ok(completed) => completed,
+        Err(error) if installer_schema_missing(&error) => {
+            return Ok(Json(InstallStatusResponse {
+                status: "not_initialized".to_string(),
+                initialized: false,
+                completed: false,
+                session_id: None,
+                tenant_id: None,
+                lock_owner: None,
+                lock_expires_at: None,
+                completed_at: None,
+            }));
         }
+        Err(error) => {
+            return Err(internal_error(format!(
+                "failed to read installer completion state: {error}"
+            )));
+        }
+    };
+
+    match persistence.latest_session().await {
+        Ok(Some(session)) => Ok(Json(InstallStatusResponse {
+            status: session.status,
+            initialized: true,
+            completed,
+            session_id: Some(session.id),
+            tenant_id: session.tenant_id,
+            lock_owner: session.lock_owner,
+            lock_expires_at: session.lock_expires_at,
+            completed_at: session.completed_at,
+        })),
         Ok(None) => Ok(Json(InstallStatusResponse {
             status: "not_started".to_string(),
             initialized: true,
-            completed: false,
-            session_id: None,
-            tenant_id: None,
-            lock_owner: None,
-            lock_expires_at: None,
-            completed_at: None,
-        })),
-        Err(error) if installer_schema_missing(&error) => Ok(Json(InstallStatusResponse {
-            status: "not_initialized".to_string(),
-            initialized: false,
-            completed: false,
+            completed,
             session_id: None,
             tenant_id: None,
             lock_owner: None,
@@ -134,6 +142,7 @@ async fn plan(
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPlanResponse>> {
     require_setup_token(&headers)?;
+    ensure_setup_not_completed(&ctx).await?;
     let plan = bind_host_install_plan(&ctx, plan).await?;
     Ok(Json(InstallPlanResponse {
         redacted_plan: redact_install_plan(&plan),
@@ -146,6 +155,7 @@ async fn preflight(
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPreflightResponse>> {
     require_setup_token(&headers)?;
+    ensure_setup_not_completed(&ctx).await?;
     let plan = bind_host_install_plan(&ctx, plan).await?;
     let report = evaluate_preflight_with_deployment(&plan, false);
     Ok(Json(InstallPreflightResponse {
@@ -161,6 +171,7 @@ async fn apply(
     Json(request): Json<InstallApplyRequest>,
 ) -> Result<(StatusCode, Json<InstallApplyJobResponse>)> {
     require_setup_token(&headers)?;
+    ensure_setup_not_completed(&ctx).await?;
     let plan = bind_host_install_plan(&ctx, request.plan).await?;
     let job_id = rustok_core::generate_id();
     let submitted_at = Utc::now();
@@ -233,6 +244,22 @@ async fn apply(
             status_url: format!("/api/install/jobs/{job_id}"),
         }),
     ))
+}
+
+async fn ensure_setup_not_completed(ctx: &ServerRuntimeContext) -> Result<()> {
+    let persistence = InstallerPersistenceService::new(ctx.db_clone());
+    match persistence.has_completed_session().await {
+        Ok(true) => Err(http_error(HttpError::new(
+            StatusCode::CONFLICT,
+            "installer_completed",
+            "Installer setup is disabled after a completed installation",
+        ))),
+        Ok(false) => Ok(()),
+        Err(error) if installer_schema_missing(&error) => Ok(()),
+        Err(error) => Err(internal_error(format!(
+            "failed to verify installer setup state: {error}"
+        ))),
+    }
 }
 
 async fn bind_host_install_plan(

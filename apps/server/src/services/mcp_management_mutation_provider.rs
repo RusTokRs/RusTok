@@ -2,6 +2,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::DatabaseConnection;
 
+use crate::error::Error as ServerError;
+
 use rustok_mcp::{
     ApplyMcpScaffoldDraftCommand, CreateMcpClientCommand, McpAuditEventRecord,
     McpClientDetailsRecord, McpClientRecord, McpManagementContext, McpManagementMutationError,
@@ -299,6 +301,37 @@ fn client_record(client: &crate::models::mcp_clients::Model) -> McpClientRecord 
     }
 }
 
+#[cfg(test)]
+mod provider_error_tests {
+    use super::mutation_error;
+    use crate::error::Error;
+    use rustok_mcp::McpManagementMutationError;
+
+    #[test]
+    fn maps_forbidden_errors_to_permission_denied_variant() {
+        assert!(matches!(
+            mutation_error(Error::Forbidden("denied".to_string())),
+            McpManagementMutationError::Forbidden(message) if message == "denied"
+        ));
+    }
+
+    #[test]
+    fn maps_user_errors_without_exposing_internal_details() {
+        assert!(matches!(
+            mutation_error(Error::BadRequest("bad input".to_string())),
+            McpManagementMutationError::Validation(message) if message == "bad input"
+        ));
+        assert!(matches!(
+            mutation_error(Error::NotFound),
+            McpManagementMutationError::NotFound(message) if message == "MCP management resource not found"
+        ));
+        assert!(matches!(
+            mutation_error(Error::InternalServerError),
+            McpManagementMutationError::Internal(message) if message == "MCP management operation failed"
+        ));
+    }
+}
+
 fn policy_record(policy: &crate::models::mcp_policies::Model) -> McpPolicyRecord {
     McpPolicyRecord {
         id: policy.id,
@@ -366,6 +399,24 @@ fn scaffold_draft_record(
     }
 }
 
-fn mutation_error(error: impl std::fmt::Display) -> McpManagementMutationError {
-    McpManagementMutationError::Internal(error.to_string())
+fn mutation_error(error: ServerError) -> McpManagementMutationError {
+    match error {
+        ServerError::Forbidden(message) => McpManagementMutationError::Forbidden(message),
+        ServerError::BadRequest(message) | ServerError::Validation(message) => {
+            McpManagementMutationError::Validation(message)
+        }
+        ServerError::NotFound => {
+            McpManagementMutationError::NotFound("MCP management resource not found".to_string())
+        }
+        ServerError::InternalServerError => McpManagementMutationError::Internal(
+            "MCP management operation failed".to_string(),
+        ),
+        ServerError::Message(message) => McpManagementMutationError::Internal(message),
+        other => {
+            tracing::error!(error = %other, "Unexpected MCP management provider error");
+            McpManagementMutationError::Internal(
+                "MCP management operation failed".to_string(),
+            )
+        }
+    }
 }
