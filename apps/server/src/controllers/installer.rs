@@ -152,7 +152,7 @@ async fn preflight(
     State(ctx): State<ServerRuntimeContext>,
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPreflightResponse>> {
-    require_setup_token(&headers, plan.environment.is_production())?;
+    require_setup_token(&headers)?;
     let plan = bind_host_install_plan(&ctx, plan).await?;
     let report = evaluate_preflight_with_deployment(&plan, false);
     Ok(Json(InstallPreflightResponse {
@@ -243,6 +243,13 @@ async fn bind_host_install_plan(
     ctx: &ServerRuntimeContext,
     mut plan: InstallPlan,
 ) -> Result<InstallPlan> {
+    let host_is_production = is_production_environment();
+    if host_is_production && !plan.environment.is_production() {
+        return Err(bad_request_error(
+            "production installer hosts accept only production install plans",
+        ));
+    }
+
     let composition = rustok_distribution::composition_identity();
     let host_composition = InstallComposition {
         revision: composition.revision,
@@ -259,7 +266,7 @@ async fn bind_host_install_plan(
     let configured_root = std::env::var("RUSTOK_INSTANCE_ROOT")
         .ok()
         .filter(|value| !value.trim().is_empty());
-    if plan.environment.is_production() && configured_root.is_none() {
+    if host_is_production && configured_root.is_none() {
         return Err(bad_request_error(
             "production installer HTTP requests require a host-selected RUSTOK_INSTANCE_ROOT",
         ));
