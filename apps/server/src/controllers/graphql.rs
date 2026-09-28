@@ -181,11 +181,17 @@ async fn graphql_ws_handler(
         .protocols(async_graphql::http::ALL_WEBSOCKET_PROTOCOLS)
         .max_message_size(WS_MAX_MESSAGE_SIZE)
         .max_frame_size(WS_MAX_FRAME_SIZE);
-    let protocol = ws
+    let Some(protocol) = ws
         .selected_protocol()
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.parse::<WebSocketProtocols>().ok())
-        .unwrap_or(WebSocketProtocols::GraphQLWS);
+    else {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            "GraphQL WebSocket subprotocol negotiation is required",
+        )
+            .into_response();
+    };
 
     ws.on_upgrade(move |socket| {
         handle_graphql_ws(
@@ -437,6 +443,17 @@ mod tests {
     use rustok_migrations::SqliteTestMigrator as Migrator;
     use sea_orm::{ActiveModelTrait, Set};
     use serial_test::serial;
+
+    #[test]
+    fn graphql_ws_protocols_are_not_defaulted_without_negotiation() {
+        let protocols = async_graphql::http::ALL_WEBSOCKET_PROTOCOLS;
+        assert!(
+            protocols
+                .iter()
+                .all(|protocol| protocol.parse::<WebSocketProtocols>().is_ok()),
+            "all advertised GraphQL websocket protocols must be parseable"
+        );
+    }
 
     #[test]
     fn graphql_ws_transport_limits_are_bounded() {
