@@ -520,6 +520,25 @@ impl Entity {
         }
     }
 
+    pub async fn find_by_client_id_for_tenant(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        client_id: Uuid,
+    ) -> Result<Option<Model>, DbErr> {
+        let model = Entity::find()
+            .filter(
+                Condition::all()
+                    .add(Column::TenantId.eq(tenant_id))
+                    .add(Column::ClientId.eq(client_id)),
+            )
+            .one(db)
+            .await?;
+        match model {
+            Some(model) => Ok(Some(hydrate_tenant_default_or_identifier(db, model).await?)),
+            None => Ok(None),
+        }
+    }
+
     pub async fn find_by_tenant(
         db: &DatabaseConnection,
         tenant_id: Uuid,

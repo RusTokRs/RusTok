@@ -394,7 +394,7 @@ async fn validate_authorize_request(
         error_description: "Invalid client_id format".to_string(),
     })?;
 
-    let app = OAuthAppService::find_by_client_id(ctx.db(), client_id)
+    let app = OAuthAppService::find_by_client_id_for_tenant(ctx.db(), tenant_id, client_id)
         .await
         .map_err(|_| TokenErrorResponse {
             error: "invalid_client".to_string(),
@@ -702,7 +702,7 @@ async fn revoke_handler_inner(
         error_description: "Invalid client_id format".to_string(),
     })?;
 
-    let app = OAuthAppService::find_by_client_id(ctx.db(), client_id)
+    let app = OAuthAppService::find_by_client_id_for_tenant(ctx.db(), tenant_ctx.id, client_id)
         .await
         .map_err(|_| TokenErrorResponse {
             error: "invalid_client".to_string(),

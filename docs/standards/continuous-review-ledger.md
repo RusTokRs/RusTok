@@ -131,6 +131,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.04 finding in progress — channel tenant-first query isolation.** `X-Channel-ID` resolution previously loaded a channel globally before comparing `tenant_id`; policy resolution likewise loaded its target channel by ID without a tenant filter. The channel service now exposes a tenant-scoped detail lookup and both resolver paths use it; foreign policy targets are rejected fail-closed.
 
+- [ ] **FS-22.03 finding in progress — OAuth client lookup tenant isolation.** OAuth token issuance and revocation previously loaded an application by global `client_id` and only then compared `app.tenant_id` with the request tenant. A tenant-scoped client lookup is now the primary query boundary for these flows, with existing post-load tenant checks retained where applicable.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
