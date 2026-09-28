@@ -211,6 +211,9 @@ remain separate unfinished control-plane work.
 - OAuth discovery metadata also uses `ServerAuthRuntime` as the single source of auth config.
 - OAuth REST token, authorize/consent, browser-session, and revoke handlers extract `ServerAuthRuntime`
   or `ServerRuntimeContext`; host-wide context does not participate in OAuth request state.
+- Access-token authentication resolves active OAuth applications through a security-only lookup that does
+  not hydrate tenant locale or presentation translations; authentication must not depend on
+  `oauth_app_translations`.
 - Marketplace registry/governance REST handlers extract `ServerRuntimeContext`; catalog projection,
   artifact storage and remote executor policy are read through DB/settings/shared handles neutral runtime.
 - Per-registry marketplace freshness is projected through
