@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `9d4fba9122bbc2283a3edf1e115790793b1ed831`  
+**Current main SHA:** `c608b07bd7f5df1a14232ea4c9a2f55fa14a9f75`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -367,6 +367,17 @@ Hard limits for every iteration:
 - **Documentation:** `crates/modules/rustok-auth/docs/README.md` now records the checked JWT expiration boundary.
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.07` complete after merge; continue to the next unchecked primary module in FS-22.03.
+
+### FS-22.03.14 Iterations 1-3 — `crates/modules/rustok-auth/src/backfill.rs`
+
+- **Base:** refreshed `main` at `2b99979f1aceb2cbd9538822dc82c9953a08abaa`; dedicated branch `codex/audit-fs-22.03.14-auth-backfill`.
+- **Iteration 1 — bounded owner read contract:** `AuthUserBackfillDbReader` accepted arbitrary `u64` limits and cast them to `i64`. The owner now enforces `1..=500`, matching the Profiles CLI default, and rejects invalid values before query construction. Boundary tests cover `0`, `1`, `500`, `501`, and `u64::MAX`.
+- **Iteration 2 — error redaction:** DB query and row-decoding failures previously became raw `Internal(String)` diagnostics. They now pass through one stable `Auth user backfill read failed` error while retaining server-side error logging. Regression coverage verifies the external message.
+- **Iteration 3 — deterministic batch order and conversion hardening:** the SQL selection order now uses `created_at ASC, id ASC`; the SQL LIMIT binding uses checked `i64::try_from` after validation, eliminating lossy integer conversion. A fresh pass caught and corrected the intermediate invalid `i64::from(u64)` conversion before integration.
+- **Consumer reconciliation:** the Profiles CLI already defaults to `500` and supplies an explicit tenant UUID; no consumer runtime change was required. The reader returns only auth-owned identity projection fields `id/email/name` and does not import Profiles storage.
+- **Final fresh second pass:** re-read the complete owner reader after PR #4264 merged at `c608b07bd7f5df1a14232ea4c9a2f55fa14a9f75`. Rechecked tenant predicate, batch bounds, SQL parameter conversion, ordering stability, raw row parsing and error redaction. No remaining in-scope owner defect was found.
+- **Verification:** repository source inspection, direct consumer review, immediate re-audits after each remediation, and branch-diff review only. No tests, clippy, build, gatekeeper, migrations, or runtime commands were executed by the agent.
+- **Status:** `FS-22.03.14` complete. Next primary module: `FS-22.03.15 — crates/modules/rustok-auth/src/bootstrap.rs`.
 
 ### FS-22.03.13 Iterations 1-5 — `apps/server/src/services/auth_lifecycle_provider.rs`
 
