@@ -453,14 +453,3 @@ fn map_lifecycle_error(error: AuthLifecycleError) -> AuthLifecycleMutationError 
     }
 }
 
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn password_reset_preparation_errors_are_treated_as_non_enumerating() {
-        // The production branches return Ok(()) for token/email/url preparation
-        // failures after an account was found; this test marker documents the
-        // intentionally uniform public outcome.
-        assert!(true);
-    }
-}
