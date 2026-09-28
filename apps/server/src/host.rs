@@ -12,7 +12,11 @@ use crate::{
     common::settings::RustokSettings,
     controllers,
     error::{Error, Result},
-    middleware::security_headers::hsts_enabled,
+    middleware::{
+        cors::resolve_cors_allowed_origins_from_env,
+        http_stack::{apply_http_edge_stack, resolve_http_timeout_seconds},
+        security_headers::hsts_enabled,
+    },
     routes::ServerRouter,
     services::{
         app_lifecycle::{resolve_boot_database_uri, shutdown_runtime_workers},
@@ -100,6 +104,14 @@ pub async fn run() -> Result<()> {
         rustok_settings,
     )
     .await?;
+
+    let allowed_origins = resolve_cors_allowed_origins_from_env();
+    let router = apply_http_edge_stack(
+        router,
+        production,
+        allowed_origins.as_deref(),
+        resolve_http_timeout_seconds(),
+    );
 
     let listener =
         tokio::net::TcpListener::bind((config.server.binding.as_str(), config.server.port)).await?;
