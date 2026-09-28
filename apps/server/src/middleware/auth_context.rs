@@ -1,5 +1,5 @@
 use axum::{
-    extract::State,
+    extract::{FromRequestParts, State},
     http::{HeaderValue, Method, Request, StatusCode, header::AUTHORIZATION},
     middleware::Next,
     response::{IntoResponse, Response},
@@ -9,8 +9,13 @@ use rustok_api::context::{
 };
 use rustok_api::{HOST_AUTHORITY_REQUIRED, Permission, has_effective_permission};
 use rustok_core::SecurityActorKind;
+use axum_extra::{
+    TypedHeader,
+    headers::{Authorization, authorization::Bearer},
+};
 
-use crate::extractors::auth::resolve_current_user;
+use crate::auth::decode_access_token;
+use crate::extractors::auth::{resolve_current_user, resolve_current_user_from_access_token};
 use crate::host_authority::{take_host_authority, with_host_authority_scope};
 use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 use crate::services::server_runtime_context::ServerAuthRuntime;
@@ -60,7 +65,25 @@ pub async fn resolve_optional(
     let request_method = parts.method.clone();
     let mut rbac_scope = None;
 
-    match resolve_current_user(&mut parts, &ctx).await {
+    if is_observability_auth_path(request_path.as_str()) {
+        if let Some(host_authority) = host_authority {
+            parts.extensions.insert(host_authority);
+        }
+        let req = Request::from_parts(parts, body);
+        return with_host_authority_scope(host_authority, next.run(req)).await;
+    }
+
+    let current_user_result = if parts
+        .extensions
+        .get::<crate::context::TenantContextExtension>()
+        .is_some()
+    {
+        resolve_current_user(&mut parts, &ctx).await
+    } else {
+        resolve_current_user_without_tenant_context(&mut parts, &ctx).await
+    };
+
+    match current_user_result {
         Ok(current_user) => {
             if human_user_only && current_user.actor_kind != SecurityActorKind::User {
                 return pages_inline_authoring_response(
@@ -165,6 +188,33 @@ pub async fn resolve_optional(
     )
 }
 
+async fn resolve_current_user_without_tenant_context(
+    parts: &mut axum::http::request::Parts,
+    ctx: &ServerAuthRuntime,
+) -> Result<crate::extractors::auth::CurrentUser, (StatusCode, &'static str)> {
+    let TypedHeader(Authorization(bearer)) =
+        TypedHeader::<Authorization<Bearer>>::from_request_parts(parts, ctx)
+            .await
+            .map_err(|_| (StatusCode::UNAUTHORIZED, "Missing or invalid token"))?;
+
+    let auth_config = ctx.auth_config().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "JWT secret not configured",
+    ))?;
+    let tenant_id = verified_tenant_id_from_access_token(auth_config, bearer.token())?;
+
+    resolve_current_user_from_access_token(ctx, tenant_id, bearer.token()).await
+}
+
+fn verified_tenant_id_from_access_token(
+    auth_config: &crate::auth::AuthConfig,
+    access_token: &str,
+) -> Result<uuid::Uuid, (StatusCode, &'static str)> {
+    decode_access_token(auth_config, access_token)
+        .map(|claims| claims.tenant_id)
+        .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))
+}
+
 fn pages_inline_authoring_response(
     mut response: Response,
     pages_inline_authoring: bool,
@@ -183,6 +233,18 @@ fn pages_inline_authoring_response(
         );
     }
     response
+}
+
+fn is_observability_auth_path(path: &str) -> bool {
+    matches!(
+        path,
+        "/metrics"
+            | "/metrics/"
+            | "/api/_health/metrics"
+            | "/health/ready"
+            | "/health/runtime"
+            | "/health/modules"
+    )
 }
 
 fn is_human_user_self_service_path(path: &str) -> bool {
@@ -277,9 +339,10 @@ fn service_forum_boundary_violation(
 mod tests {
     use super::{
         PAGES_AUTHORING_CACHE_CONTROL, PAGES_AUTHORING_ROBOTS_POLICY,
-        is_human_user_self_service_path, is_pages_inline_authoring_server_fn,
-        is_pages_inline_authoring_surface, pages_inline_authoring_response,
-        service_forum_boundary_violation,
+        is_human_user_self_service_path, is_observability_auth_path,
+        is_pages_inline_authoring_server_fn, is_pages_inline_authoring_surface,
+        pages_inline_authoring_response, service_forum_boundary_violation,
+        verified_tenant_id_from_access_token,
     };
     use axum::http::{HeaderMap, Method, StatusCode, header::AUTHORIZATION};
     use axum::response::IntoResponse;
@@ -287,7 +350,64 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
-    fn authorization_presence_distinguishes_anonymous_from_invalid_credentials() {
+    fn authorization_presence_distinguishes_anonymous_from_invalid_credentials() {    #[test]
+    fn global_auth_uses_only_the_verified_jwt_tenant_claim() {
+        let config = crate::auth::AuthConfig::new(
+            "test-secret-key-for-auth-context-32bytes-long".to_string(),
+        );
+        let tenant_id = Uuid::new_v4();
+        let token = crate::auth::encode_access_token(
+            &config,
+            Uuid::new_v4(),
+            tenant_id,
+            rustok_core::UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .expect("encode access token");
+
+        assert_eq!(
+            verified_tenant_id_from_access_token(&config, &token).expect("tenant claim"),
+            tenant_id
+        );
+    }
+
+    #[test]
+    fn invalid_global_auth_token_cannot_provide_a_tenant_claim() {
+        let config = crate::auth::AuthConfig::new(
+            "test-secret-key-for-auth-context-32bytes-long".to_string(),
+        );
+
+        assert_eq!(
+            verified_tenant_id_from_access_token(&config, "not-a-jwt"),
+            Err((StatusCode::UNAUTHORIZED, "Invalid token signature"))
+        );
+    }
+
+    #[test]
+    fn observability_auth_paths_are_excluded_from_user_jwt_resolution() {
+        for path in [
+            "/metrics",
+            "/metrics/",
+            "/api/_health/metrics",
+            "/health/ready",
+            "/health/runtime",
+            "/health/modules",
+        ] {
+            assert!(is_observability_auth_path(path), "{path}");
+        }
+
+        for path in [
+            "/api/auth/me",
+            "/api/graphql",
+            "/api/forum/topics",
+            "/catalog/modules",
+            "/v2/catalog/publish",
+        ] {
+            assert!(!is_observability_auth_path(path), "{path}");
+        }
+    }
+
+
         let mut headers = HeaderMap::new();
         assert!(!headers.contains_key(AUTHORIZATION));
         headers.insert(AUTHORIZATION, "Bearer invalid".parse().unwrap());
