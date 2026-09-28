@@ -16410,6 +16410,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-ui-grid"
+version = "0.1.0"
+dependencies = [
+ "iu-leptos",
+ "leptos",
+ "leptos-use",
+ "rustok-ui-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rustok-ui-i18n"
 version = "0.1.0"
 dependencies = [

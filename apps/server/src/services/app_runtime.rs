@@ -505,7 +505,7 @@ fn build_namespaced_rate_limiter(
 
 #[cfg(test)]
 mod tests {
-    use super::validate_compiled_surface_contract;
+    use super::{AUTH_RATE_LIMIT_PREFIXES, validate_compiled_surface_contract};
     use crate::common::settings::{RuntimeHostMode, RuntimeSettings, RustokSettings};
     use crate::modules::DeploymentSurfaceContract;
     use rustok_build::DeploymentProfile;
