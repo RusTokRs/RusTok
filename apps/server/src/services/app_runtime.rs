@@ -149,7 +149,7 @@ pub async fn bootstrap_app_runtime(
                     "Failed to sync manifest-managed OAuth apps: {error}"
                 ))
             })?;
-        middleware::tenant::init_tenant_cache_infrastructure(&runtime_ctx, &cache_service).await;
+        middleware::tenant::init_tenant_cache_infrastructure(&runtime_ctx, &cache_service).await?;
         runtime_ctx.shared_insert(
             rustok_content_orchestration::build_content_orchestration_service(
                 runtime_ctx.db_clone(),
