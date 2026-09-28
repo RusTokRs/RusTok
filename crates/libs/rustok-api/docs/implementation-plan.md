@@ -99,6 +99,12 @@ endpoint URLs and provider error text. `rustok-modules` owns the catalog port;
 - Source and same-revision compile/test evidence remain required before the
   current RBAC cycle item can be completed.
 
+## Delivered result: trusted request-context projection
+
+- `RequestContext` consumes only the trusted `TenantContextExtension`, `AuthContextExtension`, `ChannelContextExtension`, and canonical `ResolvedRequestLocale` extensions.
+- The extractor fails closed when canonical tenant/locale evidence is missing or when auth/channel tenant identity disagrees with the resolved tenant.
+- Query locale extraction uses the workspace-approved `url::form_urlencoded` parser before locale normalization, preserving standard URL percent-decoding.
+
 ## Verification
 
 - `npm run verify:api:surface-contract`
