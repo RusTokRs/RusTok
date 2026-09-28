@@ -6,6 +6,9 @@ use axum::{
 };
 use utoipa::OpenApi;
 use utoipa::openapi::OpenApi as OpenApiDoc;
+use utoipa::openapi::security::{
+    ApiKey, ApiKeyValue, SecurityRequirement, SecurityScheme,
+};
 
 use crate::common::settings::RustokSettings;
 use crate::error::{Error, Result};
@@ -277,13 +280,34 @@ impl utoipa::Modify for SecurityAddon {
         if let Some(components) = openapi.components.as_mut() {
             components.add_security_scheme(
                 "bearer_auth",
-                utoipa::openapi::security::SecurityScheme::Http(
+                SecurityScheme::Http(
                     utoipa::openapi::security::HttpBuilder::new()
                         .scheme(utoipa::openapi::security::HttpAuthScheme::Bearer)
                         .bearer_format("JWT")
                         .build(),
                 ),
-            )
+            );
+            components.add_security_scheme(
+                "runner_token",
+                SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::with_description(
+                    "x-rustok-runner-token",
+                    "Shared token required for remote registry validation runner operations.",
+                ))),
+            );
+        }
+
+        // Remote runner operations are authenticated by a dedicated shared
+        // header rather than a user/session bearer token. Keep that distinction
+        // explicit in the machine-readable contract.
+        for path in [
+            "/v2/catalog/runner/claim",
+            "/v2/catalog/runner/{claim_id}/heartbeat",
+            "/v2/catalog/runner/{claim_id}/complete",
+            "/v2/catalog/runner/{claim_id}/fail",
+        ] {
+            if let Some(operation) = openapi.paths.get_path_item(path).and_then(|item| item.post.as_mut()) {
+                operation.security = Some(vec![SecurityRequirement::new("runner_token", [])]);
+            }
         }
     }
 }
@@ -361,6 +385,41 @@ mod tests {
                 "OpenAPI spec must include documented core path {path}"
             );
         }
+    }
+
+    #[test]
+    fn openapi_marks_remote_runner_operations_with_runner_auth() {
+        let openapi = ApiDoc::openapi();
+
+        let security = openapi
+            .paths
+            .get_path_operation(
+                "/v2/catalog/runner/claim",
+                utoipa::openapi::HttpMethod::Post,
+            )
+            .and_then(|operation| operation.security.as_ref())
+            .expect("runner claim must require runner_token");
+
+        assert_eq!(
+            serde_json::to_value(security).expect("security serializes"),
+            serde_json::json!([{ "runner_token": [] }])
+        );
+
+        let runner_scheme = openapi
+            .components
+            .as_ref()
+            .and_then(|components| components.security_schemes.get("runner_token"))
+            .expect("runner_token security scheme must exist");
+
+        assert_eq!(
+            serde_json::to_value(runner_scheme).expect("runner scheme serializes"),
+            serde_json::json!({
+                "type": "apiKey",
+                "in": "header",
+                "name": "x-rustok-runner-token",
+                "description": "Shared token required for remote registry validation runner operations."
+            })
+        );
     }
 
     #[test]
