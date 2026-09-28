@@ -117,6 +117,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.04 finding in progress — workflow webhook tenant-context contradiction.** `/webhooks/{tenant_slug}/{webhook_slug}` selected a tenant from the URL inside the Workflow handler, but host middleware classified the route as tenant-bound and could inject a different `TenantContext` from headers/host first. This could make request-level rate/auth/locale context refer to tenant A while the signed workflow execution targeted tenant B. The route is now classified as a self-resolving handshake so the workflow's own tenant lookup is authoritative; the change stays open until the adjacent auth/channel/locale audit is clean.
 
+- [ ] **FS-22.10 finding in progress — GlobalOperator/Authorization collision.** Global operator routes such as installer and registry-runner use route-specific host credentials, but `auth_context` previously interpreted any `Authorization: Bearer ...` as a user JWT even when tenant resolution was deliberately bypassed. User-auth middleware now suppresses `Authorization` on `GlobalOperator` routes, leaving route-specific credentials to their owning middleware/controller; tenant-bound routes retain normal JWT processing.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |

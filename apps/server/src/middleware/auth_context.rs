@@ -28,6 +28,12 @@ pub async fn resolve_optional(
     let pages_inline_authoring_surface = is_pages_inline_authoring_surface(request_path.as_str());
     let pages_inline_authoring = pages_inline_authoring_surface
         || is_pages_inline_authoring_server_fn(request_path.as_str());
+    let suppress_user_authorization =
+        super::tenant_route_policy::tenant_route_scope(request_path.as_str())
+            == super::tenant_route_policy::TenantRouteScope::GlobalOperator;
+    if suppress_user_authorization {
+        parts.headers.remove(AUTHORIZATION);
+    }
     let presented_credentials = parts.headers.contains_key(AUTHORIZATION);
     let host_authority = match take_host_authority(&mut parts.headers) {
         Ok(authority) => authority,
@@ -291,6 +297,32 @@ mod tests {
         let mut headers = HeaderMap::new();
         assert!(!headers.contains_key(AUTHORIZATION));
         headers.insert(AUTHORIZATION, "Bearer invalid".parse().unwrap());
+        assert!(headers.contains_key(AUTHORIZATION));
+    }
+
+    #[test]
+    fn global_operator_routes_do_not_feed_opaque_operator_tokens_to_jwt_auth() {
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, "Bearer setup-or-observability-token".parse().unwrap());
+
+        if super::super::tenant_route_policy::tenant_route_scope("/api/install/apply")
+            == super::super::tenant_route_policy::TenantRouteScope::GlobalOperator
+        {
+            headers.remove(AUTHORIZATION);
+        }
+
+        assert!(!headers.contains_key(AUTHORIZATION));
+    }
+
+    #[test]
+    fn tenant_bound_routes_keep_authorization_for_user_authentication() {
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, "Bearer user-token".parse().unwrap());
+
+        assert_eq!(
+            super::super::tenant_route_policy::tenant_route_scope("/api/graphql"),
+            super::super::tenant_route_policy::TenantRouteScope::TenantBound
+        );
         assert!(headers.contains_key(AUTHORIZATION));
     }
 
