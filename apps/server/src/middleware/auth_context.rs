@@ -157,7 +157,6 @@ pub async fn resolve_optional(
                 scopes: current_user.scopes,
                 grant_type: current_user.grant_type,
             }));
-        }
     }
 
     if let Some(host_authority) = host_authority {
