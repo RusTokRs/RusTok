@@ -793,6 +793,7 @@ async fn userinfo_handler_inner(
     let inferred_role = current_user.inferred_role;
     let profile_claims = current_user.scopes.iter().any(|scope| scope == "profile");
     let email_claims = current_user.scopes.iter().any(|scope| scope == "email");
+    let email_verified = user.is_email_verified();
 
     let mut userinfo = serde_json::Map::from_iter([(
         "sub".to_string(),
@@ -821,7 +822,7 @@ async fn userinfo_handler_inner(
         );
         userinfo.insert(
             "email_verified".to_string(),
-            serde_json::Value::Bool(user.is_email_verified()),
+            serde_json::Value::Bool(email_verified),
         );
     }
 

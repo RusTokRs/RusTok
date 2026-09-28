@@ -44,6 +44,20 @@ async fn get_metadata(
         }
         _ => "http://localhost:5150".to_string(),
     };
+    let public_url = reqwest::Url::parse(&domain).map_err(|_| {
+        Error::BadRequest("RUSTOK_PUBLIC_URL must be a valid absolute HTTP(S) URL".to_string())
+    })?;
+    if !matches!(public_url.scheme(), "http" | "https")
+        || public_url.username() != ""
+        || public_url.password().is_some()
+        || public_url.query().is_some()
+        || public_url.fragment().is_some()
+    {
+        return Err(Error::BadRequest(
+            "RUSTOK_PUBLIC_URL must be an absolute HTTP(S) URL without credentials, query, or fragment"
+                .to_string(),
+        ));
+    }
 
     let issuer = auth_config.issuer.trim();
     let issuer_url = if issuer.starts_with("https://") || issuer.starts_with("http://") {
