@@ -12,49 +12,65 @@ use crate::shared::api::api_base_url;
 #[cfg(feature = "ssr")]
 pub async fn registry_governance_get_native<T>(
     path: String,
-    token: String,
-    tenant: String,
 ) -> Result<T, ServerFnError>
 where
     T: DeserializeOwned,
 {
-    registry_governance_http_request_native::<(), T>(
-        reqwest::Method::GET,
-        path,
-        token,
-        tenant,
-        None,
-    )
-    .await
+    registry_governance_http_request_native::<(), T>(reqwest::Method::GET, path, None).await
 }
 
 #[cfg(feature = "ssr")]
 pub async fn registry_governance_request_native<B, T>(
     method: reqwest::Method,
     path: String,
-    token: String,
-    tenant: String,
     body: &B,
 ) -> Result<T, ServerFnError>
 where
     B: Serialize + ?Sized,
     T: DeserializeOwned,
 {
-    registry_governance_http_request_native(method, path, token, tenant, Some(body)).await
+    registry_governance_http_request_native(method, path, Some(body)).await
 }
 
 #[cfg(feature = "ssr")]
 pub async fn registry_governance_http_request_native<B, T>(
     method: reqwest::Method,
     path: String,
-    token: String,
-    tenant: String,
     body: Option<&B>,
 ) -> Result<T, ServerFnError>
 where
     B: Serialize + ?Sized,
     T: DeserializeOwned,
 {
+    use axum::http::header::AUTHORIZATION;
+    use rustok_api::{AuthContext, TenantContext};
+
+    let auth = leptos_axum::extract::<AuthContext>()
+        .await
+        .map_err(|error| ServerFnError::new(error.to_string()))?;
+    let tenant = leptos_axum::extract::<TenantContext>()
+        .await
+        .map_err(|error| ServerFnError::new(error.to_string()))?;
+    if auth.tenant_id != tenant.id {
+        return Err(ServerFnError::new(
+            "Registry governance authentication tenant does not match the resolved tenant",
+        ));
+    }
+
+    let headers = leptos_axum::extract::<axum::http::HeaderMap>()
+        .await
+        .map_err(|error| ServerFnError::new(error.to_string()))?;
+    let authorization = headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| ServerFnError::new("Authenticated registry bearer token is unavailable"))?;
+    let token = authorization
+        .strip_prefix("Bearer ")
+        .or_else(|| authorization.strip_prefix("bearer "))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ServerFnError::new("Authenticated registry bearer token is invalid"))?;
+
     let url = format!(
         "{}{}",
         api_base_url(),
@@ -68,7 +84,7 @@ where
     let mut request = client
         .request(method, url)
         .bearer_auth(token)
-        .header("X-Tenant-ID", tenant);
+        .header("X-Tenant-ID", tenant.slug);
 
     if let Some(body) = body {
         request = request.json(body);
@@ -696,18 +712,15 @@ pub async fn build_history_native(limit: i32, offset: i32) -> Result<Vec<BuildJo
     endpoint = "admin/registry-fetch-publish-request-status"
 )]
 pub async fn fetch_registry_publish_request_status_native(
-    token: String,
-    tenant: String,
     request_id: String,
 ) -> Result<RegistryPublishStatus, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        registry_governance_get_native(format!("/v2/catalog/publish/{request_id}"), token, tenant)
-            .await
+        registry_governance_get_native(format!("/v2/catalog/publish/{request_id}")).await
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (token, tenant, request_id);
+        let _ = request_id;
         Err(ServerFnError::new(
             "admin/registry-fetch-publish-request-status requires the `ssr` feature",
         ))
@@ -719,8 +732,6 @@ pub async fn fetch_registry_publish_request_status_native(
     endpoint = "admin/registry-validate-publish-request"
 )]
 pub async fn validate_registry_publish_request_native(
-    token: String,
-    tenant: String,
     request_id: String,
     dry_run: bool,
 ) -> Result<RegistryMutationResult, ServerFnError> {
@@ -729,8 +740,6 @@ pub async fn validate_registry_publish_request_native(
         registry_governance_request_native(
             reqwest::Method::POST,
             format!("/v2/catalog/publish/{request_id}/validate"),
-            token,
-            tenant,
             &RegistryValidationRequestPayload {
                 schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
                 dry_run,
@@ -740,7 +749,7 @@ pub async fn validate_registry_publish_request_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (token, tenant, request_id, dry_run);
+        let _ = (request_id, dry_run);
         Err(ServerFnError::new(
             "admin/registry-validate-publish-request requires the `ssr` feature",
         ))
@@ -752,8 +761,6 @@ pub async fn validate_registry_publish_request_native(
     endpoint = "admin/registry-approve-publish-request"
 )]
 pub async fn approve_registry_publish_request_native(
-    token: String,
-    tenant: String,
     request_id: String,
     reason: Option<String>,
     reason_code: Option<String>,
@@ -764,8 +771,6 @@ pub async fn approve_registry_publish_request_native(
         registry_governance_request_native(
             reqwest::Method::POST,
             format!("/v2/catalog/publish/{request_id}/approve"),
-            token,
-            tenant,
             &RegistryDecisionRequestPayload {
                 schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
                 dry_run,
@@ -777,7 +782,7 @@ pub async fn approve_registry_publish_request_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (token, tenant, request_id, reason, reason_code, dry_run);
+        let _ = (request_id, reason, reason_code, dry_run);
         Err(ServerFnError::new(
             "admin/registry-approve-publish-request requires the `ssr` feature",
         ))
@@ -786,8 +791,6 @@ pub async fn approve_registry_publish_request_native(
 
 #[server(prefix = "/api/fn", endpoint = "admin/registry-reject-publish-request")]
 pub async fn reject_registry_publish_request_native(
-    token: String,
-    tenant: String,
     request_id: String,
     reason: String,
     reason_code: String,
@@ -798,8 +801,6 @@ pub async fn reject_registry_publish_request_native(
         registry_governance_request_native(
             reqwest::Method::POST,
             format!("/v2/catalog/publish/{request_id}/reject"),
-            token,
-            tenant,
             &RegistryDecisionRequestPayload {
                 schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
                 dry_run,
@@ -811,7 +812,7 @@ pub async fn reject_registry_publish_request_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (token, tenant, request_id, reason, reason_code, dry_run);
+        let _ = (request_id, reason, reason_code, dry_run);
         Err(ServerFnError::new(
             "admin/registry-reject-publish-request requires the `ssr` feature",
         ))
@@ -823,8 +824,6 @@ pub async fn reject_registry_publish_request_native(
     endpoint = "admin/registry-request-changes-publish-request"
 )]
 pub async fn request_changes_registry_publish_request_native(
-    token: String,
-    tenant: String,
     request_id: String,
     reason: String,
     reason_code: String,
@@ -835,8 +834,6 @@ pub async fn request_changes_registry_publish_request_native(
         registry_governance_request_native(
             reqwest::Method::POST,
             format!("/v2/catalog/publish/{request_id}/request-changes"),
-            token,
-            tenant,
             &RegistryDecisionRequestPayload {
                 schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
                 dry_run,
@@ -848,7 +845,7 @@ pub async fn request_changes_registry_publish_request_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (token, tenant, request_id, reason, reason_code, dry_run);
+        let _ = (request_id, reason, reason_code, dry_run);
         Err(ServerFnError::new(
             "admin/registry-request-changes-publish-request requires the `ssr` feature",
         ))
@@ -857,8 +854,6 @@ pub async fn request_changes_registry_publish_request_native(
 
 #[server(prefix = "/api/fn", endpoint = "admin/registry-hold-publish-request")]
 pub async fn hold_registry_publish_request_native(
-    token: String,
-    tenant: String,
     request_id: String,
     reason: String,
     reason_code: String,
@@ -869,8 +864,6 @@ pub async fn hold_registry_publish_request_native(
         registry_governance_request_native(
             reqwest::Method::POST,
             format!("/v2/catalog/publish/{request_id}/hold"),
-            token,
-            tenant,
             &RegistryDecisionRequestPayload {
                 schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
                 dry_run,
@@ -882,7 +875,7 @@ pub async fn hold_registry_publish_request_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (token, tenant, request_id, reason, reason_code, dry_run);
+        let _ = (request_id, reason, reason_code, dry_run);
         Err(ServerFnError::new(
             "admin/registry-hold-publish-request requires the `ssr` feature",
         ))
@@ -891,8 +884,6 @@ pub async fn hold_registry_publish_request_native(
 
 #[server(prefix = "/api/fn", endpoint = "admin/registry-resume-publish-request")]
 pub async fn resume_registry_publish_request_native(
-    token: String,
-    tenant: String,
     request_id: String,
     reason: String,
     reason_code: String,
@@ -903,8 +894,6 @@ pub async fn resume_registry_publish_request_native(
         registry_governance_request_native(
             reqwest::Method::POST,
             format!("/v2/catalog/publish/{request_id}/resume"),
-            token,
-            tenant,
             &RegistryDecisionRequestPayload {
                 schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
                 dry_run,
@@ -916,7 +905,7 @@ pub async fn resume_registry_publish_request_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (token, tenant, request_id, reason, reason_code, dry_run);
+        let _ = (request_id, reason, reason_code, dry_run);
         Err(ServerFnError::new(
             "admin/registry-resume-publish-request requires the `ssr` feature",
         ))
@@ -925,8 +914,6 @@ pub async fn resume_registry_publish_request_native(
 
 #[server(prefix = "/api/fn", endpoint = "admin/registry-transfer-owner")]
 pub async fn transfer_registry_owner_native(
-    token: String,
-    tenant: String,
     slug: String,
     new_owner_user_id: String,
     reason: String,
@@ -938,8 +925,6 @@ pub async fn transfer_registry_owner_native(
         registry_governance_request_native(
             reqwest::Method::POST,
             "/v2/catalog/owner-transfer".to_string(),
-            token,
-            tenant,
             &RegistryOwnerTransferPayload {
                 schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
                 dry_run,
@@ -953,15 +938,7 @@ pub async fn transfer_registry_owner_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (
-            token,
-            tenant,
-            slug,
-            new_owner_user_id,
-            reason,
-            reason_code,
-            dry_run,
-        );
+        let _ = (slug, new_owner_user_id, reason, reason_code, dry_run);
         Err(ServerFnError::new(
             "admin/registry-transfer-owner requires the `ssr` feature",
         ))
@@ -970,8 +947,6 @@ pub async fn transfer_registry_owner_native(
 
 #[server(prefix = "/api/fn", endpoint = "admin/registry-yank-release")]
 pub async fn yank_registry_release_native(
-    token: String,
-    tenant: String,
     slug: String,
     version: String,
     reason: String,
@@ -983,8 +958,6 @@ pub async fn yank_registry_release_native(
         registry_governance_request_native(
             reqwest::Method::POST,
             "/v2/catalog/yank".to_string(),
-            token,
-            tenant,
             &RegistryYankPayload {
                 schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
                 dry_run,
@@ -998,7 +971,7 @@ pub async fn yank_registry_release_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (token, tenant, slug, version, reason, reason_code, dry_run);
+        let _ = (slug, version, reason, reason_code, dry_run);
         Err(ServerFnError::new(
             "admin/registry-yank-release requires the `ssr` feature",
         ))
