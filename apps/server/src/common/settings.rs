@@ -1268,7 +1268,7 @@ pub(crate) fn effective_environment_name() -> Result<String, String> {
 pub(crate) fn is_production_environment() -> bool {
     effective_environment_name()
         .map(|environment| matches!(environment.trim().to_ascii_lowercase().as_str(), "prod" | "production"))
-        .unwrap_or(!cfg!(debug_assertions))
+        .unwrap_or(true)
 }
 
 pub(crate) fn demo_mode_token_exposure_enabled() -> bool {
@@ -1380,6 +1380,17 @@ mod tests {
         let _rust = EnvVarGuard::clear(RUST_ENV_ENV);
         let _app = EnvVarGuard::clear(APP_ENV_ENV);
 
+        assert!(super::effective_environment_name().is_err());
+    }
+
+    #[test]
+    fn malformed_environment_fails_closed_for_security_checks() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _rustok = EnvVarGuard::set(RUSTOK_ENV_ENV, "prod?");
+        let _rust = EnvVarGuard::clear(RUST_ENV_ENV);
+        let _app = EnvVarGuard::clear(APP_ENV_ENV);
+
+        assert!(super::is_production_environment());
         assert!(super::effective_environment_name().is_err());
     }
 
