@@ -14,7 +14,7 @@ pub mod store;
 use axum::{body::Body, extract::State, http::Request, middleware::Next, response::Response};
 use rustok_api::{HostRuntimeContext, SharedModuleEffectivePolicyReader};
 use rustok_modules::ModuleEffectivePolicyReader;
-use rustok_web::{HttpError, HttpResult};
+use rustok_web::HttpError;
 use rustok_fulfillment::providers::FulfillmentProviderRegistry;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::providers::PaymentProviderRegistry;
