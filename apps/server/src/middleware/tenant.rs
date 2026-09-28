@@ -30,7 +30,7 @@ use crate::context::{TenantContext, TenantContextExtension};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const TENANT_CACHE_VERSION: &str = "v2";
-const TENANT_CONTEXT_SCHEMA_VERSION: u32 = 2;
+const TENANT_CONTEXT_SCHEMA_VERSION: u32 = 3;
 const TENANT_NEGATIVE_SCHEMA_VERSION: u32 = 1;
 const TENANT_CACHE_TTL: Duration = Duration::from_secs(300);
 const TENANT_NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(60);
@@ -55,40 +55,36 @@ struct CachedTenantContext {
     name: String,
     slug: String,
     domain: Option<String>,
-    settings_json: String,
+    settings: serde_json::Value,
     default_locale: String,
     is_active: bool,
 }
 
-impl TryFrom<TenantContext> for CachedTenantContext {
-    type Error = serde_json::Error;
-
-    fn try_from(context: TenantContext) -> Result<Self, Self::Error> {
-        Ok(Self {
+impl From<TenantContext> for CachedTenantContext {
+    fn from(context: TenantContext) -> Self {
+        Self {
             id: context.id,
             name: context.name,
             slug: context.slug,
             domain: context.domain,
-            settings_json: serde_json::to_string(&context.settings)?,
+            settings: context.settings,
             default_locale: context.default_locale,
             is_active: context.is_active,
-        })
+        }
     }
 }
 
-impl TryFrom<CachedTenantContext> for TenantContext {
-    type Error = serde_json::Error;
-
-    fn try_from(context: CachedTenantContext) -> Result<Self, Self::Error> {
-        Ok(Self {
+impl From<CachedTenantContext> for TenantContext {
+    fn from(context: CachedTenantContext) -> Self {
+        Self {
             id: context.id,
             name: context.name,
             slug: context.slug,
             domain: context.domain,
-            settings: serde_json::from_str(&context.settings_json)?,
+            settings: context.settings,
             default_locale: context.default_locale,
             is_active: context.is_active,
-        })
+        }
     }
 }
 
@@ -607,11 +603,7 @@ impl TenantCacheInfrastructure {
                 self.load_policy.clone(),
                 || async move {
                     let context = loader().await?;
-                    let cached = CachedTenantContext::try_from(context).map_err(|error| {
-                        CoreError::Cache(format!(
-                            "tenant cache settings serialization failed: {error}"
-                        ))
-                    })?;
+                    let cached = CachedTenantContext::from(context);
                     let generated_at = current_unix_ms().map_err(|error| {
                         CoreError::Cache(format!("tenant cache timestamp creation failed: {error}"))
                     })?;
@@ -644,11 +636,7 @@ impl TenantCacheInfrastructure {
                 .await;
         }
 
-        TenantContext::try_from(result.value).map_err(|error| {
-            TenantContextLoadError::CacheUnavailable(format!(
-                "tenant cache settings deserialization failed: {error}"
-            ))
-        })
+        Ok(TenantContext::from(result.value))
     }
 }
 
@@ -656,16 +644,17 @@ pub async fn init_tenant_cache_infrastructure(
     ctx: &ServerRuntimeContext,
     cache_service: &CacheService,
 ) -> crate::error::Result<()> {
-    if !ctx.shared_contains::<CacheService>() {
-        ctx.shared_insert(cache_service.clone());
-    }
+    let _ = ctx.shared_insert_if_absent(cache_service.clone());
+    let canonical_cache_service = ctx.shared_get::<CacheService>().ok_or_else(|| {
+        crate::error::Error::Cache("tenant cache service is unavailable".to_string())
+    })?;
 
     if ctx.shared_contains::<Arc<TenantCacheInfrastructure>>() {
         return Ok(());
     }
 
-    let infrastructure = TenantCacheInfrastructure::new(cache_service).await?;
-    ctx.shared_insert(Arc::new(infrastructure));
+    let infrastructure = TenantCacheInfrastructure::new(&canonical_cache_service).await?;
+    let _ = ctx.shared_insert_if_absent(Arc::new(infrastructure));
     Ok(())
 }
 
