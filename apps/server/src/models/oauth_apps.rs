@@ -480,6 +480,26 @@ async fn hydrate_tenant_default_or_identifier(
 }
 
 impl Entity {
+    /// Security-only OAuth client lookup for token authentication.
+    ///
+    /// Unlike presentation-oriented `find_active_by_client_id`, this method never
+    /// resolves tenant locale or translation rows. Authentication must depend only
+    /// on security/configuration state so presentation-data failures cannot reject
+    /// an otherwise valid bearer token.
+    pub async fn find_active_security_by_client_id(
+        db: &DatabaseConnection,
+        client_id: Uuid,
+    ) -> Result<Option<Model>, DbErr> {
+        Entity::find()
+            .filter(
+                Condition::all()
+                    .add(Column::ClientId.eq(client_id))
+                    .add(Column::IsActive.eq(true))
+                    .add(Column::RevokedAt.is_null()),
+            )
+            .one(db)
+    }
+
     pub async fn find_active_by_client_id(
         db: &DatabaseConnection,
         client_id: Uuid,
