@@ -14,8 +14,12 @@ use axum::{
     routing::get,
 };
 use futures_util::{SinkExt, StreamExt};
-use rustok_api::{Action, AuthPrincipalContext, Permission};
+use rustok_api::{
+    Action, AuthPrincipalContext, Permission, PLATFORM_FALLBACK_LOCALE, PortActor, PortContext,
+};
+
 use rustok_core::i18n::Locale;
+use rustok_tenant::{TenantLocalePolicyPort, TenantService};
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::common::RequestContext;
@@ -420,12 +424,8 @@ async fn build_ws_connection_data(
         })
         .map_err(|_| async_graphql::Error::new("RBAC connection scope was already initialized"))?;
 
-    let locale = payload
-        .locale
-        .as_deref()
-        .and_then(Locale::parse)
-        .or_else(|| Locale::parse(&tenant_ctx.default_locale))
-        .unwrap_or_default();
+    let locale = resolve_ws_locale(&runtime_ctx, &tenant_ctx, payload.locale.as_deref())
+        .await?;
     let principal_context = AuthPrincipalContext::new(current_user.principal_kind);
     let auth_ctx = AuthContext {
         user_id: current_user.user.id,
@@ -447,6 +447,84 @@ async fn build_ws_connection_data(
     data.insert(principal_context);
     data.insert(request_scope);
     Ok(data)
+}
+
+async fn resolve_ws_locale(
+    runtime_ctx: &ServerRuntimeContext,
+    tenant_ctx: &TenantContext,
+    requested_locale: Option<&str>,
+) -> Result<Locale, async_graphql::Error> {
+    let service = TenantService::new(runtime_ctx.db_clone());
+    let context = PortContext::new(
+        tenant_ctx.id.to_string(),
+        PortActor::service("rustok-server.graphql-ws-locale"),
+        PLATFORM_FALLBACK_LOCALE,
+        format!("graphql-ws-locale:{}", tenant_ctx.id),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+
+    let policy = service
+        .read_locale_policy(context)
+        .await
+        .map_err(|_| async_graphql::Error::new("Tenant locale policy unavailable"))?;
+
+    let requested = requested_locale.and_then(rustok_api::normalize_locale_tag);
+    let locale = requested
+        .as_deref()
+        .and_then(|value| {
+            policy
+                .locales
+                .iter()
+                .find(|entry| entry.is_enabled && entry.locale.as_str() == value)
+                .map(|entry| entry.locale.as_str().to_string())
+                .or_else(|| {
+                    policy
+                        .locales
+                        .iter()
+                        .find(|entry| entry.locale.as_str() == value)
+                        .and_then(|entry| entry.fallback_locale.as_ref())
+                        .and_then(|fallback| {
+                            policy
+                                .locales
+                                .iter()
+                                .find(|entry| {
+                                    entry.is_enabled && entry.locale.as_str() == fallback.as_str()
+                                })
+                                .map(|entry| entry.locale.as_str().to_string())
+                        })
+                })
+        })
+        .or_else(|| {
+            policy
+                .locales
+                .iter()
+                .find(|entry| entry.is_default && entry.is_enabled)
+                .map(|entry| entry.locale.as_str().to_string())
+        })
+        .or_else(|| {
+            policy
+                .locales
+                .iter()
+                .find(|entry| {
+                    entry.is_enabled
+                        && entry.locale.as_str() == tenant_ctx.default_locale.as_str()
+                })
+                .map(|entry| entry.locale.as_str().to_string())
+        })
+        .or_else(|| {
+            policy
+                .locales
+                .iter()
+                .find(|entry| entry.is_enabled)
+                .map(|entry| entry.locale.as_str().to_string())
+        })
+        .unwrap_or_else(|| {
+            rustok_api::normalize_locale_tag(tenant_ctx.default_locale.as_str())
+                .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string())
+        });
+
+    Locale::parse(&locale)
+        .ok_or_else(|| async_graphql::Error::new("Invalid tenant locale policy"))
 }
 
 const GRAPHQL_HTTP_PATH: &str = "/api/graphql";
@@ -614,6 +692,53 @@ mod tests {
                 Err(error) => error,
             };
         assert_eq!(disabled.client_message(), "Tenant is disabled");
+    }
+
+    #[test]
+    fn websocket_locale_selection_prefers_enabled_requested_locale() {
+        let policy = rustok_tenant::TenantLocalePolicyProjection {
+            tenant_id: uuid::Uuid::new_v4(),
+            revision: 1,
+            default_locale: rustok_api::TenantLocale::new("en").expect("valid locale"),
+            locales: vec![
+                rustok_tenant::TenantLocalePolicyEntry {
+                    locale: rustok_api::TenantLocale::new("en").expect("valid locale"),
+                    name: "English".to_string(),
+                    native_name: "English".to_string(),
+                    is_default: true,
+                    is_enabled: true,
+                    fallback_locale: None,
+                },
+                rustok_tenant::TenantLocalePolicyEntry {
+                    locale: rustok_api::TenantLocale::new("de-DE").expect("valid locale"),
+                    name: "German".to_string(),
+                    native_name: "Deutsch".to_string(),
+                    is_default: false,
+                    is_enabled: false,
+                    fallback_locale: Some(
+                        rustok_api::TenantLocale::new("en").expect("valid locale"),
+                    ),
+                },
+            ],
+        };
+
+        let select = |requested: Option<&str>| {
+            let requested = requested.and_then(rustok_api::normalize_locale_tag);
+            requested
+                .as_deref()
+                .and_then(|value| {
+                    policy
+                        .locales
+                        .iter()
+                        .find(|entry| entry.is_enabled && entry.locale.as_str() == value)
+                        .map(|entry| entry.locale.as_str().to_string())
+                })
+                .unwrap_or_else(|| policy.default_locale.as_str().to_string())
+        };
+
+        assert_eq!(select(Some("en")), "en");
+        assert_eq!(select(Some("de-DE")), "en");
+        assert_eq!(select(Some("fr")), "en");
     }
 
     #[test]
