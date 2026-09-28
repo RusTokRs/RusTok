@@ -127,8 +127,8 @@ Hard limits for every iteration:
 - [x] **FS-22.02.05 — `apps/server/src/middleware/rate_limit.rs`** — one-module audit.
 - [x] **FS-22.02.06 — `apps/server/src/middleware/auth_context.rs`** — one-module audit.
 - [x] **FS-22.02.07 — `apps/server/src/middleware/channel.rs`** — one-module audit.
-- [ ] **FS-22.02.08 — `apps/server/src/middleware/locale.rs`** — one-module audit.
-- [ ] **FS-22.02.09 — `apps/server/src/middleware/tenant.rs`** — one-module audit.
+- [x] **FS-22.02.08 — `apps/server/src/middleware/locale.rs`** — one-module audit.
+- [x] **FS-22.02.09 — `apps/server/src/middleware/tenant.rs`** — one-module audit.
 - [ ] **FS-22.02.10 — `apps/server/src/middleware/guest_access_http.rs` or its host adapter** — one-module audit.
 - [ ] **FS-22.02.11 — `apps/server/src/middleware/security_headers.rs`** — one-module audit.
 - [ ] **FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`** — one-module audit.
