@@ -253,6 +253,7 @@ Hard limits for every iteration:
 - [x] **FS-22.03.03 — `apps/server/src/controllers/auth.rs`** — completed with one account-enumeration remediation and a fresh independent second pass.
 - [x] **FS-22.03.04 — `apps/server/src/controllers/oauth.rs`** — completed with one Bearer-parser compatibility remediation and a fresh independent second pass.
 - [x] **FS-22.03.05 — `apps/server/src/models/oauth_apps.rs`** — completed with one exact-grant-policy remediation and a fresh independent second pass.
+- [x] **FS-22.03.06 — `apps/server/src/services/oauth_token_service.rs`** — completed with one security/presentation boundary remediation and a fresh independent second pass.
 - [ ] **FS-22.04 — tenant/channel/locale propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.06 — REST/controller composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
@@ -332,6 +333,21 @@ Hard limits for every iteration:
 - **Documentation:** `apps/server/docs/README.md` records exact persisted grant admission and the explicit managed-app grant set; `crates/modules/rustok-auth/docs/implementation-plan.md` closes Open Result #1.
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.05` complete after merge; continue to the next unchecked primary module in FS-22.03.
+
+### FS-22.03.06 Iteration 1 — `apps/server/src/services/oauth_token_service.rs`
+
+- **Base:** refreshed `main` at `f546966743ceb36bc86a80e9b5985c599ef19cfd`; dedicated branch `codex/audit-fs-22.03.06-oauth-token-service`.
+- **Invariant map:** OAuth token issuance must authenticate and resolve the client from security/configuration state only; presentation/localization storage must not become a prerequisite for token exchange; tenant binding, exact persisted grant admission, scope ceilings, PKCE, authorization-code CAS, refresh-token CAS, consent checks, and replacement-token persistence must remain fail-closed and atomic.
+- **Finding OAUTHTOKEN-22.03.06-01:** `resolve_client` used `OAuthAppService::find_by_client_id`, whose underlying model path hydrates tenant locale/presentation translations. The token endpoint therefore depended on `oauth_app_translations` even though it only needs active app security/configuration fields.
+- **Remediation:** `resolve_client` now uses `oauth_apps::Entity::find_active_security_by_client_id`, the security-only lookup introduced for the canonical bearer-auth path. Presentation-aware OAuth app lookup remains available to presentation callers and is not used to authorize or issue tokens.
+- **Regression coverage:** added an isolated SQLite test that creates only the `oauth_apps` table, without any translation table, and verifies token-service client resolution succeeds for the active tenant/client.
+- **Immediate re-audit:** re-read token exchange branches for `client_credentials`, `authorization_code`, and `refresh_token`; `require_grant` now uses exact persisted grant membership; authorization-code consumption and refresh-token rotation remain transactional; scope subset and active-subject/consent checks remain in place.
+- **Adjacent-boundary re-audit:** the auth extractor uses the same security-only OAuth app lookup; the controller uses `OAuthTokenService` rather than a duplicate issuance path; `OAuthAppService` presentation-aware lookup remains confined to presentation-oriented callers. No tenant or scope fallback was added.
+- **Regression audit:** missing translation storage no longer blocks client resolution at the token endpoint; invalid/inactive clients still map to `invalid_client`; tenant mismatch still fails closed; declared/undeclared grant behavior remains owned by `supports_grant_type` and the token service gate.
+- **Fresh second pass:** independently checked all `supports_grant_type` and client-resolution call sites in the server auth surface, token grant branches, tenant qualification, scope validation, PKCE, consent, and refresh CAS. No additional repository-owned root-cause issue remained in the primary token service module.
+- **Documentation:** `apps/server/docs/README.md` now states that the OAuth token endpoint resolves clients through the security-only app lookup and is independent of presentation translations.
+- **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.03.06` complete after merge; continue to the next unchecked primary module in FS-22.03.
 
 ### FS-22.02.11 Iteration 1 — `security_headers.rs` pre-implementation findings
 
