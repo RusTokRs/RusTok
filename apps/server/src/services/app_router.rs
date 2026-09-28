@@ -261,13 +261,11 @@ pub fn compose_application_router(
     });
     let timeout_seconds = middleware::http_stack::resolve_http_timeout_seconds();
 
+    // Keep CSP reporting unauthenticated and tenant-independent, but behind the public API
+    // rate limiter. The report gate therefore sits outside auth/tenant and inside rate limiting.
     if rustok_settings.runtime.is_registry_only() || rustok_settings.runtime.is_worker_only() {
         let router = router
             .layer(Extension(runtime.registry))
-            .layer(axum_middleware::from_fn_with_state(
-                runtime.rate_limit_state,
-                rate_limit_for_paths,
-            ))
             .layer(axum_middleware::from_fn_with_state(
                 auth_runtime,
                 middleware::auth_context::resolve_optional,
@@ -277,14 +275,24 @@ pub fn compose_application_router(
                 middleware::locale::resolve_locale,
             ))
             .layer(axum_middleware::from_fn(
-                middleware::security_headers::security_headers,
+                middleware::security_headers::handle_csp_report,
+            ))
+            .layer(axum_middleware::from_fn_with_state(
+                runtime.rate_limit_state,
+                rate_limit_for_paths,
             ));
-        return Ok(middleware::http_stack::apply_http_edge_stack(
+        // Security headers wrap the complete edge stack so timeout/CORS short-circuits receive
+    // the same response security baseline as normal application responses.
+    let router = middleware::http_stack::apply_http_edge_stack(
             router,
             is_production,
             allowed_origins.as_deref(),
             timeout_seconds,
+        )
+        .layer(axum_middleware::from_fn(
+            middleware::security_headers::security_headers,
         ));
+        return Ok(router);
     }
 
     let effective_policy_reader = ServerEffectiveModulePolicyReader::shared(
@@ -439,10 +447,6 @@ pub fn compose_application_router(
             middleware::mcp_scaffold_workspace::authorize_workspace,
         ))
         .layer(axum_middleware::from_fn_with_state(
-            runtime.rate_limit_state,
-            rate_limit_for_paths,
-        ))
-        .layer(axum_middleware::from_fn_with_state(
             middleware_runtime_ctx.clone(),
             middleware::channel::resolve,
         ))
@@ -463,15 +467,22 @@ pub fn compose_application_router(
             middleware::tenant::resolve,
         ))
         .layer(axum_middleware::from_fn(
-            middleware::security_headers::security_headers,
+            middleware::security_headers::handle_csp_report,
+        ))
+        .layer(axum_middleware::from_fn_with_state(
+            runtime.rate_limit_state,
+            rate_limit_for_paths,
         ));
 
-    Ok(middleware::http_stack::apply_http_edge_stack(
+    let router = middleware::http_stack::apply_http_edge_stack(
         router,
         is_production,
         allowed_origins.as_deref(),
         timeout_seconds,
-    ))
+    );
+    Ok(router.layer(axum_middleware::from_fn(
+        middleware::security_headers::security_headers,
+    )))
 }
 
 #[cfg(test)]
