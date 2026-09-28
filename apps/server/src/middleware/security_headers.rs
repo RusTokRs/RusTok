@@ -158,16 +158,7 @@ fn parse_env_flag(value: &str) -> bool {
 }
 
 fn plaintext_websocket_allowed() -> bool {
-    !["RUSTOK_ENV", "RUST_ENV", "APP_ENV"].iter().any(|key| {
-        std::env::var(key)
-            .map(|value| {
-                matches!(
-                    value.trim().to_ascii_lowercase().as_str(),
-                    "prod" | "production"
-                )
-            })
-            .unwrap_or(false)
-    })
+    !crate::common::is_production_environment()
 }
 
 fn is_api_surface(path: &str) -> bool {
