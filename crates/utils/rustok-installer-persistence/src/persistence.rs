@@ -57,7 +57,7 @@ impl InstallerPersistenceService {
         &self,
         job_id: Uuid,
         session_id: Uuid,
-        tenant_id: Uuid,
+        tenant_id: Option<Uuid>,
         output: &InstallApplyOutput,
     ) -> Result<install_http_job::Model, sea_orm::DbErr> {
         let now = Utc::now();
