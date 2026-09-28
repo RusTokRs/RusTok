@@ -149,7 +149,7 @@ async fn plan(
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPlanResponse>> {
     let host_production = crate::common::settings::is_production_environment();
-    require_setup_token(&headers, host_production)?;
+    require_setup_token(&headers, host_production || plan.environment.is_production())?;
     let plan = bind_host_install_plan(&ctx, plan).await?;
     if host_production && plan.environment != rustok_installer::InstallEnvironment::Production {
         return Err(bad_request_error(
@@ -167,7 +167,7 @@ async fn preflight(
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPreflightResponse>> {
     let host_production = crate::common::settings::is_production_environment();
-    require_setup_token(&headers, host_production)?;
+    require_setup_token(&headers, host_production || plan.environment.is_production())?;
     let plan = bind_host_install_plan(&ctx, plan).await?;
     if host_production && plan.environment != rustok_installer::InstallEnvironment::Production {
         return Err(bad_request_error(
@@ -188,7 +188,8 @@ async fn apply(
     Json(request): Json<InstallApplyRequest>,
 ) -> Result<(StatusCode, Json<InstallApplyJobResponse>)> {
     let host_production = crate::common::settings::is_production_environment();
-    require_setup_token(&headers, host_production)?;
+    let plan_is_production = request.plan.environment.is_production();
+    require_setup_token(&headers, host_production || plan_is_production)?;
     let InstallApplyRequest {
         plan: requested_plan,
         lock_owner,
