@@ -17,7 +17,16 @@ pub(crate) fn tenant_route_scope(path: &str) -> TenantRouteScope {
         return TenantRouteScope::SelfResolvingHandshake;
     }
 
-    if matches!(path, "/metrics" | "/metrics/" | "/api/openapi.json" | "/api/openapi.yaml")
+    if matches!(
+        path,
+        "/metrics"
+            | "/metrics/"
+            | "/api/openapi.json"
+            | "/api/openapi.yaml"
+            | "/api/fn/admin/active-build"
+            | "/api/fn/admin/build-history"
+            | "/ws/builds"
+    )
         || path == "/api/graphql/schema.graphql"
         || path_is_or_descendant(path, "/api/install")
         || path_is_or_descendant(path, "/catalog")

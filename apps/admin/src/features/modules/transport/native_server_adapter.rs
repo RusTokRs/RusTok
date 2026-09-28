@@ -661,9 +661,17 @@ pub async fn marketplace_registry_freshness_native()
 pub async fn active_build_native() -> Result<Option<BuildJob>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (app_ctx, _auth, _tenant) = modules_server_context().await?;
-        let build_control = app_ctx
-            .build_control
+        use rustok_api::{HostAuthority, HostAuthorityContext};
+
+        let runtime_ctx = expect_context::<rustok_api::HostRuntimeContext>();
+        let authority = leptos_axum::extract::<HostAuthorityContext>()
+            .await
+            .map_err(|_| ServerFnError::new("Host-global authority required"))?;
+        if !authority.allows(HostAuthority::Read) {
+            return Err(ServerFnError::new("Host-global read authority required"));
+        }
+        let build_control = runtime_ctx
+            .shared_get::<rustok_build::SharedBuildControl>()
             .ok_or_else(|| server_error("build control is not configured"))?;
         let build = build_control
             .0
@@ -684,9 +692,17 @@ pub async fn active_build_native() -> Result<Option<BuildJob>, ServerFnError> {
 pub async fn build_history_native(limit: i32, offset: i32) -> Result<Vec<BuildJob>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (app_ctx, _auth, _tenant) = modules_server_context().await?;
-        let build_control = app_ctx
-            .build_control
+        use rustok_api::{HostAuthority, HostAuthorityContext};
+
+        let runtime_ctx = expect_context::<rustok_api::HostRuntimeContext>();
+        let authority = leptos_axum::extract::<HostAuthorityContext>()
+            .await
+            .map_err(|_| ServerFnError::new("Host-global authority required"))?;
+        if !authority.allows(HostAuthority::Read) {
+            return Err(ServerFnError::new("Host-global read authority required"));
+        }
+        let build_control = runtime_ctx
+            .shared_get::<rustok_build::SharedBuildControl>()
             .ok_or_else(|| server_error("build control is not configured"))?;
         let limit = u64::try_from(limit.clamp(1, 100))
             .map_err(|_| server_error("invalid build history limit"))?;

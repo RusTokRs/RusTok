@@ -149,6 +149,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.05 finding in progress — inactive host-selected channel.** Channel resolution rejected inactive channels selected by explicit ID/slug, but the host-target branch previously returned the match without checking `channel.is_active`. An inactive host-bound channel could therefore terminate resolution instead of falling back to policy/default. Host matches now require an active channel and otherwise continue resolution.
 
+- [ ] **FS-22.06/22.07 finding in progress — global build state exposed through tenant admin + unauthenticated build stream.** Build persistence is platform-global (the `builds` model has no `tenant_id`), yet `admin/active-build`, `admin/build-history`, and `/ws/builds` were reachable under tenant-level/module permissions; the WebSocket handler did not authenticate at all and streamed the global event hub. These surfaces are now host-global and require `HostAuthority::Read`, aligning all three readers with the platform-global data model.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
