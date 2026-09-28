@@ -270,7 +270,7 @@ Hard limits for every iteration:
 - [x] **FS-22.04.01 — `crates/libs/rustok-api/src/request.rs`** — completed with trusted request-context projection, canonical locale evidence, URL form decoding, and tenant-consistency fences.
 - [x] **FS-22.04.02 — `apps/server/src/middleware/tenant_resolution.rs`** — typed tenant identifier/source resolution and request-trust boundary; completed after PR #4281 and post-merge reconciliation. Next primary module: `FS-22.04.03 — apps/server/src/middleware/tenant.rs`.
 - [x] **FS-22.04.03 — `apps/server/src/middleware/tenant.rs`** — tenant read-port/cache/context materialization and invalidation propagation; completed after PR #4284 and post-merge reconciliation. Next primary module: `FS-22.04.04 — apps/server/src/middleware/channel.rs`..
-- [ ] **FS-22.04.04 — `apps/server/src/middleware/channel.rs`** — channel RequestFacts, selector/host/OAuth/locale propagation and cache identity; implementation complete on the dedicated iteration branch, pending integration and post-merge reconciliation.
+- [x] **FS-22.04.04 — `apps/server/src/middleware/channel.rs`** — channel RequestFacts, selector/host/OAuth/locale propagation and cache identity; completed after PR #4286 and post-merge reconciliation. Next primary module: `FS-22.04.05 — apps/server/src/middleware/locale.rs`.
 - [ ] **FS-22.04.05 — `apps/server/src/middleware/locale.rs`** — tenant locale policy enforcement and cache/generation propagation.
 - [ ] **FS-22.04.06 — `apps/server/src/controllers/graphql.rs`** — HTTP/WebSocket tenant/channel/locale context propagation only; GraphQL resolver composition remains FS-22.05.
 - [ ] **FS-22.04.07 — `apps/server/src/middleware/channel_native_wrapper.rs`** — native mutation context propagation and channel invalidation boundary.
@@ -446,7 +446,7 @@ Hard limits for every iteration:
 - **Regression audit:** explicit ID/slug/query precedence is unchanged; host canonicalization remains owned by `ChannelTargetType`; OAuth and locale remain dimensions of `RequestFacts` and the cache key; generation rollover/exhaustion still fails safe; REST/native mutation invalidation paths are untouched. A separate adjacent owner issue was noted but not patched here: a missing explicit `X-Channel-ID` currently propagates `ChannelError::NotFound` from `ChannelResolver` instead of being represented as a selector miss/fallback; that belongs to the `rustok-channel/src/resolution.rs` owner track, not this middleware iteration.
 - **Fresh second pass:** independently re-read the complete `channel.rs` after the remediation, the new regression, the source guard, and all direct caller/callee contracts. No additional repository-owned defect remained in this primary middleware module.
 - **Verification:** repository source inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migrations or runtime commands were executed by the agent; maintainer verification remains required.
-- **Status:** implementation complete on the dedicated iteration branch; ready for PR and merge.
+- **Status:** `FS-22.04.04` complete after PR #4286 merged into `main` at `ff2abdebc890f962df5596e96fa37bf1ee25cadd`. Post-merge source re-read confirmed request-facts-aware host-target projection and the synchronized API/server/channel documentation and source guard.
 
 
 ### FS-22.03.18 Iterations 1-3 — `apps/server/src/services/oauth_admin_guard.rs`
