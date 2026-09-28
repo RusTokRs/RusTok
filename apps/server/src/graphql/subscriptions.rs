@@ -1,7 +1,5 @@
 use async_graphql::{Context, FieldError, Result, Subscription};
 use futures_util::stream;
-use sea_orm::DatabaseConnection;
-
 use rustok_api::{HostAuthority, HostAuthorityContext};
 use crate::graphql::types::BuildProgressEvent;
 use crate::services::build_event_hub::BuildEventHub;
@@ -10,6 +8,48 @@ use rustok_core::EventConsumerRuntime;
 
 #[derive(Default)]
 pub struct BuildSubscription;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_graphql::{EmptyMutation, EmptyQuery, Schema};
+
+    #[tokio::test]
+    async fn build_subscription_rejects_tenant_only_context() {
+        let schema = Schema::build(EmptyQuery, EmptyMutation, BuildSubscription::default())
+            .finish();
+        let response = schema.execute(
+            async_graphql::Request::new("subscription { buildProgress }")
+                .data(rustok_api::AuthContext {
+                    user_id: uuid::Uuid::new_v4(),
+                    session_id: uuid::Uuid::new_v4(),
+                    tenant_id: uuid::Uuid::new_v4(),
+                    permissions: vec![rustok_api::Permission::MODULES_READ],
+                    client_id: None,
+                    scopes: Vec::new(),
+                    grant_type: "authorization_code".to_string(),
+                })
+                .data(rustok_api::TenantContext {
+                    id: uuid::Uuid::new_v4(),
+                    name: "tenant".to_string(),
+                    slug: "tenant".to_string(),
+                    domain: None,
+                    settings: serde_json::json!({}),
+                    default_locale: "en".to_string(),
+                    is_active: true,
+                }),
+        )
+        .await;
+
+        assert_eq!(response.errors.len(), 1);
+        assert!(
+            response.errors[0]
+                .message
+                .contains("Host-global authority required")
+        );
+    }
+}
+
 
 async fn ensure_host_build_read_authority(ctx: &Context<'_>) -> Result<()> {
     let authority = ctx
