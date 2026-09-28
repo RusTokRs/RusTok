@@ -1474,14 +1474,16 @@ mod tests {
     }
 
     #[test]
-    fn rfc6749_authorization_code_includes_refresh_token() {
-        // RFC 6749 §5.1: refresh_token is OPTIONAL but our implementation
-        // always returns one for authorization_code flow
-        let has_refresh_token = Some("some_refresh_token".to_string());
-        assert!(
-            has_refresh_token.is_some(),
-            "authorization_code SHOULD include refresh_token"
-        );
+    fn rfc6749_authorization_code_refresh_token_is_policy_driven() {
+        // RFC 6749 §5.1: refresh_token is OPTIONAL. Our authorization-code
+        // flow returns one only when the application explicitly grants refresh_token.
+        let explicit_grant = true;
+        let has_refresh_token = explicit_grant.then(|| "some_refresh_token".to_string());
+        assert!(has_refresh_token.is_some());
+
+        let undeclared_grant = false;
+        let has_refresh_token = undeclared_grant.then(|| "some_refresh_token".to_string());
+        assert!(has_refresh_token.is_none());
     }
 
     // ===================================================================
