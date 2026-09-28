@@ -205,6 +205,23 @@ fn map_service_error(error: crate::error::Error) -> AuthAdminMutationError {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::internal_admin_error;
+    use rustok_auth::AuthAdminMutationError;
+
+    #[test]
+    fn internal_admin_errors_are_redacted() {
+        let error = internal_admin_error("database password leaked");
+
+        assert!(matches!(
+            error,
+            AuthAdminMutationError::Internal(message)
+                if message == "Auth administration operation failed"
+        ));
+    }
+}
+
 #[async_trait]
 impl OAuthAdminPort for ServerAuthAdminMutationProvider {
     async fn list_oauth_apps(
