@@ -386,7 +386,7 @@ fn install_job_status_response(
     };
 
     let output = match job.output {
-        Some(value) => match serde_json::from_value::<InstallApplyOutput>(value.0) {
+        Some(value) => match serde_json::from_value::<InstallApplyOutput>(value) {
             Ok(output) => Some(output),
             Err(error) => {
                 tracing::error!(%error, %job.id, "Failed to decode persisted installer HTTP job output");
