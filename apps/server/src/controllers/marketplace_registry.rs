@@ -21,6 +21,7 @@ const REGISTRY_ARTIFACT_MAX_BYTES: usize =
     crate::services::registry_governance::MODULE_PUBLISH_ARTIFACT_MAX_BYTES;
 const LEGACY_REGISTRY_ACTOR_HEADER: &str = concat!("x-rustok-", "actor");
 const LEGACY_REGISTRY_PUBLISHER_HEADER: &str = concat!("x-rustok-", "publisher");
+const REGISTRY_CATALOG_DEFAULT_PAGE_SIZE: usize = 100;
 use semver::Version;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -68,7 +69,7 @@ use crate::services::registry_remote_transitions::{
 };
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::context::AuthContextExtension;
-use rustok_api::request::RequestContext;
+use rustok_api::request::ResolvedRequestLocale;
 use rustok_modules::{
     ModuleCommandContext, ModuleExternalSourceEvidence, ModuleGovernanceError,
     ModuleGovernanceErrorCategory, ModuleGovernanceValidationStageSnapshot,
@@ -118,12 +119,12 @@ struct RegistryCatalogListParams {
 )]
 async fn catalog(
     State(ctx): State<ServerRuntimeContext>,
-    request_context: RequestContext,
+    Extension(resolved_locale): Extension<ResolvedRequestLocale>,
     headers: HeaderMap,
     Query(params): Query<RegistryCatalogListParams>,
 ) -> Result<Response<Body>, Error> {
     let first_party_modules = sort_catalog_modules(filter_catalog_modules(
-        first_party_catalog_modules(&ctx, &request_context).await?,
+        first_party_catalog_modules(&ctx, resolved_locale.effective_locale.as_str()).await?,
         &params,
     ));
     let (first_party_modules, total_count) = paginate_catalog_modules(first_party_modules, &params);
@@ -167,11 +168,11 @@ async fn catalog(
 )]
 async fn catalog_module(
     State(ctx): State<ServerRuntimeContext>,
-    request_context: RequestContext,
+    Extension(resolved_locale): Extension<ResolvedRequestLocale>,
     headers: HeaderMap,
     Path(slug): Path<String>,
 ) -> Result<Response<Body>, Error> {
-    let module = first_party_catalog_modules(&ctx, &request_context)
+    let module = first_party_catalog_modules(&ctx, resolved_locale.effective_locale.as_str())
         .await?
         .into_iter()
         .find(|module| module.slug == slug)
@@ -2221,7 +2222,7 @@ pub fn read_only_router() -> crate::routes::ServerRouter {
 
 async fn first_party_catalog_modules(
     ctx: &ServerRuntimeContext,
-    request_context: &RequestContext,
+    locale: &str,
 ) -> Result<Vec<CatalogManifestModule>, Error> {
     let manifest = PlatformCompositionService::active_manifest(ctx.db())
         .await
@@ -2241,8 +2242,8 @@ async fn first_party_catalog_modules(
     RegistryGovernanceService::new(ctx.db_clone())
         .apply_catalog_projection(
             first_party_modules,
-            Some(request_context.locale.as_str()),
-            Some(request_context.locale.as_str()),
+            Some(locale),
+            Some(locale),
         )
         .await
         .map_err(|error| {
@@ -2321,12 +2322,15 @@ fn paginate_catalog_modules(
 ) -> (Vec<CatalogManifestModule>, usize) {
     let total_count = modules.len();
     let offset = params.offset.unwrap_or(0).min(total_count);
-    let limit = params.limit.map(|value| value.min(100));
+    let limit = params
+        .limit
+        .unwrap_or(REGISTRY_CATALOG_DEFAULT_PAGE_SIZE)
+        .min(REGISTRY_CATALOG_DEFAULT_PAGE_SIZE);
 
     let modules = modules
         .into_iter()
         .skip(offset)
-        .take(limit.unwrap_or(usize::MAX))
+        .take(limit)
         .collect::<Vec<_>>();
 
     (modules, total_count)
