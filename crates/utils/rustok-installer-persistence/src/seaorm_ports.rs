@@ -647,11 +647,7 @@ impl InstallDatabasePort for SeaOrmInstallerPorts {
                     "--create-database is only supported for postgres install plans",
                 ));
             }
-            let admin_url = options.pg_admin_url.as_deref().ok_or_else(|| {
-                InstallExecutionError::new(
-                    "pg_admin_url is required when create_if_missing is enabled",
-                )
-            })?;
+            let admin_url = require_pg_admin_url(options)?;
             created_database = ensure_postgres_database(admin_url, &target).await?;
         }
         let runtime = Database::connect(database_url)
@@ -794,6 +790,17 @@ fn database_error(error: impl std::fmt::Display) -> InstallExecutionError {
     InstallExecutionError::new(error.to_string())
 }
 
+fn require_pg_admin_url(
+    options: &InstallApplyOptions,
+) -> Result<&str, InstallExecutionError> {
+    options.pg_admin_url.as_deref().filter(|value| !value.trim().is_empty()).ok_or_else(|| {
+        InstallExecutionError::new(
+            "pg_admin_url is required when create_if_missing is enabled",
+        )
+    })
+}
+
+
 struct DatabaseTarget {
     database_name: Option<String>,
     username: Option<String>,
@@ -911,8 +918,8 @@ fn quote_literal(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{DatabaseTarget, parse_database_target};
-    use rustok_installer::{DatabaseEngine, InstallExecutionError};
+    use super::{DatabaseTarget, parse_database_target, require_pg_admin_url};
+    use rustok_installer::{DatabaseEngine, InstallApplyOptions};
 
     #[test]
     fn postgres_target_parse_never_provides_admin_password_fallback() {
@@ -927,10 +934,11 @@ mod tests {
     }
 
     #[test]
-    fn missing_admin_url_is_an_explicit_apply_error() {
-        let error = InstallExecutionError::new(
-            "pg_admin_url is required when create_if_missing is enabled",
-        );
-        assert!(error.to_string().contains("pg_admin_url is required"));
+    fn missing_admin_url_is_rejected_without_a_fallback() {
+        let error = require_pg_admin_url(&InstallApplyOptions::default())
+            .expect_err("missing admin URL must fail closed");
+        assert!(error
+            .to_string()
+            .contains("pg_admin_url is required when create_if_missing is enabled"));
     }
 }
