@@ -158,10 +158,14 @@ pub async fn bootstrap_app_runtime(
         );
 
         #[cfg(feature = "mod-workflow")]
-        if settings.runtime.background_workers.workflow_cron_enabled {
+        if workflow_cron_enabled(settings) {
             init_workflow_runtime(&runtime_ctx);
         } else {
-            tracing::info!("Workflow cron scheduler disabled by runtime.background_workers config");
+            tracing::info!(
+                host_mode = ?settings.runtime.host_mode,
+                configured = settings.runtime.background_workers.workflow_cron_enabled,
+                "Workflow cron scheduler disabled for the current runtime profile"
+            );
         }
 
         init_alloy_runtime(&runtime_ctx, &manifest).await?;
@@ -349,6 +353,12 @@ async fn init_alloy_runtime(
         }
         Ok(())
     }
+}
+
+#[cfg(feature = "mod-workflow")]
+fn workflow_cron_enabled(settings: &RustokSettings) -> bool {
+    settings.runtime.runs_background_workers()
+        && settings.runtime.background_workers.workflow_cron_enabled
 }
 
 #[cfg(feature = "mod-workflow")]
@@ -563,6 +573,41 @@ mod tests {
         };
 
         assert!(validate_compiled_surface_contract(&contract, false, false).is_ok());
+    }
+
+    #[cfg(feature = "mod-workflow")]
+    #[test]
+    fn workflow_cron_requires_a_background_worker_runtime_profile() {
+        for host_mode in [
+            RuntimeHostMode::Api,
+            RuntimeHostMode::AdminSsr,
+            RuntimeHostMode::StorefrontSsr,
+        ] {
+            let settings = RustokSettings {
+                runtime: RuntimeSettings {
+                    host_mode,
+                    ..RuntimeSettings::default()
+                },
+                ..RustokSettings::default()
+            };
+            assert!(
+                !super::workflow_cron_enabled(&settings),
+                "workflow cron must stay disabled for {host_mode:?}"
+            );
+        }
+
+        let settings = RustokSettings {
+            runtime: RuntimeSettings {
+                host_mode: RuntimeHostMode::Worker,
+                background_workers: crate::common::settings::RuntimeBackgroundWorkerSettings {
+                    workflow_cron_enabled: true,
+                    ..Default::default()
+                },
+                ..RuntimeSettings::default()
+            },
+            ..RustokSettings::default()
+        };
+        assert!(super::workflow_cron_enabled(&settings));
     }
 
     #[test]
