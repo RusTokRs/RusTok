@@ -7,6 +7,7 @@ use axum::{
 use rustok_api::context::{
     AuthContext, AuthContextExtension, AuthPrincipalContext, AuthPrincipalContextExtension,
 };
+use rustok_api::AuthPrincipalKind;
 use rustok_api::{HOST_AUTHORITY_REQUIRED, Permission, has_effective_permission};
 use rustok_core::SecurityActorKind;
 use axum_extra::{
@@ -89,7 +90,9 @@ pub async fn resolve_optional(
 
     match current_user_result {
         Ok(current_user) => {
-            if direct_user_self_service && !current_user.principal_kind.is_direct_user() {
+            if direct_user_self_service
+                && !is_direct_user_self_service_principal(current_user.principal_kind)
+            {
                 return pages_inline_authoring_response(
                     (
                         StatusCode::FORBIDDEN,
@@ -267,6 +270,10 @@ fn is_observability_auth_path(path: &str) -> bool {
             | "/health/runtime"
             | "/health/modules"
     )
+}
+
+fn is_direct_user_self_service_principal(principal_kind: AuthPrincipalKind) -> bool {
+    principal_kind.is_direct_user()
 }
 
 fn is_direct_user_self_service_path(path: &str) -> bool {
@@ -467,6 +474,19 @@ mod tests {
         assert!(!headers.contains_key(AUTHORIZATION));
         headers.insert(AUTHORIZATION, "Bearer invalid".parse().unwrap());
         assert!(headers.contains_key(AUTHORIZATION));
+    }
+
+    #[test]
+    fn auth_self_service_admission_rejects_delegated_and_service_principals() {
+        assert!(is_direct_user_self_service_principal(
+            AuthPrincipalKind::DirectUser
+        ));
+        assert!(!is_direct_user_self_service_principal(
+            AuthPrincipalKind::DelegatedUser
+        ));
+        assert!(!is_direct_user_self_service_principal(
+            AuthPrincipalKind::Service
+        ));
     }
 
     #[test]
