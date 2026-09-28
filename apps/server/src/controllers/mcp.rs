@@ -677,7 +677,7 @@ async fn create_client(
         &input.granted_permissions,
     )
     .await
-    .map_err(|error| crate::error::Error::Forbidden(error.to_string()))?;
+    .map_err(map_mcp_authority_error)?;
 
     let result = McpManagementService::create_client(
         ctx.db(),
@@ -934,6 +934,24 @@ fn bearer_token_from_headers(headers: &HeaderMap) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+fn map_mcp_authority_error(
+    error: crate::services::mcp_management_authority::McpManagementAuthorityError,
+) -> crate::error::Error {
+    use crate::services::mcp_management_authority::McpManagementAuthorityError;
+
+    match error {
+        McpManagementAuthorityError::Invalid(message) => crate::error::Error::BadRequest(message),
+        McpManagementAuthorityError::Forbidden(message) => {
+            crate::error::Error::Forbidden(message)
+        }
+        McpManagementAuthorityError::NotFound(_) => crate::error::Error::NotFound,
+        McpManagementAuthorityError::Internal(error) => {
+            tracing::error!(error = %error, "MCP management authority validation failed");
+            crate::error::Error::InternalServerError
+        }
+    }
+}
+
 fn parse_actor_type(value: &str) -> Result<McpActorType> {
     McpActorType::from_str(value).map_err(crate::error::Error::BadRequest)
 }
@@ -1029,7 +1047,39 @@ fn map_audit_event(model: crate::models::mcp_audit_logs::Model) -> McpAuditEvent
 
 #[cfg(test)]
 mod tests {
+    use super::map_mcp_authority_error;
+    use crate::services::mcp_management_authority::McpManagementAuthorityError;
+    use axum::{http::StatusCode, response::IntoResponse};
+
     use super::*;
+
+    #[test]
+    fn maps_mcp_authority_error_to_stable_http_statuses() {
+        assert_eq!(
+            map_mcp_authority_error(McpManagementAuthorityError::Invalid("bad".to_string()))
+                .into_response()
+                .status(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            map_mcp_authority_error(McpManagementAuthorityError::Forbidden("no".to_string()))
+                .into_response()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            map_mcp_authority_error(McpManagementAuthorityError::NotFound("client".to_string()))
+                .into_response()
+                .status(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            map_mcp_authority_error(McpManagementAuthorityError::Internal("db".to_string()))
+                .into_response()
+                .status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
 
     #[test]
     fn source_bearing_remote_authoring_audit_metadata_is_replaced() {
