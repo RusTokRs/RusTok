@@ -669,6 +669,19 @@ mod tests {
         assert!(require_grant(&app, REFRESH_TOKEN_GRANT).is_err());
     }
 
+    #[test]
+    fn auto_created_apps_also_require_an_explicit_refresh_grant() {
+        let mut auto_app = app(
+            serde_json::json!(["profile"]),
+            serde_json::json!(["authorization_code"]),
+        );
+        auto_app.auto_created = true;
+        assert!(require_grant(&auto_app, REFRESH_TOKEN_GRANT).is_err());
+
+        auto_app.grant_types = serde_json::json!(["authorization_code", "refresh_token"]);
+        assert!(require_grant(&auto_app, REFRESH_TOKEN_GRANT).is_ok());
+    }
+
     #[tokio::test]
     async fn refresh_rotation_consumes_a_token_exactly_once() {
         let db = Database::connect("sqlite::memory:")

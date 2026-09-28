@@ -214,6 +214,9 @@ remain separate unfinished control-plane work.
 - Access-token authentication resolves active OAuth applications through a security-only lookup that does
   not hydrate tenant locale or presentation translations; authentication must not depend on
   `oauth_app_translations`.
+- OAuth grant admission uses the exact persisted `grant_types` set. Manifest-managed first-party admin/storefront
+  applications declare `authorization_code`, `refresh_token`, and `client_credentials` explicitly; the auth
+  model does not expand `refresh_token` implicitly for auto-created applications.
 - Auth self-service endpoints (`/api/auth/me`, sessions, password change, profile, and history) require
   the typed `AuthPrincipalKind::DirectUser` principal. Delegated OAuth user principals are valid for
   delegated OAuth/storefront flows but do not inherit the direct-session self-service contract.

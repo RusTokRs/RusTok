@@ -562,7 +562,7 @@ pub async fn sync_app_connections(
                 &sf.public_url,
                 &sf.redirect_uris,
                 &["storefront:*"],
-                &["authorization_code", "client_credentials"],
+                &["authorization_code", "refresh_token", "client_credentials"],
                 &role_permissions(UserRole::Customer),
             )
             .await?;
@@ -581,7 +581,7 @@ pub async fn sync_app_connections(
             &manifest.build.admin.public_url,
             &manifest.build.admin.redirect_uris,
             &["admin:*"],
-            &["authorization_code", "client_credentials"],
+            &["authorization_code", "refresh_token", "client_credentials"],
             &role_permissions(UserRole::Admin),
         )
         .await?;
@@ -1474,14 +1474,16 @@ mod tests {
     }
 
     #[test]
-    fn rfc6749_authorization_code_includes_refresh_token() {
-        // RFC 6749 §5.1: refresh_token is OPTIONAL but our implementation
-        // always returns one for authorization_code flow
-        let has_refresh_token = Some("some_refresh_token".to_string());
-        assert!(
-            has_refresh_token.is_some(),
-            "authorization_code SHOULD include refresh_token"
-        );
+    fn rfc6749_authorization_code_refresh_token_is_policy_driven() {
+        // RFC 6749 §5.1: refresh_token is OPTIONAL. Our authorization-code
+        // flow returns one only when the application explicitly grants refresh_token.
+        let explicit_grant = true;
+        let has_refresh_token = explicit_grant.then(|| "some_refresh_token".to_string());
+        assert!(has_refresh_token.is_some());
+
+        let undeclared_grant = false;
+        let has_refresh_token = undeclared_grant.then(|| "some_refresh_token".to_string());
+        assert!(has_refresh_token.is_none());
     }
 
     // ===================================================================
@@ -1944,6 +1946,14 @@ mod tests {
             next_admin.metadata["public_url"],
             serde_json::json!("https://admin.example.com")
         );
+        assert_eq!(
+            next_admin.grant_types_list(),
+            vec![
+                "authorization_code".to_string(),
+                "refresh_token".to_string(),
+                "client_credentials".to_string(),
+            ],
+        );
 
         let storefront = apps
             .iter()
@@ -1953,6 +1963,14 @@ mod tests {
         assert_eq!(
             storefront.redirect_uris_list(),
             vec!["https://shop.example.com/auth/callback".to_string()]
+        );
+        assert_eq!(
+            storefront.grant_types_list(),
+            vec![
+                "authorization_code".to_string(),
+                "refresh_token".to_string(),
+                "client_credentials".to_string(),
+            ],
         );
 
         let orphan = apps

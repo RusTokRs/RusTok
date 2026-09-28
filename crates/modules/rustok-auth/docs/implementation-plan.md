@@ -27,16 +27,13 @@ does not create a package-local locale fallback.
 
 ## Open results
 
-1. **Remove implicit OAuth grant expansion for manifest-created applications.**
-   `oauth_apps::Model::supports_grant_type` currently treats an auto-created
-   application that declares only `authorization_code` as also supporting
-   `refresh_token`. This is a compatibility execution path that expands the
-   persisted grant policy instead of enforcing it literally.
-   **Depends on:** updating any manifest producer that genuinely requires
-   refresh rotation to declare `refresh_token` explicitly.
-   **Done when:** grant checks use exact persisted membership, all required
-   producers declare their complete grant set, and regression tests reject an
-   undeclared refresh grant for both manual and auto-created applications.
+1. **Completed — remove implicit OAuth grant expansion for manifest-created applications.**
+   `oauth_apps::Model::supports_grant_type` now enforces exact persisted grant
+   membership. Manifest-managed first-party admin/storefront producers explicitly
+   declare `refresh_token` alongside `authorization_code` and
+   `client_credentials`, preserving their intended refresh rotation behavior.
+   Regression coverage rejects an undeclared refresh grant for both manual and
+   auto-created applications and accepts the explicit auto-created grant set.
 
 2. **Capture runtime parity evidence for user and OAuth mutations.** Exercise
    the browser/admin path and the owner-owned GraphQL/native paths for the same
