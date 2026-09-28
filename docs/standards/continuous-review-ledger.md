@@ -7,6 +7,144 @@ source_language: markdown
 status: active
 ---
 
+## Deep Full-Stack Audit Cycle — 2026-09-28
+
+**Status:** ACTIVE  
+**Active phase:** FS-22 — `apps/server` composition root  
+**Initial main SHA:** `7e1d342c1a7bb846cd7bc13443708cc493fe45ce`  
+**Branch:** `audit/fs-21-deep-full-stack-20260928`
+
+**Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
+
+### Deep Audit Execution Protocol — mandatory for every phase
+
+The audit must move slowly enough to discover second-order defects. A phase is not a single scan and not a single patch. Every phase uses the following closed loop:
+
+1. **Discovery pass:** read the complete in-scope production path end-to-end, including callers, persistence, configuration, transport adapters, failure paths, and adjacent boundaries. Pattern scanners are supporting evidence only.
+2. **Invariant map:** write down the business, security, tenancy, authorization, transaction, concurrency, retry/idempotency, lifecycle, and compatibility invariants that the path must preserve.
+3. **Finding isolation:** group findings by root cause. Do not batch unrelated fixes merely because they touch the same file. Prefer one small coherent remediation unit at a time.
+4. **Implementation pass:** fix the root cause, not the visible symptom. Do not redesign unrelated code during the same remediation unit.
+5. **Immediate re-audit:** after every remediation unit, re-read the entire changed function/module and all direct callers/callees. Explicitly inspect what assumptions the change invalidated.
+6. **Adjacent-boundary re-audit:** inspect the nearest upstream and downstream boundaries (transport, auth, tenant/channel/locale context, DB schema, events/outbox, cache, worker, UI/CLI contract as applicable). This is mandatory even when the initial finding appeared local.
+7. **Regression audit:** compare the pre-change and post-change behavior as a reviewer would: removed behavior, newly reachable states, error mapping, fallback behavior, defaults, feature-flag interactions, concurrency behavior, and observability. Ask specifically: "What new bug could this change have introduced?"
+8. **Fresh second pass:** repeat the audit against the modified area without relying on the original finding list. New findings discovered here are treated as first-class findings, not dismissed as out of scope merely because the first pass missed them.
+9. **Static verification:** run only repository-approved static/source verification available in the environment; never claim tests, clippy, or gatekeeper success unless actually executed.
+10. **Commit boundary:** commit only after the re-audit loop is clean. The phase branch must stay small and reviewable.
+11. **Pre-PR review:** inspect the complete branch diff against refreshed main; verify that documentation/ledger statements exactly match implementation and that no unrelated file drift entered the branch.
+12. **Post-merge refresh:** refresh main, then perform a lightweight reconciliation of the merged result before starting the next phase.
+
+**Regression prohibition:** a fix that introduces a new correctness, security, data-integrity, availability, performance, or compatibility defect is not considered a successful remediation. The phase must remain open until the introduced defect is also fixed and re-audited.
+
+**Small-step rule:** if a phase uncovers a large architectural problem, split it into additional subphases in this same ledger rather than making a large speculative rewrite.
+### Execution contract
+
+- Canonical trigger: `реализуй план аудита`.
+- This section is the temporary living plan for the current audit cycle; do not create a second audit checklist.
+- Governance preflight is recorded here, but the implementation audit starts at the server/runtime boundary and continues through every affected layer to the final shared-library surface.
+- Execute phases strictly in order, one phase at a time.
+- Before each phase, refresh `main`, record its SHA, and create/use only a dedicated phase branch from that refreshed SHA.
+- Audit first, then implement every repository-owned in-scope root-cause defect on the phase branch, using the mandatory closed-loop re-audit protocol above.
+- After every remediation unit, re-audit the changed area and adjacent boundaries for newly introduced defects before continuing.
+- Commit only after the complete branch diff has passed the fresh re-audit.
+- Commit the audit/implementation result, open a PR to `main`, merge it, then refresh `main` and perform the post-merge reconciliation before the next phase.
+- Do not mutate another agent's branch or force-update shared history.
+- Tests are run by the maintainer/user. The agent MUST NOT run test suites unless this rule is explicitly changed; tests may be inspected and static/source checks may be performed.
+- Do not declare a phase complete until repository-owned findings are fixed or explicitly blocked by an owner decision/ADR, the phase branch is integrated into `main`, and the ledger is updated.
+- Quality bar: business invariants, persistence, authorization, tenant/channel/locale boundaries, transactions, concurrency, retries/idempotency, events/outbox, projections, transports, UI/operator paths, dependencies, and documentation must be audited—not only pattern counts or lint.
+
+### Session Contract Read Record
+
+- [x] `AGENTS.md` read and treated as the canonical agent/governance file.
+- [x] `agents.md` checked; absent. No parallel governance file is to be created.
+- [x] `docs/index.md` read.
+- [x] `docs/CONTINUOUS_CODE_REVIEW.md` read.
+- [x] `docs/standards/continuous-review-ledger.md` read.
+- [x] `docs/verification/README.md` read.
+- [x] `docs/standards/coding.md` read.
+- [x] `docs/modules/module-authoring.md` read.
+- [x] `docs/modules/registry.md` read.
+- [x] Relevant architecture contracts reviewed: principles, API, database, i18n, and dependency rules.
+- [x] User conditions recorded: full repository/deep business-logic audit; sequential server-to-library coverage; no half-measures/root-cause fixes; dedicated branch before implementation; commit + PR + merge to `main` after each phase; maintainer-owned tests; one repeatable trigger `реализуй план аудита`.
+- [x] Initial `main` SHA recorded before this cycle.
+
+### FS-21 Closeout
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Audit start:** `main` SHA `7e1d342c1a7bb846cd7bc13443708cc493fe45ce`.
+- **Implementation head before merge:** `21b9327830b7d61c5f59411812f2486df0d065da`.
+- **Merged to main:** `81ab275fda9788c7727d95f089e220307833f203` via PR #4157.
+- **Coverage completed:** deployment/runtime config resolution, production image contract, environment/path safety, health routing/probes, Unix shutdown signal handling, and runtime stop-handle bootstrap race; topology documentation was reconciled with the actual compose behavior.
+- **Verification:** changed sources and cross-file contracts were statically inspected through repository contents and commit diff. No test suites, cargo clippy, or other test commands were executed by the agent, per the maintainer-owned test rule. Repository access from the execution container could not clone the GitHub repository, so the local gatekeeper command was not run here; no claim of a passed local gatekeeper is made.
+- **Deferred by scope:** full worker lifecycle/join/abort coverage remains FS-24, where all background worker implementations will be audited together rather than partially patched in the server-host phase.
+- **Next phase:** FS-22 — `apps/server` composition root.
+
+### FS-21 Findings and Implementation
+
+- [x] **SERVER-21-01 — production config path was compile-time coupled to the build workspace.** `load_config` used `env!("CARGO_MANIFEST_DIR")`, while the production image copies configuration to `/app/config`. Release binaries built in the image therefore could not resolve the copied runtime config. Config resolution now supports `RUSTOK_CONFIG_DIR`, prefers a `config` sibling next to the executable for deployed binaries, and retains the source-tree fallback for development.
+- [x] **SERVER-21-02 — release binaries defaulted to the development environment.** Missing `RUSTOK_ENV`/`APP_ENV` selected `development` regardless of build mode. Release builds now default to `production`, making omitted environment selection fail closed when a production config is absent.
+- [x] **SERVER-21-03 — environment name was used directly as a config filename.** `RUSTOK_ENV`/`APP_ENV` could contain path traversal segments. Environment names are now bounded to ASCII letters, digits, `-` and `_` before constructing the filename.
+- [x] **SERVER-21-04 — development startup health probe targeted a nonexistent endpoint.** `scripts/dev-start.sh` polled `/api/health`, while the server exposes health under the root health namespace. The script and quickstart now use `/health`.
+- [x] **SERVER-21-05 — canonical liveness route disagreed with its documented path.** The health router registered `/health/` while documentation and container health checks use `/health`. The route is now canonicalized to `/health`.
+- [x] **SERVER-21-06 — Docker SIGTERM was not part of host shutdown handling.** The production image declares `STOPSIGNAL SIGTERM`, but `shutdown_signal` listened only for Ctrl-C. Unix hosts now handle SIGTERM as a graceful shutdown trigger while retaining Ctrl-C handling.
+- [x] **SERVER-21-07 — runtime worker stop-handle initialization had a bootstrap check-then-insert race.** `connect_runtime_workers_with_runtime` now uses the context's atomic `StopHandle::ensure` path instead of separate `shared_contains`/`shared_insert`/`expect` steps.
+
+- [x] **SERVER-21-08 — production image contained development/test configuration and did not self-declare its production config contract.** The production stage copied the entire `apps/server/config` directory, including known development/test credentials. It now creates an empty operator-owned `/app/config` mount point, sets `RUSTOK_ENV=production`, `RUSTOK_CONFIG_DIR=/app/config`, and `RUSTOK_HTTPS=true`, and deliberately excludes development/test YAML files from the production image.
+
+### Phase Granularity Rule
+
+The numbered FS phases define architectural ownership, not a permission to inspect an entire subsystem in one pass. Before implementation, the active phase must be decomposed in the ledger into ordered subchecks small enough that each production path can be read end-to-end and re-audited after each fix. A subcheck may cover one bounded flow (for example: one middleware chain, one auth/session path, one tenant-resolution path, one route family, or one persistence boundary). Do not advance to the next subcheck while an introduced regression or unexplained invariant violation remains.
+### FS-22 Subchecks — execute strictly in this order
+
+- [ ] **FS-22.01 Route graph:** enumerate every server route family and fallback; prove which host modes expose which routes, detect accidental shadowing/overlap, and reconcile route documentation.
+- [ ] **FS-22.02 Global middleware order:** trace the actual Axum layer nesting and request lifecycle; verify security headers, metrics auth, registry guards, rate limiting, auth context, channel, locale, tenant, and guest-access ordering against trust assumptions.
+- [ ] **FS-22.03 Identity/auth propagation:** trace token parsing, principal construction, optional/required auth, session/refresh behavior, impersonation/agent paths, and transport boundary identity reconstruction.
+- [ ] **FS-22.04 Tenant/channel/locale propagation:** follow context from HTTP headers/claims through middleware, GraphQL, REST, server functions, cache keys, DB access, and downstream module calls; specifically test conceptual cross-tenant/channel/locale leakage cases by code inspection.
+- [ ] **FS-22.05 GraphQL composition:** trace schema construction, resolver registration, runtime data factories, error conversion, request context, authorization, limits, introspection/IDE exposure, and feature-flag/module interactions.
+- [ ] **FS-22.06 REST/controller composition:** trace controller registration, shared state extraction, response envelopes, status mapping, body/multipart handling, and per-route authorization.
+- [ ] **FS-22.07 Server-function composition:** inspect `/api/fn/*`, context provisioning, CSRF/browser trust assumptions, auth and tenant propagation, and error/serialization boundaries.
+- [ ] **FS-22.08 Embedded UI composition:** trace admin/storefront mounting, asset fallback behavior, nonce/CSP interaction, cache validators, route precedence, and headless/embedded profile combinations.
+- [ ] **FS-22.09 Feature/config interaction matrix:** inspect compile-time feature flags vs runtime module enablement/host modes and identify states that compile but produce incomplete or unsafe runtime composition.
+- [ ] **FS-22.10 Error/observability boundary:** inspect server-wide error mapping and logging for secret, identity, tenant, raw domain-error, and stack/payload leakage; verify stable public contracts.
+- [ ] **FS-22.11 Fresh second-pass composition audit:** after all FS-22 fixes, re-read the composition root from scratch without using the original findings list and record any newly discovered defects.
+
+### Phase Order
+
+| Phase | Scope | Audit focus | Status |
+|---|---|---|:---:|
+| FS-21 | Deployment/server/runtime boundary | processes, HTTP/TLS/proxy assumptions, runtime config, startup/shutdown, secrets, environment, fail-closed behavior, observability, resource limits | [x] |
+| FS-22 | `apps/server` composition root | routing, middleware, request context, auth/session, tenant/channel/locale resolution, error mapping, GraphQL/REST/server functions, host composition | [ ] |
+| FS-23 | Stable foundation/API crates | `rustok-api`, runtime/web/context contracts, dependency direction, shared types, transport/error contracts, accidental domain leakage | [ ] |
+| FS-24 | Workers, jobs, queue, outbox | ownership, retries/idempotency, leases, concurrency, delivery guarantees, dead-letter paths, shutdown/recovery, telemetry | [ ] |
+| FS-25 | Core platform modules | modules/control-plane, tenant, auth, RBAC, channel, cache, email, index/search/outbox/events, lifecycle/settings | [ ] |
+| FS-26 | Commerce domain | cart, customer, product, relations, pricing, inventory, order, payment, fulfillment, orchestration, marketplace family | [ ] |
+| FS-27 | Content/social domain | content, taxonomy, translation, profiles, social graph, reactions, groups, moderation, comments | [ ] |
+| FS-28 | Publishing/community domain | blog, pages, forum, navigation, page-builder, SEO, notifications and cross-module projections | [ ] |
+| FS-29 | Capability/extension modules | AI, MCP, Iggy/connectors, Alloy, Flex, repository connectors and external/provider seams | [ ] |
+| FS-30 | Module-owned UI packages | all module `admin/`, `storefront/`, `next-admin/` packages; transport ownership, auth, locale, tenant and UI/data parity | [ ] |
+| FS-31 | Leptos applications | `apps/admin`, `apps/storefront`; SSR/hydration, routing, server functions, browser trust, caching, i18n, forms and operator paths | [ ] |
+| FS-32 | Next.js applications | `apps/next-admin`, `apps/next-frontend`; server/client boundaries, proxying, auth, GraphQL, SEO, caching, browser security and tenant propagation | [ ] |
+| FS-33 | Shared frontend/browser packages | `packages/*`, UI cores, richtext, generated clients, shared state, URL/security helpers, duplicated semantics | [ ] |
+| FS-34 | Storage/schema/migrations | all module migrations, entity/schema parity, cross-backend behavior, constraints, indexes, rollback/down paths, data-loss hazards | [ ] |
+| FS-35 | Utilities/installer/build/release tooling | `crates/utils/*`, installer, source/publication/signing, CLI tooling, build scripts, deployment tooling and operator safety | [ ] |
+| FS-36 | Shared libraries | `crates/libs/*`, UI foundations, common infrastructure and reusable abstractions; ownership, API stability, hidden coupling, dependency direction | [ ] |
+| FS-37 | Dependency & supply-chain closure | Cargo/npm lockfiles, duplicate/unused dependencies, feature flags, unsafe/advisory surfaces, generated code provenance, licenses/policies | [ ] |
+| FS-38 | Runtime/server closure pass | re-check server/runtime after all lower-layer changes; request lifecycle, controllers, server functions, file/WS surfaces, error mapping, blocking I/O, panic/resource hazards, auth/tenant propagation | [ ] |
+| FS-39 | Final architecture reconciliation | dependency graph, boundary violations, dead/duplicate paths, stale docs/ADRs, generated artifacts, canonical vocabulary, remaining TODO/placeholder risk | [ ] |
+| FS-40 | Release-readiness handoff | final ledger reconciliation, unresolved findings, maintainer test matrix, verification/evidence gaps, clean `main` baseline | [ ] |
+
+### Definition of Done for Every Phase
+
+- [ ] Every relevant production path and boundary in scope was inspected, not only obvious entrypoints.
+- [ ] Business invariants and important failure states were checked/documented.
+- [ ] Cross-tenant / cross-principal / cross-channel / cross-locale leakage risks were checked.
+- [ ] Concurrency, retry, idempotency and transaction boundaries were checked where applicable.
+- [ ] Persistence, migrations and rollback implications were checked where applicable.
+- [ ] Every remediation unit received an immediate re-audit, adjacent-boundary re-audit, and fresh second pass.
+- [ ] The final branch diff received a regression-focused review specifically looking for defects introduced by the fixes.
+- [ ] All repository-owned defects found in scope were implemented on the phase branch or explicitly blocked by an owner decision/ADR.
+- [ ] Tests were inspected but left for maintainer execution under the current contract.
+- [ ] Static/source checks feasible without running test suites were performed where relevant.
+- [ ] Phase result was committed, PR'd, merged to `main`, post-merge reconciled, and the ledger was updated afterward.
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** COMPLETE  

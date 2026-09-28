@@ -23,6 +23,10 @@
 - Serves `apps/admin`, `apps/storefront`, `apps/next-admin`, and `apps/next-frontend`.
 - Hosts platform-owned runtime layers such as MCP management, module composition, and orchestration bridges.
 
+## Production container configuration
+
+The production Docker image is fail-closed by default: it sets `RUSTOK_ENV=production`, `RUSTOK_CONFIG_DIR=/app/config`, and `RUSTOK_HTTPS=true`. Mount the operator-managed `production.yaml` at `/app/config/production.yaml` (or provide an equivalent config through the configured directory). Development and test configuration files are deliberately not copied into the production image.
+
 ## Auth config
 
 `apps/server/src/auth.rs` adapts the host configuration snapshot into
