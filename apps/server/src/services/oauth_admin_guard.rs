@@ -20,6 +20,23 @@ use crate::models::oauth_apps;
 use super::oauth_app::OAuthAppService;
 use super::rbac_request_scope::permissions_for;
 
+const MAX_OAUTH_GUARD_LIST_LIMIT: u64 = 100;
+
+fn clamp_oauth_guard_list_limit(limit: u64) -> u64 {
+    limit.clamp(1, MAX_OAUTH_GUARD_LIST_LIMIT)
+}
+
+fn internal_oauth_guard_error<E>(error: E) -> AuthAdminMutationError
+where
+    E: std::fmt::Display,
+{
+    tracing::error!(
+        error = %error,
+        "OAuth administration guard operation failed"
+    );
+    AuthAdminMutationError::Internal("OAuth administration guard operation failed".to_string())
+}
+
 pub struct GuardedOAuthAdminProvider {
     db: DatabaseConnection,
     inner: Arc<dyn OAuthAdminPort>,
@@ -87,7 +104,7 @@ impl GuardedOAuthAdminProvider {
             .db
             .begin()
             .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+            .map_err(|error| internal_oauth_guard_error(error))?;
         let app = lock_oauth_app(&tx, context.tenant_id, app_id).await?;
         self.validate_permission_strings(authority, &app.granted_permissions_list())?;
         if !app.can_rotate_secret() {
@@ -96,23 +113,21 @@ impl GuardedOAuthAdminProvider {
             ));
         }
 
-        let client_secret = format!(
-            "sk_live_{}{}",
-            generate_refresh_token(),
-            generate_refresh_token()
-        );
+        let first_token = generate_refresh_token().map_err(internal_oauth_guard_error)?;
+        let second_token = generate_refresh_token().map_err(internal_oauth_guard_error)?;
+        let client_secret = format!("sk_live_{first_token}{second_token}");
         let secret_hash = hash_password(&client_secret)
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+            .map_err(|error| internal_oauth_guard_error(error))?;
         let mut active: oauth_apps::ActiveModel = app.into();
         active.client_secret_hash = Set(Some(secret_hash));
         active.updated_at = Set(Utc::now().into());
         active
             .update(&tx)
             .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+            .map_err(|error| internal_oauth_guard_error(error))?;
         tx.commit()
             .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+            .map_err(|error| internal_oauth_guard_error(error))?;
 
         Ok(OAuthAppSecretResult {
             app: response_record,
@@ -137,14 +152,14 @@ where
             .lock_exclusive()
             .one(db)
             .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?,
+            .map_err(|error| internal_oauth_guard_error(error))?,
         DbBackend::Sqlite => {
             let app = query()
                 .one(db)
                 .await
-                .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+                .map_err(internal_oauth_guard_error)?;
             if let Some(app) = app.as_ref() {
-                oauth_apps::Entity::update_many()
+                let result = oauth_apps::Entity::update_many()
                     .col_expr(
                         oauth_apps::Column::UpdatedAt,
                         Expr::col(oauth_apps::Column::UpdatedAt),
@@ -153,11 +168,25 @@ where
                     .filter(oauth_apps::Column::TenantId.eq(tenant_id))
                     .exec(db)
                     .await
-                    .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+                    .map_err(internal_oauth_guard_error)?;
+                if result.rows_affected() != 1 {
+                    return Err(AuthAdminMutationError::Internal(
+                        "OAuth app mutation lock fence could not be acquired".to_string(),
+                    ));
+                }
+
+                return query()
+                    .one(db)
+                    .await
+                    .map_err(internal_oauth_guard_error);
             }
-            app
+            None
         }
-        _ => unreachable!("unsupported SeaORM database backend"),
+        _ => {
+            return Err(AuthAdminMutationError::Internal(
+                "unsupported SeaORM database backend".to_string(),
+            ));
+        }
     };
 
     app.ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))
@@ -286,13 +315,14 @@ fn map_consent_error(error: crate::error::Error) -> AuthAdminMutationError {
         crate::error::Error::NotFound => AuthAdminMutationError::NotFound("oauth app".to_string()),
         crate::error::Error::BadRequest(message) => AuthAdminMutationError::Validation(message),
         crate::error::Error::Unauthorized(_) => AuthAdminMutationError::Unauthorized,
-        other => AuthAdminMutationError::Internal(other.to_string()),
+        other => internal_oauth_guard_error(other),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::validate_grant_dependencies;
+    use super::{clamp_oauth_guard_list_limit, internal_oauth_guard_error, validate_grant_dependencies};
+    use rustok_auth::AuthAdminMutationError;
 
     #[test]
     fn refresh_grant_requires_authorization_code() {
@@ -304,6 +334,24 @@ mod tests {
             ])
             .is_ok()
         );
+    }
+
+    #[test]
+    fn oauth_guard_list_limit_is_bounded() {
+        assert_eq!(clamp_oauth_guard_list_limit(0), 1);
+        assert_eq!(clamp_oauth_guard_list_limit(50), 50);
+        assert_eq!(clamp_oauth_guard_list_limit(100), 100);
+        assert_eq!(clamp_oauth_guard_list_limit(u64::MAX), 100);
+    }
+
+    #[test]
+    fn internal_guard_errors_are_redacted() {
+        let error = internal_oauth_guard_error("database secret leaked");
+        assert!(matches!(
+            error,
+            AuthAdminMutationError::Internal(message)
+                if message == "OAuth administration guard operation failed"
+        ));
     }
 
     #[test]
