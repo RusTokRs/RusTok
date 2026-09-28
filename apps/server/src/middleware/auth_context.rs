@@ -202,10 +202,18 @@ async fn resolve_current_user_without_tenant_context(
         StatusCode::INTERNAL_SERVER_ERROR,
         "JWT secret not configured",
     ))?;
-    let claims = decode_access_token(auth_config, bearer.token())
-        .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))?;
+    let tenant_id = verified_tenant_id_from_access_token(auth_config, bearer.token())?;
 
-    resolve_current_user_from_access_token(ctx, claims.tenant_id, bearer.token()).await
+    resolve_current_user_from_access_token(ctx, tenant_id, bearer.token()).await
+}
+
+fn verified_tenant_id_from_access_token(
+    auth_config: &crate::auth::AuthConfig,
+    access_token: &str,
+) -> Result<uuid::Uuid, (StatusCode, &'static str)> {
+    decode_access_token(auth_config, access_token)
+        .map(|claims| claims.tenant_id)
+        .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))
 }
 
 fn pages_inline_authoring_response(
@@ -335,6 +343,7 @@ mod tests {
         is_human_user_self_service_path, is_observability_auth_path,
         is_pages_inline_authoring_server_fn, is_pages_inline_authoring_surface,
         pages_inline_authoring_response, service_forum_boundary_violation,
+        verified_tenant_id_from_access_token,
     };
     use axum::http::{HeaderMap, Method, StatusCode, header::AUTHORIZATION};
     use axum::response::IntoResponse;
@@ -368,6 +377,39 @@ mod tests {
         );
 
         assert!(crate::auth::decode_access_token(&config, "not-a-jwt").is_err());
+    }
+
+    #[test]
+    fn global_auth_uses_only_the_verified_jwt_tenant_claim() {
+        let config = crate::auth::AuthConfig::new(
+            "test-secret-key-for-auth-context-32bytes-long".to_string(),
+        );
+        let tenant_id = Uuid::new_v4();
+        let token = crate::auth::encode_access_token(
+            &config,
+            Uuid::new_v4(),
+            tenant_id,
+            rustok_core::UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .expect("encode access token");
+
+        assert_eq!(
+            verified_tenant_id_from_access_token(&config, &token).expect("tenant claim"),
+            tenant_id
+        );
+    }
+
+    #[test]
+    fn invalid_global_auth_token_cannot_provide_a_tenant_claim() {
+        let config = crate::auth::AuthConfig::new(
+            "test-secret-key-for-auth-context-32bytes-long".to_string(),
+        );
+
+        assert_eq!(
+            verified_tenant_id_from_access_token(&config, "not-a-jwt"),
+            Err((StatusCode::UNAUTHORIZED, "Invalid token signature"))
+        );
     }
 
     #[test]
