@@ -10,6 +10,7 @@ use serde_json::Value;
 pub(crate) const CSP_REPORT_PATH: &str = "/api/security/csp-report";
 const MAX_CSP_REPORT_BYTES: usize = 64 * 1024;
 const MAX_REPORTS_PER_REQUEST: usize = 20;
+const MAX_LOGGED_ORIGIN_BYTES: usize = 512;
 
 #[derive(Debug, Deserialize)]
 struct CspViolation {
@@ -159,7 +160,7 @@ fn record_report(report: ParsedCspReport) {
         target: "rustok.security.csp",
         report_format = report.format,
         directive,
-        disposition = report.violation.disposition.as_deref().unwrap_or("report"),
+        disposition = normalized_disposition(report.violation.disposition.as_deref()),
         document_origin = ?sanitized_location(report.violation.document_uri.as_deref()),
         blocked_origin = ?sanitized_location(report.violation.blocked_uri.as_deref()),
         source_origin = ?sanitized_location(report.violation.source_file.as_deref()),
@@ -173,6 +174,14 @@ fn record_report(report: ParsedCspReport) {
 fn record_invalid_report(reason: &'static str) {
     rustok_telemetry::metrics::record_module_error("security", reason, "warning");
     tracing::warn!(target: "rustok.security.csp", reason, "Rejected CSP report payload");
+}
+
+fn normalized_disposition(value: Option<&str>) -> &'static str {
+    match value.unwrap_or_default().trim().to_ascii_lowercase().as_str() {
+        "enforce" => "enforce",
+        "report" => "report",
+        _ => "other",
+    }
 }
 
 fn normalized_directive(value: Option<&str>) -> &'static str {
@@ -209,6 +218,9 @@ fn sanitized_location(value: Option<&str>) -> Option<String> {
 
     if let Ok(parsed) = url::Url::parse(value) {
         let origin = parsed.origin().ascii_serialization();
+        if origin.len() > MAX_LOGGED_ORIGIN_BYTES {
+            return Some("oversized".to_string());
+        }
         return Some(if origin == "null" {
             parsed.scheme().to_string()
         } else {
@@ -252,6 +264,24 @@ mod tests {
         assert_eq!(
             sanitized_location(reports[0].violation.blocked_uri.as_deref()).as_deref(),
             Some("https://cdn.example.net")
+        );
+    }
+
+    #[test]
+    fn report_dispositions_are_bounded() {
+        assert_eq!(normalized_disposition(None), "other");
+        assert_eq!(normalized_disposition(Some("report")), "report");
+        assert_eq!(normalized_disposition(Some("ENFORCE")), "enforce");
+        assert_eq!(normalized_disposition(Some("attacker-controlled")), "other");
+    }
+
+    #[test]
+    fn oversized_logged_origins_are_bounded() {
+        let host = "a".repeat(MAX_LOGGED_ORIGIN_BYTES + 64);
+        let url = format!("https://{host}/private?token=secret");
+        assert_eq!(
+            sanitized_location(Some(url.as_str())).as_deref(),
+            Some("oversized")
         );
     }
 
