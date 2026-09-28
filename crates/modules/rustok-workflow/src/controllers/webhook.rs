@@ -32,7 +32,8 @@ pub async fn receive(
                 error = %err,
                 "Workflow webhook tenant lookup failed"
             );
-            HttpError::internal_server_error(
+            HttpError::new(
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 "workflow_webhook_unavailable",
                 "Workflow webhook is temporarily unavailable".to_string(),
             )
@@ -68,7 +69,8 @@ pub async fn receive(
                     error = %other,
                     "Workflow webhook execution failed"
                 );
-                HttpError::internal_server_error(
+                HttpError::new(
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                     "workflow_webhook_failed",
                     "Workflow webhook execution failed".to_string(),
                 )
