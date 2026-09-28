@@ -2,7 +2,8 @@
 
 use axum::{
     Json,
-    extract::{Extension, Path, State},
+    body::Bytes,
+    extract::{DefaultBodyLimit, Extension, Path, State},
     http::{HeaderMap, Method, StatusCode, header::CONTENT_TYPE},
     response::Response,
     routing::{any, get, post},
@@ -26,6 +27,7 @@ use crate::{
 };
 
 const IDEMPOTENCY_KEY_HEADER: &str = "idempotency-key";
+const MAX_ARTIFACT_HTTP_BODY_BYTES: usize = 1_048_576;
 
 async fn dispatch_http(
     State(ctx): State<ServerRuntimeContext>,
@@ -34,17 +36,23 @@ async fn dispatch_http(
     Path((installation_id, wildcard_path)): Path<(Uuid, String)>,
     method: Method,
     headers: HeaderMap,
-    Json(body): Json<serde_json::Value>,
+    body: Bytes,
 ) -> Result<Response> {
     ensure_json_content_type(&headers)?;
     let method = module_http_method(&method).ok_or(Error::NotFound)?;
-    let path = wildcard_path.trim_matches('/');
+    let path = wildcard_path;
     if path.is_empty() {
         return Err(Error::NotFound);
     }
     let installation = resolve_artifact_installation(&ctx, installation_id, tenant.id).await?;
-    let binding = find_artifact_http_binding(&installation.descriptor.bindings, method, path)
+    let binding = find_artifact_http_binding(&installation.descriptor.bindings, method, &path)
         .ok_or(Error::NotFound)?;
+    let max_body_bytes = binding
+        .http
+        .as_ref()
+        .map(|http| http.max_body_bytes)
+        .ok_or(Error::NotFound)?;
+    let body = parse_artifact_http_body(&body, max_body_bytes)?;
     let output = dispatch_artifact_binding_operation(
         &ctx,
         tenant.id,
@@ -54,7 +62,7 @@ async fn dispatch_http(
         header_idempotency_key(&headers)?,
         ArtifactBindingOperation::Http {
             method,
-            path: path.to_string(),
+            path,
             body,
         },
     )
@@ -177,6 +185,23 @@ fn header_idempotency_key(headers: &HeaderMap) -> Result<Option<Uuid>> {
         .transpose()
 }
 
+fn parse_artifact_http_body(body: &[u8], max_body_bytes: u64) -> Result<serde_json::Value> {
+    if body.len() as u64 > max_body_bytes {
+        return Err(http_error(rustok_web::HttpError::new(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "artifact_http_request_too_large",
+            "The request body exceeds the admitted HTTP binding limit",
+        )));
+    }
+
+    serde_json::from_slice(body).map_err(|_| {
+        http_error(rustok_web::HttpError::bad_request(
+            "invalid_json",
+            "Request body must be valid JSON",
+        ))
+    })
+}
+
 fn ensure_json_content_type(headers: &HeaderMap) -> Result<()> {
     let content_type = headers
         .get(CONTENT_TYPE)
@@ -205,6 +230,13 @@ fn module_http_method(method: &Method) -> Option<ModuleHttpMethod> {
 }
 
 pub fn router() -> crate::routes::ServerRouter {
+    let http_router = axum::Router::new()
+        .route(
+            "/api/artifacts/{installation_id}/{*path}",
+            any(dispatch_http),
+        )
+        .layer(DefaultBodyLimit::max(MAX_ARTIFACT_HTTP_BODY_BYTES));
+
     axum::Router::new()
         .route(
             "/api/artifacts/{installation_id}/commands/{binding_id}",
@@ -222,15 +254,77 @@ pub fn router() -> crate::routes::ServerRouter {
             "/api/artifacts/{installation_id}/ui/contributions/{contribution_id}/audit",
             get(list_ui_action_audit),
         )
-        .route(
-            "/api/artifacts/{installation_id}/{*path}",
-            any(dispatch_http),
-        )
+        .merge(http_router)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn artifact_http_body_enforces_raw_binding_limit_before_json_parsing() {
+        let invalid_large_body = br#"{"ok":true} trailing"#;
+        assert!(invalid_large_body.len() > 10);
+        assert!(matches!(
+            parse_artifact_http_body(invalid_large_body, 10),
+            Err(Error::Http(error)) if error.status == StatusCode::PAYLOAD_TOO_LARGE
+                && error.code == "artifact_http_request_too_large"
+        ));
+
+        let invalid_json = br#"{"ok":}"#;
+        assert!(matches!(
+            parse_artifact_http_body(invalid_json, 64),
+            Err(Error::Http(error)) if error.status == StatusCode::BAD_REQUEST
+                && error.code == "invalid_json"
+        ));
+
+        let valid = br#"{"ok":true}"#;
+        let parsed = parse_artifact_http_body(valid, 64).expect("valid JSON body");
+        assert_eq!(parsed["ok"], true);
+    }
+
+    #[test]
+    fn artifact_http_binding_path_is_literal_without_trailing_slash_normalization() {
+        let binding = rustok_modules::ModuleRuntimeBinding {
+            id: "http_status".to_string(),
+            kind: rustok_modules::ModuleRuntimeBindingKind::Http,
+            entrypoint: "http.status".to_string(),
+            input_schema_digest: format!("sha256:{}", "a".repeat(64)),
+            output_schema_digest: format!("sha256:{}", "b".repeat(64)),
+            permission: "artifact_module.http.status.read".to_string(),
+            idempotency: rustok_modules::ModuleBindingIdempotency::Required,
+            limit_profile: "http_json".to_string(),
+            capabilities: Vec::new(),
+            event_topics: Vec::new(),
+            schedule: None,
+            http: Some(rustok_modules::ModuleHttpBinding {
+                method: ModuleHttpMethod::Post,
+                path: "status/query".to_string(),
+                request_media_type: "application/json".to_string(),
+                response_media_type: "application/json".to_string(),
+                max_body_bytes: 64,
+                max_output_bytes: 1_024,
+                timeout_ms: 5_000,
+                streaming: rustok_modules::ModuleHttpStreamingPolicy::Forbidden,
+            }),
+        };
+
+        assert!(find_artifact_http_binding(
+            std::slice::from_ref(&binding),
+            ModuleHttpMethod::Post,
+            "status/query/",
+        )
+        .is_none());
+        assert_eq!(
+            find_artifact_http_binding(
+                std::slice::from_ref(&binding),
+                ModuleHttpMethod::Post,
+                "status/query",
+            )
+            .map(|binding| binding.id.as_str()),
+            Some("http_status")
+        );
+    }
 
     #[test]
     fn artifact_binding_idempotency_header_requires_a_non_nil_uuid() {
