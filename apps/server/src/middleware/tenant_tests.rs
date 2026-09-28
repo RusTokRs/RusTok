@@ -38,8 +38,8 @@ fn tenant_cache_keys_change_with_generation_without_exposing_raw_identity() {
 fn canonical_tenant_keys_are_bounded_and_do_not_embed_long_identifiers() {
     let builder = TenantCacheKeyBuilder::new("v2");
     let identifier = format!("tenant-{}", "x".repeat(2_048));
-    let key = builder.kind_key(TenantIdentifierKind::Slug, &identifier);
-    let negative = builder.kind_negative_key(TenantIdentifierKind::Slug, &identifier);
+    let key = builder.kind_key(TenantIdentifierKind::Slug, &identifier, 1);
+    let negative = builder.kind_negative_key(TenantIdentifierKind::Slug, &identifier, 1);
 
     assert!(key.len() <= 512);
     assert!(negative.len() <= 512);
