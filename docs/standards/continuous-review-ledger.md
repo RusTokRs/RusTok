@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `070f2bf6b2bec3229cdd0e091491adddf2364392`  
+**Current main SHA:** `09fd976184fc839b1a3e7cee0351f2ad02bd79d9`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -127,8 +127,8 @@ Hard limits for every iteration:
 - [x] **FS-22.02.05 — `apps/server/src/middleware/rate_limit.rs`** — one-module audit.
 - [x] **FS-22.02.06 — `apps/server/src/middleware/auth_context.rs`** — one-module audit.
 - [x] **FS-22.02.07 — `apps/server/src/middleware/channel.rs`** — one-module audit.
-- [ ] **FS-22.02.08 — `apps/server/src/middleware/locale.rs`** — one-module audit.
-- [ ] **FS-22.02.09 — `apps/server/src/middleware/tenant.rs`** — one-module audit.
+- [x] **FS-22.02.08 — `apps/server/src/middleware/locale.rs`** — one-module audit.
+- [x] **FS-22.02.09 — `apps/server/src/middleware/tenant.rs`** — one-module audit.
 - [ ] **FS-22.02.10 — `apps/server/src/middleware/guest_access_http.rs` or its host adapter** — one-module audit.
 - [ ] **FS-22.02.11 — `apps/server/src/middleware/security_headers.rs`** — one-module audit.
 - [ ] **FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`** — one-module audit.
@@ -294,6 +294,23 @@ Hard limits for every iteration:
 - **Verification:** repository-content inspection, static reasoning, and branch diff review only; no tests, clippy, build, or runtime commands were executed by the agent, per maintainer-owned test policy.
 - **Status:** module-level fresh second pass clean; `FS-22.02.08` complete and integrated into `main`. Next planned primary module is `FS-22.02.09 — apps/server/src/middleware/tenant.rs`.
 - **Merged:** PR #4176, merge commit `a1ae5b507cb877522256b215920648f2a217ffef`.
+
+### FS-22.02.09 Iteration 1 — `apps/server/src/middleware/tenant.rs`
+
+- **Base:** refreshed `main` to `266e4083ba604f5c2339005ef3afa21a73800c18` immediately before this iteration.
+- **Dedicated iteration branch:** `codex/audit-fs-22.02.09-tenant-middleware`.
+- **Invariant map:** tenant resolution must remain bound to the canonical request trust policy; explicit tenant assertions must agree before the request proceeds; cache identity must be bounded and canonical; negative and positive entries must not survive a tenant mutation across cache generations; cache-generation binding must fail closed if the physical data/negative namespaces cannot share one generation state; inactive tenants must never enter `TenantContext`; development fallback must remain explicit; cache/runtime health signals must reflect the actual generation listener state.
+- **Confirmed finding TENANT-22.02.09-01:** the generation-aware cache backend protects each individual cache I/O from completing against an outdated namespace, but the tenant middleware's async miss loader had no generation-stable boundary around the whole read/fill operation. A tenant mutation could rotate generation after the DB read but before cache fill; the stale fill would then write through the new physical generation under the old logical key, making stale tenant data or a stale negative result readable until TTL.
+- **Remediation TENANT-22.02.09-01:** tenant positive and negative logical cache keys now include the captured backend generation. The complete negative-check/load/fill path snapshots generation before cache access and verifies the same snapshot after the operation, retrying up to four times on any generation/trust change. A stale in-flight fill can therefore remain only under an obsolete logical key and cannot be returned by the current generation.
+- **Confirmed finding TENANT-22.02.09-02:** `TenantCacheInfrastructure::new` ignored the result of `bind_tenant_backend_generations()`. If the canonical data/negative backend aliases could not be bound atomically, startup still constructed and published the infrastructure instead of failing the cache capability closed.
+- **Remediation TENANT-22.02.09-02:** tenant cache infrastructure construction now propagates alias-binding/policy-construction errors as server cache errors. The middleware-level bootstrap propagates generation-listener startup failure, and `bootstrap_app_runtime` now fails startup on that error instead of continuing with a partially initialized tenant cache boundary.
+- **Finding isolation TENANT-22.02.09-03:** the apparent hardcoded `invalidation_listener_status` concern was rechecked on the actual current `main`; the public `tenant_cache_stats()` wrapper in `middleware/mod.rs` already derives the real listener status from the canonical snapshot. No change was necessary.
+- **Adjacent-boundary findings deferred:** `TenantService` still does not canonicalize/validate persisted tenant slug/domain values against the middleware selector validator, and `TenantSettings::validate` does not validate/canonicalize/dedupe overlapping base domains. These remain owner/configuration findings outside this middleware iteration.
+- **Regression correction during second pass:** the first post-remediation re-read caught one stale test call using the old two-argument cache-key API. It was corrected before closeout, and the full changed test surface was re-read afterward.
+- **Adjacent-boundary re-audit:** request trust/host normalization, tenant-route scope, auth-context ordering, owner read-port semantics, generation binding/listener bootstrap, and the direct application bootstrap caller were rechecked. No new tenant-resolution or cache-generation defect was introduced by the remediation.
+- **Fresh second pass:** independently re-read the complete changed tenant middleware, cache key construction, generation-stable load loop, bootstrap/error propagation, regression tests, and the immediate router/runtime boundaries without relying on the original finding list. No remaining repository-owned defect was found inside `tenant.rs` or its direct remediation path.
+- **Verification:** repository-content/static reasoning and branch-diff review only. Per maintainer execution rules, no tests, clippy, gatekeeper, build, or runtime commands were executed by the agent.
+- **Status:** module-level fresh second pass clean; `FS-22.02.09` complete and ready for integration. Next planned primary module is `FS-22.02.10 — apps/server/src/middleware/guest_access_http.rs` (exact filename to be re-confirmed from current module inventory when starting that iteration).
 
 ### Deferred owning-module findings discovered during FS-22
 
