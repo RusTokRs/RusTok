@@ -264,6 +264,18 @@ Hard limits for every iteration:
 - **Status:** module-level fresh second pass clean; `FS-22.02.06` complete. Next planned primary module is `FS-22.02.07 — apps/server/src/middleware/channel.rs`.
 - **Merged:** PR #4174, merge commit `284e9a4d860c8adc9d38548e9ec859961226bd76`.
 
+### FS-22.02.07 Iteration 1 — `channel.rs`
+
+- **Base:** refreshed `main` to `41c0386f1f99bdbdde570b824a217dfbdbcd11c4` immediately before starting this iteration.
+- **Dedicated iteration branch:** `codex/audit-fs-22.02.07-channel-middleware`.
+- **Invariant map:** channel resolution must consume the already-resolved tenant, trusted effective host, canonical effective locale, and verified OAuth app identity; explicit selector precedence must remain unchanged; cache identity must represent semantic resolution facts; request-derived selector data must remain bounded before database resolution or trace/cache retention; successful channel mutations must invalidate local and durable generations through the existing REST/native boundaries.
+- **Confirmed finding CHANNEL-22.02.07-01:** `channel_slug_from_header` and `channel_slug_from_query` accepted arbitrarily long selector values even though the authoritative `channels.slug` storage contract is `string_len(100)`. These raw values reached owner resolution and, on fallback, could be copied into the resolution trace retained in `ChannelContext` and therefore into the weighted cache. This violates the module plan's bounded-request-facts invariant and creates avoidable DB/trace/cache amplification from a single request.
+- **Confirmed finding CHANNEL-22.02.07-02:** the resolver canonicalizes web-domain hosts before host matching, but `channel_cache_key_from_facts` hashed the raw effective host. Equivalent hosts such as casing, an optional port, or a trailing dot therefore produced different cache identities while resolving to the same channel. This does not break tenant isolation, but it weakens cache efficiency and allows unnecessary cache churn within the bounded capacity.
+- **Adjacent-boundary review:** normal tenant-enabled router order supplies tenant, locale, and auth context before channel resolution; the channel middleware uses the canonical request-trust host helper and owner `ChannelResolver`, whose host/default/policy queries remain tenant-scoped. REST channel mutations call the shared invalidation publisher directly, while native mutations are covered by `channel_native_wrapper`; durable generation remains database-owned.
+- **Remediation:** bound channel selector values at the HTTP parsing boundary to the storage contract, use canonical URL query decoding, and canonicalize the host only for cache-key identity so resolution precedence and owner semantics remain unchanged.
+- **Verification:** repository-content inspection, static reasoning, and branch diff review only. Per maintainer execution rules, no test suite, clippy, build, or runtime command is executed by the agent.
+- **Status:** findings recorded; implementation in progress.
+
 ### Deferred owning-module findings discovered during FS-22
 
 - [ ] **REGISTRY-GOV-01 — owner transfer target liveness is checked only in host middleware, not at the authoritative owner transaction boundary.** `registry_artifact_access.rs` verifies an active/same-tenant target user before dispatch, but `SeaOrmModuleGovernanceService::transfer_owner` only validates the new owner principal shape before the owner-binding update. A concurrent user deletion/deactivation can therefore violate the active-user owner invariant. **Owning component:** `crates/modules/rustok-modules/src/governance.rs` owner-transfer transaction. Handle as a separate primary-module iteration; do not fold it into another server middleware pass.
