@@ -5,7 +5,6 @@ use axum::{
     routing::{get, post},
 };
 use chrono::{DateTime, Utc};
-use once_cell::sync::Lazy;
 use rustok_installer::{
     InstallApplyOptions, InstallApplyOutput, InstallComposition, InstallDistributionBinding,
     InstallExecutor, InstallPlan, bind_instance_placement, evaluate_preflight_with_deployment,
@@ -14,17 +13,12 @@ use rustok_installer::{
 use rustok_installer_persistence::{InstallerPersistenceService, entities::install_step_receipt};
 use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use tokio::sync::Mutex;
 use uuid::Uuid;
 
+use crate::common::settings::is_production_environment;
 use crate::error::{Error, Result, http_error};
 use crate::installer_execution::ServerInstallExecutor;
 use crate::services::server_runtime_context::ServerRuntimeContext;
-
-static INSTALL_JOBS: Lazy<Mutex<HashMap<Uuid, InstallJobStatusResponse>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
-
 #[derive(Debug, Serialize)]
 pub struct InstallPlanResponse {
     pub redacted_plan: serde_json::Value,
@@ -139,7 +133,7 @@ async fn plan(
     State(ctx): State<ServerRuntimeContext>,
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPlanResponse>> {
-    require_setup_token(&headers, plan.environment.is_production())?;
+    require_setup_token(&headers)?;
     let plan = bind_host_install_plan(&ctx, plan).await?;
     Ok(Json(InstallPlanResponse {
         redacted_plan: redact_install_plan(&plan),
@@ -151,7 +145,7 @@ async fn preflight(
     State(ctx): State<ServerRuntimeContext>,
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPreflightResponse>> {
-    require_setup_token(&headers, plan.environment.is_production())?;
+    require_setup_token(&headers)?;
     let plan = bind_host_install_plan(&ctx, plan).await?;
     let report = evaluate_preflight_with_deployment(&plan, false);
     Ok(Json(InstallPreflightResponse {
@@ -166,7 +160,7 @@ async fn apply(
     State(ctx): State<ServerRuntimeContext>,
     Json(request): Json<InstallApplyRequest>,
 ) -> Result<(StatusCode, Json<InstallApplyJobResponse>)> {
-    require_setup_token(&headers, request.plan.environment.is_production())?;
+    require_setup_token(&headers)?;
     let plan = bind_host_install_plan(&ctx, request.plan).await?;
     let job_id = rustok_core::generate_id();
     let submitted_at = Utc::now();
@@ -189,42 +183,45 @@ async fn apply(
             )
         })?;
     let executor = ServerInstallExecutor::new(registry);
-    INSTALL_JOBS.lock().await.insert(
-        job_id,
-        InstallJobStatusResponse {
-            job_id,
-            status: InstallJobState::Running,
-            submitted_at,
-            started_at: Some(submitted_at),
-            finished_at: None,
-            session_id: None,
-            tenant_id: None,
-            output: None,
-            error: None,
-        },
-    );
+    let persistence = InstallerPersistenceService::new(ctx.db_clone());
+    persistence
+        .create_http_job(job_id, submitted_at)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, %job_id, "Failed to create durable installer HTTP job");
+            internal_error("failed to create installer job")
+        })?;
 
     tokio::spawn(async move {
         let result = executor.apply(plan, apply_options).await;
-        let finished_at = Utc::now();
-        let mut jobs = INSTALL_JOBS.lock().await;
-        let Some(job) = jobs.get_mut(&job_id) else {
-            return;
-        };
         match result {
             Ok(output) => {
-                job.status = InstallJobState::Succeeded;
-                job.session_id = Some(output.session_id);
-                job.tenant_id = output.tenant_id;
-                job.output = Some(output);
-                job.error = None;
+                if let Err(error) = persistence
+                    .finish_http_job_succeeded(
+                        job_id,
+                        output.session_id,
+                        output.tenant_id,
+                        &output,
+                    )
+                    .await
+                {
+                    tracing::error!(%error, %job_id, "Failed to finalize durable installer HTTP job");
+                }
             }
             Err(error) => {
-                job.status = InstallJobState::Failed;
-                job.error = Some(error.to_string());
+                tracing::error!(%error, %job_id, "Installer apply job failed");
+                if let Err(update_error) = persistence
+                    .finish_http_job_failed(job_id, "installer apply failed")
+                    .await
+                {
+                    tracing::error!(
+                        %update_error,
+                        %job_id,
+                        "Failed to persist installer HTTP job failure state"
+                    );
+                }
             }
         }
-        job.finished_at = Some(finished_at);
     });
 
     Ok((
@@ -242,6 +239,13 @@ async fn bind_host_install_plan(
     ctx: &ServerRuntimeContext,
     mut plan: InstallPlan,
 ) -> Result<InstallPlan> {
+    let host_is_production = is_production_environment();
+    if host_is_production && !plan.environment.is_production() {
+        return Err(bad_request_error(
+            "production installer hosts accept only production install plans",
+        ));
+    }
+
     let composition = rustok_distribution::composition_identity();
     let host_composition = InstallComposition {
         revision: composition.revision,
@@ -258,7 +262,7 @@ async fn bind_host_install_plan(
     let configured_root = std::env::var("RUSTOK_INSTANCE_ROOT")
         .ok()
         .filter(|value| !value.trim().is_empty());
-    if plan.environment.is_production() && configured_root.is_none() {
+    if host_is_production && configured_root.is_none() {
         return Err(bad_request_error(
             "production installer HTTP requests require a host-selected RUSTOK_INSTANCE_ROOT",
         ));
@@ -353,16 +357,56 @@ fn configured_value(name: &str) -> Option<String> {
 
 async fn job_status(
     headers: HeaderMap,
+    State(ctx): State<ServerRuntimeContext>,
     Path(job_id): Path<Uuid>,
 ) -> Result<Json<InstallJobStatusResponse>> {
-    require_setup_token(&headers, false)?;
-    INSTALL_JOBS
-        .lock()
-        .await
-        .get(&job_id)
-        .cloned()
-        .map(Json)
-        .ok_or_else(|| not_found_error(format!("installer job {job_id} not found")))
+    require_setup_token(&headers)?;
+    let persistence = InstallerPersistenceService::new(ctx.db_clone());
+    let Some(job) = persistence.get_http_job(job_id).await.map_err(|error| {
+        tracing::error!(%error, %job_id, "Failed to read durable installer HTTP job");
+        internal_error("failed to read installer job")
+    })? else {
+        return Err(not_found_error("installer job not found"));
+    };
+
+    Ok(Json(install_job_status_response(job)?))
+}
+
+fn install_job_status_response(
+    job: rustok_installer_persistence::entities::install_http_job::Model,
+) -> Result<InstallJobStatusResponse> {
+    let status = match job.status.as_str() {
+        "running" => InstallJobState::Running,
+        "succeeded" => InstallJobState::Succeeded,
+        "failed" => InstallJobState::Failed,
+        _ => {
+            tracing::error!(%job.id, status = %job.status, "Durable installer HTTP job has an unknown status");
+            return Err(internal_error("installer job has an invalid persisted state"));
+        }
+    };
+
+    let output = match job.output {
+        Some(value) => match serde_json::from_value::<InstallApplyOutput>(value) {
+            Ok(output) => Some(output),
+            Err(error) => {
+                tracing::error!(%error, %job.id, "Failed to decode persisted installer HTTP job output");
+                return Err(internal_error("installer job output is invalid"));
+            }
+        },
+        None => None,
+    };
+
+    Ok(InstallJobStatusResponse {
+        job_id: job.id,
+        status,
+        submitted_at: job.submitted_at,
+        started_at: Some(job.started_at),
+        finished_at: job.finished_at,
+        session_id: job.session_id,
+        tenant_id: job.tenant_id,
+        output,
+        error: job.error_message,
+    })
 }
 
 async fn receipts(
@@ -370,7 +414,7 @@ async fn receipts(
     State(ctx): State<ServerRuntimeContext>,
     Path(session_id): Path<Uuid>,
 ) -> Result<Json<InstallReceiptsResponse>> {
-    require_setup_token(&headers, false)?;
+    require_setup_token(&headers)?;
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
     let receipts = persistence
         .list_receipts(session_id)
@@ -383,7 +427,8 @@ async fn receipts(
     }))
 }
 
-fn require_setup_token(headers: &HeaderMap, production: bool) -> Result<()> {
+fn require_setup_token(headers: &HeaderMap) -> Result<()> {
+    let production = is_production_environment();
     let expected = std::env::var("RUSTOK_INSTALL_SETUP_TOKEN")
         .ok()
         .filter(|value| !value.trim().is_empty());

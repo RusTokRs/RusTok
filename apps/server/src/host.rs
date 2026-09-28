@@ -254,16 +254,7 @@ fn jwt_secret_looks_like_placeholder(secret: &str) -> bool {
 }
 
 fn is_production_environment() -> bool {
-    ["RUSTOK_ENV", "RUST_ENV", "APP_ENV"].iter().any(|key| {
-        std::env::var(key)
-            .map(|value| {
-                matches!(
-                    value.trim().to_ascii_lowercase().as_str(),
-                    "prod" | "production"
-                )
-            })
-            .unwrap_or(false)
-    })
+    crate::common::settings::is_production_environment()
 }
 
 fn application_router(host_mode: crate::common::settings::RuntimeHostMode) -> ServerRouter {
