@@ -393,6 +393,7 @@ fn scaffold_draft_record(
 
 fn mutation_error(error: ServerError) -> McpManagementMutationError {
     match error {
+        ServerError::Forbidden(message) => McpManagementMutationError::Forbidden(message),
         ServerError::BadRequest(message) | ServerError::Validation(message) => {
             McpManagementMutationError::Validation(message)
         }
