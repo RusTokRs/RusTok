@@ -7,6 +7,7 @@ use axum::{
 use rustok_api::context::{
     AuthContext, AuthContextExtension, AuthPrincipalContext, AuthPrincipalContextExtension,
 };
+use rustok_api::AuthPrincipalKind;
 use rustok_api::{HOST_AUTHORITY_REQUIRED, Permission, has_effective_permission};
 use rustok_core::SecurityActorKind;
 use axum_extra::{
@@ -61,6 +62,7 @@ pub async fn resolve_optional(
             );
         }
     };
+    let direct_user_self_service = is_direct_user_self_service_path(request_path.as_str());
     let human_user_only =
         is_human_user_self_service_path(request_path.as_str()) || pages_inline_authoring;
     let request_method = parts.method.clone();
@@ -88,6 +90,19 @@ pub async fn resolve_optional(
 
     match current_user_result {
         Ok(current_user) => {
+            if direct_user_self_service
+                && !is_direct_user_self_service_principal(current_user.principal_kind)
+            {
+                return pages_inline_authoring_response(
+                    (
+                        StatusCode::FORBIDDEN,
+                        "Direct authenticated user sessions are required for auth self-service endpoints",
+                    )
+                        .into_response(),
+                    pages_inline_authoring,
+                    pages_inline_authoring_surface,
+                );
+            }
             if human_user_only && current_user.actor_kind != SecurityActorKind::User {
                 return pages_inline_authoring_response(
                     (
@@ -257,6 +272,22 @@ fn is_observability_auth_path(path: &str) -> bool {
     )
 }
 
+fn is_direct_user_self_service_principal(principal_kind: AuthPrincipalKind) -> bool {
+    principal_kind.is_direct_user()
+}
+
+fn is_direct_user_self_service_path(path: &str) -> bool {
+    matches!(
+        path,
+        "/api/auth/me"
+            | "/api/auth/sessions"
+            | "/api/auth/sessions/revoke-all"
+            | "/api/auth/change-password"
+            | "/api/auth/profile"
+            | "/api/auth/history"
+    ) || path.starts_with("/api/auth/sessions/")
+}
+
 fn is_human_user_self_service_path(path: &str) -> bool {
     matches!(
         path,
@@ -349,7 +380,8 @@ fn service_forum_boundary_violation(
 mod tests {
     use super::{
         PAGES_AUTHORING_CACHE_CONTROL, PAGES_AUTHORING_ROBOTS_POLICY,
-        auth_can_resolve_without_tenant_context, is_human_user_self_service_path,
+        auth_can_resolve_without_tenant_context, is_direct_user_self_service_path,
+        is_human_user_self_service_path,
         is_observability_auth_path, is_pages_inline_authoring_server_fn,
         is_pages_inline_authoring_surface,
         pages_inline_authoring_response, service_forum_boundary_violation,
@@ -442,6 +474,45 @@ mod tests {
         assert!(!headers.contains_key(AUTHORIZATION));
         headers.insert(AUTHORIZATION, "Bearer invalid".parse().unwrap());
         assert!(headers.contains_key(AUTHORIZATION));
+    }
+
+    #[test]
+    fn auth_self_service_admission_rejects_delegated_and_service_principals() {
+        assert!(is_direct_user_self_service_principal(
+            AuthPrincipalKind::DirectUser
+        ));
+        assert!(!is_direct_user_self_service_principal(
+            AuthPrincipalKind::DelegatedUser
+        ));
+        assert!(!is_direct_user_self_service_principal(
+            AuthPrincipalKind::Service
+        ));
+    }
+
+    #[test]
+    fn auth_self_service_routes_require_a_direct_user_principal() {
+        for path in [
+            "/api/auth/me",
+            "/api/auth/sessions",
+            "/api/auth/sessions/revoke-all",
+            "/api/auth/change-password",
+            "/api/auth/profile",
+            "/api/auth/history",
+            "/api/auth/sessions/00000000-0000-0000-0000-000000000001",
+        ] {
+            assert!(is_direct_user_self_service_path(path), "{path}");
+        }
+
+        for path in [
+            "/api/oauth/authorize",
+            "/api/oauth/userinfo",
+            "/store",
+            "/store/customers/me",
+            "/api/fn/ai/overview",
+            "/api/fn/ai/create-provider",
+        ] {
+            assert!(!is_direct_user_self_service_path(path), "{path}");
+        }
     }
 
     #[test]

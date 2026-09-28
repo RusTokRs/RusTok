@@ -249,7 +249,7 @@ Hard limits for every iteration:
 
 - [ ] **FS-22.03 — identity/auth propagation:** in progress; decomposed into one-primary-module iterations.
 - [x] **FS-22.03.01 — `apps/server/src/extractors/auth/mod.rs`** — completed with one security-boundary remediation and a fresh independent second pass.
-- [ ] **FS-22.03.02 — `apps/server/src/middleware/auth_context.rs`** — re-audit self-service principal admission; delegated OAuth users must not inherit direct-session-only capabilities.
+- [x] **FS-22.03.02 — `apps/server/src/middleware/auth_context.rs`** — completed with one principal-admission remediation and a fresh independent second pass.
 - [ ] **FS-22.04 — tenant/channel/locale propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.06 — REST/controller composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
@@ -272,6 +272,21 @@ Hard limits for every iteration:
 - **Documentation:** `apps/server/docs/README.md` now states that access-token authentication uses a security-only OAuth app lookup independent of presentation translations.
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.01` complete after merge; next primary module is `FS-22.03.02 — apps/server/src/middleware/auth_context.rs`.
+### FS-22.03.02 Iteration 1 — `apps/server/src/middleware/auth_context.rs`
+
+- **Base:** refreshed `main` at `d8fbeba9f90200edccab4682a7434861318e8be0` after FS-22.03.01 integration; dedicated branch `codex/audit-fs-22.03.02-auth-context`.
+- **Invariant map:** the auth middleware must use the typed principal classification produced by the canonical access-token resolver; authentication and authorization boundaries must not reconstruct principal kind from coarse actor labels; direct-session self-service operations must require `AuthPrincipalKind::DirectUser`; delegated OAuth principals may remain valid for delegated OAuth/storefront flows unless an owner contract explicitly requires a direct session; anonymous requests must remain distinguishable from invalid presented credentials.
+- **Finding AUTHCTX-22.03.02-01:** `human_user_only` rejected only `SecurityActorKind::Service`. Delegated OAuth users are classified as `SecurityActorKind::User`, so they passed the same guard used for `/api/auth/me`, session listing/revocation, password change, profile update, and login history. Those handlers consume `CurrentUser.session_id`, and delegated access tokens intentionally carry a nil session ID; in particular, `revoke-all` excludes `id != nil`, while password change is a direct-session lifecycle operation.
+- **Remediation:** introduced a bounded `is_direct_user_self_service_path` classifier for the auth self-service routes and require `current_user.principal_kind.is_direct_user()` before dispatch. This uses the canonical typed principal already produced by the auth extractor; it does not inspect `client_id`, `grant_type`, or `session_id` ad hoc. Existing `human_user_only` remains responsible for the separate service-vs-human guard on storefront/AI paths.
+- **Regression coverage:** added focused path-boundary and principal-admission tests covering all direct-session auth self-service routes, delegated/service rejection, and preservation of delegated eligibility for OAuth, storefront, and AI paths.
+- **Immediate re-audit:** re-read the changed middleware branch, principal propagation, typed `AuthPrincipalKind`, request RBAC scope creation, and every direct `CurrentUser` consumer in `controllers/auth.rs`. `/api/auth/logout` is intentionally excluded because it authenticates the supplied refresh token itself rather than using `CurrentUser.session_id`.
+- **Adjacent-boundary re-audit:** GraphQL and OAuth controller paths continue to accept delegated principals where their contracts permit them; Pages inline authoring already requires `DirectUser`; service-only forum moderation restrictions remain unchanged. No alternate principal reconstruction was introduced.
+- **Regression audit:** anonymous requests still flow to downstream extractors and receive their existing 401 behavior; invalid presented credentials still fail at the auth middleware; direct users retain self-service access; delegated OAuth users are denied before direct-session handlers and therefore cannot use a nil session identity to mutate/revoke session state.
+- **Fresh second pass:** independently rechecked route matching for exact auth paths, nested session paths, `/api/auth/logout`, `/api/oauth/*`, `/store*`, `/api/fn/ai/*`, and Pages inline editing. No additional repository-owned issue remained in the primary `auth_context.rs` module.
+- **Documentation:** `apps/server/docs/README.md` now states that auth self-service endpoints require `AuthPrincipalKind::DirectUser` and delegated OAuth users do not inherit the direct-session contract.
+- **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.03.02` complete after merge; continue to the next unchecked primary module in FS-22.03.
+
 ### FS-22.02.11 Iteration 1 — `security_headers.rs` pre-implementation findings
 
 - **Base:** refreshed `main` at `a10cfc7982fac9bdaa3013a825c8598869c53442`; dedicated branch `codex/audit-fs-22.02.11-security-headers`.
