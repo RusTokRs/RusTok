@@ -99,6 +99,8 @@ static AUTH_CHANGE_PASSWORD_SESSIONS_REVOKED_TOTAL: AtomicU64 = AtomicU64::new(0
 static AUTH_FLOW_INCONSISTENCY_TOTAL: AtomicU64 = AtomicU64::new(0);
 static AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL: AtomicU64 = AtomicU64::new(0);
 
+const MAX_SESSION_LIST_LIMIT: u64 = 100;
+
 impl AuthLifecycleService {
     pub fn metrics_snapshot() -> AuthLifecycleMetricsSnapshot {
         AuthLifecycleMetricsSnapshot {
@@ -799,6 +801,7 @@ impl AuthLifecycleService {
         user_id: uuid::Uuid,
         limit: u64,
     ) -> std::result::Result<Vec<sessions::Model>, AuthLifecycleError> {
+        let limit = limit.clamp(1, MAX_SESSION_LIST_LIMIT);
         let rows = sessions::Entity::find()
             .filter(sessions::Column::TenantId.eq(tenant_id))
             .filter(sessions::Column::UserId.eq(user_id))
