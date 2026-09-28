@@ -379,6 +379,61 @@ fn cache_key_canonicalizes_equivalent_hosts() {
 }
 
 #[tokio::test]
+async fn cached_host_resolution_preserves_non_primary_matched_target() {
+    let db = setup_channel_db().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id, "tenant").await;
+    let service = ChannelService::new(db.clone());
+
+    let channel_id = create_channel(&service, tenant_id, "host-channel").await;
+    add_web_target(&service, channel_id, "primary.example.test").await;
+    service
+        .add_target(
+            channel_id,
+            CreateChannelTargetInput {
+                target_type: "web_domain".to_string(),
+                value: "secondary.example.test".to_string(),
+                is_primary: false,
+                settings: None,
+            },
+        )
+        .await
+        .expect("secondary host target should be created");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(HOST, "secondary.example.test".parse().expect("host header"));
+
+    let facts = build_request_facts(
+        tenant_id,
+        &headers,
+        None,
+        None,
+        &test_settings(),
+        &empty_extensions(),
+    );
+    let resolver = ChannelResolver::new(db);
+    let decision = resolver
+        .resolve(&facts)
+        .await
+        .expect("host resolution should succeed");
+    assert_eq!(
+        decision.source,
+        Some(rustok_channel::ChannelResolutionOrigin::Host)
+    );
+
+    let cached = CachedChannelResolution::from_decision(decision, &facts);
+    let CachedChannelResolution::Found(context) = cached else {
+        panic!("host resolution should produce a cached context");
+    };
+
+    assert_eq!(context.target_type.as_deref(), Some("web_domain"));
+    assert_eq!(
+        context.target_value.as_deref(),
+        Some("secondary.example.test")
+    );
+}
+
+#[tokio::test]
 async fn select_channel_prefers_header_id_over_slug_query_host_and_default() {
     let db = setup_channel_db().await;
     let tenant_id = Uuid::new_v4();

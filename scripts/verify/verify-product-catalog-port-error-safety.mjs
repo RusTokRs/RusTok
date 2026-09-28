@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -8,10 +8,14 @@ const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
   : new URL('../../', import.meta.url);
-const source = readFileSync(
-  new URL('crates/modules/rustok-product/src/ports.rs', root),
-  'utf8',
-);
+const filePath = new URL('crates/modules/rustok-product/src/ports.rs', root);
+const dirPath = new URL('crates/modules/rustok-product/src/ports/', root);
+const source = existsSync(filePath)
+  ? readFileSync(filePath, 'utf8')
+  : readdirSync(dirPath)
+      .filter((file) => file.endsWith('.rs'))
+      .map((file) => readFileSync(new URL(file, dirPath), 'utf8'))
+      .join('\n');
 const failures = [];
 
 const requireText = (value, label) => {

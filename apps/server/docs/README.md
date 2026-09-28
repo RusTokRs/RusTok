@@ -17,7 +17,7 @@ persistence, caller transactions, outbox composition, cache invalidation after
 commit, and process telemetry.
 
 Request permission snapshots enter the owner `PermissionResolver` through an
-authenticated host adapter; single, any, and all decisions run the owner tenant
+authenticated host adapter; HTTP `RequestContext` likewise consumes only the upstream trusted tenant/locale/channel/auth extensions and does not reconstruct those dimensions. single, any, and all decisions run the owner tenant
 policy engine and preserve the request permission ceiling. Persisted role-user
 membership queries delegate to `load_role_user_ids_on`. The server contains no
 independent permission-membership decision branch or role-membership SQL query
@@ -245,7 +245,7 @@ Auth lifecycle GraphQL/native self-service operations consume the canonical `Aut
   and build WebSocket extract `ServerRuntimeContext`; DB/shared runtime semantics do not depend on a
   framework-global context. Optional module HTTP composition recognizes manifest-declared Axum routers:
   `rustok-blog` is merged from its `HostRuntimeContext` entrypoint.
-- Channel runtime surface remains a thin transport around `rustok-channel`: `/api/channels/*` already covers bootstrap, channel CRUD-lite, policy-set/rule authoring endpoints and request-level `resolution_trace` diagnostics, while the resolution pipeline, REST/control-plane DTOs and rule-payload mapping helpers live in the module. Request-level `tenant`, `channel` and `locale` middleware receive `ServerRuntimeContext`, and auth context receives `ServerAuthRuntime`.
+- Channel runtime surface remains a thin transport around `rustok-channel`: `/api/channels/*` already covers bootstrap, channel CRUD-lite, policy-set/rule authoring endpoints and request-level `resolution_trace` diagnostics, while the resolution pipeline, REST/control-plane DTOs and rule-payload mapping helpers live in the module. Request-level `tenant`, `channel` and `locale` middleware receive `ServerRuntimeContext`, and auth context receives `ServerAuthRuntime`. For host resolution, the propagated `ChannelContext.target_type/target_value` identifies the concrete web-domain target that matched the effective host, while non-host resolution retains the channel's primary/first target representation.
 - Module-owned event listeners are assembled from `ModuleRegistry` into a common `EventDispatcher`; `apps/server` no longer holds separate host-owned index/search/workflow listener paths.
 - Server migrator is the backend composition root for module-owned schema: content-family modules (`blog`, `pages`, `comments`) and search must connect here via `crates/modules/rustok-*/src/migrations`, otherwise external Next/Leptos admin surfaces get a working route shell without the needed tables.
 - Product/search title filtering helpers are not server-owned services: product translation

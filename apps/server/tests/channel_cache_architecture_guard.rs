@@ -56,6 +56,20 @@ fn channel_cache_generations_are_bounded_and_fail_safe() {
 }
 
 #[test]
+fn host_resolution_context_preserves_the_matched_target() {
+    let channel = source("apps/server/src/middleware/channel.rs");
+    assert!(channel.contains(
+        "fn from_decision(decision: ResolutionDecision, facts: &RequestFacts)"
+    ));
+    assert!(channel.contains("ChannelResolutionSource::Host => facts"));
+    assert!(channel.contains("ChannelTargetType::WebDomain.normalize_value(host)"));
+    assert!(channel.contains("value == normalized_host"));
+    assert!(channel.contains(
+        ".or_else(|| detail.targets.iter().find(|target| target.is_primary))"
+    ));
+}
+
+#[test]
 fn channel_cache_is_registered_atomically() {
     let channel = source("apps/server/src/middleware/channel.rs");
     assert!(channel.contains("ctx.shared_insert_if_absent(candidate.clone())"));

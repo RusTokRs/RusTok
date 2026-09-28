@@ -6,7 +6,10 @@ use rustok_auth::{
     CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord, OAuthAppSecretResult,
     UpdateOAuthAppCommand, UserMutationRecord,
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect,
+};
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -33,6 +36,72 @@ where
         "Auth administration operation failed"
     );
     AuthAdminMutationError::Internal("Auth administration operation failed".to_string())
+}
+
+pub(crate) async fn build_oauth_app_record<C>(
+    db: &C,
+    context: &AuthAdminMutationContext,
+    app: oauth_apps::Model,
+) -> Result<OAuthAppMutationRecord, AuthAdminMutationError>
+where
+    C: ConnectionTrait,
+{
+    let locale = context.locale.as_deref().ok_or_else(|| {
+        AuthAdminMutationError::Validation(
+            "auth administration requires a host-resolved effective locale".to_string(),
+        )
+    })?;
+    let locale = oauth_apps::normalize_runtime_copy_locale(locale).map_err(|_| {
+        AuthAdminMutationError::Validation(
+            "auth administration requires a valid effective locale other than und"
+                .to_string(),
+        )
+    })?;
+    let app = oauth_apps::hydrate_exact_translation(db, app, locale.as_str())
+        .await
+        .map_err(internal_admin_error)?;
+    let active_token_count = oauth_tokens::Entity::find()
+        .filter(oauth_tokens::Column::AppId.eq(app.id))
+        .filter(oauth_tokens::Column::TenantId.eq(context.tenant_id))
+        .filter(oauth_tokens::Column::RevokedAt.is_null())
+        .filter(oauth_tokens::Column::ExpiresAt.gt(chrono::Utc::now()))
+        .count(db)
+        .await
+        .map_err(internal_admin_error)?;
+
+    let redirect_uris = app.redirect_uris_list();
+    let scopes = app.scopes_list();
+    let grant_types = app.grant_types_list();
+    let granted_permissions = app.granted_permissions_list();
+    let managed_by_manifest = app.managed_by_manifest();
+    let is_active = app.is_active();
+    let can_edit = app.can_edit();
+    let can_rotate_secret = app.can_rotate_secret();
+    let can_revoke = app.can_revoke();
+
+    Ok(OAuthAppMutationRecord {
+        id: app.id,
+        name: app.name,
+        slug: app.slug,
+        description: app.description,
+        icon_url: app.icon_url,
+        app_type: app.app_type,
+        client_id: app.client_id,
+        redirect_uris,
+        scopes,
+        grant_types,
+        granted_permissions,
+        manifest_ref: app.manifest_ref,
+        auto_created: app.auto_created,
+        managed_by_manifest,
+        is_active,
+        can_edit,
+        can_rotate_secret,
+        can_revoke,
+        active_token_count: i64::try_from(active_token_count).unwrap_or(i64::MAX),
+        last_used_at: app.last_used_at.map(Into::into),
+        created_at: app.created_at.into(),
+    })
 }
 
 #[derive(Clone)]
@@ -156,59 +225,12 @@ impl ServerAuthAdminMutationProvider {
         Ok(())
     }
 
-    async fn localize_app(
-        &self,
-        context: &AuthAdminMutationContext,
-        app: oauth_apps::Model,
-    ) -> Result<oauth_apps::Model, AuthAdminMutationError> {
-        let locale = self.effective_locale(context)?;
-        oauth_apps::hydrate_exact_translation(&self.db, app, locale.as_str())
-            .await
-            .map_err(internal_admin_error)
-    }
-
     async fn record(
         &self,
         context: &AuthAdminMutationContext,
         app: oauth_apps::Model,
     ) -> Result<OAuthAppMutationRecord, AuthAdminMutationError> {
-        let app = self.localize_app(context, app).await?;
-        let active_token_count = oauth_tokens::Entity::count_active_by_app(&self.db, app.id)
-            .await
-            .map_err(internal_admin_error)?;
-        let redirect_uris = app.redirect_uris_list();
-        let scopes = app.scopes_list();
-        let grant_types = app.grant_types_list();
-        let granted_permissions = app.granted_permissions_list();
-        let managed_by_manifest = app.managed_by_manifest();
-        let is_active = app.is_active();
-        let can_edit = app.can_edit();
-        let can_rotate_secret = app.can_rotate_secret();
-        let can_revoke = app.can_revoke();
-
-        Ok(OAuthAppMutationRecord {
-            id: app.id,
-            name: app.name,
-            slug: app.slug,
-            description: app.description,
-            icon_url: app.icon_url,
-            app_type: app.app_type,
-            client_id: app.client_id,
-            redirect_uris,
-            scopes,
-            grant_types,
-            granted_permissions,
-            manifest_ref: app.manifest_ref,
-            auto_created: app.auto_created,
-            managed_by_manifest,
-            is_active,
-            can_edit,
-            can_rotate_secret,
-            can_revoke,
-            active_token_count: i64::try_from(active_token_count).unwrap_or(i64::MAX),
-            last_used_at: app.last_used_at.map(Into::into),
-            created_at: app.created_at.into(),
-        })
+        build_oauth_app_record(&self.db, context, app).await
     }
 }
 

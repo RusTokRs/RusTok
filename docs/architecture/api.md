@@ -156,7 +156,7 @@ Each API path must operate through a single host/runtime context:
 - tenant resolution
 - request-scoped locale
 - auth/session handling
-- request-scoped `ChannelContext`, including `resolution_source` and `resolution_trace` for channel-aware runtime diagnostics
+- request-scoped `ChannelContext`, including `resolution_source` and `resolution_trace` for channel-aware runtime diagnostics; for host resolution, `target_type`/`target_value` identify the concrete web-domain target that matched the effective host
 - RBAC enforcement
 - observability hooks
 

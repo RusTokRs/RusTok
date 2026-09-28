@@ -33,6 +33,28 @@ fn tenant_keys_are_canonical_and_schema_versioned() {
 }
 
 #[test]
+fn tenant_context_cache_payload_keeps_settings_typed_and_versioned() {
+    let tenant = source("apps/server/src/middleware/tenant.rs");
+    assert!(tenant.contains("TENANT_CONTEXT_SCHEMA_VERSION: u32 = 3"));
+    assert!(tenant.contains("settings: serde_json::Value"));
+    assert!(tenant.contains("impl From<TenantContext> for CachedTenantContext"));
+    assert!(tenant.contains("impl From<CachedTenantContext> for TenantContext"));
+    assert!(!tenant.contains("impl TryFrom<TenantContext> for CachedTenantContext"));
+    assert!(!tenant.contains("impl TryFrom<CachedTenantContext> for TenantContext"));
+    assert!(!tenant.contains("settings_json: String"));
+    assert!(!tenant.contains("serde_json::from_str(&context.settings_json)"));
+}
+
+#[test]
+fn tenant_cache_initialization_uses_canonical_shared_service_without_check_insert_race() {
+    let tenant = source("apps/server/src/middleware/tenant.rs");
+    assert!(tenant.contains("shared_insert_if_absent(cache_service.clone())"));
+    assert!(tenant.contains("let canonical_cache_service = ctx.shared_get::<CacheService>()"));
+    assert!(tenant.contains("TenantCacheInfrastructure::new(&canonical_cache_service)"));
+    assert!(tenant.contains("shared_insert_if_absent(Arc::new(infrastructure))"));
+}
+
+#[test]
 fn tenant_payloads_use_typed_envelopes_and_explicit_negative_policy() {
     let tenant = source("apps/server/src/middleware/tenant.rs");
     assert!(tenant.contains("load_enveloped_or_fill("));
