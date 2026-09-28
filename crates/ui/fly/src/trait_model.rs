@@ -126,6 +126,11 @@ impl TraitSchema {
             TraitTarget::Field { name } => match name.as_str() {
                 "tagName" => component.tag_name.clone().map(Value::String),
                 "provider" => component.provider.clone().map(Value::String),
+                "content" => component
+                    .extensions
+                    .get(name)
+                    .cloned()
+                    .or_else(|| component.text_content().map(Value::String)),
                 _ => component.extensions.get(name).cloned(),
             },
         }
@@ -149,7 +154,7 @@ impl TraitSchema {
                     return Err(FlyError::InvalidTraitValue {
                         trait_id: self.id.clone(),
                         message:
-                            "URL must be relative, http, https, mailto, tel, hash, or data:image"
+                            "URL must be relative, http, https, mailto, tel, hash, or safe base64 data:image"
                                 .to_string(),
                     });
                 }
@@ -577,19 +582,66 @@ fn parse_boolean(value: &str) -> Option<bool> {
 }
 
 fn trait_url_allowed(value: &str) -> bool {
-    let value = value.trim().to_ascii_lowercase();
+    let value = value.trim();
+    if value.is_empty()
+        || value.len() > 2048
+        || value.starts_with("//")
+        || value.contains('\\')
+        || value.chars().any(char::is_control)
+        || value.chars().any(char::is_whitespace)
+    {
+        return false;
+    }
+    let lower = value.to_ascii_lowercase();
     value.starts_with('/')
         || value.starts_with('#')
-        || value.starts_with("http://")
-        || value.starts_with("https://")
-        || value.starts_with("mailto:")
-        || value.starts_with("tel:")
-        || value.starts_with("data:image/")
+        || absolute_url_has_authority(value, "http://")
+        || absolute_url_has_authority(value, "https://")
+        || scheme_target_is_not_empty(value, "mailto:")
+        || scheme_target_is_not_empty(value, "tel:")
+        || safe_trait_data_image(&lower)
+        || relative_url_without_scheme(value)
+}
+
+fn absolute_url_has_authority(value: &str, scheme: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    if !lower.starts_with(scheme) {
+        return false;
+    }
+    let authority = &value[scheme.len()..];
+    let authority = authority
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    !authority.is_empty() && !authority.starts_with(':')
+}
+
+fn scheme_target_is_not_empty(value: &str, scheme: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.starts_with(scheme) && !value[scheme.len()..].is_empty()
+}
+
+fn relative_url_without_scheme(value: &str) -> bool {
+    let scheme_boundary = value.find(['/', '?', '#']).unwrap_or(value.len());
+    !value[..scheme_boundary].contains(':')
+}
+
+fn safe_trait_data_image(lower: &str) -> bool {
+    [
+        "data:image/png;base64,",
+        "data:image/jpeg;base64,",
+        "data:image/gif;base64,",
+        "data:image/webp;base64,",
+        "data:image/avif;base64,",
+    ]
+    .iter()
+    .any(|prefix| lower.starts_with(prefix))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{ComponentChildren, ComponentNode};
     use serde_json::json;
 
     #[test]
@@ -622,6 +674,23 @@ mod tests {
     }
 
     #[test]
+    fn content_trait_reads_grapesjs_scalar_text_children() {
+        let content = builtin_trait_schemas()
+            .into_iter()
+            .find(|schema| schema.id == "fly.trait.content")
+            .expect("content trait");
+        let mut component = ComponentObject {
+            component_type: Some("heading".to_string()),
+            ..ComponentObject::default()
+        };
+        component.components = ComponentChildren::Nodes(vec![
+            ComponentNode::Opaque(json!("Build")),
+            ComponentNode::Opaque(json!("now")),
+        ]);
+        assert_eq!(content.read(&component), Some(json!("Build now")));
+    }
+
+    #[test]
     fn select_and_url_traits_validate_input() {
         let method = builtin_trait_schemas()
             .into_iter()
@@ -635,6 +704,11 @@ mod tests {
             .find(|schema| schema.id == "fly.trait.href")
             .expect("href trait");
         assert!(href.patch_from_text("javascript:alert(1)").is_err());
+        assert!(href.patch_from_text("//attacker.example/path").is_err());
+        assert!(href.patch_from_text("https://").is_err());
+        assert!(href.patch_from_text("mailto:").is_err());
+        assert!(href.patch_from_text("/has space").is_err());
+        assert!(href.patch_from_text("data:image/svg+xml,<svg/>").is_err());
         assert_eq!(
             href.patch_from_text("#contact")
                 .expect("hash link")

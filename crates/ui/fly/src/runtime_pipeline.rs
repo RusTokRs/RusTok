@@ -5,7 +5,8 @@ use crate::{
     extract_runtime_context_contract, materialize_bindings, materialize_component_actions,
     materialize_context, materialize_internal_page_links, materialize_localized_page_metadata,
     materialize_project_locale_context, materialize_project_translations, materialize_runtime,
-    materialize_runtime_locale_context, validate_component_actions, validate_internal_page_links,
+    materialize_runtime_locale_context, validate_component_actions,
+    validate_component_public_urls, validate_internal_page_links,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -149,6 +150,7 @@ pub fn materialize_project_with_runtime_context(
         unresolved_actions,
     } = materialize_component_actions(&linked_document, &effective_context);
     diagnostics.extend(action_diagnostics);
+    diagnostics.extend(validate_component_public_urls(&document));
 
     RuntimeProjectMaterialization {
         document,
@@ -691,5 +693,38 @@ mod tests {
                 .iter()
                 .any(|diagnostic| diagnostic.code == "runtime_context_field_path_invalid")
         );
+    }
+
+    #[test]
+    fn materialized_runtime_urls_are_revalidated_before_rendering() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "link",
+                        "type": "link",
+                        "attributes": { "href": "/safe" }
+                    }]
+                }
+            }],
+            "flyRuntimeBindings": [{
+                "id": "link-href",
+                "component_id": "link",
+                "path": "href",
+                "target": "attribute",
+                "name": "href"
+            }]
+        }))
+        .expect("document");
+        let materialized = materialize_project_with_runtime_context(
+            &document,
+            &json!({ "href": "javascript:alert(1)" }),
+        );
+        assert!(materialized.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "runtime_public_url_invalid"
+                && diagnostic.severity == ValidationSeverity::Error
+        }));
     }
 }

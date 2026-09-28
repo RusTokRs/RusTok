@@ -30,15 +30,17 @@ impl ProjectDocument {
     }
 
     pub fn ensure_stable_ids(&mut self, generator: &mut impl IdGenerator) {
-        let mut used = BTreeSet::new();
+        let mut reserved = BTreeSet::new();
         self.project.visit_components(|component, _, _| {
             if let Some(id) = component.id()
                 && !id.is_empty()
             {
-                used.insert(id.to_string());
+                reserved.insert(id.to_string());
             }
         });
-        self.project.ensure_stable_ids(generator, &mut used);
+        let mut seen = BTreeSet::new();
+        self.project
+            .ensure_stable_ids(generator, &mut reserved, &mut seen);
     }
 }
 
@@ -78,10 +80,15 @@ impl GrapesProject {
         }
     }
 
-    fn ensure_stable_ids(&mut self, generator: &mut impl IdGenerator, used: &mut BTreeSet<String>) {
+    fn ensure_stable_ids(
+        &mut self,
+        generator: &mut impl IdGenerator,
+        reserved: &mut BTreeSet<String>,
+        seen: &mut BTreeSet<String>,
+    ) {
         for page in &mut self.pages {
             if let Some(root) = page.component.as_mut() {
-                root.ensure_stable_ids(generator, used);
+                root.ensure_stable_ids(generator, reserved, seen);
             }
         }
     }
@@ -219,15 +226,22 @@ impl ComponentNode {
         }
     }
 
-    fn ensure_stable_ids(&mut self, generator: &mut impl IdGenerator, used: &mut BTreeSet<String>) {
+    fn ensure_stable_ids(
+        &mut self,
+        generator: &mut impl IdGenerator,
+        reserved: &mut BTreeSet<String>,
+        seen: &mut BTreeSet<String>,
+    ) {
         let Some(object) = self.as_object_mut() else {
             return;
         };
-        if object.id.as_deref().is_none_or(str::is_empty) {
+        let current_id = object.id.as_deref().filter(|id| !id.is_empty());
+        let needs_new_id = current_id.is_none_or(|id| !seen.insert(id.to_string()));
+        if needs_new_id {
             let hint = object.component_type.as_deref().unwrap_or("node");
             let id = loop {
                 let candidate = generator.next_id(hint);
-                if used.insert(candidate.clone()) {
+                if reserved.insert(candidate.clone()) && seen.insert(candidate.clone()) {
                     break candidate;
                 }
             };
@@ -235,7 +249,7 @@ impl ComponentNode {
         }
         if let Some(children) = object.children_mut() {
             for child in children {
-                child.ensure_stable_ids(generator, used);
+                child.ensure_stable_ids(generator, reserved, seen);
             }
         }
     }
@@ -343,6 +357,72 @@ impl ComponentObject {
     pub fn children_mut(&mut self) -> Option<&mut Vec<ComponentNode>> {
         self.components.as_nodes_mut()
     }
+
+    pub fn text_content(&self) -> Option<String> {
+        let mut output = String::new();
+        append_component_text(self, &mut output);
+        let output = output.trim();
+        (!output.is_empty()).then(|| output.to_string())
+    }
+
+    pub(crate) fn set_extension_field(&mut self, name: String, value: Value) {
+        if name == "content" {
+            self.clear_direct_text_children();
+        }
+        self.extensions.insert(name, value);
+    }
+
+    pub(crate) fn remove_extension_field(&mut self, name: &str) {
+        if name == "content" {
+            self.clear_direct_text_children();
+        }
+        self.extensions.remove(name);
+    }
+
+    fn clear_direct_text_children(&mut self) {
+        if let Some(children) = self.children_mut() {
+            children.retain(|child| !is_scalar_text_node(child));
+        }
+    }
+}
+
+fn append_component_text(component: &ComponentObject, output: &mut String) {
+    append_scalar_text(component.extensions.get("content"), output);
+    for child in component.children() {
+        append_node_text(child, output);
+    }
+}
+
+fn append_node_text(node: &ComponentNode, output: &mut String) {
+    match node {
+        ComponentNode::Object(component) => append_component_text(component, output),
+        ComponentNode::Opaque(value) => append_scalar_text(Some(value), output),
+    }
+}
+
+fn append_scalar_text(value: Option<&Value>, output: &mut String) {
+    match value {
+        Some(Value::String(value)) => {
+            output.push_str(value);
+            output.push(' ');
+        }
+        Some(Value::Number(value)) => {
+            output.push_str(&value.to_string());
+            output.push(' ');
+        }
+        Some(Value::Bool(value)) => {
+            output.push_str(if *value { "true" } else { "false" });
+            output.push(' ');
+        }
+        Some(Value::Null | Value::Array(_) | Value::Object(_)) | None => {}
+    }
+}
+
+fn is_scalar_text_node(node: &ComponentNode) -> bool {
+    matches!(
+        node,
+        ComponentNode::Opaque(Value::String(_) | Value::Number(_) | Value::Bool(_))
+    )
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -49,6 +49,9 @@ pub enum StyleRuleCommand {
         #[serde(default)]
         remove_properties: Vec<String>,
     },
+    UpsertRaw {
+        rule: Value,
+    },
     RemoveComponentRule {
         component_id: String,
         scope: StyleRuleScope,
@@ -78,9 +81,11 @@ impl StyleRuleCatalog {
         component_id: &str,
         scope: &StyleRuleScope,
     ) -> Option<&StyleRuleDescriptor> {
-        self.rules
-            .iter()
-            .find(|rule| rule.component_id.as_deref() == Some(component_id) && rule.scope == *scope)
+        let scope_key = scope.stable_key();
+        self.rules.iter().find(|rule| {
+            rule.component_id.as_deref() == Some(component_id)
+                && rule.scope.stable_key() == scope_key.as_str()
+        })
     }
 
     pub fn component_rules<'a>(
@@ -113,11 +118,12 @@ impl StyleRuleDescriptor {
             .map(|value| value.to_ascii_lowercase())
         {
             Some(kind) if kind == "media" => StyleRuleScope::Media {
-                query: object
-                    .get("mediaText")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string(),
+                query: normalize_query(
+                    object
+                        .get("mediaText")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default(),
+                ),
             },
             _ => StyleRuleScope::Base,
         };
@@ -180,14 +186,20 @@ pub fn apply_style_rule_command(
             remove_empty_component_rules(document);
             Ok(())
         }
+        StyleRuleCommand::UpsertRaw { rule } => {
+            upsert_raw_style_rule(document, rule.clone())?;
+            Ok(())
+        }
         StyleRuleCommand::RemoveComponentRule {
             component_id,
             scope,
         } => {
             let before = document.project.styles.len();
+            let scope_key = scope.stable_key();
             document.project.styles.retain(|raw| {
                 StyleRuleDescriptor::from_value(raw.clone()).is_none_or(|rule| {
-                    rule.component_id.as_deref() != Some(component_id) || rule.scope != *scope
+                    rule.component_id.as_deref() != Some(component_id)
+                        || rule.scope.stable_key() != scope_key.as_str()
                 })
             });
             if document.project.styles.len() == before {
@@ -200,6 +212,28 @@ pub fn apply_style_rule_command(
             Ok(())
         }
     }
+}
+
+fn upsert_raw_style_rule(document: &mut ProjectDocument, rule: Value) -> FlyResult<()> {
+    let descriptor = StyleRuleDescriptor::from_value(rule.clone()).ok_or_else(|| {
+        FlyError::Decode("raw style rule must be an object with GrapesJS style metadata".to_string())
+    })?;
+    if let Some(component_id) = descriptor.component_id.as_deref()
+        && !document.contains_component(component_id)
+    {
+        return Err(FlyError::ComponentNotFound(component_id.to_string()));
+    }
+    if let Some(index) = document.project.styles.iter().position(|raw| {
+        StyleRuleDescriptor::from_value(raw.clone()).is_some_and(|candidate| {
+            candidate.id == descriptor.id.as_str()
+                || same_component_rule_identity(&candidate, &descriptor)
+        })
+    }) {
+        document.project.styles[index] = rule;
+    } else {
+        document.project.styles.push(rule);
+    }
+    Ok(())
 }
 
 pub fn component_rule_value(
@@ -255,11 +289,19 @@ fn find_component_rule_index(
     component_id: &str,
     scope: &StyleRuleScope,
 ) -> Option<usize> {
+    let scope_key = scope.stable_key();
     document.project.styles.iter().position(|raw| {
         StyleRuleDescriptor::from_value(raw.clone()).is_some_and(|rule| {
-            rule.component_id.as_deref() == Some(component_id) && rule.scope == *scope
+            rule.component_id.as_deref() == Some(component_id)
+                && rule.scope.stable_key() == scope_key.as_str()
         })
     })
+}
+
+fn same_component_rule_identity(left: &StyleRuleDescriptor, right: &StyleRuleDescriptor) -> bool {
+    left.component_id.as_deref().is_some()
+        && left.component_id.as_deref() == right.component_id.as_deref()
+        && left.scope.stable_key() == right.scope.stable_key()
 }
 
 fn remove_empty_component_rules(document: &mut ProjectDocument) {
@@ -406,5 +448,43 @@ mod tests {
         );
         assert_eq!(document.project.styles[0]["style"]["color"], "red");
         assert_eq!(document.project.styles[0]["style"]["width"], "100%");
+    }
+
+    #[test]
+    fn media_rule_upsert_matches_normalized_scope() {
+        let mut document = document();
+        apply_style_rule_command(
+            &mut document,
+            &StyleRuleCommand::UpsertComponentRule {
+                component_id: "hero".to_string(),
+                scope: StyleRuleScope::Media {
+                    query: "(max-width:  767px)".to_string(),
+                },
+                declarations: Map::from_iter([(
+                    "color".to_string(),
+                    Value::String("red".to_string()),
+                )]),
+                remove_properties: Vec::new(),
+            },
+        )
+        .expect("first rule");
+        apply_style_rule_command(
+            &mut document,
+            &StyleRuleCommand::UpsertComponentRule {
+                component_id: "hero".to_string(),
+                scope: StyleRuleScope::Media {
+                    query: "(max-width: 767px)".to_string(),
+                },
+                declarations: Map::from_iter([(
+                    "padding".to_string(),
+                    Value::String("24px".to_string()),
+                )]),
+                remove_properties: Vec::new(),
+            },
+        )
+        .expect("second rule");
+        assert_eq!(document.project.styles.len(), 1);
+        assert_eq!(document.project.styles[0]["style"]["color"], "red");
+        assert_eq!(document.project.styles[0]["style"]["padding"], "24px");
     }
 }

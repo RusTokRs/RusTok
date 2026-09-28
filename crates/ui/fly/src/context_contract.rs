@@ -1,7 +1,7 @@
 use crate::{
     ComputedContextValue, ContextExpression, ContextFieldDefinition, ContextSchemaCatalog,
     ContextValueKind, ProjectDocument, ValidationDiagnostic, ValidationSeverity,
-    materialize_context, validate_context_definitions,
+    is_valid_context_path, materialize_context, validate_context_definitions,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -129,7 +129,6 @@ pub fn extract_runtime_context_contract(document: &ProjectDocument) -> RuntimeCo
         .map(|computed| computed.path.clone())
         .collect();
     let mut definition_diagnostics = validate_context_definitions(document);
-    definition_diagnostics.extend(validate_strict_context_paths(&catalog));
     deduplicate_diagnostics(&mut definition_diagnostics);
 
     RuntimeContextContract {
@@ -198,96 +197,7 @@ pub fn context_expression_dependencies(expression: &ContextExpression) -> Vec<St
 }
 
 pub fn is_valid_runtime_context_path(path: &str) -> bool {
-    let path = path.trim();
-    if path.is_empty() {
-        return false;
-    }
-    let path = path.strip_prefix('$').unwrap_or(path);
-    let path = path.strip_prefix('.').unwrap_or(path);
-    if path.is_empty() {
-        return false;
-    }
-
-    let mut token = String::new();
-    let mut chars = path.chars().peekable();
-    let mut saw_segment = false;
-    while let Some(character) = chars.next() {
-        match character {
-            '.' => {
-                if token.is_empty() {
-                    return false;
-                }
-                token.clear();
-                saw_segment = true;
-            }
-            '[' => {
-                if !token.is_empty() {
-                    token.clear();
-                }
-                let mut index = String::new();
-                let mut closed = false;
-                for character in chars.by_ref() {
-                    if character == ']' {
-                        closed = true;
-                        break;
-                    }
-                    index.push(character);
-                }
-                if !closed || index.is_empty() || index.parse::<usize>().is_err() {
-                    return false;
-                }
-                saw_segment = true;
-                if chars.peek() == Some(&'.') {
-                    chars.next();
-                    if chars.peek().is_none() {
-                        return false;
-                    }
-                }
-            }
-            ']' | '{' | '}' => return false,
-            character if character.is_whitespace() => return false,
-            _ => token.push(character),
-        }
-    }
-    saw_segment || !token.is_empty()
-}
-
-fn validate_strict_context_paths(catalog: &ContextSchemaCatalog) -> Vec<ValidationDiagnostic> {
-    let mut diagnostics = Vec::new();
-    for field in &catalog.fields {
-        if !is_valid_runtime_context_path(&field.path) {
-            diagnostics.push(contract_diagnostic(
-                ValidationSeverity::Error,
-                "runtime_context_field_path_invalid",
-                &field.path,
-                format!("context field `{}` must use a non-empty path", field.id),
-            ));
-        }
-    }
-    for computed in &catalog.computed {
-        if !is_valid_runtime_context_path(&computed.path) {
-            diagnostics.push(contract_diagnostic(
-                ValidationSeverity::Error,
-                "runtime_computed_path_invalid",
-                &computed.path,
-                format!("computed value `{}` must use a non-empty path", computed.id),
-            ));
-        }
-        for dependency in context_expression_dependencies(&computed.expression) {
-            if !is_valid_runtime_context_path(&dependency) {
-                diagnostics.push(contract_diagnostic(
-                    ValidationSeverity::Error,
-                    "runtime_computed_dependency_path_invalid",
-                    &computed.path,
-                    format!(
-                        "computed value `{}` dependency `{dependency}` is invalid",
-                        computed.id
-                    ),
-                ));
-            }
-        }
-    }
-    diagnostics
+    is_valid_context_path(path)
 }
 
 fn collect_dependencies(expression: &ContextExpression, paths: &mut BTreeSet<String>) {
@@ -349,20 +259,6 @@ fn deduplicate_diagnostics(diagnostics: &mut Vec<ValidationDiagnostic>) {
             diagnostic.message.clone(),
         ))
     });
-}
-
-fn contract_diagnostic(
-    severity: ValidationSeverity,
-    code: impl Into<String>,
-    path: impl Into<String>,
-    message: impl Into<String>,
-) -> ValidationDiagnostic {
-    ValidationDiagnostic {
-        severity,
-        code: code.into(),
-        path: path.into(),
-        message: message.into(),
-    }
 }
 
 #[cfg(test)]

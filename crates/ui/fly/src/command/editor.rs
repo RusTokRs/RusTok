@@ -203,8 +203,7 @@ impl FlyEditor {
                 let component = document
                     .component_mut(component_id)
                     .ok_or_else(|| FlyError::ComponentNotFound(component_id.clone()))?;
-                patch.clone().apply(component);
-                Ok(())
+                patch.clone().apply(component)
             }
             EditorCommand::Asset { command } => apply_asset_command(document, command),
             EditorCommand::StyleRule { command } => apply_style_rule_command(document, command),

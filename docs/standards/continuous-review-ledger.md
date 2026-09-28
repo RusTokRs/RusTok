@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `6c36bc8f4326dcda42855cd6dfd8ab0baba8a07f`  
+**Current main SHA:** `7b817f47d408d94d01751e332c0bb926343d8637`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -367,6 +367,21 @@ Hard limits for every iteration:
 - **Documentation:** `crates/modules/rustok-auth/docs/README.md` now records the checked JWT expiration boundary.
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.07` complete after merge; continue to the next unchecked primary module in FS-22.03.
+
+### FS-22.03.12 Iterations 1-6 — `apps/server/src/services/auth_lifecycle.rs`
+
+- **Base:** refreshed `main` at `bb2bfe5c4a3a6417510a000d18615ad7ac4089fc`; module track `codex/audit-fs-22.03.12-auth-lifecycle-service`.
+- **Iteration 1 — atomic registration/session issuance:** registration previously committed the user before session/token creation, and session insertion could commit before later role/JWT failures. Introduced `create_session_and_tokens_in_tx`, moved registration to one transaction, and added rollback coverage.
+- **Iteration 2 — login identity fence:** login now rechecks and locks the tenant-scoped user after password verification, rejects password/status drift, and commits `last_login_at` plus session/token issuance atomically. SQLite uses a write fence and rereads the row.
+- **Iteration 3 — password-change session fence:** password changes revalidate credential/status under a user lock and require the current session to remain active under a second lock. SQLite write-fence paths require one affected row and reread current state; lock ordering remains user then session.
+- **Iteration 4 — SQLite refresh replay fence:** conditional refresh-session fencing now checks `rows_affected`; a zero-row race rereads the current session and only preserves it when the presented token hash remains current, preventing replay after rotation while preserving expiry semantics after revocation.
+- **Iteration 5 — bounded session reads:** the service now clamps direct session-list limits to `1..=100`, matching REST/GraphQL and preventing lower-level callers from bypassing the read budget.
+- **Iteration 6 — expiration arithmetic:** both refresh rotation and initial session issuance now use checked `i64` conversion and `DateTime::checked_add_signed`, eliminating lossy `u64 -> i64` arithmetic.
+- **Immediate/adjacent/regression audits:** after every remediation, re-read the changed path and direct callers; reviewed DB transaction semantics, RBAC role resolution, auth extractor session checks, admin user mutation lock ordering, event/outbox boundaries, and GraphQL/native lifecycle consumers.
+- **Fresh final second pass:** searched the complete service for unsafe casts, process-level panics, silent error suppression, unrestricted session reads, unchecked expiration arithmetic, stale SQLite snapshots, and commit-before-fallible-step patterns. No remaining repository-owned in-scope defect was found.
+- **Verification:** repository source inspection and branch-diff review only. Per maintainer-owned verification policy, no tests, clippy, build, gatekeeper, migrations, or runtime commands were executed by the agent.
+- **Integration:** iterations merged through PRs #4248, #4249, #4250, #4251, #4253, and #4254; latest integrated `main` before closeout is `f9b69054270dc0a23cfd0d9cfeb453667e0a3f90`.
+- **Status:** `FS-22.03.12` complete. Next primary module: `FS-22.03.13 — apps/server/src/services/auth_lifecycle_provider.rs`.
 
 ### FS-22.03.11 Iteration 1 — `crates/modules/rustok-auth/src/lifecycle.rs`
 

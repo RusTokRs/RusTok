@@ -191,6 +191,69 @@ fn missing_form_and_unsafe_url_are_blocking_validation() {
 }
 
 #[test]
+fn materialization_does_not_emit_invalid_action_attributes() {
+    let document = GrapesJsCodec::decode_value(json!({
+        "pages": [{
+            "component": {
+                "id": "root",
+                "type": "wrapper",
+                "components": [{
+                    "id": "bad-link",
+                    "type": "link",
+                    "tagName": "a",
+                    "attributes": {
+                        "href": "/stale",
+                        "target": "_blank",
+                        "rel": "opener",
+                        "data-fly-action-kind": "navigate_url"
+                    },
+                    "flyAction": { "kind": "navigate_url", "href": "javascript:alert(1)" }
+                }]
+            }
+        }]
+    }))
+    .expect("document");
+    let result = materialize_component_actions(&document, &json!({}));
+    assert_eq!(result.unresolved_actions, 1);
+    assert!(result.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "runtime_action_invalid" && diagnostic.path == "component:bad-link"
+    }));
+    let component = result.document.component("bad-link").unwrap();
+    assert!(!component.attributes.contains_key("href"));
+    assert!(!component.attributes.contains_key("target"));
+    assert!(!component.attributes.contains_key("rel"));
+    assert!(!component.attributes.contains_key(FLY_ACTION_KIND_ATTRIBUTE));
+}
+
+#[test]
+fn materialization_clears_conflicting_interaction_contracts() {
+    let document = GrapesJsCodec::decode_value(json!({
+        "pages": [{
+            "id": "home",
+            "flyPageMeta": { "slug": "home" },
+            "component": {
+                "id": "root",
+                "type": "wrapper",
+                "components": [{
+                    "id": "conflict",
+                    "type": "link",
+                    "tagName": "a",
+                    "attributes": { "href": "/stale", "data-fly-action-kind": "navigate_page" },
+                    "flyPageLink": { "page_id": "home" },
+                    "flyAction": { "kind": "navigate_page", "page_id": "home" }
+                }]
+            }
+        }]
+    }))
+    .expect("document");
+    let result = materialize_component_actions(&document, &json!({}));
+    assert_eq!(result.unresolved_actions, 1);
+    let component = result.document.component("conflict").unwrap();
+    assert!(!component.attributes.contains_key("href"));
+    assert!(!component.attributes.contains_key(FLY_ACTION_KIND_ATTRIBUTE));
+}
+
+#[test]
 fn network_paths_and_backslash_urls_are_blocking_validation() {
     let document = GrapesJsCodec::decode_value(json!({
         "pages": [{
@@ -301,6 +364,37 @@ fn non_post_encoding_is_rejected() {
     assert!(diagnostics.iter().any(|diagnostic| {
         diagnostic.code == "form_definition_invalid"
             && diagnostic.message.contains("encoding requires post")
+    }));
+}
+
+#[test]
+fn form_action_url_matches_renderer_policy() {
+    let document = GrapesJsCodec::decode_value(json!({
+        "pages": [{
+            "component": {
+                "id": "root",
+                "type": "wrapper",
+                "components": [{
+                    "id": "mailto-form",
+                    "type": "form",
+                    "flyForm": { "id": "contact", "action_url": "mailto:sales@example.com" }
+                }, {
+                    "id": "absolute-form",
+                    "type": "form",
+                    "flyForm": { "id": "signup", "action_url": "https://example.com/signup" }
+                }]
+            }
+        }]
+    }))
+    .expect("document");
+    let diagnostics = validate_component_actions(&document);
+    assert!(diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "form_definition_invalid"
+            && diagnostic.path == "component:mailto-form"
+    }));
+    assert!(!diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "form_definition_invalid"
+            && diagnostic.path == "component:absolute-form"
     }));
 }
 

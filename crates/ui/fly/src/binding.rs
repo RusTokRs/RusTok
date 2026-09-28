@@ -1,5 +1,6 @@
 use crate::{
     ComponentObject, FlyError, FlyResult, ProjectDocument, ValidationDiagnostic, ValidationSeverity,
+    is_valid_runtime_context_path, resolve_context_path,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
@@ -133,7 +134,28 @@ pub fn materialize_bindings(document: &ProjectDocument, context: &Value) -> Bind
     let mut unresolved_bindings = 0usize;
 
     for binding in &catalog.bindings {
-        let resolved = resolve_path(context, &binding.path).cloned();
+        if !is_valid_runtime_context_path(&binding.path) {
+            unresolved_bindings = unresolved_bindings.saturating_add(1);
+            diagnostics.push(binding_diagnostic(
+                ValidationSeverity::Warning,
+                "runtime_binding_path_invalid",
+                format!(
+                    "binding `{}` has an invalid context path `{}`",
+                    binding.id, binding.path
+                ),
+            ));
+            continue;
+        }
+        if let Err(error) = validate_binding_target(&binding.target) {
+            unresolved_bindings = unresolved_bindings.saturating_add(1);
+            diagnostics.push(binding_diagnostic(
+                ValidationSeverity::Warning,
+                "runtime_binding_target_invalid",
+                format!("binding `{}` has an invalid target: {error}", binding.id),
+            ));
+            continue;
+        }
+        let resolved = resolve_context_path(context, &binding.path).cloned();
         let (source, used_fallback) = match resolved {
             Some(value) => (Some(value), false),
             None => (binding.fallback.clone(), binding.fallback.is_some()),
@@ -209,11 +231,21 @@ pub fn validate_binding_definitions(document: &ProjectDocument) -> Vec<Validatio
                 format!("runtime binding id `{}` is duplicated", binding.id),
             ));
         }
-        if binding.path.trim().is_empty() {
+        if !is_valid_runtime_context_path(&binding.path) {
             diagnostics.push(binding_diagnostic(
                 ValidationSeverity::Error,
-                "runtime_binding_path_empty",
-                format!("runtime binding `{}` has an empty context path", binding.id),
+                "runtime_binding_path_invalid",
+                format!(
+                    "runtime binding `{}` has an invalid context path `{}`",
+                    binding.id, binding.path
+                ),
+            ));
+        }
+        if let Err(error) = validate_binding_target(&binding.target) {
+            diagnostics.push(binding_diagnostic(
+                ValidationSeverity::Error,
+                "runtime_binding_target_invalid",
+                format!("runtime binding `{}` has an invalid target: {error}", binding.id),
             ));
         }
         if !document.contains_component(&binding.component_id) {
@@ -247,11 +279,13 @@ fn validate_binding_identity(
             "runtime binding id must not be empty".to_string(),
         ));
     }
-    if binding.path.trim().is_empty() {
-        return Err(FlyError::Decode(
-            "runtime binding path must not be empty".to_string(),
-        ));
+    if !is_valid_runtime_context_path(&binding.path) {
+        return Err(FlyError::Decode(format!(
+            "runtime binding path `{}` is invalid",
+            binding.path
+        )));
     }
+    validate_binding_target(&binding.target).map_err(FlyError::Decode)?;
     if !document.contains_component(&binding.component_id) {
         return Err(FlyError::ComponentNotFound(binding.component_id.clone()));
     }
@@ -272,14 +306,6 @@ fn write_catalog(document: &mut ProjectDocument, catalog: BindingCatalog) -> Fly
         Value::Array(entries),
     );
     Ok(())
-}
-
-fn resolve_path<'a>(context: &'a Value, path: &str) -> Option<&'a Value> {
-    let mut current = context;
-    for segment in path.split('.').filter(|segment| !segment.is_empty()) {
-        current = current.get(segment)?;
-    }
-    Some(current)
 }
 
 fn apply_value(component: &mut ComponentObject, target: &BindingTarget, value: Value) {
@@ -306,15 +332,35 @@ fn apply_value(component: &mut ComponentObject, target: &BindingTarget, value: V
 
 fn set_component_field(component: &mut ComponentObject, name: &str, value: Value) {
     match name {
-        "id" => component.id = value.as_str().map(ToString::to_string),
-        "type" => component.component_type = value.as_str().map(ToString::to_string),
         "tagName" => component.tag_name = value.as_str().map(ToString::to_string),
-        "provider" => component.provider = value.as_str().map(ToString::to_string),
-        "style" => component.style = Some(value),
-        "traits" => component.traits = value.as_array().cloned().unwrap_or_default(),
-        "components" => {}
         other => {
-            component.extensions.insert(other.to_string(), value);
+            component.set_extension_field(other.to_string(), value);
+        }
+    }
+}
+
+fn validate_binding_target(target: &BindingTarget) -> Result<(), String> {
+    match target {
+        BindingTarget::Attribute { name } | BindingTarget::Style { name } => {
+            if name.trim().is_empty() {
+                Err("attribute and style targets require a non-empty name".to_string())
+            } else {
+                Ok(())
+            }
+        }
+        BindingTarget::Field { name } => {
+            if name.trim().is_empty() {
+                return Err("field target requires a non-empty name".to_string());
+            }
+            if matches!(
+                name.as_str(),
+                "id" | "type" | "provider" | "components" | "attributes" | "style" | "traits"
+            ) {
+                return Err(format!(
+                    "field `{name}` is owned by the component structure and cannot be runtime-bound"
+                ));
+            }
+            Ok(())
         }
     }
 }
@@ -356,5 +402,83 @@ fn binding_diagnostic(
         code: code.into(),
         path: format!("project.extensions.{FLY_RUNTIME_BINDINGS_FIELD}"),
         message: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::GrapesJsCodec;
+    use serde_json::json;
+
+    fn document() -> ProjectDocument {
+        GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{ "id": "title", "type": "text" }]
+                }
+            }]
+        }))
+        .expect("document")
+    }
+
+    #[test]
+    fn bindings_resolve_indexed_context_paths() {
+        let mut document = document();
+        apply_binding_command(
+            &mut document,
+            &BindingCommand::Upsert {
+                binding: Box::new(RuntimeBinding {
+                    id: "title".to_string(),
+                    component_id: "title".to_string(),
+                    path: "items[0].title".to_string(),
+                    target: BindingTarget::Field {
+                        name: "content".to_string(),
+                    },
+                    fallback: None,
+                    transform: BindingTransform::Identity,
+                    extensions: Map::new(),
+                }),
+            },
+        )
+        .expect("binding");
+        let materialized = materialize_bindings(
+            &document,
+            &json!({ "items": [{ "title": "First" }] }),
+        );
+        assert_eq!(materialized.applied_bindings, 1);
+        assert_eq!(
+            materialized
+                .document
+                .component("title")
+                .and_then(|component| component.extensions.get("content"))
+                .and_then(Value::as_str),
+            Some("First")
+        );
+    }
+
+    #[test]
+    fn structural_field_bindings_are_rejected() {
+        let mut document = document();
+        let error = apply_binding_command(
+            &mut document,
+            &BindingCommand::Upsert {
+                binding: Box::new(RuntimeBinding {
+                    id: "bad".to_string(),
+                    component_id: "title".to_string(),
+                    path: "component.id".to_string(),
+                    target: BindingTarget::Field {
+                        name: "id".to_string(),
+                    },
+                    fallback: None,
+                    transform: BindingTransform::Identity,
+                    extensions: Map::new(),
+                }),
+            },
+        )
+        .expect_err("structural binding");
+        assert!(matches!(error, FlyError::Decode(_)));
     }
 }
