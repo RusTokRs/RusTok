@@ -103,9 +103,9 @@ fn parse_metadata_issuer(issuer: &str) -> Result<Url, Error> {
         Error::Message("OAuth metadata requires an absolute issuer URL".into())
     })?;
 
-    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+    if url.scheme() != "https" || url.host_str().is_none() {
         return Err(Error::Message(
-            "OAuth metadata requires an HTTP(S) issuer URL".into(),
+            "OAuth metadata requires an HTTPS issuer URL".into(),
         ));
     }
 
@@ -171,9 +171,11 @@ mod tests {
     }
 
     #[test]
-    fn metadata_rejects_non_url_issuer() {
-        let error = metadata_for_issuer("rustok").expect_err("relative issuer must be rejected");
-        assert!(error.to_string().contains("absolute issuer URL"));
+    fn metadata_rejects_non_url_and_non_https_issuers() {
+        for issuer in ["rustok", "http://api.example.com"] {
+            let error = metadata_for_issuer(issuer).expect_err("issuer must be rejected");
+            assert!(!error.to_string().is_empty());
+        }
     }
 
     #[test]
