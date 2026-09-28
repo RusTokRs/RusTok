@@ -306,8 +306,9 @@ impl AuthLifecycleService {
         password: &str,
         name: Option<String>,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
-        let user = Self::create_user_runtime(
-            ctx,
+        let tx = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
+        let user = Self::create_user_in_tx(
+            &tx,
             tenant_id,
             email,
             password,
@@ -316,10 +317,16 @@ impl AuthLifecycleService {
             None,
         )
         .await?;
-
-        let tokens =
-            Self::create_session_and_tokens_db(ctx.db(), config, tenant_id, &user, None, None)
-                .await?;
+        let tokens = Self::create_session_and_tokens_in_tx(
+            &tx,
+            config,
+            tenant_id,
+            &user,
+            None,
+            None,
+        )
+        .await?;
+        tx.commit().await.map_err(AuthLifecycleError::from)?;
 
         Ok((user, tokens))
     }
@@ -713,6 +720,31 @@ impl AuthLifecycleService {
         ip_address: Option<String>,
         user_agent: Option<String>,
     ) -> std::result::Result<AuthTokens, AuthLifecycleError> {
+        let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
+        let tokens = Self::create_session_and_tokens_in_tx(
+            &tx,
+            config,
+            tenant_id,
+            user,
+            ip_address,
+            user_agent,
+        )
+        .await?;
+        tx.commit().await.map_err(AuthLifecycleError::from)?;
+        Ok(tokens)
+    }
+
+    async fn create_session_and_tokens_in_tx<C>(
+        db: &C,
+        config: &AuthConfig,
+        tenant_id: uuid::Uuid,
+        user: &users::Model,
+        ip_address: Option<String>,
+        user_agent: Option<String>,
+    ) -> std::result::Result<AuthTokens, AuthLifecycleError>
+    where
+        C: ConnectionTrait,
+    {
         let now = Utc::now();
         let refresh_token = generate_refresh_token().map_err(AuthLifecycleError::from)?;
         let token_hash = hash_refresh_token(&refresh_token);
@@ -836,6 +868,7 @@ mod tests {
     use crate::models::_entities::user_roles;
     use crate::models::{sessions, tenants, users};
     use crate::services::rbac_service::RbacService;
+    use crate::services::server_runtime_context::ServerRuntimeContext;
     use chrono::{Duration, Utc};
     use rustok_core::UserStatus;
     use rustok_migrations::SqliteTestMigrator as Migrator;
@@ -1390,6 +1423,46 @@ mod tests {
             metrics_after.login_inactive_user_attempt_total
                 > metrics_before.login_inactive_user_attempt_total
         );
+    }
+
+    #[tokio::test]
+    async fn register_rolls_back_user_and_session_when_token_issuance_fails() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Atomic register tenant", "atomic-register-tenant")
+            .insert(&db)
+            .await
+            .expect("failed to create tenant");
+        let ctx = ServerRuntimeContext::new(db.clone(), crate::common::settings::RustokSettings::default());
+        let config = AuthConfig::new("register-atomic-secret".to_string())
+            .with_rs256("", super::super::jwt::TEST_RSA_PUBLIC_KEY);
+
+        let result = AuthLifecycleService::register_runtime(
+            &ctx,
+            &config,
+            tenant.id,
+            "atomic@example.com",
+            "Password123!",
+            Some("Atomic Register".to_string()),
+        )
+        .await;
+
+        assert!(matches!(result, Err(AuthLifecycleError::Internal(_))));
+
+        let users = users::Entity::find()
+            .filter(users::Column::TenantId.eq(tenant.id))
+            .filter(users::Column::Email.eq("atomic@example.com"))
+            .all(&db)
+            .await
+            .expect("failed to inspect rolled-back users");
+        assert!(users.is_empty());
+
+        let sessions = sessions::Entity::find()
+            .filter(sessions::Column::TenantId.eq(tenant.id))
+            .filter(sessions::Column::UserId.eq(uuid::Uuid::nil()))
+            .all(&db)
+            .await
+            .expect("failed to inspect sessions");
+        assert!(sessions.is_empty());
     }
 
     #[tokio::test]
