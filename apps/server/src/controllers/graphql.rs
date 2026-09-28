@@ -434,8 +434,8 @@ pub fn router() -> crate::routes::ServerRouter {
 #[cfg(test)]
 mod tests {
     use super::{
-        GRAPHQL_HTTP_PATH, WS_INCOMING_QUEUE_CAPACITY, WS_MAX_FRAME_SIZE, WS_MAX_MESSAGE_SIZE,
-        graphql_http_response, graphql_permissions,
+        GRAPHQL_HTTP_PATH, TRUSTED_CLIENT_IP_HEADER, WS_INCOMING_QUEUE_CAPACITY,
+        WS_MAX_FRAME_SIZE, WS_MAX_MESSAGE_SIZE, graphql_http_response, graphql_permissions,
     };
     use crate::{
         common::settings::RustokSettings, middleware::tenant,
