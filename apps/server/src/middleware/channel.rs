@@ -138,14 +138,28 @@ enum CachedChannelResolution {
 }
 
 impl CachedChannelResolution {
-    fn from_decision(decision: ResolutionDecision) -> Self {
+    fn from_decision(decision: ResolutionDecision, facts: &RequestFacts) -> Self {
         resolved_detail_source_and_trace(decision)
             .map(|(detail, source, trace)| {
-                let selected_target = detail
-                    .targets
-                    .iter()
-                    .find(|target| target.is_primary)
-                    .or_else(|| detail.targets.first());
+                let selected_target = match source {
+                    ChannelResolutionSource::Host => facts
+                        .host
+                        .as_deref()
+                        .and_then(|host| ChannelTargetType::WebDomain.normalize_value(host))
+                        .and_then(|normalized_host| {
+                            detail.targets.iter().find(|target| {
+                                ChannelTargetType::parse(&target.target_type)
+                                    .is_some_and(|target_type| target_type.supports_host_resolution())
+                                    && ChannelTargetType::WebDomain
+                                        .normalize_value(&target.value)
+                                        .is_some_and(|value| value == normalized_host)
+                            })
+                        }),
+                    _ => None,
+                }
+                .or_else(|| detail.targets.iter().find(|target| target.is_primary))
+                .or_else(|| detail.targets.first());
+
                 Self::Found(Box::new(ChannelContext {
                     id: detail.channel.id,
                     tenant_id: detail.channel.tenant_id,
@@ -317,7 +331,7 @@ pub async fn resolve(
                 resolver
                     .resolve(&facts)
                     .await
-                    .map(CachedChannelResolution::from_decision)
+                    .map(|decision| CachedChannelResolution::from_decision(decision, &facts))
                     .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)
             })
             .await
@@ -326,7 +340,7 @@ pub async fn resolve(
         resolver
             .resolve(&facts)
             .await
-            .map(CachedChannelResolution::from_decision)
+            .map(|decision| CachedChannelResolution::from_decision(decision, &facts))
             .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?
     };
 
