@@ -9,6 +9,17 @@ use crate::{
 const MIN_BACKFILL_USER_READ_LIMIT: u64 = 1;
 const MAX_BACKFILL_USER_READ_LIMIT: u64 = 500;
 
+fn internal_backfill_error<E>(error: E) -> AuthLifecycleMutationError
+where
+    E: std::fmt::Display,
+{
+    tracing::error!(
+        error = %error,
+        "Auth user backfill read failed"
+    );
+    AuthLifecycleMutationError::Internal("Auth user backfill read failed".to_string())
+}
+
 
 /// Database-backed adapter for the auth-owned, bounded profile-provisioning
 /// identity projection. It is usable by the standalone CLI and does not expose
@@ -54,23 +65,26 @@ impl AuthUserBackfillReadPort for AuthUserBackfillDbReader {
         let statement = Statement::from_sql_and_values(
             backend,
             sql,
-            vec![request.tenant_id.into(), i64::try_from(limit).map_err(|_| {
-                AuthLifecycleMutationError::Validation(
-                    "profile backfill user read limit is out of range".to_string(),
-                )
-            })?.into()],
+            vec![
+                request.tenant_id.into(),
+                i64::try_from(limit)
+                    .map_err(|_| AuthLifecycleMutationError::Validation(
+                        "profile backfill user read limit is out of range".to_string(),
+                    ))?
+                    .into(),
+            ],
         );
 
         self.db
             .query_all_raw(statement)
             .await
-            .map_err(|error| AuthLifecycleMutationError::Internal(error.to_string()))?
+            .map_err(internal_backfill_error)?
             .into_iter()
             .map(|row| {
                 Ok(AuthUserBackfillRecord {
                     id: row
                         .try_get("", "id")
-                        .map_err(|error| AuthLifecycleMutationError::Internal(error.to_string()))?,
+                        .map_err(internal_backfill_error)?,
                     email: row
                         .try_get("", "email")
                         .map_err(|error| AuthLifecycleMutationError::Internal(error.to_string()))?,
@@ -87,6 +101,17 @@ impl AuthUserBackfillReadPort for AuthUserBackfillDbReader {
 #[cfg(test)]
 mod tests {
     use super::validate_backfill_user_read_limit;
+
+    #[test]
+    fn internal_backfill_errors_are_redacted() {
+        let error = super::internal_backfill_error("database password leaked");
+
+        assert!(matches!(
+            error,
+            AuthLifecycleMutationError::Internal(message)
+                if message == "Auth user backfill read failed"
+        ));
+    }
 
     #[test]
     fn backfill_user_read_limit_is_bounded() {
