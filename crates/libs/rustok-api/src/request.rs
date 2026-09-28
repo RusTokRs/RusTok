@@ -225,20 +225,15 @@ mod tests {
     #[test]
     fn normalizes_accept_language_header() {
         let request = Request::builder()
-            .header("X-Tenant-ID", Uuid::nil().to_string())
             .header("Accept-Language", "ru-ru,ru;q=0.9,en;q=0.8")
             .body(())
             .expect("request");
-        let (mut parts, _) = request.into_parts();
-        insert_test_tenant(&mut parts, Uuid::nil(), "en");
-        insert_resolved_locale(&mut parts, "ru-RU");
+        let (parts, _) = request.into_parts();
 
-        let runtime = Runtime::new().expect("tokio runtime");
-        let context = runtime
-            .block_on(RequestContext::from_request_parts(&mut parts, &()))
-            .expect("request context");
-
-        assert_eq!(context.locale, "ru-RU");
+        assert_eq!(
+            extract_requested_locale(&parts).as_deref(),
+            Some("ru-RU")
+        );
     }
 
     #[test]
@@ -349,17 +344,8 @@ mod tests {
     fn includes_channel_context_when_middleware_resolves_channel() {
         let request = Request::builder().body(()).expect("request");
         let (mut parts, _) = request.into_parts();
-        parts
-            .extensions
-            .insert(TenantContextExtension(TenantContext {
-                id: Uuid::nil(),
-                name: "Test".to_string(),
-                slug: "test".to_string(),
-                domain: None,
-                settings: serde_json::json!({}),
-                default_locale: "en".to_string(),
-                is_active: true,
-            }));
+        insert_test_tenant(&mut parts, Uuid::nil(), "en");
+        insert_resolved_locale(&mut parts, "en");
         let channel_id = Uuid::new_v4();
         parts
             .extensions
@@ -405,57 +391,39 @@ mod tests {
     fn prefers_query_locale_over_cookie_and_headers() {
         let request = Request::builder()
             .uri("/api/blog/posts?locale=ru")
-            .header("X-Tenant-ID", Uuid::nil().to_string())
             .header("Cookie", "rustok-admin-locale=en")
             .header("Accept-Language", "de-DE,de;q=0.9")
             .body(())
             .expect("request");
-        let (mut parts, _) = request.into_parts();
-        insert_test_tenant(&mut parts, Uuid::nil(), "en");
+        let (parts, _) = request.into_parts();
 
-        let runtime = Runtime::new().expect("tokio runtime");
-        let context = runtime
-            .block_on(RequestContext::from_request_parts(&mut parts, &()))
-            .expect("request context");
-
-        assert_eq!(context.locale, "ru");
+        assert_eq!(extract_requested_locale(&parts).as_deref(), Some("ru"));
     }
 
     #[test]
     fn falls_back_to_admin_locale_cookie_before_accept_language() {
         let request = Request::builder()
-            .header("X-Tenant-ID", Uuid::nil().to_string())
             .header("Cookie", "rustok-admin-locale=ru")
             .header("Accept-Language", "en-US,en;q=0.9")
             .body(())
             .expect("request");
-        let (mut parts, _) = request.into_parts();
-        insert_test_tenant(&mut parts, Uuid::nil(), "en");
+        let (parts, _) = request.into_parts();
 
-        let runtime = Runtime::new().expect("tokio runtime");
-        let context = runtime
-            .block_on(RequestContext::from_request_parts(&mut parts, &()))
-            .expect("request context");
-
-        assert_eq!(context.locale, "ru");
+        assert_eq!(extract_requested_locale(&parts).as_deref(), Some("ru"));
     }
 
     #[test]
     fn prefers_highest_quality_accept_language_value() {
         let request = Request::builder()
-            .header("X-Tenant-ID", Uuid::nil().to_string())
             .header("Accept-Language", "en-US;q=0.5,ru-RU;q=0.9,de;q=0.8")
             .body(())
             .expect("request");
-        let (mut parts, _) = request.into_parts();
-        insert_test_tenant(&mut parts, Uuid::nil(), "en");
+        let (parts, _) = request.into_parts();
 
-        let runtime = Runtime::new().expect("tokio runtime");
-        let context = runtime
-            .block_on(RequestContext::from_request_parts(&mut parts, &()))
-            .expect("request context");
-
-        assert_eq!(context.locale, "ru-RU");
+        assert_eq!(
+            extract_requested_locale(&parts).as_deref(),
+            Some("ru-RU")
+        );
     }
 
     #[test]
@@ -527,20 +495,13 @@ mod tests {
     #[test]
     fn prefers_medusa_locale_header_over_cookie_and_accept_language() {
         let request = Request::builder()
-            .header("X-Tenant-ID", Uuid::nil().to_string())
             .header("x-medusa-locale", "de-DE")
             .header("Cookie", "rustok-admin-locale=ru")
             .header("Accept-Language", "en-US,en;q=0.9")
             .body(())
             .expect("request");
-        let (mut parts, _) = request.into_parts();
-        insert_test_tenant(&mut parts, Uuid::nil(), "en");
+        let (parts, _) = request.into_parts();
 
-        let runtime = Runtime::new().expect("tokio runtime");
-        let context = runtime
-            .block_on(RequestContext::from_request_parts(&mut parts, &()))
-            .expect("request context");
-
-        assert_eq!(context.locale, "de-DE");
+        assert_eq!(extract_requested_locale(&parts).as_deref(), Some("de-DE"));
     }
 }
