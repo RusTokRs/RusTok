@@ -78,9 +78,6 @@ pub fn ProductGridPage() -> impl IntoView {
     let on_bulk_status = {
         let base_token = token;
         let base_tenant = tenant;
-    let on_bulk_status = {
-        let base_token = token;
-        let base_tenant = tenant;
         move |target_status: &'static str| {
             let selected_ids = selection.get().to_vec();
             if selected_ids.is_empty() {
