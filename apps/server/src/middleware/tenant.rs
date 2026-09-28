@@ -656,16 +656,17 @@ pub async fn init_tenant_cache_infrastructure(
     ctx: &ServerRuntimeContext,
     cache_service: &CacheService,
 ) -> crate::error::Result<()> {
-    if !ctx.shared_contains::<CacheService>() {
-        ctx.shared_insert(cache_service.clone());
-    }
+    let _ = ctx.shared_insert_if_absent(cache_service.clone());
+    let canonical_cache_service = ctx.shared_get::<CacheService>().ok_or_else(|| {
+        crate::error::Error::Cache("tenant cache service is unavailable".to_string())
+    })?;
 
     if ctx.shared_contains::<Arc<TenantCacheInfrastructure>>() {
         return Ok(());
     }
 
-    let infrastructure = TenantCacheInfrastructure::new(cache_service).await?;
-    ctx.shared_insert(Arc::new(infrastructure));
+    let infrastructure = TenantCacheInfrastructure::new(&canonical_cache_service).await?;
+    let _ = ctx.shared_insert_if_absent(Arc::new(infrastructure));
     Ok(())
 }
 
