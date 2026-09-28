@@ -66,14 +66,7 @@ impl InstallerPersistenceService {
         })?;
         let output = match serde_json::to_vec(&serialized) {
             Ok(bytes) if bytes.len() <= MAX_HTTP_INSTALL_JOB_OUTPUT_BYTES => Some(serialized),
-            Ok(_) => {
-                tracing::warn!(
-                    %job_id,
-                    max_bytes = MAX_HTTP_INSTALL_JOB_OUTPUT_BYTES,
-                    "Installer job output exceeded the durable HTTP status bound; omitting optional output projection"
-                );
-                None
-            }
+            Ok(_) => None
             Err(error) => {
                 return Err(sea_orm::DbErr::Custom(format!(
                     "failed to size installer job output: {error}"
