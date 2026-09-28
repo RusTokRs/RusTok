@@ -604,6 +604,10 @@ pub fn set_context_path(root: &mut Value, path: &str, value: Value) -> Result<()
     set_path_segments(root, &segments, value)
 }
 
+pub fn is_valid_context_path(path: &str) -> bool {
+    parse_context_path(path).is_some()
+}
+
 fn normalize_context(value: Value) -> Value {
     match value {
         Value::Null => Value::Object(Map::new()),
@@ -663,9 +667,11 @@ enum ContextPathSegment {
 }
 
 fn parse_context_path(path: &str) -> Option<Vec<ContextPathSegment>> {
-    let path = path.trim().trim_start_matches('$').trim_start_matches('.');
+    let path = path.trim();
+    let path = path.strip_prefix('$').unwrap_or(path);
+    let path = path.strip_prefix('.').unwrap_or(path);
     if path.is_empty() {
-        return Some(Vec::new());
+        return None;
     }
     let mut segments = Vec::new();
     let mut token = String::new();
@@ -677,6 +683,9 @@ fn parse_context_path(path: &str) -> Option<Vec<ContextPathSegment>> {
                     return None;
                 }
                 segments.push(ContextPathSegment::Key(std::mem::take(&mut token)));
+                if chars.peek().is_none() {
+                    return None;
+                }
             }
             '[' => {
                 if !token.is_empty() {
@@ -695,11 +704,19 @@ fn parse_context_path(path: &str) -> Option<Vec<ContextPathSegment>> {
                     return None;
                 }
                 segments.push(ContextPathSegment::Index(index.parse().ok()?));
-                if chars.peek() == Some(&'.') {
-                    chars.next();
+                match chars.peek().copied() {
+                    Some('.') => {
+                        chars.next();
+                        if matches!(chars.peek().copied(), None | Some('.') | Some('[') | Some(']')) {
+                            return None;
+                        }
+                    }
+                    Some('[') | None => {}
+                    Some(_) => return None,
                 }
             }
-            ']' => return None,
+            ']' | '{' | '}' => return None,
+            character if character.is_whitespace() => return None,
             _ => token.push(character),
         }
     }
@@ -1567,5 +1584,34 @@ mod tests {
                 .iter()
                 .any(|entry| entry.get("providerSchema").is_some())
         );
+    }
+
+    #[test]
+    fn invalid_context_paths_are_rejected_before_materialization() {
+        let mut document = document();
+        for path in [
+            "",
+            "items[0",
+            "items[0]title",
+            "items[0].[1]",
+            "items.",
+            "items. title",
+        ] {
+            let result = apply_context_command(
+                &mut document,
+                &ContextCommand::UpsertField {
+                    field: ContextFieldDefinition {
+                        id: format!("field-{path}"),
+                        path: path.to_string(),
+                        kind: ContextValueKind::String,
+                        required: false,
+                        default: None,
+                        item_kind: None,
+                        extensions: Map::new(),
+                    },
+                },
+            );
+            assert!(result.is_err(), "path {path:?} should be invalid");
+        }
     }
 }

@@ -136,6 +136,33 @@ fn stable_id_assignment_avoids_existing_ids() {
 }
 
 #[test]
+fn stable_id_assignment_repairs_duplicate_component_ids() {
+    let mut document = GrapesJsCodec::decode_value(json!({
+        "pages": [{
+            "component": {
+                "id": "root",
+                "type": "wrapper",
+                "components": [
+                    { "id": "duplicate", "type": "section" },
+                    { "id": "duplicate", "type": "section" }
+                ]
+            }
+        }]
+    }))
+    .expect("document");
+    let mut generator = SequentialIdGenerator::new("repair");
+    document.ensure_stable_ids(&mut generator);
+    let mut ids = Vec::new();
+    document.project.pages[0]
+        .component
+        .as_ref()
+        .expect("root")
+        .collect_ids(&mut ids);
+    assert_eq!(ids.iter().filter(|id| *id == "duplicate").count(), 1);
+    assert!(ids.iter().any(|id| id == "repair-section-1"));
+}
+
+#[test]
 fn binding_validation_reports_runtime_binding_target_missing() {
     let mut document = GrapesJsCodec::decode_value(json!({
         "pages": [{

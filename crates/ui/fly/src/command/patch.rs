@@ -1,4 +1,4 @@
-use crate::ComponentObject;
+use crate::{ComponentObject, FlyError, FlyResult};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -113,7 +113,9 @@ impl ComponentPatch {
         self
     }
 
-    pub(super) fn apply(self, component: &mut ComponentObject) {
+    pub(super) fn apply(self, component: &mut ComponentObject) -> FlyResult<()> {
+        self.validate_reserved_fields()?;
+
         for attribute in self.remove_attributes {
             component.attributes.remove(&attribute);
         }
@@ -144,7 +146,7 @@ impl ComponentPatch {
                 TAG_NAME_FIELD => component.tag_name = None,
                 PROVIDER_FIELD => component.provider = None,
                 _ => {
-                    component.extensions.remove(&field);
+                    component.remove_extension_field(&field);
                 }
             }
         }
@@ -156,10 +158,22 @@ impl ComponentPatch {
                 TAG_NAME_FIELD => component.tag_name = value.as_str().map(ToString::to_string),
                 PROVIDER_FIELD => component.provider = value.as_str().map(ToString::to_string),
                 _ => {
-                    component.extensions.insert(key, value);
+                    component.set_extension_field(key, value);
                 }
             }
         }
+        Ok(())
+    }
+
+    fn validate_reserved_fields(&self) -> FlyResult<()> {
+        for field in self.fields.keys().chain(self.remove_fields.iter()) {
+            if is_unpatchable_reserved_field(field) {
+                return Err(FlyError::InvalidComponentPatch(format!(
+                    "field `{field}` is owned by the component model and must use the dedicated command surface"
+                )));
+            }
+        }
+        Ok(())
     }
 
     fn set_reserved_string(&mut self, field: &str, value: String) {
@@ -171,6 +185,10 @@ impl ComponentPatch {
         self.fields.remove(field);
         push_unique(&mut self.remove_fields, field.to_string());
     }
+}
+
+fn is_unpatchable_reserved_field(field: &str) -> bool {
+    matches!(field, "id" | "attributes" | "style" | "traits" | "components")
 }
 
 fn merge_style(current: &mut Option<Value>, patch: Value) {
@@ -206,7 +224,8 @@ mod tests {
             .set_component_type("button")
             .set_tag_name("button")
             .set_provider("provider.demo")
-            .apply(&mut component);
+            .apply(&mut component)
+            .expect("apply reserved fields");
         assert_eq!(component.component_type.as_deref(), Some("button"));
         assert_eq!(component.tag_name.as_deref(), Some("button"));
         assert_eq!(component.provider.as_deref(), Some("provider.demo"));
@@ -216,7 +235,8 @@ mod tests {
             .clear_component_type()
             .clear_tag_name()
             .clear_provider()
-            .apply(&mut component);
+            .apply(&mut component)
+            .expect("clear reserved fields");
         assert!(component.component_type.is_none());
         assert!(component.tag_name.is_none());
         assert!(component.provider.is_none());
@@ -233,5 +253,31 @@ mod tests {
         assert!(patch.remove_fields.is_empty());
         assert_eq!(patch.attributes["aria-label"], "Hero");
         assert_eq!(patch.fields["content"], "Welcome");
+    }
+
+    #[test]
+    fn structural_fields_cannot_be_written_as_flattened_extensions() {
+        let mut component = component();
+        let error = ComponentPatch::default()
+            .set_field("components", json!([]))
+            .apply(&mut component)
+            .expect_err("reserved field");
+        assert!(matches!(error, FlyError::InvalidComponentPatch(_)));
+    }
+
+    #[test]
+    fn content_patch_replaces_grapesjs_scalar_text_children() {
+        let mut component = component();
+        component.components = crate::ComponentChildren::Nodes(vec![
+            ComponentNode::Opaque(json!("Old text")),
+            ComponentNode::object("span"),
+        ]);
+        ComponentPatch::default()
+            .set_field("content", json!("New text"))
+            .apply(&mut component)
+            .expect("content patch");
+        assert_eq!(component.extensions["content"], "New text");
+        assert_eq!(component.children().len(), 1);
+        assert!(component.children()[0].as_object().is_some());
     }
 }

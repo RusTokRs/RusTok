@@ -1,8 +1,8 @@
 use crate::{
     ProjectDocument, ValidationDiagnostic, ValidationReport, analyze_runtime_context_dependencies,
     extract_runtime_context_contract, validate_binding_definitions, validate_component_actions,
-    validate_dynamic_definitions, validate_internal_page_links, validate_localized_page_routes,
-    validate_project_locale_policy, validate_translation_definitions,
+    validate_component_public_urls, validate_dynamic_definitions, validate_internal_page_links,
+    validate_localized_page_routes, validate_project_locale_policy, validate_translation_definitions,
 };
 use std::collections::BTreeSet;
 
@@ -13,6 +13,7 @@ pub fn validate_runtime_extensions(document: &ProjectDocument) -> Vec<Validation
     diagnostics.extend(validate_localized_page_routes(document));
     diagnostics.extend(validate_internal_page_links(document));
     diagnostics.extend(validate_component_actions(document));
+    diagnostics.extend(validate_component_public_urls(document));
     diagnostics.extend(validate_binding_definitions(document));
     diagnostics.extend(validate_dynamic_definitions(document));
     diagnostics.extend(analyze_runtime_context_dependencies(document).diagnostics);

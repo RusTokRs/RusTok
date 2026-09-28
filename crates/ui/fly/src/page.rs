@@ -162,6 +162,7 @@ pub fn apply_page_command(document: &mut ProjectDocument, command: &PageCommand)
             Ok(())
         }
         PageCommand::Patch { locator, patch } => {
+            validate_page_patch(patch)?;
             let index = locator.resolve(document)?;
             let proposed_id = patch
                 .fields
@@ -203,6 +204,18 @@ fn page_summary(index: usize, page: &ProjectPage) -> PageSummary {
         component_count,
         has_root: page.component.is_some(),
     }
+}
+
+fn validate_page_patch(patch: &PagePatch) -> FlyResult<()> {
+    for field in patch.fields.keys().chain(patch.remove_fields.iter()) {
+        if field == "component" {
+            return Err(FlyError::InvalidPagePatch(
+                "field `component` is owned by the page tree and cannot be patched as an extension"
+                    .to_string(),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn apply_page_patch(page: &mut ProjectPage, patch: PagePatch) {
@@ -376,5 +389,22 @@ mod tests {
             ),
             Err(FlyError::LastPageRemoval)
         ));
+    }
+
+    #[test]
+    fn page_patch_rejects_component_extension_collision() {
+        let mut document = document();
+        let error = apply_page_command(
+            &mut document,
+            &PageCommand::Patch {
+                locator: PageLocator::by_id("a"),
+                patch: PagePatch {
+                    fields: Map::from_iter([("component".to_string(), json!({}))]),
+                    ..PagePatch::default()
+                },
+            },
+        )
+        .expect_err("reserved page field");
+        assert!(matches!(error, FlyError::InvalidPagePatch(_)));
     }
 }

@@ -1,7 +1,7 @@
 use crate::{
     ComponentChildren, ComponentNode, ComponentObject, FLY_COMPONENT_RULE_FIELD, FLY_RULE_ID_FIELD,
     FlyError, FlyResult, ProjectDocument, StyleRuleDescriptor, ValidationDiagnostic,
-    ValidationSeverity,
+    ValidationSeverity, is_valid_runtime_context_path, resolve_context_path,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
@@ -175,6 +175,18 @@ pub fn materialize_runtime(document: &ProjectDocument, context: &Value) -> Runti
     let original_styles = materialized.project.styles.clone();
 
     for condition in &catalog.conditions {
+        if !is_valid_runtime_context_path(&condition.path) {
+            diagnostics.push(runtime_diagnostic(
+                ValidationSeverity::Warning,
+                "runtime_condition_path_invalid",
+                Some(condition.component_id.clone()),
+                format!(
+                    "condition `{}` has an invalid context path `{}`",
+                    condition.id, condition.path
+                ),
+            ));
+            continue;
+        }
         let matched = evaluate_condition(condition, context);
         if !matched {
             match hide_runtime_component(&mut materialized, &condition.component_id) {
@@ -191,6 +203,41 @@ pub fn materialize_runtime(document: &ProjectDocument, context: &Value) -> Runti
 
     let mut repeated_nodes = 0usize;
     for repeater in &catalog.repeaters {
+        if !is_valid_runtime_context_path(&repeater.path) {
+            diagnostics.push(runtime_diagnostic(
+                ValidationSeverity::Warning,
+                "runtime_repeater_path_invalid",
+                Some(repeater.component_id.clone()),
+                format!(
+                    "repeater `{}` has an invalid context path `{}`",
+                    repeater.id, repeater.path
+                ),
+            ));
+            continue;
+        }
+        if repeater.item_alias.trim().is_empty() || repeater.index_alias.trim().is_empty() {
+            diagnostics.push(runtime_diagnostic(
+                ValidationSeverity::Warning,
+                "runtime_repeater_alias_empty",
+                Some(repeater.component_id.clone()),
+                format!("repeater `{}` aliases must not be empty", repeater.id),
+            ));
+            continue;
+        }
+        if repeater
+            .limit
+            .is_some_and(|limit| limit > MAX_REPEATER_LIMIT)
+        {
+            diagnostics.push(runtime_diagnostic(
+                ValidationSeverity::Warning,
+                "runtime_repeater_limit_exceeded",
+                Some(repeater.component_id.clone()),
+                format!(
+                    "repeater `{}` exceeds maximum limit {MAX_REPEATER_LIMIT}; output was clamped",
+                    repeater.id
+                ),
+            ));
+        }
         if !materialized.contains_component(&repeater.component_id) {
             diagnostics.push(runtime_diagnostic(
                 ValidationSeverity::Info,
@@ -413,10 +460,10 @@ fn validate_definition_identity(
             "runtime definition id must not be empty".to_string(),
         ));
     }
-    if path.trim().is_empty() {
-        return Err(FlyError::Decode(
-            "runtime definition path must not be empty".to_string(),
-        ));
+    if !is_valid_runtime_context_path(path) {
+        return Err(FlyError::Decode(format!(
+            "runtime definition path `{path}` is invalid"
+        )));
     }
     if !document.contains_component(component_id) {
         return Err(FlyError::ComponentNotFound(component_id.to_string()));
@@ -457,12 +504,12 @@ fn validate_common_definition(
             format!("runtime definition id `{id}` is duplicated"),
         ));
     }
-    if path.trim().is_empty() {
+    if !is_valid_runtime_context_path(path) {
         diagnostics.push(runtime_diagnostic(
             ValidationSeverity::Error,
-            "runtime_definition_path_empty",
+            "runtime_definition_path_invalid",
             Some(component_id.to_string()),
-            format!("runtime {kind} `{id}` path must not be empty"),
+            format!("runtime {kind} `{id}` path `{path}` is invalid"),
         ));
     }
     if !document.contains_component(component_id) {
@@ -559,6 +606,7 @@ fn expand_repeater(
     template.collect_ids(&mut source_ids);
     let source_ids = source_ids.into_iter().collect::<BTreeSet<_>>();
     document.project.remove_component(&repeater.component_id)?;
+    remove_style_rules_for_component_ids(document, &source_ids);
 
     let mut generated_styles = Vec::new();
     for (index, item) in values.iter().enumerate() {
@@ -601,10 +649,13 @@ fn hide_runtime_component(document: &mut ProjectDocument, component_id: &str) ->
     let location = document
         .component_location(component_id)
         .ok_or_else(|| FlyError::ComponentNotFound(component_id.to_string()))?;
+    let style_targets = component_subtree_ids(document, component_id);
     if location.parent_component_id.is_some() {
+        remove_style_rules_for_component_ids(document, &style_targets);
         document.project.remove_component(component_id)?;
         return Ok(());
     }
+    remove_style_rules_for_component_ids(document, &style_targets);
     let page = document
         .project
         .pages
@@ -621,6 +672,27 @@ fn hide_runtime_component(document: &mut ProjectDocument, component_id: &str) ->
         ..ComponentObject::default()
     })));
     Ok(())
+}
+
+fn component_subtree_ids(document: &ProjectDocument, component_id: &str) -> BTreeSet<String> {
+    let mut ids = Vec::new();
+    if let Some(component) = document.component(component_id) {
+        ComponentNode::Object(Box::new(component.clone())).collect_ids(&mut ids);
+    }
+    ids.into_iter().collect()
+}
+
+fn remove_style_rules_for_component_ids(document: &mut ProjectDocument, component_ids: &BTreeSet<String>) {
+    if component_ids.is_empty() {
+        return;
+    }
+    document.project.styles.retain(|raw| {
+        StyleRuleDescriptor::from_value(raw.clone()).is_none_or(|rule| {
+            rule.component_id
+                .as_ref()
+                .is_none_or(|component_id| !component_ids.contains(component_id))
+        })
+    });
 }
 
 fn remap_styles(
@@ -767,61 +839,7 @@ fn scalar_text(value: &Value) -> String {
 }
 
 fn resolve_path<'a>(root: &'a Value, path: &str) -> Option<&'a Value> {
-    let mut current = root;
-    for segment in parse_path(path)? {
-        current = match segment {
-            PathSegment::Key(key) => current.as_object()?.get(&key)?,
-            PathSegment::Index(index) => current.as_array()?.get(index)?,
-        };
-    }
-    Some(current)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum PathSegment {
-    Key(String),
-    Index(usize),
-}
-
-fn parse_path(path: &str) -> Option<Vec<PathSegment>> {
-    let path = path.trim().trim_start_matches('$').trim_start_matches('.');
-    if path.is_empty() {
-        return Some(Vec::new());
-    }
-    let mut segments = Vec::new();
-    let mut token = String::new();
-    let mut chars = path.chars().peekable();
-    while let Some(character) = chars.next() {
-        match character {
-            '.' => {
-                if token.is_empty() {
-                    return None;
-                }
-                segments.push(PathSegment::Key(std::mem::take(&mut token)));
-            }
-            '[' => {
-                if !token.is_empty() {
-                    segments.push(PathSegment::Key(std::mem::take(&mut token)));
-                }
-                let mut index = String::new();
-                for character in chars.by_ref() {
-                    if character == ']' {
-                        break;
-                    }
-                    index.push(character);
-                }
-                segments.push(PathSegment::Index(index.parse().ok()?));
-                if chars.peek() == Some(&'.') {
-                    chars.next();
-                }
-            }
-            _ => token.push(character),
-        }
-    }
-    if !token.is_empty() {
-        segments.push(PathSegment::Key(token));
-    }
-    Some(segments)
+    resolve_context_path(root, path)
 }
 
 fn replace_exact_references(value: &mut Value, mapping: &BTreeMap<String, String>) {
@@ -1008,5 +1026,41 @@ mod tests {
                 .iter()
                 .any(|entry| entry.get("providerCondition").is_some())
         );
+    }
+
+    #[test]
+    fn runtime_definition_paths_use_strict_context_path_contract() {
+        let mut document = document();
+        let error = apply_dynamic_command(
+            &mut document,
+            &DynamicCommand::UpsertCondition {
+                condition: RuntimeCondition {
+                    id: "bad-path".to_string(),
+                    component_id: "card".to_string(),
+                    path: "items[0".to_string(),
+                    operator: ConditionOperator::Truthy,
+                    expected: None,
+                    invert: false,
+                    extensions: Map::new(),
+                },
+            },
+        )
+        .expect_err("invalid path");
+        assert!(matches!(error, FlyError::Decode(_)));
+    }
+
+    #[test]
+    fn materialization_skips_repeaters_with_empty_aliases() {
+        let mut source = document();
+        source.project.extensions.insert(
+            FLY_RUNTIME_REPEATERS_FIELD.to_string(),
+            json!([{ "id": "bad", "component_id": "card", "path": "items", "item_alias": "" }]),
+        );
+        let materialized = materialize_runtime(&source, &json!({ "items": [{ "title": "One" }] }));
+        assert_eq!(materialized.repeated_nodes, 0);
+        assert!(materialized.document.contains_component("card"));
+        assert!(materialized.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "runtime_repeater_alias_empty"
+        }));
     }
 }

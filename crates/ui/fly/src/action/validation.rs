@@ -158,7 +158,7 @@ fn validate_form(form: &ComponentForm) -> Result<(), String> {
         return Err("form provider and action must be supplied together".to_string());
     }
     if let Some(url) = action_url {
-        validate_safe_url(url, "form action_url")?;
+        validate_form_action_url(url)?;
     }
     if let Some(provider) = provider {
         validate_identifier(provider, "form provider")?;
@@ -182,7 +182,23 @@ fn validate_action(
     validation: &ActionValidation<'_>,
     diagnostics: &mut Vec<ValidationDiagnostic>,
 ) {
-    let result = match action {
+    if let Err(message) = validate_action_contract(action, validation.routes, validation.form_ids) {
+        diagnostics.push(action_diagnostic(
+            ValidationSeverity::Error,
+            "action_definition_invalid",
+            path,
+            component_id,
+            message,
+        ));
+    }
+}
+
+pub(super) fn validate_action_contract(
+    action: &ComponentAction,
+    routes: &InteractionRouteCatalog,
+    form_ids: &FormIndex,
+) -> Result<(), String> {
+    match action {
         ComponentAction::NavigatePage {
             page_id,
             base_path,
@@ -201,8 +217,8 @@ fn validate_action(
                 }
                 Ok(())
             })
-            .and_then(|_| match validation.routes.page_index(page_id) {
-                Some(page_index) if validation.routes.has_route(page_index) => Ok(()),
+            .and_then(|_| match routes.page_index(page_id) {
+                Some(page_index) if routes.has_route(page_index) => Ok(()),
                 Some(_) if fallback_href.is_some() => Ok(()),
                 Some(_) => Err(format!("target page `{page_id}` has no explicit slug")),
                 None => Err(format!("target page `{page_id}` does not exist")),
@@ -210,8 +226,7 @@ fn validate_action(
         ComponentAction::NavigateUrl { href, .. } => validate_safe_url(href, "navigation href"),
         ComponentAction::SubmitForm { form_id } => validate_identifier(form_id, "form id")
             .and_then(|_| {
-                validation
-                    .form_ids
+                form_ids
                     .contains_key(form_id)
                     .then_some(())
                     .ok_or_else(|| format!("form `{form_id}` does not exist"))
@@ -221,15 +236,6 @@ fn validate_action(
             provider, action, ..
         } => validate_identifier(provider, "provider")
             .and_then(|_| validate_identifier(action, "provider action")),
-    };
-    if let Err(message) = result {
-        diagnostics.push(action_diagnostic(
-            ValidationSeverity::Error,
-            "action_definition_invalid",
-            path,
-            component_id,
-            message,
-        ));
     }
 }
 
@@ -280,6 +286,21 @@ fn validate_suffix(value: Option<&str>, label: &str) -> Result<(), String> {
     } else {
         Ok(())
     }
+}
+
+fn validate_form_action_url(value: &str) -> Result<(), String> {
+    validate_safe_url(value, "form action_url")?;
+    let value = value.trim();
+    let lower = value.to_ascii_lowercase();
+    if lower.starts_with("mailto:")
+        || lower.starts_with("tel:")
+        || lower.starts_with('#')
+    {
+        return Err(
+            "form action_url must be a relative, http, or https submission URL".to_string(),
+        );
+    }
+    Ok(())
 }
 
 fn validate_safe_url(value: &str, label: &str) -> Result<(), String> {

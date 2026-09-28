@@ -11,7 +11,7 @@ use crate::{
     materialize_localized_page_metadata, materialize_project_locale_context,
     materialize_project_translations, materialize_project_with_runtime_context,
     materialize_runtime_locale_context, validate_component_actions, validate_internal_page_links,
-    validate_project,
+    validate_component_public_urls, validate_project,
 };
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -53,7 +53,7 @@ pub fn evaluate_landing_readiness_with_context(
             );
             materialized.document
         }
-        None => materialize_structural_document(document, &mut issues),
+        None => materialize_landing_structural_document(document, &mut issues),
     };
 
     let routes = localized_page_route_index(document);
@@ -170,7 +170,7 @@ pub fn evaluate_landing_readiness_with_context(
     }
 }
 
-fn materialize_structural_document(
+pub(crate) fn materialize_landing_structural_document(
     document: &ProjectDocument,
     issues: &mut Vec<LandingReadinessIssue>,
 ) -> ProjectDocument {
@@ -277,6 +277,11 @@ fn materialize_structural_document(
             .cloned()
             .map(classified_issue),
     );
+    issues.extend(
+        validate_component_public_urls(&action_materialization.document)
+            .into_iter()
+            .map(classified_issue),
+    );
     action_materialization.document
 }
 
@@ -311,8 +316,15 @@ fn publish_materialization_failure(code: &str) -> bool {
             | "internal_page_link_invalid"
             | "runtime_binding_transform_failed"
             | "runtime_binding_target_missing"
+            | "runtime_binding_target_invalid"
+            | "runtime_binding_path_invalid"
             | "runtime_condition_target_missing"
+            | "runtime_condition_path_invalid"
+            | "runtime_repeater_path_invalid"
+            | "runtime_repeater_alias_empty"
+            | "runtime_repeater_limit_exceeded"
             | "runtime_repeater_failed"
+            | "runtime_public_url_invalid"
     )
 }
 
