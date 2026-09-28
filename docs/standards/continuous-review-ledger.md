@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `7cdc78d34cf20a14d1871dffa6cee0fc569b5cd3`  
+**Current main SHA:** `e3a8ec0d1aaedb348749ab9e4f4e94d203e73fbb`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -196,6 +196,28 @@ Hard limits for every iteration:
 - **Verification:** repository source inspection, static reasoning, cross-file contract review, and branch-diff review only. No tests, cargo check/clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Next primary module:** FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`.
 
+### FS-22.02.21 Result — `controllers/metrics.rs`
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Fresh main base before track:** `7cdc78d34cf20a14d1871dffa6cee0fc569b5cd3`.
+- **Iteration 1:** commit `e6a9b14976ed3ad9aa648ccf368605e11ae5b370`.
+  - **Finding:** the controller registered only `/metrics/` while the canonical API documentation and observability-auth boundary expose `/metrics`.
+  - **Remediation:** both explicit `/metrics` and `/metrics/` routes now invoke the same handler; observability-auth path coverage remains aligned with both.
+  - **Finding:** search metrics were rendered even when `features.search_indexing` was disabled.
+  - **Remediation:** search metric collection now follows the same feature gate as readiness/search schema requirements.
+- **Iteration 2:** commits `69e2dcf9e5f1cc00743ed7148b8e66aee536ee95`, `8578107c6f8868206d68f1b71fbf6bd92713b97e`, `1c103e51452322434d64f960c4ee0163ad6f5d36`, and `7d786bc0c1cc418e50daf8bea59244cb6feaf098`.
+  - **Finding:** tenant-activity, outbox, RBAC consistency, and search collectors converted storage/decoding failures into plausible zero values, making monitoring report false healthy/empty state.
+  - **Remediation:** affected metric families now expose explicit collection-status signals and `NaN` for unavailable values; RBAC consistency values retain the failure counter without pretending the consistency counts are zero.
+  - **Finding:** metrics synchronization logged backend error payloads directly.
+  - **Remediation:** rate-limit metrics failure logs now emit only stable namespace/context text.
+- **Iteration 3:** commit `e3a8ec0d1aaedb348749ab9e4f4e94d203e73fbb`.
+  - **Finding:** outbox collector retained historical unprefixed compatibility aliases (`outbox_backlog_size`, `outbox_dlq_total`, `outbox_retries_total`) after equivalent RBAC aliases had already been removed under the repository zero-legacy policy.
+  - **Remediation:** only canonical `rustok_outbox_*` metric names remain; regression expectations were updated accordingly.
+- **Final fresh second pass:** independently re-read the full controller plus metrics-auth, rate-limit namespace construction, search diagnostics/feature ownership, API docs, and telemetry registry contracts. Rechecked route parity, feature gating, error/unknown semantics, secret-safe logging, label cardinality/source safety, worker/runtime observations, and absence of unprefixed outbox metric aliases. No remaining unblocked controller-owned defect was found.
+- **Non-findings:** dynamic runtime metric labels are bounded by fixed limiter namespaces/backend kinds and fixed worker/provider/state vocabularies; the existing dual outbox canonical naming family was retained because it is the current exposed contract, while only the explicitly historical unprefixed aliases were removed.
+- **Verification:** repository source inspection, commit-diff review, adjacent owner-contract inspection, immediate re-audits after each remediation, and final fresh second pass only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.22 — `apps/server/src/controllers/marketplace_registry.rs`.
+
 ### FS-22.02.20 Result — `controllers/health.rs`
 
 - **Status:** COMPLETE and integrated into `main`.
@@ -210,7 +232,7 @@ Hard limits for every iteration:
   - **Remediation:** parser now selects HTTPS port 443, strips userinfo before probing, supports bracketed IPv6 with explicit ports, and returns stable validation errors; focused parser tests were added.
 - **Final fresh second pass:** independently re-read the complete controller after all patches and rechecked public error redaction, feature gating, readiness aggregation/circuit behavior, module-health handling, and search endpoint parsing. No remaining unblocked controller-owned defect was found.
 - **Verification:** repository source inspection, settings/search owner-contract review, immediate re-audits after each remediation, and post-change source/diff review only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
-- **Next primary module:** FS-22.02.21 — `apps/server/src/controllers/metrics.rs`.
+- **Next primary module:** FS-22.02.22 — `apps/server/src/controllers/marketplace_registry.rs`.
 
 ### FS-22.02.19 Result — `controllers/users.rs`
 
