@@ -17,6 +17,7 @@ use rustok_api::{
     PLATFORM_FALLBACK_LOCALE, build_locale_candidates, locale_tags_match, normalize_locale_tag,
 };
 use rustok_core::field_schema::FlexError;
+use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
     EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
@@ -255,6 +256,11 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         )
         .await
         .map_err(journal_error)?;
+        persist_event_in_tx(
+            &txn,
+            flex::flex_schema_created_event(tenant_id, actor_id, row.id, row.slug.clone()),
+        )
+        .await?;
         txn.commit()
             .await
             .map_err(|error| FlexError::Database(error.to_string()))?;
@@ -335,6 +341,16 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         }
 
         let translation = select_schema_translation(&translations_after, &locale).cloned();
+        persist_event_in_tx(
+            &txn,
+            flex::flex_schema_updated_event(
+                tenant_id,
+                actor_id,
+                updated.id,
+                updated.slug.clone(),
+            ),
+        )
+        .await?;
         txn.commit()
             .await
             .map_err(|error| FlexError::Database(error.to_string()))?;
@@ -383,6 +399,11 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         )
         .await
         .map_err(journal_error)?;
+        persist_event_in_tx(
+            &txn,
+            flex::flex_schema_deleted_event(tenant_id, actor_id, schema_id),
+        )
+        .await?;
         txn.commit()
             .await
             .map_err(|error| FlexError::Database(error.to_string()))?;
@@ -506,6 +527,18 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         .map_err(|error| FlexError::Database(error.to_string()))?;
         let localized_data =
             upsert_entry_localization_on(&txn, row.id, tenant_id, &locale, localized_data).await?;
+        persist_event_in_tx(
+            &txn,
+            flex::flex_entry_created_event(
+                tenant_id,
+                actor_id,
+                row.schema_id,
+                row.id,
+                row.entity_type.clone(),
+                row.entity_id,
+            ),
+        )
+        .await?;
         txn.commit()
             .await
             .map_err(|error| FlexError::Database(error.to_string()))?;
@@ -599,6 +632,11 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
                 .and_then(|items| Self::select_exact_entry_localization(items, &locale))
                 .map(|item| item.data.clone());
         }
+        persist_event_in_tx(
+            &txn,
+            flex::flex_entry_updated_event(tenant_id, actor_id, updated.schema_id, updated.id),
+        )
+        .await?;
         txn.commit()
             .await
             .map_err(|error| FlexError::Database(error.to_string()))?;
@@ -647,11 +685,34 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
             .exec(&txn)
             .await
             .map_err(|error| FlexError::Database(error.to_string()))?;
+        persist_event_in_tx(
+            &txn,
+            flex::flex_entry_deleted_event(tenant_id, actor_id, row.schema_id, row.id),
+        )
+        .await?;
         txn.commit()
             .await
             .map_err(|error| FlexError::Database(error.to_string()))?;
         Ok(())
     }
+}
+
+async fn persist_event_in_tx(
+    txn: &sea_orm::DatabaseTransaction,
+    event: rustok_events::EventEnvelope,
+) -> Result<(), FlexError> {
+    let event_type = event.event_type.clone();
+    TransactionalEventBus::publish_root_in_tx(
+        txn,
+        event.tenant_id,
+        event.actor_id,
+        event.event,
+    )
+    .await
+    .map_err(|error| {
+        tracing::error!(%error, event_type, "Failed to persist Flex domain event");
+        FlexError::Database(format!("failed to persist Flex domain event: {error}"))
+    })
 }
 
 async fn tenant_default_locale_on<C>(db: &C, tenant_id: Uuid) -> Result<String, FlexError>
