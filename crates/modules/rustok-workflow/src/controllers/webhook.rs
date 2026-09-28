@@ -45,7 +45,7 @@ pub async fn receive(
                 "Workflow webhook endpoint was not found".to_string(),
             )
         })?;
-    crate::controllers::ensure_workflow_module_enabled(&db, tenant.id).await?;
+    runtime.ensure_module_enabled(tenant.id).await?;
 
     let signature = headers
         .get("x-webhook-signature")

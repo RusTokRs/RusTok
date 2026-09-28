@@ -165,6 +165,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.06 finding in progress — authenticated permission failures returned 401.** Commerce and Workflow HTTP permission helpers returned `Unauthorized` after a valid `AuthContext` had already been constructed. This is a transport semantics bug: missing/invalid credentials are 401, authenticated principals lacking authority are 403. The shared HTTP permission boundaries now return `Forbidden`.
 
+- [ ] **FS-22.05/22.09 finding in progress — raw tenant-module check was weaker than canonical effective policy.** Workflow HTTP previously used only `tenant_modules.enabled`, while the platform owner policy also accounts for dependencies, capability/security state, registry admission, channel binding and maintenance. Workflow HTTP state now consumes the host-composed `SharedModuleEffectivePolicyReader`; absence/unavailability fails closed with `MODULE_POLICY_UNAVAILABLE`.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
