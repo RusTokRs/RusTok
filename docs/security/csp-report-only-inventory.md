@@ -20,6 +20,7 @@ No violation in this document is an automatic allowlist request. The preferred r
 - Maximum request body: 64 KiB.
 - Maximum processed Reporting API entries: 20 per request.
 - The outer security middleware handles the endpoint before tenant and authentication routing.
+- The configured public `/api/` rate limiter runs before the unauthenticated collector, so report traffic cannot bypass the normal API abuse budget.
 - Responses contain no report body and return `204` for accepted reports.
 - Invalid content types, JSON and report shapes are rejected with bounded status codes.
 - The standalone admin process does not advertise a report endpoint it cannot receive; it emits enforced CSP only.
@@ -34,8 +35,8 @@ Accepted reports emit structured events with target `rustok.security.csp` and bo
 |---|---|
 | `report_format` | `legacy`, `reporting_api` |
 | `directive` | `script-src`, `style-src`, `connect-src`, `img-src`, `font-src`, `worker-src`, `frame-src`, `frame-ancestors`, `object-src`, `base-uri`, `form-action`, `default-src`, `other` |
-| `disposition` | Browser-provided report/enforce disposition |
-| locations | Origin only, fixed keyword, scheme-only value or `opaque` |
+| `disposition` | Normalized `report`, `enforce` or `other` value |
+| locations | Origin only, fixed keyword, scheme-only value, `oversized` marker or `opaque` |
 | source position | Optional line and column |
 | status | Optional document response status |
 
