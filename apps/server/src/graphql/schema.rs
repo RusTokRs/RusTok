@@ -145,7 +145,7 @@ pub struct GraphqlSchemaDependencies {
     #[cfg(feature = "mod-blog")]
     pub blog_rate_limiter: Option<BlogGraphqlRateLimiterHandle>,
     #[cfg(feature = "mod-alloy")]
-    pub alloy_runtime: alloy::SharedAlloyRuntime,
+    pub alloy_runtime: Option<alloy::SharedAlloyRuntime>,
     #[cfg(feature = "mod-alloy")]
     pub alloy_release_governance: alloy::AlloyReleaseGovernanceHandle,
     #[cfg(feature = "mod-alloy")]
@@ -275,10 +275,14 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
     };
 
     #[cfg(feature = "mod-alloy")]
-    let builder = builder
-        .data(alloy_runtime)
-        .data(alloy_release_governance)
-        .data(alloy_published_rhai_source);
+    let builder = if let Some(alloy_runtime) = alloy_runtime {
+        builder
+            .data(alloy_runtime)
+            .data(alloy_release_governance)
+            .data(alloy_published_rhai_source)
+    } else {
+        builder
+    };
 
     #[cfg(all(
         feature = "mod-content",

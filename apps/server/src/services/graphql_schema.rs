@@ -42,6 +42,9 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     let event_bus = event_bus_from_context(ctx);
     let transactional_event_bus = transactional_event_bus_from_context(ctx);
     let stop_handle = stop_handle_from_context(ctx);
+
+    #[cfg(feature = "mod-alloy")]
+    let alloy_runtime = alloy_runtime_from_context(ctx);
     let registry = ctx
         .shared_get::<rustok_core::ModuleRegistry>()
         .unwrap_or_else(|| {
@@ -70,9 +73,9 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     #[cfg(all(feature = "mod-forum", feature = "mod-media"))]
     let host_runtime = attach_forum_media_asset_read_provider(host_runtime, ctx);
     #[cfg(feature = "mod-alloy")]
-    let host_runtime = if let Some(alloy_runtime) = ctx.shared_get::<alloy::SharedAlloyRuntime>() {
+    let host_runtime = if let Some(alloy_runtime) = alloy_runtime.as_ref() {
         let storage = ctx.shared_get::<rustok_storage::StorageRuntime>();
-        let host_runtime = host_runtime.with_shared_value(alloy_runtime);
+        let host_runtime = host_runtime.with_shared_value(alloy_runtime.clone());
         let host_runtime = host_runtime.with_shared_value(
             crate::services::registry_governance::alloy_release_governance_handle(ctx.db_clone()),
         );
@@ -113,7 +116,7 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
         #[cfg(feature = "mod-blog")]
         blog_rate_limiter: blog_graphql_rate_limiter_from_context(ctx),
         #[cfg(feature = "mod-alloy")]
-        alloy_runtime: alloy_runtime_from_ctx(ctx),
+        alloy_runtime,
         #[cfg(feature = "mod-alloy")]
         alloy_release_governance: alloy_release_governance_from_ctx(ctx),
         #[cfg(feature = "mod-alloy")]
@@ -155,24 +158,29 @@ fn stop_handle_from_context(ctx: &ServerRuntimeContext) -> StopHandle {
 }
 
 #[cfg(feature = "mod-alloy")]
-fn alloy_runtime_from_ctx(ctx: &ServerRuntimeContext) -> alloy::SharedAlloyRuntime {
-    if let Some(runtime) = ctx.shared_get::<alloy::SharedAlloyRuntime>() {
-        return runtime;
+fn alloy_runtime_from_context(
+    ctx: &ServerRuntimeContext,
+) -> Option<alloy::SharedAlloyRuntime> {
+    ctx.shared_get::<alloy::SharedAlloyRuntime>()
+}
+
+#[cfg(all(test, feature = "mod-alloy"))]
+mod alloy_runtime_boundary_tests {
+    use sea_orm::Database;
+
+    use super::alloy_runtime_from_context;
+    use crate::common::settings::RustokSettings;
+    use crate::services::server_runtime_context::ServerRuntimeContext;
+
+    #[tokio::test]
+    async fn missing_alloy_runtime_remains_absent() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database should connect");
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+
+        assert!(alloy_runtime_from_context(&ctx).is_none());
     }
-    tracing::warn!(
-        "SharedAlloyRuntime not found in ServerRuntimeContext; creating minimal fallback"
-    );
-    let executors = rustok_sandbox::ExecutorRegistry::new();
-    let sandbox = rustok_sandbox::SandboxRuntime::new(
-        executors,
-        Arc::new(rustok_sandbox::CapabilityBrokerRouter::new()),
-    );
-    let draft_runtime =
-        alloy::AlloyDraftRuntime::new(sandbox, rustok_sandbox::SandboxPolicy::default());
-    let runtime =
-        alloy::SharedAlloyRuntime(alloy::build_alloy_runtime(ctx.db_clone(), draft_runtime));
-    ctx.shared_insert(runtime.clone());
-    runtime
 }
 
 #[cfg(feature = "mod-alloy")]
