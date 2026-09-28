@@ -218,7 +218,9 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         limit: u64,
     ) -> Result<Vec<OAuthAppMutationRecord>, AuthAdminMutationError> {
         self.require_settings_manage(context)?;
-        self.inner.list_oauth_apps(context, app_type, limit).await
+        self.inner
+            .list_oauth_apps(context, app_type, clamp_oauth_guard_list_limit(limit))
+            .await
     }
 
     async fn get_oauth_app(
@@ -235,7 +237,9 @@ impl OAuthAdminPort for GuardedOAuthAdminProvider {
         context: &AuthAdminMutationContext,
         limit: u64,
     ) -> Result<Vec<AuthorizedOAuthAppRecord>, AuthAdminMutationError> {
-        self.inner.list_authorized_oauth_apps(context, limit).await
+        self.inner
+            .list_authorized_oauth_apps(context, clamp_oauth_guard_list_limit(limit))
+            .await
     }
 
     async fn create_oauth_app(
