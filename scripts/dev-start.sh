@@ -129,7 +129,7 @@ print_service_urls() {
     echo -e "${GREEN}Backend:${NC}"
     echo -e "  Server API:        ${BLUE}http://localhost:5150${NC}"
     echo -e "  GraphQL Endpoint:  ${BLUE}http://localhost:5150/api/graphql${NC}"
-    echo -e "  Health Check:      ${BLUE}http://localhost:5150/api/health${NC}"
+    echo -e "  Health Check:      ${BLUE}http://localhost:5150/health${NC}"
     echo ""
     echo -e "${GREEN}Admin Panels:${NC}"
     echo -e "  Next.js Admin:     ${BLUE}http://localhost:3000${NC}"
@@ -158,7 +158,7 @@ wait_for_health() {
     local attempt=0
     
     while [ $attempt -lt $max_attempts ]; do
-        if curl -sf http://localhost:5150/api/health > /dev/null 2>&1; then
+        if curl -sf http://localhost:5150/health > /dev/null 2>&1; then
             print_success "Server is healthy!"
             return 0
         fi

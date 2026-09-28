@@ -338,18 +338,75 @@ async fn connect_database(
 async fn load_config() -> Result<HostConfig> {
     let environment = std::env::var("RUSTOK_ENV")
         .or_else(|_| std::env::var("APP_ENV"))
-        .unwrap_or_else(|_| "development".to_string());
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("config")
-        .join(format!("{environment}.yaml"));
+        .unwrap_or_else(|_| {
+            if cfg!(debug_assertions) {
+                "development".to_string()
+            } else {
+                "production".to_string()
+            }
+        });
+    let environment = environment.trim();
+    if environment.is_empty()
+        || !environment
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
+    {
+        return Err(Error::BadRequest(
+            "RUSTOK_ENV/APP_ENV must be a simple environment name containing only ASCII letters, digits, '-' or '_'"
+                .to_string(),
+        ));
+    }
+
+    let config_dir = std::env::var("RUSTOK_CONFIG_DIR")
+        .ok()
+        .map(PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty())
+        .or_else(|| {
+            std::env::current_exe()
+                .ok()
+                .and_then(|executable| executable.parent().map(PathBuf::from))
+                .map(|parent| parent.join("config"))
+                .filter(|path| path.is_dir())
+        })
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config"));
+    let path = config_dir.join(format!("{environment}.yaml"));
     let raw = tokio::fs::read_to_string(&path).await?;
     serde_yaml::from_str(&raw).map_err(Error::Yaml)
 }
 
 async fn shutdown_signal(runtime_ctx: ServerRuntimeContext) {
+    #[cfg(unix)]
+    {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut terminate) => {
+                tokio::select! {
+                    result = tokio::signal::ctrl_c() => {
+                        if let Err(error) = result {
+                            tracing::warn!(error = %error, "failed to receive Ctrl-C shutdown signal");
+                        }
+                    }
+                    _ = terminate.recv() => {
+                        tracing::info!("RusTok Axum host received SIGTERM");
+                    }
+                }
+            }
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "failed to register SIGTERM handler; falling back to Ctrl-C shutdown handling"
+                );
+                if let Err(error) = tokio::signal::ctrl_c().await {
+                    tracing::warn!(error = %error, "failed to receive shutdown signal");
+                }
+            }
+        }
+    }
+
+    #[cfg(not(unix))]
     if let Err(error) = tokio::signal::ctrl_c().await {
         tracing::warn!(error = %error, "failed to receive shutdown signal");
     }
+
     shutdown_runtime_workers(&runtime_ctx).await;
     tracing::info!("RusTok Axum host shut down cleanly");
 }

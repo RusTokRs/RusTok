@@ -45,6 +45,16 @@ status: active
 - [x] User conditions recorded: full repository/deep business-logic audit; sequential server-to-library coverage; no half-measures/root-cause fixes; dedicated branch before implementation; commit + PR + merge to `main` after each phase; maintainer-owned tests; one repeatable trigger `реализуй план аудита`.
 - [x] Initial `main` SHA recorded before this cycle.
 
+### FS-21 Findings and Implementation
+
+- [x] **SERVER-21-01 — production config path was compile-time coupled to the build workspace.** `load_config` used `env!("CARGO_MANIFEST_DIR")`, while the production image copies configuration to `/app/config`. Release binaries built in the image therefore could not resolve the copied runtime config. Config resolution now supports `RUSTOK_CONFIG_DIR`, prefers a `config` sibling next to the executable for deployed binaries, and retains the source-tree fallback for development.
+- [x] **SERVER-21-02 — release binaries defaulted to the development environment.** Missing `RUSTOK_ENV`/`APP_ENV` selected `development` regardless of build mode. Release builds now default to `production`, making omitted environment selection fail closed when a production config is absent.
+- [x] **SERVER-21-03 — environment name was used directly as a config filename.** `RUSTOK_ENV`/`APP_ENV` could contain path traversal segments. Environment names are now bounded to ASCII letters, digits, `-` and `_` before constructing the filename.
+- [x] **SERVER-21-04 — development startup health probe targeted a nonexistent endpoint.** `scripts/dev-start.sh` polled `/api/health`, while the server exposes health under the root health namespace. The script and quickstart now use `/health`.
+- [x] **SERVER-21-05 — canonical liveness route disagreed with its documented path.** The health router registered `/health/` while documentation and container health checks use `/health`. The route is now canonicalized to `/health`.
+- [x] **SERVER-21-06 — Docker SIGTERM was not part of host shutdown handling.** The production image declares `STOPSIGNAL SIGTERM`, but `shutdown_signal` listened only for Ctrl-C. Unix hosts now handle SIGTERM as a graceful shutdown trigger while retaining Ctrl-C handling.
+- [x] **SERVER-21-07 — runtime worker stop-handle initialization had a bootstrap check-then-insert race.** `connect_runtime_workers_with_runtime` now uses the context's atomic `StopHandle::ensure` path instead of separate `shared_contains`/`shared_insert`/`expect` steps.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |

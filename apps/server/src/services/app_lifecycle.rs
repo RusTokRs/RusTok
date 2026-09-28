@@ -185,18 +185,9 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
         return Ok(());
     }
 
-    // Register graceful-shutdown handle if not already present.
-    if !runtime_ctx.shared_contains::<StopHandle>() {
-        let (handle, _rx) = StopHandle::new();
-        runtime_ctx.shared_insert(handle);
-    }
-
-    // Obtain a stop receiver from the stored handle so workers can observe
-    // the shutdown signal. `subscribe()` creates a new independent receiver
-    // from the existing sender — safe to call multiple times.
-    let stop_handle = runtime_ctx
-        .shared_get::<StopHandle>()
-        .expect("StopHandle must be registered before spawning workers");
+    // Register the graceful-shutdown handle atomically so concurrent bootstrap calls cannot
+    // create divergent stop channels.
+    let stop_handle = StopHandle::ensure(&runtime_ctx);
     let stop_rx = stop_handle.subscribe();
 
     if !runtime_ctx.shared_contains::<OutboxRelayWorkerHandle>() {

@@ -1022,7 +1022,7 @@ fn parse_host_port(url: &str) -> std::result::Result<(String, u16), String> {
 
 pub fn router() -> crate::routes::ServerRouter {
     axum::Router::new()
-        .route("/health/", get(health))
+        .route("/health", get(health))
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
         .route("/health/runtime", get(runtime))
