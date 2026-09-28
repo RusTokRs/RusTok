@@ -17,6 +17,7 @@ use axum_extra::{
 use crate::auth::decode_access_token;
 use crate::extractors::auth::{resolve_current_user, resolve_current_user_from_access_token};
 use crate::host_authority::{take_host_authority, with_host_authority_scope};
+use crate::middleware::tenant_route_policy::{TenantRouteScope, tenant_route_scope};
 use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 use crate::services::server_runtime_context::ServerAuthRuntime;
 
@@ -79,8 +80,10 @@ pub async fn resolve_optional(
         .is_some()
     {
         resolve_current_user(&mut parts, &ctx).await
-    } else {
+    } else if auth_can_resolve_without_tenant_context(request_path.as_str()) {
         resolve_current_user_without_tenant_context(&mut parts, &ctx).await
+    } else {
+        resolve_current_user(&mut parts, &ctx).await
     };
 
     match current_user_result {
@@ -235,6 +238,13 @@ fn pages_inline_authoring_response(
     response
 }
 
+fn auth_can_resolve_without_tenant_context(path: &str) -> bool {
+    matches!(
+        tenant_route_scope(path),
+        TenantRouteScope::GlobalOperator | TenantRouteScope::SelfResolvingHandshake
+    )
+}
+
 fn is_observability_auth_path(path: &str) -> bool {
     matches!(
         path,
@@ -339,8 +349,9 @@ fn service_forum_boundary_violation(
 mod tests {
     use super::{
         PAGES_AUTHORING_CACHE_CONTROL, PAGES_AUTHORING_ROBOTS_POLICY,
-        is_human_user_self_service_path, is_observability_auth_path,
-        is_pages_inline_authoring_server_fn, is_pages_inline_authoring_surface,
+        auth_can_resolve_without_tenant_context, is_human_user_self_service_path,
+        is_observability_auth_path, is_pages_inline_authoring_server_fn,
+        is_pages_inline_authoring_surface,
         pages_inline_authoring_response, service_forum_boundary_violation,
         verified_tenant_id_from_access_token,
     };
@@ -348,6 +359,27 @@ mod tests {
     use axum::response::IntoResponse;
     use rustok_api::Permission;
     use uuid::Uuid;
+
+    #[test]
+    fn tenantless_auth_resolution_is_limited_to_non_tenant_route_scopes() {
+        for path in [
+            "/health/ready",
+            "/catalog/modules",
+            "/v2/catalog/publish",
+            "/api/graphql/ws",
+        ] {
+            assert!(auth_can_resolve_without_tenant_context(path), "{path}");
+        }
+
+        for path in [
+            "/api/users",
+            "/api/forum/topics",
+            "/api/graphql",
+            "/modules/pages-authoring",
+        ] {
+            assert!(!auth_can_resolve_without_tenant_context(path), "{path}");
+        }
+    }
 
     #[test]
     fn global_auth_uses_only_the_verified_jwt_tenant_claim() {
