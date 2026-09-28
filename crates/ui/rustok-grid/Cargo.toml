@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Framework-agnostic DataGrid state machine, column math, and filtering engine for RusToK"
 
+[lib]
+path = "src/lib.rs"
+
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+
