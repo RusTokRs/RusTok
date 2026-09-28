@@ -157,6 +157,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.04 finding in progress — tenant deactivation lifecycle on long-lived/self-resolving transports.** GraphQL WS validated tenant activity only during `connection_init`, so an already-open socket could continue after the tenant was disabled; workflow webhook directly loaded the tenant and could similarly trigger active workflows for a disabled tenant because it bypasses the normal tenant resolver. WS auth revalidation now fail-closes when the persisted tenant is missing/inactive, and workflow webhook tenant lookup rejects inactive tenants as not-found.
 
+- [ ] **FS-22.02 finding in progress — rate-limit prefix overmatching.** `matching_path_policy` used raw `starts_with`, so an endpoint such as `/api/auth/login-extra` could inherit the `/api/auth/login` limiter. Matching is now segment-aware; exact route and descendants match the specialized policy, while lookalike prefixes fall through to the generic `/api/` policy. The regression tests explicitly distinguish policy namespaces.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
