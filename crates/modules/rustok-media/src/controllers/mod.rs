@@ -103,9 +103,13 @@ fn media_error(error: MediaError) -> HttpError {
             "Media asset changed; reload exact locale state and retry",
         ),
         MediaError::TranslationRevisionExhausted { .. } => {
-            HttpError::internal("Media translation revision is exhausted")
+            tracing::error!("Media translation revision space is exhausted");
+            HttpError::internal("Media translation service is temporarily unavailable")
         }
-        MediaError::TranslationEvent(error) => HttpError::internal(error),
+        MediaError::TranslationEvent(error) => {
+            tracing::error!(error = %error, "Media translation event persistence failed");
+            HttpError::internal("Media translation service is temporarily unavailable".to_string())
+        }
         MediaError::InvalidRenditionPurpose(purpose) => HttpError::bad_request(
             "invalid_rendition_purpose",
             format!("Invalid rendition purpose: {purpose}"),
