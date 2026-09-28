@@ -81,7 +81,7 @@ impl InstallerPersistenceService {
                 status: Set(HTTP_INSTALL_JOB_SUCCEEDED_STATUS.to_string()),
                 finished_at: Set(Some(now)),
                 session_id: Set(Some(session_id)),
-                tenant_id: Set(Some(tenant_id)),
+                tenant_id: Set(tenant_id),
                 output: Set(output),
                 error_message: Set(None),
                 updated_at: Set(now),

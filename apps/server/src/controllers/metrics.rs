@@ -753,6 +753,7 @@ fn format_rbac_metrics(
             "rustok_rbac_users_without_roles_total {users_without_roles_total}\n",
             "rustok_rbac_orphan_user_roles_total {orphan_user_roles_total}\n",
             "rustok_rbac_orphan_role_permissions_total {orphan_role_permissions_total}\n",
+            "rustok_rbac_consistency_metrics_collection_status {consistency_metrics_available}\n",
             "rustok_rbac_consistency_query_failures_total {consistency_query_failures_total}\n",
             "rustok_rbac_consistency_query_latency_ms_total {consistency_query_latency_ms_total}\n",
             "rustok_rbac_consistency_query_latency_samples {consistency_query_latency_samples}\n"
@@ -829,13 +830,13 @@ mod tests {
 
     #[test]
     fn rbac_metrics_include_claim_role_mismatch_counter() {
-        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), 0, 0, 0);
+        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
         assert!(payload.contains("rustok_rbac_claim_role_mismatch_total"));
     }
 
     #[test]
     fn rbac_metrics_include_engine_decision_and_latency_counters() {
-        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), 0, 0, 0);
+        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
         assert_metric_line(&payload, "rustok_rbac_engine_decisions_policy_total");
         assert_metric_line(&payload, "rustok_rbac_engine_eval_duration_ms_total");
         assert_metric_line(&payload, "rustok_rbac_engine_eval_duration_samples");
@@ -843,31 +844,31 @@ mod tests {
 
     #[test]
     fn rbac_metrics_include_users_without_roles_counter() {
-        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), 0, 0, 0);
+        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
         assert!(payload.contains("rustok_rbac_users_without_roles_total"));
     }
 
     #[test]
     fn rbac_metrics_include_orphan_user_roles_counter() {
-        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), 0, 0, 0);
+        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
         assert!(payload.contains("rustok_rbac_orphan_user_roles_total"));
     }
 
     #[test]
     fn rbac_metrics_include_orphan_role_permissions_counter() {
-        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), 0, 0, 0);
+        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
         assert!(payload.contains("rustok_rbac_orphan_role_permissions_total"));
     }
 
     #[test]
     fn rbac_metrics_include_consistency_query_failures_counter() {
-        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), 0, 0, 0);
+        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
         assert!(payload.contains("rustok_rbac_consistency_query_failures_total"));
     }
 
     #[test]
     fn rbac_metrics_include_consistency_query_latency_counters() {
-        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), 0, 0, 0);
+        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
         assert!(payload.contains("rustok_rbac_consistency_query_latency_ms_total"));
         assert!(payload.contains("rustok_rbac_consistency_query_latency_samples"));
     }

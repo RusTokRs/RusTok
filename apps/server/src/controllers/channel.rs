@@ -1,6 +1,7 @@
 use axum::{
     Extension, Json,
     extract::{Path, State},
+    http::StatusCode,
     response::Response,
     routing::{delete, get, patch, post},
 };
@@ -60,7 +61,7 @@ async fn bootstrap(
 
     let mut oauth_apps = oauth_apps::Entity::find_active_by_tenant(ctx.db(), tenant.id)
         .await
-        .map_err(map_channel_error)?
+        .map_err(Error::from)?
         .into_iter()
         .map(|app| AvailableChannelOauthAppItem {
             id: app.id,
@@ -216,7 +217,7 @@ async fn bind_oauth_app(
 
     let oauth_apps = oauth_apps::Entity::find_active_by_tenant(ctx.db(), tenant.id)
         .await
-        .map_err(map_channel_error)?;
+        .map_err(Error::from)?;
     if !oauth_apps.iter().any(|app| app.id == input.oauth_app_id) {
         return Err(Error::BadRequest(
             "OAuth app does not belong to the current tenant".to_string(),

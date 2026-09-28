@@ -30,6 +30,16 @@ impl DirtyTracker {
         self.fields.remove(field);
     }
 
+    /// Record whether a field is modified relative to its initial value.
+    pub fn record_change(&mut self, field: impl Into<String>, is_different: bool) {
+        let f = field.into();
+        if is_different {
+            self.fields.insert(f);
+        } else {
+            self.fields.remove(&f);
+        }
+    }
+
     /// Check whether a specific field is dirty.
     pub fn is_dirty(&self, field: &str) -> bool {
         self.fields.contains(field)
@@ -85,5 +95,15 @@ mod tests {
         tracker.reset();
         assert!(!tracker.is_any_dirty());
         assert_eq!(tracker.count(), 0);
+    }
+
+    #[test]
+    fn record_change_marks_and_unmarks() {
+        let mut tracker = DirtyTracker::new();
+        tracker.record_change("title", true);
+        assert!(tracker.is_dirty("title"));
+
+        tracker.record_change("title", false);
+        assert!(!tracker.is_dirty("title"));
     }
 }

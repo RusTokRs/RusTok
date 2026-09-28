@@ -29,7 +29,8 @@ use crate::context::{FieldContext, FormContext};
 #[component]
 pub fn FormField(
     /// The field name. Must match the key used in `FormState::field_error`.
-    name: &'static str,
+    #[prop(into)]
+    name: String,
     /// Extra CSS classes on the wrapper `<div>`.
     #[prop(optional, into)]
     class: String,
@@ -39,7 +40,7 @@ pub fn FormField(
         .expect("FormField must be used inside <Form>");
 
     provide_context(FieldContext {
-        name: name.to_string(),
+        name,
         form: form_ctx,
     });
 

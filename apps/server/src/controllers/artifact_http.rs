@@ -9,7 +9,7 @@ use axum::{
         header::{CACHE_CONTROL, CONTENT_TYPE},
     },
     response::Response,
-    routing::{delete, get, patch, post},
+    routing::{get, post},
 };
 use rustok_api::request::ResolvedRequestLocale;
 use rustok_modules::{ModuleHttpMethod, find_artifact_command_binding, find_artifact_http_binding};

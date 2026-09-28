@@ -912,6 +912,7 @@ mod tests {
         ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
         QueryFilter, Set,
     };
+    use sea_orm_migration::MigrationTrait;
     use serde_json::json;
     use std::collections::{HashMap, HashSet};
     use uuid::Uuid;

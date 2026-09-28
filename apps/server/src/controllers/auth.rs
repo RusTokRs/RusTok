@@ -62,8 +62,6 @@ fn user_response_from_model(user: users::Model, role: rustok_core::UserRole) -> 
     }
 }
 
-#[utoipa::path(post, path = "/api/auth/register", tag = "auth", request_body = RegisterParams,
-    responses((status = 200, description = "Registration successful", body = AuthResponse),(status = 400, description = "Email already exists")))]
 fn ensure_registration_enabled(settings: &RustokSettings) -> Result<()> {
     if settings.features.registration_enabled {
         Ok(())
@@ -72,6 +70,8 @@ fn ensure_registration_enabled(settings: &RustokSettings) -> Result<()> {
     }
 }
 
+#[utoipa::path(post, path = "/api/auth/register", tag = "auth", request_body = RegisterParams,
+    responses((status = 200, description = "Registration successful", body = AuthResponse),(status = 400, description = "Email already exists")))]
 async fn register(
     State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,

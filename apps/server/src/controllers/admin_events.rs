@@ -248,7 +248,7 @@ fn forbidden_error(description: impl Into<String>) -> Error {
 mod tests {
     use chrono::Utc;
     use rustok_api::{Action, Permission, Resource};
-    use rustok_outbox::{SysEventStatus, SysEventsMigration, entity};
+    use rustok_outbox::{SysEventsMigration, entity::{self, SysEventStatus}};
     use sea_orm::{ActiveModelTrait, Database, DbBackend, EntityTrait, Set};
     use sea_orm_migration::{MigrationTrait, SchemaManager};
     use uuid::Uuid;

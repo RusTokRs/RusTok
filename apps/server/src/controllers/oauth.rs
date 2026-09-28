@@ -73,7 +73,7 @@ async fn token_handler(
 ) -> axum::response::Response {
     let req = match parse_token_request(request, &ctx).await {
         Ok(request) => request,
-        Err(error) => return oauth_token_http_response(error.status, error),
+        Err(error) => return oauth_token_http_response(StatusCode::BAD_REQUEST, error),
     };
 
     match OAuthTokenService::exchange(&ctx, tenant_ctx.id, &req).await {
