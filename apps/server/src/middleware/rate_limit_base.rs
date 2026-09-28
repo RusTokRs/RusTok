@@ -1,6 +1,6 @@
 /// Rate Limiting Middleware for RusToK
 ///
-/// Implements a sliding window rate limiter to protect endpoints from abuse.
+/// Implements a fixed-window rate limiter to protect endpoints from abuse.
 /// Supports per-IP rate limiting with configurable limits.
 use axum::{
     body::Body,
@@ -209,14 +209,15 @@ impl RateLimiter {
             .into_value();
 
         if counter.count > max_requests {
-            let retry_after = window
-                .saturating_sub(now.duration_since(counter.window_start))
-                .as_secs();
+            let retry_after = rate_limit_retry_after(
+                window.saturating_sub(now.duration_since(counter.window_start)),
+            );
+            let key_fingerprint = rate_limit_key_fingerprint(key);
             warn!(
-                key = %key,
+                key_fingerprint = %key_fingerprint,
                 count = counter.count,
                 limit = max_requests,
-                retry_after = retry_after,
+                retry_after,
                 "Rate limit exceeded"
             );
             return Err(RateLimitCheckError::Exceeded(RateLimitExceeded::new(
@@ -563,10 +564,10 @@ fn extract_bearer_token(headers: &HeaderMap) -> Option<&str> {
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| {
-            value
-                .strip_prefix("Bearer ")
-                .or_else(|| value.strip_prefix("bearer "))
+            let (scheme, token) = value.trim().split_once(' ')?;
+            scheme.eq_ignore_ascii_case("bearer").then_some(token.trim())
         })
+        .filter(|token| !token.is_empty())
 }
 
 fn extract_trusted_rate_limit_claims(
@@ -618,6 +619,14 @@ fn redis_rate_limit_key(key_prefix: &str, identity: &str) -> String {
 
 fn bounded_redis_window_seconds(window: Duration) -> i64 {
     window.as_secs().clamp(1, i64::MAX as u64) as i64
+}
+
+fn rate_limit_retry_after(remaining: Duration) -> u64 {
+    remaining.as_secs().max(1)
+}
+
+fn rate_limit_key_fingerprint(key: &str) -> String {
+    hex::encode(Sha256::digest(key.as_bytes()))[..16].to_string()
 }
 
 async fn redis_with_timeout<T, E, F>(
@@ -691,7 +700,11 @@ pub async fn rate_limit_middleware(
         &RequestTrustSettings::default(),
     );
 
-    debug!(rate_limit_key = %rate_limit_key, "Checking rate limit");
+    let rate_limit_key_fingerprint = rate_limit_key_fingerprint(&rate_limit_key);
+    debug!(
+        rate_limit_key_fingerprint = %rate_limit_key_fingerprint,
+        "Checking rate limit"
+    );
 
     match state.limiter.check_rate_limit(&rate_limit_key).await {
         Ok(info) => {
@@ -737,8 +750,7 @@ pub async fn rate_limit_for_paths(
         &state.request_trust,
     );
 
-    let rate_limit_key_fingerprint =
-        hex::encode(Sha256::digest(rate_limit_key.as_bytes()))[..16].to_string();
+    let rate_limit_key_fingerprint = rate_limit_key_fingerprint(&rate_limit_key);
     debug!(
         rate_limit_key_fingerprint = %rate_limit_key_fingerprint,
         path = %path,

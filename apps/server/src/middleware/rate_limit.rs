@@ -29,6 +29,10 @@ pub use base::{
 /// Incoming values are always removed before a trusted value is inserted.
 pub const TRUSTED_CLIENT_IP_HEADER: &str = "x-rustok-trusted-client-ip";
 
+/// Public readiness is cheap enough for probes but still performs multiple runtime checks.
+/// Keep it on the distributed API limiter so every host profile gets the same abuse control.
+pub const PUBLIC_READINESS_RATE_LIMIT_PREFIXES: &[&str] = &["/health/ready"];
+
 /// Path-aware rate limiting plus propagation of the already-resolved client IP.
 ///
 /// GraphQL module policies must consume this internal value rather than parsing

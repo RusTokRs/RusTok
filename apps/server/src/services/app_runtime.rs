@@ -10,7 +10,7 @@ use crate::middleware;
 use crate::middleware::rate_limit::{
     PathRateLimitMiddlewareState, PathRateLimitPolicy, RateLimitConfig, RateLimiter,
     SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter, SharedSearchRateLimiter,
-    cleanup_task,
+    PUBLIC_READINESS_RATE_LIMIT_PREFIXES, cleanup_task,
 };
 use crate::modules;
 use crate::modules::{DeploymentSurfaceContract, ManifestManager};
@@ -438,6 +438,10 @@ fn init_rate_limit_layers(
                 PathRateLimitPolicy {
                     limiter: auth_limiter,
                     prefixes: Arc::new(AUTH_RATE_LIMIT_PREFIXES.to_vec()),
+                },
+                PathRateLimitPolicy {
+                    limiter: api_limiter.clone(),
+                    prefixes: Arc::new(PUBLIC_READINESS_RATE_LIMIT_PREFIXES.to_vec()),
                 },
                 PathRateLimitPolicy {
                     limiter: api_limiter,
