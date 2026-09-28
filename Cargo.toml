@@ -88,7 +88,17 @@ tokio = { version = "1.52", features = ["full"] }
 # Web
 axum = { version = "0.8.9", features = ["multipart", "ws"] }
 tower = "0.5"
-tower-http = { version = "0.7.0", features = ["cors", "fs"] }
+tower-http = { version = "0.7.0", features = [
+    "cors",
+    "fs",
+    "trace",
+    "request-id",
+    "timeout",
+    "sensitive-headers",
+    "compression-gzip",
+    "util",
+    "uuid",
+] }
 tonic = "0.14.5"
 tonic-prost = "0.14.5"
 tonic-prost-build = "0.14.5"

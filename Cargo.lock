@@ -15210,6 +15210,7 @@ dependencies = [
  "rustok-seo-admin-support",
  "rustok-seo-targets",
  "rustok-ui-core",
+ "rustok-ui-grid",
  "rustok-ui-i18n",
  "serde",
  "serde_json",
@@ -19010,6 +19011,7 @@ version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08a05a66a4fdd61cbbe0a1d755ffe0ca6aba159dd4820936a0ff8a8278245b9c"
 dependencies = [
+ "async-compression",
  "bitflags 2.13.1",
  "bytes",
  "futures-core",
@@ -19025,8 +19027,11 @@ dependencies = [
  "pin-project-lite",
  "tokio",
  "tokio-util",
+ "tower",
  "tower-layer",
  "tower-service",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

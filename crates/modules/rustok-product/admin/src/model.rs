@@ -356,7 +356,7 @@ pub struct CatalogCategoryList {
     pub total: u64,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct CatalogCategorySummary {
     pub id: String,
     pub code: String,

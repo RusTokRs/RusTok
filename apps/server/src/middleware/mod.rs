@@ -2,7 +2,9 @@ pub mod auth_context;
 pub mod block_rest_auth;
 #[path = "channel_native_wrapper.rs"]
 pub mod channel;
+pub mod cors;
 pub mod csp_reports;
+pub mod http_stack;
 pub mod invite_accept;
 pub mod locale;
 pub mod mcp_scaffold_workspace;

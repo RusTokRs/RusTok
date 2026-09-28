@@ -1,12 +1,16 @@
 use rustok_api::locale_tags_match;
 use rustok_ui_core::{AdminQueryKey, UiRouteQueryIntent, normalize_ui_text};
+use rustok_ui_grid::core::{
+    ColumnAlign, ColumnFilters, ColumnWidth, FilterOption, FilterValue, GridColumnDef,
+    GridFilterType,
+};
 use std::collections::HashMap;
 
 use crate::i18n::t;
 use crate::model::{
-    ProductAdminBootstrap, ProductAttributeValueItem, ProductAttributeValuePatchDraft,
-    ProductDetail, ProductDraft, ProductList, ProductListItem, ProductPricingDetail,
-    ProductTranslation, ShippingProfile, ShippingProfileList,
+    CatalogCategorySummary, ProductAdminBootstrap, ProductAttributeValueItem,
+    ProductAttributeValuePatchDraft, ProductDetail, ProductDraft, ProductList, ProductListItem,
+    ProductPricingDetail, ProductTranslation, ShippingProfile, ShippingProfileList,
 };
 
 pub(crate) fn translation_for_locale(
@@ -1923,6 +1927,238 @@ pub(crate) fn build_product_image_view_models(
         })
         .collect()
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum ProductKind {
+    Simple,
+    Variable,
+    Bundle,
+    Digital,
+}
+
+impl ProductKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Simple => "simple",
+            Self::Variable => "variable",
+            Self::Bundle => "bundle",
+            Self::Digital => "digital",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "variable" => Self::Variable,
+            "bundle" => Self::Bundle,
+            "digital" | "virtual" => Self::Digital,
+            _ => Self::Simple,
+        }
+    }
+
+    pub fn label(&self, locale: Option<&str>) -> &'static str {
+        match self {
+            Self::Simple => if locale == Some("ru") { "Простой" } else { "Simple" },
+            Self::Variable => if locale == Some("ru") { "Вариативный" } else { "Variable" },
+            Self::Bundle => if locale == Some("ru") { "Комплект" } else { "Bundle" },
+            Self::Digital => if locale == Some("ru") { "Цифровой" } else { "Digital" },
+        }
+    }
+
+    pub fn badge_class(&self) -> &'static str {
+        match self {
+            Self::Simple => "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20",
+            Self::Variable => "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20",
+            Self::Bundle => "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20",
+            Self::Digital => "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",
+        }
+    }
+
+    pub fn description(&self, locale: Option<&str>) -> &'static str {
+        match self {
+            Self::Simple => if locale == Some("ru") { "Обычный физический товар с одним артикулом и учетом остатков" } else { "Physical product with single SKU and tracked inventory" },
+            Self::Variable => if locale == Some("ru") { "Товар с вариантами по осям (размер, цвет и т.д.)" } else { "Product with variant axes like size, color, or material" },
+            Self::Bundle => if locale == Some("ru") { "Набор или комплект из нескольких существующих товаров" } else { "Bundle or kit packaged together from existing catalog items" },
+            Self::Digital => if locale == Some("ru") { "Цифровой контент, файлы для скачивания или виртуальные услуги" } else { "Downloadable digital files, keys, or virtual services" },
+        }
+    }
+}
+
+pub fn item_product_kind(item: &ProductListItem) -> ProductKind {
+    item.product_type
+        .as_deref()
+        .map(ProductKind::parse)
+        .unwrap_or(ProductKind::Simple)
+}
+
+pub fn slugify(text: &str) -> String {
+    let mut slug = String::with_capacity(text.len());
+    let mut prev_dash = false;
+    for ch in text.chars() {
+        if ch.is_alphanumeric() {
+            slug.push(ch.to_ascii_lowercase());
+            prev_dash = false;
+        } else if !prev_dash && !slug.is_empty() {
+            slug.push('-');
+            prev_dash = true;
+        }
+    }
+    slug.trim_end_matches('-').to_string()
+}
+
+pub fn product_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale == Some("ru");
+    vec![
+        GridColumnDef::new("image", if is_ru { "Фото" } else { "Image" })
+            .width(60)
+            .align(ColumnAlign::Center)
+            .not_sortable()
+            .not_resizable()
+            .not_filterable(),
+        GridColumnDef::new("title", if is_ru { "Товар" } else { "Product" })
+            .width(320)
+            .min_width(220)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru { "Поиск по названию / slug...".to_string() } else { "Search title or slug...".to_string() }),
+            }),
+        GridColumnDef::new("product_type", if is_ru { "Тип" } else { "Type" })
+            .width(130)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Select {
+                options: vec![
+                    FilterOption { value: "".to_string(), label: if is_ru { "Все типы".to_string() } else { "All types".to_string() } },
+                    FilterOption { value: "simple".to_string(), label: if is_ru { "Простой".to_string() } else { "Simple".to_string() } },
+                    FilterOption { value: "variable".to_string(), label: if is_ru { "Вариативный".to_string() } else { "Variable".to_string() } },
+                    FilterOption { value: "bundle".to_string(), label: if is_ru { "Комплект".to_string() } else { "Bundle".to_string() } },
+                    FilterOption { value: "digital".to_string(), label: if is_ru { "Цифровой".to_string() } else { "Digital".to_string() } },
+                ],
+                placeholder: Some(if is_ru { "Все типы".to_string() } else { "All types".to_string() }),
+            }),
+        GridColumnDef::new("sku", if is_ru { "Артикул / Вендор" } else { "SKU / Vendor" })
+            .width(150)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru { "Фильтр SKU / вендор...".to_string() } else { "Filter SKU / vendor...".to_string() }),
+            }),
+        GridColumnDef::new("status", if is_ru { "Статус" } else { "Status" })
+            .width(120)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Select {
+                options: vec![
+                    FilterOption { value: "".to_string(), label: if is_ru { "Все статусы".to_string() } else { "All statuses".to_string() } },
+                    FilterOption { value: "ACTIVE".to_string(), label: if is_ru { "Активен".to_string() } else { "Active".to_string() } },
+                    FilterOption { value: "DRAFT".to_string(), label: if is_ru { "Черновик".to_string() } else { "Draft".to_string() } },
+                    FilterOption { value: "ARCHIVED".to_string(), label: if is_ru { "В архиве".to_string() } else { "Archived".to_string() } },
+                ],
+                placeholder: Some(if is_ru { "Все статусы".to_string() } else { "All statuses".to_string() }),
+            }),
+        GridColumnDef::new("created_at", if is_ru { "Создан" } else { "Created" })
+            .width(140)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::DateRange {
+                from_placeholder: Some(if is_ru { "С".to_string() } else { "From".to_string() }),
+                to_placeholder: Some(if is_ru { "По".to_string() } else { "To".to_string() }),
+            }),
+        GridColumnDef::actions("actions", if is_ru { "Действия" } else { "Actions" })
+            .width(180)
+            .align(ColumnAlign::Right),
+    ]
+}
+
+pub fn matches_product_filter(item: &ProductListItem, column_id: &str, filter: &FilterValue) -> bool {
+    match (column_id, filter) {
+        ("title", FilterValue::Text(query)) => {
+            let q = query.trim().to_lowercase();
+            q.is_empty() || item.title.to_lowercase().contains(&q) || item.handle.to_lowercase().contains(&q)
+        }
+        ("product_type", FilterValue::Select(val)) => {
+            if val.is_empty() {
+                true
+            } else {
+                let kind = item.product_type.as_deref().unwrap_or("simple").to_lowercase();
+                kind == val.to_lowercase()
+            }
+        }
+        ("sku", FilterValue::Text(query)) => {
+            let q = query.trim().to_lowercase();
+            q.is_empty()
+                || item.seller_id.as_deref().map(|s| s.to_lowercase().contains(&q)).unwrap_or(false)
+                || item.vendor.as_deref().map(|s| s.to_lowercase().contains(&q)).unwrap_or(false)
+        }
+        ("status", FilterValue::Select(val)) => {
+            if val.is_empty() {
+                true
+            } else {
+                item.status.eq_ignore_ascii_case(val)
+            }
+        }
+        ("category", FilterValue::Text(query)) => {
+            let q = query.trim().to_lowercase();
+            q.is_empty() || item.primary_category_id.as_deref().map(|s| s.to_lowercase().contains(&q)).unwrap_or(false)
+        }
+        _ => true,
+    }
+}
+
+pub fn filter_products(items: &[ProductListItem], filters: &ColumnFilters) -> Vec<ProductListItem> {
+    if filters.is_empty() {
+        return items.to_vec();
+    }
+    items
+        .iter()
+        .filter(|item| {
+            for (col_id, filter_val) in filters.iter() {
+                if !matches_product_filter(item, col_id, filter_val) {
+                    return false;
+                }
+            }
+            true
+        })
+        .cloned()
+        .collect()
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CategoryTreeItem {
+    pub category: CatalogCategorySummary,
+    pub depth: usize,
+    pub children: Vec<CategoryTreeItem>,
+}
+
+pub fn build_category_tree(categories: &[CatalogCategorySummary]) -> Vec<CategoryTreeItem> {
+    fn build_branch(
+        parent_id: Option<&str>,
+        all: &[CatalogCategorySummary],
+        depth: usize,
+    ) -> Vec<CategoryTreeItem> {
+        all.iter()
+            .filter(|c| c.parent_id.as_deref() == parent_id)
+            .map(|c| CategoryTreeItem {
+                category: c.clone(),
+                depth,
+                children: build_branch(Some(&c.id), all, depth + 1),
+            })
+            .collect()
+    }
+
+    build_branch(None, categories, 0)
+}
+
+pub fn flatten_category_tree(tree: &[CategoryTreeItem]) -> Vec<(CatalogCategorySummary, usize)> {
+    let mut flat = Vec::new();
+    fn visit(item: &CategoryTreeItem, acc: &mut Vec<(CatalogCategorySummary, usize)>) {
+        acc.push((item.category.clone(), item.depth));
+        for child in &item.children {
+            visit(child, acc);
+        }
+    }
+    for root in tree {
+        visit(root, &mut flat);
+    }
+    flat
+}
+
+
 
 #[cfg(test)]
 mod tests {
