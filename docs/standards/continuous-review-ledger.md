@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `5c92615b38e880af3fe00eda71d75d91ad8a9c4a`  
+**Current main SHA:** `be01c8b24b729cbcabe7abd4fc7f0d6989517e3b`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -367,6 +367,19 @@ Hard limits for every iteration:
 - **Documentation:** `crates/modules/rustok-auth/docs/README.md` now records the checked JWT expiration boundary.
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.07` complete after merge; continue to the next unchecked primary module in FS-22.03.
+
+### FS-22.03.17 Iterations 1-4 — `apps/server/src/services/auth_admin_mutation_provider.rs`
+
+- **Base:** refreshed `main` at `8951800d7e53f12add957e2679041ec4ece9ce1d`; dedicated branch `codex/audit-fs-22.03.17-auth-admin-provider`. During implementation, `main` advanced with unrelated UI PR #4272; the final branch was merged with an explicit 3-way merge-tree so that unrelated `main` changes were preserved.
+- **Iteration 1 — user mutation fences:** SQLite user mutation locking now checks the conditional write fence, rereads the current row, and rejects unsupported backends without panic. User custom-field updates compare the pre-lock metadata snapshot with the locked row and fail with a conflict on concurrent metadata changes. This prevents stale snapshots from overwriting concurrent user changes.
+- **Iteration 2 — admin error boundary:** raw DB/service diagnostics in the user and OAuth admin providers now pass through `internal_admin_error`, logging server-side while exposing only `Auth administration operation failed`. Validation, permission, conflict and not-found categories remain stable and user-facing where appropriate.
+- **Iteration 3 — response consistency:** create/update user mutations resolve tenant name and authoritative resulting role before transaction commit, then construct `UserMutationRecord` without post-commit RBAC/tenant reads. A successful committed mutation can therefore no longer become a client-visible failure because a projection read failed afterward.
+- **Iteration 4 — provider read budget:** OAuth admin app/authorized-app lists now enforce a service-level `1..=100` limit regardless of transport caller. Existing GraphQL caps remain unchanged.
+- **Immediate/adjacent/fresh audits:** reviewed user admin lock ordering, RBAC authoritative reads, super-admin continuity, durable invalidation generation, event/outbox publication, OAuth tenant filters, GraphQL error mapping, and installer/user transaction boundaries. A fresh pass caught and corrected a temporary file-truncation hazard in the GitHub content workflow before PR creation.
+- **Final post-merge second pass:** after PR #4273 merged at `be01c8b24b729cbcabe7abd4fc7f0d6989517e3b`, both provider files were reread from `main`; no remaining in-scope owner/provider defect was found.
+- **Deferred:** OAuth client-secret rotation Result handling in `apps/server/src/services/oauth_admin_guard.rs` remains the next dedicated provider module. Further response-projection atomicity beyond this user-admin provider boundary remains explicitly deferred.
+- **Verification:** repository source inspection, iterative caller/callee review, branch diff review, and post-merge source re-read only. No tests, clippy, build, gatekeeper, migrations, or runtime commands were executed by the agent.
+- **Status:** `FS-22.03.17` complete. Next primary module: `FS-22.03.18 — apps/server/src/services/oauth_admin_guard.rs`.
 
 ### FS-22.03.16 Iteration 1 — `crates/modules/rustok-auth/src/admin_mutations.rs`
 
