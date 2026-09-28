@@ -8,7 +8,7 @@ use rustok_api::{Action, Permission, Resource, has_effective_permission};
 use rustok_outbox::entity::{self, SysEventStatus};
 use rustok_telemetry::metrics;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    ColumnTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
     Set, Value,
     sea_query::{Expr, SimpleExpr},
 };
@@ -95,7 +95,7 @@ pub async fn list_dlq(
     let models = db_query
         .all(ctx.db())
         .await
-        .map_err(|e| Error::BadRequest(format!("Failed to load DLQ events: {e}")))?;
+        .map_err(Error::Database)?;
     metrics::record_read_path_query(
         "http",
         "admin.list_dlq",
@@ -165,7 +165,7 @@ pub async fn replay_dlq_event(
         ))
         .one(ctx.db())
         .await
-        .map_err(|e| Error::BadRequest(format!("Failed to fetch sys_event: {e}")))?
+        .map_err(Error::Database)?
         .ok_or(Error::NotFound)?;
 
     if model.status != SysEventStatus::Failed {
@@ -174,24 +174,41 @@ pub async fn replay_dlq_event(
         ));
     }
 
-    let mut active: entity::ActiveModel = model.into();
-    active.status = Set(SysEventStatus::Pending);
-    active.retry_count = Set(0);
-    active.next_attempt_at = Set(None);
-    active.last_error = Set(None);
-    active.claimed_by = Set(None);
-    active.claimed_at = Set(None);
-    active.dispatched_at = Set(None);
-
-    active
-        .update(ctx.db())
-        .await
-        .map_err(|e| Error::BadRequest(format!("Failed to replay sys_event: {e}")))?;
+    requeue_failed_event(ctx.db(), id).await?;
 
     Ok(Json(DlqReplayResponse {
         id,
         status: "requeued",
     }))
+}
+
+async fn requeue_failed_event(db: &DatabaseConnection, id: Uuid) -> Result<()> {
+    let result = entity::Entity::update_many()
+        .filter(entity::Column::Id.eq(id))
+        .filter(entity::Column::Status.eq(SysEventStatus::Failed))
+        .filter(entity::Column::ClaimedBy.is_null())
+        .filter(entity::Column::ClaimedAt.is_null())
+        .set(entity::ActiveModel {
+            status: Set(SysEventStatus::Pending),
+            retry_count: Set(0),
+            next_attempt_at: Set(None),
+            last_error: Set(None),
+            claimed_by: Set(None),
+            claimed_at: Set(None),
+            dispatched_at: Set(None),
+            ..Default::default()
+        })
+        .exec(db)
+        .await
+        .map_err(Error::Database)?;
+
+    if result.rows_affected != 1 {
+        return Err(Error::BadRequest(
+            "Only failed (DLQ) events can be replayed".to_string(),
+        ));
+    }
+
+    Ok(())
 }
 
 pub fn router() -> crate::routes::ServerRouter {
@@ -229,10 +246,14 @@ fn forbidden_error(description: impl Into<String>) -> Error {
 
 #[cfg(test)]
 mod tests {
+    use chrono::Utc;
     use rustok_api::{Action, Permission, Resource};
-    use sea_orm::DbBackend;
+    use rustok_outbox::{SysEventStatus, SysEventsMigration, entity};
+    use sea_orm::{ActiveModelTrait, Database, DbBackend, EntityTrait, Set};
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
+    use uuid::Uuid;
 
-    use super::sys_event_tenant_sql;
+    use super::{requeue_failed_event, sys_event_tenant_sql};
 
     #[test]
     fn dlq_replay_permission_is_manage_not_read() {
@@ -240,6 +261,51 @@ mod tests {
             Permission::new(Resource::Logs, Action::Manage),
             Permission::LOGS_READ
         );
+    }
+
+ 
+    #[tokio::test]
+    async fn replay_does_not_clobber_a_pending_event_claim() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        SysEventsMigration
+            .up(&SchemaManager::new(&db))
+            .await
+            .expect("create sys_events");
+
+        let event_id = Uuid::new_v4();
+        let tenant_id = Uuid::new_v4();
+        let now = Utc::now();
+        entity::ActiveModel {
+            id: Set(event_id),
+            event_type: Set("sample.event".to_string()),
+            schema_version: Set(1),
+            payload: Set(serde_json::json!({"tenant_id": tenant_id})),
+            status: Set(SysEventStatus::Pending),
+            retry_count: Set(3),
+            next_attempt_at: Set(None),
+            last_error: Set(Some("still running".to_string())),
+            claimed_by: Set(Some("worker-1".to_string())),
+            claimed_at: Set(Some(now)),
+            created_at: Set(now),
+            dispatched_at: Set(None),
+        }
+        .insert(&db)
+        .await
+        .expect("insert claimed event");
+
+        assert!(requeue_failed_event(&db, event_id).await.is_err());
+
+        let stored = entity::Entity::find_by_id(event_id)
+            .one(&db)
+            .await
+            .expect("load event")
+            .expect("event should remain");
+        assert_eq!(stored.status, SysEventStatus::Pending);
+        assert_eq!(stored.retry_count, 3);
+        assert_eq!(stored.claimed_by.as_deref(), Some("worker-1"));
+        assert!(stored.claimed_at.is_some());
     }
 
     #[test]

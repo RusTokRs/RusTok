@@ -144,7 +144,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.22 — `apps/server/src/controllers/marketplace_registry.rs`** — one-module audit; completed with five remediation iterations and a final fresh second pass.
 - [x] **FS-22.02.23 — `apps/server/src/controllers/artifact_http.rs`** — one-module audit; completed with three remediation iterations and a final fresh second pass.
 - [x] **FS-22.02.24 — `apps/server/src/controllers/artifact_permissions.rs`** — one-module audit; fresh discovery and independent second pass found no repository-owned in-scope defect requiring code remediation.
-- [ ] **FS-22.02.25 — `apps/server/src/controllers/admin_events.rs`** — one-module audit.
+- [x] **FS-22.02.25 — `apps/server/src/controllers/admin_events.rs`** — one-module audit; completed with two remediation units and a fresh independent second pass protecting DLQ database error/status semantics and replay claim ownership.
 - [ ] **FS-22.02.26 — `apps/server/src/controllers/channel.rs`** — one-module audit.
 - [ ] **FS-22.02.27 — `apps/server/src/controllers/flex.rs`** — one-module audit.
 - [ ] **FS-22.02.28 — `apps/server/src/controllers/installer.rs`** — one-module audit.
@@ -252,6 +252,22 @@ Hard limits for every iteration:
 - **Fresh second pass:** re-read the complete controller and all direct security/owner boundaries listed above from the dedicated branch. No additional repository-owned defect was found inside `artifact_permissions.rs`.
 - **Verification:** repository-content inspection, source-level reasoning and branch-diff review only. Per maintainer-owned execution policy, no test suite, clippy, build, gatekeeper, migration execution, or runtime command was run by the agent.
 - **Status:** module-level fresh second pass clean; `FS-22.02.24` complete. Next primary module: `FS-22.02.25 — apps/server/src/controllers/admin_events.rs`.
+
+
+### FS-22.02.25 Iteration 1 — `apps/server/src/controllers/admin_events.rs`
+
+- **Base:** refreshed `main` at `95685d121c77740e67dfa7e4c7edf5d1f8b0132b`; dedicated branch `codex/audit-fs-22.02.25-admin-events`.
+- **Invariant map:** tenant-facing DLQ reads must use only trusted routed tenant context and the documented current/legacy event-envelope tenant shapes; DLQ inspection requires `logs:read`, replay requires `logs:manage`; operational database failures must not be presented as caller faults or leak backend diagnostics; replay must be state-conditional so a relay claim cannot be clobbered by a concurrent operator request; event status, retry counters, claims, errors and dispatch metadata must transition consistently with the outbox relay contract.
+- **Discovery:** read the complete controller, route/OpenAPI declarations, RBAC permission extractor, server error mapping, outbox `sys_events` entity/migration, transactional event transport, relay claim/update semantics, outbox DLQ documentation, database policy, and direct router composition.
+- **Confirmed finding ADMIN-EVENTS-22.02.25-01:** `list_dlq` and the initial replay lookup converted `DbErr` into `Error::BadRequest(...)`, exposing backend error text and misclassifying server-side operational failures as HTTP 400. The replay update had the same public-diagnostic leak.
+- **Remediation ADMIN-EVENTS-22.02.25-01:** database failures now map through the canonical `Error::Database` path, which logs the detailed server error and returns the stable generic HTTP 500 envelope. No backend diagnostic text is exposed to the caller.
+- **Confirmed finding ADMIN-EVENTS-22.02.25-02:** replay first loaded a failed row and then performed an unrestricted primary-key `ActiveModel::update`. A concurrent relay claim could therefore begin after the read but before the operator write; the stale replay write could then clear the live claim and reset retry/error state, breaking relay ownership.
+- **Remediation ADMIN-EVENTS-22.02.25-02:** replay now performs one database-side conditional `UPDATE` requiring `status=failed` and both claim fields to remain NULL. Only one matching row may transition to pending; any concurrent claim/state change makes the replay fail with the existing stable 400 state error. Added a focused regression test proving an already-pending claimed event retains its claim and retry state. The test was added but not executed by the agent.
+- **Adjacent-boundary review:** the trusted tenant and RBAC permission extractors remain unchanged; tenant isolation continues to support both current root-envelope and legacy nested-envelope payloads as documented by `rustok-outbox`. Relay completion already uses claim-aware CAS updates on status/worker/claim timestamp, and the replay fix now follows the same ownership principle rather than introducing a competing transaction model. SQLite remains a test/local mode while production database policy is PostgreSQL.
+- **Regression audit:** the remediation does not broaden replay authority, does not accept client tenant identifiers, does not mutate outbox event payloads, and does not add a second event transport. A failed replay can no longer overwrite a concurrently claimed row; a non-DLQ row still returns the documented state error.
+- **Fresh second pass:** re-read the complete changed controller and the adjacent auth/RBAC, error, outbox entity/migration, relay, transactional transport, database-policy and documentation boundaries from the modified branch. No additional repository-owned defect was found inside the primary module.
+- **Verification:** repository-content inspection, source-level reasoning and branch-diff review only. Per maintainer-owned execution policy, no test suite, clippy, build, gatekeeper, migration execution, or runtime command was run by the agent.
+- **Status:** module-level fresh second pass clean; `FS-22.02.25` complete. Next primary module: `FS-22.02.26 — apps/server/src/controllers/channel.rs`.
 
 ### FS-22.02.21 Result — `controllers/metrics.rs`
 
