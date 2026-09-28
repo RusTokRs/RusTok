@@ -176,6 +176,10 @@ remain separate unfinished control-plane work.
   `BuildService` directly. The
   control returns typed framework-neutral `rustok-api` snapshots, so GraphQL
   only wraps canonical facts and does not map SeaORM models.
+- The build progress WebSocket at `GET /ws/builds` is authenticated at the
+  transport boundary and admits only request contexts with
+  `modules:read`, `modules:list`, or `modules:manage`; this matches the
+  GraphQL `build_progress` subscription authorization contract.
 - Effective-module-policy snapshots carry the owner-produced tenant and exact
   policy-revision cache identity. Server consumers must match both fields;
   TTL or process generation alone never makes a cached authorization decision
