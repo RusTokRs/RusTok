@@ -297,6 +297,19 @@ Hard limits for every iteration:
 - **Verification:** repository-content inspection, source-level reasoning and branch-diff review only. Per maintainer-owned execution policy, no tests, clippy, build, gatekeeper, migration execution, or runtime command was run by the agent.
 - **Status:** module-level fresh second pass clean; `FS-22.02.27` complete. Next primary module: `FS-22.02.28 — apps/server/src/controllers/installer.rs`.
 
+
+### FS-22.02.28 Iteration 1 — `apps/server/src/controllers/installer.rs` production trust boundary
+
+- **Base:** refreshed `main` at `0f19f0f64072f455bf3518e8daafed81e6e804d0`; dedicated branch `codex/audit-fs-22.02.28-installer-controller`.
+- **Invariant map:** production installer authentication and placement policy must be determined by the trusted server host, never by client-controlled `InstallPlan.environment`; production hosts must reject non-production plans; production HTTP apply must require `RUSTOK_INSTALL_SETUP_TOKEN`; production placement must use the host-selected `RUSTOK_INSTANCE_ROOT`; release builds without an explicit environment variable must retain the host's production-default posture.
+- **Confirmed finding INSTALLER-22.02.28-01:** `plan`, `preflight`, and `apply` selected the setup-token requirement from the submitted plan environment. `bind_host_install_plan` likewise allowed `local/demo/test` plans to bypass the production instance-root requirement. A caller could therefore label a request `local` on a production host and reach installer mutation logic without the production setup-token/host-root fences, including local-style secret/database policies in preflight/apply.
+- **Remediation INSTALLER-22.02.28-01:** installer setup-token validation now reads the canonical server production-environment helper; host plan binding rejects non-production install plans on a production host and applies the host-root requirement from the same trusted fact. The duplicated host production detector now delegates to the canonical settings helper, whose release-build default is production when no environment variable is present.
+- **Regression audit:** client plan environment no longer controls the production security boundary; a production host cannot be downgraded to a local/demo/test installer path. Existing development behavior remains available on debug/non-production hosts.
+- **Fresh second pass:** re-read the full installer controller, host environment selection, settings production helper, shared installer environment/preflight rules and installer documentation. No additional repository-owned defect was introduced by this trust-boundary remediation.
+- **Known next slice:** the controller's `INSTALL_JOBS` map is process-local and unbounded, while the installer contract explicitly requires durable job/receipt reads. This is a separate lifecycle/persistence remediation on the same primary module and is intentionally not mixed into this iteration.
+- **Verification:** repository-content inspection, source-level reasoning and branch-diff review only. Per maintainer-owned execution policy, no tests, clippy, build, gatekeeper, migration execution, or runtime command was run by the agent.
+- **Status:** iteration 1 complete; module track remains open for durable job lifecycle remediation.
+
 ### FS-22.02.21 Result — `controllers/metrics.rs`
 
 - **Status:** COMPLETE and integrated into `main`.

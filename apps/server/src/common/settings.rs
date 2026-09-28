@@ -1233,16 +1233,16 @@ fn email_delivery_is_disabled(settings: &EmailSettings) -> bool {
 }
 
 pub(crate) fn is_production_environment() -> bool {
-    ["RUSTOK_ENV", "RUST_ENV", "APP_ENV"].iter().any(|key| {
-        std::env::var(key)
-            .map(|value| {
-                matches!(
-                    value.trim().to_ascii_lowercase().as_str(),
-                    "prod" | "production"
-                )
-            })
-            .unwrap_or(false)
-    })
+    ["RUSTOK_ENV", "RUST_ENV", "APP_ENV"]
+        .iter()
+        .find_map(|key| std::env::var(key).ok())
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "prod" | "production"
+            )
+        })
+        .unwrap_or(!cfg!(debug_assertions))
 }
 
 pub(crate) fn demo_mode_token_exposure_enabled() -> bool {

@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+use crate::common::settings::is_production_environment;
 use crate::error::{Error, Result, http_error};
 use crate::installer_execution::ServerInstallExecutor;
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -139,7 +140,7 @@ async fn plan(
     State(ctx): State<ServerRuntimeContext>,
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPlanResponse>> {
-    require_setup_token(&headers, plan.environment.is_production())?;
+    require_setup_token(&headers)?;
     let plan = bind_host_install_plan(&ctx, plan).await?;
     Ok(Json(InstallPlanResponse {
         redacted_plan: redact_install_plan(&plan),
@@ -151,7 +152,7 @@ async fn preflight(
     State(ctx): State<ServerRuntimeContext>,
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPreflightResponse>> {
-    require_setup_token(&headers, plan.environment.is_production())?;
+    require_setup_token(&headers)?;
     let plan = bind_host_install_plan(&ctx, plan).await?;
     let report = evaluate_preflight_with_deployment(&plan, false);
     Ok(Json(InstallPreflightResponse {
@@ -166,7 +167,7 @@ async fn apply(
     State(ctx): State<ServerRuntimeContext>,
     Json(request): Json<InstallApplyRequest>,
 ) -> Result<(StatusCode, Json<InstallApplyJobResponse>)> {
-    require_setup_token(&headers, request.plan.environment.is_production())?;
+    require_setup_token(&headers)?;
     let plan = bind_host_install_plan(&ctx, request.plan).await?;
     let job_id = rustok_core::generate_id();
     let submitted_at = Utc::now();
@@ -242,6 +243,13 @@ async fn bind_host_install_plan(
     ctx: &ServerRuntimeContext,
     mut plan: InstallPlan,
 ) -> Result<InstallPlan> {
+    let host_is_production = is_production_environment();
+    if host_is_production && !plan.environment.is_production() {
+        return Err(bad_request_error(
+            "production installer hosts accept only production install plans",
+        ));
+    }
+
     let composition = rustok_distribution::composition_identity();
     let host_composition = InstallComposition {
         revision: composition.revision,
@@ -258,7 +266,7 @@ async fn bind_host_install_plan(
     let configured_root = std::env::var("RUSTOK_INSTANCE_ROOT")
         .ok()
         .filter(|value| !value.trim().is_empty());
-    if plan.environment.is_production() && configured_root.is_none() {
+    if host_is_production && configured_root.is_none() {
         return Err(bad_request_error(
             "production installer HTTP requests require a host-selected RUSTOK_INSTANCE_ROOT",
         ));
@@ -383,7 +391,8 @@ async fn receipts(
     }))
 }
 
-fn require_setup_token(headers: &HeaderMap, production: bool) -> Result<()> {
+fn require_setup_token(headers: &HeaderMap) -> Result<()> {
+    let production = is_production_environment();
     let expected = std::env::var("RUSTOK_INSTALL_SETUP_TOKEN")
         .ok()
         .filter(|value| !value.trim().is_empty());
