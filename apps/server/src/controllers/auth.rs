@@ -277,10 +277,30 @@ async fn request_reset(
 
     if let Some(reset_token_value) = reset_token.as_ref() {
         let runtime_ctx = ctx.runtime_ctx();
-        let email_service = email_service_from_ctx(runtime_ctx, request_context.locale.as_str())
-            .map_err(|_| Error::InternalServerError)?;
-        let reset_url = password_reset_url(runtime_ctx, reset_token_value)
-            .map_err(|_| Error::InternalServerError)?;
+        let email_service = match email_service_from_ctx(runtime_ctx, request_context.locale.as_str()) {
+            Ok(service) => service,
+            Err(_) => {
+                tracing::warn!(
+                    "Password reset email could not be prepared; keeping the public response generic"
+                );
+                return Ok(json_response(ResetRequestResponse {
+                    status: "ok",
+                    reset_token: if expose_token { reset_token } else { None },
+                }));
+            }
+        };
+        let reset_url = match password_reset_url(runtime_ctx, reset_token_value) {
+            Ok(url) => url,
+            Err(_) => {
+                tracing::warn!(
+                    "Password reset URL could not be prepared; keeping the public response generic"
+                );
+                return Ok(json_response(ResetRequestResponse {
+                    status: "ok",
+                    reset_token: if expose_token { reset_token } else { None },
+                }));
+            }
+        };
         let recipient = user
             .as_ref()
             .map(|record| record.email.clone())
@@ -369,8 +389,22 @@ async fn request_verification(
 
     if let Some(verification_token_value) = verification_token.as_ref() {
         let runtime_ctx = ctx.runtime_ctx();
-        let email_service = email_service_from_ctx(runtime_ctx, request_context.locale.as_str())
-            .map_err(|_| Error::InternalServerError)?;
+        let email_service = match email_service_from_ctx(runtime_ctx, request_context.locale.as_str()) {
+            Ok(service) => service,
+            Err(_) => {
+                tracing::warn!(
+                    "Email verification could not be prepared; keeping the public response generic"
+                );
+                return Ok(json_response(VerificationRequestResponse {
+                    status: "ok",
+                    verification_token: if expose_token {
+                        verification_token
+                    } else {
+                        None
+                    },
+                }));
+            }
+        };
         let recipient = params.email.clone();
         let verification_token = verification_token_value.clone();
 
