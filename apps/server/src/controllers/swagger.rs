@@ -4,6 +4,8 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
+use serde_json::Value;
+use std::collections::HashSet;
 use utoipa::OpenApi;
 use utoipa::openapi::OpenApi as OpenApiDoc;
 use utoipa::openapi::security::{
@@ -221,8 +223,104 @@ pub fn build_openapi_document(settings: &RustokSettings) -> OpenApiDoc {
             .paths
             .paths
             .retain(|path, _| REGISTRY_ONLY_OPENAPI_PATHS.contains(&path.as_str()));
+        prune_unused_registry_components(&mut openapi);
     }
     openapi
+}
+
+fn prune_unused_registry_components(openapi: &mut OpenApiDoc) {
+    let path_document = match serde_json::to_value(&openapi.paths) {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::error!(%error, "Failed to serialize registry-only OpenAPI paths for component pruning");
+            return;
+        }
+    };
+
+    let mut schema_names = HashSet::new();
+    let mut security_names = HashSet::new();
+    collect_component_references(&path_document, &mut schema_names, &mut security_names);
+
+    if let Some(components) = openapi.components.as_mut() {
+        // Schema components can recursively reference other schema components.
+        let mut pending: Vec<String> = schema_names.iter().cloned().collect();
+        let mut index = 0;
+        while index < pending.len() {
+            let name = &pending[index];
+            index += 1;
+
+            let Some(schema) = components.schemas.get(name) else {
+                continue;
+            };
+            let schema_document = match serde_json::to_value(schema) {
+                Ok(value) => value,
+                Err(error) => {
+                    tracing::error!(
+                        %error,
+                        schema = %name,
+                        "Failed to serialize OpenAPI schema during registry-only pruning"
+                    );
+                    continue;
+                }
+            };
+
+            let mut nested_schema_names = HashSet::new();
+            let mut unused_security_names = HashSet::new();
+            collect_component_references(
+                &schema_document,
+                &mut nested_schema_names,
+                &mut unused_security_names,
+            );
+
+            for nested in nested_schema_names {
+                if schema_names.insert(nested.clone()) {
+                    pending.push(nested);
+                }
+            }
+        }
+
+        components
+            .schemas
+            .retain(|name, _| schema_names.contains(name));
+        components
+            .security_schemes
+            .retain(|name, _| security_names.contains(name));
+    }
+}
+
+fn collect_component_references(
+    value: &Value,
+    schema_names: &mut HashSet<String>,
+    security_names: &mut HashSet<String>,
+) {
+    match value {
+        Value::Array(values) => {
+            for value in values {
+                collect_component_references(value, schema_names, security_names);
+            }
+        }
+        Value::Object(map) => {
+            if let Some(Value::String(reference)) = map.get("$ref") {
+                const SCHEMA_PREFIX: &str = "#/components/schemas/";
+                if let Some(name) = reference.strip_prefix(SCHEMA_PREFIX) {
+                    schema_names.insert(name.to_string());
+                }
+            }
+
+            if let Some(Value::Array(requirements)) = map.get("security") {
+                for requirement in requirements {
+                    if let Value::Object(entries) = requirement {
+                        security_names.extend(entries.keys().cloned());
+                    }
+                }
+            }
+
+            for value in map.values() {
+                collect_component_references(value, schema_names, security_names);
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+    }
 }
 
 /// GET /api/openapi.json — OpenAPI specification in JSON format
