@@ -145,6 +145,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.10 finding in progress — operator health exposure.** `/health/runtime` and `/health/modules` expose rollout/module dependency state and are documented as operator-facing, but were previously public because tenant middleware classified all `/health/*` as global. They now require typed host `read`/`manage` authority; `/health`, `/health/live`, and `/health/ready` remain probe-friendly.
 
+- [ ] **FS-22.09 finding in progress — malformed environment fail-open in helper callers.** `effective_environment_name()` rejects unsafe environment values, but the boolean `is_production_environment()` had a debug-build-dependent fallback on helper error. Security checks using the boolean could therefore treat a malformed environment as non-production in debug composition. The fallback is now fail-closed (`true`); invalid environment names are still rejected by the canonical resolver.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
