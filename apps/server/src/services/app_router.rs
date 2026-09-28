@@ -265,10 +265,6 @@ pub fn compose_application_router(
         let router = router
             .layer(Extension(runtime.registry))
             .layer(axum_middleware::from_fn_with_state(
-                runtime.rate_limit_state,
-                rate_limit_for_paths,
-            ))
-            .layer(axum_middleware::from_fn_with_state(
                 auth_runtime,
                 middleware::auth_context::resolve_optional,
             ))
@@ -282,6 +278,9 @@ pub fn compose_application_router(
             .layer(axum_middleware::from_fn_with_state(
                 runtime.rate_limit_state,
                 rate_limit_for_paths,
+            ))
+            .layer(axum_middleware::from_fn(
+                middleware::security_headers::security_headers,
             ));
         return Ok(middleware::http_stack::apply_http_edge_stack(
             router,
