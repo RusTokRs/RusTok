@@ -1528,6 +1528,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn login_rolls_back_last_login_and_session_when_token_issuance_fails() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Atomic login tenant", "atomic-login-tenant")
+            .insert(&db)
+            .await
+            .expect("failed to create tenant");
+        let password_hash = hash_password("Password123!").expect("failed to hash password");
+        let user = users::ActiveModel::new(
+            tenant.id,
+            "atomic-login@example.com",
+            &password_hash,
+        )
+        .insert(&db)
+        .await
+        .expect("failed to create user");
+
+        let config = AuthConfig::new("login-atomic-secret".to_string())
+            .with_rs256("not-a-valid-private-key", "not-a-valid-public-key");
+
+        let result = AuthLifecycleService::login_with_config(
+            &db,
+            &config,
+            tenant.id,
+            "atomic-login@example.com",
+            "Password123!",
+            None,
+            None,
+        )
+        .await;
+
+        assert!(matches!(result, Err(AuthLifecycleError::Internal(_))));
+
+        let persisted_user = users::Entity::find_by_id(user.id)
+            .one(&db)
+            .await
+            .expect("failed to inspect rolled-back login user")
+            .expect("login user should still exist");
+        assert!(
+            persisted_user.last_login_at.is_none(),
+            "failed token issuance must not persist login timestamp"
+        );
+
+        let session_count = sessions::Entity::find()
+            .filter(sessions::Column::TenantId.eq(tenant.id))
+            .filter(sessions::Column::UserId.eq(user.id))
+            .count(&db)
+            .await
+            .expect("failed to inspect login sessions");
+        assert_eq!(session_count, 0);
+    }
+
+    #[tokio::test]
     async fn refresh_rejects_expired_or_revoked_session() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let tenant = tenants::ActiveModel::new("Expired session tenant", "expired-session-tenant")
