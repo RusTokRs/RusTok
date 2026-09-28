@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `84f7553d1e13a63aee1afaf7d03a50de81a07fd7`  
+**Current main SHA:** `2afdf813171dc6a596343770045433044b66ab0a`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -125,7 +125,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.03 — `apps/server/src/middleware/registry_remote_claim.rs`** — one-module audit.
 - [x] **FS-22.02.04 — `apps/server/src/middleware/registry_publish_policy.rs`** — one-module audit.
 - [x] **FS-22.02.05 — `apps/server/src/middleware/rate_limit.rs`** — one-module audit.
-- [ ] **FS-22.02.06 — `apps/server/src/middleware/auth_context.rs`** — one-module audit.
+- [x] **FS-22.02.06 — `apps/server/src/middleware/auth_context.rs`** — one-module audit.
 - [ ] **FS-22.02.07 — `apps/server/src/middleware/channel.rs`** — one-module audit.
 - [ ] **FS-22.02.08 — `apps/server/src/middleware/locale.rs`** — one-module audit.
 - [ ] **FS-22.02.09 — `apps/server/src/middleware/tenant.rs`** — one-module audit.
@@ -246,6 +246,22 @@ Hard limits for every iteration:
 - **Verification:** repository-content inspection, static reasoning, and branch diff review only. Per maintainer execution rules, no tests, clippy, gatekeeper, build, or runtime commands were executed by the agent.
 - **Status:** module-level fresh second pass clean; `FS-22.02.05` complete. Next planned primary module is `FS-22.02.06 — apps/server/src/middleware/auth_context.rs`.
 - **Merged:** PR #4173, merge commit `84f7553d1e13a63aee1afaf7d03a50de81a07fd7`.
+
+### FS-22.02.06 Iteration 1 — `auth_context.rs`
+
+- **Base:** refreshed `main` to `2afdf813171dc6a596343770045433044b66ab0a`. Concurrent `main` changes were limited to the HTTP edge/CORS boundary and did not modify the auth-context contract; the stale pre-refresh branch was abandoned.
+- **Dedicated iteration branch:** `audit/fs-22.02.06-i1-refresh2-20260928`.
+- **Invariant map:** optional authentication must remain anonymous only when no credentials are presented; any presented user bearer must be validated and must never become authorization through client-supplied tenant/identity data; global/operator routes must not fabricate a tenant context; self-resolving transports must retain their own tenant contract; service principals must remain excluded from human-only routes; host-only credentials must remain separate and request-scoped; RBAC request snapshots must be isolated per request.
+- **Confirmed finding AUTH-22.02.06-01:** `auth_context` invoked the canonical auth extractor for every authenticated request, but `resolve_current_user` required a `TenantContextExtension`. The tenant route policy intentionally skips tenant resolution for `GlobalOperator` routes and `SelfResolvingHandshake`, including registry endpoints. Presented bearer credentials therefore produced HTTP 500 before authenticated registry/global handlers could receive `AuthContextExtension`. The middleware now derives only the signed JWT `tenant_id` for those explicit non-tenant route scopes and delegates the complete principal/session/OAuth validation to the existing canonical token resolver. It does not create a fake `TenantContextExtension`.
+- **Confirmed finding AUTH-22.02.06-02:** `metrics_auth` is intentionally the authentication boundary for observability bearer credentials, but the actual Axum layer order places `auth_context` outside it. A Prometheus/observability Bearer token could therefore be consumed as a user JWT and rejected before reaching `metrics_auth`. `auth_context` now passes the exact observability paths through untouched so `metrics_auth` remains authoritative for those credentials, including aggregate readiness.
+- **Confirmed refinement AUTH-22.02.06-03:** tenantless JWT resolution is now gated by the canonical `tenant_route_policy` scope rather than merely by absence of a tenant extension. An accidental tenant-middleware omission on an otherwise tenant-bound route therefore remains fail-closed instead of silently falling back to JWT tenant claims.
+- **Adjacent-boundary review:** app-router ordering confirms `tenant -> locale -> auth_context -> invite/channel/rate-limit` in the tenant-enabled profiles, while registry-only/worker-only profiles intentionally omit tenant resolution. Observability paths are globally mounted and separately protected/sanitized by `metrics_auth`. Host authority is removed before downstream dispatch and carried only as typed task-local context.
+- **Auth-policy review:** direct users require active sessions; delegated users are restricted by OAuth app scopes/consent; service tokens are classified separately and remain forbidden on human-only/forum personal interaction paths. `AuthContextExtension` and `AuthPrincipalContextExtension` are populated only from the verified `CurrentUser` result.
+- **Regression audit:** the remediation does not fabricate tenant state, relax session/user checks, broaden OAuth scopes, accept legacy registry headers, or bypass host authority. Observability tokens no longer collide with user JWT parsing, while normal tenant-bound requests still require the ordinary tenant middleware path.
+- **Fresh second pass:** re-read the complete changed middleware, canonical auth extractor/principal classifier, host-authority scope, RBAC task-local scope, tenant route policy, metrics auth, application router ordering, auth/registry/health controllers, and current auth tests. No remaining repository-owned defect was found inside `auth_context.rs`.
+- **Deferred finding AUTH-EXTRACTOR-01:** `apps/server/src/extractors/auth/mod.rs` validates tenant ownership after loading sessions/users by primary key, but the underlying session/user queries are not tenant-filtered at SQL level. The subsequent equality checks prevent cross-tenant authorization, but the query boundary does not itself carry the canonical tenant predicate required by the repository data-isolation standard. **Owning component:** `apps/server/src/extractors/auth/mod.rs`; handle as a dedicated extractor/auth iteration.
+- **Verification:** repository-content inspection, static reasoning, and branch diff review only. Per maintainer execution rules, no tests, clippy, gatekeeper, build, or runtime commands were executed by the agent.
+- **Status:** module-level fresh second pass clean; `FS-22.02.06` complete. Next planned primary module is `FS-22.02.07 — apps/server/src/middleware/channel.rs`.
 
 ### Deferred owning-module findings discovered during FS-22
 
