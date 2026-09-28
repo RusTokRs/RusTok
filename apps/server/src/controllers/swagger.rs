@@ -258,10 +258,13 @@ fn prune_unused_registry_components(openapi: &mut OpenApiDoc) {
 
     if let Some(global_security) = openapi.security.as_ref() {
         if let Ok(value) = serde_json::to_value(global_security) {
+            let mut unused_schema_names = HashSet::new();
+            let mut unused_tag_names = HashSet::new();
             collect_component_references(
                 &value,
-                &mut HashSet::new(),
+                &mut unused_schema_names,
                 &mut security_names,
+                &mut unused_tag_names,
             );
         }
     }
@@ -328,7 +331,12 @@ fn collect_component_references(
     match value {
         Value::Array(values) => {
             for value in values {
-                collect_component_references(value, schema_names, security_names);
+                collect_component_references(
+                    value,
+                    schema_names,
+                    security_names,
+                    tag_names,
+                );
             }
         }
         Value::Object(map) => {
