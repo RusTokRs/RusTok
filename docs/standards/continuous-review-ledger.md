@@ -10,7 +10,7 @@ status: active
 ## Deep Full-Stack Audit Cycle — 2026-09-28
 
 **Status:** ACTIVE  
-**Active phase:** FS-21 — deployment/server/runtime boundary  
+**Active phase:** FS-22 — `apps/server` composition root  
 **Initial main SHA:** `7e1d342c1a7bb846cd7bc13443708cc493fe45ce`  
 **Branch:** `audit/fs-21-deep-full-stack-20260928`
 
@@ -45,6 +45,17 @@ status: active
 - [x] User conditions recorded: full repository/deep business-logic audit; sequential server-to-library coverage; no half-measures/root-cause fixes; dedicated branch before implementation; commit + PR + merge to `main` after each phase; maintainer-owned tests; one repeatable trigger `реализуй план аудита`.
 - [x] Initial `main` SHA recorded before this cycle.
 
+### FS-21 Closeout
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Audit start:** `main` SHA `7e1d342c1a7bb846cd7bc13443708cc493fe45ce`.
+- **Implementation head before merge:** `21b9327830b7d61c5f59411812f2486df0d065da`.
+- **Merged to main:** `81ab275fda9788c7727d95f089e220307833f203` via PR #4157.
+- **Coverage completed:** deployment/runtime config resolution, production image contract, environment/path safety, health routing/probes, Unix shutdown signal handling, and runtime stop-handle bootstrap race; topology documentation was reconciled with the actual compose behavior.
+- **Verification:** changed sources and cross-file contracts were statically inspected through repository contents and commit diff. No test suites, cargo clippy, or other test commands were executed by the agent, per the maintainer-owned test rule. Repository access from the execution container could not clone the GitHub repository, so the local gatekeeper command was not run here; no claim of a passed local gatekeeper is made.
+- **Deferred by scope:** full worker lifecycle/join/abort coverage remains FS-24, where all background worker implementations will be audited together rather than partially patched in the server-host phase.
+- **Next phase:** FS-22 — `apps/server` composition root.
+
 ### FS-21 Findings and Implementation
 
 - [x] **SERVER-21-01 — production config path was compile-time coupled to the build workspace.** `load_config` used `env!("CARGO_MANIFEST_DIR")`, while the production image copies configuration to `/app/config`. Release binaries built in the image therefore could not resolve the copied runtime config. Config resolution now supports `RUSTOK_CONFIG_DIR`, prefers a `config` sibling next to the executable for deployed binaries, and retains the source-tree fallback for development.
@@ -61,7 +72,7 @@ status: active
 
 | Phase | Scope | Audit focus | Status |
 |---|---|---|:---:|
-| FS-21 | Deployment/server/runtime boundary | processes, HTTP/TLS/proxy assumptions, runtime config, startup/shutdown, secrets, environment, fail-closed behavior, observability, resource limits | [ ] |
+| FS-21 | Deployment/server/runtime boundary | processes, HTTP/TLS/proxy assumptions, runtime config, startup/shutdown, secrets, environment, fail-closed behavior, observability, resource limits | [x] |
 | FS-22 | `apps/server` composition root | routing, middleware, request context, auth/session, tenant/channel/locale resolution, error mapping, GraphQL/REST/server functions, host composition | [ ] |
 | FS-23 | Stable foundation/API crates | `rustok-api`, runtime/web/context contracts, dependency direction, shared types, transport/error contracts, accidental domain leakage | [ ] |
 | FS-24 | Workers, jobs, queue, outbox | ownership, retries/idempotency, leases, concurrency, delivery guarantees, dead-letter paths, shutdown/recovery, telemetry | [ ] |
