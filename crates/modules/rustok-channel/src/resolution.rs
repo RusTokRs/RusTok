@@ -589,7 +589,7 @@ mod tests {
         .expect("channel should be deactivated");
 
         let default_channel_id = create_channel(&db, tenant_id, "default").await;
-        let mut facts = RequestFacts {
+        let facts = RequestFacts {
             tenant_id,
             host: Some("shop.example.test".to_string()),
             ..RequestFacts::default()
@@ -600,7 +600,7 @@ mod tests {
             .await
             .expect("resolution should succeed");
         assert_eq!(
-            decision.origin,
+            decision.source,
             Some(ChannelResolutionOrigin::Default),
             "inactive host channel must not terminate resolution"
         );
@@ -608,7 +608,6 @@ mod tests {
             decision.detail.expect("default channel").channel.id,
             default_channel_id
         );
-        facts.host = Some("inactive.invalid".to_string());
     }
 
     #[tokio::test]
