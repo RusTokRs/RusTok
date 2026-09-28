@@ -5,10 +5,11 @@ use async_graphql::http::{GraphQLPlaygroundConfig, WebSocketProtocols, WsMessage
 use axum::{
     Extension, Json,
     extract::{
+        rejection::JsonRejection,
         State,
         ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
     },
-    http::{HeaderMap, header},
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
     routing::get,
 };
@@ -77,8 +78,13 @@ async fn graphql_handler(
     request_context: RequestContext,
     OptionalCurrentUser(current_user): OptionalCurrentUser,
     headers: HeaderMap,
-    Json(req): Json<async_graphql::Request>,
+    json_request: Result<Json<async_graphql::Request>, JsonRejection>,
 ) -> Response {
+    let Json(req) = match json_request {
+        Ok(request) => request,
+        Err(rejection) => return graphql_json_rejection_response(rejection),
+    };
+
     let db = runtime_ctx.db_clone();
     let locale = Locale::parse(&request_context.locale).unwrap_or_default();
     if let Some(hash) = persisted_query_hash(&req) {
@@ -126,6 +132,32 @@ async fn graphql_handler(
 
     let response = with_rbac_request_scope(rbac_scope, schema.execute(request)).await;
     graphql_http_response(response)
+}
+
+fn graphql_json_rejection_message(status: StatusCode) -> &'static str {
+    if status == StatusCode::PAYLOAD_TOO_LARGE {
+        "GraphQL request body is too large"
+    } else {
+        "Invalid GraphQL JSON request"
+    }
+}
+
+fn graphql_json_rejection_response(rejection: JsonRejection) -> Response {
+    let status = if rejection.status() == StatusCode::PAYLOAD_TOO_LARGE {
+        StatusCode::PAYLOAD_TOO_LARGE
+    } else {
+        StatusCode::BAD_REQUEST
+    };
+
+    (
+        status,
+        Json(serde_json::json!({
+            "errors": [{
+                "message": graphql_json_rejection_message(status)
+            }]
+        })),
+    )
+        .into_response()
 }
 
 fn graphql_http_response(response: async_graphql::Response) -> Response {
@@ -496,6 +528,22 @@ mod tests {
     #[test]
     fn graphql_router_uses_the_canonical_http_path() {
         assert_eq!(GRAPHQL_HTTP_PATH, "/api/graphql");
+    }
+
+    #[test]
+    fn graphql_json_rejection_messages_are_stable_and_non_internal() {
+        assert_eq!(
+            super::graphql_json_rejection_message(StatusCode::PAYLOAD_TOO_LARGE),
+            "GraphQL request body is too large"
+        );
+        assert_eq!(
+            super::graphql_json_rejection_message(StatusCode::BAD_REQUEST),
+            "Invalid GraphQL JSON request"
+        );
+        assert_eq!(
+            super::graphql_json_rejection_message(StatusCode::UNPROCESSABLE_ENTITY),
+            "Invalid GraphQL JSON request"
+        );
     }
 
     #[test]
