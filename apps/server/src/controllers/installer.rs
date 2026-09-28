@@ -529,7 +529,6 @@ mod tests {
     use chrono::Utc;
     use rustok_installer_persistence::entities::install_session;
 
-
     #[test]
     fn setup_is_open_before_completion() {
         assert!(!setup_is_closed(None));
