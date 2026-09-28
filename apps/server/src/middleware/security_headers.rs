@@ -39,6 +39,17 @@ const REPORTING_ENDPOINTS: &str = "rustok-csp=\"/api/security/csp-report\"";
 /// executable host rejects production startup without the same declaration.
 const HSTS: &str = "max-age=31536000; includeSubDomains";
 
+/// Handles the fixed CSP report endpoint at a layer below the configured public
+/// rate limiter but above tenant/auth middleware, so reports remain unauthenticated and
+/// tenant-independent without bypassing the public API abuse budget.
+pub async fn handle_csp_report(request: Request, next: Next) -> Response {
+    if csp_reports::is_report_request(&request) {
+        csp_reports::handle(request).await
+    } else {
+        next.run(request).await
+    }
+}
+
 pub async fn security_headers(mut request: Request, next: Next) -> Response {
     let path = request.uri().path().to_string();
     let csp_nonce =
@@ -47,13 +58,7 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
         request.extensions_mut().insert(nonce.clone());
     }
 
-    // This middleware is the outermost application layer, so the fixed report
-    // endpoint is handled before tenant/auth routing and never inherits a tenant.
-    let mut response = if csp_reports::is_report_request(&request) {
-        csp_reports::handle(request).await
-    } else {
-        next.run(request).await
-    };
+    let mut response = next.run(request).await;
     let headers = response.headers_mut();
 
     // Content-Security-Policy. Missing nonce state on a UI path falls back to the API deny policy
