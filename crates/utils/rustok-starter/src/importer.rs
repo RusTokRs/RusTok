@@ -41,6 +41,17 @@ impl StarterEngine {
             ..Default::default()
         };
 
+        // Ensure security context has a valid author ID for blog posts, forum topics, and pages.
+        // If security.user_id is None (e.g. system context in CLI/installer), generate a deterministic
+        // bootstrap author ID for this tenant.
+        let effective_security = if security.user_id.is_none() {
+            let mut sec = security.clone();
+            sec.user_id = Some(Uuid::new_v5(&tenant_id, b"rustok-starter-bootstrap-author"));
+            sec
+        } else {
+            security.clone()
+        };
+
         // 1. Taxonomy & Blog Categories
         let mut blog_category_map = HashMap::new();
         if let Some(taxonomy) = &blueprint.content.taxonomy {
@@ -48,7 +59,7 @@ impl StarterEngine {
                 &self.db,
                 &self.event_bus,
                 tenant_id,
-                security,
+                &effective_security,
                 &taxonomy.categories,
                 locale,
             )
@@ -64,7 +75,7 @@ impl StarterEngine {
                 &self.db,
                 &self.event_bus,
                 tenant_id,
-                security,
+                &effective_security,
                 pages,
                 locale,
             )
@@ -79,7 +90,7 @@ impl StarterEngine {
                 &self.db,
                 &self.event_bus,
                 tenant_id,
-                security,
+                &effective_security,
                 &blog.posts,
                 &blog_category_map,
                 locale,
@@ -92,7 +103,7 @@ impl StarterEngine {
         // 4. Forum Categories & Topics
         if let Some(forum) = &blueprint.content.forum {
             let (forum_cat_map, cat_created, cat_skipped) =
-                import_forum_categories(&self.db, tenant_id, security, &forum.categories, locale)
+                import_forum_categories(&self.db, tenant_id, &effective_security, &forum.categories, locale)
                     .await?;
             report.forum_categories_created = cat_created;
             report.skipped_existing += cat_skipped;
@@ -101,7 +112,7 @@ impl StarterEngine {
                 &self.db,
                 &self.event_bus,
                 tenant_id,
-                security,
+                &effective_security,
                 &forum.topics,
                 &forum_cat_map,
                 locale,
@@ -115,7 +126,7 @@ impl StarterEngine {
         // 5. Navigation
         if let Some(navigation) = &blueprint.content.navigation {
             let (created, skipped) =
-                import_navigation(&self.db, tenant_id, security, &navigation.menus, locale).await?;
+                import_navigation(&self.db, tenant_id, &effective_security, &navigation.menus, locale).await?;
             report.menus_created = created;
             report.skipped_existing += skipped;
         }

@@ -59,7 +59,7 @@ pub async fn import_navigation(
             })
             .collect();
 
-        service
+        let created_menu = service
             .create(
                 tenant_id,
                 security.clone(),
@@ -74,6 +74,24 @@ pub async fn import_navigation(
                 },
             )
             .await?;
+
+        // If channels exist, bind the created menu to the default channel so it is immediately active on Storefront
+        if let Ok(channels) = rustok_channel::entities::channel::Entity::find()
+            .filter(rustok_channel::entities::channel::Column::TenantId.eq(tenant_id))
+            .all(db)
+            .await
+        {
+            let target_channel = channels.iter().find(|c| c.is_default).or_else(|| channels.first());
+            if let Some(channel) = target_channel {
+                let binding_service = rustok_navigation::services::MenuBindingService::new(db.clone());
+                if let Err(e) = binding_service
+                    .bind(tenant_id, security.clone(), channel.id, location, created_menu.id)
+                    .await
+                {
+                    tracing::warn!(error = ?e, location = %location_str, "Could not bind starter menu to default channel");
+                }
+            }
+        }
 
         created += 1;
     }

@@ -3,8 +3,12 @@ use uuid::Uuid;
 
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
-use rustok_pages::dto::{CreatePageInput, PageBodyInput, PageTranslationInput};
+use rustok_pages::dto::{
+    CreatePageInput, PageBodyInput, PageBodyRevisionInput, PageTranslationInput, PublishPageInput,
+    ReviewedPagePublishRuntimeInput,
+};
 use rustok_pages::services::PageService;
+use rustok_pages::PageBuilderReviewedPublishRuntime;
 
 use crate::error::StarterResult;
 use crate::model::PageStarter;
@@ -38,7 +42,7 @@ pub async fn import_pages(
 
         let input = CreatePageInput {
             template: page.template.clone(),
-            publish: false, // draft with Fly/GrapesJS document
+            publish: false, // draft with Fly/GrapesJS document first
             translations: vec![PageTranslationInput {
                 locale: locale.to_string(),
                 title: page.title.clone(),
@@ -53,7 +57,43 @@ pub async fn import_pages(
             channel_slugs: page.channels.clone(),
         };
 
-        service.create(tenant_id, security.clone(), input).await?;
+        let created_page = service.create(tenant_id, security.clone(), input).await?;
+
+        if page.publish {
+            let body_revision = created_page
+                .body
+                .as_ref()
+                .map(|b| b.updated_at.clone())
+                .unwrap_or_default();
+
+            let reviewed = PageBuilderReviewedPublishRuntime::new(
+                "starter-blueprint-landing",
+                serde_json::json!({ "surface": "storefront", "channel": "web" }),
+            )
+            .map_err(|e| crate::error::StarterError::Dependency(e.to_string()))?;
+
+            let idempotency_key = format!("starter-publish-{}-{}", page.slug, created_page.id);
+
+            let publish_input = PublishPageInput {
+                expected_version: created_page.version,
+                expected_body_revisions: vec![PageBodyRevisionInput {
+                    locale: locale.to_string(),
+                    revision: body_revision,
+                }],
+                idempotency_key,
+                runtime: ReviewedPagePublishRuntimeInput {
+                    format: reviewed.format,
+                    scenario_id: reviewed.scenario_id,
+                    context: reviewed.context,
+                    review_hash: reviewed.review_hash,
+                },
+            };
+
+            service
+                .publish_reviewed(tenant_id, security.clone(), created_page.id, publish_input)
+                .await?;
+        }
+
         created += 1;
     }
 
