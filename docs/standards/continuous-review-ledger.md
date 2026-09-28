@@ -109,6 +109,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.02/22.10 finding in progress — non-TenantBound JWT collision.** The global operator/self-resolving route classes now bypass generic user-JWT verification while preserving `Authorization` for route-owned credentials (installer setup bearer, observability bearer, or handshake-specific auth). Tenant-bound routes retain normal JWT processing.
 
+- [ ] **FS-22.04 finding in progress — self-resolving webhook tenant boundary.** Workflow webhooks resolve `tenant_slug` from the route and then execute tenant-scoped workflows after signature verification. Host tenant middleware now classifies `/webhooks/*` as `SelfResolvingHandshake`, so a conflicting header/host assertion cannot inject a different tenant context before the webhook handler.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |

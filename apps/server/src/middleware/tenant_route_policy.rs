@@ -13,7 +13,7 @@ fn path_is_or_descendant(path: &str, root: &str) -> bool {
 }
 
 pub(crate) fn tenant_route_scope(path: &str) -> TenantRouteScope {
-    if path == "/api/graphql/ws" {
+    if path == "/api/graphql/ws" || path_is_or_descendant(path, "/webhooks") {
         return TenantRouteScope::SelfResolvingHandshake;
     }
 
@@ -61,6 +61,14 @@ mod tests {
         );
         assert_eq!(
             tenant_route_scope("/api/graphql/ws"),
+            TenantRouteScope::SelfResolvingHandshake
+        );
+        assert_eq!(
+            tenant_route_scope("/webhooks/demo/order-created"),
+            TenantRouteScope::SelfResolvingHandshake
+        );
+        assert_eq!(
+            tenant_route_scope("/webhooks/demo"),
             TenantRouteScope::SelfResolvingHandshake
         );
         assert_eq!(
