@@ -156,7 +156,17 @@ Hard limits for every iteration:
 - **Fix:** aligned the Axum route to the canonical non-slashed path. No event/outbox code was duplicated.
 - **Second pass:** re-read the current controller and swagger registration after the concurrent installer merge; no further controller-owned issue remained.
 
-- [ ] **FS-22.02.28 — `apps/server/src/controllers/installer.rs`** — one-module audit.
+### FS-22.02.28 Iteration 2 — installer reconciliation against current `main`
+
+- **Base:** refreshed `main` at `28fe9574bb2b11bf45628f5dfaab204789d5bd4b`. Concurrent work already present on `main` includes the durable `install_http_jobs` path and corrected setup-token call signatures.
+- **Confirmed finding:** the remaining setup gate only inspected the newest install session. A later `failed`/recovery session could therefore hide a historical `completed` installation and re-open setup semantics.
+- **Remediation:** added `InstallerPersistenceService::has_completed_session()`; server mutation endpoints and the public `completed` status flag now use historical completion state. Added a persistence integration regression test for completed-then-failed ordering.
+- **Confirmed finding:** PostgreSQL database creation still accepted `create_if_missing=true` without `pg_admin_url` and silently fell back to the sample `postgres:postgres` admin URL.
+- **Remediation:** removed the fallback and require a non-empty explicit `pg_admin_url` before privileged database creation.
+- **Second pass:** re-read installer controller, persistence owner, SeaORM database adapter, HTTP job implementation already on `main`, installer core/CLI contracts, state-machine docs, and HTTP host controls. No additional repository-owned defect remained in the `.28` primary surface.
+- **Verification:** repository-content inspection and branch diff review only. No tests, clippy, build, gatekeeper, migrations, or runtime commands were run by the agent.
+- **Status:** `FS-22.02.28` complete. Next primary module: `FS-22.02.29 — apps/server/src/controllers/mcp.rs`.
+- [x] **FS-22.02.28 — `apps/server/src/controllers/installer.rs`** — one-module audit; reconciled against concurrent `main` changes, with two additional remediation units: historical completion closure and removal of unsafe PostgreSQL admin-URL fallback.
 - [ ] **FS-22.02.29 — `apps/server/src/controllers/mcp.rs`** — one-module audit.
 - [ ] **FS-22.02.30 — `apps/server/src/controllers/oauth_metadata.rs`** — one-module audit.
 - [ ] **FS-22.02.31 — `apps/server/src/controllers/swagger.rs`** — one-module audit.
