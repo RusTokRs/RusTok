@@ -1,12 +1,17 @@
 use chrono::Utc;
-use rustok_installer::{InstallPlan, InstallReceipt, InstallState, redact_install_plan};
+use rustok_installer::{InstallApplyOutput, InstallPlan, InstallReceipt, InstallState, redact_install_plan};
 use sea_orm::{
     AccessMode, ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection,
     DatabaseTransaction, EntityTrait, IsolationLevel, QueryFilter, QueryOrder, TransactionTrait,
 };
 use uuid::Uuid;
 
-use crate::entities::{install_session, install_step_receipt};
+use crate::entities::{install_http_job, install_session, install_step_receipt};
+
+const MAX_HTTP_INSTALL_JOB_OUTPUT_BYTES: usize = 256 * 1024;
+const HTTP_INSTALL_JOB_RUNNING_STATUS: &str = "running";
+const HTTP_INSTALL_JOB_SUCCEEDED_STATUS: &str = "succeeded";
+const HTTP_INSTALL_JOB_FAILED_STATUS: &str = "failed";
 
 #[derive(Clone)]
 pub struct InstallerPersistenceService {
@@ -16,6 +21,113 @@ pub struct InstallerPersistenceService {
 impl InstallerPersistenceService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
+    }
+
+    pub async fn create_http_job(
+        &self,
+        job_id: Uuid,
+        submitted_at: chrono::DateTime<Utc>,
+    ) -> Result<install_http_job::Model, sea_orm::DbErr> {
+        install_http_job::ActiveModel {
+            id: Set(job_id),
+            status: Set(HTTP_INSTALL_JOB_RUNNING_STATUS.to_string()),
+            submitted_at: Set(submitted_at),
+            started_at: Set(submitted_at),
+            finished_at: Set(None),
+            session_id: Set(None),
+            tenant_id: Set(None),
+            output: Set(None),
+            error_message: Set(None),
+            updated_at: Set(submitted_at),
+        }
+        .insert(&self.db)
+        .await
+    }
+
+    pub async fn get_http_job(
+        &self,
+        job_id: Uuid,
+    ) -> Result<Option<install_http_job::Model>, sea_orm::DbErr> {
+        install_http_job::Entity::find_by_id(job_id)
+            .one(&self.db)
+            .await
+    }
+
+    pub async fn finish_http_job_succeeded(
+        &self,
+        job_id: Uuid,
+        session_id: Uuid,
+        tenant_id: Uuid,
+        output: &InstallApplyOutput,
+    ) -> Result<install_http_job::Model, sea_orm::DbErr> {
+        let now = Utc::now();
+        let serialized = serde_json::to_value(output).map_err(|error| {
+            sea_orm::DbErr::Custom(format!("failed to serialize installer job output: {error}"))
+        })?;
+        let output = match serde_json::to_vec(&serialized) {
+            Ok(bytes) if bytes.len() <= MAX_HTTP_INSTALL_JOB_OUTPUT_BYTES => Some(serialized),
+            Ok(_) => {
+                tracing::warn!(
+                    %job_id,
+                    max_bytes = MAX_HTTP_INSTALL_JOB_OUTPUT_BYTES,
+                    "Installer job output exceeded the durable HTTP status bound; omitting optional output projection"
+                );
+                None
+            }
+            Err(error) => {
+                return Err(sea_orm::DbErr::Custom(format!(
+                    "failed to size installer job output: {error}"
+                )));
+            }
+        };
+
+        let result = install_http_job::Entity::update_many()
+            .filter(install_http_job::Column::Id.eq(job_id))
+            .filter(install_http_job::Column::Status.eq(HTTP_INSTALL_JOB_RUNNING_STATUS))
+            .set(install_http_job::ActiveModel {
+                status: Set(HTTP_INSTALL_JOB_SUCCEEDED_STATUS.to_string()),
+                finished_at: Set(Some(now)),
+                session_id: Set(Some(session_id)),
+                tenant_id: Set(Some(tenant_id)),
+                output: Set(output),
+                error_message: Set(None),
+                updated_at: Set(now),
+                ..Default::default()
+            })
+            .exec(&self.db)
+            .await?;
+
+        ensure_http_job_transition_applied(job_id, result.rows_affected)?;
+        self.get_http_job(job_id)
+            .await?
+            .ok_or_else(|| sea_orm::DbErr::RecordNotFound(format!("installer HTTP job {job_id}")))
+    }
+
+    pub async fn finish_http_job_failed(
+        &self,
+        job_id: Uuid,
+        error_message: &str,
+    ) -> Result<install_http_job::Model, sea_orm::DbErr> {
+        let message = bounded_http_job_error_message(error_message);
+        let now = Utc::now();
+        let result = install_http_job::Entity::update_many()
+            .filter(install_http_job::Column::Id.eq(job_id))
+            .filter(install_http_job::Column::Status.eq(HTTP_INSTALL_JOB_RUNNING_STATUS))
+            .set(install_http_job::ActiveModel {
+                status: Set(HTTP_INSTALL_JOB_FAILED_STATUS.to_string()),
+                finished_at: Set(Some(now)),
+                error_message: Set(Some(message)),
+                output: Set(None),
+                updated_at: Set(now),
+                ..Default::default()
+            })
+            .exec(&self.db)
+            .await?;
+
+        ensure_http_job_transition_applied(job_id, result.rows_affected)?;
+        self.get_http_job(job_id)
+            .await?
+            .ok_or_else(|| sea_orm::DbErr::RecordNotFound(format!("installer HTTP job {job_id}")))
     }
 
     pub async fn create_session(
@@ -162,6 +274,23 @@ impl InstallerPersistenceService {
             .all(&self.db)
             .await
     }
+}
+
+fn ensure_http_job_transition_applied(
+    job_id: Uuid,
+    rows_affected: u64,
+) -> Result<(), sea_orm::DbErr> {
+    if rows_affected == 1 {
+        return Ok(());
+    }
+
+    Err(sea_orm::DbErr::Custom(format!(
+        "installer HTTP job {job_id} is not in running state"
+    )))
+}
+
+fn bounded_http_job_error_message(_error_message: &str) -> String {
+    "installer apply failed; inspect durable installer receipts for recovery details".to_string()
 }
 
 async fn acquire_lock_in_transaction(
