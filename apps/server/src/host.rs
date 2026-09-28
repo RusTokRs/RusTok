@@ -331,17 +331,6 @@ async fn connect_database(
 async fn load_config() -> Result<HostConfig> {
     let environment = effective_environment_name().map_err(Error::BadRequest)?;
 
-    if environment.is_empty()
-        || !environment
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
-    {
-        return Err(Error::BadRequest(
-            "RUSTOK_ENV/RUST_ENV/APP_ENV must be a simple environment name containing only ASCII letters, digits, '-' or '_'"
-                .to_string(),
-        ));
-    }
-
     let config_dir = std::env::var("RUSTOK_CONFIG_DIR")
         .ok()
         .map(PathBuf::from)
