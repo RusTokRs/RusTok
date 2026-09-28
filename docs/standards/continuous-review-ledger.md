@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `8da794813eb153cb388dbcae3287129d402dc36f`  
+**Current main SHA:** `b58131afbb87bf6b11193c22358c0bf08fa66d7a`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -247,7 +247,7 @@ Hard limits for every iteration:
 - **Verification:** repository-content/static inspection and branch/PR diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.02.32` complete. Next primary module: `FS-22.03` must first be decomposed into one-primary-module iterations.
 
-- [ ] **FS-22.03 — identity/auth propagation:** in progress; decomposed into one-primary-module iterations.
+- [x] **FS-22.03 — identity/auth propagation:** complete; all currently decomposed primary modules through FS-22.03.18 were audited in sequential module-specific iterations.
 - [x] **FS-22.03.01 — `apps/server/src/extractors/auth/mod.rs`** — completed with one security-boundary remediation and a fresh independent second pass.
 - [x] **FS-22.03.02 — `apps/server/src/middleware/auth_context.rs`** — completed with one principal-admission remediation and a fresh independent second pass.
 - [x] **FS-22.03.03 — `apps/server/src/controllers/auth.rs`** — completed with one account-enumeration remediation and a fresh independent second pass.
@@ -258,6 +258,14 @@ Hard limits for every iteration:
 - [x] **FS-22.03.08 — `crates/modules/rustok-auth/src/credentials.rs`** — completed with one RNG-failure remediation and a fresh independent post-merge second pass.
 - [x] **FS-22.03.09 — `crates/modules/rustok-auth/src/config.rs`** — fresh module audit found no remaining owner-level defect requiring code remediation; auth-settings parse-failure handling is deferred to the host adapter track.
 - [x] **FS-22.03.10 — `apps/server/src/auth.rs`** — completed with one fail-closed configuration parsing remediation and a fresh post-merge second pass.
+- [x] **FS-22.03.11 — `crates/modules/rustok-auth/src/lifecycle.rs`** — complete.
+- [x] **FS-22.03.12 — `apps/server/src/services/auth_lifecycle.rs`** — complete.
+- [x] **FS-22.03.13 — `apps/server/src/services/auth_lifecycle_provider.rs`** — complete.
+- [x] **FS-22.03.14 — `crates/modules/rustok-auth/src/backfill.rs`** — complete.
+- [x] **FS-22.03.15 — `crates/modules/rustok-auth/src/bootstrap.rs`** — complete.
+- [x] **FS-22.03.16 — `crates/modules/rustok-auth/src/admin_mutations.rs`** — complete.
+- [x] **FS-22.03.17 — `apps/server/src/services/auth_admin_mutation_provider.rs`** — complete.
+- [x] **FS-22.03.18 — `apps/server/src/services/oauth_admin_guard.rs`** — complete after PR #4277.
 - [ ] **FS-22.04 — tenant/channel/locale propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.06 — REST/controller composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
@@ -367,6 +375,18 @@ Hard limits for every iteration:
 - **Documentation:** `crates/modules/rustok-auth/docs/README.md` now records the checked JWT expiration boundary.
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.07` complete after merge; continue to the next unchecked primary module in FS-22.03.
+
+### FS-22.03.18 Iterations 1-3 — `apps/server/src/services/oauth_admin_guard.rs`
+
+- **Base:** refreshed `main` at `b58131afbb87bf6b11193c22358c0bf08fa66d7a` after PR #4277 merge; the implementation originated on dedicated branch `codex/audit-fs-22.03.18-oauth-admin-guard`.
+- **Invariant map:** OAuth admin mutations must consume the request-bound tenant/permission snapshot; delegated permissions may never exceed current authority; secret rotation must serialize per OAuth app; internal failures must not expose DB/credential diagnostics; mutation responses must describe the state that was actually persisted; all derived reads must remain tenant-qualified.
+- **Iteration 1 — fail-closed guard boundaries:** bounded OAuth admin list inputs at `1..=100`, retained `settings:manage` as the admin authority gate, redacted internal guard/service diagnostics, propagated fallible client-secret generation instead of formatting a `Result`, and made the SQLite mutation fence fail closed on unsupported/failed fencing.
+- **Iteration 2 — serialized secret rotation:** OAuth client-secret rotation now acquires an exclusive app-row lock on PostgreSQL/MySQL and a SQLite write fence before rereading the authoritative tenant-scoped app row. Delegated permissions are validated from that locked row, eliminating the earlier pre-lock snapshot race.
+- **Iteration 3 — atomic response projection:** removed the stale pre-lock `OAuthAppMutationRecord` from the rotation path. The updated app is now projected through one shared server-owned OAuth admin record builder while the mutation transaction is still open; localization and active-token count are tenant-scoped there, and projection failures therefore roll back instead of surfacing after a committed secret change. The native admin transport now propagates the authoritative `can_rotate_secret` flag instead of recomputing a weaker rule from app type.
+- **Immediate/adjacent/fresh audits:** re-read the complete guard plus `OAuthAdminPort`, server OAuth admin provider, OAuth app/model persistence transactions, token-count query, GraphQL query/mutation entry points, native server functions, admin UI capability flags, consent guard, runtime provider registration, and tenant/RBAC request-scope boundary. No direct GraphQL/native OAuth admin mutation path bypassing the guarded runtime was found.
+- **Regression coverage:** preserved the guard tests for grant dependencies, bounded list limits, and redacted internal errors; added a native transport regression proving `can_rotate_secret` follows the authoritative mutation record.
+- **Verification:** repository source/static inspection, branch diff review, PR integration, and post-merge `main` re-read only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.03.18` complete after PR #4277 merge. Continue to the next unchecked primary module in FS-22.03.
 
 ### FS-22.03.17 Iterations 1-4 — `apps/server/src/services/auth_admin_mutation_provider.rs`
 
