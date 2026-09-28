@@ -186,21 +186,58 @@ impl AssetDescriptor {
 }
 
 pub fn source_allowed(source: &str, kind: AssetKind, policy: &AssetPolicy) -> bool {
-    let normalized = source.trim().to_ascii_lowercase();
-    if normalized.starts_with("https://") {
+    let source = source.trim();
+    if source.is_empty()
+        || source.len() > 2048
+        || source.starts_with("//")
+        || source.contains('\\')
+        || source.chars().any(char::is_control)
+        || source.chars().any(char::is_whitespace)
+    {
+        return false;
+    }
+    let normalized = source.to_ascii_lowercase();
+    if absolute_url_has_authority(source, "https://") {
         return policy.allow_https;
     }
-    if normalized.starts_with("http://") {
+    if absolute_url_has_authority(source, "http://") {
         return policy.allow_http;
     }
-    if normalized.starts_with("data:image/") {
+    if safe_data_image_source(&normalized) {
         return policy.allow_data_images && kind == AssetKind::Image;
     }
-    if normalized.starts_with('/') || normalized.starts_with("./") || normalized.starts_with("../")
-    {
+    if normalized.starts_with("data:image/") {
+        return false;
+    }
+    if source.starts_with('/') || source.starts_with("./") || source.starts_with("../") {
         return policy.allow_relative;
     }
     false
+}
+
+fn absolute_url_has_authority(value: &str, scheme: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    if !lower.starts_with(scheme) {
+        return false;
+    }
+    let authority = &value[scheme.len()..];
+    let authority = authority
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    !authority.is_empty() && !authority.starts_with(':')
+}
+
+fn safe_data_image_source(normalized: &str) -> bool {
+    [
+        "data:image/png;base64,",
+        "data:image/jpeg;base64,",
+        "data:image/gif;base64,",
+        "data:image/webp;base64,",
+        "data:image/avif;base64,",
+    ]
+    .iter()
+    .any(|prefix| normalized.starts_with(prefix))
 }
 
 fn string_field(object: &Map<String, Value>, keys: &[&str]) -> Option<String> {
@@ -324,5 +361,31 @@ mod tests {
         .expect("asset");
         let patch = asset.component_patch("src").expect("patch");
         assert_eq!(patch.attributes["data-fly-asset-provider"], "rustok.media");
+    }
+
+    #[test]
+    fn asset_policy_rejects_unsafe_data_image_media_types() {
+        let policy = AssetPolicy::default();
+        assert!(source_allowed(
+            "data:image/png;base64,AAAA",
+            AssetKind::Image,
+            &policy
+        ));
+        assert!(!source_allowed(
+            "data:image/svg+xml,<svg/>",
+            AssetKind::Image,
+            &policy
+        ));
+        assert!(!source_allowed("https://", AssetKind::Image, &policy));
+        assert!(!source_allowed(
+            "https://example.com/has space.png",
+            AssetKind::Image,
+            &policy
+        ));
+        assert!(!source_allowed(
+            "//cdn.example.com/image.png",
+            AssetKind::Image,
+            &policy
+        ));
     }
 }

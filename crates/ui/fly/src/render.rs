@@ -62,7 +62,10 @@ impl PageHead {
         Self {
             title: metadata.title.clone(),
             description: metadata.description.clone(),
-            canonical_url: metadata.canonical_url.clone(),
+            canonical_url: metadata
+                .canonical_url
+                .as_deref()
+                .and_then(|url| safe_head_url(url, false)),
             robots: metadata.no_index.then_some("noindex,nofollow".to_string()),
             open_graph_title: metadata
                 .effective_open_graph_title()
@@ -70,7 +73,10 @@ impl PageHead {
             open_graph_description: metadata
                 .effective_open_graph_description()
                 .map(ToString::to_string),
-            open_graph_image: metadata.open_graph_image.clone(),
+            open_graph_image: metadata
+                .open_graph_image
+                .as_deref()
+                .and_then(|url| safe_head_url(url, true)),
         }
     }
 
@@ -250,6 +256,7 @@ fn render_component(
     for (name, value) in &component.attributes {
         let name = name.to_ascii_lowercase();
         if !safe_attribute_name(&name)
+            || renderer_manages_attribute(&name, policy)
             || matches!(
                 name.as_str(),
                 "style" | "srcdoc" | "srcset" | "xlink:href" | "ping" | "background"
@@ -468,6 +475,15 @@ fn safe_tag(component: &ComponentObject) -> &'static str {
     }
 }
 
+fn renderer_manages_attribute(name: &str, policy: &RenderPolicy) -> bool {
+    (policy.emit_style_hooks && name == "data-fly-style-id")
+        || (policy.instrument_components
+            && matches!(
+                name,
+                "data-fly-component-id" | "data-fly-index" | "data-fly-parent-id"
+            ))
+}
+
 fn safe_attribute_name(name: &str) -> bool {
     !name.to_ascii_lowercase().starts_with("on")
         && !name.is_empty()
@@ -482,6 +498,20 @@ fn scalar_string(value: &Value) -> Option<String> {
         Value::Number(value) => Some(value.to_string()),
         Value::Bool(value) => Some(value.to_string()),
         _ => None,
+    }
+}
+
+fn safe_head_url(value: &str, allow_data_image: bool) -> Option<String> {
+    let value = normalized_url_candidate(value)?;
+    let normalized = value.to_ascii_lowercase();
+    if value.starts_with('/')
+        || absolute_url_has_authority(value, "http://")
+        || absolute_url_has_authority(value, "https://")
+        || (allow_data_image && safe_data_image(&normalized))
+    {
+        Some(value.to_string())
+    } else {
+        None
     }
 }
 
@@ -513,18 +543,22 @@ fn url_allowed(value: &str, kind: UrlAttributeKind, policy: &RenderPolicy) -> bo
         UrlAttributeKind::Navigation => {
             (policy.allow_hash_urls && normalized.starts_with('#'))
                 || (policy.allow_relative_urls && relative_url_allowed(value))
-                || (policy.allow_http && normalized.starts_with("http://"))
-                || (policy.allow_https && normalized.starts_with("https://"))
-                || (policy.allow_mailto && normalized.starts_with("mailto:"))
-                || (policy.allow_tel && normalized.starts_with("tel:"))
+                || (policy.allow_http && absolute_url_has_authority(value, "http://"))
+                || (policy.allow_https && absolute_url_has_authority(value, "https://"))
+                || (policy.allow_mailto && scheme_target_is_not_empty(value, "mailto:"))
+                || (policy.allow_tel && scheme_target_is_not_empty(value, "tel:"))
         }
         UrlAttributeKind::Resource => {
             (policy.allow_relative_urls && relative_url_allowed(value))
-                || (policy.allow_http && normalized.starts_with("http://"))
-                || (policy.allow_https && normalized.starts_with("https://"))
+                || (policy.allow_http && absolute_url_has_authority(value, "http://"))
+                || (policy.allow_https && absolute_url_has_authority(value, "https://"))
                 || (policy.allow_data_images && safe_data_image(&normalized))
         }
-        UrlAttributeKind::FormAction => policy.allow_relative_urls && relative_url_allowed(value),
+        UrlAttributeKind::FormAction => {
+            (policy.allow_relative_urls && relative_url_allowed(value))
+                || (policy.allow_http && absolute_url_has_authority(value, "http://"))
+                || (policy.allow_https && absolute_url_has_authority(value, "https://"))
+        }
     }
 }
 
@@ -535,6 +569,7 @@ fn normalized_url_candidate(value: &str) -> Option<&str> {
         || value.starts_with("//")
         || value.contains('\\')
         || value.chars().any(char::is_control)
+        || value.chars().any(char::is_whitespace)
     {
         return None;
     }
@@ -547,6 +582,23 @@ fn relative_url_allowed(value: &str) -> bool {
     }
     let scheme_boundary = value.find(['/', '?', '#']).unwrap_or(value.len());
     !value[..scheme_boundary].contains(':')
+}
+
+fn absolute_url_has_authority(value: &str, scheme: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    if !lower.starts_with(scheme) {
+        return false;
+    }
+    let authority = value[scheme.len()..]
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    !authority.is_empty() && !authority.starts_with(':')
+}
+
+fn scheme_target_is_not_empty(value: &str, scheme: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.starts_with(scheme) && !value[scheme.len()..].is_empty()
 }
 
 fn safe_data_image(normalized: &str) -> bool {
@@ -855,7 +907,7 @@ mod tests {
             UrlAttributeKind::Resource,
             &policy
         ));
-        assert!(!url_allowed(
+        assert!(url_allowed(
             "https://example.com/submit",
             UrlAttributeKind::FormAction,
             &policy
@@ -873,8 +925,11 @@ mod tests {
         for value in [
             "//evil.example/x",
             "javascript:alert(1)",
+            "http://",
+            "mailto:",
             "\\evil.example",
             "a\n/b",
+            "/has space",
         ] {
             assert!(!url_allowed(value, UrlAttributeKind::Navigation, &policy));
         }
@@ -906,5 +961,55 @@ mod tests {
         .expect("render page");
         assert!(!rendered.html.contains("data-fly-style-id"));
         assert!(rendered.css.is_empty());
+    }
+
+    #[test]
+    fn renderer_does_not_duplicate_managed_fly_attributes() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "attributes": {
+                        "data-fly-style-id": "attacker",
+                        "data-fly-component-id": "attacker"
+                    }
+                }
+            }]
+        }))
+        .expect("document");
+        let rendered = render_page(
+            &document,
+            &PageSelection::First,
+            &RenderPolicy {
+                instrument_components: true,
+                ..RenderPolicy::default()
+            },
+        )
+        .expect("render page");
+        assert_eq!(rendered.html.matches("data-fly-style-id").count(), 1);
+        assert_eq!(rendered.html.matches("data-fly-component-id").count(), 1);
+        assert!(!rendered.html.contains("attacker"));
+    }
+
+    #[test]
+    fn renderer_filters_unsafe_head_urls() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "flyPageMeta": {
+                    "canonical_url": "javascript:alert(1)",
+                    "open_graph_image": "data:image/svg+xml,<svg/>"
+                },
+                "component": { "id": "root", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+        let rendered = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+            .expect("render page");
+        let head = rendered.head.render_html();
+        assert!(!head.contains("javascript:"));
+        assert!(!head.contains("data:image/svg"));
+        assert!(!head.contains("canonical"));
+        assert!(!head.contains("og:image"));
     }
 }

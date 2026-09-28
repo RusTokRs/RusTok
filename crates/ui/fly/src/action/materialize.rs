@@ -3,10 +3,12 @@ use super::model::{
     FLY_ACTION_FIELD, FLY_ACTION_KIND_ATTRIBUTE, FLY_FORM_FIELD, FormMethod,
     GENERATED_INTERACTION_ATTRIBUTES,
 };
-use super::validation::{FormIndex, action_diagnostic, collect_form_ids, decode_form};
+use super::validation::{
+    FormIndex, action_diagnostic, collect_form_ids, decode_form, validate_action_contract,
+};
 use crate::{
-    ComponentObject, ProjectDocument, RuntimeLocaleSelection, ValidationDiagnostic,
-    ValidationSeverity,
+    ComponentObject, FLY_PAGE_LINK_FIELD, ProjectDocument, RuntimeLocaleSelection,
+    ValidationDiagnostic, ValidationSeverity,
     component_visit::visit_project_components_mut,
     interaction_route::{
         InteractionRouteCatalog, build_interaction_href, interaction_locale_candidates,
@@ -75,6 +77,50 @@ fn materialize_component(
     counters: &mut ActionCounters,
 ) {
     let component_id = component.id.clone();
+    let has_page_link = component.extensions.contains_key(FLY_PAGE_LINK_FIELD);
+    let has_action = component.extensions.contains_key(FLY_ACTION_FIELD);
+    let has_form = component.extensions.contains_key(FLY_FORM_FIELD);
+
+    if has_form && (has_page_link || has_action) {
+        clear_interaction_materialization(component);
+        diagnostics.push(action_diagnostic(
+            ValidationSeverity::Warning,
+            "runtime_form_invalid",
+            path,
+            component_id.clone(),
+            format!(
+                "component cannot combine `{FLY_FORM_FIELD}` with `{FLY_PAGE_LINK_FIELD}` or `{FLY_ACTION_FIELD}`"
+            ),
+        ));
+        if has_action {
+            counters.unresolved = counters.unresolved.saturating_add(1);
+            diagnostics.push(action_diagnostic(
+                ValidationSeverity::Warning,
+                "runtime_action_invalid",
+                path,
+                component_id,
+                format!(
+                    "component cannot define both `{FLY_FORM_FIELD}` and `{FLY_ACTION_FIELD}`"
+                ),
+            ));
+        }
+        return;
+    }
+
+    if has_page_link && has_action {
+        clear_interaction_materialization(component);
+        counters.unresolved = counters.unresolved.saturating_add(1);
+        diagnostics.push(action_diagnostic(
+            ValidationSeverity::Warning,
+            "runtime_action_invalid",
+            path,
+            component_id.clone(),
+            format!(
+                "component cannot define both `{FLY_PAGE_LINK_FIELD}` and `{FLY_ACTION_FIELD}`"
+            ),
+        ));
+        return;
+    }
 
     if let Some(raw) = component.extensions.get(FLY_FORM_FIELD).cloned() {
         clear_interaction_materialization(component);
@@ -96,30 +142,47 @@ fn materialize_component(
     if let Some(raw) = component.extensions.get(FLY_ACTION_FIELD).cloned() {
         clear_interaction_materialization(component);
         match serde_json::from_value::<ComponentAction>(raw) {
-            Ok(action) => match apply_action(component, &action, resolution) {
-                AppliedAction::Native => counters.native = counters.native.saturating_add(1),
-                AppliedAction::Custom => counters.custom = counters.custom.saturating_add(1),
-                AppliedAction::Fallback(message) => {
-                    counters.fallback = counters.fallback.saturating_add(1);
-                    diagnostics.push(action_diagnostic(
-                        ValidationSeverity::Info,
-                        "runtime_action_fallback_used",
-                        path,
-                        component_id.clone(),
-                        message,
-                    ));
-                }
-                AppliedAction::Unresolved(message) => {
+            Ok(action) => {
+                if let Err(error) = validate_action_contract(
+                    &action,
+                    resolution.routes,
+                    resolution.form_ids,
+                ) {
                     counters.unresolved = counters.unresolved.saturating_add(1);
                     diagnostics.push(action_diagnostic(
                         ValidationSeverity::Warning,
-                        "runtime_action_unresolved",
+                        "runtime_action_invalid",
                         path,
                         component_id.clone(),
-                        message,
+                        error,
                     ));
+                    return;
                 }
-            },
+                match apply_action(component, &action, resolution) {
+                    AppliedAction::Native => counters.native = counters.native.saturating_add(1),
+                    AppliedAction::Custom => counters.custom = counters.custom.saturating_add(1),
+                    AppliedAction::Fallback(message) => {
+                        counters.fallback = counters.fallback.saturating_add(1);
+                        diagnostics.push(action_diagnostic(
+                            ValidationSeverity::Info,
+                            "runtime_action_fallback_used",
+                            path,
+                            component_id.clone(),
+                            message,
+                        ));
+                    }
+                    AppliedAction::Unresolved(message) => {
+                        counters.unresolved = counters.unresolved.saturating_add(1);
+                        diagnostics.push(action_diagnostic(
+                            ValidationSeverity::Warning,
+                            "runtime_action_unresolved",
+                            path,
+                            component_id.clone(),
+                            message,
+                        ));
+                    }
+                }
+            }
             Err(error) => {
                 counters.unresolved = counters.unresolved.saturating_add(1);
                 diagnostics.push(action_diagnostic(
@@ -190,15 +253,18 @@ enum AppliedAction {
     Unresolved(String),
 }
 
+fn mark_action_kind(component: &mut ComponentObject, action: &ComponentAction) {
+    component.attributes.insert(
+        FLY_ACTION_KIND_ATTRIBUTE.to_string(),
+        Value::String(action.kind().to_string()),
+    );
+}
+
 fn apply_action(
     component: &mut ComponentObject,
     action: &ComponentAction,
     resolution: &ActionResolution<'_>,
 ) -> AppliedAction {
-    component.attributes.insert(
-        FLY_ACTION_KIND_ATTRIBUTE.to_string(),
-        Value::String(action.kind().to_string()),
-    );
     match action {
         ComponentAction::NavigatePage {
             page_id,
@@ -224,10 +290,12 @@ fn apply_action(
                 ),
                 None => match fallback_href.as_deref() {
                     Some(href) => {
+                        mark_action_kind(component, action);
                         component.tag_name = Some("a".to_string());
-                        component
-                            .attributes
-                            .insert("href".to_string(), Value::String(href.to_string()));
+                        component.attributes.insert(
+                            "href".to_string(),
+                            Value::String(href.trim().to_string()),
+                        );
                         return AppliedAction::Fallback(format!(
                             "target page `{page_id}` has no localized slug; fallback_href was used"
                         ));
@@ -239,6 +307,7 @@ fn apply_action(
                     }
                 },
             };
+            mark_action_kind(component, action);
             component.tag_name = Some("a".to_string());
             component
                 .attributes
@@ -246,6 +315,7 @@ fn apply_action(
             AppliedAction::Native
         }
         ComponentAction::NavigateUrl { href, new_window } => {
+            mark_action_kind(component, action);
             component.tag_name = Some("a".to_string());
             component
                 .attributes
@@ -265,6 +335,7 @@ fn apply_action(
             if !resolution.form_ids.contains_key(form_id) {
                 return AppliedAction::Unresolved(format!("form `{form_id}` does not exist"));
             }
+            mark_action_kind(component, action);
             component.tag_name = Some("button".to_string());
             component
                 .attributes
@@ -275,6 +346,7 @@ fn apply_action(
             AppliedAction::Native
         }
         ComponentAction::EmitEvent { .. } | ComponentAction::ProviderAction { .. } => {
+            mark_action_kind(component, action);
             component.tag_name = Some("button".to_string());
             component
                 .attributes

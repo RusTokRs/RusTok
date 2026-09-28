@@ -9,6 +9,10 @@ pub enum FlyError {
     Encode(String),
     #[error("project root must be a JSON object")]
     InvalidProjectRoot,
+    #[error("project bundle is invalid: {0}")]
+    InvalidProjectBundle(String),
+    #[error("project bundle hash mismatch: declared `{declared}`, actual `{actual}`")]
+    ProjectBundleHashMismatch { declared: String, actual: String },
     #[error("project does not contain a mutable root component")]
     MissingProjectRoot,
     #[error("page `{0}` does not contain a renderable root component")]
@@ -39,6 +43,10 @@ pub enum FlyError {
     StyleRuleNotFound(String),
     #[error("trait `{trait_id}` value is invalid: {message}")]
     InvalidTraitValue { trait_id: String, message: String },
+    #[error("component patch is invalid: {0}")]
+    InvalidComponentPatch(String),
+    #[error("page patch is invalid: {0}")]
+    InvalidPagePatch(String),
     #[error("registry item `{0}` is already registered")]
     DuplicateRegistryItem(String),
     #[error("registry item id `{0}` must be namespaced or one of the built-in ids")]

@@ -117,12 +117,8 @@ fn audit_node(
     report.component_count += 1;
     let component_id = component.id.clone();
     let tag = semantic_tag(component.component_type(), component.tag_name.as_deref());
-    let content = component
-        .extensions
-        .get("content")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .trim();
+    let content = component_text_content(component);
+    let content = content.trim();
     let aria_label = string_attribute(component, "aria-label");
     let title = string_attribute(component, "title");
     let accessible_name = !content.is_empty()
@@ -272,6 +268,41 @@ fn audit_node(
             state,
             report,
         );
+    }
+}
+
+fn component_text_content(component: &crate::ComponentObject) -> String {
+    let mut output = String::new();
+    append_component_text(component, &mut output);
+    output
+}
+
+fn append_component_text(component: &crate::ComponentObject, output: &mut String) {
+    if let Some(content) = component.extensions.get("content").and_then(Value::as_str) {
+        output.push_str(content);
+        output.push(' ');
+    }
+    for child in component.children() {
+        append_node_text(child, output);
+    }
+}
+
+fn append_node_text(node: &ComponentNode, output: &mut String) {
+    match node {
+        ComponentNode::Object(component) => append_component_text(component, output),
+        ComponentNode::Opaque(Value::String(value)) => {
+            output.push_str(value);
+            output.push(' ');
+        }
+        ComponentNode::Opaque(Value::Number(value)) => {
+            output.push_str(&value.to_string());
+            output.push(' ');
+        }
+        ComponentNode::Opaque(Value::Bool(value)) => {
+            output.push_str(if *value { "true" } else { "false" });
+            output.push(' ');
+        }
+        ComponentNode::Opaque(Value::Null | Value::Array(_) | Value::Object(_)) => {}
     }
 }
 
@@ -640,5 +671,37 @@ mod tests {
         .expect("document");
         let report = audit_page(&document, &PageLocator::by_id("home"));
         assert_eq!(report.error_count, 0, "{:?}", report.diagnostics);
+    }
+
+    #[test]
+    fn audit_uses_grapesjs_opaque_text_children_for_accessible_names() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": { "title": "Home", "description": "Description", "slug": "home" },
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "tagName": "main",
+                    "components": [{
+                        "id": "heading",
+                        "type": "heading",
+                        "tagName": "h1",
+                        "components": ["Opaque title"]
+                    }, {
+                        "id": "link",
+                        "type": "link",
+                        "tagName": "a",
+                        "attributes": { "href": "#contact" },
+                        "components": ["Contact us"]
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let report = audit_page(&document, &PageLocator::by_id("home"));
+        assert!(!report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "empty_heading" || diagnostic.code == "link_missing_name"
+        }));
     }
 }

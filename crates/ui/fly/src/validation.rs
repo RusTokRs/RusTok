@@ -3,6 +3,7 @@ use crate::{
     StyleRuleScope, normalize_slug, validate_runtime_extensions,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -75,6 +76,9 @@ pub fn validate_project(
     let mut report = ValidationReport::default();
     validate_pages(document, &mut report);
     validate_components(document, registries, limits, &mut report);
+    report
+        .diagnostics
+        .extend(validate_component_public_urls(document));
     validate_assets(document, &mut report);
     validate_style_rules(document, &mut report);
 
@@ -184,11 +188,11 @@ fn validate_page_metadata(metadata: &PageMetadata, page_path: &str, report: &mut
             ));
         }
     }
-    for (field, value) in [
-        ("canonicalUrl", metadata.canonical_url.as_deref()),
-        ("openGraphImage", metadata.open_graph_image.as_deref()),
+    for (field, value, allow_data_image) in [
+        ("canonical_url", metadata.canonical_url.as_deref(), false),
+        ("open_graph_image", metadata.open_graph_image.as_deref(), true),
     ] {
-        if value.is_some_and(|value| !metadata_url_allowed(value)) {
+        if value.is_some_and(|value| !metadata_url_allowed(value, allow_data_image)) {
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Warning,
                 "invalid_page_metadata_url",
@@ -239,7 +243,8 @@ fn validate_components(
         }
 
         let component_type = component.component_type();
-        if !registries.components.contains(component_type) {
+        let component_type_registered = registries.components.contains(component_type);
+        if !component_type_registered {
             report.diagnostics.push(diagnostic(
                 ValidationSeverity::Warning,
                 "missing_component_provider",
@@ -249,7 +254,162 @@ fn validate_components(
                 ),
             ));
         }
+
+        if component_type_registered {
+            for (child_index, child) in component.children().iter().enumerate() {
+                let Some(child) = child.as_object() else {
+                    continue;
+                };
+                let child_type = child.component_type();
+                if !registries.accepts_child_type(Some(component_type), child_type) {
+                    report.diagnostics.push(diagnostic(
+                        ValidationSeverity::Error,
+                        "invalid_component_child",
+                        format!("{path}.components[{child_index}]"),
+                        format!(
+                            "component type `{component_type}` does not accept `{child_type}` children"
+                        ),
+                    ));
+                }
+            }
+        }
     });
+}
+
+pub fn validate_component_public_urls(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
+    let mut diagnostics = Vec::new();
+    document.project.visit_components(|component, _, path| {
+        for (name, value) in &component.attributes {
+            let normalized_name = name.to_ascii_lowercase();
+            let Some(kind) = PublicUrlAttributeKind::for_attribute(&normalized_name) else {
+                continue;
+            };
+            let Some(value) = scalar_attribute_value(value) else {
+                diagnostics.push(diagnostic(
+                    ValidationSeverity::Warning,
+                    "runtime_public_url_invalid",
+                    format!("{path}.attributes.{name}"),
+                    format!("URL attribute `{name}` must be a scalar string, number, or boolean"),
+                ));
+                continue;
+            };
+            if !public_url_allowed(&value, kind) {
+                diagnostics.push(diagnostic(
+                    ValidationSeverity::Error,
+                    "runtime_public_url_invalid",
+                    format!("{path}.attributes.{name}"),
+                    format!("URL attribute `{name}` contains an unsafe or unsupported URL"),
+                ));
+            }
+        }
+    });
+    diagnostics
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PublicUrlAttributeKind {
+    Navigation,
+    Resource,
+    FormAction,
+}
+
+impl PublicUrlAttributeKind {
+    fn for_attribute(name: &str) -> Option<Self> {
+        match name {
+            "href" => Some(Self::Navigation),
+            "src" | "poster" => Some(Self::Resource),
+            "action" | "formaction" => Some(Self::FormAction),
+            _ => None,
+        }
+    }
+}
+
+fn scalar_attribute_value(value: &Value) -> Option<String> {
+    match value {
+        Value::String(value) => Some(value.clone()),
+        Value::Number(value) => Some(value.to_string()),
+        Value::Bool(value) => Some(value.to_string()),
+        Value::Null | Value::Array(_) | Value::Object(_) => None,
+    }
+}
+
+fn public_url_allowed(value: &str, kind: PublicUrlAttributeKind) -> bool {
+    let Some(value) = normalized_public_url_candidate(value) else {
+        return false;
+    };
+    let normalized = value.to_ascii_lowercase();
+    match kind {
+        PublicUrlAttributeKind::Navigation => {
+            normalized.starts_with('#')
+                || relative_public_url_allowed(value)
+                || absolute_public_url_has_authority(value, "http://")
+                || absolute_public_url_has_authority(value, "https://")
+                || scheme_target_is_not_empty(value, "mailto:")
+                || scheme_target_is_not_empty(value, "tel:")
+        }
+        PublicUrlAttributeKind::Resource => {
+            relative_public_url_allowed(value)
+                || absolute_public_url_has_authority(value, "http://")
+                || absolute_public_url_has_authority(value, "https://")
+                || safe_public_data_image(&normalized)
+        }
+        PublicUrlAttributeKind::FormAction => {
+            relative_public_url_allowed(value)
+                || absolute_public_url_has_authority(value, "http://")
+                || absolute_public_url_has_authority(value, "https://")
+        }
+    }
+}
+
+fn normalized_public_url_candidate(value: &str) -> Option<&str> {
+    let value = value.trim();
+    if value.is_empty()
+        || value.len() > 2048
+        || value.starts_with("//")
+        || value.contains('\\')
+        || value.chars().any(char::is_control)
+        || value.chars().any(char::is_whitespace)
+    {
+        return None;
+    }
+    Some(value)
+}
+
+fn relative_public_url_allowed(value: &str) -> bool {
+    if value.starts_with('#') {
+        return false;
+    }
+    let scheme_boundary = value.find(['/', '?', '#']).unwrap_or(value.len());
+    !value[..scheme_boundary].contains(':')
+}
+
+fn absolute_public_url_has_authority(value: &str, scheme: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    if !lower.starts_with(scheme) {
+        return false;
+    }
+    let authority = value[scheme.len()..]
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    !authority.is_empty() && !authority.starts_with(':')
+}
+
+fn scheme_target_is_not_empty(value: &str, scheme: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.starts_with(scheme) && !value[scheme.len()..].is_empty()
+}
+
+fn safe_public_data_image(normalized: &str) -> bool {
+    [
+        "data:image/png;base64,",
+        "data:image/jpeg;base64,",
+        "data:image/gif;base64,",
+        "data:image/webp;base64,",
+        "data:image/avif;base64,",
+    ]
+    .iter()
+    .any(|prefix| normalized.starts_with(prefix))
 }
 
 fn validate_assets(document: &ProjectDocument, report: &mut ValidationReport) {
@@ -343,13 +503,45 @@ fn validate_style_rules(document: &ProjectDocument, report: &mut ValidationRepor
     }
 }
 
-fn metadata_url_allowed(value: &str) -> bool {
-    let value = value.trim().to_ascii_lowercase();
+fn metadata_url_allowed(value: &str, allow_data_image: bool) -> bool {
+    let value = value.trim();
+    if value.starts_with("//")
+        || value.contains('\\')
+        || value.chars().any(char::is_control)
+        || value.chars().any(char::is_whitespace)
+    {
+        return false;
+    }
+    let normalized = value.to_ascii_lowercase();
     value.is_empty()
         || value.starts_with('/')
-        || value.starts_with("http://")
-        || value.starts_with("https://")
-        || value.starts_with("data:image/")
+        || absolute_metadata_url_has_authority(value, "http://")
+        || absolute_metadata_url_has_authority(value, "https://")
+        || (allow_data_image && safe_metadata_data_image(&normalized))
+}
+
+fn absolute_metadata_url_has_authority(value: &str, scheme: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    if !lower.starts_with(scheme) {
+        return false;
+    }
+    let authority = value[scheme.len()..]
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    !authority.is_empty() && !authority.starts_with(':')
+}
+
+fn safe_metadata_data_image(value: &str) -> bool {
+    [
+        "data:image/png;base64,",
+        "data:image/jpeg;base64,",
+        "data:image/gif;base64,",
+        "data:image/webp;base64,",
+        "data:image/avif;base64,",
+    ]
+    .iter()
+    .any(|prefix| value.starts_with(prefix))
 }
 
 fn deduplicate_diagnostics(diagnostics: &mut Vec<ValidationDiagnostic>) {
@@ -459,6 +651,94 @@ mod tests {
                 .diagnostics
                 .iter()
                 .any(|diagnostic| diagnostic.code == "missing_pages")
+        );
+    }
+
+    #[test]
+    fn validates_registered_parent_child_contracts() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "list",
+                        "type": "list",
+                        "components": [{ "id": "bad-child", "type": "text" }]
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "invalid_component_child"
+                && diagnostic.path.ends_with("components[0]")
+        }));
+    }
+
+    #[test]
+    fn unsafe_metadata_urls_are_reported() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "flyPageMeta": {
+                    "canonical_url": "//attacker.example/path",
+                    "open_graph_image": "data:image/svg+xml,<svg/>"
+                },
+                "component": { "id": "root", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+        assert_eq!(
+            report
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == "invalid_page_metadata_url")
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn public_url_attributes_are_revalidated_for_rendering() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "bad-link",
+                        "type": "link",
+                        "attributes": { "href": "javascript:alert(1)" }
+                    }, {
+                        "id": "bad-image",
+                        "type": "image",
+                        "attributes": { "src": "data:image/svg+xml,<svg/>" }
+                    }, {
+                        "id": "bad-form",
+                        "type": "form",
+                        "attributes": { "action": "//evil.example/submit" }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let diagnostics = validate_component_public_urls(&document);
+        assert_eq!(
+            diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.severity == ValidationSeverity::Error)
+                .count(),
+            3
         );
     }
 }

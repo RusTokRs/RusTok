@@ -4,7 +4,7 @@ use crate::{
     RuntimeContextPreflightPolicy, RuntimeContextScenario, RuntimeContextScenarioSuiteResult,
     ValidationDiagnostic, ValidationSeverity, evaluate_landing_readiness_with_context,
     extract_runtime_context_contract, preflight_runtime_context,
-    preflight_runtime_context_scenarios,
+    preflight_runtime_context_scenarios, validate_runtime_extensions,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -72,6 +72,7 @@ pub fn evaluate_runtime_publish_gate(
 ) -> RuntimePublishGateEvaluation {
     let contract = extract_runtime_context_contract(document);
     let mut diagnostics = contract.definition_diagnostics.clone();
+    diagnostics.extend(validate_runtime_extensions(document));
 
     let current_context_result = match policy.current_context {
         CurrentContextGateMode::Ignore => None,
@@ -403,6 +404,37 @@ mod tests {
             &RuntimePublishGatePolicy::default(),
         );
         assert!(evaluation.allowed);
+        assert!(evaluation.readiness.is_none());
+    }
+
+    #[test]
+    fn runtime_extension_errors_block_publish_without_readiness_policy() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "bad-link",
+                        "type": "link",
+                        "flyAction": { "kind": "navigate_url", "href": "javascript:alert(1)" }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let evaluation = evaluate_runtime_publish_gate(
+            &document,
+            None,
+            &[],
+            &RuntimePublishGatePolicy::default(),
+        );
+        assert!(!evaluation.allowed);
+        assert!(evaluation.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "action_definition_invalid"
+                && diagnostic.severity == ValidationSeverity::Error
+        }));
         assert!(evaluation.readiness.is_none());
     }
 

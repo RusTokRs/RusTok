@@ -434,7 +434,7 @@ fn builtin_component_template(id: &str) -> ComponentNode {
             "type": "image",
             "tagName": "img",
             "attributes": {
-                "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='960' height='540'%3E%3Crect width='100%25' height='100%25' fill='%23e2e8f0'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dominant-baseline='middle' fill='%23475569' font-family='sans-serif' font-size='32'%3EImage%3C/text%3E%3C/svg%3E",
+                "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
                 "alt": "Placeholder image"
             },
             "style": { "display": "block", "width": "100%", "height": "auto", "border-radius": "16px" }

@@ -1,7 +1,8 @@
 use crate::{
     ComponentNode, ComponentObject, FlyError, FlyResult, LandingPropertyValidationReport,
     LandingReadinessPolicy, LandingReadinessReport, PageHead, PageSelection, ProjectDocument,
-    RegistrySet, RenderPolicy, evaluate_landing_readiness, render_page,
+    RegistrySet, RenderPolicy, evaluate_landing_readiness,
+    landing_readiness::materialize_landing_structural_document, render_page,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -590,9 +591,11 @@ where
         &render_policy_hash,
     ))?;
 
-    let mut pages = Vec::with_capacity(document.project.pages.len());
-    for page_index in 0..document.project.pages.len() {
-        let rendered = renderer.render_page(document, page_index, render_policy)?;
+    let mut structural_issues = Vec::new();
+    let render_document = materialize_landing_structural_document(document, &mut structural_issues);
+    let mut pages = Vec::with_capacity(render_document.project.pages.len());
+    for page_index in 0..render_document.project.pages.len() {
+        let rendered = renderer.render_page(&render_document, page_index, render_policy)?;
         if rendered.page_index != page_index {
             return Err(FlyError::Encode(format!(
                 "landing renderer returned page index {} for requested page {page_index}",
@@ -832,6 +835,68 @@ mod tests {
         assert_eq!(first.identity.source_hash, second.identity.source_hash);
         assert_ne!(first.identity.build_hash, second.identity.build_hash);
         assert_ne!(first.artifact_hash, second.artifact_hash);
+    }
+
+    #[test]
+    fn static_artifact_renders_structural_runtime_materialization() {
+        let project = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": {
+                    "title": "Home",
+                    "description": "A stable landing page",
+                    "slug": "home"
+                },
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "tagName": "main",
+                    "components": [{
+                        "id": "hero-title",
+                        "type": "heading",
+                        "tagName": "h1",
+                        "content": "Stable landing"
+                    }, {
+                        "id": "about-action",
+                        "type": "button",
+                        "content": "About",
+                        "flyAction": { "kind": "navigate_page", "page_id": "about" }
+                    }]
+                }
+            }, {
+                "id": "about",
+                "flyPageMeta": {
+                    "title": "About",
+                    "description": "About page",
+                    "slug": "about"
+                },
+                "component": {
+                    "id": "about-root",
+                    "type": "wrapper",
+                    "tagName": "main",
+                    "components": [{
+                        "id": "about-title",
+                        "type": "heading",
+                        "tagName": "h1",
+                        "content": "About"
+                    }]
+                }
+            }]
+        }))
+        .expect("project");
+        let artifact = build_static_landing_artifact(
+            &project,
+            &RegistrySet::with_builtins(),
+            LandingReadinessPolicy::default(),
+            &RenderPolicy::default(),
+        )
+        .expect("build")
+        .artifact
+        .expect("artifact");
+        assert!(artifact.pages[0].body_html.contains("href=\"/about\""));
+        assert!(artifact.pages[0]
+            .body_html
+            .contains("data-fly-action-kind=\"navigate_page\""));
     }
 
     #[test]
