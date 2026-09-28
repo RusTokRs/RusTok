@@ -544,9 +544,9 @@ async fn check_tenant_invalidation_listener(
         TenantInvalidationListenerStatus::Starting => {
             Err("tenant invalidation listener is starting".to_string())
         }
-        TenantInvalidationListenerStatus::Degraded => Err(snapshot
-            .last_error
-            .unwrap_or_else(|| "tenant invalidation listener is degraded".to_string())),
+        TenantInvalidationListenerStatus::Degraded => {
+            Err("tenant invalidation listener is degraded".to_string())
+        }
     }
 }
 
@@ -595,9 +595,9 @@ async fn check_outbox_pending_lag(
             }
         }
         Ok(None) => (ReadinessStatus::Ok, None),
-        Err(error) => (
+        Err(_) => (
             ReadinessStatus::Degraded,
-            Some(format!("outbox lag check failed: {error}")),
+            Some("outbox lag check failed".to_string()),
         ),
     };
 
@@ -827,7 +827,7 @@ async fn check_rate_limit_backend(
             .0
             .check_backend_health()
             .await
-            .map_err(|error| format!("auth rate-limit backend check failed: {error}")),
+            .map_err(|_| "auth rate-limit backend check failed".to_string()),
         "oauth" => ctx
             .shared_get::<SharedOAuthRateLimiter>()
             .ok_or_else(|| "oauth rate limiter not initialized in shared_store".to_string())?
