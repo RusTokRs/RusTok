@@ -23,10 +23,11 @@ impl InstallerPersistenceService {
         plan: &InstallPlan,
         tenant_id: Option<Uuid>,
         created_by: Option<Uuid>,
+        requested_session_id: Option<Uuid>,
     ) -> Result<install_session::Model, sea_orm::DbErr> {
         let now = Utc::now();
         install_session::ActiveModel {
-            id: Set(rustok_core::generate_id()),
+            id: Set(requested_session_id.unwrap_or_else(rustok_core::generate_id)),
             tenant_id: Set(tenant_id),
             status: Set(install_state_value(InstallState::Draft).to_string()),
             profile: Set(serde_name(plan.profile)),
