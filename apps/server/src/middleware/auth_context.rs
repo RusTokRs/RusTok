@@ -31,9 +31,6 @@ pub async fn resolve_optional(
     let suppress_user_authorization =
         super::tenant_route_policy::tenant_route_scope(request_path.as_str())
             == super::tenant_route_policy::TenantRouteScope::GlobalOperator;
-    if suppress_user_authorization {
-        parts.headers.remove(AUTHORIZATION);
-    }
     let presented_credentials = parts.headers.contains_key(AUTHORIZATION);
     let host_authority = match take_host_authority(&mut parts.headers) {
         Ok(authority) => authority,
@@ -66,8 +63,24 @@ pub async fn resolve_optional(
     let request_method = parts.method.clone();
     let mut rbac_scope = None;
 
-    match resolve_current_user(&mut parts, &ctx).await {
-        Ok(current_user) => {
+    let current_user = if suppress_user_authorization {
+        None
+    } else {
+        match resolve_current_user(&mut parts, &ctx).await {
+            Ok(current_user) => Some(current_user),
+            Err((status, message)) if presented_credentials || pages_inline_authoring => {
+                return pages_inline_authoring_response(
+                    (status, message).into_response(),
+                    pages_inline_authoring,
+                    pages_inline_authoring_surface,
+                );
+            }
+            Err(_) => None,
+        }
+    };
+
+    if let Some(current_user) = current_user {
+
             if human_user_only && current_user.actor_kind != SecurityActorKind::User {
                 return pages_inline_authoring_response(
                     (
@@ -145,14 +158,6 @@ pub async fn resolve_optional(
                 grant_type: current_user.grant_type,
             }));
         }
-        Err((status, message)) if presented_credentials || pages_inline_authoring => {
-            return pages_inline_authoring_response(
-                (status, message).into_response(),
-                pages_inline_authoring,
-                pages_inline_authoring_surface,
-            );
-        }
-        Err(_) => {}
     }
 
     if let Some(host_authority) = host_authority {
@@ -301,17 +306,18 @@ mod tests {
     }
 
     #[test]
-    fn global_operator_routes_do_not_feed_opaque_operator_tokens_to_jwt_auth() {
+    fn global_operator_routes_skip_jwt_parsing_but_preserve_operator_authorization() {
         let mut headers = HeaderMap::new();
-        headers.insert(AUTHORIZATION, "Bearer setup-or-observability-token".parse().unwrap());
+        headers.insert(
+            AUTHORIZATION,
+            "Bearer setup-or-observability-token".parse().unwrap(),
+        );
 
-        if super::super::tenant_route_policy::tenant_route_scope("/api/install/apply")
-            == super::super::tenant_route_policy::TenantRouteScope::GlobalOperator
-        {
-            headers.remove(AUTHORIZATION);
-        }
-
-        assert!(!headers.contains_key(AUTHORIZATION));
+        assert_eq!(
+            super::super::tenant_route_policy::tenant_route_scope("/api/install/apply"),
+            super::super::tenant_route_policy::TenantRouteScope::GlobalOperator
+        );
+        assert!(headers.contains_key(AUTHORIZATION));
     }
 
     #[test]
