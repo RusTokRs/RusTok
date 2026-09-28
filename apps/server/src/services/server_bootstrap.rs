@@ -145,7 +145,7 @@ pub async fn bootstrap_application_router(
     let router = compose_application_router(
         router,
         runtime_ctx.clone(),
-        ServerAuthRuntime::new(runtime_ctx, auth_config),
+        ServerAuthRuntime::new(runtime_ctx.clone(), auth_config),
         settings_snapshot,
         runtime,
         &rustok_settings,
@@ -224,7 +224,6 @@ pub async fn bootstrap_application_router(
     .await?;
 
     connect_runtime_workers_with_runtime(runtime_ctx.clone()).await?;
-    tracing::info!("RusTok runtime workers connected");
     tracing::info!("RusTok runtime workers connected");
     Ok(router)
 }
