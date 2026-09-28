@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_graphql::extensions::{
@@ -17,6 +18,7 @@ fn is_storefront_field(name: &str) -> bool {
 fn selection_contains_storefront(
     selection_set: &SelectionSet,
     document: &ExecutableDocument,
+    fragment_stack: &mut HashSet<String>,
 ) -> bool {
     selection_set
         .items
@@ -27,17 +29,34 @@ fn selection_contains_storefront(
                 .fragments
                 .get(&fragment.node.fragment_name.node)
                 .is_some_and(|definition| {
-                    selection_contains_storefront(&definition.node.selection_set.node, document)
+                    if !fragment_stack.insert(fragment.node.fragment_name.node.clone()) {
+                        return false;
+                    }
+                    let result =
+                        selection_contains_storefront(
+                            &definition.node.selection_set.node,
+                            document,
+                            fragment_stack,
+                        );
+                    fragment_stack.remove(&fragment.node.fragment_name.node);
+                    result
                 }),
-            Selection::InlineFragment(fragment) => {
-                selection_contains_storefront(&fragment.node.selection_set.node, document)
-            }
+            Selection::InlineFragment(fragment) => selection_contains_storefront(
+                &fragment.node.selection_set.node,
+                document,
+                fragment_stack,
+            )
         })
 }
 
 fn document_contains_storefront(document: &ExecutableDocument) -> bool {
     document.operations.iter().any(|(_, operation)| {
-        selection_contains_storefront(&operation.node.selection_set.node, document)
+        let mut fragment_stack = HashSet::new();
+        selection_contains_storefront(
+            &operation.node.selection_set.node,
+            document,
+            &mut fragment_stack,
+        )
     })
 }
 
@@ -121,6 +140,19 @@ mod tests {
             let document = async_graphql::parser::parse_query(query).expect("query should parse");
             assert!(document_contains_storefront(&document));
         }
+    }
+
+    #[test]
+    fn cyclic_fragments_are_classified_without_recursive_overflow() {
+        let document = async_graphql::parser::parse_query(
+            r#"
+                query Cycle { ...A }
+                fragment A on Query { ...B }
+                fragment B on Query { ...A storefrontMe { id } }
+            "#,
+        )
+        .expect("cyclic query should parse");
+        assert!(document_contains_storefront(&document));
     }
 
     #[test]

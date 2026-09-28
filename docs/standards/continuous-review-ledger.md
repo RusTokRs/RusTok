@@ -139,6 +139,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.05 finding in progress — OIDC URL/config validation.** Discovery now validates `RUSTOK_PUBLIC_URL` as an absolute HTTP(S) URL without credentials/query/fragment before constructing authorization, token, UserInfo, and revocation endpoints; the previous localhost fallback remains development-only. UserInfo computes email verification before moving user fields, avoiding a partial-move regression introduced by the previous claim-filtering fix.
 
+- [ ] **FS-22.05 finding in progress — GraphQL fragment-policy recursion safety.** The GraphQL policy extensions (`security`, `module_security`, `dashboard_security`, `storefront_principal_security`, `forum_principal_security`) run document classification during `prepare_request`, before async-graphql's standard fragment-cycle validation. Their recursive fragment traversals now use per-call recursion stacks and remove entries on unwind, so cyclic fragments are classified safely instead of recursing indefinitely. Dedicated cyclic-fragment regression tests were added to each policy extension.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |

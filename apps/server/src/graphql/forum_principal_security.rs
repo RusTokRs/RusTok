@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_graphql::extensions::{
@@ -67,6 +68,7 @@ fn selection_policy(
     selection_set: &SelectionSet,
     document: &ExecutableDocument,
     inside_forum_response: bool,
+    fragment_stack: &mut HashSet<String>,
 ) -> ForumOperationPolicy {
     let mut policy = ForumOperationPolicy::default();
     for selection in &selection_set.items {
@@ -82,22 +84,28 @@ fn selection_policy(
                     &field.node.selection_set.node,
                     document,
                     next_inside_forum,
+                    fragment_stack,
                 ));
             }
             Selection::FragmentSpread(fragment) => {
                 if let Some(definition) = document.fragments.get(&fragment.node.fragment_name.node)
                 {
-                    policy.merge(selection_policy(
-                        &definition.node.selection_set.node,
-                        document,
-                        inside_forum_response,
-                    ));
+                    if fragment_stack.insert(fragment.node.fragment_name.node.clone()) {
+                        policy.merge(selection_policy(
+                            &definition.node.selection_set.node,
+                            document,
+                            inside_forum_response,
+                            fragment_stack,
+                        ));
+                        fragment_stack.remove(&fragment.node.fragment_name.node);
+                    }
                 }
             }
             Selection::InlineFragment(fragment) => policy.merge(selection_policy(
                 &fragment.node.selection_set.node,
                 document,
                 inside_forum_response,
+                fragment_stack,
             )),
         }
     }
@@ -107,10 +115,12 @@ fn selection_policy(
 fn document_policy(document: &ExecutableDocument) -> ForumOperationPolicy {
     let mut policy = ForumOperationPolicy::default();
     for (_, operation) in document.operations.iter() {
+        let mut fragment_stack = HashSet::new();
         policy.merge(selection_policy(
             &operation.node.selection_set.node,
             document,
             false,
+            &mut fragment_stack,
         ));
     }
     policy
@@ -203,6 +213,18 @@ mod tests {
     fn policy(query: &str) -> super::ForumOperationPolicy {
         let document = async_graphql::parser::parse_query(query).expect("query should parse");
         document_policy(&document)
+    }
+
+    #[test]
+    fn cyclic_fragments_are_classified_without_recursive_overflow() {
+        let policy = policy(
+            r#"
+                query Cycle { ...A }
+                fragment A on Query { ...B }
+                fragment B on Query { ...A forumTopics { nodes { currentUserVote } } }
+            "#,
+        );
+        assert!(policy.personal_projection);
     }
 
     #[test]

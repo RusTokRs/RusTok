@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::sync::Arc;
 
 use async_graphql::extensions::{
@@ -80,6 +80,7 @@ fn collect_sensitive_fields_from_selection_set(
     selection_set: &SelectionSet,
     document: &ExecutableDocument,
     fields: &mut BTreeSet<SensitiveGraphqlField>,
+    fragment_stack: &mut HashSet<String>,
 ) {
     for selection in &selection_set.items {
         match &selection.node {
@@ -94,12 +95,16 @@ fn collect_sensitive_fields_from_selection_set(
             Selection::FragmentSpread(fragment) => {
                 if let Some(definition) = document.fragments.get(&fragment.node.fragment_name.node)
                 {
-                    collect_sensitive_fields_from_selection_set(
-                        operation_type,
-                        &definition.node.selection_set.node,
-                        document,
-                        fields,
-                    );
+                    if fragment_stack.insert(fragment.node.fragment_name.node.clone()) {
+                        collect_sensitive_fields_from_selection_set(
+                            operation_type,
+                            &definition.node.selection_set.node,
+                            document,
+                            fields,
+                            fragment_stack,
+                        );
+                        fragment_stack.remove(&fragment.node.fragment_name.node);
+                    }
                 }
             }
             Selection::InlineFragment(fragment) => collect_sensitive_fields_from_selection_set(
@@ -107,6 +112,7 @@ fn collect_sensitive_fields_from_selection_set(
                 &fragment.node.selection_set.node,
                 document,
                 fields,
+                fragment_stack,
             ),
         }
     }
@@ -116,11 +122,13 @@ fn sensitive_graphql_fields(document: &ExecutableDocument) -> Vec<SensitiveGraph
     let mut fields = BTreeSet::new();
 
     for (_, operation) in document.operations.iter() {
+        let mut fragment_stack = HashSet::new();
         collect_sensitive_fields_from_selection_set(
             operation.node.ty,
             &operation.node.selection_set.node,
             document,
             &mut fields,
+            &mut fragment_stack,
         );
     }
 
@@ -327,6 +335,23 @@ mod tests {
             .expect("sensitive policy should be attached");
 
         assert_eq!(policy.0, vec![SensitiveGraphqlField::Users]);
+    }
+
+    #[test]
+    fn cyclic_fragments_are_classified_without_recursive_overflow() {
+        let document = async_graphql::parser::parse_query(
+            r#"
+                query Cycle { ...A }
+                fragment A on Query { ...B }
+                fragment B on Query { ...A users }
+            "#,
+        )
+        .expect("query should parse before GraphQL validation");
+
+        assert_eq!(
+            sensitive_graphql_fields(&document),
+            vec![SensitiveGraphqlField::Users]
+        );
     }
 
     #[test]
