@@ -55,6 +55,8 @@ status: active
 - [x] **SERVER-21-06 — Docker SIGTERM was not part of host shutdown handling.** The production image declares `STOPSIGNAL SIGTERM`, but `shutdown_signal` listened only for Ctrl-C. Unix hosts now handle SIGTERM as a graceful shutdown trigger while retaining Ctrl-C handling.
 - [x] **SERVER-21-07 — runtime worker stop-handle initialization had a bootstrap check-then-insert race.** `connect_runtime_workers_with_runtime` now uses the context's atomic `StopHandle::ensure` path instead of separate `shared_contains`/`shared_insert`/`expect` steps.
 
+- [x] **SERVER-21-08 — production image contained development/test configuration and did not self-declare its production config contract.** The production stage copied the entire `apps/server/config` directory, including known development/test credentials. It now creates an empty operator-owned `/app/config` mount point, sets `RUSTOK_ENV=production`, `RUSTOK_CONFIG_DIR=/app/config`, and `RUSTOK_HTTPS=true`, and deliberately excludes development/test YAML files from the production image.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |

@@ -70,7 +70,10 @@ LABEL org.opencontainers.image.title="RusToK Server" \
       org.opencontainers.image.licenses="BUSL-1.1"
 
 ENV RUST_BACKTRACE=1 \
-    RUSTOK_SOURCE_COMMIT=${OCI_REVISION}
+    RUSTOK_SOURCE_COMMIT=${OCI_REVISION} \
+    RUSTOK_ENV=production \
+    RUSTOK_CONFIG_DIR=/app/config \
+    RUSTOK_HTTPS=true
 WORKDIR /app
 
 RUN apt-get update \
@@ -79,10 +82,14 @@ RUN apt-get update \
         libssl3 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 rustok \
-    && useradd --system --uid 10001 --gid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin rustok
+    && useradd --system --uid 10001 --gid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin rustok \
+    && mkdir --parents /app/config \
+    && chown 10001:10001 /app/config
 
 COPY --from=builder --chown=10001:10001 /workspace/target/release/rustok-server /app/rustok-server
-COPY --from=builder --chown=10001:10001 /workspace/apps/server/config /app/config
+
+# Production configuration is an operator-provided runtime secret/config mount.
+# Development and test YAML files are intentionally excluded from the production image.
 
 USER 10001:10001
 EXPOSE 5150
