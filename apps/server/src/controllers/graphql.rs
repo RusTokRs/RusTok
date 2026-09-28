@@ -437,11 +437,21 @@ async fn build_ws_connection_data(
         grant_type: current_user.grant_type,
     };
 
+    let request_context = RequestContext {
+        tenant_id: tenant_ctx.id,
+        user_id: Some(current_user.user.id),
+        channel_id: None,
+        channel_slug: None,
+        channel_resolution_source: None,
+        locale: locale.to_string(),
+        correlation_id: uuid::Uuid::new_v4().to_string(),
+    };
     let mut data = Data::default();
     data.insert(runtime_ctx.db_clone());
     data.insert(runtime_ctx);
     data.insert(registry);
     data.insert(locale);
+    data.insert(request_context);
     data.insert(tenant_ctx);
     data.insert(auth_ctx);
     data.insert(principal_context);
