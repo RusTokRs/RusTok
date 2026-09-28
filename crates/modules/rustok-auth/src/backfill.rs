@@ -67,7 +67,11 @@ impl AuthUserBackfillReadPort for AuthUserBackfillDbReader {
             sql,
             vec![
                 request.tenant_id.into(),
-                i64::from(limit).into(),
+                i64::try_from(limit)
+                    .map_err(|_| AuthLifecycleMutationError::Validation(
+                        "profile backfill user read limit is out of range".to_string(),
+                    ))?
+                    .into(),
             ],
         );
 
