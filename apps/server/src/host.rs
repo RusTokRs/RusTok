@@ -79,6 +79,10 @@ pub async fn run() -> Result<()> {
     migrate_database_if_enabled(&db, config.database.auto_migrate).await?;
     let rustok_settings = RustokSettings::from_settings(&Some(config.settings.clone()))
         .map_err(|error| Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
+    rustok_settings
+        .tenant
+        .validate_for_environment(production)
+        .map_err(|error| Error::BadRequest(format!("Invalid tenant deployment settings: {error}")))?;
     let runtime_ctx = ServerRuntimeContext::new(db, rustok_settings.clone());
     let auth_config = crate::auth::auth_config_from_host_settings(
         config.auth.jwt.secret.clone(),

@@ -123,6 +123,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.03 finding in progress — refresh/RBAC role tenant-first query isolation.** Refresh user lookup now filters `users.tenant_id`, and effective-role resolution joins `user_roles` directly to tenant-scoped `roles` before role IDs are considered. This closes the remaining auth lifecycle reads that could otherwise select tenantless relationship rows before the tenant boundary was applied.
 
+- [ ] **FS-22.04/22.09 finding in progress — effective environment validation drift.** `load_config` derives the default environment from build mode, but `RustokSettings::from_settings` derives production-ness independently from environment variables. A release binary launched without `RUSTOK_ENV` could therefore load production config semantics while tenant validation still treated the process as non-production. The host now validates `tenant` again against the already-resolved `production` decision, making the composition root's effective environment authoritative.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
