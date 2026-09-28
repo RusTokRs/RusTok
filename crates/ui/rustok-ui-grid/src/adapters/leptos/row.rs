@@ -1,3 +1,4 @@
+use leptos::ev::MouseEvent;
 use leptos::prelude::*;
 
 use crate::core::{ColumnAlign, ColumnWidths, GridColumnDef};
@@ -13,15 +14,8 @@ pub fn GridRow<T: Clone + 'static>(
     on_row_click: Option<Callback<T>>,
     cell_renderer: Callback<(T, String), AnyView>,
 ) -> impl IntoView {
-    let id_for_check = row_id.clone();
     let id_for_select_toggle = row_id.clone();
     let item_for_click = item.clone();
-
-    let row_click_handler = move |_| {
-        if let Some(on_click) = on_row_click {
-            on_click.run(item_for_click.clone());
-        }
-    };
 
     view! {
         <tr
@@ -51,29 +45,39 @@ pub fn GridRow<T: Clone + 'static>(
                         move || column_widths.get().get(&id_for_w, col.width.current)
                     };
 
+                    let item_c = item_for_click.clone();
+                    let id_c = id_for_select_toggle.clone();
+                    let rendered_cell = if is_checkbox {
+                        view! {
+                            <input
+                                type="checkbox"
+                                prop:checked=move || is_selected.get()
+                                on:click=move |ev| ev.stop_propagation()
+                                on:change=move |_| on_toggle_select.run(id_c.clone())
+                                class="rounded border-border text-primary focus:ring-primary/30 h-4 w-4 cursor-pointer"
+                            />
+                        }
+                        .into_any()
+                    } else {
+                        cell_renderer.run((item.clone(), col_id))
+                    };
+
                     view! {
                         <td
                             class=format!("px-3 py-2.5 border-r border-border/30 last:border-r-0 align-middle {align_class}")
                             style=move || format!("width: {}px; min-width: {}px; max-width: {}px;", current_w(), col.width.min, col.width.max)
-                            on:click=if !is_checkbox { Some(row_click_handler.clone()) } else { None }
-                        >
-                            {if is_checkbox {
-                                let id_c = id_for_select_toggle.clone();
-                                view! {
-                                    <input
-                                        type="checkbox"
-                                        prop:checked=move || is_selected.get()
-                                        on:click=move |ev| ev.stop_propagation()
-                                        on:change=move |_| on_toggle_select.run(id_c.clone())
-                                        class="rounded border-border text-primary focus:ring-primary/30 h-4 w-4 cursor-pointer"
-                                    />
+                            on:click=move |_ev: MouseEvent| {
+                                if !is_checkbox {
+                                    if let Some(on_click) = on_row_click {
+                                        on_click.run(item_c.clone());
+                                    }
                                 }
-                                .into_any()
-                            } else {
-                                cell_renderer.run((item.clone(), col_id))
-                            }}
+                            }
+                        >
+                            {rendered_cell}
                         </td>
                     }
+                    .into_any()
                 })
                 .collect_view()}
         </tr>

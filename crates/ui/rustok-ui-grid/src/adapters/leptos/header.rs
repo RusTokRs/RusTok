@@ -13,7 +13,7 @@ pub fn GridHeader(
     sort_state: Signal<SortState>,
     filters: Signal<ColumnFilters>,
     all_selected: Signal<bool>,
-    has_selectable: bool,
+    _has_selectable: bool,
     on_toggle_all: Callback<bool>,
     on_sort: Callback<String>,
     on_resize: Callback<(String, u32)>,
@@ -33,16 +33,17 @@ pub fn GridHeader(
                     .map(|col| {
                         let id = col.id.0.clone();
                         let col_id_for_sort = id.clone();
+                        let col_id_for_sort_dir = id.clone();
                         let col_id_for_resize = id.clone();
                         let is_checkbox = id == "__checkbox";
-                        let is_actions = col.pinned == Some(crate::core::PinnedSide::Right);
+                        let _is_actions = col.pinned == Some(crate::core::PinnedSide::Right);
 
                         let current_w = move || {
                             column_widths.get().get(&id, col.width.current)
                         };
 
                         let sort_dir = move || {
-                            sort_state.get().is_sorted_by(&col_id_for_sort)
+                            sort_state.get().is_sorted_by(&col_id_for_sort_dir)
                         };
 
                         let align_class = match col.align {
@@ -120,6 +121,7 @@ pub fn GridHeader(
                                 }}
                             </th>
                         }
+                        .into_any()
                     })
                     .collect_view()}
             </tr>
@@ -170,6 +172,7 @@ pub fn GridHeader(
                                         }}
                                     </td>
                                 }
+                                .into_any()
                             })
                             .collect_view()}
                     </tr>

@@ -16419,6 +16419,7 @@ dependencies = [
  "rustok-ui-core",
  "serde",
  "serde_json",
+ "web-sys",
 ]
 
 [[package]]
