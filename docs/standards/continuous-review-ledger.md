@@ -156,7 +156,26 @@ Hard limits for every iteration:
 - **Fix:** aligned the Axum route to the canonical non-slashed path. No event/outbox code was duplicated.
 - **Second pass:** re-read the current controller and swagger registration after the concurrent installer merge; no further controller-owned issue remained.
 
-- [ ] **FS-22.02.28 — `apps/server/src/controllers/installer.rs`** — one-module audit.
+- [x] **FS-22.02.28 — `apps/server/src/controllers/installer.rs`** — one-module audit; completed with four remediation units and a fresh post-change second pass covering server setup closure, durable job recovery, credential fail-closed behavior, and adapter compile contracts.
+### FS-22.02.28 Iteration 1 — `apps/server/src/controllers/installer.rs`
+
+- **Base:** refreshed `main` at `8f3138ed1ae312b257c3b8694a93cd2e07f23edb`; dedicated branch `codex/audit-fs-22.02.28-installer-audit`.
+- **Invariant map:** installer HTTP mutations require setup-token authorization and shared HTTP abuse controls; once any durable installation reaches `Completed`, setup mutation routes must be closed server-side; install job/receipt status must survive process restart through durable state; host-selected database-admin credentials must never fall back to sample/default credentials; HTTP/CLI adapters must satisfy the shared typed installer executor contract.
+- **Finding INSTALLER-22.02.28-01:** `job_status` and `receipts` called the one-argument `require_setup_token` helper with a stale second argument, a direct Rust compile blocker.
+- **Remediation:** corrected both calls and re-read every installer auth call site; job/receipt endpoints remain setup-token protected.
+- **Finding INSTALLER-22.02.28-02:** `plan`, `preflight` and `apply` remained callable after any installation reached `Completed`; UI disabling alone was insufficient. The architecture decision requires server-side closure after completion.
+- **Remediation:** added `has_completed_session()` in persistence and server-side 409 gating for all setup mutation routes. Public discovery status remains token-free, but its `completed` flag now reflects historical completion rather than only the newest session.
+- **Finding INSTALLER-22.02.28-03:** `create_if_missing=true` previously fell back to `postgres://postgres:postgres@localhost:5432/postgres` when `pg_admin_url` was absent.
+- **Remediation:** removed the hardcoded fallback; explicit non-empty `pg_admin_url` is now required for PostgreSQL database creation.
+- **Finding INSTALLER-22.02.28-04:** HTTP job state lived only in process-local `INSTALL_JOBS`, so restart lost `/api/install/jobs/{job_id}` even though durable installer session/receipts remained.
+- **Remediation:** HTTP apply now uses its server-generated `job_id` as the requested durable `install_session.id`. The shared installer core and SeaORM/HTTP adapters propagate the optional identity; job reads fall back to durable session reconstruction on memory-cache miss. CLI leaves the field unset and retains executor-generated session IDs.
+- **Regression coverage:** controller tests cover completion closure and durable job reconstruction; persistence integration tests cover historical completion detection; persistence tests cover explicit PostgreSQL admin URL requirement. Tests were not executed by the agent.
+- **Security/transport review:** status is intentionally public for first-run discovery; job/receipts remain setup-token protected; global HTTP stack supplies rate limiting, CORS and security headers; installer routes are global-operator routes by design; host distribution/root binding remains trusted and client-independent.
+- **Fresh second pass:** re-read changed installer controller, installer core executor contract, persistence/SeaORM adapters, CLI adapter, auth/HTTP stack, host routing, admin transport/UI, state docs and migration ownership. Checked stale token signatures, all `InstallApplyOptions` literals, fallback credentials, historical completion reopening and job status after restart. No additional repository-owned defect remained in the primary controller surface.
+- **Verification:** repository-content inspection and branch diff review only. No tests, clippy, build, gatekeeper, migrations or runtime commands were run by the agent per maintainer-owned execution policy.
+- **Status:** `FS-22.02.28` complete. Next primary module: `FS-22.02.29 — apps/server/src/controllers/mcp.rs`.
+
+
 - [ ] **FS-22.02.29 — `apps/server/src/controllers/mcp.rs`** — one-module audit.
 - [ ] **FS-22.02.30 — `apps/server/src/controllers/oauth_metadata.rs`** — one-module audit.
 - [ ] **FS-22.02.31 — `apps/server/src/controllers/swagger.rs`** — one-module audit.
