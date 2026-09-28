@@ -352,10 +352,15 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(map_custom_field_error)?;
         }
+        let tenant_name = self.tenant_name(&tx, context.tenant_id).await?;
         tx.commit()
             .await
-            .map_err(|error| super::internal_admin_error(error))?;
-        self.user_record(user).await
+            .map_err(super::internal_admin_error)?;
+        Ok(ServerAuthAdminMutationProvider::user_record(
+            user,
+            role,
+            tenant_name,
+        ))
     }
 
     async fn update_user(
@@ -614,14 +619,23 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             ));
         }
 
+        let tenant_name = self.tenant_name(&tx, context.tenant_id).await?;
+        let final_role = role_mutation_plan
+            .as_ref()
+            .map(|plan| plan.new_role().clone())
+            .unwrap_or_else(|| current_role.clone());
         tx.commit()
             .await
-            .map_err(|error| super::internal_admin_error(error))?;
+            .map_err(super::internal_admin_error)?;
         if let Some(durable_generation) = durable_generation {
             publish_committed_user_invalidation(context.tenant_id, user.id, durable_generation)
                 .await;
         }
-        self.user_record(user).await
+        Ok(ServerAuthAdminMutationProvider::user_record(
+            user,
+            final_role,
+            tenant_name,
+        ))
     }
 
     async fn delete_user(
