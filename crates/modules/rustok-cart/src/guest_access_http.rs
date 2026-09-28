@@ -145,19 +145,19 @@ mod tests {
     }
 
  
-#[test]
-fn duplicate_header_capabilities_fail_closed() {
+    #[test]
+    fn duplicate_header_capabilities_fail_closed() {
     let mut headers = HeaderMap::new();
-    headers.append(
+        headers.append(
         crate::GUEST_CART_TOKEN_HEADER,
         token('a').parse().expect("header token"),
     );
-    headers.append(
+        headers.append(
         crate::GUEST_CART_TOKEN_HEADER,
         token('a').parse().expect("duplicate header token"),
     );
 
-    assert_eq!(
+        assert_eq!(
         extract_presented_token(&headers),
         Err("Duplicate guest cart access tokens")
     );
@@ -166,9 +166,9 @@ fn duplicate_header_capabilities_fail_closed() {
 
     #[test]
     fn duplicate_cookie_capabilities_fail_closed() {
-    let token = token('a');
-    let mut headers = HeaderMap::new();
-    headers.insert(
+        let token = token('a');
+        let mut headers = HeaderMap::new();
+        headers.insert(
         axum::http::header::COOKIE,
         format!(
             "{}={}; {}={}",
@@ -181,7 +181,7 @@ fn duplicate_header_capabilities_fail_closed() {
         .expect("cookie"),
     );
 
-    assert_eq!(
+        assert_eq!(
         extract_presented_token(&headers),
         Err("Duplicate guest cart access tokens")
     );
@@ -192,22 +192,22 @@ fn duplicate_header_capabilities_fail_closed() {
     fn invalid_header_does_not_fall_back_to_cookie_capability() {
     let token = token('a');
     let mut headers = HeaderMap::new();
-    headers.insert(
+        headers.insert(
         crate::GUEST_CART_TOKEN_HEADER,
         "invalid-token".parse().expect("invalid header"),
     );
-    headers.insert(
+        headers.insert(
         axum::http::header::COOKIE,
         format!("{}={token}", crate::GUEST_CART_TOKEN_COOKIE)
             .parse()
             .expect("cookie"),
     );
 
-    assert_eq!(
+        assert_eq!(
         extract_presented_token(&headers),
         Err("Invalid guest cart access token")
     );
-}
+        }
 
     #[test]
     fn conflicting_capabilities_fail_closed() {
