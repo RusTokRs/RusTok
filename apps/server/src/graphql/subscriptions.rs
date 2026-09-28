@@ -2,40 +2,25 @@ use async_graphql::{Context, FieldError, Result, Subscription};
 use futures_util::stream;
 use sea_orm::DatabaseConnection;
 
-use crate::context::{AuthContext, TenantContext};
+use rustok_api::{HostAuthority, HostAuthorityContext};
 use crate::graphql::types::BuildProgressEvent;
 use crate::services::build_event_hub::BuildEventHub;
-use crate::services::rbac_service::RbacService;
-use rustok_api::Permission;
 use rustok_api::graphql::GraphQLError;
 use rustok_core::EventConsumerRuntime;
 
 #[derive(Default)]
 pub struct BuildSubscription;
 
-async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
-    let auth = ctx
-        .data::<AuthContext>()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-    let db = ctx.data::<DatabaseConnection>()?;
-    let tenant = ctx.data::<TenantContext>()?;
+async fn ensure_host_build_read_authority(ctx: &Context<'_>) -> Result<()> {
+    let authority = ctx
+        .data::<HostAuthorityContext>()
+        .map_err(|_| <FieldError as GraphQLError>::permission_denied(
+            "Host-global authority required",
+        ))?;
 
-    let can_read_modules = RbacService::has_any_permission(
-        db,
-        &tenant.id,
-        &auth.user_id,
-        &[
-            Permission::MODULES_READ,
-            Permission::MODULES_LIST,
-            Permission::MODULES_MANAGE,
-        ],
-    )
-    .await
-    .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-    if !can_read_modules {
+    if !authority.allows(HostAuthority::Read) {
         return Err(<FieldError as GraphQLError>::permission_denied(
-            "Permission denied: modules:read required",
+            "Host-global read authority required",
         ));
     }
 
@@ -49,7 +34,7 @@ impl BuildSubscription {
         ctx: &Context<'_>,
         build_id: Option<String>,
     ) -> Result<impl futures_util::Stream<Item = BuildProgressEvent>> {
-        ensure_modules_read_permission(ctx).await?;
+        ensure_host_build_read_authority(ctx).await?;
 
         let hub = ctx.data::<std::sync::Arc<BuildEventHub>>()?;
         let receiver = hub.subscribe();

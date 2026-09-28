@@ -22,7 +22,10 @@ use crate::context::{AuthContext, TenantContext};
 use crate::extractors::auth::{OptionalCurrentUser, resolve_current_user_from_access_token};
 use crate::graphql::AppSchema;
 use crate::graphql::persisted::is_cataloged_admin_hash;
-use crate::middleware::tenant;
+use crate::{
+    host_authority::HostAuthorityPolicy,
+    middleware::tenant,
+};
 use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 use rustok_core::ModuleRegistry;
@@ -168,6 +171,8 @@ struct GraphqlWsInitPayload {
     #[serde(rename = "tenantSlug", alias = "tenant_slug")]
     tenant_slug: Option<String>,
     locale: Option<String>,
+    #[serde(rename = "hostAuthorityToken", alias = "host_authority_token")]
+    host_authority_token: Option<String>,
 }
 
 async fn graphql_ws_handler(
@@ -348,6 +353,22 @@ async fn build_ws_connection_data(
         .token
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| async_graphql::Error::new("connection_init.token is required"))?;
+    let host_authority = match payload
+        .host_authority_token
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(token) => {
+            let policy = HostAuthorityPolicy::from_env().map_err(|_| {
+                async_graphql::Error::new("Host-global authority configuration is unavailable")
+            })?;
+            Some(policy.authenticate(token).ok_or_else(|| {
+                async_graphql::Error::new("Host-global authority credential is invalid")
+            })?)
+        }
+        None => None,
+    };
 
     let tenant_ctx = tenant::resolve_tenant_context_by_slug(&runtime_ctx, &tenant_slug)
         .await
@@ -405,6 +426,9 @@ async fn build_ws_connection_data(
     data.insert(tenant_ctx);
     data.insert(auth_ctx);
     data.insert(principal_context);
+    if let Some(host_authority) = host_authority {
+        data.insert(host_authority);
+    }
     data.insert(request_scope);
     Ok(data)
 }

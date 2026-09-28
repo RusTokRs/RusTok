@@ -153,6 +153,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.06/22.07 finding in progress — platform build surfaces were globally readable through tenant-admin permissions.** The `builds` persistence model has no `tenant_id`, while `active_build()`/`list_builds_page()` return platform-wide state; `/api/fn/admin/active-build`, `/api/fn/admin/build-history`, and `/ws/builds` therefore cannot be made tenant-safe by filtering alone. They are now classified as `GlobalOperator` and require host `Read` authority. The build WebSocket contract was updated from JWT auth to host-global authority; route-policy tests cover all three surfaces.
 
+- [ ] **FS-22.05 finding in progress — GraphQL build subscription crossed tenant/platform boundaries.** `buildProgress` consumed the global `BuildEventHub` while authorizing only tenant `modules:read/list/manage`, so a tenant admin could observe platform-wide build events. The subscription now requires host `Read` authority. GraphQL WS `connection_init` accepts an optional `hostAuthorityToken`, validated through the same configured host-authority policy as HTTP; ordinary user-token GraphQL subscriptions remain unchanged.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
