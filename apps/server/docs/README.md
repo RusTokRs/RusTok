@@ -227,7 +227,9 @@ remain separate unfinished control-plane work.
 - `apps/server` can run as a `full`, `registry_only`, `api`, `admin_ssr`,
   `storefront_ssr`, or `worker` host. API and SSR modes skip background
   workers; the worker mode completes normal runtime bootstrap and starts those
-  workers while mounting only health and metrics HTTP surfaces. `host_mode`
+  workers while mounting the health/metrics HTTP surfaces plus the
+  profile-independent registry remote-runner boundary when
+  `runtime.registry.remote_executor.enabled` is true. `host_mode`
   does not replace a deployment profile or choose build artifacts. Artifact
   HTTP and command dispatch resolve the shared effective module policy before
   invoking a binding and fail closed for a disabled or denied module; they do
