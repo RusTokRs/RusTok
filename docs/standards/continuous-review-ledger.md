@@ -42,10 +42,11 @@ The audit must move slowly enough to discover second-order defects. A phase is n
 - This section is the temporary living plan for the current audit cycle; do not create a second audit checklist.
 - Governance preflight is recorded here, but the implementation audit starts at the server/runtime boundary and continues through every affected layer to the final shared-library surface.
 - Execute phases strictly in order, one phase at a time.
-- Before each phase, refresh `main`, record its SHA, and create/use only a dedicated phase branch from that refreshed SHA.
-- Audit first, then implement every repository-owned in-scope root-cause defect on the phase branch, using the mandatory closed-loop re-audit protocol above.
+- Within the active phase, execute the ordered module tracks strictly in order. A module track may span multiple consecutive iterations when the code warrants it.
+- Before each iteration, refresh `main`, record its SHA, and create/use only a dedicated iteration branch from that refreshed SHA.
+- Audit first, then implement every repository-owned in-scope root-cause defect assigned to the current primary module and coherent iteration slice, using the mandatory closed-loop re-audit protocol above.
 - After every remediation unit, re-audit the changed area and adjacent boundaries for newly introduced defects before continuing.
-- Commit only after the complete branch diff has passed the fresh re-audit.
+- Commit only after the current iteration's complete branch diff has passed the fresh re-audit.
 - Commit the audit/implementation result, open a PR to `main`, merge it, then refresh `main` and perform the post-merge reconciliation before the next phase.
 - Do not mutate another agent's branch or force-update shared history.
 - Tests are run by the maintainer/user. The agent MUST NOT run test suites unless this rule is explicitly changed; tests may be inspected and static/source checks may be performed.
@@ -92,30 +93,34 @@ The audit must move slowly enough to discover second-order defects. A phase is n
 
 ### Phase Granularity Rule
 
-The numbered FS phases define architectural ownership, not a permission to inspect an entire subsystem in one pass. Before implementation, the active phase must be decomposed in the ledger into ordered subchecks small enough that each production path can be read end-to-end and re-audited after each fix. A subcheck may cover one bounded flow (for example: one middleware chain, one auth/session path, one tenant-resolution path, one route family, or one persistence boundary). Do not advance to the next subcheck while an introduced regression or unexplained invariant violation remains.
-**Phase Granularity Rule — one production module per iteration**
+The numbered FS phases define architectural ownership, not a permission to inspect an entire subsystem in one pass. Before implementation, the active phase must be decomposed in the ledger into ordered module tracks small enough that each production module can be read end-to-end and re-audited after each coherent remediation. A module track may require multiple iterations when the module contains several independent flows, root-cause findings, or substantial implementation surface. Do not advance to the next module while an introduced regression or unexplained invariant violation remains.
+
+**Phase Granularity Rule — one primary production module per iteration, with multiple iterations allowed per module**
 
 The numbered FS phases define architectural ownership, not permission to audit a subsystem, route family, or collection of modules in one pass.
 
-A single audit iteration has exactly **one primary production module/component**. The primary unit is normally one Rust module/file such as `apps/server/src/middleware/metrics_auth.rs`, or one similarly bounded owner module elsewhere in the repository.
+Each audit iteration has exactly **one primary production module/component**. The primary unit is normally one Rust module/file such as `apps/server/src/middleware/metrics_auth.rs`, or one similarly bounded owner module elsewhere in the repository.
 
-The iteration may read direct callers/callees, contracts, configuration, persistence, tests, and adjacent boundaries only as necessary to prove the primary module's invariants. Those surrounding reads are evidence for the primary module, not additional audit scope.
+**A single module may require multiple consecutive audit iterations.** This is expected when the module contains several independent flows, multiple root-cause findings, complex failure behavior, or a remediation that must be split into several safe steps. Multiple iterations on the same module are allowed and should be preferred over widening one iteration or batching unrelated fixes.
+
+The iteration may read direct callers/callees, contracts, configuration, persistence, tests, and adjacent boundaries only as necessary to prove the primary module's invariants. Those surrounding reads are evidence for the primary module, not additional primary scope.
 
 Hard limits for every iteration:
 
 1. Do not audit multiple sibling modules as primary scope.
-2. Do not make unrelated fixes discovered outside the primary module; record them for their own later iteration.
-3. Do not close an iteration until the primary module has completed discovery, invariant mapping, implementation, immediate re-audit, adjacent-boundary re-audit, regression audit, and a fresh second pass.
-4. One iteration produces one small coherent branch/PR/merge. After merge, refresh `main` and select exactly one next primary module.
-5. When a module exposes several flows, audit those flows sequentially inside that one module rather than expanding to neighboring modules.
+2. Do not make unrelated fixes discovered outside the primary module; record them for their own later module track.
+3. Every iteration must complete the mandatory discovery, invariant mapping, implementation/assessment, immediate re-audit, adjacent-boundary re-audit, regression audit, and fresh second pass for the portion of the primary module addressed in that iteration.
+4. One iteration produces one small coherent branch/PR/merge. After merge, refresh `main`; the next iteration may continue the same primary module or move to the next module according to the module track's remaining work.
+5. When a module exposes several flows, audit those flows sequentially inside that same module track rather than expanding to neighboring modules.
 6. Finding counts do not justify widening the scope. If the module reveals a large cross-module defect, isolate the root cause and create a later dedicated iteration for the owning module.
-7. The phrase `реализуй план аудита` means: take the **next unchecked primary module only**.
+7. A module is not marked complete until a module-level fresh second pass finds no remaining repository-owned in-scope defects for that module, or all remaining issues are explicitly blocked by an owner decision/ADR.
+8. The phrase `реализуй план аудита` means: continue the **current open module track** with its next coherent iteration; when that module track is complete, take the **next unchecked primary module**.
 
 ### Current module-by-module execution queue
 
 **FS-22 — apps/server composition root**
 
-- [ ] **FS-22.02.01 — `apps/server/src/middleware/metrics_auth.rs`** — one-module audit: observability authentication, readiness sanitization, bearer parsing, production/development fail-closed behavior, response status contract, and direct middleware placement evidence.
+- [ ] **FS-22.02.01 — `apps/server/src/middleware/metrics_auth.rs`** — module track: observability authentication, readiness sanitization, bearer parsing, production/development fail-closed behavior, response status contract, and direct middleware placement evidence. **This module may take multiple consecutive iterations; do not advance to FS-22.02.02 until its module-level second pass is clean or remaining issues are explicitly blocked.**
 - [ ] **FS-22.02.02 — `apps/server/src/middleware/registry_artifact_access.rs`** — one-module audit.
 - [ ] **FS-22.02.03 — `apps/server/src/middleware/registry_remote_claim.rs`** — one-module audit.
 - [ ] **FS-22.02.04 — `apps/server/src/middleware/registry_publish_policy.rs`** — one-module audit.
