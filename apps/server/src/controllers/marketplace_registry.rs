@@ -60,6 +60,7 @@ use crate::services::registry_governance::{
     REGISTRY_VALIDATION_STAGE_REASON_CODES, REGISTRY_YANK_REASON_CODES, RegistryArtifactUpload,
     RegistryAuthorSignatureEvidenceInput, RegistryExternalPrebuiltStageInput,
     RegistryGovernanceError, RegistryGovernanceService, RegistryPlatformBuildStageInput,
+    RegistryPublishRequestPermission,
 };
 use crate::services::registry_principal::RegistryAuthority;
 use crate::services::registry_remote_runner::claim_remote_validation_stage_atomic;
@@ -229,9 +230,10 @@ async fn publish(
         if !request.module.ownership.eq_ignore_ascii_case("first_party")
             && !authority.can_manage_modules
         {
-            return Err(Error::BadRequest(
-                "Live third-party registry publish requires modules.manage authority".to_string(),
-            ));
+            return Err(http_error(HttpError::forbidden(
+                "forbidden",
+                "Live third-party registry publish requires modules.manage authority",
+            )));
         }
         if matches!(
             request.module.artifact_origin,
@@ -806,15 +808,22 @@ async fn download_publish_artifact(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
 ) -> Result<Response<Body>, Error> {
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
-    let has_user_session = optional_authority_from_auth(&headers, auth)?.is_some();
-    if !has_user_session && require_remote_executor_access(&ctx, &headers).is_err() {
-        return Err(Error::Unauthorized(
-            "Registry artifact download requires a user session or x-rustok-runner-token"
-                .to_string(),
-        ));
+    let governance = RegistryGovernanceService::new(ctx.db_clone());
+    if let Some(authority) = optional_authority_from_auth(&headers, auth)? {
+        governance
+            .authorized_publish_request_status_snapshot(
+                &request_id,
+                &authority,
+                RegistryPublishRequestPermission::Manage,
+                "download an artifact for",
+            )
+            .await
+            .map_err(map_registry_governance_error)?;
+    } else {
+        require_remote_executor_access(&ctx, &headers)?;
     }
 
-    let artifact = RegistryGovernanceService::new(ctx.db_clone())
+    let artifact = governance
         .publish_artifact_download_snapshot(&request_id)
         .await
         .map_err(map_registry_governance_error)?
