@@ -68,7 +68,7 @@ pub(super) fn ensure_permissions(
     message: &str,
 ) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(HttpError::unauthorized(
+        return Err(HttpError::forbidden(
             "commerce_permission_denied",
             message.to_string(),
         ));

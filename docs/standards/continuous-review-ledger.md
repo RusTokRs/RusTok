@@ -163,6 +163,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.05 finding in progress — Workflow runtime lifecycle bypass.** All Workflow HTTP CRUD/execution/step handlers and the signed webhook now require the tenant-scoped `workflow` module to be enabled before business execution. This keeps compile-time route availability separate from runtime module lifecycle.
 
+- [ ] **FS-22.06 finding in progress — authenticated permission failures returned 401.** Commerce and Workflow HTTP permission helpers returned `Unauthorized` after a valid `AuthContext` had already been constructed. This is a transport semantics bug: missing/invalid credentials are 401, authenticated principals lacking authority are 403. The shared HTTP permission boundaries now return `Forbidden`.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |

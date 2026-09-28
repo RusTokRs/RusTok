@@ -152,7 +152,7 @@ pub async fn delete_step(
 
 fn ensure_workflow_permission(auth: &AuthContext) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, &[Permission::WORKFLOWS_UPDATE]) {
-        return Err(HttpError::unauthorized(
+        return Err(HttpError::forbidden(
             "workflow_permission_denied",
             "Permission denied: workflows:update required".to_string(),
         ));
