@@ -320,6 +320,64 @@ fn parses_channel_slug_from_header_and_query() {
     );
 }
 
+#[test]
+fn rejects_oversized_channel_selectors_before_resolution() {
+    let oversized = "x".repeat(101);
+
+    let mut headers = HeaderMap::new();
+    headers.insert("X-Channel-Slug", oversized.parse().expect("header"));
+
+    assert_eq!(channel_slug_from_header(&headers), None);
+    assert_eq!(
+        channel_slug_from_query(Some(&format!("channel={oversized}"))),
+        None
+    );
+}
+
+#[test]
+fn decodes_percent_encoded_query_channel_slug() {
+    assert_eq!(
+        channel_slug_from_query(Some("channel=web%2Dstore")).as_deref(),
+        Some("web-store")
+    );
+    assert_eq!(
+        channel_slug_from_query(Some("channel=mobile+app")).as_deref(),
+        Some("mobile app")
+    );
+}
+
+#[test]
+fn cache_key_canonicalizes_equivalent_hosts() {
+    let tenant_id = Uuid::new_v4();
+    let base = build_request_facts(
+        tenant_id,
+        &HeaderMap::new(),
+        None,
+        None,
+        &test_settings(),
+        &empty_extensions(),
+    );
+
+    let mut mixed_case = base.clone();
+    mixed_case.host = Some("SHOP.Example.TEST".to_string());
+
+    let mut with_port_and_dot = base.clone();
+    with_port_and_dot.host = Some("shop.example.test.:443".to_string());
+
+    let mut canonical = base;
+    canonical.host = Some("shop.example.test".to_string());
+
+    let canonical_key = channel_cache_key_from_facts(&canonical, 1);
+    assert_eq!(
+        channel_cache_key_from_facts(&mixed_case, 1),
+        canonical_key
+    );
+    assert_eq!(
+        channel_cache_key_from_facts(&with_port_and_dot, 1),
+        canonical_key
+    );
+}
+
 #[tokio::test]
 async fn select_channel_prefers_header_id_over_slug_query_host_and_default() {
     let db = setup_channel_db().await;
