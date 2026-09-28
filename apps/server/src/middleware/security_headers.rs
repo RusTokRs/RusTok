@@ -218,8 +218,8 @@ fn select_report_only_csp(path: &str, csp_nonce: Option<&CspNonce>) -> Option<St
 #[cfg(test)]
 mod tests {
     use super::{
-        API_CSP, REPORTING_ENDPOINTS, parse_env_flag, security_headers, select_csp,
-        select_report_only_csp,
+        API_CSP, REPORTING_ENDPOINTS, handle_csp_report, parse_env_flag, security_headers,
+        select_csp, select_report_only_csp,
     };
     use crate::middleware::csp_reports::CSP_REPORT_PATH;
     use axum::{
@@ -230,7 +230,13 @@ mod tests {
         routing::get,
     };
     use rustok_web::CspNonce;
+    use std::sync::Arc;
     use tower::ServiceExt;
+
+    use crate::middleware::rate_limit::{
+        PathRateLimitMiddlewareState, PathRateLimitPolicy, RateLimitConfig, RateLimiter,
+        rate_limit_for_paths,
+    };
 
     fn directive<'a>(policy: &'a str, name: &str) -> Option<&'a str> {
         policy
@@ -367,6 +373,60 @@ mod tests {
         .expect("UTF-8 nonce");
 
         assert!(policy.contains(format!("'nonce-{nonce}'").as_str()));
+    }
+
+    #[tokio::test]
+    async fn csp_reports_are_rate_limited_before_collection_and_keep_security_headers() {
+        let state = PathRateLimitMiddlewareState {
+            policies: Arc::new(vec![PathRateLimitPolicy {
+                limiter: Arc::new(RateLimiter::new_with_namespace(
+                    RateLimitConfig::new(1, 60),
+                    "test-csp-report",
+                )),
+                prefixes: Arc::new(vec!["/api/"]),
+            }]),
+            auth_config: None,
+            trusted_auth_dimensions: false,
+            request_trust: Default::default(),
+        };
+        let app = Router::new()
+            .layer(middleware::from_fn(handle_csp_report))
+            .layer(middleware::from_fn_with_state(
+                state,
+                rate_limit_for_paths,
+            ))
+            .layer(middleware::from_fn(security_headers));
+
+        let request = || {
+            Request::builder()
+                .method("POST")
+                .uri(CSP_REPORT_PATH)
+                .header("content-type", "application/csp-report")
+                .body(Body::from(
+                    r#"{"csp-report":{"document-uri":"https://admin.example.com/orders","blocked-uri":"inline","violated-directive":"script-src-elem"}}"#,
+                ))
+                .expect("CSP report request")
+        };
+
+        let first = app.clone().oneshot(request()).await.expect("first report");
+        assert_eq!(first.status(), StatusCode::NO_CONTENT);
+        assert_eq!(
+            first
+                .headers()
+                .get("content-security-policy")
+                .and_then(|value| value.to_str().ok()),
+            Some(API_CSP)
+        );
+
+        let second = app.oneshot(request()).await.expect("second report");
+        assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            second
+                .headers()
+                .get("content-security-policy")
+                .and_then(|value| value.to_str().ok()),
+            Some(API_CSP)
+        );
     }
 
     #[tokio::test]
