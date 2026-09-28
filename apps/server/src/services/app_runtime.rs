@@ -255,14 +255,9 @@ async fn initialize_module_work_runtime(
         .register_all(&host, &scheduler)
         .await
         .map_err(|error| Error::Message(format!("module work registration failed: {error}")))?;
-    if !ctx.shared_contains::<crate::services::app_lifecycle::StopHandle>() {
-        let (stop_handle, _stop_rx) = crate::services::app_lifecycle::StopHandle::new();
-        ctx.shared_insert(stop_handle);
-    }
-    let stop = ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .expect("StopHandle must be registered before module work startup")
-        .subscribe();
+    // StopHandle::ensure uses an atomic insert-if-absent path so concurrent bootstrap
+    // calls cannot create divergent shutdown channels or panic between registration and access.
+    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
     tokio::spawn(async move {
         scheduler
             .run_until_stopped(stop, std::time::Duration::from_secs(1))
