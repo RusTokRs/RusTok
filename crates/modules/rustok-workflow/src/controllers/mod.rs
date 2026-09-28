@@ -1,6 +1,6 @@
 use axum::routing::{get, post, put};
-use rustok_api::{HostRuntimeContext, SharedModuleEffectivePolicyReader};
-use rustok_modules::ModuleEffectivePolicyReader;
+use rustok_api::HostRuntimeContext;
+use rustok_modules::{ModuleEffectivePolicyReader, SharedModuleEffectivePolicyReader};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 use sea_orm::DatabaseConnection;
