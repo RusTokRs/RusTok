@@ -28,6 +28,9 @@ const RICHTEXT_FRAME_CSP: &str = "default-src 'none'; script-src 'self'; script-
 const UI_CSP_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; script-src-attr 'none'; style-src 'self' {nonce}; style-src-attr 'none'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src {connect_sources}; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 const SECURE_UI_CONNECT_SOURCES: &str = "'self' https: wss:";
 const DEVELOPMENT_UI_CONNECT_SOURCES: &str = "'self' https: ws: wss:";
+const RICHTEXT_FRAME_PATH: &str = "/richtext/frame";
+const RICHTEXT_FRAME_ASSET_PREFIX: &str = "/richtext/frame/";
+const RICHTEXT_ADAPTER_ASSET: &str = "leptos-adapter.mjs";
 
 /// Reporting mirror for strict UI violations. It carries the same trusted nonce as the enforced
 /// policy, additionally fixes worker sources, and reports violations without weakening enforcement.
@@ -119,15 +122,8 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
              magnetometer=(), microphone=(), payment=(), usb=()",
         ),
     );
-    if is_richtext_frame_surface(&path) {
-        headers.insert(
-            "cache-control",
-            HeaderValue::from_static(if path == "/richtext/frame" {
-                "no-store"
-            } else {
-                "public, max-age=31536000, immutable"
-            }),
-        );
+    if let Some(cache_control) = richtext_cache_control(&path) {
+        headers.insert("cache-control", HeaderValue::from_static(cache_control));
     }
 
     // Strict-Transport-Security — only for an explicitly declared HTTPS deployment.
@@ -183,7 +179,32 @@ fn is_api_surface(path: &str) -> bool {
 }
 
 fn is_richtext_frame_surface(path: &str) -> bool {
-    path == "/richtext/frame" || path.starts_with("/richtext/frame/")
+    if path == RICHTEXT_FRAME_PATH {
+        return true;
+    }
+
+    let Some(asset) = path.strip_prefix(RICHTEXT_FRAME_ASSET_PREFIX) else {
+        return false;
+    };
+
+    if asset == RICHTEXT_ADAPTER_ASSET {
+        return true;
+    }
+
+    let Some(hash_and_extension) = asset.strip_prefix("richtext-frame.") else {
+        return false;
+    };
+    let Some((hash, extension)) = hash_and_extension.rsplit_once('.') else {
+        return false;
+    };
+
+    hash.len() == 16
+        && hash.as_bytes().iter().all(u8::is_ascii_hexdigit)
+        && matches!(extension, "js" | "css")
+}
+
+fn richtext_cache_control(path: &str) -> Option<&'static str> {
+    (path == RICHTEXT_FRAME_PATH).then_some("no-store")
 }
 
 fn select_csp(path: &str, csp_nonce: Option<&CspNonce>, allow_plaintext_websocket: bool) -> String {
@@ -262,6 +283,39 @@ mod tests {
         assert!(policy.contains("connect-src 'none'"));
         assert!(policy.contains("frame-ancestors 'self'"));
         assert_eq!(select_report_only_csp("/richtext/frame", None), None);
+    }
+
+    #[test]
+    fn richtext_surface_is_exactly_bounded() {
+        for path in [
+            RICHTEXT_FRAME_PATH,
+            "/richtext/frame/leptos-adapter.mjs",
+            "/richtext/frame/richtext-frame.0123456789abcdef.js",
+            "/richtext/frame/richtext-frame.0123456789abcdef.css",
+        ] {
+            assert!(is_richtext_frame_surface(path), "{path}");
+        }
+
+        for path in [
+            "/richtext/frame/",
+            "/richtext/frame/index.html",
+            "/richtext/frame/unknown.js",
+            "/richtext/frame/richtext-frame.0123456789abcde.js",
+            "/richtext/frame/richtext-frame.0123456789abcdef.mjs",
+            "/richtext/frame/nested/app.js",
+        ] {
+            assert!(!is_richtext_frame_surface(path), "{path}");
+        }
+
+        assert_eq!(richtext_cache_control(RICHTEXT_FRAME_PATH), Some("no-store"));
+        assert_eq!(
+            richtext_cache_control("/richtext/frame/leptos-adapter.mjs"),
+            None
+        );
+        assert_eq!(
+            richtext_cache_control("/richtext/frame/richtext-frame.0123456789abcdef.js"),
+            None
+        );
     }
 
     #[test]
