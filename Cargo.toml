@@ -7,6 +7,7 @@ members = [
     "crates/libs/*",
     "crates/ui/*",
     "crates/ui/rustok-forms/leptos",
+    "crates/ui/rustok-forms/dioxus",
     "crates/utils/*",
     "crates/workers/*",
     "crates/modules/*",
@@ -175,6 +176,8 @@ iu-leptos = { path = "UI/leptos" }
 leptos-ui = { path = "crates/ui/leptos-ui" }
 rustok-forms = { path = "crates/ui/rustok-forms" }
 rustok-forms-leptos = { path = "crates/ui/rustok-forms/leptos" }
+rustok-forms-dioxus = { path = "crates/ui/rustok-forms/dioxus" }
+dioxus = { version = "0.6", default-features = false }
 rustok-ui-auth = { path = "crates/ui/rustok-ui-auth" }
 leptos-use = "0.19.0"
 gloo-storage = "0.4.0"

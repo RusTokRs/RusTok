@@ -24,7 +24,7 @@
 //! ## Companion Framework Adapters
 //!
 //! - `rustok-forms-leptos`: Leptos 0.8 SSR-first component adapter with WAI-ARIA and RusToK design tokens.
-//! - `rustok-forms-dioxus`: Dioxus adapter (planned).
+//! - `rustok-forms-dioxus`: Dioxus 0.6 component adapter with WAI-ARIA and RusToK design tokens.
 //!
 //! ## Basic Usage
 //!

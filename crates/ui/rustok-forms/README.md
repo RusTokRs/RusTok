@@ -81,3 +81,4 @@ It acts as the single canonical source of truth for:
 ## Adapters
 
 - [`rustok-forms-leptos`](./leptos): Leptos 0.8 SSR-first component adapter with WAI-ARIA and RusToK styling tokens.
+- [`rustok-forms-dioxus`](./dioxus): Dioxus 0.6 component adapter with WAI-ARIA and RusToK styling tokens.
