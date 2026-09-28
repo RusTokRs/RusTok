@@ -11,8 +11,8 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `9f1a6cfb929bbc9073643c9bba320113bf72fa91`  
-**Active branch:** `main`
+**Current main SHA:** `82e0c5e4b44f9a8b349241e750b495c76dc22545`  
+**Active branch:** `codex/audit-fs-22.04.04`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
 
@@ -270,7 +270,7 @@ Hard limits for every iteration:
 - [x] **FS-22.04.01 — `crates/libs/rustok-api/src/request.rs`** — completed with trusted request-context projection, canonical locale evidence, URL form decoding, and tenant-consistency fences.
 - [x] **FS-22.04.02 — `apps/server/src/middleware/tenant_resolution.rs`** — typed tenant identifier/source resolution and request-trust boundary; completed after PR #4281 and post-merge reconciliation. Next primary module: `FS-22.04.03 — apps/server/src/middleware/tenant.rs`.
 - [x] **FS-22.04.03 — `apps/server/src/middleware/tenant.rs`** — tenant read-port/cache/context materialization and invalidation propagation; completed after PR #4284 and post-merge reconciliation. Next primary module: `FS-22.04.04 — apps/server/src/middleware/channel.rs`..
-- [ ] **FS-22.04.04 — `apps/server/src/middleware/channel.rs`** — channel RequestFacts, selector/host/OAuth/locale propagation and cache identity.
+- [ ] **FS-22.04.04 — `apps/server/src/middleware/channel.rs`** — channel RequestFacts, selector/host/OAuth/locale propagation and cache identity; implementation complete on the dedicated iteration branch, pending integration and post-merge reconciliation.
 - [ ] **FS-22.04.05 — `apps/server/src/middleware/locale.rs`** — tenant locale policy enforcement and cache/generation propagation.
 - [ ] **FS-22.04.06 — `apps/server/src/controllers/graphql.rs`** — HTTP/WebSocket tenant/channel/locale context propagation only; GraphQL resolver composition remains FS-22.05.
 - [ ] **FS-22.04.07 — `apps/server/src/middleware/channel_native_wrapper.rs`** — native mutation context propagation and channel invalidation boundary.
@@ -433,6 +433,20 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently re-read the modified production module and its companion tests after all remediation units, checked for the removed `settings_json` path and false-fallible conversions, and compared the complete branch against refreshed `main`. No additional repository-owned defect remained in the primary module.
 - **Verification:** repository source inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migrations or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.04.03` complete after PR #4284 merged into `main` at `9f1a6cfb929bbc9073643c9bba320113bf72fa91`. Post-merge source re-read confirmed typed `settings` payloads, schema version 3, infallible cache-context conversion, and atomic canonical cache-service/infrastructure initialization.
+
+### FS-22.04.04 Iteration 1 — `apps/server/src/middleware/channel.rs`
+
+- **Base:** refreshed `main` at `82e0c5e4b44f9a8b349241e750b495c76dc22545`; dedicated branch `codex/audit-fs-22.04.04`.
+- **Invariant map:** channel context must describe the same channel resolution decision that actually matched the request; host/OAuth/locale facts must retain their canonical semantics through caching; cache identity must remain tenant- and fact-complete; invalidation/registration must not introduce split runtime state; the middleware must remain a thin transport boundary over `rustok-channel`.
+- **Finding CHANNELCTX-22.04.04-01:** host resolution returned a full channel detail, but `CachedChannelResolution::from_decision` always projected the channel's primary/first target into `ChannelContext.target_type/target_value`. When a non-primary web-domain target matched the effective host, downstream consumers therefore received a target different from the target that actually caused resolution.
+- **Remediation:** `from_decision` now receives the original `RequestFacts` and, for `Host` resolution, selects the concrete normalized `web_domain` target matching `facts.host`; primary/first target remains the representation for non-host resolution.
+- **Regression coverage:** added an end-to-end middleware companion test with two web-domain targets on one channel, where the non-primary target matches the request; the resulting cached context must expose that concrete target.
+- **Source guard:** `channel_cache_architecture_guard.rs` now locks the request-facts-aware projection and concrete host-target matching contract.
+- **Immediate/adjacent re-audit:** re-read the modified middleware, companion tests, `ChannelResolver`, `ChannelTargetType`, `ChannelReadPort`, controller mutation paths, locale/auth request extensions, request-trust host helper, durable invalidation runtime and cache-generation guards. The owner resolver remains the source of precedence and tenant scoping; the middleware only projects its decision into the shared host context.
+- **Regression audit:** explicit ID/slug/query precedence is unchanged; host canonicalization remains owned by `ChannelTargetType`; OAuth and locale remain dimensions of `RequestFacts` and the cache key; generation rollover/exhaustion still fails safe; REST/native mutation invalidation paths are untouched. A separate adjacent owner issue was noted but not patched here: a missing explicit `X-Channel-ID` currently propagates `ChannelError::NotFound` from `ChannelResolver` instead of being represented as a selector miss/fallback; that belongs to the `rustok-channel/src/resolution.rs` owner track, not this middleware iteration.
+- **Fresh second pass:** independently re-read the complete `channel.rs` after the remediation, the new regression, the source guard, and all direct caller/callee contracts. No additional repository-owned defect remained in this primary middleware module.
+- **Verification:** repository source inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migrations or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** implementation complete on the dedicated iteration branch; ready for PR and merge.
 
 
 ### FS-22.03.18 Iterations 1-3 — `apps/server/src/services/oauth_admin_guard.rs`
