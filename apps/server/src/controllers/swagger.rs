@@ -122,6 +122,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
             crate::services::marketplace_catalog::RegistryMutationResponse,
             crate::services::marketplace_catalog::RegistryPublishRequest,
             crate::services::marketplace_catalog::RegistryPublishDecisionRequest,
+            crate::services::marketplace_catalog::RegistryPublishValidationRequest,
             crate::services::marketplace_catalog::RegistryPublishStatusResponse,
             crate::services::marketplace_catalog::RegistryExternalPrebuiltStageRequest,
             crate::services::marketplace_catalog::RegistryExternalPrebuiltStageResponse,
