@@ -104,16 +104,19 @@ impl ChannelResolver {
         let mut trace = Vec::new();
 
         if let Some(channel_id) = facts.header_channel_id {
-            match self.service.get_channel_detail_for_tenant(facts.tenant_id, channel_id).await? {
-                Some(detail) => match detail {
-                detail if !detail.channel.is_active => {
+            match self
+                .service
+                .get_channel_detail_for_tenant(facts.tenant_id, channel_id)
+                .await?
+            {
+                Some(detail) if !detail.channel.is_active => {
                     trace.push(ResolutionTraceStep {
                         stage: ResolutionStage::HeaderId,
                         outcome: ResolutionOutcome::Rejected,
                         detail: format!("Channel '{channel_id}' is inactive"),
                     });
                 }
-                detail => {
+                Some(detail) => {
                     trace.push(ResolutionTraceStep {
                         stage: ResolutionStage::HeaderId,
                         outcome: ResolutionOutcome::Matched,
@@ -125,15 +128,16 @@ impl ChannelResolver {
                         trace,
                     ));
                 }
-            },
-            None => {
-                trace.push(ResolutionTraceStep {
-                    stage: ResolutionStage::HeaderId,
-                    outcome: ResolutionOutcome::Rejected,
-                    detail: format!("Channel '{channel_id}' does not belong to tenant '{}'", facts.tenant_id),
-                });
+                None => {
+                    trace.push(ResolutionTraceStep {
+                        stage: ResolutionStage::HeaderId,
+                        outcome: ResolutionOutcome::Rejected,
+                        detail: format!(
+                            "No active channel with id '{channel_id}' exists in the resolved tenant scope"
+                        ),
+                    });
+                }
             }
-            } // match scoped channel lookup
         } else {
             trace.push(ResolutionTraceStep {
                 stage: ResolutionStage::HeaderId,
