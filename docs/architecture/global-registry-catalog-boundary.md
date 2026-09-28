@@ -27,7 +27,9 @@ The read-only catalog describes modules available to the deployed RusToK platfor
 
 A registry-only deployment exposes the same read-only router so another RusToK deployment can discover platform modules without inventing a tenant identity for the registry service itself.
 
-Locale may affect the global presentation projection through `RequestContext`, but locale is not a tenant ownership dimension and must not turn the registry catalog into a tenant-scoped data source.
+Locale may affect the global presentation projection through the resolved request-locale extension, but locale is not a tenant ownership dimension and must not turn the registry catalog into a tenant-scoped data source.
+
+The catalog response is bounded to a default page size of 100 modules when `limit` is omitted. Shared-cache responses vary on the presentation and tenant-selector inputs that can affect effective locale (`Accept-Language`, `Cookie`, `X-Medusa-Locale`, and `X-Tenant-ID`). Conditional requests use weak-compatible ETag comparison.
 
 ## Isolation Contract
 
