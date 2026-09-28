@@ -4,8 +4,8 @@
 //! `BuildEvent` payloads as newline-delimited JSON until the build hub
 //! is dropped or the client disconnects.
 //!
-//! **Authentication**: Bearer token in the `Authorization` header
-//! (standard JWT — same as REST endpoints).
+//! **Authentication**: host-global `x-rustok-host-token` with `HostAuthority::Read`
+//! or `HostAuthority::Manage`. The stream is platform-global and is not tenant-scoped.
 
 use axum::{
     extract::{
