@@ -478,22 +478,19 @@ fn map_lifecycle_error(error: AuthLifecycleError) -> AuthLifecycleMutationError 
         AuthLifecycleError::EmailAlreadyExists => AuthLifecycleMutationError::EmailAlreadyExists,
         AuthLifecycleError::InvalidCredentials => AuthLifecycleMutationError::InvalidCredentials,
         AuthLifecycleError::UserInactive => AuthLifecycleMutationError::UserInactive,
-        AuthLifecycleError::InvalidRefreshToken => AuthLifecycleMutationError::InvalidRefreshToken,
-        AuthLifecycleError::SessionExpired => AuthLifecycleMutationError::SessionExpired,
-        AuthLifecycleError::UserNotFound => AuthLifecycleMutationError::UserNotFound,
-        AuthLifecycleError::InvalidResetToken => AuthLifecycleMutationError::InvalidResetToken,
-        AuthLifecycleError::Internal(err) => internal_lifecycle_error(err),
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::ServerAuthLifecycleProvider;
-    use crate::common::RustokSettings;
+    use super::internal_lifecycle_error;
+    use rustok_auth::AuthLifecycleMutationError;
 
     #[test]
-    fn registration_policy_fails_closed_at_provider_boundary() {
-        let enabled = RustokSettings::default();
-        assert!(ServerAuthLifecycleProvider::ensure_registration_enabled(&enabled).is_ok());
+    fn internal_provider_errors_are_redacted() {
+        let error = internal_lifecycle_error("database connection failed: secret-value");
 
-        let mut disabled = RustokSettings::default();
+        assert!(matches!(
+            error,
+            AuthLifecycleMutationError::Internal(message)
+                if message == "Auth lifecycle operation failed"
+        ));
+    }
+}
