@@ -129,6 +129,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.09 finding in progress — environment precedence/config-name drift.** One shared `effective_environment_name()` now drives both config-file selection and production detection, with consistent precedence (`RUSTOK_ENV` → `RUST_ENV` → `APP_ENV`), empty-value handling, UTF-8 failure behavior, and release/development defaults.
 
+- [ ] **FS-22.04 finding in progress — channel tenant-first query isolation.** `X-Channel-ID` resolution previously loaded a channel globally before comparing `tenant_id`; policy resolution likewise loaded its target channel by ID without a tenant filter. The channel service now exposes a tenant-scoped detail lookup and both resolver paths use it; foreign policy targets are rejected fail-closed.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |

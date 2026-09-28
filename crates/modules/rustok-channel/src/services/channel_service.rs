@@ -102,6 +102,23 @@ impl ChannelService {
         self.build_channel_detail(model).await
     }
 
+    pub async fn get_channel_detail_for_tenant(
+        &self,
+        tenant_id: Uuid,
+        channel_id: Uuid,
+    ) -> ChannelResult<Option<ChannelDetailResponse>> {
+        let model = channel::Entity::find()
+            .filter(channel::Column::TenantId.eq(tenant_id))
+            .filter(channel::Column::Id.eq(channel_id))
+            .one(&self.db)
+            .await?;
+
+        match model {
+            Some(model) => Ok(Some(self.build_channel_detail(model).await?)),
+            None => Ok(None),
+        }
+    }
+
     pub async fn get_channel_by_slug(
         &self,
         tenant_id: Uuid,

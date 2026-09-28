@@ -104,17 +104,8 @@ impl ChannelResolver {
         let mut trace = Vec::new();
 
         if let Some(channel_id) = facts.header_channel_id {
-            match self.service.get_channel_detail(channel_id).await? {
-                detail if detail.channel.tenant_id != facts.tenant_id => {
-                    trace.push(ResolutionTraceStep {
-                        stage: ResolutionStage::HeaderId,
-                        outcome: ResolutionOutcome::Rejected,
-                        detail: format!(
-                            "Channel '{channel_id}' does not belong to tenant '{}'",
-                            facts.tenant_id
-                        ),
-                    });
-                }
+            match self.service.get_channel_detail_for_tenant(facts.tenant_id, channel_id).await? {
+                Some(detail) => match detail {
                 detail if !detail.channel.is_active => {
                     trace.push(ResolutionTraceStep {
                         stage: ResolutionStage::HeaderId,
@@ -134,7 +125,15 @@ impl ChannelResolver {
                         trace,
                     ));
                 }
+            },
+            None => {
+                trace.push(ResolutionTraceStep {
+                    stage: ResolutionStage::HeaderId,
+                    outcome: ResolutionOutcome::Rejected,
+                    detail: format!("Channel '{channel_id}' does not belong to tenant '{}'", facts.tenant_id),
+                });
             }
+            } // match scoped channel lookup
         } else {
             trace.push(ResolutionTraceStep {
                 stage: ResolutionStage::HeaderId,
@@ -316,10 +315,21 @@ impl ChannelResolver {
                 continue;
             }
 
-            let detail = self
+            let Some(detail) = self
                 .service
-                .get_channel_detail(rule.action_channel_id)
-                .await?;
+                .get_channel_detail_for_tenant(facts.tenant_id, rule.action_channel_id)
+                .await?
+            else {
+                trace.push(ResolutionTraceStep {
+                    stage: ResolutionStage::Policy,
+                    outcome: ResolutionOutcome::Rejected,
+                    detail: format!(
+                        "Policy rule '{}' in set '{}' resolved outside the tenant scope",
+                        rule.id, rule.policy_set_slug
+                    ),
+                });
+                continue;
+            };
             if !detail.channel.is_active {
                 trace.push(ResolutionTraceStep {
                     stage: ResolutionStage::Policy,
