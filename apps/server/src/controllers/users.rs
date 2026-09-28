@@ -94,8 +94,7 @@ async fn get_user(
     let user = users::Entity::find_by_id(user_id)
         .filter(UserColumn::TenantId.eq(tenant.id))
         .one(ctx.db())
-        .await
-        .map_err(|e| Error::Message(e.to_string()))?
+        .await?
         .ok_or(Error::NotFound)?;
 
     Ok(json_response(map_user(user)))
