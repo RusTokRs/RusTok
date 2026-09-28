@@ -37,11 +37,11 @@ async fn bootstrap(
     let channels = service
         .list_channel_details(tenant.id)
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
     let policy_sets = service
         .list_resolution_policy_sets(tenant.id)
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
 
     let mut available_modules = registry
         .list()
@@ -60,7 +60,7 @@ async fn bootstrap(
 
     let mut oauth_apps = oauth_apps::Entity::find_active_by_tenant(ctx.db(), tenant.id)
         .await
-        .map_err(internal_error)?
+        .map_err(map_channel_error)?
         .into_iter()
         .map(|app| AvailableChannelOauthAppItem {
             id: app.id,
@@ -100,7 +100,7 @@ async fn create_channel(
             settings: input.settings,
         })
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     Ok(json_response(channel))
@@ -120,7 +120,7 @@ async fn create_target(
     let target: ChannelTargetResponse = service
         .add_target(channel_id, input)
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     Ok(json_response(target))
@@ -139,7 +139,7 @@ async fn set_default_channel(
     let channel = service
         .set_default_channel(channel_id)
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     Ok(json_response(channel))
@@ -159,7 +159,7 @@ async fn update_target(
     let target: ChannelTargetResponse = service
         .update_target(channel_id, target_id, input)
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     Ok(json_response(target))
@@ -178,7 +178,7 @@ async fn delete_target(
     let target: ChannelTargetResponse = service
         .delete_target(channel_id, target_id)
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     Ok(json_response(target))
@@ -198,7 +198,7 @@ async fn bind_module(
     let binding = service
         .bind_module(channel_id, input)
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     Ok(json_response(binding))
@@ -216,7 +216,7 @@ async fn bind_oauth_app(
 
     let oauth_apps = oauth_apps::Entity::find_active_by_tenant(ctx.db(), tenant.id)
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
     if !oauth_apps.iter().any(|app| app.id == input.oauth_app_id) {
         return Err(Error::BadRequest(
             "OAuth app does not belong to the current tenant".to_string(),
@@ -227,7 +227,7 @@ async fn bind_oauth_app(
     let binding = service
         .bind_oauth_app(channel_id, input)
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     Ok(json_response(binding))
@@ -246,7 +246,7 @@ async fn delete_module_binding(
     let binding = service
         .remove_module_binding(channel_id, binding_id)
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     Ok(json_response(binding))
@@ -265,7 +265,7 @@ async fn delete_oauth_app_binding(
     let binding = service
         .revoke_oauth_app_binding(channel_id, binding_id)
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     Ok(json_response(binding))
@@ -283,7 +283,7 @@ async fn create_resolution_policy_set(
     let policy_set = service
         .create_resolution_policy_set(create_resolution_policy_set_input(tenant.id, input))
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     Ok(json_response(policy_set))
@@ -307,7 +307,7 @@ async fn create_resolution_rule(
             create_resolution_rule_input(input).map_err(Error::BadRequest)?,
         )
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     Ok(json_response(rule))
@@ -331,7 +331,7 @@ async fn update_resolution_rule(
     let rule = service
         .update_resolution_rule(policy_set_id, rule_id, update_resolution_rule_input(input))
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     Ok(json_response(rule))
@@ -356,7 +356,7 @@ async fn reorder_resolution_rules(
             },
         )
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     Ok(json_response(rules))
@@ -375,7 +375,7 @@ async fn activate_resolution_policy_set(
     let policy_set = service
         .set_active_resolution_policy_set(policy_set_id)
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     Ok(json_response(policy_set))
@@ -394,7 +394,7 @@ async fn delete_resolution_rule(
     let rule = service
         .remove_resolution_rule(policy_set_id, rule_id)
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     Ok(json_response(rule))
@@ -440,7 +440,7 @@ async fn ensure_channel_belongs_to_tenant(
     let channel = service
         .get_channel(channel_id)
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
     if channel.tenant_id != tenant_id {
         return Err(Error::NotFound);
     }
@@ -456,15 +456,44 @@ async fn ensure_policy_set_belongs_to_tenant(
     let policy_set = service
         .get_resolution_policy_set(policy_set_id)
         .await
-        .map_err(internal_error)?;
+        .map_err(map_channel_error)?;
     if policy_set.tenant_id != tenant_id {
         return Err(Error::NotFound);
     }
     Ok(())
 }
 
-fn internal_error(error: impl std::fmt::Display) -> Error {
-    Error::Message(error.to_string())
+fn map_channel_error(error: rustok_channel::ChannelError) -> Error {
+    use rustok_channel::ChannelError;
+
+    match error {
+        ChannelError::NotFound(_) => Error::NotFound,
+        ChannelError::Validation(message)
+        | ChannelError::InvalidTargetType(message)
+        | ChannelError::InvalidTargetValue(message)
+        | ChannelError::InvalidPolicyDefinition(message)
+        | ChannelError::InvalidPolicyOperation(message) => Error::BadRequest(message),
+        ChannelError::InactiveChannel(_) => http_error(rustok_web::HttpError::new(
+            StatusCode::CONFLICT,
+            "channel_inactive",
+            "Channel is not active",
+        )),
+        ChannelError::SlugAlreadyExists(_)
+        | ChannelError::TargetAlreadyExists(_, _)
+        | ChannelError::PolicySetSlugAlreadyExists(_) => http_error(rustok_web::HttpError::new(
+            StatusCode::CONFLICT,
+            "channel_conflict",
+            "The requested channel resource conflicts with an existing resource",
+        )),
+        ChannelError::Database(error) => {
+            tracing::error!(%error, "Channel controller database operation failed");
+            Error::InternalServerError
+        }
+        ChannelError::Serialization(error) => {
+            tracing::error!(%error, "Channel controller serialization failed");
+            Error::InternalServerError
+        }
+    }
 }
 
 fn forbidden_error(description: impl Into<String>) -> Error {
@@ -518,4 +547,68 @@ pub fn router() -> crate::routes::ServerRouter {
             "/api/channels/policies/{policy_set_id}/rules/{rule_id}",
             patch(update_resolution_rule).delete(delete_resolution_rule),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::map_channel_error;
+    use axum::{
+        response::IntoResponse,
+        http::StatusCode,
+    };
+    use rustok_channel::ChannelError;
+    use uuid::Uuid;
+
+    #[test]
+    fn maps_channel_not_found_to_not_found() {
+        let response = map_channel_error(ChannelError::NotFound(Uuid::new_v4())).into_response();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn maps_channel_validation_to_bad_request() {
+        let response = map_channel_error(ChannelError::InvalidTargetValue(
+            "invalid target".to_string(),
+        ))
+        .into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn maps_channel_conflicts_to_conflict() {
+        let response = map_channel_error(ChannelError::SlugAlreadyExists(
+            "default".to_string(),
+        ))
+        .into_response();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+
+        let response = map_channel_error(ChannelError::TargetAlreadyExists(
+            "web_domain".to_string(),
+            "shop.example.test".to_string(),
+        ))
+        .into_response();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+
+        let response = map_channel_error(ChannelError::PolicySetSlugAlreadyExists(
+            "default".to_string(),
+        ))
+        .into_response();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+    }
+
+    #[test]
+    fn maps_inactive_channel_to_conflict() {
+        let response =
+            map_channel_error(ChannelError::InactiveChannel(Uuid::new_v4())).into_response();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+    }
+
+    #[test]
+    fn maps_channel_database_error_to_internal_server_error() {
+        let response = map_channel_error(ChannelError::Database(
+            sea_orm::DbErr::Custom("database failure".to_string()),
+        ))
+        .into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
 }
