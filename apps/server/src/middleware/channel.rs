@@ -24,7 +24,8 @@ use rustok_api::{
     context::AuthContextExtension, request::ResolvedRequestLocale,
 };
 use rustok_channel::{
-    ChannelResolutionOrigin, ChannelResolver, RequestFacts, ResolutionDecision, TargetSurface,
+    ChannelResolutionOrigin, ChannelResolver, ChannelTargetType, RequestFacts, ResolutionDecision,
+    TargetSurface,
 };
 
 const CHANNEL_ID_HEADER: &str = "X-Channel-ID";
@@ -33,6 +34,10 @@ const CHANNEL_CACHE_TTL: Duration = Duration::from_secs(60);
 const CHANNEL_NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(10);
 const CHANNEL_CACHE_MAX_WEIGHT_BYTES: u64 = 16 * 1024 * 1024;
 const CHANNEL_CACHE_MAX_TENANT_VERSIONS: usize = 16 * 1024;
+
+// Keep transport selectors aligned with the authoritative `channels.slug` storage contract.
+// The bound is applied before the raw value can reach owner resolution or cached trace data.
+const CHANNEL_SLUG_MAX_CHARS: usize = 100;
 
 struct ChannelCacheVersionState {
     next_version: u64,
@@ -370,7 +375,7 @@ fn channel_cache_key_from_facts(facts: &RequestFacts, version: u64) -> ChannelCa
             .query_channel_slug
             .as_deref()
             .map(bounded_cache_component),
-        host: facts.host.as_deref().map(bounded_cache_component),
+        host: facts.host.as_deref().map(cache_host_component),
         oauth_app_id: facts.oauth_app_id,
         locale: facts.locale.as_deref().map(bounded_cache_component),
     }
@@ -378,6 +383,21 @@ fn channel_cache_key_from_facts(facts: &RequestFacts, version: u64) -> ChannelCa
 
 fn bounded_cache_component(value: &str) -> String {
     format!("sha256-{}", hex::encode(Sha256::digest(value.as_bytes())))
+}
+
+fn cache_host_component(value: &str) -> String {
+    let canonical = ChannelTargetType::WebDomain
+        .normalize_value(value)
+        .unwrap_or_else(|| value.trim().to_owned());
+    bounded_cache_component(&canonical)
+}
+
+fn bounded_channel_selector(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() || value.chars().count() > CHANNEL_SLUG_MAX_CHARS {
+        return None;
+    }
+    Some(value.to_owned())
 }
 
 fn resolved_detail_source_and_trace(
@@ -434,16 +454,15 @@ fn channel_slug_from_header(headers: &axum::http::HeaderMap) -> Option<String> {
     headers
         .get(CHANNEL_SLUG_HEADER)
         .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
+        .and_then(bounded_channel_selector)
 }
 
 fn channel_slug_from_query(query: Option<&str>) -> Option<String> {
     query.and_then(|query| {
-        query.split('&').find_map(|segment| {
-            let (key, value) = segment.split_once('=')?;
-            (key == "channel" && !value.trim().is_empty()).then(|| value.trim().to_string())
+        url::form_urlencoded::parse(query.as_bytes()).find_map(|(key, value)| {
+            (key == "channel")
+                .then(|| bounded_channel_selector(value.as_ref()))
+                .flatten()
         })
     })
 }

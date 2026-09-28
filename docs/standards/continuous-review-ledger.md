@@ -11,8 +11,8 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `53002053d05a113ebd4a756f3d15506cede903b0`  
-**Active branch:** `main`
+**Current main SHA:** `41c0386f1f99bdbdde570b824a217dfbdbcd11c4`  
+**Active branch:** `codex/audit-fs-22.02.07-channel-middleware`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
 
@@ -126,7 +126,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.04 — `apps/server/src/middleware/registry_publish_policy.rs`** — one-module audit.
 - [x] **FS-22.02.05 — `apps/server/src/middleware/rate_limit.rs`** — one-module audit.
 - [x] **FS-22.02.06 — `apps/server/src/middleware/auth_context.rs`** — one-module audit.
-- [ ] **FS-22.02.07 — `apps/server/src/middleware/channel.rs`** — one-module audit.
+- [x] **FS-22.02.07 — `apps/server/src/middleware/channel.rs`** — one-module audit.
 - [ ] **FS-22.02.08 — `apps/server/src/middleware/locale.rs`** — one-module audit.
 - [ ] **FS-22.02.09 — `apps/server/src/middleware/tenant.rs`** — one-module audit.
 - [ ] **FS-22.02.10 — `apps/server/src/middleware/guest_access_http.rs` or its host adapter** — one-module audit.
@@ -263,6 +263,20 @@ Hard limits for every iteration:
 - **Verification:** repository-content inspection, static reasoning, and branch diff review only. Per maintainer execution rules, no tests, clippy, gatekeeper, build, or runtime commands were executed by the agent.
 - **Status:** module-level fresh second pass clean; `FS-22.02.06` complete. Next planned primary module is `FS-22.02.07 — apps/server/src/middleware/channel.rs`.
 - **Merged:** PR #4174, merge commit `284e9a4d860c8adc9d38548e9ec859961226bd76`.
+
+### FS-22.02.07 Iteration 1 — `channel.rs`
+
+- **Base:** refreshed `main` to `41c0386f1f99bdbdde570b824a217dfbdbcd11c4` immediately before starting this iteration.
+- **Dedicated iteration branch:** `codex/audit-fs-22.02.07-channel-middleware`.
+- **Invariant map:** channel resolution must consume the already-resolved tenant, trusted effective host, canonical effective locale, and verified OAuth app identity; explicit selector precedence must remain unchanged; cache identity must represent semantic resolution facts; request-derived selector data must remain bounded before database resolution or trace/cache retention; successful channel mutations must invalidate local and durable generations through the existing REST/native boundaries.
+- **Confirmed finding CHANNEL-22.02.07-01:** `channel_slug_from_header` and `channel_slug_from_query` accepted arbitrarily long selector values even though the authoritative `channels.slug` storage contract is `string_len(100)`. These raw values reached owner resolution and, on fallback, could be copied into the resolution trace retained in `ChannelContext` and therefore into the weighted cache. This violates the module plan's bounded-request-facts invariant and creates avoidable DB/trace/cache amplification from a single request.
+- **Confirmed finding CHANNEL-22.02.07-02:** the resolver canonicalizes web-domain hosts before host matching, but `channel_cache_key_from_facts` hashed the raw effective host. Equivalent hosts such as casing, an optional port, or a trailing dot therefore produced different cache identities while resolving to the same channel. This does not break tenant isolation, but it weakens cache efficiency and allows unnecessary cache churn within the bounded capacity.
+- **Adjacent-boundary review:** normal tenant-enabled router order supplies tenant, locale, and auth context before channel resolution; the channel middleware uses the canonical request-trust host helper and owner `ChannelResolver`, whose host/default/policy queries remain tenant-scoped. REST channel mutations call the shared invalidation publisher directly, while native mutations are covered by `channel_native_wrapper`; durable generation remains database-owned.
+- **Remediation:** bound channel selector values at the HTTP parsing boundary to the storage contract, use canonical URL query decoding, and canonicalize the host only for cache-key identity so resolution precedence and owner semantics remain unchanged.
+- **Verification:** repository-content inspection, static reasoning, and branch diff review only. Per maintainer execution rules, no test suite, clippy, build, or runtime command is executed by the agent.
+- **Fresh second pass:** re-read the complete changed middleware, native wrapper, REST channel controller, ChannelResolver, ChannelReadPort, locale/tenant middleware, and the application-router contract. The remediation preserves explicit selector precedence, tenant scope, trusted host derivation, durable invalidation ownership, and fail-safe cache generation behavior; no additional repository-owned defect was found inside `channel.rs`.
+- **Verification:** repository-content inspection, static reasoning, and branch diff review only. Per maintainer execution rules, no test suite, clippy, build, or runtime command was executed by the agent.
+- **Status:** module-level fresh second pass clean; `FS-22.02.07` complete pending integration. Next planned primary module is `FS-22.02.08 — apps/server/src/middleware/locale.rs`.
 
 ### Deferred owning-module findings discovered during FS-22
 
