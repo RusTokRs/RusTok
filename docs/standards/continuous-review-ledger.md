@@ -368,6 +368,17 @@ Hard limits for every iteration:
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.07` complete after merge; continue to the next unchecked primary module in FS-22.03.
 
+### FS-22.03.11 Iteration 1 — `crates/modules/rustok-auth/src/lifecycle.rs`
+
+- **Base:** refreshed `main` at `f6cda48e06c062ba069e8b9eaf7e082c35cf8490`; dedicated branch `codex/audit-fs-22.03.11-auth-lifecycle`.
+- **Invariant map:** the lifecycle contract must expose one canonical typed runtime boundary, preserve tenant/user/session/locale context without hidden defaults, classify domain failures without forcing transport policy into the owner, and keep consumers from accessing auth persistence through host-specific types.
+- **Discovery:** re-read the complete lifecycle port/context/error records, the only discovered production implementation in `apps/server/src/services/auth_lifecycle_provider.rs`, auth GraphQL consumers, server lifecycle service, and auth module documentation.
+- **Finding assessment:** no remaining repository-owned defect was confirmed inside `rustok-auth/src/lifecycle.rs`. The port is framework-neutral, contains no database or transport logic, and its context/error vocabulary matches the current server provider boundary.
+- **Deferred adjacent finding:** `ServerAuthLifecycleProvider::forgot_password` currently maps email-service construction and reset-URL preparation failures to `AuthLifecycleMutationError::Internal` for existing accounts, while unknown accounts return success. This can reintroduce an account-existence signal through GraphQL/native callers when mail configuration is unavailable. The root cause belongs to the server provider and is assigned to a later primary module iteration; no transport workaround was added to the owner contract.
+- **Fresh second pass:** independently re-read the contract, server implementation, direct GraphQL runtime registration, and lifecycle error mapping. No additional owner-contract defect remained.
+- **Verification:** repository-content/static inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migrations, or runtime commands were executed by the agent.
+- **Status:** `FS-22.03.11` complete. Next primary module: `FS-22.03.12 — apps/server/src/services/auth_lifecycle.rs`.
+
 ### FS-22.03.10 Iteration 1 — `apps/server/src/auth.rs`
 
 - **Base:** refreshed `main` at `10642934e162ede0f542fd3c182c49f10c60e0d0`; dedicated branch `codex/audit-fs-22.03.10-server-auth-adapter`.
