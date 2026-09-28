@@ -115,7 +115,7 @@ pub async fn bootstrap_app_runtime(
     let registry = modules::build_registry();
     let runtime_extensions = build_shared_runtime_extensions_with_host_providers(
         &registry,
-        settings,
+        &settings,
         runtime_ctx.clone(),
         auth_config.clone(),
     )?;
