@@ -434,6 +434,24 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn internal_media_errors_do_not_reach_http_response() {
+        use axum::body::to_bytes;
+        use sea_orm::DbErr;
+
+        let response = media_error(MediaError::Db(DbErr::Custom(
+            "secret database connection details".to_string(),
+        )))
+        .into_response();
+        let body = to_bytes(response.into_body(), 16 * 1024)
+            .await
+            .expect("error response body");
+        let body = String::from_utf8_lossy(&body);
+
+        assert!(!body.contains("secret database connection details"));
+        assert!(body.contains("Media service is temporarily unavailable"));
+    }
+
     #[test]
     fn media_rest_requires_effective_permission_and_matching_tenant() {
         let tenant_id = Uuid::new_v4();
