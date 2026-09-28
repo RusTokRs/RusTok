@@ -169,8 +169,15 @@ impl InstallPersistencePort<DatabaseConnection> for SeaOrmInstallerApplyPorts<'_
         &self,
         runtime: &DatabaseConnection,
         plan: &InstallPlan,
+        requested_session_id: Option<Uuid>,
     ) -> Result<InstallSessionRecord, InstallExecutionError> {
-        InstallPersistencePort::create_session(&SeaOrmInstallerPorts, runtime, plan).await
+        InstallPersistencePort::create_session(
+            &SeaOrmInstallerPorts,
+            runtime,
+            plan,
+            requested_session_id,
+        )
+        .await
     }
 
     async fn acquire_lock(
@@ -710,9 +717,10 @@ impl InstallPersistencePort<DatabaseConnection> for SeaOrmInstallerPorts {
         &self,
         runtime: &DatabaseConnection,
         plan: &InstallPlan,
+        requested_session_id: Option<Uuid>,
     ) -> Result<InstallSessionRecord, InstallExecutionError> {
         InstallerPersistenceService::new(runtime.clone())
-            .create_session(plan, None, None)
+            .create_session(plan, None, None, requested_session_id)
             .await
             .map(session_record)
             .map_err(database_error)
